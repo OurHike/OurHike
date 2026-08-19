@@ -44,7 +44,20 @@ guard below), staying a loud, blocked event.
 OVERRIDES are `reference/poi_identity_overrides.json` - hand-written,
 never touched by this script: `same` rows carry an id onto a named key
 before any scoring (the one door back in for a tombstone), `not_same`
-rows forbid a pair. Each row carries a reason.
+rows forbid a pair, `merged_into` rows say upstream folded a retired
+place into a live one. Each row carries a reason.
+
+SUPERSESSION (#673). A retirement is not always the end of a place -
+sometimes upstream merged it into another ("Rocky Run Shelter 1" and "2"
+becoming "Rocky Run Shelters"), and everything a hiker anchored to the
+retired id should re-anchor to the survivor. That edge is
+`superseded_by`, written on the tombstone, and `lib/poi_identity.resolve`
+is the one implementation that follows it. It is written from tier 2's
+merge signature - a row that cleared the full acceptance bar on a record
+a DIFFERENT id carried - or from a `merged_into` override, and from
+nothing weaker: pointing a hiker's photos at the wrong place is the same
+unrecoverable mistake a wrong carry makes, so a retirement with no edge
+stays the default.
 
 HELD FOR REVIEW, not carried, when the evidence is suspicious:
 
@@ -81,6 +94,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lib.poi_identity import live_rows
 from lib.spurs import distance_m
 
 ROOT = Path(__file__).parent
@@ -188,11 +202,8 @@ class Outcome:
     matched: list[str] = field(default_factory=list)
     minted: list[str] = field(default_factory=list)
     retired: list[str] = field(default_factory=list)
+    superseded: list[str] = field(default_factory=list)
     held: list[str] = field(default_factory=list)
-
-
-def live_rows(pois: dict) -> dict:
-    return {poi_id: row for poi_id, row in pois.items() if "retired" not in row}
 
 
 def _refresh_from(row: dict, record: dict) -> None:
@@ -260,8 +271,13 @@ def match_by_evidence(
     forbidden: set[tuple[str, tuple[str, str]]],
     mile_of=None,
 ) -> list[tuple[str, int, str]]:
-    """Tier 2 (#672): (poi_id, record index, evidence) for every accepted
-    match over the bipartite set, blocked by poi_type.
+    """Tier 2 (#672): `(accepted, superseded)` over the bipartite set,
+    blocked by poi_type.
+
+    `accepted` is [(poi_id, record index, evidence)] - the carries.
+    `superseded` is [(poi_id, winner poi_id, evidence)] - the rows that
+    retire because upstream merged them into a place another id carried
+    (#673); see THE MERGE SIGNATURE below.
 
     Acceptance is three conditions, not a bare score, each bought by a
     failure already in this repository: clear ACCEPT_THRESHOLD, clear the
@@ -320,7 +336,37 @@ def match_by_evidence(
         if rivals[0][1] != poi_id or not clears(rivals, rivals[0][0]):
             continue
         accepted.append((poi_id, index, evidence))
-    return accepted
+
+    # THE MERGE SIGNATURE (#673). A row that cleared its OWN side of the
+    # acceptance test - over the threshold, clear of its runner-up by the
+    # margin, inside the ceiling - and still did not carry, because a
+    # DIFFERENT old id scored higher on the very record it was confident
+    # about. That is upstream folding two places into one ("Rocky Run
+    # Shelter 1" and "2" becoming "Rocky Run Shelters"), and it is the only
+    # thing in this matcher that produces the shape: a row that is merely
+    # ambiguous between two successors fails `clears` on its own candidates
+    # and is dropped by the same line that keeps it out of `accepted`.
+    #
+    # Held to the acceptance bar rather than to a lower one on purpose. The
+    # edge this writes re-anchors a hiker's photos onto another place, which
+    # is the same act a tier-2 carry performs and carries the same
+    # unrecoverable failure - a photo of one shelter shown on another. A
+    # retirement with no edge is the recoverable outcome, so anything short
+    # of the full bar takes it.
+    accepted_ids = {entry[0] for entry in accepted}
+    carried_by = {index: poi_id for poi_id, index, _ in accepted}
+    superseded = []
+    for poi_id, candidates in by_old.items():
+        if poi_id in accepted_ids:
+            continue
+        score, index, evidence = candidates[0]
+        if not clears(candidates, score):
+            continue
+        winner = carried_by.get(index)
+        if winner is None or winner == poi_id:
+            continue
+        superseded.append((poi_id, winner, evidence))
+    return accepted, superseded
 
 
 def reconcile(
@@ -402,6 +448,14 @@ def reconcile(
             # successor, which is the whole point of retirement being the
             # recoverable mistake.
             event["was_retired"] = row.pop("retired")
+            # A row that came back is live, and a live row is itself - so
+            # any supersession edge it carried has to go with the
+            # retirement that justified it (#673). Left in place it would
+            # point every anchored photo away from the very place that just
+            # came back, which is the opposite of what resurrecting it was
+            # for.
+            if "superseded_by" in row:
+                event["superseded_by_was"] = row.pop("superseded_by")
         row["history"] = [*row.get("history", []), event]
         row["source"] = record["source"]
         row["source_feature_id"] = record["source_feature_id"]
@@ -444,11 +498,16 @@ def reconcile(
 
     # --- Tier 2: the key did not survive; the evidence might --------------
     matched_indices: set[int] = set()
-    for poi_id, index, evidence in match_by_evidence(disappeared, unmatched, forbidden, mile_of):
+    accepted, merge_signature = match_by_evidence(disappeared, unmatched, forbidden, mile_of)
+    for poi_id, index, evidence in accepted:
         record = unmatched[index]
         carry_onto(poi_id, record, by="evidence", evidence=f"{row_arrow(next_pois[poi_id], record)}, {evidence}")
         matched_indices.add(index)
         disappeared.pop(poi_id, None)
+
+    # Only for rows that actually go on to retire: an override may have
+    # carried one of these out from under the matcher above.
+    merges = {poi_id: (winner, f"evidence ({evidence})") for poi_id, winner, evidence in merge_signature if poi_id in disappeared}
 
     # --- Tier 3: everything else retires and creates ----------------------
     for index, record in enumerate(unmatched):
@@ -491,7 +550,85 @@ def reconcile(
         gone["history"] = [*gone.get("history", []), {"release": release, "event": "retired"}]
         outcome.retired.append(poi_id)
 
+    # After retirement, so every edge is validated against settled state:
+    # what is live, what is a tombstone, and what was minted this run.
+    apply_supersession(next_pois, outcome, merges, overrides, release)
+
     return outcome
+
+
+def apply_supersession(pois: dict, outcome: Outcome, merges: dict, overrides: dict, release: str) -> None:
+    """Write `superseded_by` on the rows upstream folded into another place
+    (#673) - the pointer features/POI_IDENTITY.md section 4 calls for, and
+    the thing that re-anchors a hiker's content after a merge.
+
+    Two sources, the hand-written one winning: tier 2's merge signature
+    (`merges`, see match_by_evidence) and a `merged_into` override row. The
+    override wins because it is the only one a person wrote, and this is the
+    same machine-owned/human-owned split the ledger keeps everywhere else.
+
+    Four ways an edge is refused, each held for review rather than dropped
+    silently, because a supersession that quietly did not apply reads
+    exactly like one nobody asked for:
+
+      - the row is not retired. A live place is still itself; `superseded_by`
+        on it would be a pointer away from a place that is still there.
+      - the target is not a row this ledger holds.
+      - the target is itself retired. Following the edge would land a
+        hiker's photos on another tombstone, and a two-step merge is
+        expressed as two edges, not one edge into a grave.
+      - the row points at itself.
+
+    Idempotent by construction, which `--check` requires: an edge already
+    written and unchanged appends no second history event, so re-running
+    against an unchanged snapshot reproduces the file byte for byte. That
+    matters most for the override, which names a row that stays retired
+    across every future run.
+    """
+    live = live_rows(pois)
+    edges: dict[str, tuple[str, str]] = dict(merges)
+    for entry in overrides.get("merged_into", []):
+        edges[entry["id"]] = (entry["into"], f"override ({entry.get('reason', 'no reason given')})")
+
+    for poi_id, (into, evidence) in sorted(edges.items()):
+        row = pois.get(poi_id)
+        if row is None:
+            outcome.held.append(
+                f"{poi_id}: a `merged_into` override names an id this ledger has never held - "
+                "supersession is a fact about a row, and there is no row"
+            )
+            continue
+        if "retired" not in row:
+            outcome.held.append(
+                f"{poi_id}: a `merged_into` override supersedes a row that is LIVE this run "
+                f"({row.get('name')!r}) - a place that is still there is still itself"
+            )
+            continue
+        if into == poi_id:
+            outcome.held.append(f"{poi_id}: superseded by itself - an edge has to go somewhere else")
+            continue
+        if into not in pois:
+            outcome.held.append(
+                f"{poi_id}: superseded by {into}, which this ledger has never held - "
+                "the successor has to be a place this project has published"
+            )
+            continue
+        if into not in live:
+            outcome.held.append(
+                f"{poi_id}: superseded by {into}, which is itself RETIRED - following that edge lands "
+                "a hiker's photos on another tombstone; a place merged twice needs two edges"
+            )
+            continue
+        if row.get("superseded_by") == into:
+            # Already written and unchanged - the steady state for every
+            # past merge, and the reason this run is a no-op on them.
+            continue
+        row["superseded_by"] = into
+        row["history"] = [
+            *row.get("history", []),
+            {"release": release, "event": "superseded", "superseded_by": into, "by": evidence},
+        ]
+        outcome.superseded.append(f"{poi_id} -> {into}: {evidence}")
 
 
 def row_arrow(row: dict, record: dict) -> str:
@@ -617,6 +754,13 @@ def summarize(outcome: Outcome, seeded: bool) -> str:
         for poi_id in outcome.retired:
             row = outcome.pois[poi_id]
             lines.append(f"  - {poi_id}  {row['poi_type']}  {row.get('name')!r}")
+        # Named with their evidence for the same reason every tier-2 carry
+        # is: this is the line of the release PR where a reviewer decides
+        # whether a hiker's photos should move, and a bare count cannot be
+        # disagreed with.
+        lines.append(f"superseded: {len(outcome.superseded)}")
+        for supersession in outcome.superseded:
+            lines.append(f"  > {supersession}")
     if outcome.held:
         lines.append(f"HELD FOR REVIEW: {len(outcome.held)}")
         for held in outcome.held:

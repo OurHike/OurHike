@@ -662,7 +662,12 @@ class TestPoiIdentity:
 
         reports = check_poi_identity(BASE, self._manifest())
 
-        assert [r["state"] for r in reports] == [OK]
+        # Two reports now: the live half and the tombstone half (#673,
+        # check_retired_poi). The second passes rather than skipping - this
+        # fixture has retired nothing and publishes no tombstones, which is
+        # the two agreeing, not the check failing to run. A SKIP would fail
+        # the gate under --strict on every healthy release.
+        assert [r["state"] for r in reports] == [OK, OK]
 
     def test_an_id_with_no_ledger_row_fails(self, tmp_path, monkeypatch, requests_mock):
         from verify_release import check_poi_identity
@@ -719,3 +724,115 @@ class TestPoiIdentity:
         reports = check_poi_identity(BASE, self._manifest())
 
         assert [r["state"] for r in reports] == [SKIPPED]
+
+    # --- The tombstone half (#673) -------------------------------------
+    #
+    # Check 21's first half holds every LIVE id to a live ledger row. That
+    # leaves the design's actual property - "every id ever published resolves
+    # to something" - only half checked, because it says nothing about the ids
+    # that stopped being live.
+
+    def _serve_tombstones(self, requests_mock, features):
+        requests_mock.get(f"{BASE}/retired_poi.geojson", json={"type": "FeatureCollection", "features": features})
+
+    def _with_tombstones(self):
+        return {"artifacts": {"poi_shelter.geojson": {"sha256": "a" * 64}, "retired_poi.geojson": {"sha256": "b" * 64}}}
+
+    def _tombstone(self, poi_id="atc_shelters:gone", superseded_by=None):
+        properties = {"id": poi_id, "poi_type": "shelter", "retired": "2027-09-14"}
+        if superseded_by:
+            properties["superseded_by"] = superseded_by
+        return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-74.0, 41.0]}, "properties": properties}
+
+    def test_a_kept_tombstone_promise_passes(self, tmp_path, monkeypatch, requests_mock):
+        from verify_release import check_poi_identity
+
+        self._ledger(
+            tmp_path,
+            monkeypatch,
+            {
+                "atc_shelters:glob-1": self._row(),
+                "atc_shelters:gone": self._row(sfid="gone", retired="2027-09-14"),
+            },
+        )
+        self._serve(requests_mock, [self._feature()])
+        self._serve_tombstones(requests_mock, [self._tombstone()])
+
+        reports = check_poi_identity(BASE, self._with_tombstones())
+
+        assert [r["state"] for r in reports] == [OK, OK]
+
+    def test_a_retired_row_missing_from_the_tombstones_fails(self, tmp_path, monkeypatch, requests_mock):
+        """Tombstones publish forever (lib/poi_identity.retired_rows), so a
+        missing one is a card that renders nothing for whoever's photos are
+        anchored to it."""
+        from verify_release import check_poi_identity
+
+        self._ledger(
+            tmp_path,
+            monkeypatch,
+            {
+                "atc_shelters:glob-1": self._row(),
+                "atc_shelters:gone": self._row(sfid="gone", retired="2027-09-14"),
+            },
+        )
+        self._serve(requests_mock, [self._feature()])
+        self._serve_tombstones(requests_mock, [])
+
+        reports = check_poi_identity(BASE, self._with_tombstones())
+
+        assert reports[1]["state"] == FAILED
+        assert "missing from the tombstones" in reports[1]["detail"]
+
+    def test_a_live_row_published_as_a_tombstone_fails(self, tmp_path, monkeypatch, requests_mock):
+        """The mirror of test_a_retired_id_published_live_fails: telling a
+        hiker a place is gone while the map still draws it."""
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"atc_shelters:glob-1": self._row()})
+        self._serve(requests_mock, [self._feature()])
+        self._serve_tombstones(requests_mock, [self._tombstone(poi_id="atc_shelters:glob-1")])
+
+        reports = check_poi_identity(BASE, self._with_tombstones())
+
+        assert reports[1]["state"] == FAILED
+        assert "a LIVE ledger row" in reports[1]["detail"]
+
+    def test_a_superseded_by_that_is_not_live_fails(self, tmp_path, monkeypatch, requests_mock):
+        """The edge is what a hiker's photos follow. One pointing at another
+        tombstone strands them somewhere the card cannot explain."""
+        from verify_release import check_poi_identity
+
+        self._ledger(
+            tmp_path,
+            monkeypatch,
+            {
+                "atc_shelters:glob-1": self._row(),
+                "atc_shelters:gone": self._row(sfid="gone", retired="2027-09-14"),
+            },
+        )
+        self._serve(requests_mock, [self._feature()])
+        self._serve_tombstones(requests_mock, [self._tombstone(superseded_by="atc_shelters:also-gone")])
+
+        reports = check_poi_identity(BASE, self._with_tombstones())
+
+        assert reports[1]["state"] == FAILED
+        assert "not a live ledger row" in reports[1]["detail"]
+
+    def test_a_ledger_with_retired_rows_and_no_published_tombstones_fails(self, tmp_path, monkeypatch, requests_mock):
+        from verify_release import check_poi_identity
+
+        self._ledger(
+            tmp_path,
+            monkeypatch,
+            {
+                "atc_shelters:glob-1": self._row(),
+                "atc_shelters:gone": self._row(sfid="gone", retired="2027-09-14"),
+            },
+        )
+        self._serve(requests_mock, [self._feature()])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert reports[1]["state"] == FAILED
+        assert "publishes no tombstones" in reports[1]["detail"]

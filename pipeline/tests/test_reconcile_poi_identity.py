@@ -480,6 +480,207 @@ def test_a_stale_same_override_is_held_rather_than_silently_skipped():
     assert "stale" in outcome.held[0]
 
 
+# --- Supersession: an upstream merge, and the edge it writes (#673) --------
+#
+# The asymmetry these hold is the same one the whole design turns on. A
+# retirement with NO edge parks a hiker's photos on a tombstone, which is
+# recoverable by one reviewed line. A retirement with a WRONG edge shows a
+# photo of one shelter on another, which is not. So every test below that
+# refuses to write an edge is the load-bearing one.
+
+
+def _rocky_run(fingerprint_b):
+    """ATC's own merge, from features/POI_IDENTITY.md: "Rocky Run Shelter 1"
+    and "2" become a single "Rocky Run Shelters". Both old rows keep the
+    base name and sit within the near-distance bonus, so what separates
+    them is the inventory fingerprint - which is what `fingerprint_b`
+    varies."""
+    prior = reconcile(
+        {},
+        [
+            {**_record(sfid="rr-1", name="Rocky Run Shelter 1"), "fingerprint": {"Year_Built": 1938, "Stories": 1}},
+            {
+                **_record(sfid="rr-2", name="Rocky Run Shelter 2", lat=41.0002),
+                "fingerprint": fingerprint_b,
+            },
+        ],
+        RELEASE,
+    ).pois
+    merged = {
+        **_record(sfid="rr-merged", name="Rocky Run Shelters"),
+        "fingerprint": {"Year_Built": 1938, "Stories": 1},
+    }
+    return prior, merged
+
+
+def test_an_upstream_merge_retires_the_loser_pointing_at_the_survivor():
+    """One old id carries onto the survivor by evidence; the other retires
+    with `superseded_by` naming it. The loser is not merely unmatched - it
+    cleared the acceptance bar on the very record the winner took, which is
+    the one shape a merge makes and ambiguity does not."""
+    prior, merged = _rocky_run({"Year_Built": 1938})
+
+    outcome = reconcile(prior, [merged], LATER)
+
+    assert len(outcome.matched) == 1, "the fuller fingerprint carries"
+    survivor, loser = "atc_shelters:rr-1", "atc_shelters:rr-2"
+    assert outcome.retired == [loser]
+    assert outcome.pois[loser]["superseded_by"] == survivor
+    assert "retired" not in outcome.pois[survivor]
+    assert outcome.superseded == [f"{loser} -> {survivor}: evidence (22 m, base name intact, fingerprint thin)"]
+    event = outcome.pois[loser]["history"][-1]
+    assert event["event"] == "superseded"
+    assert event["release"] == LATER
+    assert outcome.minted == [], "a merge mints nothing - the survivor already had an id"
+
+
+def test_two_rows_that_reduce_alike_retire_with_no_edge_at_all():
+    """The Laurel Ridge lesson, applied to supersession. Neither row can be
+    told from the other against the merged feature, so neither carries AND
+    neither gets an edge: two honest tombstones beat one confident guess
+    about whose photos move."""
+    prior, merged = _rocky_run({"Year_Built": 1938, "Stories": 1})
+
+    outcome = reconcile(prior, [merged], LATER)
+
+    assert outcome.matched == []
+    assert sorted(outcome.retired) == ["atc_shelters:rr-1", "atc_shelters:rr-2"]
+    assert outcome.superseded == []
+    for poi_id in outcome.retired:
+        assert "superseded_by" not in outcome.pois[poi_id]
+    assert outcome.minted == ["atc_shelters:rr-merged"]
+
+
+def test_a_lone_retirement_never_invents_a_successor():
+    """The commonest retirement of all - a place upstream simply dropped -
+    and the one where an edge would be pure invention."""
+    prior = _seeded(_record(name="Demolished Shelter"))
+
+    outcome = reconcile(prior, [], LATER)
+
+    assert outcome.retired == ["atc_shelters:glob-1"]
+    assert "superseded_by" not in outcome.pois["atc_shelters:glob-1"]
+    assert outcome.superseded == []
+
+
+def test_a_merged_into_override_writes_the_edge_the_matcher_could_not_see():
+    prior = _seeded(_record(name="Old Shelter"))
+    prior = reconcile(prior, [], LATER).pois  # retired, no successor found
+    survivor = _record(sfid="survivor", name="Somewhere Else Entirely", lat=41.5)
+    overrides = {
+        "merged_into": [
+            {
+                "id": "atc_shelters:glob-1",
+                "into": "atc_shelters:survivor",
+                "reason": "ATC folded this site into the new shelter half a mile north",
+            }
+        ]
+    }
+
+    outcome = reconcile(prior, [survivor], "2028-09-12", overrides=overrides)
+
+    row = outcome.pois["atc_shelters:glob-1"]
+    assert row["superseded_by"] == "atc_shelters:survivor"
+    assert row["history"][-1]["by"].startswith("override (ATC folded")
+
+
+def test_a_merged_into_override_is_idempotent_so_check_stays_stable():
+    """--check regenerates the ledger from the prior ledger every run, and
+    the override naming a long-retired row is read every one of them. A
+    second history event per run would make the file grow forever and the
+    gate fail on a snapshot nobody changed."""
+    prior = _seeded(_record(name="Old Shelter"))
+    prior = reconcile(prior, [], LATER).pois
+    survivor = _record(sfid="survivor", name="Survivor", lat=41.5)
+    overrides = {"merged_into": [{"id": "atc_shelters:glob-1", "into": "atc_shelters:survivor", "reason": "merged"}]}
+
+    once = reconcile(prior, [survivor], "2028-09-12", overrides=overrides)
+    twice = reconcile(once.pois, [survivor], "2029-09-12", overrides=overrides)
+
+    assert render(twice.pois) == render(once.pois)
+    assert twice.superseded == [], "already written and unchanged is a no-op, not a second event"
+
+
+@pytest.mark.parametrize(
+    "into, expected",
+    [
+        ("atc_shelters:glob-1", "superseded by itself"),
+        ("atc_shelters:never-published", "has never held"),
+    ],
+)
+def test_a_merged_into_override_that_points_nowhere_useful_is_held(into, expected):
+    prior = _seeded(_record())
+    prior = reconcile(prior, [], LATER).pois
+    overrides = {"merged_into": [{"id": "atc_shelters:glob-1", "into": into, "reason": "typo"}]}
+
+    outcome = reconcile(prior, [], "2028-09-12", overrides=overrides)
+
+    assert len(outcome.held) == 1
+    assert expected in outcome.held[0]
+
+
+def test_a_merged_into_override_pointing_at_a_tombstone_is_held():
+    """Following that edge would land a hiker's photos on another grave. A
+    place merged twice is two edges, and the second one has to be written."""
+    prior = reconcile({}, [_record(sfid="a"), _record(sfid="b", lat=41.5)], RELEASE).pois
+    prior = reconcile(prior, [], LATER).pois  # both retired
+    overrides = {"merged_into": [{"id": "atc_shelters:a", "into": "atc_shelters:b", "reason": "merged"}]}
+
+    outcome = reconcile(prior, [], "2028-09-12", overrides=overrides)
+
+    assert any("itself RETIRED" in held for held in outcome.held)
+
+
+def test_superseding_a_live_row_is_held_because_it_is_still_itself():
+    prior = _seeded(_record(name="Still Here"))
+    survivor = _record(sfid="survivor", lat=41.5)
+    overrides = {"merged_into": [{"id": "atc_shelters:glob-1", "into": "atc_shelters:survivor", "reason": "wrong"}]}
+
+    outcome = reconcile(prior, [_record(), survivor], "2028-09-12", overrides=overrides)
+
+    assert any("is LIVE this run" in held for held in outcome.held)
+
+
+def test_a_resurrected_tombstone_drops_the_edge_that_retirement_justified():
+    """The `same` override brings a place back. Leaving `superseded_by` on
+    it would point every anchored photo away from the place that just
+    returned - the exact opposite of what resurrecting it was for."""
+    prior, merged = _rocky_run({"Year_Built": 1938})
+    prior = reconcile(prior, [merged], LATER).pois
+    assert prior["atc_shelters:rr-2"]["superseded_by"] == "atc_shelters:rr-1"
+
+    reborn = _record(sfid="rr-2-again", name="Rocky Run Shelter 2", lat=41.0002)
+    overrides = {
+        "same": [
+            {
+                "id": "atc_shelters:rr-2",
+                "source": "atc_shelters",
+                "source_feature_id": "rr-2-again",
+                "reason": "ATC re-split the site in 2029",
+            }
+        ]
+    }
+
+    outcome = reconcile(prior, [merged, reborn], "2029-09-12", overrides=overrides)
+
+    row = outcome.pois["atc_shelters:rr-2"]
+    assert "retired" not in row
+    assert "superseded_by" not in row
+    assert row["history"][-1]["superseded_by_was"] == "atc_shelters:rr-1"
+
+
+def test_summarize_names_every_supersession_with_its_evidence():
+    """A reviewer deciding whether a hiker's photos should move cannot
+    disagree with a bare count."""
+    prior, merged = _rocky_run({"Year_Built": 1938})
+
+    text = summarize(reconcile(prior, [merged], LATER), seeded=False)
+
+    assert "superseded: 1" in text
+    assert "> atc_shelters:rr-2 -> atc_shelters:rr-1" in text
+    assert "base name intact" in text
+
+
 def test_summarize_names_every_evidence_match_with_its_evidence():
     prior = _seeded({**_record(name="Winturri Shelter"), "fingerprint": {"Year_Built": 1938, "Stories": 1}})
     successor = {

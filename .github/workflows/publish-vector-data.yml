@@ -512,6 +512,23 @@ jobs:
       - name: Export club sections
         run: python export_club_sections.py
 
+      # The tombstones (#673). Reads ONLY reference/poi_identity.json - the
+      # reviewed ledger in this checkout, no raw snapshot and no network -
+      # so it could sit almost anywhere after the reconcile gate above.
+      # Placed after the POI export for one reason: the two are the live and
+      # retired halves of a single promise ("every id ever published
+      # resolves to something"), and verify_release check 21 holds them to
+      # each other. A release that publishes one without the other fails
+      # that check, so they belong in the same leg where a reader can see
+      # both.
+      #
+      # No `if:` guard. A ledger that has retired nothing publishes an empty
+      # FeatureCollection, which is the state every bucket starts in and is
+      # not a failure - and a checkout with no ledger at all writes nothing
+      # and says so.
+      - name: Export retired POI tombstones
+        run: python export_retired_poi.py
+
       # Elevation has its own fetch too, and it is the slow one - it streams
       # USGS 3DEP tiles, which is why the whole leg is opt-in.
       #

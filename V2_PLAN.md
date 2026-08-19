@@ -92,11 +92,27 @@ right, the catalogue in front of it is not**. Check its state before branching.
 **#674 — Closures anchor on miles alone, and a re-measure moves every mile** ·
 **#675 — Measure the first real ATC refresh: GlobalID survival, tier-2 volume, and where the thresholds land**
 
+**#831 — A tombstone's superseded_by reaches no hiker, because nothing outside the pipeline can read the identity ledger** ·
+**#832 — Nothing in this app can report a closure, so the geometry that anchors one is never written**
+
 **Why together:** [features/POI_IDENTITY.md](features/POI_IDENTITY.md) is one design and
 these are its five phases. They share the ledger file and the resolver.
 
 **Order is fixed: #671 → #672 → #673, with #674 independent and #675 last** (it can only be
 done when a real refresh arrives). #671 is the one worth doing even if the rest waits.
+
+**Where this stands, 2026-08-19.** #671, #672 and the pipeline halves of #673 and #674 are
+built. #675 is still waiting on a real refresh and no amount of code advances it. The two
+issues added above are the halves that turned out to be blocked on plumbing the design
+assumed existed, and they are filed rather than left implicit because closing #673 and #674
+would otherwise make them invisible — the *Gaps* failure at the foot of this document,
+arriving from inside a group rather than from a doc nobody filed.
+
+**#831 is the one that changes what a hiker sees**, and it is not small: nothing under
+`backend/` can read a file or open a socket for data, and the ledger is not even in the
+production image. Read its two proposed shapes before picking one. **#832 is client work
+and does not collide with the rest of this group** — its hard part is the outbox, which
+today can only carry a `ReportDraft`.
 
 **Why this is high in the order:** every group below that attaches something of a hiker's
 to a place — a photo (D), a plan, a field note (Q) — anchors on a POI id that today lives

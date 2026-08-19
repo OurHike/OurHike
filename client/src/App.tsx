@@ -208,6 +208,7 @@ import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import { conditionsAgeLabel, worstOf } from './lib/conditionState'
 import { useConditions } from './lib/useConditions'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
+import { projectClosures } from './lib/closureProjection'
 import {
   atcBandCandidates,
   atcPointNotices,
@@ -586,6 +587,28 @@ function App() {
     error: dataError,
     ensure: ensureTrailData,
   } = useTrailData(online)
+
+  /**
+   * Closure miles, re-read against the release this phone is holding (#674).
+   *
+   * One funnel, before anything reads a closure's miles, because there is no
+   * such thing as half the app using the projected pair. `lib/closureBanner`
+   * decides whether a hiker is standing inside a closed stretch and
+   * `closureBands` draws where it is; those two disagreeing about where a
+   * closure starts is exactly the failure mode a shared source removes.
+   *
+   * A no-op on every closure today — nothing writes closure geometry yet, so
+   * `projectClosures` returns the array it was given and these memos do not
+   * re-run. It is here so that the day a closure IS authored with geometry,
+   * the projection is already the path rather than a second change to make.
+   */
+  const placedClosures = useMemo(
+    () =>
+      closures === null || trailIndex === null
+        ? closures
+        : projectClosures(closures, trailIndex),
+    [closures, trailIndex],
+  )
 
   /**
    * The map's source observations, folded in; its withdrawals, dropped.
@@ -976,7 +999,7 @@ function App() {
     // closure three miles ahead for 398 miles of walking. The rule is written
     // once per source (`closureLanes`, `atcUpdateLanes`) and the source tie is
     // broken here, the same way, for each lane.
-    const closureLane = closureLanes(closures ?? [], fix.mile, heading)
+    const closureLane = closureLanes(placedClosures ?? [], fix.mile, heading)
     const atcLane = atcUpdateLanes(atcUpdates, fix.mile, heading)
 
     // Whichever source the hiker reaches first, in that source's own voice.
@@ -997,7 +1020,7 @@ function App() {
       closureAhead: pick(closureLane.specific, atcLane.specific),
       advisoryAhead: pick(closureLane.broad, atcLane.broad),
     }
-  }, [closures, atcUpdates, fix, heading, units])
+  }, [placedClosures, atcUpdates, fix, heading, units])
 
   /**
    * Serious warnings between here and the end of the trail, counted.
@@ -1058,9 +1081,9 @@ function App() {
    * started walking and has no direction yet.
    */
   const closureBandsOnMap = useMemo(() => {
-    if (closures === null || trailIndex === null) return []
-    return closureBands(closures, trailIndex)
-  }, [closures, trailIndex])
+    if (placedClosures === null || trailIndex === null) return []
+    return closureBands(placedClosures, trailIndex)
+  }, [placedClosures, trailIndex])
 
   /**
    * The ATC's notices as bands, through exactly the same geometry.

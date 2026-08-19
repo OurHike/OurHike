@@ -161,6 +161,7 @@ SPURS_MANIFEST = PROCESSED_DIR / "spurs_manifest.json"
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 TOPO_QUADS_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 CLUB_SECTIONS_MANIFEST = PROCESSED_DIR / "club_sections_manifest.json"
+RETIRED_POI_MANIFEST = PROCESSED_DIR / "retired_poi_manifest.json"
 BASELINE_PATH = ROOT / "data" / "quality_baseline.json"
 #: The directory fetch receipts record their output paths relative to - the
 #: pipeline root itself, not a file under it, because a receipt names several
@@ -472,7 +473,11 @@ def spurs_verdict(manifest_path: Path | None = None) -> dict:
     }
 
 
-def manifests_verdict(club_manifest_path: Path | None = None, stretches_dir: Path | None = None) -> dict:
+def manifests_verdict(
+    club_manifest_path: Path | None = None,
+    stretches_dir: Path | None = None,
+    retired_manifest_path: Path | None = None,
+) -> dict:
     """Re-verify the manifest-backed artifacts publish.py collects that no
     dedicated verdict covers (#659): club_sections_manifest.json and each
     stretch family's <family>_stretches_manifest.json. Same thesis as every
@@ -489,6 +494,8 @@ def manifests_verdict(club_manifest_path: Path | None = None, stretches_dir: Pat
         club_manifest_path = CLUB_SECTIONS_MANIFEST
     if stretches_dir is None:
         stretches_dir = PROCESSED_DIR
+    if retired_manifest_path is None:
+        retired_manifest_path = RETIRED_POI_MANIFEST
 
     problems: list[str] = []
     details: list[str] = []
@@ -501,6 +508,27 @@ def manifests_verdict(club_manifest_path: Path | None = None, stretches_dir: Pat
     else:
         problems += artifact_problems("club_sections.json", club_manifest)
         details.append("club_sections.json verified")
+
+    # The tombstones (#673, export_retired_poi.py). Noted rather than
+    # required when absent, the stretch-family posture rather than
+    # club_sections': the exporter writes no manifest at all where there is
+    # no identity ledger to read, which is the pre-#671 state of any
+    # checkout that has never run a reconciliation. What it must not do is
+    # publish a file whose bytes have moved out from under the sha256 the
+    # manifest claims, and that is what artifact_problems holds.
+    #
+    # No count minimum, deliberately, and it is the one thing this verdict
+    # does differently from every other: an empty tombstone file is a
+    # bucket where upstream has never dropped a place, which is the healthy
+    # state and the one every release starts in. `spurs.json` can afford
+    # `count_problems` because the AT demonstrably has side trails; nothing
+    # guarantees it has ever lost a shelter.
+    retired_manifest = read_manifest(retired_manifest_path)
+    if retired_manifest is None:
+        details.append("tombstones: no identity ledger, so none built")
+    else:
+        problems += artifact_problems("retired_poi.geojson", retired_manifest)
+        details.append(f"retired_poi.geojson verified ({retired_manifest.get('retired_count', 0)} tombstones)")
 
     # publish.py's STRETCH_FAMILIES, imported rather than restated, so a
     # third family lands here the day it lands there. Imported lazily: this

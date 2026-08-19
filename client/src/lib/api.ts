@@ -236,6 +236,33 @@ export interface ClosureSummary {
   status: ClosureStatus
   start_mile_marker: number
   end_mile_marker: number
+  /**
+   * Where the two ends physically are (#674).
+   *
+   * The miles above are a reading against one measurement of the centerline,
+   * and the ATC re-measures — so a closure authored against last year's
+   * measurement names a slightly different stretch under this year's. These
+   * do not move, and `lib/closureProjection.ts` re-reads the miles from them
+   * against whichever release this phone is holding.
+   *
+   * Null on every closure filed before the columns existed, and on every one
+   * filed until this app grows a closure form — there is no create call in
+   * this file, only fetch, verify and dismiss. A null pair means "show the
+   * mile as stored", which is what every closure does today.
+   *
+   * **Optional as well as nullable, and the two mean different things.** The
+   * live `GET /closures` always sends all four keys, null or not. The
+   * published baseline this same type describes (`lib/publishedConditions.ts`)
+   * is a file in a bucket, and one baked before these columns existed omits
+   * the keys entirely — a phone holding last month's release reads
+   * `undefined`, not `null`. Both must be treated as "no geometry", which is
+   * why `lib/closureProjection.ts` tests for a number rather than against
+   * null.
+   */
+  start_lat?: number | null
+  start_lon?: number | null
+  end_lat?: number | null
+  end_lon?: number | null
   /** ISO 8601, UTC-designated. */
   reported_at: string
   verified_at: string | null

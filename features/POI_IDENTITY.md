@@ -14,9 +14,18 @@ threshold + margin-over-runner-up on both sides + the hard ceiling + mutual-best
 `reference/poi_identity_overrides.json`, `--check` gates publish-vector-data.yml,
 `verify_release.py` check 21 holds every published id to a live, agreeing ledger row, and
 `export_poi.py` publishes under ledger ids with `reference/shelter_capacity.json` re-keyed onto
-them. Steps 3–5 remain (**#673 — Tombstones and superseded_by**, **#674 — Closures anchor on
-miles alone**, **#675 — Measure the first real ATC refresh**). The umbrella is **#666 — A POI's
-identity is its upstream key, so one ATC annual refresh can orphan every photo and comment**.
+them. **Step 3's pipeline half built 2026-08-19 (#673)** — `retired_poi.geojson` published from
+the ledger's retired rows, `superseded_by` written from tier 2's merge signature or a
+`merged_into` override, `lib/poi_identity.resolve` as the one implementation, and check 21
+extended to hold the tombstones to the ledger both ways; its backend and client halves are
+blocked on plumbing that does not exist, described in the build order below. Steps 4–5 remain
+(**#674 — Closures anchor on miles alone, and a re-measure moves every mile**, **#675 — Measure
+the first real ATC refresh: GlobalID survival, tier-2 volume, and where the thresholds land**).
+The umbrella is **#666 — A POI's identity is its upstream key, so one ATC annual refresh can
+orphan every photo and comment**.
+
+*The row counts in this paragraph are from the seeding run and have already moved — the ledger
+held 4,251 rows on 2026-08-19, of which 21 are retired. Re-measure before quoting them.*
 
 **This doc owns one contract:** what a published POI id refers to, for how long, and what
 happens to it when the upstream data it came from is refreshed. It is v2 platform work in the
@@ -257,16 +266,39 @@ tier 2 ever runs — is part of the build order below.
 - **Upstream splits one into two**: the id follows the best successor (name-containment beats
   nearest, [POI_SITES.md](POI_SITES.md) §2a's tie-break); the sibling is new. Content stays
   with the surviving id, which is where its history actually happened.
-- **What publishes:** a small `poi_retired.geojson` — id, name, type, last position, retired
+- **What publishes:** a small **`retired_poi.geojson`** — id, name, type, last position, retired
   release, `superseded_by` — so a hiker's photos of a decommissioned shelter keep a card to
-  live on, reading "No longer in ATC's data since September 2028" rather than vanishing. A new
-  artifact is a deliberate act (`lib/r2_keys.py` will refuse it until it is declared; that is
-  the gate working, per [POI_PHOTOS.md](POI_PHOTOS.md)'s precedent), and how long a tombstone
-  stays published is left open below. This is a *fourth* existence state in
+  live on, saying what happened to the place rather than vanishing. How long a tombstone stays
+  published is answered under *Open questions* below. This is a *fourth* existence state in
   [FIELD_NOTES.md](FIELD_NOTES.md)'s family — removed-from-source is upstream's own word,
   where reported-missing is the field's — and the two compose: that doc's rule that an
   upstream republish never clears a dispute has a mirror here, **an upstream removal never
   deletes a hiker's content.**
+
+  *Two corrections from building this (#673), both to sentences above that were written before
+  the code they describe existed:*
+
+  - **The name is `retired_poi.geojson`, not `poi_retired.geojson`.** `poi_*.geojson` is not a
+    wildcard in this repository but a namespace carrying the invariant *live rows of one
+    `poi_type`*, and three consumers enforce it: `verify_release.check_poi_identity` (check 21)
+    fails any feature in that glob whose id is not a **live** ledger row — so a tombstone file
+    there would fail once per feature, by construction — `publish.referenced_photo_keys` walks
+    the same glob for photo promises, and both `lib/poi_schema.POI_TYPES` and the client's
+    `poiKey()` build the name as `poi_{poi_type}.geojson`. Check 21 landed with #672, one day
+    before this step was built, which is why the original name looked safe when it was written.
+  - **`lib/r2_keys.py` does not refuse an undeclared artifact,** and planning around a gate that
+    does not exist is worse than having none. Measured 2026-08-19: `validate_key` returns
+    "legal" for `retired_poi.geojson`, `poi_retired.geojson` and `tombstones.geojson` alike. It
+    gates top-level *prefixes*, extensions, banned words and version-ish spellings — there is no
+    per-artifact allowlist, and adding one would change how every existing key validates. What
+    actually declares a new artifact is [../pipeline/R2_LAYOUT.md](../pipeline/R2_LAYOUT.md)'s
+    five-step "Adding an artifact" checklist, `publish.collect_artifacts()`, and
+    `tests/test_r2_keys.py`'s hand-kept list of what the pipeline can publish.
+
+  *And one thing the copy above cannot assume:* the first 21 tombstones this ledger produced are
+  all `atc_csi` water points, not ATC shelters, so a card hard-coding "No longer in **ATC's**
+  data" would be a false statement about every one of them. The ledger carries `source` on every
+  row, and the sentence should be derived from it.
 
 ### 5. Photos and comments, walked through
 
@@ -349,17 +381,37 @@ Each step useful alone, per the house convention:
    multiplies the anchored content.
 2. **Tier 2 evidence matching + overrides + the `verify_release.py` check.**
 3. **Tombstones, `superseded_by`, the resolver in backend serialisation and client lookup,
-   `poi_retired.geojson`** — and §7's orphan check, if Field Notes has not built it already.
+   `retired_poi.geojson`** — and §7's orphan check, if Field Notes has not built it already.
+   *Pipeline half built 2026-08-19 (#673): the artifact, the `superseded_by` edge, and
+   `lib/poi_identity.resolve`. **The backend and client halves are not built, and the reason is
+   structural rather than scheduling** — nothing under `backend/` can read this ledger today.
+   `backend/Dockerfile` copies only `app/`, `alembic/` and `alembic.ini`, so
+   `reference/poi_identity.json` is not in the production image; `backend/app/` opens no file
+   and no socket for data; there is no HTTP client in `backend/requirements.in` and no lifespan
+   hook in `main.py` where a ledger could be loaded once; and `app/config.py` argues explicitly
+   against holding the published bucket's settings. This is the same wall
+   `models/report.py` already names for the sibling case — "this backend holds no centerline
+   geometry — the trail is a published artifact the client and the pipeline share, not a table
+   here." Closing it needs either a `poi_supersession` table with a loader shaped like
+   `load_assignments.py`, or a boot-time fetch of `retired_poi.geojson`; both are a design
+   decision of their own rather than a step of this one. Note also that "one resolver" across
+   Python and TypeScript can only mean one implementation **per runtime** held together by a
+   contract test — `backend/tests/test_conditions_publisher_contract.py` records why ("the
+   pipeline is not importable from here").*
 4. **Closure endpoint geometry capture; miles as projections.**
 5. **Measure the first real refresh** — GlobalID survival rate, tier-2 volume, threshold
    quality — and record it here, with what the thresholds were changed *from* if they move.
 
 ## Open questions
 
-- **How long a tombstone publishes.** Forever is ~a few KB a year and honest; pruning after N
-  years with no anchored content needs the pipeline to know what is anchored, which is a
-  Postgres read (`export_conditions.py` already has the read-only pattern). Recommendation:
-  forever, until measured cost says otherwise.
+- ~~**How long a tombstone publishes.**~~ **Answered 2026-08-19 (#673): forever**, and now on a
+  measurement rather than the estimate this line used to carry. The 21 rows retired so far
+  export to a 5,235-byte `retired_poi.geojson` — 249 bytes a tombstone — so a refresh year
+  retiring fifty places adds ~12 KB to a first fetch that is already 5.3 MB gzipped. Pruning
+  costs more than that in machinery alone: it needs the pipeline to know which tombstones still
+  have a hiker's photo or note anchored to them, which is a Postgres read from a build that
+  deliberately has none. `lib/poi_identity.retired_rows` carries the figure to re-measure
+  against.
 - **The thresholds and ceilings themselves.** Like [FIELD_NOTES.md](FIELD_NOTES.md)'s
   corroboration numbers: settled against the first real refresh, not guessed harder in
   advance. The structure (margin + ceiling + mutual-best) is the decision; the constants are

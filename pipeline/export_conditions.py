@@ -88,6 +88,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -113,6 +115,20 @@ READER_ROLE = "ourhike_conditions_reader"
 # repeating it here means a reader of this file does not have to go and look
 # up what the role is allowed to see. If the two ever disagree, the policy
 # wins, silently and correctly, by returning fewer rows.
+#
+# The column list is held to `ClosureOut`'s fields in both directions by
+# backend/tests/test_conditions_publisher_contract.py, which parses this
+# string - so keep it a plain list of column names. An inline `--` comment
+# here reads as part of a column to that parser; explanations go above the
+# constant, which is why this one is here.
+#
+# `start_lat`/`start_lon`/`end_lat`/`end_lon` are the closure's two endpoints
+# (#674). They ride into the offline baseline for the same reason the miles
+# do, and with more urgency: a hiker reading this document is the one
+# furthest from a network and likeliest to be holding a release older than
+# the closure was authored against, which is exactly when a stored mile
+# drifts away from the stretch it named. Null on every row filed before the
+# columns existed, which the client reads as "show the mile as stored".
 PUBLIC_CLOSURES_SQL = """
     SELECT id,
            reported_at,
@@ -126,7 +142,11 @@ PUBLIC_CLOSURES_SQL = """
            verified_at,
            closed_since,
            expected_reopen,
-           reroute_url
+           reroute_url,
+           start_lat,
+           start_lon,
+           end_lat,
+           end_lon
       FROM public.closures
      WHERE moderation_status = 'verified'
      ORDER BY start_mile_marker, id
@@ -286,8 +306,59 @@ def _read_rows(conn, sql: str, timestamp_fields: tuple[str, ...]) -> list[dict]:
     return rows
 
 
+# The four endpoint columns are newer than any deployed database (#674), and
+# this reader reaches production on a DIFFERENT CLOCK from the schema:
+# publish-conditions.yml runs hourly from `main`, while migrate.yml applies to
+# production only on a reviewed `workflow_dispatch`. So there is a window -
+# however short somebody intends it to be - in which this file selects columns
+# the database has not got, and in that window an unguarded SELECT raises
+# UndefinedColumn every hour against the one artifact that IS the offline
+# safety baseline. features/CONDITIONS_DELIVERY.md is blunt about what that
+# costs: an unreachable backend means a hiker sees no closure warnings at all,
+# and a bake that stops running leaves the last good file ageing in place.
+#
+# Tolerating both schemas is the same discipline RELEASING.md section 8c asks
+# for from the other side. It forbids dropping a column in the release that
+# stops writing it, because the previous release is still running during the
+# rollout; a reader that REQUIRES a column the deployed schema has not got yet
+# is that same bug with the arrow reversed.
+#
+# Derived from the constant above rather than spelled a second time, so the
+# two cannot drift and backend/tests/test_conditions_publisher_contract.py
+# still reads one authoritative column list.
+#
+# REMOVE THIS once production has run b6e3f1a72d84. It is scaffolding for a
+# rollout window, not a capability: left in place it would turn a loud
+# missing-column failure into a quiet one, and publish closures with no anchor
+# forever while looking healthy.
+CLOSURE_GEOMETRY_COLUMNS = ("start_lat", "start_lon", "end_lat", "end_lon")
+
+
+def _sql_without(sql: str, columns: tuple[str, ...]) -> str:
+    """`sql` with `columns` dropped from its SELECT list, commas repaired."""
+    select_list = re.search(r"SELECT(.*?)FROM", sql, re.DOTALL)
+    if select_list is None:  # pragma: no cover - the constant above is literal
+        raise ValueError("no SELECT ... FROM to rewrite")
+    kept = [column.strip() for column in select_list.group(1).split(",")]
+    kept = [column for column in kept if column and column not in columns]
+    rewritten = "SELECT " + ",\n           ".join(kept) + "\n      FROM"
+    return sql[: select_list.start()] + rewritten + sql[select_list.end() :]
+
+
 def read_closures(conn) -> list[dict]:
-    return _read_rows(conn, PUBLIC_CLOSURES_SQL, CLOSURE_TIMESTAMP_FIELDS)
+    try:
+        return _read_rows(conn, PUBLIC_CLOSURES_SQL, CLOSURE_TIMESTAMP_FIELDS)
+    except psycopg.errors.UndefinedColumn:
+        # The failed statement aborts the transaction, so the retry needs a
+        # clean one rather than a second error about the first.
+        conn.rollback()
+        print(
+            "WARNING: this database has no closure endpoint geometry, so the baseline is "
+            "published without it - closure miles are the stored ones, which is what they "
+            "were before #674. Apply migration b6e3f1a72d84 and this stops happening.",
+            file=sys.stderr,
+        )
+        return _read_rows(conn, _sql_without(PUBLIC_CLOSURES_SQL, CLOSURE_GEOMETRY_COLUMNS), CLOSURE_TIMESTAMP_FIELDS)
 
 
 def read_reports(conn) -> list[dict]:

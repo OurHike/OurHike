@@ -12,13 +12,23 @@
     "`not_same`: forbid a pair the evidence matcher would otherwise",
     "consider - ATC's own data holds lookalikes (Rocky Run Shelters 1 and",
     "2) that must never merge.",
+    "`merged_into`: upstream folded this retired place into another one, so",
+    "everything anchored to it re-anchors there (#673). Rows carry `id`,",
+    "`into` (the ledger id of the survivor, which must be LIVE) and",
+    "`reason`. The matcher writes this edge itself when a retiring row",
+    "cleared the full acceptance bar on a record another id carried; this",
+    "is for the merge it could not see, and for correcting one it saw",
+    "wrongly. An edge that names a live row, a row this ledger never held,",
+    "or a successor that is itself retired HOLDS the run rather than being",
+    "skipped.",
     "",
-    "Every row carries: id (the ledger id), source, source_feature_id",
-    "(upstream's CURRENT key), and reason (a sentence a reviewer can",
-    "disagree with). A `same` row whose key the snapshot does not leave",
-    "unmatched is STALE and holds the run - remove it once it has done its",
-    "work; the ledger's history keeps the record."
+    "Every `same`/`not_same` row carries: id (the ledger id), source,",
+    "source_feature_id (upstream's CURRENT key), and reason (a sentence a",
+    "reviewer can disagree with). A `same` row whose key the snapshot does",
+    "not leave unmatched is STALE and holds the run - remove it once it has",
+    "done its work; the ledger's history keeps the record."
   ],
   "same": [],
-  "not_same": []
+  "not_same": [],
+  "merged_into": []
 }

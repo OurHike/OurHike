@@ -496,7 +496,16 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
                 reports.append(_report(16, key, OK, "every trail feature carries a blaze_color"))
 
     # 14. Per-type minimums, with export_poi.py's own exception.
-    problems = count_problems(counts, minimums={"crossing": 0})
+    #
+    # `retired_poi` joins `crossing` at zero, for a different reason (#673).
+    # `crossing` is empty because nothing fills it yet; the tombstones are
+    # empty because a bucket where upstream has never dropped a place is a
+    # HEALTHY bucket, and the count only ever grows. A default minimum of 1
+    # here would fail exactly the releases with nothing wrong with them.
+    # Its geometry is still held to checks 13 and 15 above, which is the
+    # half worth keeping: a tombstone at (0, 0) is the same projection bug
+    # on a retired place as on a live one.
+    problems = count_problems(counts, minimums={"crossing": 0, "retired_poi": 0})
     if problems:
         reports.append(_report(14, "poi_*", FAILED, "; ".join(problems)))
     else:
@@ -963,7 +972,86 @@ def check_poi_identity(base: str, manifest: dict, session=None) -> list[dict]:
             reports.append(_report(21, key, FAILED, shown))
         else:
             reports.append(_report(21, key, OK, f"{len(features)} ids, every one a live ledger row that agrees"))
+
+    reports += check_retired_poi(base, manifest, pois, seen, session)
     return reports
+
+
+def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dict, session=None) -> list[dict]:
+    """21, continued: the tombstones keep the other half of the promise
+    (#673, features/POI_IDENTITY.md).
+
+    Check 21 above says every LIVE id is a live ledger row. That alone
+    leaves the design's actual property half-checked - "every id ever
+    published resolves to something" - because it says nothing about the
+    ids that are no longer live. Four assertions, each one a way the
+    published tombstones and the reviewed ledger can drift apart:
+
+      - every feature is a RETIRED ledger row (a live row published as a
+        tombstone would tell a hiker a place is gone while the map still
+        draws it);
+      - no id is published both live and retired, which is the same
+        contradiction from the other side;
+      - `superseded_by`, where present, names a row that is live TODAY - it
+        is the pointer a hiker's photos follow, and one leading to another
+        tombstone strands them;
+      - every retired ledger row is actually in the artifact. Tombstones
+        publish forever (lib/poi_identity.retired_rows), so a missing one is
+        a card that renders nothing, and the count is small enough that
+        completeness is checkable rather than sampled.
+
+    A release with no tombstone artifact is not a failure when the ledger has
+    retired nothing: the two agree, which is the whole assertion. That is an
+    OK and deliberately not a SKIPPED - this module's header says a skip means
+    "the check did not run", and `--strict` turns every one into a failure for
+    exactly that reason. This check ran; it found nothing to publish and
+    nothing published. Calling that a skip would fail the gate on every
+    healthy release until the ATC first drops a place.
+    """
+    key = "retired_poi.geojson"
+    retired = {poi_id: row for poi_id, row in pois.items() if "retired" in row}
+    if key not in manifest["artifacts"]:
+        if not retired:
+            return [_report(21, key, OK, "the ledger has retired nothing, and no tombstones are published")]
+        return [
+            _report(
+                21,
+                key,
+                FAILED,
+                f"the ledger holds {len(retired)} retired rows and the release publishes no tombstones - "
+                "every id ever published is supposed to resolve to something",
+            )
+        ]
+
+    try:
+        features = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT).json().get("features", [])
+    except Exception as exc:  # noqa: BLE001 - a broken artifact fails many ways
+        return [_report(21, key, FAILED, f"could not be read: {exc.__class__.__name__}")]
+
+    live = {poi_id: row for poi_id, row in pois.items() if "retired" not in row}
+    problems: list[str] = []
+    published: set[str] = set()
+    for feature in features:
+        properties = feature.get("properties") or {}
+        poi_id = properties.get("id")
+        published.add(poi_id)
+        if poi_id not in retired:
+            verdict = "a LIVE ledger row" if poi_id in live else "no ledger row at all"
+            problems.append(f"{poi_id}: published as a tombstone against {verdict}")
+        if poi_id in published_live:
+            problems.append(f"{poi_id}: also published live in {published_live[poi_id]} - a place is gone or it is not")
+        successor = properties.get("superseded_by")
+        if successor is not None and successor not in live:
+            problems.append(f"{poi_id}: superseded_by {successor}, which is not a live ledger row")
+
+    for poi_id in sorted(retired):
+        if poi_id not in published:
+            problems.append(f"{poi_id}: retired in the ledger and missing from the tombstones")
+
+    if problems:
+        shown = "; ".join(problems[:3]) + (f" (+{len(problems) - 3} more)" if len(problems) > 3 else "")
+        return [_report(21, key, FAILED, shown)]
+    return [_report(21, key, OK, f"{len(features)} tombstones, every retired ledger row present and resolving")]
 
 
 def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict]:

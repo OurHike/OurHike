@@ -10,6 +10,7 @@ public queries have something to filter unverified closures out on, the same
 way Report's `status`/`visibility` split already works.
 """
 
+import json
 import uuid
 
 from app.models.closure import Closure, ClosureStatus, ModerationStatus
@@ -520,3 +521,84 @@ def test_a_reversed_mile_pair_is_normalised_on_create(client):
     assert response.status_code == 201
     assert body["start_mile_marker"] == 118.0
     assert body["end_mile_marker"] == 120.5
+
+
+# --- Endpoint geometry: the anchor a re-measure cannot move (#674) ----------
+#
+# features/POI_IDENTITY.md, "Miles are a projection, not an anchor". A mile is
+# a reading against one measurement of the centerline; the ATC re-measures, and
+# a closure stored only as two miles quietly comes to name a different stretch.
+# The fix is the geometry, captured by the author's client at write time.
+
+_GEOMETRY = {"start_lat": 40.9, "start_lon": -73.9, "end_lat": 41.1, "end_lon": -73.7}
+
+
+def test_a_closure_can_carry_the_position_of_both_its_ends(client):
+    response = client.post("/closures", json=dict(_VALID_PAYLOAD, **_GEOMETRY), headers=auth_headers(str(uuid.uuid4())))
+
+    body = response.json()
+    assert response.status_code == 201
+    assert {key: body[key] for key in _GEOMETRY} == _GEOMETRY
+
+
+def test_a_closure_without_geometry_is_still_accepted_and_reads_as_null(client):
+    """The ordinary state, not a gap: every row filed before the columns
+    existed has none, and so does every row filed until this app grows a
+    closure form. The client falls back to the stored mile."""
+    response = client.post("/closures", json=_VALID_PAYLOAD, headers=auth_headers(str(uuid.uuid4())))
+
+    body = response.json()
+    assert response.status_code == 201
+    assert [body["start_lat"], body["start_lon"], body["end_lat"], body["end_lon"]] == [None] * 4
+
+
+def test_half_a_point_is_refused_rather_than_half_stored(client):
+    """A latitude with no longitude is not a position. Storing it would put a
+    row in the table that looks anchored and is not - which is the failure a
+    null pair exists to make visible, wearing a disguise."""
+    for field in ("start_lat", "start_lon", "end_lat", "end_lon"):
+        payload = dict(_VALID_PAYLOAD, **{field: 41.0})
+
+        response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+        assert response.status_code == 422, field
+        assert field.split("_")[0] in response.text
+
+
+def test_normalising_a_reversed_pair_carries_the_geometry_with_it(client):
+    """The subtle half of #257 meeting #674. Each point is the position OF
+    its mile, so swapping the miles without the points would pair the
+    southern end's coordinates with the northern end's mile - a closure whose
+    two ends are each other's. Worse than the reversed pair the normalisation
+    exists to fix, and invisible in a way that one was not."""
+    payload = dict(
+        _VALID_PAYLOAD,
+        start_mile_marker=120.5,
+        end_mile_marker=118.0,
+        start_lat=41.1,
+        start_lon=-73.7,
+        end_lat=40.9,
+        end_lon=-73.9,
+    )
+
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    body = response.json()
+    assert response.status_code == 201
+    assert (body["start_mile_marker"], body["end_mile_marker"]) == (118.0, 120.5)
+    # The point that travelled with mile 118.0, not the one sent as "start".
+    assert (body["start_lat"], body["start_lon"]) == (40.9, -73.9)
+    assert (body["end_lat"], body["end_lon"]) == (41.1, -73.7)
+
+
+def test_a_nan_coordinate_is_refused_like_every_other_float_on_the_wire(client):
+    """schemas/common.FiniteFloat's whole point: a NaN compares False against
+    everything, so it would be silently absent from every projection rather
+    than loudly wrong."""
+    payload = dict(_VALID_PAYLOAD, **{**_GEOMETRY, "start_lat": float("nan")})
+
+    response = client.post(
+        "/closures", data=json.dumps(payload), headers={**auth_headers(str(uuid.uuid4())), "Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 422

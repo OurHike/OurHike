@@ -34,6 +34,33 @@ class ClosureCreate(BaseModel):
     start_mile_marker: FiniteFloat
     end_mile_marker: FiniteFloat
 
+    # Where the two ends physically are (#674). Optional, because there is no
+    # closure authoring form in this app yet and because every client that
+    # predates one sends nothing - see app/models/closure.py for why null is
+    # the ordinary state rather than a gap. Client-supplied and derived, the
+    # same posture `ReportCreate.mile` documents.
+    start_lat: FiniteFloat | None = None
+    start_lon: FiniteFloat | None = None
+    end_lat: FiniteFloat | None = None
+    end_lon: FiniteFloat | None = None
+
+    @model_validator(mode="after")
+    def _require_whole_points(self) -> "ClosureCreate":
+        """A latitude without its longitude is not a position (#674).
+
+        Refused rather than dropped, and refused rather than half-stored.
+        The whole value of this geometry is that it still means something
+        after a re-measure; half of it means nothing at any time, and
+        storing a lone `start_lat` would put a row in the table that looks
+        anchored and is not - the failure mode a null pair is specifically
+        designed to avoid, wearing a disguise.
+        """
+        for end in ("start", "end"):
+            lat, lon = getattr(self, f"{end}_lat"), getattr(self, f"{end}_lon")
+            if (lat is None) != (lon is None):
+                raise ValueError(f"{end}_lat and {end}_lon must be sent together or not at all")
+        return self
+
     @model_validator(mode="after")
     def _order_the_mile_markers(self) -> "ClosureCreate":
         """A reversed pair is normalised, not refused (#257).
@@ -46,12 +73,23 @@ class ClosureCreate(BaseModel):
         "the trail is closed between these two miles" says the same thing
         in either order, and a hiker reporting a closure from a trailhead
         should not be bounced over which end they named first.
+
+        **The geometry swaps with the miles (#674), and must.** Each point
+        is the position OF its mile, so normalising one without the other
+        would silently pair the southern end's coordinates with the northern
+        end's mile - a closure whose two ends are each other's, which is
+        worse than the reversed pair this validator exists to fix and
+        invisible in a way the reversed pair was not. Ordering runs after
+        `_require_whole_points`, so either both ends carry a full point or
+        neither does, and the swap cannot manufacture a half-point.
         """
         if self.start_mile_marker > self.end_mile_marker:
             self.start_mile_marker, self.end_mile_marker = (
                 self.end_mile_marker,
                 self.start_mile_marker,
             )
+            self.start_lat, self.end_lat = self.end_lat, self.start_lat
+            self.start_lon, self.end_lon = self.end_lon, self.start_lon
         return self
 
 
@@ -167,6 +205,22 @@ class ClosureOut(BaseModel):
     trail_id: str
     start_mile_marker: float
     end_mile_marker: float
+
+    # The two ends' positions (#674), published for the same reason
+    # `ReportOut` publishes `lat`/`lon`: the client is the only thing that
+    # can use them. The mile a hiker reads is a projection of these against
+    # whichever release their phone is holding, and the projection has to
+    # happen where the centerline is - which is the client, never here (see
+    # app/models/report.py: "this backend holds no centerline geometry").
+    #
+    # Null on every row filed before the column existed, and on every row
+    # filed until a client learns to send them. The client's contract is to
+    # fall back to the stored mile rather than to hide the closure, so an
+    # unanchored closure reads exactly as it does today.
+    start_lat: float | None
+    start_lon: float | None
+    end_lat: float | None
+    end_lon: float | None
     reason_type: ReasonType
     note: str | None
     status: ClosureStatus

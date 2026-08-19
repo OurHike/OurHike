@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 import pytest
 
+import export_conditions
 from export_conditions import (
     MAY_SELECT_SQL,
     POLICY_COUNT_SQL,
@@ -66,7 +67,11 @@ CLOSURES_DDL = """
         verified_at       TIMESTAMP,
         closed_since      TIMESTAMP,
         expected_reopen   TIMESTAMP,
-        reroute_url       VARCHAR
+        reroute_url       VARCHAR,
+        start_lat         DOUBLE PRECISION,
+        start_lon         DOUBLE PRECISION,
+        end_lat           DOUBLE PRECISION,
+        end_lon           DOUBLE PRECISION
     )
 """
 
@@ -576,6 +581,12 @@ def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
             "closed_since",
             "expected_reopen",
             "reroute_url",
+            # The closure's two endpoints (#674) - the anchor the miles above
+            # are a per-release projection of.
+            "start_lat",
+            "start_lon",
+            "end_lat",
+            "end_lon",
         ]
 
     with clean_tables.cursor() as cur:
@@ -595,3 +606,63 @@ def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
             "visibility",
             "severity",
         ]
+
+
+# --- The rollout window: a reader older than the schema it reads (#674) -----
+
+
+def test_the_geometry_columns_are_dropped_cleanly_from_the_select():
+    """String surgery on the one authoritative column list, so the fallback
+    cannot drift from it. The comma repair is the part worth holding: dropping
+    the last four columns naively leaves `reroute_url,` sitting against FROM."""
+    rewritten = export_conditions._sql_without(export_conditions.PUBLIC_CLOSURES_SQL, export_conditions.CLOSURE_GEOMETRY_COLUMNS)
+
+    assert "start_lat" not in rewritten
+    assert "end_lon" not in rewritten
+    assert "reroute_url\n      FROM" in rewritten
+    # Everything else survives, in order.
+    assert "SELECT id," in rewritten
+    assert "WHERE moderation_status = 'verified'" in rewritten
+
+
+def test_closures_still_publish_against_a_database_that_has_not_migrated_yet(clean_tables):
+    """publish-conditions.yml runs hourly from `main`; migrate.yml reaches
+    production only on a reviewed dispatch. In the window between the two this
+    reader selects columns the database has not got, and the artifact it would
+    fail to write is the offline safety baseline - an unreachable backend
+    already means a hiker sees no closure warnings, and a bake that stops
+    running leaves the last good file ageing in place.
+    """
+    for column in export_conditions.CLOSURE_GEOMETRY_COLUMNS:
+        clean_tables.execute(f"ALTER TABLE public.closures DROP COLUMN {column}")
+    try:
+        clean_tables.execute(
+            "INSERT INTO public.closures (id, reported_by, reported_at, start_mile_marker, "
+            "end_mile_marker, reason_type, moderation_status) "
+            "VALUES ('c1', 'p1', now(), 100.0, 102.0, 'storm_damage', 'verified')"
+        )
+
+        rows = export_conditions.read_closures(clean_tables)
+
+        assert [row["id"] for row in rows] == ["c1"]
+        assert "start_lat" not in rows[0], "the column does not exist, so the key must not either"
+        assert rows[0]["start_mile_marker"] == 100.0
+    finally:
+        # `clean_tables` truncates between tests but does not rebuild the
+        # schema, so an un-restored DROP would leave every later test running
+        # against the pre-migration shape.
+        for column in export_conditions.CLOSURE_GEOMETRY_COLUMNS:
+            clean_tables.execute(f"ALTER TABLE public.closures ADD COLUMN {column} DOUBLE PRECISION")
+
+
+def test_the_migrated_database_publishes_the_geometry(clean_tables):
+    clean_tables.execute(
+        "INSERT INTO public.closures (id, reported_by, reported_at, start_mile_marker, "
+        "end_mile_marker, reason_type, moderation_status, start_lat, start_lon, end_lat, end_lon) "
+        "VALUES ('c1', 'p1', now(), 100.0, 102.0, 'storm_damage', 'verified', 40.9, -73.9, 41.1, -73.7)"
+    )
+
+    rows = export_conditions.read_closures(clean_tables)
+
+    assert rows[0]["start_lat"] == 40.9
+    assert rows[0]["end_lon"] == -73.7

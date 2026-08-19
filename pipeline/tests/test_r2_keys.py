@@ -33,6 +33,11 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "trails.fgb",
         "elevation_profile.json",
         "spurs.json",
+        # The tombstones (#673). Spelled WITHOUT the `poi_` prefix on
+        # purpose - that prefix is a namespace meaning "live rows of one
+        # poi_type", and export_retired_poi.py's docstring lists the three
+        # consumers that enforce it.
+        "retired_poi.geojson",
         *[
             f"poi_{poi_type}.{kind}"
             for poi_type in ("shelter", "water", "campsite", "resupply", "crossing")

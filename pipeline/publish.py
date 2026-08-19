@@ -435,6 +435,17 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(club_manifest.read_text())
         artifacts["club_sections.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The tombstones: every POI id ever retired, so an id that has been
+    # published once always resolves to something (#673,
+    # features/POI_IDENTITY.md). Deliberately NOT named `poi_retired.geojson`
+    # - `poi_*.geojson` is a namespace whose invariant is "live rows of one
+    # poi_type", enforced by check 21 and walked by referenced_photo_keys
+    # just below; export_retired_poi.py's docstring has the full reasoning.
+    retired_manifest = PROCESSED_DIR / "retired_poi_manifest.json"
+    if retired_manifest.exists():
+        manifest = json.loads(retired_manifest.read_text())
+        artifacts["retired_poi.geojson"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # Verified closures and reports, if export_conditions.py has run
     # (features/CONDITIONS_DELIVERY.md). Ordinary artifacts rather than a
     # special case: they want the same sha256 diffing every other one gets.

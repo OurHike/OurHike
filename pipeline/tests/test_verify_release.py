@@ -662,7 +662,10 @@ class TestPoiIdentity:
 
         reports = check_poi_identity(BASE, self._manifest())
 
-        assert [r["state"] for r in reports] == [OK]
+        # The tombstone half skips rather than passes: this fixture has
+        # retired nothing, so there is no artifact and nothing to hold it
+        # to (#673, check_retired_poi).
+        assert [r["state"] for r in reports] == [OK, SKIPPED]
 
     def test_an_id_with_no_ledger_row_fails(self, tmp_path, monkeypatch, requests_mock):
         from verify_release import check_poi_identity

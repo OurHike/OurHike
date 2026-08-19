@@ -172,3 +172,102 @@ def test_the_save_runs_even_when_an_earlier_step_failed(cached_paths):
     save = next(step for step in workflow["jobs"]["build-and-publish"]["steps"] if step.get("name") == "Save fetched data")
 
     assert "always()" in str(save.get("if", ""))
+
+
+# --- The derived files also have a home in the bucket (#812) ------------------
+#
+# The cache list above answers "does this survive between runs?"; these answer
+# "does it survive the cache being gone?". Both questions exist because
+# data/raw/ is gitignored, so a derived file's only homes are the cache and R2.
+#
+# #812 is what happens with just the first: fetch_osm_water.py's scan,
+# build_osm_water_reach.py's verdicts and fetch_trail_water.py's crossings were
+# reachable only through an Actions cache that GitHub evicts after 7 days unread
+# and caps at 10 GB against ~430 MB a run. Run 32258156317 missed it and
+# restored in zero seconds. A miss does not fail - export_poi.read_sources()
+# reads what is on disk - so the run publishes a map short ~1,100 crossings and
+# every reachable spring, with nothing saying so. Since #825 those are live
+# ledger rows too (1,247 of 4,230), so a miss also trips the mass-retirement
+# refusal.
+
+#: The derived files that must round-trip through the bucket rather than only
+#: the cache. Deliberately not every sidecar: build_state.json is written by
+#: check_freshness and the photo outcomes have their own restore step and their
+#: own reason (#465).
+DERIVED_SIDECARS = ("osm_water.geojson", "osm_water_reach.json", "trail_water.json")
+
+RESTORE_STEP = "Restore derived water data from the published data"
+
+
+@pytest.fixture(scope="module")
+def workflow_steps() -> list[dict]:
+    parsed = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    return parsed["jobs"]["build-and-publish"]["steps"]
+
+
+def _step_named(steps: list[dict], name: str) -> dict:
+    for step in steps:
+        if (step.get("name") or "") == name:
+            return step
+    raise AssertionError(f"no step named {name!r} - a rename must update this test with it")
+
+
+def _step_index(steps: list[dict], name: str) -> int:
+    return next(i for i, step in enumerate(steps) if (step.get("name") or "") == name)
+
+
+@pytest.mark.parametrize("name", DERIVED_SIDECARS)
+def test_the_derived_water_files_are_published_as_sidecars(name):
+    """Without this they exist only in the cache, and a miss silently ships a
+    map with no crossings and no reachable springs."""
+    import publish
+
+    assert name in publish.SIDECARS, (
+        f"{name} is not in publish.SIDECARS, so it is never uploaded - its only home is an Actions cache that expires. See #812."
+    )
+
+
+@pytest.mark.parametrize("name", DERIVED_SIDECARS)
+def test_every_derived_sidecar_is_restored_by_the_workflow(workflow_steps, name):
+    """Uploading without restoring is half a mechanism: the bucket would hold a
+    copy nothing ever reads back."""
+    script = _step_named(workflow_steps, RESTORE_STEP).get("run") or ""
+    assert name in script, f"{RESTORE_STEP!r} does not restore {name} - it would be published and never read back"
+
+
+def test_the_restore_covers_exactly_the_derived_sidecars(workflow_steps):
+    """Neither list may grow without the other. A file published but not
+    restored is dead weight in the bucket; one restored but not published is a
+    404 on every run."""
+    import publish
+
+    script = _step_named(workflow_steps, RESTORE_STEP).get("run") or ""
+    restored = {name for name in publish.SIDECARS if name in script}
+    assert restored == set(DERIVED_SIDECARS), (
+        f"the restore step handles {sorted(restored)}, but this test expects {sorted(DERIVED_SIDECARS)} - "
+        "add the new file to both publish.SIDECARS and the workflow step, or to this list"
+    )
+
+
+def test_the_restore_runs_before_anything_reads_those_files(workflow_steps):
+    """Before the source preflight, which is the ordering that matters.
+
+    `export_poi.py --check` REFUSES when osm_water.geojson has no
+    osm_water_reach.json beside it (#818), so a half-filled pair is worse than
+    an empty one - restoring after the preflight could hand it exactly that.
+    The reach build downstream also resumes from osm_water_reach.json instead
+    of re-running its EPQS pass, which only helps if the file is there first.
+    """
+    restore = _step_index(workflow_steps, RESTORE_STEP)
+    for consumer in ("Check POI sources are exportable", "Build OSM water reachability", "Export POIs"):
+        assert restore < _step_index(workflow_steps, consumer), (
+            f"{RESTORE_STEP!r} runs after {consumer!r}, which reads the files it restores"
+        )
+
+
+def test_a_cache_hit_is_not_overwritten_by_the_restore(workflow_steps):
+    """This fills gaps the cache left. The cached copy is the one this run's
+    fetchers may already have refreshed, so clobbering it with the last
+    PUBLISHED copy would quietly undo the work."""
+    script = _step_named(workflow_steps, RESTORE_STEP).get("run") or ""
+    assert "already present (cache hit)" in script, "the restore must skip files the cache already provided"

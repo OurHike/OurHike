@@ -1,5 +1,7 @@
-// Trail / More (WIREFRAMES.md §6). The tab set itself lives in tabs.ts - see
-// the note there for why Downloads is no longer one of them.
+// Trail / Plan / Settings (WIREFRAMES.md §6, features/MORE_TAB.md). The tab
+// set itself lives in tabs.ts - see the note there for why Downloads is no
+// longer one of them, and MORE_TAB.md for why the third tab reads "Settings"
+// rather than "More".
 //
 // This bar is also where the OurHike mark lives, because on both layouts the
 // bar IS the bottom-left corner of the page. On a desktop it becomes the left

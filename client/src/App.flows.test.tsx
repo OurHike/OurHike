@@ -614,7 +614,7 @@ describe('reporting, with a fix to attach', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await reportFix()
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -635,7 +635,7 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
@@ -650,7 +650,7 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -670,7 +670,7 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -689,7 +689,7 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -712,7 +712,8 @@ describe('preferences from the More screen', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(await screen.findByRole('tab', { name: 'Map & Display' }))
     await user.click(await screen.findByRole('radio', { name: /dark/i }))
 
     await waitFor(() => {
@@ -745,7 +746,8 @@ describe('preferences from the More screen', () => {
     // under a full-suite run (#331).
     expect(backdropOf(await liveMap())).toBe(MAP_BACKDROP.light)
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(await screen.findByRole('tab', { name: 'Map & Display' }))
     await user.click(await screen.findByRole('radio', { name: /dark/i }))
 
     await waitFor(() => {
@@ -785,11 +787,14 @@ describe('the placeholder actions on More', () => {
       hikerOnTrail()
       render(<App />)
       await screen.findByRole('region', { name: /trail map/i })
-      await user.click(screen.getByRole('tab', { name: 'More' }))
+      await user.click(screen.getByRole('tab', { name: 'Settings' }))
+      await user.click(await screen.findByRole('tab', { name: 'About' }))
 
       await user.click(await screen.findByRole('button', { name }))
 
-      expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+      expect(
+        await screen.findByRole('heading', { name: 'Your data' }),
+      ).toBeInTheDocument()
     },
   )
 })
@@ -800,7 +805,7 @@ describe('signing in from Settings', () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
 
@@ -818,7 +823,7 @@ describe('signing in from Settings', () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await screen.findByRole('button', { name: /continue with google/i })
@@ -831,7 +836,7 @@ describe('signing in from Settings', () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await user.click(await screen.findByRole('button', { name: /not now/i }))
@@ -853,7 +858,7 @@ describe('signing in from Settings', () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await screen.findByRole('button', { name: /continue with google/i })
@@ -1177,7 +1182,8 @@ describe('a download that finished and cannot be read (#334)', () => {
   /** The download window reached from the More tab, which is the path that
    *  unmounts the map on the way - see the test below. */
   async function openDownloadsFromMore(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(await screen.findByRole('tab', { name: 'About' }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
     return screen.findByRole('dialog', { name: /offline map/i })
   }
@@ -1254,7 +1260,8 @@ describe('a remembered failure that stopped being true (#352)', () => {
   }
 
   async function openDownloadsFromMore(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(await screen.findByRole('tab', { name: 'About' }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
     return screen.findByRole('dialog', { name: /offline map/i })
   }
@@ -1276,7 +1283,7 @@ describe('a remembered failure that stopped being true (#352)', () => {
 
     // Away to the More tab and back: the map is torn down and a new one built,
     // which is what used to make this permanent.
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await waitFor(() => expect(MockMap.live).toHaveLength(0))
     await user.click(screen.getByRole('tab', { name: 'Trail' }))
 
@@ -1359,7 +1366,7 @@ describe('who a report says it is from (#233)', () => {
   // tested, and imported by nothing.
 
   async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -1392,7 +1399,7 @@ describe('who a report says it is from (#233)', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.selectOptions(
       await screen.findByRole('combobox', { name: /signed as/i }),
       'section',

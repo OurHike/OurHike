@@ -161,6 +161,20 @@ def photo_key(report_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
     return f"reports/{report_id}/{index}.jpg"
 
 
+def poi_photo_key(poi_id: str, contributor_id: str) -> str:
+    """The object key for a community waypoint photo (#576). Pure, and the
+    only spelling of it, same rule as `photo_key` above.
+
+    Per POI *and per contributor*, which is what makes the design's own
+    rules structural rather than enforced: a hiker's second photo of a
+    place overwrites their first (self-replacement is free), and
+    one-per-person-per-POI is a property of the key. The caller validates
+    `poi_id` before it reaches here - it is client-supplied text going into
+    an object key, see the router's guard.
+    """
+    return f"poi-photos/{poi_id}/{contributor_id}.jpg"
+
+
 def photo_storage_configured() -> bool:
     """Whether there is a bucket to talk to at all.
 
@@ -222,10 +236,16 @@ def store_photo(report_id: str, body: bytes) -> str:
     already succeeded rewrites the same object rather than leaving a second
     one nobody can find.
     """
+    return store_photo_object(photo_key(report_id), body)
+
+
+def store_photo_object(key: str, body: bytes) -> str:
+    """Write one photo object under a derived key. Everything `store_photo`
+    says holds here; the key's derivation is the caller's (`photo_key`,
+    `poi_photo_key`), the write's mechanics are one code path."""
     if not photo_uploads_enabled():
         raise PhotoStorageUnavailable("R2 is not configured for photo uploads.")
 
-    key = photo_key(report_id)
     try:
         _client().put_object(
             Bucket=settings.r2_photo_bucket,
@@ -237,6 +257,24 @@ def store_photo(report_id: str, body: bytes) -> str:
         raise PhotoStorageUnavailable(str(error)) from error
 
     return key
+
+
+def delete_photo_object(key: str) -> None:
+    """Remove one photo object.
+
+    This is the half of #576's withdrawal that touches the bucket. Gated on
+    the same write flag as uploads - deleting is a write - and the caller
+    deletes the ROW first: the row is the authoritative half, so a delete
+    that fails here leaves an orphaned object for the reconciliation sweep,
+    never a row pointing at nothing.
+    """
+    if not photo_uploads_enabled():
+        raise PhotoStorageUnavailable("R2 is not configured for photo uploads.")
+
+    try:
+        _client().delete_object(Bucket=settings.r2_photo_bucket, Key=key)
+    except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one
+        raise PhotoStorageUnavailable(str(error)) from error
 
 
 def presigned_photo_url(report_id: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> str:
@@ -256,13 +294,24 @@ def presigned_photo_url(report_id: str, expires_in: int = PHOTO_URL_TTL_SECONDS)
     which is the same "no photo" the caller would show anyway, one HEAD request
     cheaper on a connection that is the scarce thing here.
     """
+    return presigned_object_url(photo_key(report_id), expires_in=expires_in)
+
+
+def presigned_object_url(key: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> str:
+    """A short-lived URL for one photo object, by its derived key.
+
+    The signing mechanics and their reasoning live on `presigned_photo_url`
+    above; community photos (#576) sign through here with `poi_photo_key`,
+    and the derived-key guard holds for them the same way - the only object
+    a caller can hand out is the one whose row was just authorised.
+    """
     if not photo_storage_configured():
-        raise PhotoStorageUnavailable("R2 is not configured for report photos.")
+        raise PhotoStorageUnavailable("R2 is not configured for photos.")
 
     try:
         return _client().generate_presigned_url(
             "get_object",
-            Params={"Bucket": settings.r2_photo_bucket, "Key": photo_key(report_id)},
+            Params={"Bucket": settings.r2_photo_bucket, "Key": key},
             ExpiresIn=expires_in,
         )
     except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one

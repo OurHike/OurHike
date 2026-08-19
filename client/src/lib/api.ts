@@ -228,6 +228,39 @@ export async function fetchReports(signal?: AbortSignal): Promise<ReportSummary[
   return (await response.json()) as ReportSummary[]
 }
 
+/**
+ * One community photo of a waypoint, as `GET /waypoints/{id}/photos` serves
+ * it (backend app/schemas/poi_photo.py) - rung 2 of the card's ladder.
+ *
+ * `url` is a short-lived signed URL, so an entry is rendered soon or fetched
+ * again, never cached for later. `attribution` is null while the
+ * photographer's anonymity window holds - withheld by their request, which
+ * is different from unknown, and the credit line renders the licence and
+ * month without a name rather than inventing one.
+ */
+export interface PoiPhotoSummary {
+  id: string
+  poi_id: string
+  url: string
+  /** "YYYY-MM" - capture month where the original carried a date, else the
+   *  month it was shared. Month precision is all this surface ever gets. */
+  taken_month: string
+  attribution: string | null
+  license: string
+  pinned: boolean
+}
+
+export async function fetchPoiPhotos(
+  poiId: string,
+  signal?: AbortSignal,
+): Promise<PoiPhotoSummary[]> {
+  const response = await readFetch(
+    `/waypoints/${encodeURIComponent(poiId)}/photos`,
+    signal,
+  )
+  return (await response.json()) as PoiPhotoSummary[]
+}
+
 /** What `GET /closures` returns, limited to the fields this app reads. */
 export interface ClosureSummary {
   id: string

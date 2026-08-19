@@ -117,9 +117,17 @@ def test_every_model_table_is_locked_by_some_migration():
 
 def test_the_guard_would_actually_fail(rls_migration):
     """Proves the test above can fail, rather than passing because both
-    sides are empty or because getattr silently returned nothing."""
+    sides are empty or because getattr silently returned nothing.
+
+    A subset, no longer equality: the first revision's list is a statement
+    about the schema at ITS point in time (its own docstring says so), and
+    619320d2b4a9 was the first later revision to add a table with its own
+    RLS_TABLES. Equality would have frozen the schema at seven tables;
+    non-empty-and-subset still proves getattr found a real list naming real
+    tables, which is all this test exists to prove.
+    """
     assert len(rls_migration.RLS_TABLES) > 0
-    assert set(Base.metadata.tables) == set(rls_migration.RLS_TABLES)
+    assert set(rls_migration.RLS_TABLES) <= set(Base.metadata.tables)
 
 
 # --- e5b2f7c1a903, Alembic's own version table -----------------------------

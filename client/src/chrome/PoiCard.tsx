@@ -74,6 +74,7 @@ import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { CARD_PHOTO_EDGE, type OwnPhotoSource } from '../lib/poiPhotos'
 import { useOwnPhotos, type OwnCardPhoto } from '../lib/useOwnPhotos'
+import { useCommunityPhotos } from '../lib/useCommunityPhotos'
 
 export interface PoiDetail {
   id: string
@@ -583,15 +584,31 @@ export function PoiCard({
   const [announced, setAnnounced] = useState('')
   useEffect(() => setAnnounced(''), [poi.id])
 
-  // Rung 1 of POI_PHOTOS.md's precedence ladder: the hiker's own photos of
-  // the part being shown, ahead of everything the artifacts carry. "Your own
-  // photo always wins, and nothing can displace it" - not a better-composed
-  // photo, not a fresher one - so the merge is an unconditional prepend, and
-  // the ladder falls through only downward: a hiker who never added a photo
-  // gets exactly the list this line built before rung 1 existed.
+  // Rungs 1 and 2 of POI_PHOTOS.md's precedence ladder, ahead of everything
+  // the artifacts carry. Rung 1: the hiker's own photos - "your own photo
+  // always wins, and nothing can displace it", not a better-composed photo,
+  // not a fresher one, so the merge is an unconditional prepend. Rung 2: the
+  // community's, in the backend's own order (the club's pins first, then
+  // newest), reaching this list only while the network has answered and
+  // degrading silently to the ATC/Commons rungs when it has not (#578). The
+  // ladder falls through only downward: a hiker who never added a photo, on
+  // a phone that never reached the backend, gets exactly the list this line
+  // built before either rung existed.
   const own = useOwnPhotos(shown.id)
+  const community = useCommunityPhotos(shown.id)
   const photos: CardPhoto[] = [
     ...own.photos.map((photo) => ({ url: photo.url, taken: photo.taken, own: photo })),
+    ...community.map((photo) => ({
+      url: photo.url,
+      // "YYYY-MM": month precision is all the public surface carries, and
+      // photoMonth reads it as happily as a full date.
+      taken: photo.taken_month,
+      // Null while the photographer's anonymity window holds - withheld by
+      // their request. The credit line then carries licence and month
+      // without a name, which is provenance stated, not missing.
+      ...(photo.attribution !== null ? { author: photo.attribution } : {}),
+      license: photo.license,
+    })),
     ...cardPhotos(shown),
   ]
 

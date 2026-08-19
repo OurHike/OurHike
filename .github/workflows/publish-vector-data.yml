@@ -62,6 +62,30 @@ on:
 
 # One publish at a time. Two concurrent runs would race on latest.json and could
 # interleave uploads, leaving the manifest describing a mixture of two builds.
+# `publish-conditions.yml` shares this group for that reason and not by
+# accident: collect_artifacts() folds its `conditions/*.json` into the SAME
+# artifacts dict, so both paths write the one MANIFEST_KEY.
+#
+# WHAT THAT COSTS A DISPATCHED RUN, WHICH IS NOT OBVIOUS FROM HERE. Concurrency
+# groups coalesce rather than queue - one pending entrant, and a newer pending
+# run cancels the older (publish-conditions.yml's own header spells the
+# mechanism out, for its two legs). Every job in this workflow runs under the
+# `production` environment, so a dispatch waits in `pending` until a human
+# approves it - and `publish-conditions.yml` is on an hourly cron into this
+# same group. So a run left un-approved is cancelled by the next bake, however
+# innocent it was: a dry run with `publish: false` dies exactly as a real
+# publish would.
+#
+# Measured 2026-08-19: run 32294671249 queued 19:44:16Z with `publish: false`,
+# sat pending awaiting approval, and was cancelled 19:56:39Z - one second after
+# the hourly bake queued at 19:56:38Z. Nothing reported a cause.
+#
+# PRACTICAL CONSEQUENCE: approve a dispatch within the hour or re-dispatch it.
+# Once a job actually starts it is safe - `cancel-in-progress: false` means the
+# bake queues behind it rather than killing it. The structural fix (a run that
+# uploads nothing should not need the production environment at all) is
+# #838 - v3: shipping anything takes thirty workflows and a maintainer who
+# remembers all of them.
 concurrency:
   group: publish-data
   cancel-in-progress: false

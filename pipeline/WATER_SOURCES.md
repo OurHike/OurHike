@@ -450,20 +450,37 @@ and hiker reports as the only eventual answer to "is it flowing".
    distance, drop, grade and reason in `data/raw/osm_water_reach.json`, so
    either gate can be re-argued from the file.
 
-   **@unvalidated — the grade gate misfires at very short range**, and this is
-   the open question on #749 rather than a settled result. Grade is
-   drop ÷ distance, and where the nearest feature is the trail the spring sits
-   beside, the denominator is a few feet: a spring **0.26 m from a side trail**
-   with a 0.4 ft drop is refused as "a 39% grade, which is a scramble rather
-   than a walk". 12 of the 61 refusals have a total walk under 5 ft.
-   `fetch_trail_water.py` already names this failure — *"two points a foot apart
-   are the same place, and a grade computed from that is noise rather than
-   terrain"* — but its `max(distance_ft, 1.0)` only guards division by zero, and
-   in its own context the nearest point on a stream is rarely a foot from a
+   **The grade gate misfired at very short range**, and did so in `main` for a
+   day. Grade is drop ÷ distance, and where the nearest feature is the trail the
+   spring sits beside, the denominator is a few feet: a spring **0.26 m from a
+   side trail** with a 0.4 ft drop was refused as "a 39% grade, which is a
+   scramble rather than a walk". 12 of the 61 refusals have a total walk under
+   5 ft. `fetch_trail_water.py` already named this failure — *"two points a foot
+   apart are the same place, and a grade computed from that is noise rather than
+   terrain"* — but its `max(distance_ft, 1.0)` only guarded division by zero,
+   and in its own context the nearest point on a stream is rarely a foot from a
    shelter, so it never bit. The remaining ~49 refusals look defensible (median
-   grade 0.24 over runs of 10–100 ft). What would settle it is a minimum run, or
-   a minimum drop, below which the gate declines to call anything steep — a
-   number nobody has picked, and this session did not invent one.
+   grade 0.24 over runs of 10–100 ft).
+
+   *Amended 2026-08-19 (#815): the floor is a minimum run of 10 ft.* Below it
+   `grade_gate()` declines to have an opinion about steepness, and the two
+   sources share that one function rather than restating it. **The value is
+   picked against the distribution above and not against a fresh run** — the
+   band between 5 ft and 10 ft is empty, so every floor in [5, 10] ft rescues
+   the same 12 points and still grades the same ~49. 10 ft is the top of the
+   band and the maintainer's pick. Points the floor carries are flagged
+   `grade_floored` in the output, so the rescued set stays countable.
+
+   **@unvalidated — what the shape of that floor costs.** A minimum *run*
+   declines to grade a short walk at all, so a water point 3 ft from the trail
+   at the top of a 40 ft bank now passes ungraded: the one case where a short
+   run's ratio was telling the truth. A minimum *drop* was the alternative and
+   has no such hole, since a real bank keeps a real drop and stays graded; the
+   run was the maintainer's choice (2026-08-19) with that trade on the table.
+   What would settle the cost is re-running `spike_osm_water_gate.py` with the
+   floor in place and reading the drops of the sub-10-ft runs it rescues — if
+   they are all a foot or two, the hole is theoretical. Nobody has counted them,
+   and the counts in the table above predate the floor.
 2. **The per-shelter nearest-stream sentence from NHD** — *small effort, closes the
    silence for everyone.* A describer entry in `export_poi.py` composing, for every
    shelter, *"Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as

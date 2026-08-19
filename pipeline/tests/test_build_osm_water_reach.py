@@ -228,6 +228,172 @@ def test_an_ungraded_survivor_is_not_reachable():
     assert reach.is_reachable(_distance_survivor()) is False
 
 
+# --- the short-run floor (#815) ---------------------------------------------
+#
+# Runs are given in metres because that is what `nearest_m` holds, and chosen to
+# land either side of MIN_GRADE_RUN_FT rather than on it: 3.048 m divides to
+# 10.0 ft only up to float representation, and a test that turns on that is
+# testing the division rather than the gate.
+
+
+def test_a_spring_at_the_trailside_is_not_a_scramble(tmp_path, monkeypatch):
+    """#815's node 553354783, in miniature: a spring 0.26 m from the side trail
+    it sits beside, 0.4 ft of drop, refused as "a 39% grade, which is a scramble
+    rather than a walk". It is a spring ON the trail, and springs are the class
+    this source exists to cover."""
+    monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
+    _stub_elevations(monkeypatch, 1000.0, 1000.4)
+    records = [_distance_survivor(nearest_m=0.26)]
+
+    reach.apply_grade_gate(records, quiet=True)
+
+    assert records[0]["passes_grade"] is True
+    assert reach.is_reachable(records[0]) is True
+    assert "reason" not in records[0]
+    # The ratio still reads as a scramble - the verdict stopped believing it,
+    # and the file keeps the number either way so the floor can be re-argued.
+    assert records[0]["grade"] > reach.MAX_GRADE
+    assert records[0]["grade_floored"] is True
+
+
+def test_a_run_just_under_the_floor_is_not_graded(tmp_path, monkeypatch):
+    monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
+    # 5 ft of drop over 9.5 ft of run - a 53% ratio, and still not a walk this
+    # file will call a scramble.
+    _stub_elevations(monkeypatch, 1000.0, 1005.0)
+    records = [_distance_survivor(nearest_m=2.9)]
+
+    reach.apply_grade_gate(records, quiet=True)
+
+    assert records[0]["passes_grade"] is True
+    assert records[0]["grade_floored"] is True
+
+
+def test_the_floor_does_not_rescue_a_real_bank(tmp_path, monkeypatch):
+    """The regression this floor could have introduced. 10.2 ft of run is over
+    the floor, so the ratio is believed again - #815 measured the other ~49
+    refusals at a median 0.24 over 10-100 ft runs, and every one of them has to
+    still be refused after this change."""
+    monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
+    _stub_elevations(monkeypatch, 1000.0, 1005.0)
+    records = [_distance_survivor(nearest_m=3.1)]
+
+    reach.apply_grade_gate(records, quiet=True)
+
+    assert records[0]["passes_grade"] is False
+    assert "scramble rather than a walk" in records[0]["reason"]
+    assert "grade_floored" not in records[0]
+    assert reach.is_reachable(records[0]) is False
+
+
+def test_a_short_gentle_walk_is_not_marked_as_floored(tmp_path, monkeypatch):
+    """The marker means "the floor changed this verdict", not "the run was
+    short" - a point that would have passed on its grade anyway is not one of
+    the ones #815 leaves open to counting."""
+    monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
+    # 1 ft over 9.5 ft is a 10% grade, under MAX_GRADE on its own merits.
+    _stub_elevations(monkeypatch, 1000.0, 1001.0)
+    records = [_distance_survivor(nearest_m=2.9)]
+
+    reach.apply_grade_gate(records, quiet=True)
+
+    assert records[0]["passes_grade"] is True
+    assert "grade_floored" not in records[0]
+
+
+# --- re-grading a file written under a different floor (#815) ---------------
+
+
+def _graded(osm_id="1", nearest_m=30.0, passes=False):
+    record = _distance_survivor(nearest_m=nearest_m)
+    record["osm_id"] = osm_id
+    record["passes_grade"] = passes
+    record["grade"] = 0.4
+    record["drop_ft"] = 4.0
+    if not passes:
+        record["reason"] = "the ground drops 4 ft over 10 ft - a 40% grade"
+    return record
+
+
+def test_a_short_walk_graded_under_no_floor_is_re_graded():
+    """The path that decides whether this fix reaches anybody. apply_grade_gate
+    skips records that already carry a verdict, and the publish workflow
+    restores data/raw/ from the Actions cache (#812) - so without this, a
+    changed floor never touches the file on disk."""
+    records = [_graded(nearest_m=0.26)]
+
+    cleared = reach.drop_stale_grade_verdicts(records, None)
+
+    assert cleared == 1
+    assert "passes_grade" not in records[0]
+    assert "reason" not in records[0]
+
+
+def test_a_longer_walk_keeps_its_verdict_and_its_lookups():
+    """A floor cannot change a walk longer than itself, and re-grading one
+    costs two EPQS calls to arrive at the same answer."""
+    records = [_graded(nearest_m=30.0)]
+
+    cleared = reach.drop_stale_grade_verdicts(records, None)
+
+    assert cleared == 0
+    assert records[0]["passes_grade"] is False
+
+
+def test_a_file_written_under_this_floor_is_left_alone():
+    records = [_graded(nearest_m=0.26)]
+
+    cleared = reach.drop_stale_grade_verdicts(records, reach.MIN_GRADE_RUN_FT)
+
+    assert cleared == 0
+    assert records[0]["passes_grade"] is False
+
+
+def test_lowering_the_floor_re_grades_what_the_old_one_had_rescued():
+    """The other direction: a verdict taken under a WIDER floor is just as stale
+    as one taken under none, and the points it rescued have to be re-asked."""
+    records = [_graded(nearest_m=6.0, passes=True)]  # 19.7 ft - past today's floor
+    records[0]["grade_floored"] = True
+
+    cleared = reach.drop_stale_grade_verdicts(records, 25.0)
+
+    assert cleared == 1
+    assert "passes_grade" not in records[0]
+    assert "grade_floored" not in records[0]
+
+
+def test_a_point_that_never_reached_the_grade_gate_is_untouched():
+    """Distance failures carry a reason too, and it is not this function's to
+    clear - they were never graded."""
+    records = [{"osm_id": "1", "passes_distance": False, "reason": "too far"}]
+
+    cleared = reach.drop_stale_grade_verdicts(records, None)
+
+    assert cleared == 0
+    assert records[0]["reason"] == "too far"
+
+
+def test_main_re_grades_a_stale_file_it_resumes_from(tmp_path, monkeypatch):
+    """End to end on the path that actually runs in CI: a file the Actions cache
+    restored, written before the floor existed, resumed rather than remeasured.
+    The unit test above proves the clearing; this proves main() calls it, which
+    is the half that would fail silently by producing the old verdicts."""
+    out = tmp_path / "reach.json"
+    monkeypatch.setattr(reach, "OUT_PATH", out)
+    monkeypatch.setattr(reach.fetch_receipts, "record", lambda *a, **k: {})
+    _stub_elevations(monkeypatch, 1000.0, 1000.4)  # 0.4 ft drop
+    stale = [_graded(osm_id=str(i), nearest_m=0.26) for i in range(reach.MIN_REACHABLE + 5)]
+    # No `min_grade_run_ft` key: this is a pre-#815 file.
+    out.write_text(json.dumps({"n_reachable": 0, "points": stale}), encoding="utf-8")
+
+    assert reach.main([]) == 0
+
+    written = json.loads(out.read_text())
+    assert written["min_grade_run_ft"] == reach.MIN_GRADE_RUN_FT
+    assert written["n_reachable"] == len(stale)
+    assert all(p["grade_floored"] for p in written["points"])
+
+
 # --- the write guards -------------------------------------------------------
 
 
@@ -279,3 +445,14 @@ def test_the_drop_guard_compares_against_the_previous_run_not_this_ones_checkpoi
     # The guarded write still fires, because the count was captured up front.
     with pytest.raises(SystemExit, match="drop guard"):
         reach.write(_reachable_records(reach.MIN_REACHABLE), previous=previous)
+
+
+def test_the_floor_is_written_into_the_receipt(tmp_path, monkeypatch):
+    """The file carries the constants its verdicts were taken under, so a run
+    read months later says which gate produced it (#749's promise)."""
+    out = tmp_path / "reach.json"
+    monkeypatch.setattr(reach, "OUT_PATH", out)
+
+    reach.write(_reachable_records(reach.MIN_REACHABLE), guard=False)
+
+    assert json.loads(out.read_text())["min_grade_run_ft"] == reach.MIN_GRADE_RUN_FT

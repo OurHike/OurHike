@@ -26,6 +26,61 @@ fi
 # script runnable by hand from anywhere inside the repo.
 cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
+# WHICH INTERPRETER TO INSTALL INTO, and why this is not just `pip` (#822).
+#
+# This script used to call bare `pip` and `python`, which on the web image are
+# Debian's 3.11. `pipeline/requirements.txt` pins `numpy==2.5.2`, and numpy
+# 2.5 requires Python >= 3.12 - so the very first pinned install died with
+# "No matching distribution found for numpy==2.5.2". `set -euo pipefail` meant
+# the run ended there, before the dev requirements that carry pytest, so every
+# web session had NO pytest for any of the three suites and nothing said so.
+# That is the second time this hook has silently provisioned nothing; see
+# pip_install_pinned's comment for the first.
+#
+# Chosen rather than hardcoded, because both obvious constants are wrong within
+# one image update: naming `python3.13` breaks when the image ships 3.14 or
+# drops 3.13, and naming CI's version breaks whenever the image does not have
+# it. So: prefer the version CI actually uses, read out of the workflow rather
+# than copied (one home for it), and otherwise take the newest interpreter
+# present. Newest, not `python3` - the whole failure was that `python3` is the
+# oldest thing installed.
+#
+# There is no floor test here on purpose. If the chosen interpreter cannot
+# satisfy the pins, pip says so by name and the gate at the end of this script
+# fails loudly - which is better than a floor that has to be kept in step with
+# whatever the lockfiles currently need.
+ci_python_version() {
+  sed -n 's/^[[:space:]]*python-version:[[:space:]]*"\([0-9][0-9.]*\)".*/\1/p' \
+    .github/workflows/pipeline-tests.yml | head -1
+}
+
+available_pythons() {
+  # Real interpreters only - `ls python3.*` also matches python3.11-config.
+  ls -1 /usr/local/bin/python3.* /usr/bin/python3.* 2>/dev/null \
+    | grep -E '/python3\.[0-9]+$' \
+    | xargs -r -n1 basename \
+    | sort -u -t. -k2 -n -r
+}
+
+pick_python() {
+  local ci
+  ci="$(ci_python_version)"
+  local candidate
+  for candidate in ${ci:+"python${ci}"} $(available_pythons); do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PY="$(pick_python)" || {
+  echo "[session-start] no python3.N interpreter found on PATH" >&2
+  exit 1
+}
+echo "[session-start] installing with ${PY} ($(${PY} --version 2>&1)); CI uses $(ci_python_version)"
+
 DUCKDB_PIN=$(sed -n 's/^duckdb==\([^ ;]*\).*/\1/p' pipeline/requirements.txt | head -1)
 if [ -z "${DUCKDB_PIN}" ]; then
   echo "[session-start] no duckdb pin found in pipeline/requirements.txt" >&2
@@ -65,9 +120,9 @@ pip_install_pinned() {
   local constraints
   constraints="$(mktemp)"
   sed 's/\[[^][]*\]//g' "${reqs}" >"${constraints}"
-  pip install -q --ignore-installed -c "${constraints}" ${DEBIAN_SHADOWED}
+  "${PY}" -m pip install -q --ignore-installed -c "${constraints}" ${DEBIAN_SHADOWED}
   rm -f "${constraints}"
-  pip install -q -r "${reqs}" "$@"
+  "${PY}" -m pip install -q -r "${reqs}" "$@"
 }
 
 echo "[session-start] pipeline deps, duckdb pinned to ${DUCKDB_PIN}"
@@ -98,7 +153,7 @@ echo "[session-start] repository-settings test deps"
 pip_install_pinned .github/tests/requirements-dev.txt
 
 echo "[session-start] seeding the duckdb spatial extension"
-python - <<'PY'
+"${PY}" - <<'PY'
 """Copy the PyPI-bundled spatial extension to where INSTALL looks.
 
 DuckDB treats an already-installed extension as satisfying INSTALL, so
@@ -137,5 +192,43 @@ PY
 
 echo "[session-start] client deps"
 (cd client && npm install --no-audit --no-fund)
+
+# THE GATE: prove what this script claims, or fail saying which part is missing.
+#
+# Both times this hook silently provisioned nothing (#822 and the
+# extras-in-a-constraints-file bug pip_install_pinned describes), the symptom
+# reached a session as "No module named pytest" during unrelated work, hours
+# later, and read like a broken container rather than a broken hook. A hook
+# that cannot say whether it worked will have a third.
+#
+# Checked here rather than trusted: `set -e` only proves each command exited 0,
+# and the extras bug exited 0 while installing nothing at all.
+#
+# One representative import per suite - enough to tell "this suite can run"
+# from "this suite has nothing", which is the distinction both outages blurred.
+# Not a substitute for running the suites, and not trying to be.
+echo "[session-start] verifying the suites can actually run"
+gate_failed=0
+gate_check() {
+  local label="$1" module="$2"
+  if "${PY}" -c "import ${module}" >/dev/null 2>&1; then
+    echo "  ok    ${label} (${module})"
+  else
+    echo "  FAIL  ${label}: ${PY} cannot import ${module}" >&2
+    gate_failed=1
+  fi
+}
+
+gate_check "test runner"       pytest
+gate_check "pipeline"          duckdb
+gate_check "backend"           fastapi
+gate_check "repo settings"     yaml
+
+if [ "${gate_failed}" -ne 0 ]; then
+  echo "[session-start] FAILED: dependencies are missing - the suites will not run." >&2
+  echo "[session-start] Interpreter was ${PY} ($(${PY} --version 2>&1))." >&2
+  exit 1
+fi
+echo "[session-start] ready: ${PY} can run all three Python suites"
 
 echo "[session-start] ready"

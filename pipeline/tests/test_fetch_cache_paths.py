@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import build_osm_water_reach
 import fetch_all
 import fetch_atc_photos
 import fetch_elevation
@@ -77,6 +78,14 @@ FETCHER_OUTPUTS = (
     # reads are deliberately NOT cached (the workflow step says why), so an
     # unticked run restores the last scan's geojson rather than the inputs.
     ("fetch_osm_water", lambda: [fetch_osm_water.OUT_PATH]),
+    # Not a fetcher - it derives rather than downloads - but it records a
+    # receipt like one, so this list is exactly where it belongs (#818). It
+    # was missing at first, and the shape of that miss is the shape this file
+    # was written for: the reachability build landed with no workflow step at
+    # all, so nothing cached its output, and nothing here noticed because the
+    # roster is hand-kept. `fetch_receipts.record` is the thing that makes an
+    # entry mandatory, not the word "fetch" in the module name.
+    ("build_osm_water_reach", lambda: [build_osm_water_reach.OUT_PATH]),
     ("fetch_trail_water", lambda: [fetch_trail_water.OUT_PATH]),
 )
 

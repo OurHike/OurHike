@@ -157,8 +157,11 @@ decides, split per its deliverable into
 self-portrait can become a town's illustration** (pipeline, belongs with this group's
 sharing work in sequence but touches only `fetch_poi_images.py`) and
 **#837 — On-device screening at the share sheet: friction and a queue flag, never a
-refusal** (lands with #577). **The sharing branch is unblocked** and is the natural next
-body of work here; #361 still waits on #101's native pickers.
+refusal** (lands with #577). The sharing slice is now split across two live claims:
+`claude/photos-work-ulp2yd` carries **#576** (the backend store, caps and withdrawal) and
+#578's community rung, while `claude/v2-remaining-topic-groups-vrmdxd` holds **#577** and
+**#579** at the mockup stage — the store is built to be what those surfaces write to and
+act on. #361 still waits on #101's native pickers.
 
 ## E. Offline coverage in pieces
 

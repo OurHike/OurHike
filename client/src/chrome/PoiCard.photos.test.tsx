@@ -5,6 +5,8 @@ import { PoiCard, type PoiDetail } from './PoiCard'
 import { addOwnPhoto, POI_PHOTOS_PREFIX } from '../lib/poiPhotos'
 import { preparePhoto, PhotoUnusable } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
+import { fetchPoiPhotos } from '../lib/api'
+import { clearCommunityPhotoCache } from '../lib/useCommunityPhotos'
 
 // The hiker's own photo on the waypoint card: capture with a keep-or-discard
 // review (#571), several per place with a sticky choice (#575), the honest
@@ -32,12 +34,17 @@ vi.mock('../lib/reportPhoto', async (importOriginal) => ({
 
 vi.mock('../lib/exifDate', () => ({ exifCaptureDate: vi.fn() }))
 
+// The community rung's fetch (#578). Mocked at the api seam rather than at
+// the hook, so the hook's cache and silent-failure behaviour stay under test.
+vi.mock('../lib/api', () => ({ fetchPoiPhotos: vi.fn() }))
+
 const mockedGet = vi.mocked(get)
 const mockedUpdate = vi.mocked(update)
 const mockedDel = vi.mocked(del)
 const mockedKeys = vi.mocked(keys)
 const mockedPrepare = vi.mocked(preparePhoto)
 const mockedExifDate = vi.mocked(exifCaptureDate)
+const mockedFetchPoiPhotos = vi.mocked(fetchPoiPhotos)
 
 /** In-memory IndexedDB, with update() applied synchronously against the
  *  stored value - the real one's single-transaction semantics. */
@@ -81,8 +88,10 @@ function pickFile(testId: string, name = 'trail.jpg') {
 
 beforeEach(() => {
   withStore()
+  clearCommunityPhotoCache()
   mockedPrepare.mockResolvedValue(PREPARED)
   mockedExifDate.mockResolvedValue('2026-06-18')
+  mockedFetchPoiPhotos.mockResolvedValue([])
   // jsdom implements neither; the card only ever hands these URLs to <img>
   // and <a>, so strings are all a test needs. Assigned onto the real URL
   // rather than replacing the global, which would take the constructor
@@ -386,5 +395,71 @@ describe('which copy is which (#573)', () => {
 
     await screen.findByTestId('poi-card-review-photo')
     expect(screen.queryByTestId('poi-card-save-original')).not.toBeInTheDocument()
+  })
+})
+
+describe('the community rung (#578, from #576)', () => {
+  const COMMUNITY = {
+    id: 'p1',
+    poi_id: SHELTER.id,
+    url: 'https://photos.example/signed/p1',
+    taken_month: '2026-05',
+    attribution: 'Sawyer',
+    license: 'CC BY-SA 4.0',
+    pinned: false,
+  }
+
+  it('renders below the hiker’s own photo and above the artifacts’', async () => {
+    withStore()
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2021-03-05',
+      source: 'library',
+    })
+    mockedFetchPoiPhotos.mockResolvedValue([COMMUNITY])
+
+    await renderCard({
+      ...SHELTER,
+      photoUrl: 'https://photos.example/commons.jpg',
+      photoAuthor: 'A. Photographer',
+      photoLicense: 'CC BY-SA 4.0',
+      photoTaken: '2026-07-01',
+    })
+
+    // Rung 1 first - the community photo, though fresher, does not displace it.
+    expect(await screen.findByText('Your photo · Mar 2021')).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 3')
+
+    // Rung 2 next, credited to the trail name.
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    expect(
+      await screen.findByText('Photo: Sawyer · CC BY-SA 4.0 · May 2026'),
+    ).toBeInTheDocument()
+
+    // The artifact photo one further down.
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    expect(
+      screen.getByText('Photo: A. Photographer · CC BY-SA 4.0 · Jul 2026'),
+    ).toBeInTheDocument()
+  })
+
+  it('a masked credit carries licence and month, never an invented name', async () => {
+    withStore()
+    mockedFetchPoiPhotos.mockResolvedValue([{ ...COMMUNITY, attribution: null }])
+
+    await renderCard()
+
+    expect(await screen.findByText('Photo: CC BY-SA 4.0 · May 2026')).toBeInTheDocument()
+  })
+
+  it('degrades silently when the backend is unreachable', async () => {
+    withStore()
+    mockedFetchPoiPhotos.mockRejectedValue(new Error('offline'))
+
+    await renderCard()
+
+    // The card as it shipped before the rung existed: placeholder, no error.
+    expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
+    expect(screen.queryByTestId('poi-card-photo-count')).not.toBeInTheDocument()
   })
 })

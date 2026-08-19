@@ -746,7 +746,9 @@ COUNT_UPSTREAM_SOURCES: dict[str, frozenset[str]] = {
     "trails": frozenset({"atc"}),  # centerline + side_trails
     "poi:shelter": frozenset({"atc"}),
     "poi:campsite": frozenset({"atc"}),
-    "poi:resupply": frozenset({"atc", "opentrail"}),  # communities.geojson + opentrail "r" tag
+    # communities.geojson alone since #806 dropped opentrail's "r" tag, which
+    # turned out to be roads and gaps rather than shops.
+    "poi:resupply": frozenset({"atc"}),
     # opentrail "w"/"s" tags + osm_water.geojson, plus the members
     # export_poi.py synthesizes from ATC's CSI distances (#694) - those ride
     # the shelters/campsites layers, so an ATC change can move this count

@@ -1,6 +1,6 @@
 """Tests for lib/poi_schema.py - the unified POI schema (ROADMAP.md's
 "Unified POI schema" line) that export_poi.py maps every source (ATC
-shelters/campsites/communities, opentrail.org water/resupply tags) into.
+shelters/campsites/communities, opentrail.org water tags) into.
 
 Pure-function tests only, per TESTING.md - no I/O, no DuckDB, no network.
 export_poi.py's own tests cover the corridor-clip/export/manifest wiring
@@ -40,12 +40,12 @@ def _community_feature():
     }
 
 
-def _opentrail_resupply_feature():
+def _opentrail_water_feature():
     return {
         "type": "Feature",
         "id": 0,
         "geometry": {"type": "Point", "coordinates": [-84.0, 34.5]},
-        "properties": {"title": "Neels Gap Outfitter", "icon": "r", "dbid": 1237},
+        "properties": {"title": "Piped spring", "icon": "w", "dbid": 1237},
     }
 
 
@@ -79,10 +79,16 @@ def test_unify_poi_does_not_hardcode_a_trail_id():
     assert at_result["poi_type"] == lt_result["poi_type"]
 
 
-def test_unify_poi_marks_atc_communities_as_a_lower_confidence_resupply_proxy():
-    """A town being an "official A.T. Community" isn't the same confidence
-    as opentrail.org's actual resupply-point tagging - both feed poi_type
-    "resupply", but the schema must be able to tell them apart."""
+def test_unify_poi_takes_confidence_from_the_source_not_from_the_poi_type():
+    """Two sources can feed one poi_type at different confidences, and the
+    schema has to keep them apart.
+
+    This used to be written as communities-versus-opentrail-resupply, and
+    #806 retired that pairing: opentrail's "r" tag is roads and gaps rather
+    than shops, so nothing feeds `resupply` above the ATC Community proxy any
+    more. The property under test never depended on that pair - it is that
+    `confidence` comes from the field_map - so it is stated here on a pairing
+    that is still true rather than deleted with the example that expired."""
     community_result = unify_poi(
         _community_feature(),
         "resupply",
@@ -90,18 +96,17 @@ def test_unify_poi_marks_atc_communities_as_a_lower_confidence_resupply_proxy():
         "AT",
         {"id_field": "GlobalID", "name_field": "NAME", "confidence": CONFIDENCE_LOW},
     )
-    opentrail_result = unify_poi(
-        _opentrail_resupply_feature(),
-        "resupply",
+    water_result = unify_poi(
+        _opentrail_water_feature(),
+        "water",
         "opentrail_at",
         "AT",
         {"id_field": "dbid", "name_field": "title", "confidence": CONFIDENCE_HIGH},
     )
 
-    assert community_result["poi_type"] == opentrail_result["poi_type"] == "resupply"
     assert community_result["confidence"] == CONFIDENCE_LOW
-    assert opentrail_result["confidence"] == CONFIDENCE_HIGH
-    assert CONFIDENCE_RANK[community_result["confidence"]] < CONFIDENCE_RANK[opentrail_result["confidence"]]
+    assert water_result["confidence"] == CONFIDENCE_HIGH
+    assert CONFIDENCE_RANK[community_result["confidence"]] < CONFIDENCE_RANK[water_result["confidence"]]
 
 
 def test_unify_poi_raises_on_missing_source_feature_id():

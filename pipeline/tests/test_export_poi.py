@@ -160,7 +160,10 @@ def _write_fixture_sources(raw_dir):
         raw_dir / "opentrail_at.geojson",
         [
             _point_feature(0, -73.92, 41.02, {"title": "Test Spring", "icon": "w", "dbid": 100}),
-            _point_feature(1, -73.91, 41.01, {"title": "Test Outfitter", "icon": "r", "dbid": 101}),
+            # Icon "r", and named for what #806 measured "r" points actually
+            # are: 57 of the 72 carry a road-shaped name and 0 carry a shop's.
+            # This is a NEGATIVE fixture - it must not reach resupply.geojson.
+            _point_feature(1, -73.91, 41.01, {"title": "Woody Gap", "icon": "r", "dbid": 101}),
             # Real-data gotcha (verified against the actual opentrail_at.geojson
             # 2026-07-28): the `icon` value "s" is NOT shelter, despite there
             # being exactly 32 "s"-tagged features in the real file (a
@@ -917,7 +920,14 @@ def test_export_poi_does_not_publish_the_raw_source_properties(tmp_path, monkeyp
     assert set(props) == {name for name, _ in export_poi.POI_COLUMNS}
 
 
-def test_export_poi_communities_and_opentrail_resupply_carry_different_confidence(tmp_path, monkeypatch, con):
+def test_export_poi_does_not_publish_an_opentrail_road_as_somewhere_to_buy_food(tmp_path, monkeypatch, con):
+    """#806. This test used to assert the opposite - that an "r" point
+    published as resupply at CONFIDENCE_HIGH, above the ATC Community proxy -
+    on a legend entry reading "resupply (store/outfitter/service)" that was
+    inferred from feature titles and never checked. Checking it (2026-08-18,
+    spike_opentrail_towns.py) found 0 of 72 named for a store, hostel,
+    outfitter, inn, market, grocery, deli or post office, and 57 named for
+    roads and gaps. A hiker planning a food carry around one walks to a road."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
@@ -931,8 +941,11 @@ def test_export_poi_communities_and_opentrail_resupply_carry_different_confidenc
     resupply_fc = json.loads((out_dir / "resupply.geojson").read_text())
     by_name = {f["properties"]["name"]: f["properties"]["confidence"] for f in resupply_fc["features"]}
 
-    assert by_name["Test Town"] == CONFIDENCE_LOW  # ATC Community proxy
-    assert by_name["Test Outfitter"] == CONFIDENCE_HIGH  # real opentrail.org resupply tag
+    assert "Woody Gap" not in by_name
+    # The ATC Communities are what the resupply layer is now, and they were
+    # always the lower-confidence half of the pair - the tier that outranked
+    # them is the one that turned out to be roads.
+    assert by_name == {"Test Town": CONFIDENCE_LOW}
 
 
 def test_export_poi_publishes_atcs_vistas_parking_and_privies_as_their_own_types(tmp_path, monkeypatch, con):
@@ -1269,7 +1282,7 @@ def test_check_reads_the_sources_and_writes_nothing(tmp_path, monkeypatch, con):
         "shelter": 1,
         "campsite": 1,
         "water": 2,
-        "resupply": 2,
+        "resupply": 1,  # the ATC Community alone since #806 dropped opentrail "r"
         "crossing": 0,
         "viewpoint": 1,
         "parking": 1,

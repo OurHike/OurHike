@@ -47,9 +47,18 @@ inspection, 2026-07-28):
     as poi_type resupply at CONFIDENCE_LOW - a town being designated an
     A.T. Community isn't the same confidence as an actual tagged resupply
     point (see opentrail_at below).
-  - opentrail_at.geojson: tagged via its `icon` property. Only "w" (water)
-    and "r" (resupply) feed this export - matching README.md's documented
-    role for this source (the water/resupply gap ATC's own data leaves).
+  - opentrail_at.geojson: tagged via its `icon` property. Only "w" and "s"
+    feed this export, both as water. "r" USED TO FEED resupply and no
+    longer does (#806): the legend calling it "resupply
+    (store/outfitter/service)" was inferred from feature titles and never
+    checked, and checking it found 0 of 72 points named for a store,
+    hostel, outfitter, inn, market, grocery, deli or post office, against
+    57 named for roads and gaps - Woody Gap, Newfound Gap, "dirt road",
+    "FS RD 263". Measured 2026-08-18 by spike_opentrail_towns.py against
+    the live feed. So every one of those 72 reached a hiker as a place to
+    buy food, at the higher of the two confidences, and #799's food carries
+    could be split at one. Dropped rather than re-mapped, because what "r"
+    does mean is still a guess - see fetch_opentrail.py's ICON_LEGEND.
     Real-data gotcha found while building this (2026-07-28): the `icon`
     value "s" has exactly 32 occurrences in the real file - a suspiciously
     shelter-sized count that a naive tag-count match could mistake for
@@ -60,10 +69,10 @@ inspection, 2026-07-28):
     source here. "s" is folded into poi_type water instead, at
     CONFIDENCE_LOW (seasonal/less reliable than the primary "w" tag) - see
     test_export_poi_opentrail_seasonal_water_tag_is_not_treated_as_shelter.
-    "c" (opentrail's own campsite tag), "t" (town), "o" (other), and "j"
-    (junction) aren't mapped to any poi_type here - "t"/"o"/"j" have no
-    corresponding poi_type in this schema, and "c" would just be a lower-
-    quality duplicate of ATC's own campsites.geojson.
+    "c" (opentrail's own campsite tag), "t" (town), "o" (other), "j"
+    (junction) and now "r" aren't mapped to any poi_type here - "t"/"o"/"j"
+    have no corresponding poi_type in this schema, and "c" would just be a
+    lower-quality duplicate of ATC's own campsites.geojson.
   - osm_water.geojson: OSM's water point sources across the fourteen A.T.
     states (fetch_osm_water.py; #529, WATER_SOURCES.md §7 option 1), folded
     into poi_type water at CONFIDENCE_LOW - a mapped spring is somebody's
@@ -462,12 +471,11 @@ DIRECT_SOURCES = (
 )
 
 # opentrail.org's `icon` property -> (poi_type, confidence). See the module
-# docstring for why "s" maps to water (not shelter) and why "c"/"t"/"o"/"j"
+# docstring for why "s" maps to water (not shelter) and why "c"/"t"/"o"/"j"/"r"
 # aren't mapped at all.
 OPENTRAIL_ICON_MAP = {
     "w": ("water", CONFIDENCE_HIGH),
     "s": ("water", CONFIDENCE_LOW),
-    "r": ("resupply", CONFIDENCE_HIGH),
 }
 OPENTRAIL_SOURCE = "opentrail_at"
 OPENTRAIL_FIELD_MAP_BASE = {"id_field": "dbid", "name_field": "title"}

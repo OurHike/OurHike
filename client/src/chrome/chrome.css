@@ -2175,6 +2175,121 @@ a.poi-card__credit::after {
   color: var(--fg-3);
 }
 
+/* Keep-or-discard over a just-picked photo's preview (PoiCard.tsx, #571).
+   Two targets at the touch minimum, side by side over the image: the
+   decision is made looking at the picture, and gloved-thumb reachability
+   (#105) beats visual delicacy here. Keep is the brand button because it is
+   the action the hiker came to take; Discard is a plain surface because it
+   must be findable, not tempting. */
+.poi-card__review-bar {
+  position: absolute;
+  right: var(--space-2, 8px);
+  bottom: var(--space-2, 8px);
+  left: var(--space-2, 8px);
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.poi-card__review-bar > button {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.poi-card__review-keep {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.poi-card__review-discard {
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+}
+
+/* The strip under the hiker's own photo: #573's honesty sentence plus
+   #575's two verbs. Sunken like the unverified block - it is the card
+   talking about itself, not a fact about the place. */
+.poi-card__own {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin: 0 0 var(--space-1, 4px);
+  padding: var(--space-2, 8px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.poi-card__own-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.poi-card__own-actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.poi-card__own-action {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-2, 8px);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+  cursor: pointer;
+}
+
+/* The waiting affordance (#571): quiet, but still two full touch targets.
+   It sits last in the body so a card is its facts first and its offer
+   second - nothing here ever asks. */
+.poi-card__add-photo {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-1, 4px);
+}
+
+.poi-card__add-button {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-1, 4px);
+  font-size: 12px;
+  color: var(--fg-2);
+  background: none;
+  border: 1px solid var(--bg-sunken);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.poi-card__add-button:hover {
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.poi-card__photo-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.poi-card__photo-note a {
+  color: var(--brand-primary);
+}
+
 /* ---------- Serious warning sheet ---------- */
 
 .warning-sheet {

@@ -44,12 +44,18 @@
 // layer that document already plans.
 
 /**
- * The longest edge the stored photo may have.
+ * The longest edge a REPORT photo may have.
  *
  * 1600 px is chosen against the job the photo has to do: a moderator deciding
  * whether a bridge is really out, on a laptop, from a card that is a few
  * hundred pixels wide. It is generous for that and still roughly a tenth of
  * the pixels a current phone camera produces.
+ *
+ * One constant among callers, not the module's bound: a waypoint photo has a
+ * different job (a 264 CSS pixel slot, POI_PHOTOS.md) and passes its own
+ * edge - lib/poiPhotos.ts's CARD_PHOTO_EDGE - through the same code path.
+ * #571 asked for exactly this shape: parameterise the edge, do not fork the
+ * module.
  */
 export const MAX_PHOTO_EDGE = 1600
 
@@ -128,6 +134,19 @@ async function encode(canvas: DrawTarget, quality: number): Promise<Blob | null>
  * phone in a pocket.
  */
 export async function prepareReportPhoto(file: Blob): Promise<Blob> {
+  return preparePhoto(file, MAX_PHOTO_EDGE)
+}
+
+/**
+ * The same pass at a caller-chosen longest edge.
+ *
+ * Everything in the module header holds whatever the edge is: the re-encode
+ * is the EXIF answer (a canvas output never had the tags), `from-image` is
+ * what keeps portraits upright, and the ladder is the last step before
+ * refusing. The edge is the one thing that legitimately differs by what the
+ * photo is for.
+ */
+export async function preparePhoto(file: Blob, maxEdge: number): Promise<Blob> {
   let bitmap: ImageBitmap
   try {
     // `from-image` is what makes the strip safe - see the header. Browsers
@@ -145,7 +164,7 @@ export async function prepareReportPhoto(file: Blob): Promise<Blob> {
     // Never upscales: `Math.min(1, …)` means a photo already smaller than the
     // bound is re-encoded at its own size rather than blown up, which would
     // add bytes to send in exchange for nothing to look at.
-    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(bitmap.width, bitmap.height))
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
     const width = Math.max(1, Math.round(bitmap.width * scale))
     const height = Math.max(1, Math.round(bitmap.height * scale))
 

@@ -53,6 +53,7 @@
 // Same call ClosureSheet makes.
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -69,6 +70,10 @@ import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
 import { formatShortDistance, type UnitSystem } from '../lib/units'
+import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
+import { exifCaptureDate } from '../lib/exifDate'
+import { CARD_PHOTO_EDGE, type OwnPhotoSource } from '../lib/poiPhotos'
+import { useOwnPhotos, type OwnCardPhoto } from '../lib/useOwnPhotos'
 
 export interface PoiDetail {
   id: string
@@ -268,6 +273,10 @@ interface CardPhoto {
   author?: string
   license?: string
   taken?: string
+  /** Present when this is the hiker's own photo (rung 1 of the ladder) -
+   *  what the manage strip needs to offer choose and remove, and what the
+   *  credit line keys on to say "Your photo" instead of naming an author. */
+  own?: OwnCardPhoto
 }
 
 /**
@@ -291,6 +300,50 @@ function cardPhotos(poi: PoiDetail): CardPhoto[] {
       ...(poi.photoTaken !== undefined ? { taken: poi.photoTaken } : {}),
     },
   ]
+}
+
+/** The credit-slot line for the hiker's own photo: no author to name, but
+ *  dated in the same month voice as every other photo on the card. */
+function ownCredit(photo: OwnCardPhoto): string {
+  const month = photoMonth(photo.taken)
+  return month === null ? 'Your photo' : `Your photo · ${month}`
+}
+
+/**
+ * A picked photo waiting on the hiker's keep-or-discard (#571).
+ *
+ * Held entirely in memory: the store is only written on Keep, so Discard is
+ * "nothing was written" rather than "written, then deleted" - the difference
+ * the issue calls the part worth spending design on. Everything here is
+ * revoked and dropped together, whichever way the review ends.
+ */
+interface PhotoReview {
+  /** Object URL of the prepared rendering - the preview shows exactly the
+   *  bytes a Keep would store, never the original it was made from. */
+  url: string
+  blob: Blob
+  /** Capture date read from the ORIGINAL before the re-encode destroyed it. */
+  taken: string | null
+  source: OwnPhotoSource
+  /** The original file, offered for saving when it was taken through the
+   *  app's camera and so exists nowhere else (#573). Null for a library
+   *  pick, whose original is already in the hiker's library. */
+  originalUrl: string | null
+  originalName: string
+}
+
+/**
+ * The honest sentence under a hiker's own photo (#573), and it is two
+ * sentences because the truth differs by path. POI_PHOTOS.md's not-an-archive
+ * promise rests on "your library has the original" - true for a photo picked
+ * from the library, false for one taken through the app's camera, where the
+ * small copy may be the only copy that ever existed. The strip is where the
+ * doc says which is which, "rather than a settings page nobody opens".
+ */
+function ownPhotoDisclosure(source: OwnPhotoSource): string {
+  return source === 'library'
+    ? 'A copy sized for this card — your library has the original.'
+    : 'Taken in OurHike. Unless you saved the original, this small copy is the only one.'
 }
 
 /**
@@ -530,7 +583,117 @@ export function PoiCard({
   const [announced, setAnnounced] = useState('')
   useEffect(() => setAnnounced(''), [poi.id])
 
-  const photos = cardPhotos(shown)
+  // Rung 1 of POI_PHOTOS.md's precedence ladder: the hiker's own photos of
+  // the part being shown, ahead of everything the artifacts carry. "Your own
+  // photo always wins, and nothing can displace it" - not a better-composed
+  // photo, not a fresher one - so the merge is an unconditional prepend, and
+  // the ladder falls through only downward: a hiker who never added a photo
+  // gets exactly the list this line built before rung 1 existed.
+  const own = useOwnPhotos(shown.id)
+  const photos: CardPhoto[] = [
+    ...own.photos.map((photo) => ({ url: photo.url, taken: photo.taken, own: photo })),
+    ...cardPhotos(shown),
+  ]
+
+  // The keep-or-discard review for a just-picked photo (#571), plus the two
+  // notes around it: "shrinking" while the re-encode runs, and the sentence
+  // that says why a photo could not be taken in. The ref shadows the state
+  // so discard can revoke whatever is CURRENTLY under review from effect
+  // cleanups and late async arrivals without stale-closure risk.
+  const [review, setReview] = useState<PhotoReview | null>(null)
+  const reviewRef = useRef<PhotoReview | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [photoNote, setPhotoNote] = useState<string | null>(null)
+  const [removeArmed, setRemoveArmed] = useState(false)
+  const cameraInput = useRef<HTMLInputElement | null>(null)
+  const libraryInput = useRef<HTMLInputElement | null>(null)
+
+  // Which part the card is on, readable from async completions: a photo
+  // picked on the shelter must not attach its review to the privy a chip
+  // swap landed on while the re-encode was running.
+  const shownIdRef = useRef(shown.id)
+  shownIdRef.current = shown.id
+
+  const discardReview = useCallback(() => {
+    const dropped = reviewRef.current
+    if (dropped !== null) {
+      URL.revokeObjectURL(dropped.url)
+      if (dropped.originalUrl !== null) URL.revokeObjectURL(dropped.originalUrl)
+    }
+    reviewRef.current = null
+    setReview(null)
+  }, [])
+
+  // Swapping parts or waypoints drops an unkept review - nothing was
+  // written, so there is nothing to keep - and clears the notes with it.
+  // The cleanup shape means unmounting revokes too.
+  useEffect(() => {
+    setPhotoNote(null)
+    setRemoveArmed(false)
+    return discardReview
+  }, [shown.id, discardReview])
+
+  const pick = async (file: File | null, source: OwnPhotoSource) => {
+    if (file === null) return
+    // A second pick replaces the first: one review at a time.
+    discardReview()
+    setPhotoNote(null)
+    setPreparing(true)
+    try {
+      // The capture date comes off the ORIGINAL file, in parallel with the
+      // re-encode that destroys it - see lib/exifDate.ts.
+      const [blob, taken] = await Promise.all([
+        preparePhoto(file, CARD_PHOTO_EDGE),
+        exifCaptureDate(file),
+      ])
+      if (shownIdRef.current !== shown.id) return
+      const next: PhotoReview = {
+        url: URL.createObjectURL(blob),
+        blob,
+        taken,
+        source,
+        originalUrl: source === 'camera' ? URL.createObjectURL(file) : null,
+        originalName: file.name === '' ? 'photo.jpg' : file.name,
+      }
+      reviewRef.current = next
+      setReview(next)
+    } catch (error) {
+      setPhotoNote(
+        error instanceof PhotoUnusable
+          ? error.message
+          : 'That photo could not be prepared. Try another.',
+      )
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  const keep = async () => {
+    const kept = reviewRef.current
+    if (kept === null) return
+    try {
+      await own.add({ blob: kept.blob, taken: kept.taken, source: kept.source })
+      discardReview()
+      // Land on the front of the gallery, where the newly kept photo is
+      // (or, for an old import, where the newest of their photos is).
+      setPhotoIndex(0)
+    } catch {
+      // Storage refused - quota, private browsing, no IndexedDB. The review
+      // stays up so the hiker can still save the original or try again;
+      // saying "kept" and losing it would be the worse failure.
+      setPhotoNote('This phone could not store the photo, so nothing was kept.')
+    }
+  }
+
+  const removeOwn = async (id: string) => {
+    setRemoveArmed(false)
+    try {
+      await own.remove(id)
+      setPhotoIndex(0)
+    } catch {
+      setPhotoNote('This phone could not remove the photo.')
+    }
+  }
 
   // Which photo of this place is on screen. Reset when the card changes to a
   // different waypoint - opening a shelter after paging to photo 4 of the
@@ -540,6 +703,9 @@ export function PoiCard({
   // photograph of the privy comes up first.
   const [photoIndex, setPhotoIndex] = useState(0)
   useEffect(() => setPhotoIndex(0), [shown.id])
+
+  // A two-tap Remove disarms when the hiker moves on to another photo.
+  useEffect(() => setRemoveArmed(false), [photoIndex])
 
   // Guarded rather than trusted: a re-render with a shorter list (a fresh
   // download of the same waypoint) must not index off the end.
@@ -554,7 +720,22 @@ export function PoiCard({
 
   const accent = poiColor(shown.type)
   const showPhoto = current !== undefined && !photoFailed
-  const credit = current === undefined ? null : photoCredit(current)
+  // "Your photo" instead of an author for rung 1: the one photo on this card
+  // that needs no credit, because the hiker is looking at their own picture -
+  // but it is still dated, in the same month voice, because the honesty rule
+  // does not soften just because the photographer is the person reading it.
+  const credit =
+    current === undefined
+      ? null
+      : current.own !== undefined
+        ? ownCredit(current.own)
+        : photoCredit(current)
+  // The hiker's own photo currently on screen, when there is one and no
+  // review is covering the media box - what the manage strip renders for.
+  const ownShown = review === null && !photoFailed ? current?.own : undefined
+  // The month a Keep would date the photo, or null when the original
+  // carried no capture date (it is then dated by the day it is added).
+  const reviewMonth = review === null ? null : photoMonth(review.taken ?? undefined)
   // Controls only where they lead somewhere. Wrapping rather than disabling at
   // the ends: two photos and a dead "next" is a worse answer than a loop.
   const hasGallery = photos.length > 1
@@ -586,7 +767,18 @@ export function PoiCard({
       {/* Identified rather than anonymous, because the chips below claim to
           control it - see `aria-controls` there. */}
       <div className="poi-card__media" id={mediaId}>
-        {showPhoto ? (
+        {/* A just-picked photo under review covers the media box: the
+            preview IS the prepared rendering a Keep would store, so what
+            the hiker approves is what they get, byte for byte. Nothing has
+            been written yet - Discard drops it from memory. */}
+        {review !== null ? (
+          <img
+            className="poi-card__photo"
+            data-testid="poi-card-review-photo"
+            src={review.url}
+            alt="Photo you just picked, not yet kept"
+          />
+        ) : showPhoto ? (
           <img
             className="poi-card__photo"
             data-testid="poi-card-photo"
@@ -615,7 +807,8 @@ export function PoiCard({
             there. A link when the file page is known - full terms live
             there - and plain text when it is not, because a credit is owed
             either way. */}
-        {showPhoto &&
+        {review === null &&
+          showPhoto &&
           credit !== null &&
           (current.page !== undefined ? (
             <a
@@ -646,7 +839,7 @@ export function PoiCard({
 
             Gated on the list instead, so the arrows over a placeholder are the
             way out of a bad image rather than chrome over a blank. */}
-        {hasGallery && (
+        {review === null && hasGallery && (
           <div className="poi-card__gallery">
             <button
               type="button"
@@ -672,6 +865,32 @@ export function PoiCard({
           </div>
         )}
 
+        {/* Keep or throw away, over the preview where the decision is being
+            made. Two full-height targets rather than small chrome: this is
+            the control #571 wants reachable with a gloved thumb in sunlight
+            (#105), and mis-hitting Discard costs a re-take, not a photo -
+            nothing is written until Keep. */}
+        {review !== null && (
+          <div className="poi-card__review-bar">
+            <button
+              type="button"
+              className="poi-card__review-keep"
+              data-testid="poi-card-keep"
+              onClick={() => void keep()}
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              className="poi-card__review-discard"
+              data-testid="poi-card-discard"
+              onClick={discardReview}
+            >
+              Discard
+            </button>
+          </div>
+        )}
+
         <button type="button" className="poi-card__close" onClick={onClose}>
           <span className="visually-hidden">Close waypoint details</span>
           <span aria-hidden="true">×</span>
@@ -679,6 +898,50 @@ export function PoiCard({
       </div>
 
       <div className="poi-card__body" id={bodyId}>
+        {/* The strip under the hiker's own photo: the honesty sentence #573
+            puts here deliberately - "in the photo strip rather than a
+            settings page nobody opens" - and the two verbs #575 adds. "Show
+            on card" only where it changes anything: the first photo is
+            already the card photo. Remove takes a second tap to mean it,
+            because the stored copy of a camera capture may be the only copy
+            there is, and a gloved mis-hit must not be what deletes it. */}
+        {ownShown !== undefined && (
+          <div className="poi-card__own" data-testid="poi-card-own-strip">
+            <p className="poi-card__own-note">{ownPhotoDisclosure(ownShown.source)}</p>
+            <div className="poi-card__own-actions">
+              {current !== photos[0] && (
+                <button
+                  type="button"
+                  className="poi-card__own-action"
+                  data-testid="poi-card-choose"
+                  // Index first, choose second: choose() reorders the list
+                  // synchronously, so both land in this handler's batch and
+                  // the card repaints once, already showing the chosen
+                  // photo at the front. Waiting for the store round-trip
+                  // before moving the index would flash the old first
+                  // photo in between.
+                  onClick={() => {
+                    setPhotoIndex(0)
+                    void own.choose(ownShown.id)
+                  }}
+                >
+                  Show on card
+                </button>
+              )}
+              <button
+                type="button"
+                className="poi-card__own-action"
+                data-testid="poi-card-remove"
+                onClick={() =>
+                  removeArmed ? void removeOwn(ownShown.id) : setRemoveArmed(true)
+                }
+              >
+                {removeArmed ? 'Tap again to remove' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* The part on screen, not the site. features/POI_SITES.md's open
             question 5 asked whether the card names the place once at the top or
             re-names it per member, and the lines underneath decide it: the
@@ -936,6 +1199,106 @@ export function PoiCard({
         </p>
 
         {source !== null && <p className="poi-card__source">{`From ${source}.`}</p>}
+
+        {/* "The affordance sits on the card and waits" - two quiet buttons,
+            no prompt, no streak, no count (features/DATA_NUDGES.md under
+            value #1). Two rather than one because the paths differ in the
+            one fact #573's honesty line turns on: a library pick has its
+            original in the library, a camera capture may exist nowhere
+            else. The inputs are real file inputs so the OS brings its own
+            camera and picker; `capture` is a hint desktop browsers ignore,
+            which degrades to the picker - the conservative wording, not a
+            broken control. */}
+        {review === null && (
+          <div className="poi-card__add-photo">
+            <button
+              type="button"
+              className="poi-card__add-button"
+              data-testid="poi-card-take-photo"
+              onClick={() => cameraInput.current?.click()}
+            >
+              Take a photo
+            </button>
+            <button
+              type="button"
+              className="poi-card__add-button"
+              data-testid="poi-card-add-photo"
+              onClick={() => libraryInput.current?.click()}
+            >
+              Add from your photos
+            </button>
+          </div>
+        )}
+        <input
+          ref={cameraInput}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic"
+          capture="environment"
+          hidden
+          data-testid="poi-card-camera-input"
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null
+            // Cleared so picking the same file twice fires change twice - a
+            // hiker who discards and changes their mind picks it again.
+            event.target.value = ''
+            void pick(file, 'camera')
+          }}
+        />
+        <input
+          ref={libraryInput}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic"
+          hidden
+          data-testid="poi-card-library-input"
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null
+            event.target.value = ''
+            void pick(file, 'library')
+          }}
+        />
+
+        {preparing && (
+          <p className="poi-card__photo-note" role="status">
+            Shrinking the photo…
+          </p>
+        )}
+        {photoNote !== null && (
+          <p className="poi-card__photo-note" role="alert">
+            {photoNote}
+          </p>
+        )}
+
+        {/* What a Keep would do, said before it is done: the size is the
+            measured size of the exact bytes on screen, and the capture date
+            is shown where one was found so a wrong guess is caught at the
+            cheapest moment. GPS never made it into this copy - the re-encode
+            is the mechanism, reportPhoto.ts. */}
+        {review !== null && (
+          <p className="poi-card__photo-note" role="status">
+            {`Keep stores this ${Math.max(1, Math.round(review.blob.size / 1024))} KB copy on this phone${
+              reviewMonth === null ? '' : `, dated ${reviewMonth}`
+            }. Location details are not in it.`}
+          </p>
+        )}
+
+        {/* #573's web half: a photo taken through the app's camera exists
+            nowhere else, so the full-resolution original is offered HERE,
+            while it is still in hand. A browser cannot write to the photo
+            library; a download is what the platform allows, and the strip's
+            wording stays conditional either way. Library picks get no offer -
+            their original is already where it belongs. */}
+        {review !== null && review.originalUrl !== null && (
+          <p className="poi-card__photo-note">
+            <a
+              href={review.originalUrl}
+              download={review.originalName}
+              data-testid="poi-card-save-original"
+            >
+              Save the original to this phone
+            </a>
+            {' — OurHike keeps only the small copy.'}
+          </p>
+        )}
       </div>
     </div>
   )

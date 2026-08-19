@@ -43,6 +43,7 @@
 import { useEffect, useState } from 'react'
 import { formatBytes } from '../lib/formatBytes'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
+import { ownPhotoUsage } from '../lib/poiPhotos'
 import { useDesktop } from '../lib/useDesktop'
 import { facingFullDownload } from '../lib/backgroundStatus'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
@@ -117,9 +118,39 @@ function useAvailableBytes(): number | null {
   return available
 }
 
+/**
+ * What the hiker's own waypoint photos take, measured when the window opens.
+ *
+ * POI_PHOTOS.md's rule for them is visibility, not a cap: "they should be
+ * visible in storage management for the same reason everything else is."
+ * This screen is the app's storage management, so this is where the line
+ * lives. Null until answered or where there is nothing to say - a phone
+ * with no photos gets no line rather than a zero.
+ */
+function useOwnPhotoBytes(): { count: number; bytes: number } | null {
+  const [usage, setUsage] = useState<{ count: number; bytes: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ownPhotoUsage()
+      .then((measured) => {
+        if (!cancelled && measured.count > 0) setUsage(measured)
+      })
+      // No IndexedDB, or a read that failed: nothing to report is the
+      // honest state, and the line simply does not render.
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return usage
+}
+
 export function Downloads({ sheets, persistence = null }: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
+  const ownPhotos = useOwnPhotoBytes()
   const [openSheetId, setOpenSheetId] = useState(sheets[0]?.id ?? '')
 
   // The default sheet, whenever the id in state names none of the ones being
@@ -202,6 +233,19 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           </>
         )}
       </p>
+
+      {/* The hiker's own waypoint photos, stated beside the sheets rather
+          than inside them: they are not a package with a lifecycle, just
+          bytes worth being able to see (POI_PHOTOS.md - visible, never
+          capped). Removal stays on each waypoint's card, where the photo
+          and the person who took it are. */}
+      {ownPhotos !== null && (
+        <p className="downloads__own-photos" data-testid="downloads-own-photos">
+          {`Your waypoint photos: ${ownPhotos.count === 1 ? 'one photo' : `${ownPhotos.count} photos`} · ${formatBytes(
+            ownPhotos.bytes,
+          )} on this phone. Remove one from its waypoint's card.`}
+        </p>
+      )}
 
       {sheets.length > 1 ? (
         <Tabs

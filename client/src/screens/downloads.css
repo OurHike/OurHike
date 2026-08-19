@@ -69,6 +69,13 @@
   color: var(--fg-2);
   font-size: 14px;
 }
+/* The hiker's own waypoint photos, measured (Downloads.tsx). A statement,
+   not a control - removal lives on each waypoint's card. */
+.downloads__own-photos {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: 12px;
+}
 /* One downloadable thing (#192). */
 .downloads__item {
   display: flex;

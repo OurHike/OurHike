@@ -142,13 +142,23 @@ the waypoint card and the backend photo store.
 collide:
 
 - **Capture and local storage** — #571, #578, #575, #573, #360. Client only.
-- **Sharing and moderation** — #576, #577, #579, #570. Backend plus the share sheet.
+- **Sharing and moderation** — #576, #577, #579, #837, plus #836 on the pipeline side.
+  Backend plus the share sheet.
 - **Library import** — #361. Independent of both.
 
-**Three of these are decisions, not builds, and they gate the rest:** #568 (video/GIF?),
-#569 (Tramily-scoped sharing?) and #570 (screening before community). **Answer them before
-building the sharing branch** — #570 especially, because "screen before it can reach the
-community" is either in the submission path or it is nowhere.
+**Where this stands, 2026-08-19.** The capture branch is built — PR #834 closes #571,
+#575, #573 and #568, and delivers #578's device half (#578 stays open for the community
+rung, which needs #576). The three gating decisions are all taken by the maintainer, in
+session, and recorded in POI_PHOTOS.md: **#568** (2026-08-18) — a short silent looping
+clip only; **#569** (2026-08-19) — sharing is one CC BY-SA 4.0 licence event whatever the
+audience, Tramily included; **#570** (2026-08-19) — screening flags for a human and never
+decides, split per its deliverable into
+**#836 — Run a face-and-nudity check over the Commons fetch, where a stranger's
+self-portrait can become a town's illustration** (pipeline, belongs with this group's
+sharing work in sequence but touches only `fetch_poi_images.py`) and
+**#837 — On-device screening at the share sheet: friction and a queue flag, never a
+refusal** (lands with #577). **The sharing branch is unblocked** and is the natural next
+body of work here; #361 still waits on #101's native pickers.
 
 ## E. Offline coverage in pieces
 
@@ -549,9 +559,11 @@ in one sitting rather than discovered one at a time.
 
 1. **#552 — Decide the unit of offline coverage.** Blocks four issues in group E. This is
    the single highest-leverage answer on the list.
-2. **#568, #569, #570** — video/GIF, Tramily-scoped sharing, and screening before a photo
-   reaches the community. Blocks the sharing half of group D. #570 in particular is either
-   in the submission path or it does not exist.
+2. ~~**#568, #569, #570** — video/GIF, Tramily-scoped sharing, and screening before a photo
+   reaches the community.~~ **Answered 2026-08-18/19, by the maintainer in session, all
+   three** — a short silent looping clip only; one CC BY-SA licence event whatever the
+   audience; flag-for-a-human, never block (split into #836 and #837). Recorded in
+   POI_PHOTOS.md, and group D's sharing branch is unblocked.
 3. ~~**Is NYNJTC's non-AT network actually coming soon?**~~ **Answered 2026-08-18: yes,
    and the scope is wider than NYNJTC** — the maintainer's call recorded in **#768 — v2:
    trails within reach of NYC — the AT stops being the only trail on the map** targets the

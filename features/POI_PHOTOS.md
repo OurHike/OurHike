@@ -4,7 +4,7 @@ Companion to [FEATURES.md](../FEATURES.md), [WIREFRAMES.md](../WIREFRAMES.md) (t
 
 **This doc owns one square of screen:** the photo slot on the waypoint card, and everything that can legitimately fill it. Three sources can, and they are not equals — a hiker's own photo of the shelter where they met their tramily is not the same kind of object as a stranger's geotagged upload, and the design turns on that difference rather than treating all pixels alike.
 
-**Built today:** the Commons source only (`pipeline/fetch_poi_images.py`, the `photo_*` properties, the card's credit line), with its images served from our own bucket (#362). Everything under "Your own photo" and "Sharing" is designed here and not implemented — the design doc is the first contribution, per CONTRIBUTING.md.
+**Built today:** the Commons source (`pipeline/fetch_poi_images.py`, the `photo_*` properties, the card's credit line) with its images served from our own bucket (#362), ATC's facility photos (`fetch_atc_photos.py`, rung 3), and the **private half of "Your own photo"** — capture from the card with a keep-or-discard review (#571), several per place with a sticky choice of which one the card shows (#575), rendered as rung 1 ahead of everything else (#578's device half), with the archive-honesty behaviour #573 asked for (see "not a photo archive" below). Everything under "Sharing" is designed here and not implemented.
 
 ---
 
@@ -145,6 +145,12 @@ An app that stores the only copy of someone's memories has taken on a duty it is
 
 The one thing this genuinely gives up is a hiker who deletes a photo from their library and expected OurHike to still have it in full resolution. That is the correct thing to give up: the alternative is being the archive, and the moment this app is somebody's archive it has acquired an obligation it should never have taken.
 
+**Scoped 2026-08-19 (#573): the three claims above are true of a photo picked from the library, and were false of one taken through the app's camera.** A capture that only ever existed as the 640px rendering has no original anywhere — OurHike would be holding the only copy of somebody's memory, at a fraction of its resolution, under a strip telling them otherwise. What the build does about it, per path:
+
+- **A camera capture's full-resolution original is offered for saving at the review step**, while it is still in hand. On the web build that is a download, because a browser cannot write to the photo library; in the packaged app the same offer becomes a real save to the library (Capacitor's `saveToGallery`, with #101). Whether the packaged app saves by default — #573 argues on, with one visible line saying so — is decided when #101 wires the capability; the web build has no silent path to default either way, since a download is always the hiker's tap.
+- **The strip's sentence is conditional on the path** rather than one promise for both: a library pick reads *"your library has the original"*; a camera capture reads *"unless you saved the original, this small copy is the only one."* The hiker who declined the save is exactly the person OurHike is holding the only copy for, and exactly the person the strip must not reassure.
+- **The full-resolution frame is not retained.** OurHike keeps the 640px rendering and nothing else, whichever way the offer went — holding the original "for a while" is the archive by another name, and the offer at the moment of capture is what keeps the promise while the frame is still saveable.
+
 ---
 
 ### Bringing photos in from a library, and matching them by where they were taken
@@ -175,6 +181,8 @@ Three constraints to design against rather than discover:
 A photo is private when added. Sharing is a second decision, taken per photo, that a hiker can decline forever without the app mentioning it again. The share sheet says in plain words what happens: **other hikers will see this photo on this waypoint, attributed to your trail name.** Value #9's "clear expectations, no incentives to overshare" is the rule being followed, and it is the reason there is no "share all", no default-on toggle, and no count of how many photos anyone has shared.
 
 Sharing queues in the existing outbox (`lib/outbox.ts`) like every other write, so tapping it on a ridge is fine — it leaves when there is signal.
+
+**Decided 2026-08-19 by the maintainer, in session, on [#569 — Decide whether a photo can be shared with a Tramily rather than with everyone](https://github.com/OurHike/OurHike/issues/569): sharing is one licence event whatever the audience.** A photo shared with a Tramily is released under CC BY-SA 4.0 exactly as a public share is — the alternative reading, a private revocable surface with no licence event, was put to the maintainer explicitly and declined. Two consequences follow directly, and the share sheet may not soften either: there is no lighter-weight share whose terms differ, so the irrevocability sentence below is said for every audience; and the "what cannot be taken back" half of the sheet applies to a Tramily share in full. What stays with the Tramily build (COMMUNITY_BUILDING.md, post-MVP, unbuilt): whether a Tramily-shared photo counts against the 15, what moderation reaches it, and where it renders — #569's questions 2–4, now constrained by this answer rather than deciding it.
 
 ### The shape of a POI's gallery: 3 pinned, 12 rolling, one per person
 
@@ -236,7 +244,23 @@ A shared photo is credited to the photographer's **trail name**, never a real na
 
 This is the same instinct that already governs the pipeline, where `fetch_opentrail.py` drops user comments as "personal contributions from named individuals — a consent concern separate from and in addition to the licensing question." A photo carries more of that than a comment does.
 
-Photos of identifiable people are a moderation matter and a share-sheet warning, not something a client-side check can solve. The queue exists; this is one more thing it looks at.
+**Screening for people and nudity: decided 2026-08-19 by the maintainer, in session, on [#570 — Screen a photo for nudity and faces before it can reach the community](https://github.com/OurHike/OurHike/issues/570): a detector flags for a human, it never decides — nudity included.** This replaces the sentence that used to close the question here ("not something a client-side check can solve" — written before shipping an on-device vision model was ordinary), and it keeps that sentence's underlying point: the check informs, a person judges. The hard-gate alternative was put to the maintainer explicitly and declined — a refusal with no appeal, on a ridge, from a model that will be wrong sometimes, is the app being wrong at somebody who knows better. The posture lands as two builds, split by path because their constraints differ:
+
+- **Fetch time, first** — [#836 — Run a face-and-nudity check over the Commons fetch, where a stranger's self-portrait can become a town's illustration](https://github.com/OurHike/OurHike/issues/836). The Commons rung is the path with live exposure and no human in it (the `David Rudmin` case above), a workstation can carry a heavy model, and a flagged file waits for a human look before export — no hiker is present to be refused, so holding is not gating.
+- **Share time** — [#837 — On-device screening at the share sheet: friction and a queue flag, never a refusal](https://github.com/OurHike/OurHike/issues/837). Plain words at the sheet about what was detected, before anything irrevocable, and a priority flag that sorts the moderation queue; whether a machine-flagged share is held from the rolling 12 until one human glance is that build's design question.
+
+### Moving images: yes, in exactly one constrained form
+
+**Decided 2026-08-18 by the maintainer, on [#568 — Decide whether a waypoint photo may ever be a video or a GIF](https://github.com/OurHike/OurHike/issues/568): a waypoint photo may be a short, silent, looping clip. No audio, no arbitrary video.** The reasoning is documentation: a loop of a ford's current, a blowdown, or an eroded stretch documents a condition better than a still can, and the feature should push toward better documentation of the trail. This section is the record #568 asked for — silence was being read as "no", and now the next person to ask finds an answer instead.
+
+What the decision deliberately leaves to whoever builds it, settled in design before code:
+
+- **The length and byte caps, and the container** — including whether "GIF" is ever literally GIF or always a muted `<video>` loop (a GIF is a still-image container for storage and a moving image for moderation, so the container choice decides which rules reach it).
+- **How a clip counts against the shared gallery's caps**, if clips are ever shareable at all.
+- **Whether screening (#570) needs anything beyond what stills need** — whatever screens a photo is per-frame, and a clip is hundreds of frames.
+- **The privacy mechanism, which is the real blocker to any build.** A still's GPS answer is structural — the canvas re-encode produces a file that never had EXIF. There is no canvas for video; stripping location from an MP4/MOV container is real work with real ways to miss a box, and "we will remove it after you send it" stays a promise this doc refuses to make. Until a clip can be produced on-device with the same never-had-it property, clips stay capture-and-keep at most, and nothing moving reaches a share path.
+
+Audience questions (a clip to a Tramily versus to everyone) stay with [#569 — Decide whether a photo can be shared with a Tramily rather than with everyone](https://github.com/OurHike/OurHike/issues/569).
 
 ### Licence: shared photos are CC BY-SA 4.0
 

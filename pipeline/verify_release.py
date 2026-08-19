@@ -1000,16 +1000,19 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
         a card that renders nothing, and the count is small enough that
         completeness is checkable rather than sampled.
 
-    A release with no tombstone artifact is not a failure: nothing has been
-    retired yet in a bucket seeded before #673, and the client treats an
-    absent artifact as "no tombstones" the same way it treats spurs.json.
-    It is only a failure once the ledger says otherwise.
+    A release with no tombstone artifact is not a failure when the ledger has
+    retired nothing: the two agree, which is the whole assertion. That is an
+    OK and deliberately not a SKIPPED - this module's header says a skip means
+    "the check did not run", and `--strict` turns every one into a failure for
+    exactly that reason. This check ran; it found nothing to publish and
+    nothing published. Calling that a skip would fail the gate on every
+    healthy release until the ATC first drops a place.
     """
     key = "retired_poi.geojson"
     retired = {poi_id: row for poi_id, row in pois.items() if "retired" in row}
     if key not in manifest["artifacts"]:
         if not retired:
-            return [_report(21, key, SKIPPED, "nothing retired yet, so no tombstones to publish")]
+            return [_report(21, key, OK, "the ledger has retired nothing, and no tombstones are published")]
         return [
             _report(
                 21,

@@ -289,6 +289,36 @@ describe('ElevationChart', () => {
     ).not.toBeInTheDocument()
   })
 
+  it("prices the stretch at the hiker's own pace, and says what it moved from", () => {
+    // 50 mi at 2.5 mph is 1,200 min; 600 ft of climb at the standard 600 m/h
+    // adds 18.3 - ≈20h 20m once rounded to the 5-minute step. The baseline
+    // rides beside it, welded on by paceEstimate (#886): an adjusted time
+    // must never render without saying what it was adjusted from.
+    const { rerender } = render(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+        pace={{ flatPaceMph: 2.5, ascentMetersPerHour: 600 }}
+      />,
+    )
+
+    expect(screen.getByText('≈20h 20m walking')).toBeInTheDocument()
+    expect(screen.getByText('was ≈16h 25m · 1.2× standard')).toBeInTheDocument()
+
+    // At the standard pace the line vanishes rather than reading "1.0×" - a
+    // caveat on every line reads exactly like a caveat on none.
+    rerender(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+      />,
+    )
+    expect(screen.getByText('≈16h 25m walking')).toBeInTheDocument()
+    expect(screen.queryByText(/standard/)).not.toBeInTheDocument()
+  })
+
   it('reports zoom acts so the screen can move the map with the chart', async () => {
     const onZoomDomain = vi.fn()
     render(

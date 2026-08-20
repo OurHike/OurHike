@@ -33,10 +33,14 @@
 // clearing is the builder's job and the Clear button steps aside. With the
 // props absent the chart owns its own state, exactly as before.
 //
-// The time is Naismith moving time: rounded to 5 minutes, prefixed ≈, never
-// an arrival clock, no descent credit - WIREFRAMES.md's load-bearing values,
+// The time is moving time: rounded to 5 minutes, prefixed ≈, never an
+// arrival clock, no descent credit - WIREFRAMES.md's load-bearing values,
 // unchanged up here. "walking" is appended so a desk reader is told it is
-// moving time, per HIKE_PLANNING.md Finding 4's honesty requirement.
+// moving time, per HIKE_PLANNING.md Finding 4's honesty requirement. It is
+// priced at the HIKER'S pace when one is set (#886, closing the gap #884
+// and #885 opened by crossing), and then it cannot render without its
+// baseline - paceEstimate welds the "was ... × standard" line to the text
+// at the type level, exactly as the highlight sheet shows it.
 
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
@@ -52,7 +56,7 @@ import {
   type ChartDomain,
 } from '../lib/chartProfile'
 import { legFigures } from '../lib/route'
-import { formatNaismithMinutes } from '../lib/naismith'
+import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 
 const VIEW_W = 1000
@@ -112,6 +116,10 @@ export interface ElevationChartProps {
   /** Offered beside a settled measurement: hand this stretch to the route
    *  builder. Hidden while the selection already IS the route. */
   onPlanStretch?: () => void
+  /** The hiker's own pace (#880), pricing the ≈time exactly as the route
+   *  builder prices its legs - the two share a selection now, so they must
+   *  not disagree about the same walk (#886). Standard when absent. */
+  pace?: PaceProfile
 }
 
 /** A mile POSITION, printed the way the position line, PoiCard and the
@@ -148,6 +156,7 @@ export function ElevationChart({
   selectionFromPlan = false,
   onZoomDomain,
   onPlanStretch,
+  pace = STANDARD_PACE,
 }: ElevationChartProps) {
   const [zoom, setZoom] = useState<ChartDomain | null>(null)
   const [hoverMile, setHoverMile] = useState<number | null>(null)
@@ -426,10 +435,20 @@ export function ElevationChart({
   const figures = useMemo(() => {
     if (settled === null) return null
     const { startMile, endMile } = settled
-    return sobo
-      ? legFigures(profile, endMile, startMile)
-      : legFigures(profile, startMile, endMile)
-  }, [settled, sobo, profile])
+    const walked = sobo
+      ? legFigures(profile, endMile, startMile, pace)
+      : legFigures(profile, startMile, endMile, pace)
+    // The printed time and its baseline, welded together (#886): the same
+    // distance and ascent legFigures just measured, priced by paceEstimate so
+    // a non-standard pace cannot render without its "was ... × standard".
+    return {
+      ...walked,
+      estimate: paceEstimate(
+        { distanceMi: walked.distanceMi, ascentFt: walked.ascentFt },
+        pace,
+      ),
+    }
+  }, [settled, sobo, profile, pace])
 
   if (domain === null || drawn === null) return null
 
@@ -482,8 +501,13 @@ export function ElevationChart({
                   ↓ {formatElevation(figures.descentFt, units)}
                 </span>
                 <span className="elevation-chart__mono elevation-chart__figure--strong">
-                  {formatNaismithMinutes(figures.minutes)} walking
+                  {figures.estimate.text} walking
                 </span>
+                {figures.estimate.relativeLine !== null && (
+                  <span className="elevation-chart__pace">
+                    {figures.estimate.relativeLine}
+                  </span>
+                )}
                 <button
                   type="button"
                   className="elevation-chart__control"

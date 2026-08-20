@@ -963,6 +963,30 @@ describe('the desktop chart (#135)', () => {
     }
   })
 
+  it("threads the hiker's pace through to the chart's figures", () => {
+    // The screen's ramp climbs 10 ft/mi, so 20-70 is 50 mi and 500 ft: at
+    // 2.5 mph flat that reads ≈20h 15m against a ≈16h 20m standard (#886).
+    const restore = stubDesktop()
+    try {
+      render(
+        <MapScreen
+          {...PROPS}
+          chart={{
+            ...chartProps(),
+            selection: { startMile: 20, endMile: 70 },
+            southbound: false,
+            pace: { flatPaceMph: 2.5, ascentMetersPerHour: 600 },
+          }}
+        />,
+      )
+
+      expect(screen.getByText('≈20h 15m walking')).toBeInTheDocument()
+      expect(screen.getByText('was ≈16h 20m · 1.2× standard')).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
   it('moves the camera with "Zoom to stretch" and back out with "Whole trail"', async () => {
     const restore = stubDesktop()
     try {

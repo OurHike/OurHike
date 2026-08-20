@@ -433,6 +433,16 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(club_manifest.read_text())
         artifacts["club_sections.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The curated highlights, if export_highlights.py has run (#595,
+    # features/CORRIDOR_VIEW.md). Same shape again, and the same reason a run
+    # that changes nothing uploads nothing - which matters more here than for
+    # its siblings, because the editorial list changes a row at a time while
+    # the miles under it move whenever ATC re-surveys.
+    highlights_manifest = PROCESSED_DIR / "highlights_manifest.json"
+    if highlights_manifest.exists():
+        manifest = json.loads(highlights_manifest.read_text())
+        artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The tombstones: every POI id ever retired, so an id that has been
     # published once always resolves to something (#673,
     # features/POI_IDENTITY.md). Deliberately NOT named `poi_retired.geojson`

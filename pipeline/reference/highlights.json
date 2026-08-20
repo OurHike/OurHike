@@ -1,0 +1,218 @@
+{
+  "_README": [
+    "The curated highlight list (features/CORRIDOR_VIEW.md, #595): stretches of",
+    "trail somebody says are worth going to, with what that claim rests on.",
+    "",
+    "THIS FILE IS EDITORIAL AND SAYS SO. Every entry here carries basis",
+    "'named', which in the app reads as 'we put this on a list of well-known",
+    "routes - an editorial call, not a measurement'. It is deliberately the",
+    "weakest of the three bases. An entry ATC themselves publish as a day hike",
+    "is basis 'published' and cites ATC instead; the two coexist on one record",
+    "and the app cites the stronger.",
+    "",
+    "WHY THE MILES ARE NOT IN HERE. A leg names two POIs and no numbers.",
+    "export_highlights.py resolves them against the PUBLISHED POI records to",
+    "get the miles, exactly as export_spurs.py resolves a spur's destination",
+    "and for the same reason: the ids have to be the ones already on the",
+    "device. It also means the mile range is ATC's own measurement rather than",
+    "somebody typing a figure out of a guidebook into this file.",
+    "",
+    "WHY BOTH ENDS ARE THINGS ATC NAMED. Every anchor below is a feature ATC's",
+    "own layers carry a name for - a summit, and the trailhead parking that",
+    "serves it. That does not make the SELECTION anybody's but ours; it makes",
+    "the two ends checkable, and it keeps this file from inventing places. The",
+    "`anchors` block repeats those names in words so a reviewer reading a diff",
+    "can see what an id refers to without resolving it.",
+    "",
+    "WHAT IS STILL MISSING. features/CORRIDOR_VIEW.md's target is about thirty",
+    "entries, one per maintaining club, because that is the unit that maps to",
+    "volunteering. There are ten here. The clubs with none are not an oversight",
+    "to be filled quietly - export_highlights.py prints them on every run, and",
+    "adding one is a row somebody has to stand behind.",
+    "",
+    "Reviewed row by row. That is the whole reason this is committed rather",
+    "than generated - see .github/tests/test_no_committed_data.py."
+  ],
+  "highlights": [
+    {
+      "id": "mcafee-knob",
+      "name": "McAfee Knob",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:a697ee8c-84c5-4a79-bb92-669df0fdcdbb",
+          "to_poi": "atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76"
+        }
+      ],
+      "anchors": {
+        "from": "McAfee Knob (VA Rte 311) Parking Area",
+        "to": "McAfee Knob Summit"
+      },
+      "note": "The most photographed spot on the A.T.; the ledge appears on ATC's own materials and on the cover of most guides.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "wayah-bald",
+      "name": "Wayah Bald",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:c96c012d-8bba-4a33-8123-9336763658f5",
+          "to_poi": "atc_viewpoints:7d146f32-87a7-4db0-92e4-a1a8024cceba"
+        }
+      ],
+      "anchors": {
+        "from": "Wayah Bald Roadside Parking Area",
+        "to": "Wayah Bald Summit"
+      },
+      "note": "A stone observation tower on a bald reachable from the road, long a standard first-week landmark in North Carolina.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "the-priest",
+      "name": "The Priest",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:4d223f6f-0d31-4987-bab5-66f6f13585ad",
+          "to_poi": "atc_viewpoints:51f2cc0d-240f-49f7-a322-727f28c293c5"
+        }
+      ],
+      "anchors": {
+        "from": "Crabtree Meadows (USFS 263) Parking Area",
+        "to": "The Priest Summit"
+      },
+      "note": "Roughly 3,000 ft of climb over four miles; known among thru-hikers by name rather than by mile.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "stony-man",
+      "name": "Stony Man",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:2cf395e7-60f3-4b3a-ba1c-9b056ef62e33",
+          "to_poi": "atc_viewpoints:1b5f57a5-89f1-42e3-8763-4f3a403a8bc9"
+        }
+      ],
+      "anchors": {
+        "from": "SHEN - Nature Trail Parking Area",
+        "to": "Stony Man Summit"
+      },
+      "note": "The short cliff-top walk in Shenandoah that most day visitors to the park are pointed at.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "killington",
+      "name": "Killington Peak",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:d6e87512-6eb7-48c0-91a6-6d7636467840",
+          "to_poi": "atc_viewpoints:8ad44321-1d4f-4cd3-b607-c8ae8b27f76d"
+        }
+      ],
+      "anchors": {
+        "from": "Kent Pond Access Parking Area",
+        "to": "Killington Summit"
+      },
+      "note": "Vermont's second-highest summit, a named side trip off the A.T. that predates the trail itself.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "mahoosuc-arm",
+      "name": "Mahoosuc Arm",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:4cb35a7f-3065-45d1-bfd8-4a7a448fc16c",
+          "to_poi": "atc_viewpoints:7080fc75-015a-4db5-8109-ee1088e003a6"
+        }
+      ],
+      "anchors": {
+        "from": "Grafton Notch (NH Rte 26) Parking Area",
+        "to": "Mahoosuc Arm Summit"
+      },
+      "note": "The climb out of Mahoosuc Notch, routinely named alongside the Notch as the hardest ground in Maine.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "baldpate-east",
+      "name": "Baldpate East Peak",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:4cb35a7f-3065-45d1-bfd8-4a7a448fc16c",
+          "to_poi": "atc_viewpoints:a1283651-75c6-45f4-9e2e-808478484c26"
+        }
+      ],
+      "anchors": {
+        "from": "Grafton Notch (NH Rte 26) Parking Area",
+        "to": "Baldpate East Peak Summit"
+      },
+      "note": "Open ledge above Grafton Notch, one of the standard day hikes from that trailhead.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "saddleback",
+      "name": "Saddleback Mountain",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:9b40bc53-7995-4ba0-8e54-32100e619019",
+          "to_poi": "atc_viewpoints:7c910160-1267-497f-9152-bbc0dbde3d45"
+        }
+      ],
+      "anchors": {
+        "from": "ME Rte 4 Parking Area",
+        "to": "Saddleback Summit"
+      },
+      "note": "Miles of open ridge above treeline, among the most exposed walking in Maine.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "old-blue",
+      "name": "Old Blue Mountain",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:ebf0f0b9-d57d-4927-89e7-ee537f301aac",
+          "to_poi": "atc_viewpoints:f44bc796-6b7e-4845-adca-fcab9ec453b0"
+        }
+      ],
+      "anchors": {
+        "from": "South Arm Rd Parking Area",
+        "to": "Old Blue Summit"
+      },
+      "note": "A short steep climb to an open summit, the usual day objective from South Arm Road.",
+      "reviewed": "2026-08-20"
+    },
+    {
+      "id": "moxie-bald",
+      "name": "Moxie Bald",
+      "basis": "named",
+      "legs": [
+        {
+          "trail": "AT",
+          "from_poi": "atc_parking:576a0fde-c3b4-42e6-9f5e-db9ff0c4e830",
+          "to_poi": "atc_viewpoints:9eec2ae1-1a69-4250-aa06-89635882f8d7"
+        }
+      ],
+      "anchors": {
+        "from": "Troutdale Rd Jo's Hole Parking Area",
+        "to": "Moxie Bald Summit"
+      },
+      "note": "Bare granite summit in the Hundred-Mile Wilderness approach, named on ATC's own layer.",
+      "reviewed": "2026-08-20"
+    }
+  ]
+}

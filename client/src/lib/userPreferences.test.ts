@@ -6,6 +6,7 @@ import {
   PREFERENCE_KEYS,
   type UserPreferences,
 } from './userPreferences'
+import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
 
 // TESTING.md invariant 16, asserted where it says to assert it: on the
 // SCHEMA, not the DOM. "No closures toggle rendered on the settings screen"
@@ -143,5 +144,17 @@ describe('map appearance (MAP_STYLE_SPEC.md)', () => {
 
   it('defaults layer detail to standard - borders off, everything else on', () => {
     expect(DEFAULT_PREFERENCES.layer_detail_level).toBe('standard')
+  })
+})
+
+describe('waypoints shown by default (#865)', () => {
+  it('defaults to the curated subset, not every category', () => {
+    expect([...DEFAULT_PREFERENCES.waypoint_types_shown].sort()).toEqual(
+      ['campsite', 'privy', 'shelter', 'water'].sort(),
+    )
+  })
+
+  it('is the same list lib/waypointVisibility.ts exports, not a second copy', () => {
+    expect(DEFAULT_PREFERENCES.waypoint_types_shown).toEqual([...DEFAULT_SHOWN_TYPES])
   })
 })

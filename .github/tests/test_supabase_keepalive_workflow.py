@@ -161,6 +161,9 @@ SCHEDULED_ROSTER = {
     "publish-conditions.yml": "bakes verified closures and reports daily, through the conditions reader credentials",
     "schema-drift.yml": "reads both databases' schemas daily through the migration pooler URLs; deliberately not a "
     "keepalive (its SUPABASE_URL is a placeholder), but scheduled database activity all the same",
+    "check-auth-redirects.yml": "GET /auth/v1/verify daily (#488) - GoTrue queries its own auth schema tables to "
+    "reject the junk token, which is real database activity even though the point of the probe is the redirect "
+    "allow-list, not keeping the project awake",
 }
 
 

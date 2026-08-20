@@ -22,13 +22,19 @@
 // and how it is SPELLED by one edited two years ago, and a hiker reading a club
 // name is entitled to know which half they are looking at.
 //
-// The artifact does not carry those dates. `club_sections.json`'s `sources`
-// block names the layer KEYS and nothing else; the two edit dates were measured
-// by hand when #594 was written and live in export_club_sections.py's docstring.
-// So this file names the sources and stops there. Printing a date nobody
-// published would be exactly the confident-claim-nobody-checked failure
-// CLAUDE.md's evidence rule exists to prevent, and the dates are worth having -
-// the fix is the exporter publishing them, not the client inventing them.
+// The dates now arrive in the artifact (#852). `export_club_sections.py` reads
+// each layer's `dataLastEditDate` from the raw manifest fetch_all.py already
+// writes, and publishes it under `source_edited` keyed by layer.
+//
+// Before that they were measured by hand when #594 was written and lived in a
+// docstring, so this file named its sources and stopped - printing a date
+// nobody published would have been the confident-claim-nobody-checked failure
+// CLAUDE.md's evidence rule exists to prevent. That restraint is still here,
+// one step further along: a release that carries no date for a layer prints
+// none, and the line falls back to naming the source alone. It is the same
+// sentence it was, not a shorter one - so an artifact downloaded before #852,
+// or a layer whose edit-date lookup failed upstream, degrades to exactly the
+// behaviour this file already had rather than to a gap.
 
 import { clubRunAtMile, type ClubRun, type ClubSections } from './clubSections'
 import { unattributedTotal } from './clubSections'
@@ -96,6 +102,48 @@ function sourceLabel(key: string | null): string | null {
   return CLUB_SOURCE_LABELS[key] ?? key
 }
 
+/** "4 Aug 2026" from an ISO day, or null for anything else - never today's
+ *  date, which would be a claim nobody made. */
+function formatEditedDay(iso: string | undefined): string | null {
+  if (iso === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
+  const [year, month, day] = iso.split('-').map(Number)
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ]
+  const name = months[month - 1]
+  if (name === undefined) return null
+  return `${day} ${name} ${year}`
+}
+
+/**
+ * "the ATC's trail centerline, 4 Aug 2026", or the label alone.
+ *
+ * The date is appended, never substituted: a release that does not carry one
+ * prints the sentence this file printed before #852 rather than a gap. That is
+ * what lets an older download and a failed upstream lookup both degrade to
+ * something true instead of something missing.
+ */
+function sourcePhrase(
+  key: string | null,
+  edited: Readonly<Record<string, string>>,
+): string | null {
+  const label = sourceLabel(key)
+  if (label === null) return null
+  const day = key === null ? null : formatEditedDay(edited[key])
+  return day === null ? label : `${label}, ${day}`
+}
+
 /** A mile marker, grouped with one decimal - the rendering lineDetail.ts,
  *  PoiCard and the position line all give a mile, so every surface in the app
  *  shows one number. */
@@ -137,8 +185,8 @@ export function buildClubDetail(
 
   const rangeLine = `mi ${formatMileMarker(run.startMile)} – ${formatMileMarker(run.endMile)}`
   const attributionSourceLine = (() => {
-    const label = sourceLabel(sections.sources.attribution)
-    return label === null ? null : `Who maintains it: ${label}`
+    const phrase = sourcePhrase(sections.sources.attribution, sections.sourceEdited)
+    return phrase === null ? null : `Who maintains it: ${phrase}`
   })()
 
   if (run.club === null) {
@@ -164,7 +212,7 @@ export function buildClubDetail(
 
   const club = run.club
   const sectionCount = club.runs.length
-  const nameLabel = sourceLabel(sections.sources.names)
+  const namePhrase = sourcePhrase(sections.sources.names, sections.sourceEdited)
 
   return {
     heading: club.name,
@@ -182,9 +230,9 @@ export function buildClubDetail(
     // source, two lines naming it twice would imply a corroboration that is
     // not there.
     nameSourceLine:
-      nameLabel === null || sections.sources.names === sections.sources.attribution
+      namePhrase === null || sections.sources.names === sections.sources.attribution
         ? null
-        : `Club name: ${nameLabel}`,
+        : `Club name: ${namePhrase}`,
     walkedLine,
   }
 }

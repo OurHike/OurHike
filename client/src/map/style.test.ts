@@ -12,6 +12,8 @@ import {
   TRAILS_SOURCE_ID,
   BLAZE_LAYER_ID,
   TRAIL_CASING_LAYER_ID,
+  TRAIL_OVERVIEW_LAYER_ID,
+  TRAIL_OVERVIEW_SOURCE_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
   CENTERLINE_SOURCE,
@@ -274,6 +276,48 @@ describe('buildMapStyle', () => {
 
       expect(overhang).toBe(CASING_OVERHANG)
     }
+  })
+
+  it('draws the corridor-view sketch under the real trail, never over it', () => {
+    // They overlap for one frame at most - the shell clears the sketch when
+    // the real line lands (lib/useTrailData.ts) - and in that frame the real
+    // line is what a hiker sees.
+    const ids = style().layers.map((l) => l.id)
+
+    expect(ids.indexOf(TRAIL_OVERVIEW_LAYER_ID)).toBeGreaterThan(-1)
+    expect(ids.indexOf(TRAIL_OVERVIEW_LAYER_ID)).toBeLessThan(
+      ids.indexOf(TRAIL_CASING_LAYER_ID),
+    )
+  })
+
+  it('stops drawing that sketch at the pin seam, where 100 m starts to show', () => {
+    // THE assertion in this pair (#869). No point on the overview is more
+    // than 100 m from the surveyed centerline, which is 0.43 px at the seam
+    // and 14 px at z14 - a trail drawn somewhere it does not go. The seam is
+    // the same constant the waypoints use, because it is the same question:
+    // above it the map stops being an overview and starts being something a
+    // hiker reads a position off.
+    expect(layer(TRAIL_OVERVIEW_LAYER_ID).maxzoom).toBe(POI_PIN_MIN_ZOOM)
+  })
+
+  it('paints the sketch with the trail expressions rather than a second set', () => {
+    // The swap has to be invisible: same colour, same width, off the same two
+    // published properties. Two appearances would be two things to keep in
+    // step, and the drift would show as the line changing when the real one
+    // arrives.
+    const sketch = layer(TRAIL_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
+    const blaze = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
+
+    expect(sketch['line-color']).toEqual(blaze['line-color'])
+    expect(sketch['line-width']).toEqual(blaze['line-width'])
+  })
+
+  it('opens with an empty sketch, so a launch with no overview draws nothing', () => {
+    const source = style().sources[TRAIL_OVERVIEW_SOURCE_ID] as {
+      data: { features: unknown[] }
+    }
+
+    expect(source.data.features).toEqual([])
   })
 
   it('renders the topo raster beneath every trail layer', () => {

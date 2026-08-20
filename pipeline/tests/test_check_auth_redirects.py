@@ -32,6 +32,7 @@ from check_auth_redirects import (
     lookalike_of,
     project_origins,
     redirect_globs,
+    sibling_of,
     site_origin,
     site_url,
     verdict_document,
@@ -155,6 +156,26 @@ class TestTheDeclarationItself:
         broken = {**MANIFEST, "supabase_projects": {"production": {"site_url_origin": "https://nowhere.example"}}}
         with pytest.raises(KeyError):
             site_url(broken, "production")
+
+
+class TestTheSiblingProbe:
+    def test_a_fixed_pattern_probes_its_own_leftmost_label(self):
+        # UA's declared pattern names one exact hostname - the label an
+        # attacker cannot register without it already resolving to their own
+        # content is the one worth replacing.
+        assert sibling_of(UA["pattern"], UA["probe"]) == "https://ourhike-allowlist-probe-not-ours.ourhike-preview.pages.dev/"
+
+    def test_a_wildcard_pattern_probes_one_label_further_up(self):
+        # PREVIEW's pattern is itself `*.ourhike-preview.pages.dev` - Supabase
+        # confirms `*` never crosses the `.` separator, so ANY single label in
+        # that position (a real PR number or this probe's) is something the
+        # correct pattern is meant to accept. Replacing labels[0] here would
+        # build a hostname the origin's own pattern is supposed to allow -
+        # exactly what cried wolf against the real project on 2026-08-20, the
+        # first time this probe ever ran for real. Replacing one label further
+        # up asks the question that actually distinguishes a correctly-scoped
+        # wildcard from one leaked to the shared `pages.dev` suffix.
+        assert sibling_of(PREVIEW["pattern"], PREVIEW["probe"]) == "https://pr-1.ourhike-allowlist-probe-not-ours.pages.dev/"
 
 
 class TestTheLookalikeProbe:
@@ -281,7 +302,7 @@ class TestTheFaultsThisExistsFor:
 
         assert by_target["https://not-ourhike.probe.invalid/"] == OK, "the widened glob is invisible to this probe"
         assert by_target["https://ourhike.github.io.probe.invalid/"] == OK, "and to this one"
-        assert by_target["https://ourhike-allowlist-probe-not-ours.ourhike-preview.pages.dev/"] == FAILED
+        assert by_target["https://pr-1.ourhike-allowlist-probe-not-ours.pages.dev/"] == FAILED
 
     def test_sibling_probes_are_deduplicated_across_origins_sharing_a_parent(self, requests_mock):
         fake_project(requests_mock, PROD_BASE, allowed=PROD_ALLOWED, site=PROD_SITE)

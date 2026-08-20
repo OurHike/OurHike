@@ -65,7 +65,7 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
   background_source: hiking_topo_live | usgs_topo_offline  (default: hiking_topo_live)
   max_background_zoom: 11 | 12 | 13
   show_roads: bool                               (default: false)
-  waypoint_types_shown: set of POI types         (default: all)
+  waypoint_types_shown: set of POI types         (default: shelter, water, campsite, privy)
   layer_detail_level: minimal | standard | full
   auto_rotate_enabled: bool                      (default: false)
 

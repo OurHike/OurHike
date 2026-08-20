@@ -198,7 +198,8 @@ Not enforceable by a regex, and just as load-bearing:
    the convention is checked against reality rather than against itself.
 5. If it is not fetchable by every client that will ask for it, the client treats its
    absence as "this release has no such data" rather than as a failed download — the way
-   `spurs.json` and `elevation_profile.json` are already handled in `lib/trailData.ts`.
+   `spurs.json` and `elevation_profile.json` are already handled in `lib/trailData.ts`,
+   and `trails_overview.geojson` in `lib/trailOverview.ts`.
 
 ## Enforcement
 

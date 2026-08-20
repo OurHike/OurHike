@@ -28,6 +28,7 @@ import {
   ELEVATION_KEY,
   POI_TYPES,
   CLUB_SECTIONS_KEY,
+  HIGHLIGHTS_KEY,
   poiKey,
   SPURS_KEY,
   TRAILS_KEY,
@@ -39,6 +40,7 @@ import {
   storedClubSections,
   type ClubSections,
 } from './clubSections'
+import { parseHighlights, storedHighlights, type Highlight } from './highlights'
 import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
@@ -51,6 +53,7 @@ export const POIS_KEY = 'ourhike:pois'
 export const SPURS_STORE_KEY = 'ourhike:spurs'
 export const ELEVATION_STORE_KEY = 'ourhike:elevation'
 export const CLUB_SECTIONS_STORE_KEY = 'ourhike:club-sections'
+export const HIGHLIGHTS_STORE_KEY = 'ourhike:highlights'
 
 export interface StoredPoi {
   id: string
@@ -227,6 +230,10 @@ export interface TrailData {
    *  export_club_sections.py existed, which costs the corridor view its
    *  subject and nothing else - the trail still draws, in its blaze. */
   clubSections: ClubSections
+  /** Stretches worth going to. Empty for a release built before
+   *  export_highlights.py existed, which costs the corridor view its second
+   *  subject and nothing else. */
+  highlights: Highlight[]
 }
 
 interface PoiProperties {
@@ -574,8 +581,13 @@ interface FetchedArtifact {
  * (21.5 MB): vendored JS 624 ms against native 60 ms, a 10.4x difference, all
  * of the former synchronous on the thread that is also drawing the map. A
  * phone is materially slower than the machine those numbers came from.
+ *
+ * Exported for lib/trailOverview.ts, which holds the corridor-view centerline
+ * to the same published hash every other drawn artifact is held to - one home
+ * for the decision above rather than a second copy of it that could quietly
+ * fall back to the vendored fold.
  */
-async function sha256Of(bytes: Uint8Array): Promise<string> {
+export async function sha256Of(bytes: Uint8Array): Promise<string> {
   const subtle = globalThis.crypto?.subtle
   // Absent on http:// origins and in some test environments. The fallback is
   // the same algorithm over the same bytes, so this is a speed decision and
@@ -745,6 +757,20 @@ async function fetchClubSections(
   return parseClubSections(JSON.parse(decode(fetched.bytes)) as unknown)
 }
 
+/** The curated highlights, or nothing when this release does not publish them.
+ *
+ *  A 404 is treated the way fetchSpurs() treats one, for the reason every
+ *  optional artifact here is: a phone pointed at an older release should still
+ *  get its trails, its POIs and its club sections. */
+async function fetchHighlights(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<Highlight[]> {
+  const fetched = await fetchOptionalArtifact(HIGHLIGHTS_KEY, expected, signal)
+  if (fetched === null) return []
+  return parseHighlights(JSON.parse(decode(fetched.bytes)) as unknown)
+}
+
 /** The elevation profile, or null when this release does not publish one.
  *
  *  A 404 is treated the way fetchSpurs() treats one, for the same reason:
@@ -846,7 +872,7 @@ export async function downloadTrailData({
   // Still all-or-nothing: `Promise.all` rejects on the first failure and
   // nothing below commits, which is the property the `set()` calls at the end
   // depend on.
-  const [poiGroups, spurs, clubSections] = await Promise.all([
+  const [poiGroups, spurs, clubSections, highlights] = await Promise.all([
     Promise.all(
       POI_TYPES.map(async (type) => {
         const fetched = await fetchArtifact(poiKey(type), expected, signal)
@@ -863,6 +889,10 @@ export async function downloadTrailData({
     // round trip of dead time for 30 clubs' worth of JSON.
     fetchClubSections(expected, signal).then((value) => {
       finished('Maintaining clubs')
+      return value
+    }),
+    fetchHighlights(expected, signal).then((value) => {
+      finished('Highlights')
       return value
     }),
   ])
@@ -895,6 +925,7 @@ export async function downloadTrailData({
   await set(POIS_KEY, pois)
   await set(SPURS_STORE_KEY, spurs)
   await set(CLUB_SECTIONS_STORE_KEY, clubSections)
+  await set(HIGHLIGHTS_STORE_KEY, highlights)
   await set(ELEVATION_STORE_KEY, elevation)
   // Recorded beside the bytes it describes, and only here: whether the
   // trails just stored have the merged-chain shape decides the map's
@@ -966,7 +997,8 @@ export async function loadTrailData(): Promise<TrailData | null> {
   // was written by whatever version of this app was installed then, and the
   // corridor view reads it on every camera move.
   const clubSections = storedClubSections(await get(CLUB_SECTIONS_STORE_KEY))
-  return { trails, pois, spurs, elevation, clubSections }
+  const highlights = storedHighlights(await get(HIGHLIGHTS_STORE_KEY))
+  return { trails, pois, spurs, elevation, clubSections, highlights }
 }
 
 /**
@@ -986,6 +1018,7 @@ export async function deleteTrailData(): Promise<void> {
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
   await del(CLUB_SECTIONS_STORE_KEY)
+  await del(HIGHLIGHTS_STORE_KEY)
   await del(ELEVATION_STORE_KEY)
   // No data, no claim about how much of it is here (#863) - the same
   // reasoning as clearTrailsMerged() below.

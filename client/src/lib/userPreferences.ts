@@ -11,6 +11,8 @@
 // build is stronger than a control nobody has built yet. The backend guards
 // the same line with `extra="forbid"`.
 
+import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
+
 /** As a value list like BACKGROUND_SOURCES below, and for the same reason:
  *  preferences.ts drops stored values this build does not know, and it can
  *  only check against a list that exists at runtime. */
@@ -205,7 +207,9 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   red_light_enabled: false,
   show_roads: false,
   drought_layer_shown: false,
-  waypoint_types_shown: [],
+  // The curated subset, not `[]` (all) - lib/waypointVisibility.ts's
+  // DEFAULT_SHOWN_TYPES and the maintainer decision behind it (#865).
+  waypoint_types_shown: [...DEFAULT_SHOWN_TYPES],
   layer_detail_level: 'standard',
   auto_rotate_enabled: false,
 

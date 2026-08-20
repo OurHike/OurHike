@@ -15,6 +15,12 @@ name: Supabase config check
 # algorithm the backend does not accept, and AUTH_PROVIDERS naming a provider
 # whose credentials do not exist. Each of those reaches a hiker as "cannot
 # sign in" and none of them is visible to a unit test.
+#
+# The redirect-allow-list probe - tier 3 of #431 - used to live here as a
+# manual-only sibling job. #488 gave it its own daily schedule, which meant
+# its own file: check-auth-redirects.yml, so a schedule on this workflow does
+# not also put the auth-settings check below on a cron nobody decided for it.
+# pipeline/check_auth_redirects.py has the mechanism in full.
 on:
   workflow_dispatch:
 
@@ -49,81 +55,3 @@ jobs:
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
           AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
         run: python check_supabase_config.py
-
-  # Tier 3 of #431, tracked in #467: the second reader of
-  # .github/expected-origins.yml, against Supabase's redirect allow-list
-  # rather than R2's CORS one.
-  #
-  # HOW IT READS A LIST THE API DOES NOT PUBLISH. #467 expected this to be
-  # "declare and diff what we can", because the settings document the job above
-  # reads carries no redirect information. It does not - but the allow-list is
-  # observable in BEHAVIOUR, which is better than reading it for the same
-  # reason tier 1 sends a real `Origin` instead of reading a policy document.
-  # `GET /auth/v1/verify` with a junk token redirects to the requested URL when
-  # that URL is allowed, and falls back to the project's Site URL when it is
-  # not. pipeline/check_auth_redirects.py has the mechanism in full.
-  #
-  # It found production's allow-list and Site URL still naming the
-  # pre-org-migration Pages host - which by then answered 404 - so every
-  # sign-in from production was redirecting to a dead host with the auth code
-  # in the URL, while the map and the bucket were both fine.
-  #
-  # WHY IT IS NOT SCHEDULED, WHICH IS A REAL COST AND NOT AN OVERSIGHT. Its two
-  # siblings run daily, and this fault is exactly the kind a daily run catches:
-  # a dashboard drifts on a day nobody touches the repository.
-  # `.github/tests/test_supabase_keepalive_workflow.py` allows exactly one
-  # scheduled workflow to reach the Supabase project - a free-plan project
-  # needs one job keeping it awake and gains nothing from a second - and that
-  # guard is addressed to precisely this situation. Loosening it to fit a new
-  # check in would be the wrong way round. #488 is where scheduling gets
-  # decided on its own terms.
-  #
-  # It holds no credential beyond the anon key that already ships inside the
-  # client bundle, and it writes nothing: a junk token verifies as expired, and
-  # where the failure is DELIVERED is the whole answer.
-  redirects:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: pipeline
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
-      # requests and PyYAML only. The script reads the same declaration tier 1
-      # reads, with the same parser - a second parser for one file is how two
-      # readers start disagreeing about what it says.
-      - name: Install dependencies
-        run: python -m pip install --quiet requests pyyaml
-
-      # `shell: bash` for `-o pipefail` - see #514. This job is a diagnostic
-      # that reports by exiting non-zero, and `| tee` would take its status
-      # from `tee` instead, so a crashing check would report success.
-      - name: Ask whether a sign-in can still come back
-        shell: bash
-        env:
-          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
-          UA_SUPABASE_URL: ${{ vars.UA_SUPABASE_URL }}
-          UA_SUPABASE_ANON_KEY: ${{ vars.UA_SUPABASE_ANON_KEY }}
-        run: python check_auth_redirects.py --json auth-redirects.json | tee auth-redirects.txt
-
-      - name: Write the job summary
-        if: always()
-        run: |
-          {
-            echo "## Auth redirects"
-            echo
-            if [ -f auth-redirects.txt ]; then
-              echo '```'
-              cat auth-redirects.txt
-              echo '```'
-            else
-              echo "The check did not produce a report. See the step log above."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"

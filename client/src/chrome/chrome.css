@@ -1168,6 +1168,55 @@
   color: var(--fg-2);
 }
 
+/* The derived numbers (#858): distance, ascent and the Naismith time, worked
+   out on the phone rather than published. Mono and tabular so the figures line
+   up between one highlight's sheet and the next. */
+.closure-sheet__derived {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+/* Which basis the claim rests on - one chip, never two, because two would read
+   as two sources agreeing (lib/highlights.ts's strongestBasis). */
+.closure-sheet__basis {
+  margin: 0;
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 1px solid var(--border-2);
+  border-radius: 2px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* The estimate above does not fit this ground (#851). Carries the warning
+   colour because it is the one line on this sheet a hiker cannot afford to
+   skim past - it sits directly under the numbers it qualifies. */
+.closure-sheet__caution {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* One row per leg, for a highlight that crosses trails. */
+.closure-sheet__legs {
+  margin: 0;
+  padding: 0 0 0 var(--space-3, 12px);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 2px solid var(--border-1);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
 .closure-sheet__link {
   font-size: 14px;
   color: var(--link);

@@ -61,10 +61,27 @@ export interface ClubSectionSources {
   miles: string | null
 }
 
+/**
+ * When each of those layers was last edited, as an ISO day, keyed by the same
+ * layer names `sources` uses (#852).
+ *
+ * Keyed by LAYER, not by the role it plays, because the date is a property of
+ * the layer - the exporter's reason, and it means a lookup is
+ * `editedBy[sources.attribution]`.
+ *
+ * A layer with no usable date is ABSENT. So is the whole block, in every
+ * artifact published before #852 - and those releases keep working, which is
+ * the point: the date drops out of the sentence and the sentence still names
+ * its source.
+ */
+export type ClubSectionEditDates = Readonly<Record<string, string>>
+
 export interface ClubSections {
   clubs: ClubSection[]
   unattributed: MileRange[]
   sources: ClubSectionSources
+  /** Empty for any release that does not carry the dates. */
+  sourceEdited: ClubSectionEditDates
 }
 
 /**
@@ -80,6 +97,7 @@ export const EMPTY_CLUB_SECTIONS: ClubSections = {
   clubs: [],
   unattributed: [],
   sources: { attribution: null, names: null, miles: null },
+  sourceEdited: {},
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -141,6 +159,30 @@ function parseClub(value: unknown): ClubSection | null {
  * same restraint lib/trailData.ts's fetchSpurs applies, for the same reason -
  * a corridor the map cannot attribute is still a corridor worth drawing.
  */
+/**
+ * The published edit dates, keeping only what is an ISO day.
+ *
+ * A shape check rather than trust, for the reason every parser in this file
+ * has one: the artifact is a download, and a value that is not a date has no
+ * honest rendering. It is dropped, which lands it in the case the sheet
+ * already handles - a source named and not dated.
+ *
+ * The day is NOT range-checked beyond its shape. `2026-02-31` would survive
+ * here and read as nonsense on the sheet; it would also mean ATC's own
+ * FeatureServer returned an impossible instant, which is not a failure this
+ * can repair and not one worth a second sentence about.
+ */
+function parseEditDates(raw: unknown): ClubSectionEditDates {
+  if (!isRecord(raw)) return {}
+  const dates: Record<string, string> = {}
+  for (const [layer, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      dates[layer] = value
+    }
+  }
+  return dates
+}
+
 export function parseClubSections(raw: unknown): ClubSections {
   if (!isRecord(raw)) return EMPTY_CLUB_SECTIONS
   const sources = isRecord(raw.sources) ? raw.sources : {}
@@ -155,6 +197,7 @@ export function parseClubSections(raw: unknown): ClubSections {
       names: optionalString(sources.names),
       miles: optionalString(sources.miles),
     },
+    sourceEdited: parseEditDates(raw.source_edited),
   }
 }
 
@@ -178,7 +221,16 @@ export function storedClubSections(value: unknown): ClubSections {
   ) {
     return EMPTY_CLUB_SECTIONS
   }
-  return value as unknown as ClubSections
+  return {
+    ...(value as unknown as ClubSections),
+    // Filled in rather than cast through, because what IndexedDB holds may
+    // have been written by the app version BEFORE #852, which stored no such
+    // key. The cast would hand back `undefined` here and the first
+    // `sourceEdited[...]` lookup would throw - on a hiker whose only crime was
+    // updating the app without re-downloading the corridor. Re-checked rather
+    // than trusted for the same reason the parser checks it.
+    sourceEdited: parseEditDates((value as { sourceEdited?: unknown }).sourceEdited),
+  }
 }
 
 /**

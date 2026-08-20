@@ -511,6 +511,128 @@ def write_trails(con: duckdb.DuckDBPyConnection, records: list[dict]) -> dict:
     }
 
 
+"""The corridor-view centerline (#869).
+
+WHY A SECOND, COARSER COPY OF THE SAME LINE
+-------------------------------------------
+`trails.geojson` is 12,304,418 bytes, 4,143,296 of them gzipped (measured
+against the live bucket 2026-08-20). At 12 Mbps that is ~2.8 s of transfer
+before a phone can draw the trail at all, and a first run's three entry steps
+take about eight seconds to click through - so the newcomer reads three
+sentences about a map over an empty background. #863 took the first line from
+~12 s to ~5 s by committing the centerline the moment it arrives; the
+remaining five seconds are mostly those megabytes, and no amount of client
+work makes them smaller.
+
+This is the artifact that makes them smaller. Centerline only, simplified
+hard, and merged into ONE feature, because at the zoom first run opens at the
+whole trail is a few hundred pixels of line.
+
+Measured the same day, against the same published centerline (219,341
+vertices across 3,025 features):
+
+    tolerance     vertices      bytes    gzipped   worst departure
+    1 m (shipped)  219,341   12.3 MB     4.14 MB   -
+    100 m            9,989    0.19 MB   51,068 B   100 m
+    250 m            7,173    0.14 MB   35,049 B   250 m
+    500 m            6,375    0.13 MB   30,217 B   500 m
+
+**81x smaller at 100 m**, which at 12 Mbps is ~34 ms of transfer - less than
+the round trip that fetches it.
+
+WHY 100 m AND NOT COARSER
+-------------------------
+The 16 KB between 100 m and 250 m is about ten milliseconds on the wire, and
+buys back 150 m of fidelity. Douglas-Peucker's guarantee is that no point
+moves further than the tolerance, so 100 m is exactly the worst this line is
+ever wrong by - which is 0.013 px at the corridor view (z4, ~7.5 km per pixel
+at A.T. latitudes) and 0.43 px at the pin seam (z9, ~234 m per pixel).
+
+Above that seam it stops being a sketch and starts being a claim: 3.4 px out
+at z12, 14 px at z14. The client does not draw it above the seam and drops it
+the moment the real centerline lands - map/style.ts holds that end of the
+bargain, and this file's tolerance is why the seam is where it is.
+
+WHY ONE FEATURE
+---------------
+Per-feature JSON overhead, not vertices, is most of what is left after
+simplifying: at 250 m the 3,025 feature wrappers were 466 KB of a 525 KB
+file. One MultiLineString with one property set drops all of it. Nothing
+reads this artifact per-feature - it is a shape to draw, never a trail to
+identify - so the identity the merge costs is identity nobody wants here.
+
+The chain merge upstream (#161) exists for a different reason and is not a
+substitute: it keeps whole features above geojson-vt's drop bar. A single
+MultiLineString of the entire trail is far above that bar by construction.
+
+WHY IT IS WRITTEN HERE RATHER THAN THROUGH DUCKDB
+-------------------------------------------------
+Coordinate precision. GDAL's GeoJSON driver writes seven decimals, and at
+this tolerance four (about 11 m, still finer than the 100 m the geometry is
+good to) is 51,068 gzipped bytes against 61,480 - a fifth of the file, for
+digits that describe survey noise the simplification has already discarded.
+The driver takes a precision option; DuckDB's COPY does not pass one
+through, and one feature is a JSON document this file can simply write.
+"""
+
+# Ten times the pin seam's pixel, and the number the client's `maxzoom` on
+# this layer is reasoned from - see the block above before changing either.
+OVERVIEW_SIMPLIFY_TOLERANCE_M = 100.0
+
+# Enough to place the trail, not enough to survey it. Four decimals is ~11 m
+# of longitude at A.T. latitudes, an order finer than the tolerance above.
+OVERVIEW_COORDINATE_DECIMALS = 4
+
+
+def _overview_coordinates(geom, decimals: int) -> list[list[list[float]]]:
+    """Every line in `geom` as rounded [lon, lat] pairs."""
+    return [[[round(x, decimals), round(y, decimals)] for x, y in line.coords] for line in _component_lines(geom)]
+
+
+def write_overview(records: list[dict]) -> dict:
+    """Write the corridor-view centerline to OUT_DIR, and return its manifest
+    entry.
+
+    Takes the SAME records the full export publishes, after clipping and the
+    1 m simplification, so the two artifacts can never describe different
+    trails - this is that line with vertices removed, not a second derivation
+    of it.
+    """
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    centerline = [r for r in records if r["source"] in CHAIN_MERGED_SOURCES]
+    coarse = simplify_records(centerline, OVERVIEW_SIMPLIFY_TOLERANCE_M)
+
+    lines: list[list[list[float]]] = []
+    for record in coarse:
+        lines.extend(_overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS))
+
+    # One feature, and the two properties the client's line styling reads
+    # (map/style.ts keys width and sort order off `source`, colour off
+    # `blaze_color`) - so the sketch is drawn by the same expressions as the
+    # real line rather than by a second set that could drift from it.
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"source": "centerline", "blaze_color": "White"},
+                "geometry": {"type": "MultiLineString", "coordinates": lines},
+            }
+        ],
+    }
+    path = OUT_DIR / "trails_overview.geojson"
+    path.write_text(json.dumps(body, separators=(",", ":")))
+
+    return {
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "feature_count": 1,
+        "line_count": len(lines),
+        "coordinate_count": sum(len(line) for line in lines),
+        "tolerance_m": OVERVIEW_SIMPLIFY_TOLERANCE_M,
+    }
+
+
 def _total_coordinates(records: list[dict]) -> int:
     """Vertex count across an export, for the reduction line main() prints."""
     total = 0
@@ -574,6 +696,10 @@ def main() -> dict:
         print(f"  {_chain_drop_bar_report(merged)}")
 
     manifest = write_trails(con, merged)
+    # From `simplified` rather than from `merged`: the overview simplifies the
+    # same geometry a second time, and Douglas-Peucker on the merged chains
+    # would give the same vertices for more work.
+    manifest["overview"] = write_overview(simplified)
     # The published feature count changed meaning with the merge, so the
     # counts a drop-detector should compare across it are recorded too:
     # `constituent_count` is what feature_count used to be (per-segment,
@@ -582,6 +708,11 @@ def main() -> dict:
     manifest["constituent_count"] = len(simplified)
     manifest["chain_counts"] = {source: s["chains"] for source, s in chain_stats.items()}
     print(f"  trails: {len(merged)} features -> {OUT_DIR / 'trails'}.{{geojson,fgb}}")
+    overview = manifest["overview"]
+    print(
+        f"  overview: {overview['coordinate_count']:,} coordinates in {overview['line_count']} lines "
+        f"at {overview['tolerance_m']:g} m -> {overview['path']}"
+    )
 
     manifest_path = OUT_DIR / "trails_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

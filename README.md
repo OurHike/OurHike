@@ -4,7 +4,7 @@ Hike your own hike & connect with communities that maintain our trails
 
 An offline-first map for the Appalachian Trail — topo background, water sources, shelters, campsites and resupply, elevation profiles, and a way to report what you find out there back to the people who maintain it. Built as a PWA, wrapped for iOS and Android, and designed from the start to be handed to another club rather than owned by whoever wrote it.
 
-**Status:** launched — v1.0.0 ("Springer Mountain") shipped 2026-08-16: the data is published to the public bucket, the app is live at [ourhike.org](https://ourhike.org), and [releases/v1.0.0-springer-mountain.md](releases/v1.0.0-springer-mountain.md) is the record. Not yet real: the backend is not hosted anywhere (#600), real OAuth has never been exercised end to end (#92), and the migration has never been applied to Supabase's Postgres. Contributing paths therefore wait on ops work, while the map itself is live.
+**Status:** launched — v1.0.0 ("Springer Mountain") shipped 2026-08-16: the data is published to the public bucket, the app is live at [ourhike.org](https://ourhike.org), and [releases/v1.0.0-springer-mountain.md](releases/v1.0.0-springer-mountain.md) is the record. Not yet real: the backend is not hosted anywhere (#600), and Apple sign-in has never been exercised end to end — Google's half verified live against the real project (#92). The migration is applied to both real Supabase projects (#95); production trails UA by a few revisions pending a deliberate `migrate.yml` dispatch, the normal BEHIND state rather than a gap. Contributing paths therefore wait on #600, while the map itself is live.
 
 ## Where to start
 

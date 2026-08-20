@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  DEFAULT_SHOWN_TYPES,
   HIDEABLE_TYPES,
   hiddenTypesFrom,
   isFiltered,
@@ -17,8 +18,9 @@ import { NEVER_HIDEABLE } from './legendContents'
 
 describe('hiddenTypesFrom', () => {
   it('hides nothing when the preference is empty', () => {
-    // `[]` means ALL, which is what a fresh install has and what it has always
-    // meant. Reading it as "show nothing" would open the app to a blank map.
+    // `[]` means ALL, which is what it has always meant - though a fresh
+    // install no longer starts there (see DEFAULT_SHOWN_TYPES below).
+    // Reading `[]` as "show nothing" would open the app to a blank map.
     expect(hiddenTypesFrom([]).size).toBe(0)
   })
 
@@ -173,5 +175,26 @@ describe('HIDEABLE_TYPES', () => {
     // verify_release.py parses to know which artifacts a release must publish.
     expect(HIDEABLE_TYPES).toContain('privy')
     expect(HIDEABLE_TYPES).toContain('water')
+  })
+})
+
+describe('DEFAULT_SHOWN_TYPES (#865)', () => {
+  it('is exactly shelter, water, campsite and privy', () => {
+    expect([...DEFAULT_SHOWN_TYPES].sort()).toEqual(
+      ['campsite', 'privy', 'shelter', 'water'].sort(),
+    )
+  })
+
+  it('only names categories a release actually serves', () => {
+    for (const type of DEFAULT_SHOWN_TYPES) expect(HIDEABLE_TYPES).toContain(type)
+  })
+
+  it('hides exactly the other four when used as the stored preference', () => {
+    // What a fresh install's map actually draws: resupply, crossing, viewpoint
+    // and parking start off, same as if a hiker had toggled them off by hand.
+    const hidden = hiddenTypesFrom(DEFAULT_SHOWN_TYPES)
+    expect([...hidden].sort()).toEqual(
+      ['crossing', 'parking', 'resupply', 'viewpoint'].sort(),
+    )
   })
 })

@@ -43,6 +43,30 @@ export function archiveKey(level: DetailLevel): string {
 
 export const TRAILS_KEY = 'trails.geojson'
 
+/**
+ * The corridor-view centerline: the same trail, simplified to 100 m and
+ * merged into one feature (pipeline/export_trails.py's write_overview, #869).
+ *
+ * 51,068 gzipped bytes against `trails.geojson`'s 4,143,296, measured against
+ * the live bucket 2026-08-20 - 81x smaller, which at 12 Mbps is about 34 ms
+ * of transfer against 2.8 s. That difference is the whole point: a first run
+ * spends its three entry steps looking at the map behind them, and the real
+ * centerline cannot arrive inside them.
+ *
+ * NOT NAVIGATION DATA, and the client has to keep that true. No point on it
+ * is more than 100 m from the surveyed line, which is 0.013 px at the
+ * corridor view and 0.43 px at the pin seam - and 14 px at z14, which is a
+ * line in the wrong place. So it is drawn only below the seam
+ * (map/style.ts's TRAIL_OVERVIEW_LAYER_ID), dropped the moment the real
+ * centerline is on the map, and never stored: a phone with no signal has no
+ * trail line, exactly as before, because what it is missing is the real one.
+ *
+ * Absent from a release exported before it existed, which reads as "no
+ * overview" rather than as a failure - the same rule spurs.json and
+ * elevation_profile.json already follow.
+ */
+export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the
@@ -70,6 +94,18 @@ export const SPURS_KEY = 'spurs.json'
 // lib/trailData.ts treats as "no attribution" rather than a failed download -
 // the same way spurs.json is treated.
 export const CLUB_SECTIONS_KEY = 'club_sections.json'
+
+// Stretches of trail somebody says are worth going to, published by
+// pipeline/export_highlights.py (#595): a name, ordered legs, and which basis
+// the claim rests on.
+//
+// Small, keyed, and separate for the same reason club_sections.json is - and
+// it carries no length, ascent or time, because the phone derives all three
+// from the elevation profile it already holds (features/CORRIDOR_VIEW.md).
+//
+// Absent from releases built before that exporter, which lib/trailData.ts
+// treats as "nothing to explore yet" rather than a failed download.
+export const HIGHLIGHTS_KEY = 'highlights.json'
 
 // The along-the-trail elevation profile, published by
 // pipeline/export_elevation.py: ~141,000 {distance_mi, elevation_ft} samples at

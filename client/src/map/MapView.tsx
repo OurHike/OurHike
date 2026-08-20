@@ -27,7 +27,12 @@ import { registerPMTilesProtocol } from './protocol'
 import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
 import { readTrailsMerged } from '../lib/trailShape'
-import { attachMapAppearance, attachTrailData, buildMapStyle } from './style'
+import {
+  attachMapAppearance,
+  attachTrailData,
+  attachTrailOverview,
+  buildMapStyle,
+} from './style'
 import { attachMapDetail } from './mapDetail'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachLiveSourceHealth, type SourceReport } from './liveSourceHealth'
@@ -44,6 +49,7 @@ import {
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import {
   attachCorridorData,
+  attachHighlightTaps,
   EMPTY_CORRIDOR,
   type CorridorFeatureCollection,
 } from './corridorLayers'
@@ -73,6 +79,16 @@ export interface MapViewProps {
    * lines come back from IndexedDB, a beat after the map is built.
    */
   trailsUrl: string
+  /**
+   * The corridor-view centerline, while there is no real one (#869).
+   *
+   * Null once the shell has the real line - or has decided there is no sketch
+   * to draw - and clearing it is the point rather than an edge case: this is
+   * a line that is only true at the zooms it is drawn at, and it stops being
+   * drawn the moment something better arrives. lib/config.ts's
+   * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
+   */
+  overviewTrailsUrl?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -119,6 +135,9 @@ export interface MapViewProps {
    * centerline index belongs to the shell. See map/corridorLayers.ts.
    */
   corridor?: CorridorFeatureCollection
+  /** Told which highlight mark a tap landed on, or null for a miss - which is
+   *  how the sheet closes on a tap elsewhere (#858). */
+  onSelectHighlight?: (id: string | null) => void
   /**
    * This week's drought bands, already as published polygons (#720).
    *
@@ -304,6 +323,7 @@ export function MapView({
   topoArchiveUrl,
   trailsUrl,
   background = 'hiking_topo_live',
+  overviewTrailsUrl = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -313,6 +333,7 @@ export function MapView({
   // object literal in a default would be a new identity every render, and the
   // effect below would re-push it to MapLibre on each one.
   corridor = EMPTY_CORRIDOR,
+  onSelectHighlight,
   drought = NO_DROUGHT,
   showDrought = false,
   atcUpdates = NO_ATC_UPDATES,
@@ -567,6 +588,16 @@ export function MapView({
     return attachTrailData(map, trailsUrl)
   }, [map, trailsUrl])
 
+  // The sketch that stands in for the trail line until it arrives, on the
+  // same seam as the lines above: a GeoJSON source takes a URL in place, and
+  // takes an empty collection to say it is done. Its own effect because it
+  // moves on a different clock from the real line - it is set once early and
+  // cleared once, where the real one is set once and stays.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailOverview(map, overviewTrailsUrl)
+  }, [map, overviewTrailsUrl])
+
   // Three separate effects rather than one, because they change on different
   // clocks: the pin images are built once and never again, while the source and
   // the filter both move when the hiker taps a legend row. Folding them together
@@ -635,6 +666,11 @@ export function MapView({
     if (map === null) return
     return attachCorridorData(map, corridor)
   }, [map, corridor])
+
+  useEffect(() => {
+    if (map === null || onSelectHighlight === undefined) return
+    return attachHighlightTaps(map, onSelectHighlight)
+  }, [map, onSelectHighlight])
 
   // Two effects rather than one, and deliberately: the bands arrive from the
   // network once and the switch moves whenever a hiker taps it. Folding them

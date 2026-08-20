@@ -296,7 +296,7 @@ The reads double as the live RLS check — see 5a.
 
 ## 5. First database migration
 
-The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py` — and, with the row-level-security revision on top of it, now runs against a real Postgres as part of the test suite (`backend/tests/test_migrations.py`: `upgrade head`, RLS flags read back from `pg_class`, `downgrade base`, and `alembic check` for drift). It has still never been applied to *Supabase's* Postgres, which is what this step is.
+The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py` — and, with the row-level-security revision on top of it, now runs against a real Postgres as part of the test suite (`backend/tests/test_migrations.py`: `upgrade head`, RLS flags read back from `pg_class`, `downgrade base`, and `alembic check` for drift). It is now applied to *Supabase's* Postgres too, on both real projects — confirmed 2026-08-20 (#95): UA is at head, production is a few revisions behind pending the next deliberate dispatch (RELEASING.md 8c). What follows is the mechanism, for running it again whenever a new revision needs to reach either one.
 
 **This is now two repository secrets, not a command you run.** `.github/workflows/migrate.yml` applies the chain; what is left for you is pasting the connection strings once, the same shape of job as the R2 credentials in 1.3:
 

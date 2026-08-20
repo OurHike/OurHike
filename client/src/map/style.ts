@@ -81,6 +81,7 @@ import {
   buildPoiLayer,
   buildPoiSource,
   buildPoiStalenessLayer,
+  POI_PIN_MIN_ZOOM,
   POI_SOURCE_ID,
 } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
@@ -101,11 +102,13 @@ import type { ContourUnits, TerrainUrls } from './terrain'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
+export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
 
 export const BACKDROP_LAYER_ID = 'backdrop'
 export const TOPO_LAYER_ID = 'topo'
 export const TRAIL_CASING_LAYER_ID = 'trail-casing'
 export const BLAZE_LAYER_ID = 'trail-blaze'
+export const TRAIL_OVERVIEW_LAYER_ID = 'trail-overview-line'
 
 /**
  * What the map paints wherever it has no topo ink to paint.
@@ -279,6 +282,17 @@ export function trailCasingColor(appearance: SheetAppearance): string {
  */
 export const RED_LIGHT_BLAZE_COLOR = '#e8804a'
 
+/**
+ * What the corridor view marks a highlight in (#858) - the app's blaze orange.
+ *
+ * NOT a blaze colour, and it never touches a trail line: it paints a mark
+ * BESIDE the corridor, which is what keeps the two-colour rule intact while
+ * still giving a hiker something to reach for. Fixed across appearances,
+ * because a mark that changes hue with the sheet is a mark that has to be
+ * relearned; it carries on paper and on ink alike.
+ */
+export const CORRIDOR_SELECTION_COLOR = '#c1611a'
+
 /** `line-color` for the blaze layer, per appearance. */
 export function blazeLineColor(appearance: SheetAppearance): unknown {
   return redLightActive(appearance) ? RED_LIGHT_BLAZE_COLOR : BLAZE_MATCH_EXPRESSION
@@ -382,6 +396,43 @@ export function attachTrailData(map: MapLibreMap, trailsUrl: string): () => void
     },
     'Trail lines',
   )
+}
+
+/**
+ * The corridor-view centerline, or nothing (#869).
+ *
+ * Pushed and cleared through the same source, because "the sketch is gone" is
+ * a state this has to be able to reach: it is drawn only until the real line
+ * lands, and `null` here is what lands it. An empty collection rather than a
+ * removed source, so there is one shape of style whatever a launch is doing.
+ *
+ * See lib/config.ts's TRAILS_OVERVIEW_KEY for what this line is worth - 100 m
+ * of tolerance, which is a sketch at the corridor view and a lie at z14. The
+ * layer's `maxzoom` is the other half of keeping that true.
+ */
+export function attachTrailOverview(
+  map: MapLibreMap,
+  overviewUrl: string | null,
+): () => void {
+  return whenStyleReady(
+    map,
+    () => map.getSource(TRAIL_OVERVIEW_SOURCE_ID) !== undefined,
+    () => {
+      const source = map.getSource<GeoJSONSource>(TRAIL_OVERVIEW_SOURCE_ID)
+      if (source === undefined || typeof source.setData !== 'function') return
+
+      source.setData((overviewUrl ?? emptyTrailOverview()) as never)
+    },
+    'Corridor-view centerline',
+  )
+}
+
+/** What the overview source holds before there is one and after it is done.
+ *  A function rather than a shared constant: MapLibre's typings want a
+ *  mutable feature list, and one object handed to both the style and every
+ *  later `setData` is one object two of them could write to. */
+function emptyTrailOverview(): GeoJSON.FeatureCollection {
+  return { type: 'FeatureCollection', features: [] }
 }
 
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
@@ -685,6 +736,20 @@ export function buildMapStyle({
         // segmented shape until its next download however new the app is.
         ...(trailsMerged ? {} : { tolerance: 0 }),
       },
+      // The corridor-view sketch of that same line (#869), empty until the
+      // shell has one and empty again the moment the real centerline lands.
+      // Its own source rather than a first `setData` on the one above, because
+      // the two have to be able to be on the map at once for exactly as long
+      // as it takes to swap them - one source would mean a frame with no trail
+      // on it at the moment first run is being told there is one.
+      //
+      // Attributed like the trails it sketches: same geometry, same
+      // provenance, same unresolved ATC question (see above).
+      [TRAIL_OVERVIEW_SOURCE_ID]: {
+        type: 'geojson',
+        data: emptyTrailOverview(),
+        attribution: OSM_CREDIT,
+      },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and
       // OpenStreetMap-derived, only one of those two has a settled credit to
@@ -789,6 +854,35 @@ export function buildMapStyle({
       // switch is a visibility flip rather than an add and remove.
       buildDroughtLayer(DROUGHT_SOURCE_ID, sheetIsDark(appearance), showDrought),
       {
+        // The corridor-view sketch (#869), UNDER the real trail's casing, so
+        // on the one frame where both exist the real line is what a hiker
+        // sees.
+        //
+        // `maxzoom` is the safety rule, not a performance one. No point on
+        // this line is more than 100 m from the surveyed centerline
+        // (pipeline/export_trails.py's write_overview), which is 0.43 px at
+        // this zoom and 14 px at z14 - a trail drawn somewhere it does not
+        // go. The seam is where the map stops being an overview and starts
+        // being something a hiker reads a position off, which is the same
+        // place waypoints start drawing as pins, so it is the same constant.
+        //
+        // Above it the sketch is simply absent: a first run that zooms in
+        // during the seconds before the real line arrives sees no trail,
+        // which is true, rather than a line that is nearly right.
+        id: TRAIL_OVERVIEW_LAYER_ID,
+        type: 'line',
+        source: TRAIL_OVERVIEW_SOURCE_ID,
+        maxzoom: POI_PIN_MIN_ZOOM,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          // The same expressions the real line is painted with, off the same
+          // two published properties - so the sketch is not a second
+          // appearance to keep in step, and the swap is not a colour change.
+          'line-color': blazeLineColor(appearance) as unknown as string,
+          'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
+        },
+      },
+      {
         // Hairline dark casing, drawn under every blaze so the trail stays
         // readable over busy topo contours. It is doing more work than it used
         // to: with the line solid, the casing is the ONLY thing giving the
@@ -848,6 +942,7 @@ export function buildMapStyle({
       // the seam - see corridorLayers.ts's CORRIDOR_MAX_ZOOM.
       ...buildCorridorLayers({
         casingColor: trailCasingColor(appearance),
+        selectionColor: CORRIDOR_SELECTION_COLOR,
         blazeWidth: BLAZE_LINE_WIDTH,
         casingWidth: CASING_LINE_WIDTH,
       }),

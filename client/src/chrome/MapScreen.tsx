@@ -62,6 +62,11 @@ import './chrome.css'
 export interface MapScreenProps {
   topoArchiveUrl: string
   trailsUrl: string
+  /** The corridor-view centerline, while there is no real one to draw (#869).
+   *  Passed straight through - which line the map is drawing is decided in
+   *  lib/useTrailData.ts, and a screen that second-guessed it could put both
+   *  on at once. */
+  overviewTrailsUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -134,6 +139,8 @@ export interface MapScreenProps {
   /** Who maintains the trail in front of the hiker, as a sentence, for the
    *  legend (#598). Null above nothing in particular - see Legend's own prop. */
   maintainerLine?: string | null
+  /** Told which highlight mark a tap landed on, or null for a miss (#858). */
+  onSelectHighlight?: (id: string | null) => void
   /** The ATC's own notices, drawn at the same weight as a closure and read
    *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
   atcUpdates?: readonly ClosureBand[]
@@ -434,6 +441,7 @@ export interface MapScreenProps {
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
+  overviewTrailsUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -451,6 +459,7 @@ export function MapScreen({
   noteContext,
   corridor,
   maintainerLine,
+  onSelectHighlight,
   atcUpdates,
   atcUpdatePoints,
   onSelectAtcUpdate,
@@ -656,6 +665,7 @@ export function MapScreen({
             <MapView
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
+              overviewTrailsUrl={overviewTrailsUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}
@@ -665,6 +675,7 @@ export function MapScreen({
               showDrought={droughtShown}
               closures={closures}
               corridor={corridor}
+              onSelectHighlight={onSelectHighlight}
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}

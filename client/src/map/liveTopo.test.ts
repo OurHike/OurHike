@@ -9,6 +9,7 @@ import { buildMapStyle, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
 import { OSM_CREDIT } from './credits'
 import {
   CORRIDOR_BOUNDARY_LAYER_ID,
+  CORRIDOR_HIGHLIGHT_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_LAYER_ID,
 } from './corridorLayers'
@@ -577,6 +578,13 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
+      // The corridor-view sketch (#869), which survives the subtraction for
+      // a duller reason than the others: it is empty unless the shell has a
+      // sketch to put in it, and the shell only has one when the phone has no
+      // trail lines at all. A layer that draws nothing costs nothing, and
+      // keeping one stack rather than two is what stops the offline style
+      // being a second thing to keep in step.
+      'trail-overview-line',
       'trail-casing',
       'trail-blaze',
       // The corridor view's attribution, over the blaze it covers and under
@@ -588,6 +596,10 @@ describe('the offline-only background', () => {
       CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
       CORRIDOR_UNATTRIBUTED_LAYER_ID,
       CORRIDOR_BOUNDARY_LAYER_ID,
+      // The highlight marks, over the runs and the ticks they sit on (#858).
+      // corridorLayers.test.ts holds that ordering as a property; this case
+      // only has to agree with it.
+      CORRIDOR_HIGHLIGHT_LAYER_ID,
       // The route being built survives the subtraction too (#755): planning
       // an evening's next stretch at a shelter with no signal is a normal
       // use of it, not an edge case.

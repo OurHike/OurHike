@@ -3,7 +3,12 @@ import { StrictMode } from 'react'
 import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
-import { BACKDROP_LAYER_ID, MAP_BACKDROP, TRAILS_SOURCE_ID } from './style'
+import {
+  BACKDROP_LAYER_ID,
+  MAP_BACKDROP,
+  TRAIL_OVERVIEW_SOURCE_ID,
+  TRAILS_SOURCE_ID,
+} from './style'
 import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
 import { poiIconImages } from './poiIconImages'
 import { buildPoiIcons, poiIconId } from './poiIcons'
@@ -379,6 +384,47 @@ describe('MapView', () => {
       rerender(<MapView {...PROPS} background="usgs_topo_offline" />),
     ).not.toThrow()
     expect(MockMap.live).toHaveLength(1)
+  })
+})
+
+describe('the corridor-view sketch (#869)', () => {
+  it('pushes it onto the map that is already there', async () => {
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID]
+    map.emit('styledata')
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
+  })
+
+  it('clears it the moment there is a real line, rather than leaving it under one', async () => {
+    // The sketch is 100 m of tolerance, drawn only below the pin seam
+    // (map/style.ts). Leaving it on the map once the surveyed line is there
+    // would mean two trails, one of them approximate, and nothing on screen
+    // saying which is which.
+    const { rerender } = render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID]
+    map.emit('styledata')
+
+    rerender(<MapView {...PROPS} overviewTrailsUrl={null} />)
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    })
+  })
+
+  it('draws no sketch at all when the shell has none to give it', () => {
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID]
+    map.emit('styledata')
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    })
   })
 })
 

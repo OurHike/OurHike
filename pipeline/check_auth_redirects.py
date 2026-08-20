@@ -148,26 +148,46 @@ def site_origin(manifest: dict, project: str) -> str:
     raise KeyError(f"{project}'s site_url_origin names {declared}, which is not a declared origin")
 
 
-def sibling_of(probe: str) -> str:
-    """An attacker-registrable SIBLING under a declared origin's parent.
+def sibling_of(pattern: str, probe: str) -> str:
+    """An attacker-registrable SIBLING that a correctly-scoped allow-list must still refuse.
 
     The probe for a glob widened one token too far (#659): a paste like
     `https://*.pages.dev/**` accepts every Pages site anyone can register,
     and neither the unrelated-host probe nor the Site-URL lookalike would
     say so - the first shares no suffix with anything declared, and the
-    second appends to the real host rather than standing beside it. This
-    replaces the leftmost label of the declared origin's own probe host, so
-    for `pr-123.ourhike-preview.pages.dev` it asks about a different
-    `*.ourhike-preview.pages.dev` name, and a preview glob that matches on
-    the shared suffix rather than the project's own subdomain is caught.
+    second appends to the real host rather than standing beside it.
 
-    Safe to name a registrable host: the probe only reads where a
+    WHICH LABEL TO REPLACE DEPENDS ON WHETHER `pattern` IS ITSELF A WILDCARD.
+    Supabase's documented grammar (confirmed 2026-08-20, in the redirect-URL
+    wildcard reference): `.` is a stated separator character and `*` matches
+    only non-separator characters, so it never crosses one. That means
+    `*.ourhike-preview.pages.dev/**` legitimately accepts ANY single label in
+    the `*` position - that is the whole point of the wildcard, and nothing
+    distinguishes an attacker's label from a real PR number there. Replacing
+    the origin's OWN wildcarded leftmost label therefore built a hostname the
+    correct pattern is supposed to accept, and asserting it must be refused
+    cried wolf against a correctly-configured project - found 2026-08-20, the
+    first time this probe ever ran against the real projects, against one
+    that turned out to be right.
+
+    So for a wildcard-shaped pattern this replaces the label ONE STEP UP -
+    the part the wildcard does NOT vary - which is the actual #659 question:
+    does the allow-list stop at the project's own second-level name, or does
+    it leak to the shared suffix (`pages.dev`) every other Pages site on the
+    internet also sits under. For a fixed (non-wildcard) pattern there is no
+    wildcarded label to avoid, so the origin's own leftmost label - the one
+    an attacker cannot register without it already resolving to their content
+    - is still the one replaced.
+
+    Safe to name a registrable host either way: the probe only reads where a
     junk-token redirect WOULD go (allow_redirects=False) - nothing is ever
     sent to the sibling."""
     scheme, _, rest = probe.partition("://")
     host, _, path = rest.partition("/")
     labels = host.split(".")
-    labels[0] = "ourhike-allowlist-probe-not-ours"
+    is_wildcard_pattern = pattern.split("://", 1)[-1].startswith("*.")
+    index = 1 if is_wildcard_pattern and len(labels) > 1 else 0
+    labels[index] = "ourhike-allowlist-probe-not-ours"
     return f"{scheme}://{'.'.join(labels)}/"
 
 
@@ -316,7 +336,7 @@ def check_project(manifest: dict, project: str, base: str, api_key: str, session
     # can share a parent domain and one refusal answers for all of them.
     seen_siblings: set[str] = set()
     for origin in project_origins(manifest, project):
-        sibling = sibling_of(origin["probe"].rstrip("/"))
+        sibling = sibling_of(origin["pattern"], origin["probe"].rstrip("/"))
         if sibling in seen_siblings:
             continue
         seen_siblings.add(sibling)

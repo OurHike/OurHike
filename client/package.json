@@ -21,9 +21,12 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
+    "@tensorflow-models/blazeface": "^0.1.0",
+    "@tensorflow/tfjs": "^4.22.0",
     "idb-keyval": "^6.3.0",
     "maplibre-contour": "^0.1.0",
     "maplibre-gl": "^6.3.0",
+    "nsfwjs": "^4.3.0",
     "pmtiles": "^4.5.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

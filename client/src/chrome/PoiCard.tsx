@@ -733,7 +733,7 @@ export function PoiCard({
   // queued act - and the capture-date claim is coarsened to its month
   // before it is ever queued, so the sheet's "the picture and the month"
   // is made true here rather than trusted to a server's rendering.
-  const shareOwn = async (photo: OwnCardPhoto) => {
+  const shareOwn = async (photo: OwnCardPhoto, flagged: 'nudity' | 'faces' | null) => {
     setSharing(false)
     try {
       await own.setShared(photo.id, new Date().toISOString())
@@ -742,14 +742,21 @@ export function PoiCard({
           kind: 'poi_photo_share',
           poiId: shown.id,
           taken: takenClaimForShare(photo.takenClaim),
-          // No detector ships yet (#837); when one does, its finding
-          // arrives here and nowhere else.
-          flagged: null,
+          // The on-device screen's finding (#837), straight off the share
+          // sheet - here and nowhere else. Null when nothing was found OR
+          // the check could not run; the two are indistinguishable by
+          // design (lib/photoScreen.ts).
+          flagged,
         },
         photo.blob,
       )
       setPhotoNote(
-        'Queued to share. It leaves when you have signal and goes live about two hours after that.',
+        flagged === 'nudity'
+          ? // The sheet's "Send it for review" step already said why; this
+            // repeats the schedule truthfully - review gates it, not the
+            // clock alone.
+            'Queued to send for review. It leaves when you have signal, and appears once a moderator has looked.'
+          : 'Queued to share. It leaves when you have signal and goes live about two hours after that.',
       )
       void syncOutbox()
     } catch {
@@ -1517,10 +1524,11 @@ export function PoiCard({
       {sharing && ownShown !== undefined && (
         <PoiShareSheet
           photoUrl={ownShown.url}
+          photoBlob={ownShown.blob}
           photoBytes={ownShown.blob.size}
           photoMonth={photoMonth(ownShown.taken) ?? ''}
           poiName={shown.name}
-          onShare={() => void shareOwn(ownShown)}
+          onShare={(flagged) => void shareOwn(ownShown, flagged)}
           onClose={() => setSharing(false)}
         />
       )}

@@ -173,6 +173,17 @@ export default defineConfig({
             // painted nothing until a third party answered. Emitted under
             // `assets/` by Vite, hence the bare glob rather than a directory.
             globPatterns: ['**/*.{js,css,html}', 'glyphs/**/*.pbf', '**/*.woff2'],
+            // The share screen's detector engine (#837) is the one JS chunk
+            // that must NOT be precached: it carries a whole TensorFlow.js
+            // runtime behind src/lib/photoScreen.ts's dynamic import, and
+            // putting it in the precache would make every install pay
+            // megabytes for a feature most hikers never touch. It arrives
+            // through the ordinary HTTP cache the first time a share sheet
+            // opens instead - and by the same logic its model weights under
+            // public/models/ are simply not matched by the globs above.
+            // scripts/check-build-output.mjs fails the build if this
+            // pattern stops matching the chunk Vite actually emits.
+            globIgnores: ['**/photoScreenEngine-*.js'],
           },
           includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
           manifest: {

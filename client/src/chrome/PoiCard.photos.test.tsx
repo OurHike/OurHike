@@ -8,6 +8,7 @@ import { exifCaptureDate } from '../lib/exifDate'
 import { fetchPoiPhotos } from '../lib/api'
 import { clearCommunityPhotoCache } from '../lib/useCommunityPhotos'
 import { loadPreferences } from '../lib/preferences'
+import { screenPhoto } from '../lib/photoScreen'
 import { OUTBOX_KEY, type OutboxItem } from '../lib/outbox'
 
 // The hiker's own photo on the waypoint card: capture with a keep-or-discard
@@ -47,6 +48,16 @@ vi.mock('../lib/api', () => ({ fetchPoiPhotos: vi.fn() }))
 vi.mock('../lib/outboxSync', () => ({ syncOutbox: vi.fn() }))
 vi.mock('../lib/preferences', () => ({ loadPreferences: vi.fn() }))
 
+// The on-device screen (#837), mocked at its seam: the engine is a
+// TensorFlow runtime jsdom cannot host, and the seam's own contract (any
+// failure resolves null) is proved in photoScreen.test.ts. Here the mock
+// answers what the screen FOUND, and the flow under test is what the sheet
+// and the queued share do with it.
+vi.mock('../lib/photoScreen', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/photoScreen')>()),
+  screenPhoto: vi.fn(),
+}))
+
 const mockedGet = vi.mocked(get)
 const mockedUpdate = vi.mocked(update)
 const mockedDel = vi.mocked(del)
@@ -55,6 +66,7 @@ const mockedPrepare = vi.mocked(preparePhoto)
 const mockedExifDate = vi.mocked(exifCaptureDate)
 const mockedFetchPoiPhotos = vi.mocked(fetchPoiPhotos)
 const mockedLoadPreferences = vi.mocked(loadPreferences)
+const mockedScreenPhoto = vi.mocked(screenPhoto)
 
 /** In-memory IndexedDB, with update() applied synchronously against the
  *  stored value - the real one's single-transaction semantics. */
@@ -102,6 +114,9 @@ beforeEach(() => {
   mockedPrepare.mockResolvedValue(PREPARED)
   mockedExifDate.mockResolvedValue('2026-06-18')
   mockedFetchPoiPhotos.mockResolvedValue([])
+  // Nothing found - the state every share was in before #837, and the state
+  // any failed check must be indistinguishable from.
+  mockedScreenPhoto.mockResolvedValue(null)
   mockedLoadPreferences.mockResolvedValue({
     trail_name: 'Sawyer',
     anonymity_window_days: 0,
@@ -525,6 +540,99 @@ describe('the share sheet and its verbs (#577)', () => {
     expect(
       await screen.findByText(/For 12 more days even Sawyer is withheld/),
     ).toBeInTheDocument()
+  })
+})
+
+describe('the on-device screen at the share sheet (#837)', () => {
+  const outbox = (stored: Map<string, unknown>) =>
+    (stored.get(OUTBOX_KEY) as OutboxItem[] | undefined) ?? []
+
+  async function openSheet(stored: Map<string, unknown>) {
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2026-06-18',
+      source: 'library',
+    })
+    await renderCard()
+    await screen.findByText('Your photo · Jun 2026')
+    fireEvent.click(screen.getByTestId('poi-card-share'))
+    await screen.findByTestId('share-sheet-share')
+    return stored
+  }
+
+  it('a faces finding earns the friction step, and sharing on carries the flag', async () => {
+    const stored = withStore()
+    mockedScreenPhoto.mockResolvedValue({ flag: 'faces', faces: 2 })
+    await openSheet(stored)
+
+    fireEvent.click(screen.getByTestId('share-sheet-share'))
+
+    // The step, in the mockup's words - and nothing queued yet.
+    const step = await screen.findByTestId('share-sheet-screen-faces')
+    expect(step).toHaveTextContent('Two faces found on this phone')
+    expect(step).toHaveTextContent(/This is not a refusal/)
+    expect(step).toHaveTextContent(/It will also miss some/)
+    expect(outbox(stored)).toHaveLength(0)
+
+    fireEvent.click(screen.getByTestId('share-sheet-share-faces'))
+
+    await screen.findByTestId('poi-card-share-state')
+    const queued = outbox(stored)
+    expect(queued).toHaveLength(1)
+    expect(queued[0].action).toMatchObject({ kind: 'poi_photo_share', flagged: 'faces' })
+  })
+
+  it('a nudity finding hides the preview, says a person looks first, and queues flagged', async () => {
+    const stored = withStore()
+    mockedScreenPhoto.mockResolvedValue({ flag: 'nudity', faces: 0 })
+    await openSheet(stored)
+
+    fireEvent.click(screen.getByTestId('share-sheet-share'))
+
+    const step = await screen.findByTestId('share-sheet-screen-nudity')
+    expect(step).toHaveTextContent(/goes to a person before it goes public/)
+    expect(step).toHaveTextContent(/a swimming hole in July looks the same to it/)
+    // The preview is covered until deliberately revealed.
+    const cover = screen.getByTestId('share-sheet-reveal')
+    expect(cover).toHaveTextContent(/Hidden until you tap/)
+    fireEvent.click(cover)
+    expect(screen.queryByTestId('share-sheet-reveal')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('share-sheet-send-review'))
+
+    await screen.findByTestId('poi-card-share-state')
+    const queued = outbox(stored)
+    expect(queued).toHaveLength(1)
+    expect(queued[0].action).toMatchObject({ kind: 'poi_photo_share', flagged: 'nudity' })
+    // The note tells the truth about what gates it: a look, not the clock.
+    expect(screen.getByText(/appears once a moderator has looked/)).toBeInTheDocument()
+  })
+
+  it('keep it private on the friction step shares nothing', async () => {
+    const stored = withStore()
+    mockedScreenPhoto.mockResolvedValue({ flag: 'faces', faces: 1 })
+    await openSheet(stored)
+    fireEvent.click(screen.getByTestId('share-sheet-share'))
+    await screen.findByTestId('share-sheet-screen-faces')
+
+    fireEvent.click(screen.getByTestId('share-sheet-cancel'))
+
+    expect(screen.queryByTestId('share-sheet-screen-faces')).not.toBeInTheDocument()
+    expect(outbox(stored)).toHaveLength(0)
+    // Still private, still offered for sharing.
+    expect(screen.getByTestId('poi-card-share')).toBeInTheDocument()
+  })
+
+  it('a screen that found nothing adds nothing - one tap shares, flagged null', async () => {
+    const stored = withStore()
+    await openSheet(stored)
+
+    fireEvent.click(screen.getByTestId('share-sheet-share'))
+
+    await screen.findByTestId('poi-card-share-state')
+    const queued = outbox(stored)
+    expect(queued).toHaveLength(1)
+    expect(queued[0].action).toMatchObject({ kind: 'poi_photo_share', flagged: null })
   })
 })
 

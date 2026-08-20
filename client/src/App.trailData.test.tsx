@@ -14,7 +14,8 @@ import { appHarness } from './test/appHarness'
 import { liveMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { PREFERENCES_KEY } from './lib/preferences'
-import { TRAILS_SOURCE_ID } from './map/style'
+import { TRAILS_KEY } from './lib/config'
+import { TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID } from './map/style'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -155,6 +156,72 @@ describe('trail data on a phone that has downloaded nothing', () => {
     expect(store.has(POIS_KEY)).toBe(false)
   })
 
+  it('sketches the trail from the overview while the real line is still coming', async () => {
+    // #869. `trails.geojson` is 4.1 MB gzipped - ~2.8 s of transfer at
+    // 12 Mbps before a phone can draw anything - and the corridor-view
+    // centerline is 51 KB of the same trail. This asserts the order that
+    // makes that worth publishing: the sketch is on the map while the real
+    // line is still outstanding.
+    store.delete(PREFERENCES_KEY)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).includes(TRAILS_KEY)
+          ? new Promise(() => {})
+          : Promise.resolve({
+              ok: true,
+              status: 200,
+              headers: new Headers(),
+              arrayBuffer: () => Promise.resolve(new TextEncoder().encode(TRAILS).buffer),
+              blob: () => Promise.resolve(new Blob([TRAILS])),
+              text: () => Promise.resolve(TRAILS),
+              json: () => Promise.resolve(JSON.parse(TRAILS)),
+            } as unknown as Response),
+      ),
+    )
+
+    const { default: App } = await import('./App')
+    render(<App />)
+    await screen.findByText('What OurHike is')
+    const map = await liveMap()
+
+    await waitFor(() =>
+      expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual(
+        expect.stringContaining('blob:'),
+      ),
+    )
+    // The real line is still out there, which is the half that makes the
+    // other half worth having.
+    expect(map.sourceData.get(TRAILS_SOURCE_ID)).toBeUndefined()
+  })
+
+  it('drops the sketch as soon as the real centerline is on the phone', async () => {
+    // Held to a deadline rather than left as a second trail line: it is 100 m
+    // of tolerance, and the map stops drawing it the moment it has something
+    // better (lib/config.ts's TRAILS_OVERVIEW_KEY for what 100 m means at
+    // each zoom).
+    store.delete(PREFERENCES_KEY)
+
+    const { default: App } = await import('./App')
+    render(<App />)
+    await screen.findByText('What OurHike is')
+    const map = await liveMap()
+
+    // The whole release lands, so the real lines are drawn...
+    await waitFor(() =>
+      expect(map.sourceData.get(TRAILS_SOURCE_ID)).toEqual(
+        expect.stringContaining('blob:'),
+      ),
+    )
+    // ...and the sketch is taken off, whether or not it ever arrived.
+    await waitFor(() =>
+      expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+        type: 'FeatureCollection',
+        features: [],
+      }),
+    )
+  })
+
   it('stores what it fetched, so the next launch reads it off the phone', async () => {
     await renderApp()
 
@@ -182,7 +249,9 @@ describe('trail data on a phone that has downloaded nothing', () => {
     await renderApp()
 
     await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
-    expect(requested().some((url) => url.includes('trails'))).toBe(false)
+    // The KEY, not the substring: `trails_overview.geojson` contains "trails"
+    // too, and it is a different question with a different answer (#869).
+    expect(requested().some((url) => url.endsWith(TRAILS_KEY))).toBe(false)
   })
 
   it('still reads the stored lines with no signal, which is the whole point of storing them', async () => {
@@ -355,7 +424,7 @@ describe('the trail data a tapped download waits for', () => {
     await renderApp()
     // The launch fetch is in flight and cannot finish yet.
     await waitFor(() =>
-      expect(requested().filter((url) => url.includes('trails'))).toHaveLength(1),
+      expect(requested().filter((url) => url.endsWith(TRAILS_KEY))).toHaveLength(1),
     )
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
@@ -366,14 +435,14 @@ describe('the trail data a tapped download waits for', () => {
     // Waited on rather than duplicated: the tap is visibly in the canary
     // step, and the request count has not moved.
     expect(await within(card).findByText(/getting the trail/i)).toBeVisible()
-    expect(requested().filter((url) => url.includes('trails'))).toHaveLength(1)
+    expect(requested().filter((url) => url.endsWith(TRAILS_KEY))).toHaveLength(1)
 
     // Waited out rather than merely released - see the test above.
     release()
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
     // Still one fetch once it lands: the tap was sharing it, not queued
     // behind it waiting to start its own.
-    expect(requested().filter((url) => url.includes('trails'))).toHaveLength(1)
+    expect(requested().filter((url) => url.endsWith(TRAILS_KEY))).toHaveLength(1)
   })
 })
 

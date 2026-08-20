@@ -574,8 +574,13 @@ interface FetchedArtifact {
  * (21.5 MB): vendored JS 624 ms against native 60 ms, a 10.4x difference, all
  * of the former synchronous on the thread that is also drawing the map. A
  * phone is materially slower than the machine those numbers came from.
+ *
+ * Exported for lib/trailOverview.ts, which holds the corridor-view centerline
+ * to the same published hash every other drawn artifact is held to - one home
+ * for the decision above rather than a second copy of it that could quietly
+ * fall back to the vendored fold.
  */
-async function sha256Of(bytes: Uint8Array): Promise<string> {
+export async function sha256Of(bytes: Uint8Array): Promise<string> {
   const subtle = globalThis.crypto?.subtle
   // Absent on http:// origins and in some test environments. The fallback is
   // the same algorithm over the same bytes, so this is a speed decision and

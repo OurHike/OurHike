@@ -397,6 +397,19 @@ def collect_artifacts() -> dict[str, dict]:
         for kind in ("geojson", "fgb"):
             if kind in manifest:
                 artifacts[f"trails.{kind}"] = {"path": manifest[kind]["path"], "sha256": manifest[kind]["sha256"]}
+        # Its own flat key rather than a third `trails.<kind>`, because it is
+        # a different artifact rather than a second encoding of the same one -
+        # a coarse centerline for the corridor view, published so a first run
+        # has a trail on the map before the 4.1 MB one arrives (#869,
+        # export_trails.write_overview). Absent from a release exported before
+        # it existed, which the client reads as "no overview" rather than as a
+        # failure, the same way spurs.json and elevation_profile.json are
+        # treated.
+        if "overview" in manifest:
+            artifacts["trails_overview.geojson"] = {
+                "path": manifest["overview"]["path"],
+                "sha256": manifest["overview"]["sha256"],
+            }
 
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():

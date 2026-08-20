@@ -27,7 +27,12 @@ import { registerPMTilesProtocol } from './protocol'
 import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
 import { readTrailsMerged } from '../lib/trailShape'
-import { attachMapAppearance, attachTrailData, buildMapStyle } from './style'
+import {
+  attachMapAppearance,
+  attachTrailData,
+  attachTrailOverview,
+  buildMapStyle,
+} from './style'
 import { attachMapDetail } from './mapDetail'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachLiveSourceHealth, type SourceReport } from './liveSourceHealth'
@@ -73,6 +78,16 @@ export interface MapViewProps {
    * lines come back from IndexedDB, a beat after the map is built.
    */
   trailsUrl: string
+  /**
+   * The corridor-view centerline, while there is no real one (#869).
+   *
+   * Null once the shell has the real line - or has decided there is no sketch
+   * to draw - and clearing it is the point rather than an edge case: this is
+   * a line that is only true at the zooms it is drawn at, and it stops being
+   * drawn the moment something better arrives. lib/config.ts's
+   * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
+   */
+  overviewTrailsUrl?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -297,6 +312,7 @@ export function MapView({
   topoArchiveUrl,
   trailsUrl,
   background = 'hiking_topo_live',
+  overviewTrailsUrl = null,
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
   verifiedOnly = false,
@@ -558,6 +574,16 @@ export function MapView({
     drawnTrailsUrl.current = trailsUrl
     return attachTrailData(map, trailsUrl)
   }, [map, trailsUrl])
+
+  // The sketch that stands in for the trail line until it arrives, on the
+  // same seam as the lines above: a GeoJSON source takes a URL in place, and
+  // takes an empty collection to say it is done. Its own effect because it
+  // moves on a different clock from the real line - it is set once early and
+  // cleared once, where the real one is set once and stays.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailOverview(map, overviewTrailsUrl)
+  }, [map, overviewTrailsUrl])
 
   // Three separate effects rather than one, because they change on different
   // clocks: the pin images are built once and never again, while the source and

@@ -40,7 +40,7 @@ The separation is the design. A scheduled job cannot change a hiker's data even 
 
 ```
 releases/2026-08-07/
-  trails.geojson  trails.fgb
+  trails.geojson  trails.fgb  trails_overview.geojson
   poi_{shelter,water,campsite,resupply,crossing}.{geojson,fgb}
   elevation_profile.json
   background.pmtiles  background_z11.pmtiles  background_z13.pmtiles

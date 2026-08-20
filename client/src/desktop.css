@@ -27,14 +27,13 @@
  *                     nothing until it is, so "permanent field in the
  *                     chrome" is not what this is)
  *   input             hover, focus rings, relaxed touch targets   done
- *   elevation         the full interactive chart                  NOT done
+ *   elevation         the full interactive chart                  done (#135)
  *   download UX       reframed for a machine with signal          done
  *   routing           deep links, back button                     NOT done
  *
- * The two that are missing are named in the file that omits them, on purpose.
- * The elevation chart is a new component rather than a restyle of an existing
- * one, and routing is called "the largest single change in this workstream" by
- * §6 itself - neither belongs in a layout pass.
+ * Routing is still missing and named on purpose - §6 itself calls it "the
+ * largest single change in this workstream", and it does not belong in a
+ * layout pass.
  */
 
 @media (min-width: 900px) {
@@ -317,6 +316,185 @@
     max-height: calc(100% - 2 * var(--space-3, 12px));
     border: 1px solid var(--border-1);
     border-radius: 8px;
+  }
+
+  /* ---------- The elevation chart (#135): the desk's ribbon ---------- */
+
+  /* Only ever rendered above the breakpoint (MapScreen gates it on the same
+     `useDesktop()` the legend uses), so these rules live here with the rest
+     of the desktop layout - inside the guard, where they cannot reach a
+     phone even if that gating ever slips.
+
+     The visual vocabulary is the ribbon's, grown up: the same brand-primary
+     wash and line for the profile, the same blaze-orange wash the ribbon
+     uses for its climb highlight here marking the selected stretch, mono
+     figures in the chrome's data face. One family, two rooms. */
+
+  .elevation-chart {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-1);
+  }
+
+  .elevation-chart__figures {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4, 16px);
+    padding: var(--space-2, 8px) var(--space-4, 16px) 2px;
+    font-size: 13px;
+    color: var(--fg-2);
+    /* Reserving the row's height keeps the plot from jumping as figures
+       appear and disappear with the selection. */
+    min-height: 30px;
+  }
+
+  .elevation-chart__mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+
+  .elevation-chart__figure--strong {
+    color: var(--fg-1);
+    font-weight: 600;
+  }
+
+  .elevation-chart__hint {
+    font-size: 12px;
+    color: var(--fg-3);
+  }
+
+  .elevation-chart__spacer {
+    flex-grow: 1;
+  }
+
+  .elevation-chart__control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--fg-2);
+    background: transparent;
+    border: 1px solid var(--border-1);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .elevation-chart__control--primary {
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
+  }
+
+  .elevation-chart__plot {
+    position: relative;
+    height: 150px;
+    margin: 2px var(--space-4, 16px) 0;
+    /* The plot is a drag surface; letting the browser claim the gesture for
+       scrolling would make selection flaky on touch-screen laptops. */
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  .elevation-chart__svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .elevation-chart__grid {
+    stroke: var(--border-1);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .elevation-chart__area {
+    fill: color-mix(in srgb, var(--brand-primary) 22%, transparent);
+  }
+
+  .elevation-chart__line {
+    stroke: var(--brand-primary);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .elevation-chart__selection {
+    fill: color-mix(in srgb, var(--accent-blaze-orange) 16%, transparent);
+  }
+
+  .elevation-chart__selection-edge {
+    stroke: var(--accent-blaze-orange);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .elevation-chart__here {
+    stroke: var(--fg-1);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .elevation-chart__cursor {
+    stroke: var(--fg-1);
+    stroke-width: 1;
+    opacity: 0.8;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .elevation-chart__cursor-dot {
+    stroke: var(--fg-1);
+    stroke-width: 5;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .elevation-chart__readout {
+    position: absolute;
+    top: 6px;
+    transform: translateX(8px);
+    padding: 1px 7px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--fg-1);
+    background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+    border: 1px solid var(--border-1);
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* Near the right edge the chip leads the cursor instead of trailing it,
+     so it never leaves the plot. */
+  .elevation-chart__readout--flipped {
+    transform: translateX(calc(-100% - 8px));
+  }
+
+  .elevation-chart__ylabels {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    bottom: 2px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 10px;
+    color: var(--fg-3);
+    pointer-events: none;
+  }
+
+  .elevation-chart__axis {
+    position: relative;
+    height: 16px;
+    margin: 0 var(--space-4, 16px) var(--space-2, 8px);
+    font-size: 10px;
+    color: var(--fg-3);
+  }
+
+  .elevation-chart__tick {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
   }
 
   /* ---------- The download window: a panel, not a takeover ---------- */

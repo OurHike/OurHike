@@ -1630,6 +1630,37 @@ function App() {
     return anchoredMile(fix.mile, mileAnchors)
   }, [fix, mileAnchors])
 
+  // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
+  // fix - a desk has none - only the published profile; the fix, when one
+  // exists, rides along on the profile's own axis (gpsPlanMile above). The
+  // two converters are how chart focus reaches the map: a profile-axis mile
+  // crosses to the client index's scale through the POI anchors
+  // (lib/route.ts), then trailPointAtMile / trailSlice turn it into
+  // geometry. No anchors (a pre-#753 download) costs the map linkage and
+  // nothing else - the chart still draws and measures.
+  const desktopChart = useMemo(() => {
+    if (elevation === null) return undefined
+    const mileToCoordinate = (mile: number): [number, number] | null => {
+      if (trailIndex === null) return null
+      const clientMile = anchoredClientMile(mile, mileAnchors)
+      if (clientMile === null) return null
+      return trailPointAtMile(trailIndex, clientMile)
+    }
+    const stretchToRuns = (startMile: number, endMile: number) => {
+      if (trailIndex === null) return []
+      const from = anchoredClientMile(startMile, mileAnchors)
+      const to = anchoredClientMile(endMile, mileAnchors)
+      if (from === null || to === null) return []
+      return trailSlice(trailIndex, from, to)
+    }
+    return {
+      profile: elevation,
+      currentMile: gpsPlanMile,
+      mileToCoordinate,
+      stretchToRuns,
+    }
+  }, [elevation, trailIndex, mileAnchors, gpsPlanMile])
+
   /**
    * The trip the Plan tab is showing, and its plan (#787). Everything below
    * that says `plan` reads this - deriving it keeps one copy of a trip's
@@ -3510,6 +3541,7 @@ function App() {
           }}
           bbox={bbox}
           elevation={ribbon?.props}
+          chart={desktopChart}
           waypoints={waypoints}
           viewportPoints={viewportPoints}
           blazeCounts={[]}

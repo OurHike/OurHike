@@ -14,7 +14,7 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -23,6 +23,13 @@ import { Legend, type BlazeCount } from './Legend'
 import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
+import { ElevationChart, type ChartStretch } from './ElevationChart'
+import type { ElevationProfile } from '../lib/elevationProfile'
+import {
+  attachChartFocus,
+  type ChartFocusHandle,
+  type StretchRuns,
+} from '../map/chartFocusLayers'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -269,6 +276,24 @@ export interface MapScreenProps {
   // have the profile for this stretch."
   elevation?: ElevationRibbonProps
   /**
+   * The desktop's full elevation chart (#135), swapped in for the ribbon
+   * above the breakpoint. Separate from `elevation` because the two answer
+   * different questions with different requirements: the ribbon needs a GPS
+   * fix and shows the ten miles around it; the chart needs only the
+   * published profile - a desk has no fix - and rests on the whole trail.
+   *
+   * The two converters cross the chart's profile-axis miles onto the map.
+   * They live in the shell, which holds the centerline index and the POI
+   * anchors, and arrive here as functions for the same reason `selectedPoi`
+   * arrives resolved: this screen draws, the shell knows.
+   */
+  chart?: {
+    profile: ElevationProfile
+    currentMile: number | null
+    mileToCoordinate: (mile: number) => [number, number] | null
+    stretchToRuns: (startMile: number, endMile: number) => StretchRuns
+  }
+  /**
    * `onSelectPoi` omitted deliberately, the way `units` is left off the ribbon
    * above: this screen already holds the handler a pin tap goes through, so it
    * supplies that one rather than letting the shell pass a second. A ribbon pill
@@ -494,6 +519,7 @@ export function MapScreen({
   onSelectPoi,
   onClosePoi,
   elevation,
+  chart,
   waypoints,
   position,
   locationEnabled = false,
@@ -544,6 +570,47 @@ export function MapScreen({
       onMapReady?.(map)
     },
     [onMapReady],
+  )
+
+  // The chart's focus overlay on the live map - the hovered mile as a dot,
+  // the selected stretch as a band. A REF rather than state, deliberately:
+  // hover updates arrive per pointer move, and a setState here would re-render
+  // this whole screen (map included) at pointer rate. The handle writes
+  // straight into the map's own source instead, and React never hears about
+  // it. Attached only while the desktop chart is actually rendered, and
+  // keyed on the chart's PRESENCE rather than its identity - the prop is
+  // rebuilt when a fix moves, and tearing the overlay down per GPS tick
+  // would flicker it for nothing.
+  const chartFocusRef = useRef<ChartFocusHandle | null>(null)
+  const hasChart = chart !== undefined
+  useEffect(() => {
+    if (liveMap === null || !isDesktop || !hasChart) return
+    const handle = attachChartFocus(liveMap)
+    chartFocusRef.current = handle
+    return () => {
+      chartFocusRef.current = null
+      handle.detach()
+    }
+  }, [liveMap, isDesktop, hasChart])
+
+  const handleChartHover = useCallback(
+    (mile: number | null) => {
+      const handle = chartFocusRef.current
+      if (handle === null || chart === undefined) return
+      handle.setPoint(mile === null ? null : chart.mileToCoordinate(mile))
+    },
+    [chart],
+  )
+
+  const handleChartStretch = useCallback(
+    (stretch: ChartStretch | null) => {
+      const handle = chartFocusRef.current
+      if (handle === null || chart === undefined) return
+      handle.setStretch(
+        stretch === null ? null : chart.stretchToRuns(stretch.startMile, stretch.endMile),
+      )
+    },
+    [chart],
   )
 
   // The same rows the legend builds, from the same arguments, so the canvas count
@@ -640,9 +707,19 @@ export function MapScreen({
         {/* `units` last, so the screen's answer wins over anything the shell
             put in the ribbon's own props. The canvas below and the ribbon over
             it read the same preference, and a map in metres under a profile in
-            feet is exactly the disagreement one prop exists to prevent. */}
-        {elevation && <ElevationRibbon {...elevation} units={units} />}
-        {waypoints && <WaypointLanes {...waypoints} onSelectPoi={onSelectPoi} />}
+            feet is exactly the disagreement one prop exists to prevent.
+
+            Phone only: above the breakpoint the full chart (rendered after
+            the body, across the bottom - WEBSITE.md §6) replaces this whole
+            block. The LANES go with the ribbon rather than riding the chart,
+            deliberately: they position pins in the ribbon's window-percentage
+            space, and pins re-anchored onto the chart's own zoomable axis is
+            work #135 defers - drawing them misaligned would be worse than
+            not drawing them (the exact trap that issue names). */}
+        {!isDesktop && elevation && <ElevationRibbon {...elevation} units={units} />}
+        {!isDesktop && waypoints && (
+          <WaypointLanes {...waypoints} onSelectPoi={onSelectPoi} />
+        )}
 
         {/* The map and the legend. Separated from the chrome above so the two
             can sit side by side on a desktop, where the legend is a panel
@@ -798,6 +875,20 @@ export function MapScreen({
             onOpenAtcNotices={onOpenAtcNotices}
           />
         </div>
+
+        {/* The full chart, across the bottom of the frame (#135): the desk's
+            answer to the ribbon, needing no fix. Rendered below the body so
+            the map and the legend keep their whole height until the profile
+            exists to draw. `units` last, exactly as on the ribbon above. */}
+        {isDesktop && chart !== undefined && (
+          <ElevationChart
+            profile={chart.profile}
+            currentMile={chart.currentMile}
+            units={units}
+            onHoverMile={handleChartHover}
+            onSelectStretch={handleChartStretch}
+          />
+        )}
 
         {/* "Something changed" rather than "here is everything" - the row
             that used to sit under the alert strip and answer the second

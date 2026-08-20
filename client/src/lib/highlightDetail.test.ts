@@ -7,6 +7,7 @@ import {
 import { NAMED, PUBLISHED, VISITED, parseHighlights, type Highlight } from './highlights'
 import type { ElevationProfile } from './elevationProfile'
 import type { MileRange } from './walkedMiles'
+import { STANDARD_PACE, type PaceProfile } from './pace'
 
 function highlight(overrides: Record<string, unknown> = {}): Highlight {
   return parseHighlights({
@@ -313,5 +314,71 @@ describe('the caution line', () => {
     expect(buildHighlightDetail(notch, null, 'imperial').cautionLine).toBe(
       'The usual estimate does not fit this one — allow considerably longer.',
     )
+  })
+})
+
+/**
+ * Whose estimate the sheet is printing (#880).
+ *
+ * The decision on #851 is that no surface may show an adjusted time without
+ * showing what it was adjusted from. lib/pace.ts holds the wording; this holds
+ * that the sheet actually carries it, and that it stays silent when there is
+ * nothing to say.
+ */
+describe('the pace line', () => {
+  const SLOWER: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2.6 }
+
+  it('is absent on a fresh install, where the pace IS the standard', () => {
+    const detail = buildHighlightDetail(highlight(), steadyClimb(), 'imperial', [])
+    expect(detail.paceRelativeLine).toBeNull()
+  })
+
+  it('defaults to the standard when no pace is passed at all', () => {
+    // Every caller that predates this keeps its exact behaviour.
+    expect(
+      buildHighlightDetail(highlight(), steadyClimb(), 'imperial').paceRelativeLine,
+    ).toBeNull()
+  })
+
+  it('names the baseline once a hiker has adjusted it', () => {
+    const detail = buildHighlightDetail(
+      highlight(),
+      steadyClimb(),
+      'imperial',
+      [],
+      SLOWER,
+    )
+    expect(detail.paceRelativeLine).toMatch(/^was ≈.*× standard$/)
+  })
+
+  it('moves the time it qualifies, not just the caption', () => {
+    // The line would be a lie if the figure above it had not changed.
+    const standard = buildHighlightDetail(highlight(), steadyClimb(), 'imperial', [])
+    const slower = buildHighlightDetail(
+      highlight(),
+      steadyClimb(),
+      'imperial',
+      [],
+      SLOWER,
+    )
+    expect(slower.derivedLine).not.toBe(standard.derivedLine)
+    expect(slower.paceRelativeLine).toContain(
+      (standard.derivedLine.split('·').pop() as string).trim(),
+    )
+  })
+
+  it('says nothing where no time is shown at all', () => {
+    // A highlight that leaves the A.T. shows distance alone. There is no
+    // estimate, so there is nothing to have adjusted - and a pace caption
+    // under a bare distance would imply the distance was scaled too.
+    const loop = highlight({
+      legs: [
+        { trail: PROFILED_TRAIL, start_mile: 1, end_mile: 2 },
+        { trail: 'Falling Waters Trail', start_mile: 0, end_mile: 3.2 },
+      ],
+    })
+    const detail = buildHighlightDetail(loop, steadyClimb(), 'imperial', [], SLOWER)
+    expect(detail.derivedLine).toBe('4.2 mi')
+    expect(detail.paceRelativeLine).toBeNull()
   })
 })

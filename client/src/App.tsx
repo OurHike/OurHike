@@ -259,6 +259,7 @@ import { LineSheet } from './chrome/LineSheet'
 import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
 import { HighlightSheet } from './chrome/HighlightSheet'
 import { buildHighlightDetail, type HighlightDetail } from './lib/highlightDetail'
+import { readStoredPace } from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
   readWalked,
@@ -759,6 +760,15 @@ function App() {
   // here: it runs on DEFAULT_PREFERENCES for the tick before the phone's own
   // answer lands, and that default is 'auto' - the same thing main.tsx already
   // stamped on the document before React started.
+  /** The hiker's own pace (#880). Read from its OWN key rather than from
+   *  preferences, which is a sync target - PERSONALIZED_PACE.md §4 keeps a
+   *  pace profile off the wire even once an account exists. State rather than
+   *  a bare read so the Pace screen can change it and every estimate follows. */
+  // Read once at mount. There is nothing that CHANGES it yet - the Pace
+  // screen is the next commit - so this is deliberately not state: a setter
+  // nothing calls would be a claim that the value is live when it is not.
+  const pace = useMemo(() => readStoredPace(), [])
+
   const resolvedTheme = useTheme(preferences.theme)
   // Whether this is the big-screen layout - and, for the download, whether the
   // machine is one that goes up a mountain. See handleOnboardingComplete.
@@ -1581,8 +1591,8 @@ function App() {
     if (selectedHighlightId === null) return null
     const highlight = highlights.find((entry) => entry.id === selectedHighlightId)
     if (highlight === undefined) return null
-    return buildHighlightDetail(highlight, elevation, units, walked)
-  }, [selectedHighlightId, highlights, elevation, units, walked])
+    return buildHighlightDetail(highlight, elevation, units, walked, pace)
+  }, [selectedHighlightId, highlights, elevation, units, walked, pace])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>

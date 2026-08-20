@@ -19,6 +19,7 @@ const FULL: HighlightDetail = {
   clubLine: 'Maintained by RATC.',
   walkedLine: 'You have walked 2.0 mi of this.',
   cautionLine: null,
+  paceRelativeLine: null,
 }
 
 const CROSS_TRAIL: HighlightDetail = {
@@ -41,6 +42,7 @@ const CROSS_TRAIL: HighlightDetail = {
   clubLine: null,
   walkedLine: null,
   cautionLine: null,
+  paceRelativeLine: null,
 }
 
 afterEach(cleanup)
@@ -114,6 +116,24 @@ describe('the highlight sheet', () => {
     expect(derived.compareDocumentPosition(caution)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
+  })
+
+  it('shows the pace line directly under the time it qualifies (#880)', () => {
+    const adjusted: HighlightDetail = {
+      ...FULL,
+      derivedLine: '3.5 mi · 1,740 ft ascent · ≈2h 50m',
+      paceRelativeLine: 'was ≈2h 10m · 1.3× standard',
+    }
+    render(<HighlightSheet detail={adjusted} onClose={vi.fn()} />)
+
+    const pace = screen.getByText('was ≈2h 10m · 1.3× standard')
+    const derived = screen.getByText('3.5 mi · 1,740 ft ascent · ≈2h 50m')
+    expect(derived.compareDocumentPosition(pace)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it('shows no pace line at the standard pace', () => {
+    render(<HighlightSheet detail={FULL} onClose={vi.fn()} />)
+    expect(screen.queryByText(/× standard/)).not.toBeInTheDocument()
   })
 
   it('shows no caution while no record carries one', () => {

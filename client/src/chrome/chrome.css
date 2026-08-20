@@ -1212,6 +1212,18 @@
   color: var(--fg-2);
 }
 
+/* Whose estimate the line above is (#880). Quiet rather than loud: it is not a
+   warning, it is provenance - the same weight as the "worked out on your
+   phone" line, sitting directly under the figure it describes. */
+.closure-sheet__pace {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
 /* The estimate above does not fit this ground (#851). Carries the warning
    colour because it is the one line on this sheet a hiker cannot afford to
    skim past - it sits directly under the numbers it qualifies. */

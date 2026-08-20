@@ -24,7 +24,7 @@ import {
   reverseProfileWindow,
 } from './elevationGain'
 import { profileSamples, type ElevationProfile } from './elevationProfile'
-import { naismithMinutes } from './naismith'
+import { STANDARD_PACE, paceMinutes, type PaceProfile } from './pace'
 
 /** A point somewhere along the trail, on the pipeline's mile axis. */
 export interface RouteMile {
@@ -133,6 +133,7 @@ export function legFigures(
   profile: ElevationProfile,
   fromMile: number,
   toMile: number,
+  pace: PaceProfile = STANDARD_PACE,
 ): LegFigures {
   const low = Math.min(fromMile, toMile)
   const high = Math.max(fromMile, toMile)
@@ -146,7 +147,7 @@ export function legFigures(
     distanceMi,
     ascentFt,
     descentFt,
-    minutes: naismithMinutes({ distanceMi, ascentFt }),
+    minutes: paceMinutes({ distanceMi, ascentFt }, pace),
   }
 }
 
@@ -260,18 +261,24 @@ export function mileAtWalkingMinutes(
   fromMile: number,
   minutes: number,
   direction: HikeDirection,
+  pace: PaceProfile = STANDARD_PACE,
 ): number {
   const first = profile.distanceMi[0]
   const last = profile.distanceMi[profile.distanceMi.length - 1]
   const limit =
     direction === 'NOBO' ? Math.max(fromMile, last) : Math.min(fromMile, first)
 
-  const flatBound = minutes / naismithMinutes({ distanceMi: 1, ascentFt: 0 })
+  // The SAME pace the bisection below measures with, which is the subtle
+  // part: this is an upper bound on how far the walk can reach, derived from
+  // perfectly flat ground. Computed at the standard pace while legFigures used
+  // the hiker's, it would be too SMALL for anybody faster than standard - and
+  // would silently clamp their answer short rather than fail.
+  const flatBound = minutes / paceMinutes({ distanceMi: 1, ascentFt: 0 }, pace)
   const maxSpan = Math.min(Math.abs(limit - fromMile), flatBound)
   if (maxSpan === 0) return fromMile
 
   const spanEnd = direction === 'NOBO' ? fromMile + maxSpan : fromMile - maxSpan
-  if (legFigures(profile, fromMile, spanEnd).minutes <= minutes) return spanEnd
+  if (legFigures(profile, fromMile, spanEnd, pace).minutes <= minutes) return spanEnd
 
   // 0.02 mi ≈ 32 m, under the profile's own 25 m sample spacing - resolving
   // finer would be precision the data does not have.
@@ -280,7 +287,7 @@ export function mileAtWalkingMinutes(
   while (high - low > 0.02) {
     const mid = (low + high) / 2
     const at = direction === 'NOBO' ? fromMile + mid : fromMile - mid
-    if (legFigures(profile, fromMile, at).minutes < minutes) low = mid
+    if (legFigures(profile, fromMile, at, pace).minutes < minutes) low = mid
     else high = mid
   }
   return direction === 'NOBO' ? fromMile + high : fromMile - high

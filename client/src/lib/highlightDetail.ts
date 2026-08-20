@@ -50,7 +50,7 @@ import {
   strongestBasis,
   type Highlight,
 } from './highlights'
-import { naismithTime } from './naismith'
+import { STANDARD_PACE, paceEstimate, type PaceProfile } from './pace'
 import { formatDistance, formatElevation } from './units'
 import type { UnitSystem } from './units'
 import { walkedWithin, type MileRange } from './walkedMiles'
@@ -71,6 +71,15 @@ export interface HighlightDetail {
    *  Null where they were not shown at all, since the distance above them does
    *  not come from the profile. */
   derivedSourceLine: string | null
+  /**
+   * "was ≈2h 10m · 1.3× standard" (#880/#851).
+   *
+   * Null at the standard pace, and null whenever no time is shown at all -
+   * there is nothing to have adjusted. When it is non-null the sheet MUST
+   * render it: an adjusted time without its baseline is the failure #851 is
+   * about.
+   */
+  paceRelativeLine: string | null
   /** One per leg, and ONLY for a highlight with more than one - a single-leg
    *  highlight would just repeat its own subtitle. */
   legLines: string[]
@@ -217,24 +226,31 @@ export function buildHighlightDetail(
   profile: ElevationProfile | null,
   units: UnitSystem,
   walked: readonly MileRange[] = [],
+  pace: PaceProfile = STANDARD_PACE,
 ): HighlightDetail {
   const distanceMi = highlightMiles(highlight)
   const ascentFt = highlightAscentFt(highlight, profile)
 
-  const derivedLine = (() => {
+  const derived = (() => {
     const distance = formatDistance(distanceMi, units)
     if (ascentFt === null) {
       // Distance alone still needs the profile to have said nothing wrong -
       // it comes from the mileposts, so it is always honest. What is dropped
-      // is the climbing and the time.
-      return distance
+      // is the climbing and the time - and with the time, anything to say
+      // about a pace, since there is no estimate to have adjusted.
+      return { line: distance, relative: null }
     }
     // ONE call over the summed distance and ascent, not a sum of per-leg
-    // times. Naismith is linear in both inputs, so the two are exactly equal -
-    // and this way the 5-minute step and the `≈` happen once, at the end,
-    // which is what naismithMinutes exists to make possible.
-    const time = naismithTime({ distanceMi, ascentFt })
-    return `${distance} · ${formatElevation(ascentFt, units)} ascent · ${time}`
+    // times. The rule is linear in both inputs - and stays linear under the
+    // hiker's own coefficients, which only replace its two constants - so the
+    // two are exactly equal, and the 5-minute step and the `≈` happen once at
+    // the end. The baseline rides along in the same object, so this sheet
+    // cannot print an adjusted time and forget to say so.
+    const estimate = paceEstimate({ distanceMi, ascentFt }, pace)
+    return {
+      line: `${distance} · ${formatElevation(ascentFt, units)} ascent · ${estimate.text}`,
+      relative: estimate.relativeLine,
+    }
   })()
 
   const basis = strongestBasis(highlight)
@@ -250,7 +266,8 @@ export function buildHighlightDetail(
   return {
     heading: highlight.name,
     subtitle: subtitleFor(highlight, units),
-    derivedLine,
+    derivedLine: derived.line,
+    paceRelativeLine: derived.relative,
     // ONLY where the profile actually produced something. With the ascent
     // dropped, the line above is a distance summed from the legs' own
     // mileposts and the profile contributed nothing to it - so this sentence

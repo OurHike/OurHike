@@ -35,6 +35,14 @@ export function HighlightSheet({ detail, onClose }: HighlightSheetProps) {
           phone. What drops out is the ascent and the time. */}
       <p className="closure-sheet__derived">{detail.derivedLine}</p>
 
+      {/* Whose estimate this is (#880). Directly under the figure it qualifies,
+          because a hiker who set their pace optimistic in week one and forgot
+          is exactly who the line is for. Absent at the standard pace - a
+          caveat on every line reads like a caveat on none. */}
+      {detail.paceRelativeLine !== null && (
+        <p className="closure-sheet__pace">{detail.paceRelativeLine}</p>
+      )}
+
       {/* The one line that must not be missed if it is there: the estimate
           above does not fit this ground (#851). Directly under the numbers it
           qualifies, rather than down with the provenance, because a hiker who

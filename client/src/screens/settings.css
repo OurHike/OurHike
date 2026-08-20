@@ -366,3 +366,67 @@
   padding: 0;
   border: 0;
 }
+
+/* --- Pace (#880) ----------------------------------------------------------
+   A slider needs its label, its value and its scale stacked rather than in the
+   one row every other setting uses: the control is full width and the reading
+   under it has to sit with the control it describes, not beside it. */
+.settings__row--stacked {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-1, 4px) var(--space-2, 8px);
+}
+.settings__row--stacked input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+}
+.settings__scale {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+/* The preview. Nobody has a feel for "an hour per 480 metres"; this is where
+   both controls become one legible number. */
+.settings__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-1);
+  border-radius: 3px;
+  background: var(--bg-surface);
+}
+.settings__preview-head {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.settings__preview-time {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-blaze-orange, var(--fg-1));
+}
+/* The baseline, in the quiet weight provenance gets - it explains the figure
+   above, it does not compete with it. */
+.settings__preview-rel {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+.settings__preview-of {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}

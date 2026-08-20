@@ -259,6 +259,7 @@ import { LineSheet } from './chrome/LineSheet'
 import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
 import { HighlightSheet } from './chrome/HighlightSheet'
 import { buildHighlightDetail, type HighlightDetail } from './lib/highlightDetail'
+import { readStoredPace, writeStoredPace, type PaceProfile } from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
   readWalked,
@@ -759,6 +760,22 @@ function App() {
   // here: it runs on DEFAULT_PREFERENCES for the tick before the phone's own
   // answer lands, and that default is 'auto' - the same thing main.tsx already
   // stamped on the document before React started.
+  /** The hiker's own pace (#880). Read from its OWN key rather than from
+   *  preferences, which is a sync target - PERSONALIZED_PACE.md §4 keeps a
+   *  pace profile off the wire even once an account exists. State rather than
+   *  a bare read so the Pace screen can change it and every estimate follows. */
+  /** The hiker's own pace (#880). Its own local key rather than a preference:
+   *  PERSONALIZED_PACE.md §4 keeps a pace profile off the wire even once an
+   *  account exists, and `UserPreferences` is a whole-blob sync target. */
+  const [pace, setPace] = useState<PaceProfile>(() => readStoredPace())
+
+  const handleChangePace = useCallback((next: PaceProfile) => {
+    // Written through readPace's clamp, so nothing out of range is stored even
+    // if a control is ever wired to a wider range than the estimator allows.
+    writeStoredPace(next)
+    setPace(readStoredPace())
+  }, [])
+
   const resolvedTheme = useTheme(preferences.theme)
   // Whether this is the big-screen layout - and, for the download, whether the
   // machine is one that goes up a mountain. See handleOnboardingComplete.
@@ -1496,8 +1513,8 @@ function App() {
    */
   const selectedLineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
-    return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME)
-  }, [selectedLine, spurs, pois, units])
+    return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME, pace)
+  }, [selectedLine, spurs, pois, units, pace])
 
   /**
    * The corridor read end to end, in mile order.
@@ -1581,8 +1598,8 @@ function App() {
     if (selectedHighlightId === null) return null
     const highlight = highlights.find((entry) => entry.id === selectedHighlightId)
     if (highlight === undefined) return null
-    return buildHighlightDetail(highlight, elevation, units, walked)
-  }, [selectedHighlightId, highlights, elevation, units, walked])
+    return buildHighlightDetail(highlight, elevation, units, walked, pace)
+  }, [selectedHighlightId, highlights, elevation, units, walked, pace])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -1770,6 +1787,7 @@ function App() {
             start.mile,
             days * DEFAULT_WALKING_HOURS * 60,
             south ? 'SOBO' : 'NOBO',
+            pace,
           )
         : start.mile + (south ? -miles : miles)
     const reachMi = Math.abs(raw - start.mile)
@@ -1973,7 +1991,7 @@ function App() {
             descentFt: null,
             minutes: null,
           }
-        : legFigures(elevation, from.mile, to.mile),
+        : legFigures(elevation, from.mile, to.mile, pace),
     )
   }, [routeDraft, elevation])
 
@@ -2363,6 +2381,7 @@ function App() {
         pois={pois}
         elevation={elevation}
         units={units}
+        pace={pace}
         {...(targetRequest.initialTarget === undefined
           ? {}
           : { initialTarget: targetRequest.initialTarget })}
@@ -3355,6 +3374,8 @@ function App() {
                   preferences={preferences}
                   onChange={updatePreferences}
                   onChangeBackground={handleChangeBackground}
+                  pace={pace}
+                  onChangePace={handleChangePace}
                   lastSyncedAt={lastSyncedAt}
                   onSync={notYet}
                   onExport={notYet}
@@ -3399,6 +3420,7 @@ function App() {
                 pois={pois}
                 gpsMile={gpsPlanMile}
                 units={units}
+                pace={pace}
                 draftLive={routeDraft !== null}
                 onStartOnMap={openRouteBuilder}
                 onChangeTarget={handleChangeTarget}

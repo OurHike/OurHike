@@ -27,6 +27,7 @@ import {
   DataSettings,
   type SettingsProps,
 } from './Settings'
+import { PaceSettings } from './PaceSettings'
 import { AboutBuild } from './AboutBuild'
 import { ReportBug } from './ReportBug'
 import { DownloadsLink } from '../chrome/DownloadsLink'
@@ -250,6 +251,15 @@ export function More({
           preferences={settings.preferences}
           onChange={settings.onChange}
         />
+        {/* Directly under the unit picker, which is the setting it reads with:
+            a pace is a speed, so its own labels follow imperial or metric. */}
+        {settings.pace !== undefined && settings.onChangePace !== undefined && (
+          <PaceSettings
+            pace={settings.pace}
+            units={settings.preferences.unit_system}
+            onChange={settings.onChangePace}
+          />
+        )}
       </div>
     )
   } else if (activeTab === 'safety-privacy') {

@@ -55,6 +55,7 @@ import { legFigures, type LegFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
 import { HikeZoom } from './HikeZoom'
 import { PlanHome } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
@@ -92,6 +93,10 @@ export interface PlanScreenProps {
    *  - "call it a day where you are" is only offered when this is known. */
   gpsMile: number | null
   units: UnitSystem
+  /** The hiker's own pace (#880). Every figure this screen prints - day
+   *  lengths, the walking-hours target - is measured with it, so a plan and
+   *  the sheets it opens never disagree about the same day. */
+  pace?: PaceProfile
   /** A route draft is in progress on the map - the empty state's button
    *  reads as a way back to it rather than a fresh start, because opening
    *  the builder reopens the draft where it stood. */
@@ -146,6 +151,7 @@ export function PlanScreen({
   pois,
   gpsMile,
   units,
+  pace = STANDARD_PACE,
   draftLive,
   onStartOnMap,
   onChangeTarget,
@@ -197,7 +203,7 @@ export function PlanScreen({
     if (elevation === null) return byIndex
     for (const day of views) {
       if (!day.zero) {
-        byIndex.set(day.index, legFigures(elevation, day.start.mile, day.end.mile))
+        byIndex.set(day.index, legFigures(elevation, day.start.mile, day.end.mile, pace))
       }
     }
     return byIndex
@@ -216,7 +222,7 @@ export function PlanScreen({
     return {
       options: {
         effort: (from: { mile: number }, to: { mile: number }) =>
-          legFigures(elevation, from.mile, to.mile).minutes / 60,
+          legFigures(elevation, from.mile, to.mile, pace).minutes / 60,
       },
       target: plan.target.walkingHours as number | null,
     }
@@ -584,6 +590,7 @@ export function PlanScreen({
           gpsMile={gpsMile}
           elevation={elevation}
           units={units}
+          pace={pace}
           onCall={(end) => {
             const called = callItADay(plan, calling, end)
             setCalling(null)
@@ -965,6 +972,9 @@ interface CallItADaySheetProps {
   gpsMile: number | null
   elevation: ElevationProfile | null
   units: UnitSystem
+  /** The hiker's own pace (#880), so this sheet's figure agrees with the day
+   *  it is closing rather than quoting a generic walker's. */
+  pace?: PaceProfile
   onCall: (end: CalledEnd) => void
   onClose: () => void
 }
@@ -989,6 +999,7 @@ function CallItADaySheet({
   gpsMile,
   elevation,
   units,
+  pace = STANDARD_PACE,
   onCall,
   onClose,
 }: CallItADaySheetProps) {
@@ -1005,8 +1016,17 @@ function CallItADaySheet({
   const describe = (end: CalledEnd) => {
     const distanceMi = Math.abs(end.mile - day.start.mile)
     if (elevation === null) return formatDistance(distanceMi, units)
-    const figures = legFigures(elevation, day.start.mile, end.mile)
-    return `${formatDistance(distanceMi, units)} · ${formatNaismithMinutes(figures.minutes)}`
+    const figures = legFigures(elevation, day.start.mile, end.mile, pace)
+    // paceEstimate rather than formatting these minutes by hand. They are
+    // pace-adjusted, so this line owes its baseline (#851) - and formatting
+    // them directly is the one bypass test/paceBaseline.test.ts exists to
+    // catch, which is how this call site was found.
+    const estimate = paceEstimate(
+      { distanceMi: figures.distanceMi, ascentFt: figures.ascentFt },
+      pace,
+    )
+    const shown = `${formatDistance(distanceMi, units)} · ${estimate.text}`
+    return estimate.relativeLine === null ? shown : `${shown} (${estimate.relativeLine})`
   }
 
   const endLabel = (end: CalledEnd) => end.name ?? stopLabel({ mile: end.mile })

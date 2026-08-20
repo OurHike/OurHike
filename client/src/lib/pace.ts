@@ -54,28 +54,95 @@ export interface PaceProfile {
   flatPaceMph: number
   /** Metres of ascent per extra hour. SMALLER is a steeper penalty. */
   ascentMetersPerHour: number
+  /**
+   * Extra minutes per 1,000 m of DESCENT. Zero is no penalty (#900).
+   *
+   * NOT metres-per-hour like the ascent term above, and the asymmetry is the
+   * point. That term is Naismith's own - "one hour per 600 m" - so it keeps his
+   * units. Descent is not in Naismith at all, so there is no inherited form to
+   * preserve, and copying the idiom would buy symmetry at the cost of two real
+   * problems: no natural value would mean "no penalty", and zero metres-per-hour
+   * is a division by zero.
+   *
+   * Minutes-per-1,000 m has neither. Zero means none, sits exactly on the
+   * control's grid, and needs no sentinel - so a fresh install is still
+   * Naismith to the last decimal.
+   *
+   * ONLY EVER ADDS TIME. See STANDARD_DESCENT_MINUTES_PER_1000M below.
+   */
+  descentMinutesPer1000m: number
 }
+
+/**
+ * No descent penalty, which is Naismith - and a penalty is the only direction
+ * this control has.
+ *
+ * PERSONALIZED_PACE.md names both: "gentle downhill is faster than flat, and
+ * steep sustained downhill is SLOWER than flat while wrecking your knees." One
+ * coefficient can only do one of them.
+ *
+ * CLAUDE.md decides which: "Round toward caution, and say which way you
+ * rounded. Naismith gets no descent credit - a known weakness of the rule, left
+ * in place deliberately and documented so the next agent does not 'improve' it
+ * into an optimistic number."
+ *
+ * So this only ever ADDS time. A hiker who is genuinely quick downhill cannot
+ * say so, and that is the deliberate cost: a credit is the optimistic
+ * direction, on the number somebody uses to decide whether they beat the dark.
+ * Wanting that direction means revisiting the rule in the open, not widening a
+ * slider.
+ */
+export const STANDARD_DESCENT_MINUTES_PER_1000M = 0
 
 export const STANDARD_PACE: PaceProfile = {
   flatPaceMph: STANDARD_FLAT_PACE_MPH,
   ascentMetersPerHour: STANDARD_ASCENT_METERS_PER_HOUR,
+  descentMinutesPer1000m: STANDARD_DESCENT_MINUTES_PER_1000M,
 }
 
 /**
- * What the controls may be set to.
+ * What the flat-pace control may be set to, and in what steps.
  *
- * @unvalidated Picked to bracket the standard generously rather than measured
- * against real hikers - the range a slider offers is a UI decision and this
- * build has no pace observations to derive one from. What would settle it is
- * #881's observation store, which is the same evidence the learned layer needs.
+ * 1 to 4 mph in tenths, decided by the maintainer on #888 - the range there,
+ * and the step asked for in review on #889. It replaces a placeholder that was
+ * tagged @unvalidated for exactly this - picked to bracket the standard
+ * generously, never measured - so these are somebody's number rather than
+ * nobody's.
  *
- * The FLOOR on flat pace and the CEILING on the ascent term are the two that
- * matter: together they bound how optimistic a hiker can make the app.
+ * FASTER THAN STANDARD IS ALLOWED, up to 4 mph against the standard's 3.107.
+ * That is the decision, and the safeguard is not a clamp: it is that an
+ * adjusted estimate always carries what it was adjusted from (#851), so a
+ * pace set optimistic in week one cannot quietly become the number a hiker
+ * plans their evening around.
  */
-export const MIN_FLAT_PACE_MPH = 1.5
-export const MAX_FLAT_PACE_MPH = 4.5
+export const MIN_FLAT_PACE_MPH = 1
+export const MAX_FLAT_PACE_MPH = 4
+export const FLAT_PACE_STEP_MPH = 0.1
+
+/**
+ * What the climbing control may be set to.
+ *
+ * @unvalidated Unchanged and still picked rather than measured - #888 decided
+ * the flat pace only. What would settle it is #881's observation store, which
+ * is the same evidence the learned layer needs.
+ */
 export const MIN_ASCENT_METERS_PER_HOUR = 300
 export const MAX_ASCENT_METERS_PER_HOUR = 900
+
+/**
+ * What the descent control may be set to (#900).
+ *
+ * Zero to an hour per 1,000 m, in five-minute steps. The floor is zero because
+ * zero IS the standard, and the ceiling is an hour because past that a descent
+ * costs more than the same climb, which no hiker's own account of themselves
+ * supports.
+ *
+ * @unvalidated Picked, not measured. The maintainer chose to offer the control;
+ * this range is mine, and #881's observation store is what would settle it.
+ */
+export const MIN_DESCENT_MINUTES_PER_1000M = 0
+export const MAX_DESCENT_MINUTES_PER_1000M = 60
+export const DESCENT_STEP_MINUTES = 5
 
 function clamp(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
@@ -106,19 +173,61 @@ export function readPace(
       MAX_ASCENT_METERS_PER_HOUR,
       STANDARD_ASCENT_METERS_PER_HOUR,
     ),
+    descentMinutesPer1000m: clamp(
+      stored.descentMinutesPer1000m,
+      MIN_DESCENT_MINUTES_PER_1000M,
+      MAX_DESCENT_MINUTES_PER_1000M,
+      STANDARD_DESCENT_MINUTES_PER_1000M,
+    ),
   }
 }
 
-/** Whether a profile is the standard rule, within floating-point noise. */
+/**
+ * Whether a profile is the standard rule, within floating-point noise.
+ *
+ * NOT REACHABLE BY DRAGGING, and that is deliberate rather than an oversight.
+ * The standard flat pace is 5 km/h - 3.1069 mph - which does not sit on the
+ * tenths grid the control offers: the nearest stop is 3.1, seven thousandths
+ * below. So once a hiker moves the flat slider, "Reset to standard" is the
+ * only way back to exactly the rule.
+ *
+ * At 3.1 the printed estimate is identical to the standard's - 130.5 minutes
+ * against 130.3 on the preview's walk, both ≈2h 10m - so the baseline line
+ * correctly says nothing while the Reset control correctly still offers itself.
+ * Those two are answering different questions: "is this a different answer"
+ * and "is this exactly the rule".
+ *
+ * The alternative would be snapping the standard onto the grid, and that is
+ * the wrong trade: a fresh install would then disagree with the rule it claims
+ * to use, which is the whole property the two-term design protects.
+ */
 export function isStandardPace(pace: PaceProfile): boolean {
   return (
     Math.abs(pace.flatPaceMph - STANDARD_FLAT_PACE_MPH) < 1e-9 &&
-    Math.abs(pace.ascentMetersPerHour - STANDARD_ASCENT_METERS_PER_HOUR) < 1e-9
+    Math.abs(pace.ascentMetersPerHour - STANDARD_ASCENT_METERS_PER_HOUR) < 1e-9 &&
+    Math.abs(pace.descentMinutesPer1000m - STANDARD_DESCENT_MINUTES_PER_1000M) < 1e-9
   )
 }
 
 const FEET_TO_METERS = 0.3048
 const MINUTES_PER_HOUR = 60
+
+/**
+ * What a walk has to say about itself for this estimator.
+ *
+ * `NaismithInput` plus an OPTIONAL descent, rather than widening that type:
+ * naismith.ts keeps `descentFt` structurally absent so a call site cannot wire
+ * one in without changing a signature, and that guard is worth more than the
+ * convenience of one shared shape. Callers with no descent figure - a spur's
+ * round trip is net zero - simply omit it and pay nothing.
+ *
+ * Negative values are floored at zero rather than trusted: a caller passing a
+ * signed elevation delta would otherwise buy time back, which is exactly the
+ * credit this control does not offer.
+ */
+export interface PaceInput extends NaismithInput {
+  descentFt?: number
+}
 
 /**
  * Moving time under this hiker's own coefficients, in minutes.
@@ -133,12 +242,17 @@ const MINUTES_PER_HOUR = 60
  * exports both: route.ts sums a day before formatting once, and rounding each
  * leg first would let the printed total drift from the printed legs.
  */
-export function paceMinutes(input: NaismithInput, pace: PaceProfile): number {
+export function paceMinutes(input: PaceInput, pace: PaceProfile): number {
   const safe = readPace(pace)
   const distanceMinutes = (input.distanceMi / safe.flatPaceMph) * MINUTES_PER_HOUR
   const ascentMinutes =
     ((input.ascentFt * FEET_TO_METERS) / safe.ascentMetersPerHour) * MINUTES_PER_HOUR
-  return distanceMinutes + ascentMinutes
+  // Descent, and only ever upward. A caller with no descent figure - or one on
+  // the standard profile - pays nothing, which keeps a fresh install exactly
+  // Naismith.
+  const descentM = Math.max(0, input.descentFt ?? 0) * FEET_TO_METERS
+  const descentMinutes = (descentM / 1000) * safe.descentMinutesPer1000m
+  return distanceMinutes + ascentMinutes + descentMinutes
 }
 
 /**
@@ -166,7 +280,7 @@ export interface PaceEstimate {
 }
 
 /** How many times the standard estimate this walk now reads, for THIS walk. */
-export function paceRatio(input: NaismithInput, pace: PaceProfile): number | null {
+export function paceRatio(input: PaceInput, pace: PaceProfile): number | null {
   const base = naismithMinutes(input)
   if (base <= 0) return null
   return paceMinutes(input, pace) / base
@@ -179,7 +293,7 @@ export function paceRatio(input: NaismithInput, pace: PaceProfile): number | nul
  * the standard once rounded - a "1.0× standard" caption on a profile a hiker
  * nudged by two percent is noise claiming to be information.
  */
-export function paceEstimate(input: NaismithInput, pace: PaceProfile): PaceEstimate {
+export function paceEstimate(input: PaceInput, pace: PaceProfile): PaceEstimate {
   const safe = readPace(pace)
   const minutes = paceMinutes(input, safe)
   const text = formatNaismithMinutes(minutes)

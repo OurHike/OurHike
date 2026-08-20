@@ -1,7 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
+  FLAT_PACE_STEP_MPH,
+  DESCENT_STEP_MINUTES,
   MAX_ASCENT_METERS_PER_HOUR,
+  MAX_DESCENT_MINUTES_PER_1000M,
   MAX_FLAT_PACE_MPH,
+  MIN_DESCENT_MINUTES_PER_1000M,
   MIN_ASCENT_METERS_PER_HOUR,
   MIN_FLAT_PACE_MPH,
   STANDARD_ASCENT_METERS_PER_HOUR,
@@ -18,7 +22,7 @@ import {
   PACE_STORAGE_KEY,
   type PaceProfile,
 } from './pace'
-import { naismithMinutes, naismithTime, type NaismithInput } from './naismith'
+import { naismithMinutes, naismithTime } from './naismith'
 
 /** McAfee Knob's leg, as #883's mock-ups drew it. */
 const WALK = { distanceMi: 4.0, ascentFt: 1740 }
@@ -64,30 +68,87 @@ describe('a hiker who has moved the controls', () => {
     expect(paceMinutes(WALK, steeper)).toBeGreaterThan(naismithMinutes(WALK))
   })
 
-  it('gives descent no credit, even when a caller passes some', () => {
-    // PERSONALIZED_PACE.md puts descent in the LEARNED layer. A manual control
-    // for it would be a number almost nobody can answer honestly, set by
-    // fiddling, in the optimistic direction.
-    //
-    // Asserted against a caller that passes it ANYWAY - comparing two
-    // identical calls would be a test that cannot fail, which is how a
-    // silently-added descent term would get through.
+  it('costs nothing for descent at the STANDARD pace, however much there is', () => {
+    // A fresh install is Naismith, and Naismith has no descent term at all.
+    // Asserted against a caller that passes descent ANYWAY - comparing two
+    // identical calls would be a test that cannot fail.
     const withDescent = paceMinutes(
-      { distanceMi: 3, ascentFt: 500, descentFt: 4000 } as NaismithInput,
+      { distanceMi: 3, ascentFt: 500, descentFt: 4000 },
       STANDARD_PACE,
     )
     const without = paceMinutes({ distanceMi: 3, ascentFt: 500 }, STANDARD_PACE)
     expect(withDescent).toBe(without)
   })
+})
 
-  it('offers no descent coefficient to set in the first place', () => {
-    // The structural half: naismith.ts keeps `descentFt` absent rather than
-    // ignored so a call site cannot wire it in without changing a signature.
-    // The manual profile keeps the same property.
+/**
+ * The descent coefficient (#900), and the one direction it has.
+ *
+ * The maintainer's decision reverses PERSONALIZED_PACE.md's own lean, which put
+ * descent in the learned layer because "almost nobody has a number for
+ * descent". What it does NOT reverse is CLAUDE.md's rule that Naismith gets no
+ * descent CREDIT - so this control only ever adds time.
+ */
+describe('descent', () => {
+  const KNEES: PaceProfile = { ...STANDARD_PACE, descentMinutesPer1000m: 30 }
+  const DOWNHILL = { distanceMi: 3, ascentFt: 0, descentFt: 3000 }
+
+  it('costs time once a hiker says it costs them time', () => {
+    expect(paceMinutes(DOWNHILL, KNEES)).toBeGreaterThan(
+      paceMinutes(DOWNHILL, STANDARD_PACE),
+    )
+  })
+
+  it('charges the rate it was given', () => {
+    // 3,000 ft is 914.4 m; at 30 min per 1,000 m that is 27.4 extra minutes.
+    const extra = paceMinutes(DOWNHILL, KNEES) - paceMinutes(DOWNHILL, STANDARD_PACE)
+    expect(extra).toBeCloseTo((3000 * 0.3048 * 30) / 1000, 6)
+  })
+
+  it('NEVER buys time back, at any setting', () => {
+    // The safety property, and the reason this is a penalty rather than a
+    // signed correction. CLAUDE.md: "Naismith gets no descent credit... so the
+    // next agent does not improve it into an optimistic number."
+    for (const rate of [0, 5, 30, MAX_DESCENT_MINUTES_PER_1000M]) {
+      const mine = { ...STANDARD_PACE, descentMinutesPer1000m: rate }
+      expect(paceMinutes(DOWNHILL, mine)).toBeGreaterThanOrEqual(
+        paceMinutes(DOWNHILL, STANDARD_PACE),
+      )
+    }
+  })
+
+  it('floors a negative descent rather than letting it buy time back', () => {
+    // A caller passing a signed elevation delta would otherwise get a credit
+    // through the back door.
+    const signed = paceMinutes({ distanceMi: 3, ascentFt: 0, descentFt: -3000 }, KNEES)
+    expect(signed).toBe(paceMinutes({ distanceMi: 3, ascentFt: 0 }, KNEES))
+  })
+
+  it('is absent from a walk that does not mention descent', () => {
+    // A spur's round trip is net zero, and omitting the field costs nothing.
+    expect(paceMinutes({ distanceMi: 3, ascentFt: 0 }, KNEES)).toBe(
+      paceMinutes({ distanceMi: 3, ascentFt: 0, descentFt: 0 }, KNEES),
+    )
+  })
+
+  it('makes the profile three coefficients, not two', () => {
     expect(Object.keys(STANDARD_PACE).sort()).toEqual([
       'ascentMetersPerHour',
+      'descentMinutesPer1000m',
       'flatPaceMph',
     ])
+  })
+
+  it('starts at zero, which is on the control grid and IS the standard', () => {
+    expect(STANDARD_PACE.descentMinutesPer1000m).toBe(0)
+    expect(MIN_DESCENT_MINUTES_PER_1000M).toBe(0)
+    expect(MAX_DESCENT_MINUTES_PER_1000M % DESCENT_STEP_MINUTES).toBe(0)
+  })
+
+  it('carries a baseline line once it changes the printed time', () => {
+    // #851's rule reaches the new coefficient too - it is not special.
+    const estimate = paceEstimate(DOWNHILL, KNEES)
+    expect(estimate.relativeLine).toMatch(/^was ≈.*× standard$/)
   })
 })
 
@@ -173,6 +234,7 @@ describe('a stored value this build cannot read', () => {
       const minutes = paceMinutes(WALK, {
         flatPaceMph: junk as unknown as number,
         ascentMetersPerHour: junk as unknown as number,
+        descentMinutesPer1000m: junk as unknown as number,
       })
       expect(Number.isFinite(minutes)).toBe(true)
       expect(minutes).toBeGreaterThan(0)
@@ -233,7 +295,11 @@ describe('the pace store', () => {
   })
 
   it('round-trips a profile a hiker set', () => {
-    const mine: PaceProfile = { flatPaceMph: 2.6, ascentMetersPerHour: 480 }
+    const mine: PaceProfile = {
+      flatPaceMph: 2.6,
+      ascentMetersPerHour: 480,
+      descentMinutesPer1000m: 20,
+    }
     writeStoredPace(mine)
     expect(readStoredPace()).toEqual(mine)
   })
@@ -243,15 +309,24 @@ describe('the pace store', () => {
     // client's UserPreferences and the server's schema are one model written
     // twice, and a client-only key breaks the sync for every hiker.
     expect(PACE_STORAGE_KEY).not.toContain('preferences')
-    writeStoredPace({ flatPaceMph: 2.6, ascentMetersPerHour: 480 })
+    writeStoredPace({
+      flatPaceMph: 2.6,
+      ascentMetersPerHour: 480,
+      descentMinutesPer1000m: 0,
+    })
     expect(localStorage.getItem('ourhike:preferences')).toBeNull()
   })
 
   it('clamps on the way IN, so nothing out of range is ever stored', () => {
-    writeStoredPace({ flatPaceMph: 99, ascentMetersPerHour: 1 })
+    writeStoredPace({
+      flatPaceMph: 99,
+      ascentMetersPerHour: 1,
+      descentMinutesPer1000m: 999,
+    })
     const stored = JSON.parse(localStorage.getItem(PACE_STORAGE_KEY) as string)
     expect(stored.flatPaceMph).toBe(MAX_FLAT_PACE_MPH)
     expect(stored.ascentMetersPerHour).toBe(MIN_ASCENT_METERS_PER_HOUR)
+    expect(stored.descentMinutesPer1000m).toBe(MAX_DESCENT_MINUTES_PER_1000M)
   })
 
   it('reads the standard pace back from anything unparseable', () => {
@@ -262,9 +337,81 @@ describe('the pace store', () => {
   })
 
   it('forgets it on clear, returning every estimate to the rule', () => {
-    writeStoredPace({ flatPaceMph: 2.6, ascentMetersPerHour: 480 })
+    writeStoredPace({
+      flatPaceMph: 2.6,
+      ascentMetersPerHour: 480,
+      descentMinutesPer1000m: 0,
+    })
     clearStoredPace()
     expect(readStoredPace()).toEqual(STANDARD_PACE)
     expect(isStandardPace(readStoredPace())).toBe(true)
+  })
+})
+
+/**
+ * The range the maintainer chose (#888) and the step asked for in review on
+ * #889: 1 to 4 mph in tenths.
+ *
+ * Replacing bounds that were tagged @unvalidated - picked to bracket the
+ * standard, never measured.
+ */
+describe('the flat pace control range', () => {
+  it('runs from 1 to 4 mph', () => {
+    expect(MIN_FLAT_PACE_MPH).toBe(1)
+    expect(MAX_FLAT_PACE_MPH).toBe(4)
+  })
+
+  it('steps in tenths of a mile per hour', () => {
+    expect(FLAT_PACE_STEP_MPH).toBe(0.1)
+  })
+
+  it('reaches FASTER than the standard, which is the decision', () => {
+    // The point of the range, asserted rather than implied by two numbers.
+    // The safeguard is not a clamp - it is that an adjusted estimate always
+    // carries what it was adjusted from.
+    expect(MAX_FLAT_PACE_MPH).toBeGreaterThan(STANDARD_FLAT_PACE_MPH)
+  })
+
+  it('reaches a genuinely slow walk, for rough ground and a heavy pack', () => {
+    expect(MIN_FLAT_PACE_MPH).toBeLessThan(STANDARD_FLAT_PACE_MPH)
+  })
+})
+
+/**
+ * The consequence of that grid, pinned so nobody "fixes" it.
+ *
+ * 5 km/h is 3.1069 mph, which is not a multiple of 0.1 either - the finer step
+ * moved the nearest stop from 3.0 to 3.1 without putting the standard ON the
+ * grid. Snapping it there would make a fresh install disagree with the rule it
+ * claims to use, the exact property the two-term design exists to protect.
+ */
+describe('the standard sits off the grid, at any step', () => {
+  it('is not reachable by dragging, so Reset is the way back', () => {
+    const offGrid =
+      Math.abs(
+        STANDARD_FLAT_PACE_MPH / FLAT_PACE_STEP_MPH -
+          Math.round(STANDARD_FLAT_PACE_MPH / FLAT_PACE_STEP_MPH),
+      ) > 1e-9
+    expect(offGrid).toBe(true)
+  })
+
+  it('is not standard at either neighbouring stop', () => {
+    // 3.1 and 3.2 bracket it. Neither is the rule, and isStandardPace says so
+    // - which is what makes the Reset control load-bearing rather than a
+    // convenience. 3.1 is the interesting one: it prints the SAME estimate as
+    // the standard, so the baseline line stays silent while Reset does not.
+    for (const stop of [3.1, 3.2]) {
+      expect(isStandardPace({ ...STANDARD_PACE, flatPaceMph: stop })).toBe(false)
+    }
+  })
+
+  it('still IS exactly 5 km/h, which is the thing worth protecting', () => {
+    expect(STANDARD_FLAT_PACE_MPH * 1.609344).toBeCloseTo(5, 9)
+  })
+
+  it('survives a round trip through the store, off-grid and all', () => {
+    writeStoredPace(STANDARD_PACE)
+    expect(isStandardPace(readStoredPace())).toBe(true)
+    clearStoredPace()
   })
 })

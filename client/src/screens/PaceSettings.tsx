@@ -22,6 +22,10 @@
 // shows change rather than noise.
 
 import {
+  DESCENT_STEP_MINUTES,
+  FLAT_PACE_STEP_MPH,
+  MAX_DESCENT_MINUTES_PER_1000M,
+  MIN_DESCENT_MINUTES_PER_1000M,
   MAX_ASCENT_METERS_PER_HOUR,
   MAX_FLAT_PACE_MPH,
   MIN_ASCENT_METERS_PER_HOUR,
@@ -49,7 +53,7 @@ import {
  * you last looked at", because a preview that changes its subject while you
  * drag shows two things moving and explains neither.
  */
-const SAMPLE_WALK = { distanceMi: 4.0, ascentFt: 1740 }
+const SAMPLE_WALK = { distanceMi: 4.0, ascentFt: 1740, descentFt: 1740 }
 
 /**
  * "+1h / 480 m" - how much climbing buys an extra hour.
@@ -61,6 +65,20 @@ const SAMPLE_WALK = { distanceMi: 4.0, ascentFt: 1740 }
  */
 function climbLabel(metersPerHour: number, units: UnitSystem): string {
   return `+1h / ${formatElevation(feetFromMetres(metersPerHour), units)}`
+}
+
+/**
+ * "+30 min / 1,000 m", or "None" (#900).
+ *
+ * Its own idiom rather than the ascent term's "+1h / N m", because it measures
+ * a different thing: the ascent control is Naismith's own and keeps his units,
+ * while descent is not in the rule at all. Reading them as one pair would
+ * suggest a symmetry the arithmetic does not have.
+ */
+function descentLabel(minutesPer1000m: number, units: UnitSystem): string {
+  if (minutesPer1000m <= 0) return 'None'
+  const per = formatElevation(feetFromMetres(1000), units)
+  return `+${Math.round(minutesPer1000m)} min / ${per}`
 }
 
 export interface PaceSettingsProps {
@@ -94,7 +112,7 @@ export function PaceSettings({ pace, units, onChange }: PaceSettingsProps) {
           type="range"
           min={MIN_FLAT_PACE_MPH}
           max={MAX_FLAT_PACE_MPH}
-          step={0.1}
+          step={FLAT_PACE_STEP_MPH}
           value={pace.flatPaceMph}
           onChange={(event) =>
             onChange({ ...pace, flatPaceMph: Number(event.target.value) })
@@ -141,6 +159,38 @@ export function PaceSettings({ pace, units, onChange }: PaceSettingsProps) {
         </p>
       </div>
 
+      <div className="settings__row settings__row--stacked">
+        <label className="settings__label" htmlFor="pace-descent">
+          Descent penalty
+        </label>
+        <output className="settings__value" htmlFor="pace-descent">
+          {descentLabel(pace.descentMinutesPer1000m, units)}
+        </output>
+        {/* NOT inverted, unlike the climbing control above: this number runs
+            the same way the feeling does, so dragging right is harder. Zero is
+            the left-most stop and is the standard - Naismith has no descent
+            term, so "none" is the rule rather than an opt-out. */}
+        <input
+          id="pace-descent"
+          type="range"
+          min={MIN_DESCENT_MINUTES_PER_1000M}
+          max={MAX_DESCENT_MINUTES_PER_1000M}
+          step={DESCENT_STEP_MINUTES}
+          value={pace.descentMinutesPer1000m}
+          onChange={(event) =>
+            onChange({
+              ...pace,
+              descentMinutesPer1000m: Number(event.target.value),
+            })
+          }
+        />
+        {/* Says which way this one can go, because it can only go one way and
+            a hiker who is quick downhill will look for the other. */}
+        <p className="settings__scale">
+          Standard is none. This can only add time, never subtract it.
+        </p>
+      </div>
+
       <div className="settings__preview">
         <p className="settings__preview-head">Your estimates now read</p>
         <p className="settings__preview-time">{estimate.text}</p>
@@ -155,7 +205,8 @@ export function PaceSettings({ pace, units, onChange }: PaceSettingsProps) {
             invariant test caught. */}
         <p className="settings__preview-of">
           for a {formatDistance(SAMPLE_WALK.distanceMi, units)} walk with{' '}
-          {formatElevation(SAMPLE_WALK.ascentFt, units)} of climb
+          {formatElevation(SAMPLE_WALK.ascentFt, units)} up and{' '}
+          {formatElevation(SAMPLE_WALK.descentFt, units)} down
         </p>
       </div>
 

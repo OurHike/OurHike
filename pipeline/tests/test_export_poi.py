@@ -436,6 +436,123 @@ def test_export_poi_carries_fetched_photos_onto_their_features_and_only_theirs(t
     assert "upload.wikimedia.org" not in json.dumps(campsite_props)
 
 
+def test_export_poi_holds_flagged_commons_photos_until_a_person_decides(tmp_path, monkeypatch, con):
+    """The #836 gate through main(): a Commons photo the face screen flagged
+    exports only once reference/photo_screen_decisions.json says a person
+    cleared it, a refused photo stays out whatever the screen said, and the
+    held one leaves its feature photo-less - the placeholder, never the
+    photograph nobody has looked at."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    held_digest, cleared_digest, refused_digest = "d" * 64, "e" * 64, "f" * 64
+    common = {
+        "url": "https://upload.wikimedia.org/x-640.jpg",
+        "page_url": "p",
+        "author": "A",
+        "license": "CC BY-SA 4.0",
+        "taken": "2025-06-18",
+    }
+    (raw_dir / "poi_images.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-20",
+                        "photo": {
+                            **common,
+                            "digest": held_digest,
+                            "screen": {"faces": 1, "screener": "test", "on": "2026-08-20"},
+                        },
+                    },
+                    "atc_campsites:campsite-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-20",
+                        "photo": {
+                            **common,
+                            "digest": cleared_digest,
+                            "screen": {"faces": 2, "screener": "test", "on": "2026-08-20"},
+                        },
+                    },
+                    "opentrail_at:100": {
+                        "status": "found",
+                        "checked": "2026-08-20",
+                        # The screen saw nothing; a person saw something. The
+                        # person wins.
+                        "photo": {
+                            **common,
+                            "digest": refused_digest,
+                            "screen": {"faces": 0, "screener": "test", "on": "2026-08-20"},
+                        },
+                    },
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(
+        export_poi,
+        "load_screen_decisions",
+        lambda: {
+            cleared_digest: {"decision": "cleared", "on": "2026-08-20"},
+            refused_digest: {"decision": "refused", "on": "2026-08-20"},
+        },
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    shelter = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter.get("photo_key") is None  # flagged, undecided: held
+
+    campsite = json.loads((out_dir / "campsite.geojson").read_text())["features"][0]["properties"]
+    assert campsite["photo_key"] == f"photos/{cleared_digest}.jpg"  # flagged, cleared: ships
+
+    water = json.loads((out_dir / "water.geojson").read_text())["features"]
+    assert all(f["properties"].get("photo_key") is None for f in water)  # refused: out
+
+
+def test_export_poi_does_not_gate_the_atc_photo_file(tmp_path, monkeypatch, con):
+    """The gate covers the Commons crawl, not ATC's own facility-inventory
+    shoot - the split the export's comment states. Pinned so wiring the
+    screen into fetch_atc_photos.py one day is a decision, not an accident
+    of import order."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    (raw_dir / "poi_images_atc.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-20",
+                        # A screen record even here - hypothetical today, but
+                        # the bypass must hold even if one appears.
+                        "photos": [
+                            {
+                                "digest": SHELTER_DIGEST,
+                                "taken": "2016-09-12",
+                                "screen": {"faces": 4, "screener": "test", "on": "2026-08-20"},
+                            }
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    shelter = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
+
+
 def test_export_poi_exports_photo_less_when_no_images_file_exists(tmp_path, monkeypatch, con):
     """The images file being absent is a normal state (fetch_poi_images.py
     is optional and slow), not an error - the export must ship, and ship

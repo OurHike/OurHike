@@ -508,6 +508,39 @@ def test_photos_land_before_the_manifest_that_makes_them_reachable(s3_client, lo
     assert max(photo_positions) < seen.index("trails.geojson")
 
 
+def test_collect_photos_leaves_face_gate_held_bytes_out_of_the_upload_set(tmp_path, monkeypatch):
+    """The bucket half of the #836 gate. An unreferenced object is not a
+    private one - the digests travel in the published outcome sidecars - so
+    a flagged-undecided or refused photo must not be uploaded at all, while
+    everything screened-clear or cleared still is."""
+    photos_dir = tmp_path / PHOTOS_DIRNAME
+    photos_dir.mkdir()
+    digests = {}
+    for name, content in (("clean", b"\xff\xd8 shelter"), ("held", b"\xff\xd8 group shot"), ("refused", b"\xff\xd8 refused")):
+        digest = photo_digest(content)
+        (photos_dir / f"{digest}.jpg").write_bytes(content)
+        digests[name] = digest
+    (tmp_path / "poi_images.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "a": {"status": "found", "photo": {"digest": digests["clean"], "screen": {"faces": 0}}},
+                    "b": {"status": "found", "photo": {"digest": digests["held"], "screen": {"faces": 2}}},
+                    "c": {"status": "found", "photo": {"digest": digests["refused"], "screen": {"faces": 0}}},
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(publish, "load_decisions", lambda: {digests["refused"]: {"decision": "refused", "on": "2026-08-20"}})
+
+    collected = publish.collect_photos()
+
+    assert photo_key(digests["clean"]) in collected
+    assert photo_key(digests["held"]) not in collected
+    assert photo_key(digests["refused"]) not in collected
+
+
 def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, local_photos):
     """A photo only becomes visible through a poi artifact that references
     it; that artifact's bytes changing is the real event. Bumping the version

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeDownload, downloadPercent } from './downloadActivity'
+import { activeDownload, downloadFillPercent, downloadPercent } from './downloadActivity'
 import type { DownloadStatus } from '../screens/DownloadCard'
 
 // The question the footer link asks: is anything happening right now, and how
@@ -114,5 +114,28 @@ describe('downloadPercent', () => {
     // "NaN%", and 100% would be a finished download that is not finished.
     expect(downloadPercent(0, 0)).toBe(0)
     expect(downloadPercent(500, 0)).toBe(0)
+  })
+})
+
+describe('downloadFillPercent', () => {
+  it('steps in tenths of a percent, where the whole-percent figure sits still (#449)', () => {
+    // 1% of the first sheet is 7.9 MB; the fill has to move inside that.
+    expect(downloadFillPercent(1, 3)).toBe(33.3)
+    expect(downloadFillPercent(4_000_000, 789_552_460)).toBe(0.5)
+  })
+
+  it('floors, so the fill never overstates a stalled transfer', () => {
+    // 2/3 is 66.67%: the rounded figure says 67, the fill stays behind the
+    // truth at 66.6 - same rule as formatBytesLive, same reason.
+    expect(downloadFillPercent(2, 3)).toBe(66.6)
+    // And never 100% before the last byte - a full bar over an unfinished
+    // download is the lie the floor exists to prevent.
+    expect(downloadFillPercent(789_552_459, 789_552_460)).toBeLessThan(100)
+    expect(downloadFillPercent(789_552_460, 789_552_460)).toBe(100)
+  })
+
+  it('calls an undeclared length the start of something, like downloadPercent', () => {
+    expect(downloadFillPercent(0, 0)).toBe(0)
+    expect(downloadFillPercent(500, 0)).toBe(0)
   })
 })

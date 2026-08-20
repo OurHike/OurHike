@@ -40,7 +40,11 @@
 // a line on the sheet - so whichever way it goes is a small change rather than
 // a rewrite.
 
-import { cumulativeGainOverProfile, type ProfileSample } from './elevationGain'
+import {
+  cumulativeGainOverProfile,
+  cumulativeLossOverProfile,
+  type ProfileSample,
+} from './elevationGain'
 import { profileSamples, type ElevationProfile } from './elevationProfile'
 import {
   NAMED,
@@ -182,6 +186,32 @@ export function highlightAscentFt(
   return total
 }
 
+/**
+ * Confirmed DESCENT over every leg, or null (#900).
+ *
+ * Same honesty rule as the ascent above, and for the same reason: a partial
+ * sum presented as a total is wrong, and here it is wrong in the OPTIMISTIC
+ * direction - less descent means less penalty means a shorter time. So a
+ * highlight that leaves the A.T. reports no descent rather than the descent it
+ * happens to have a profile for.
+ */
+export function highlightDescentFt(
+  highlight: Highlight,
+  profile: ElevationProfile | null,
+): number | null {
+  if (profile === null || !everyLegIsProfiled(highlight)) return null
+  let total = 0
+  for (const leg of highlight.legs) {
+    const samples: ProfileSample[] = profileSamples(profile, {
+      startMile: leg.startMile,
+      endMile: leg.endMile,
+    })
+    if (samples.length === 0) return null
+    total += cumulativeLossOverProfile(samples)
+  }
+  return total
+}
+
 function subtitleFor(highlight: Highlight, units: UnitSystem): string {
   const legs = highlight.legs
   if (legs.length === 1) {
@@ -230,6 +260,7 @@ export function buildHighlightDetail(
 ): HighlightDetail {
   const distanceMi = highlightMiles(highlight)
   const ascentFt = highlightAscentFt(highlight, profile)
+  const descentFt = highlightDescentFt(highlight, profile)
 
   const derived = (() => {
     const distance = formatDistance(distanceMi, units)
@@ -246,7 +277,13 @@ export function buildHighlightDetail(
     // two are exactly equal, and the 5-minute step and the `≈` happen once at
     // the end. The baseline rides along in the same object, so this sheet
     // cannot print an adjusted time and forget to say so.
-    const estimate = paceEstimate({ distanceMi, ascentFt }, pace)
+    // Descent rides along where it is known. It is null in exactly the cases
+    // ascent is, so this never adds a descent penalty to a walk whose climbing
+    // the app declined to total.
+    const estimate = paceEstimate(
+      { distanceMi, ascentFt, descentFt: descentFt ?? 0 },
+      pace,
+    )
     return {
       line: `${distance} · ${formatElevation(ascentFt, units)} ascent · ${estimate.text}`,
       relative: estimate.relativeLine,

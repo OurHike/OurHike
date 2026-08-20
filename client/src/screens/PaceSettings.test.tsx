@@ -2,7 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { PaceSettings } from './PaceSettings'
 import {
+  DESCENT_STEP_MINUTES,
   FLAT_PACE_STEP_MPH,
+  MAX_DESCENT_MINUTES_PER_1000M,
+  MIN_DESCENT_MINUTES_PER_1000M,
   MAX_FLAT_PACE_MPH,
   MIN_FLAT_PACE_MPH,
   MAX_ASCENT_METERS_PER_HOUR,
@@ -11,7 +14,11 @@ import {
   type PaceProfile,
 } from '../lib/pace'
 
-const SLOWER: PaceProfile = { flatPaceMph: 2.6, ascentMetersPerHour: 480 }
+const SLOWER: PaceProfile = {
+  flatPaceMph: 2.6,
+  ascentMetersPerHour: 480,
+  descentMinutesPer1000m: 0,
+}
 
 afterEach(cleanup)
 
@@ -111,7 +118,7 @@ describe('the live preview', () => {
   it('describes the walk it is previewing, so the number means something', () => {
     render(<PaceSettings pace={SLOWER} units="imperial" onChange={vi.fn()} />)
     expect(
-      screen.getByText('for a 4.0 mi walk with 1,740 ft of climb'),
+      screen.getByText(/for a 4\.0 mi walk with 1,740 ft up and 1,740 ft down/),
     ).toBeInTheDocument()
   })
 })
@@ -137,7 +144,58 @@ describe('units', () => {
     // 1,740 ft of climb" under a preview in km/h. The unit invariant test
     // caught it; this pins it.
     render(<PaceSettings pace={STANDARD_PACE} units="metric" onChange={vi.fn()} />)
-    expect(screen.getByText(/for a 6\.4 km walk with 530 m of climb/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/for a 6\.4 km walk with 530 m up and 530 m down/),
+    ).toBeInTheDocument()
+  })
+})
+
+/**
+ * The third control (#900), and the one direction it has.
+ *
+ * The maintainer reversed PERSONALIZED_PACE.md's lean to offer it at all. What
+ * did NOT reverse is CLAUDE.md's no-descent-credit rule, so it only adds time.
+ */
+describe('the descent control', () => {
+  it('starts at none, which is the standard', () => {
+    render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={vi.fn()} />)
+    expect(screen.getByText('None')).toBeInTheDocument()
+  })
+
+  it('runs from none to an hour per 1,000 m in five-minute steps', () => {
+    render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={vi.fn()} />)
+    const descent = screen.getByLabelText('Descent penalty')
+    expect(descent).toHaveAttribute('min', String(MIN_DESCENT_MINUTES_PER_1000M))
+    expect(descent).toHaveAttribute('max', String(MAX_DESCENT_MINUTES_PER_1000M))
+    expect(descent).toHaveAttribute('step', String(DESCENT_STEP_MINUTES))
+  })
+
+  it('is NOT inverted, so dragging right is harder', () => {
+    // The climbing control above is inverted because its number runs backwards.
+    // This one does not, and a reader moving between them should not have to
+    // guess which is which.
+    const onChange = vi.fn()
+    render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={onChange} />)
+    fireEvent.change(screen.getByLabelText('Descent penalty'), {
+      target: { value: '30' },
+    })
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ descentMinutesPer1000m: 30 }),
+    )
+  })
+
+  it('says out loud that it can only add time', () => {
+    // A hiker who is genuinely quick downhill will look for the other
+    // direction. The screen should tell them it is not there rather than let
+    // them hunt for it.
+    render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={vi.fn()} />)
+    expect(screen.getByText(/can only add time, never subtract it/)).toBeInTheDocument()
+  })
+
+  it("reads in the hiker's own units", () => {
+    const knees: PaceProfile = { ...STANDARD_PACE, descentMinutesPer1000m: 30 }
+    render(<PaceSettings pace={knees} units="metric" onChange={vi.fn()} />)
+    expect(screen.getByText('+30 min / 1,000 m')).toBeInTheDocument()
   })
 })
 

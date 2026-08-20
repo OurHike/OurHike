@@ -975,7 +975,11 @@ describe('the desktop chart (#135)', () => {
             ...chartProps(),
             selection: { startMile: 20, endMile: 70 },
             southbound: false,
-            pace: { flatPaceMph: 2.5, ascentMetersPerHour: 600 },
+            pace: {
+              flatPaceMph: 2.5,
+              ascentMetersPerHour: 600,
+              descentMinutesPer1000m: 0,
+            },
           }}
         />,
       )

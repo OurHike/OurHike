@@ -174,7 +174,10 @@ export function legFigures(
     distanceMi,
     ascentFt,
     descentFt,
-    minutes: paceMinutes({ distanceMi, ascentFt }, pace),
+    // Descent goes through too (#900): this is the one call site that already
+    // had the figure, and a day plan that ignored it would disagree with the
+    // highlight sheet about the same ground.
+    minutes: paceMinutes({ distanceMi, ascentFt, descentFt }, pace),
   }
 }
 

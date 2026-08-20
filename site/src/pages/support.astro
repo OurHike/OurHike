@@ -1,0 +1,106 @@
+---
+// The money page (WEBSITE.md §5.5), in the posture the maintainer chose in
+// session (#116, 2026-08-20): INTENT PLUS DIRECT CLUB LINKS. OurHike takes
+// no money today - the structure for money to follow the trail it came from
+// is designed (features/PRICING_MODEL.md) and nothing is charged before it
+// is built. What this page must make unmistakable either way is the
+// differentiator: where money goes, and that nothing safety-relevant is
+// ever behind it.
+//
+// The giving links point at the organisations' own front doors rather than
+// deep links to donation forms - their sites move, ours should not claim to
+// know their layout, and both put giving front and centre themselves.
+import Base from '../layouts/Base.astro'
+
+const title = 'Support the trail — OurHike'
+const description =
+  'How OurHike is funded, the two commitments that hold either way, and how to give directly to the people who maintain the Appalachian Trail today.'
+---
+
+<Base title={title} description={description}>
+  <main class="wrap">
+    <header class="section">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Where the money goes</h2>
+      </div>
+      <p class="lede">
+        OurHike doesn't take donations yet — and that is a decision, not an
+        oversight. A funding model where money follows the trail it came from
+        is designed and public; we won't take a dollar before the structure
+        that honours it is built. Two commitments hold either way:
+      </p>
+    </header>
+
+    <section class="section--tight">
+      <div class="cards" style="max-width: 980px">
+        <div class="card">
+          <h3>Nothing safety-relevant is ever behind a paywall.</h3>
+          <p>
+            Water, closures, hazards, and the map itself stay free for
+            everyone, always. If paid tiers ever exist they cover convenience,
+            never safety — staying safe on the trail must not require a
+            subscription. That is the point of the project, not a promotion.
+          </p>
+        </div>
+        <div class="card">
+          <h3>The trail needs money today — give it directly.</h3>
+          <p>
+            The
+            <a href="https://appalachiantrail.org/">Appalachian Trail
+            Conservancy</a> and clubs like the
+            <a href="https://www.nynjtc.org/">New York–New Jersey Trail
+            Conference</a> maintain the ground this app describes. They take
+            donations now, on their own sites, and deserve them. We are not
+            affiliated with either — we just think your money belongs with the
+            people holding the tools.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section--tight prose">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>The model, when it arrives</h2>
+      </div>
+      <p style="margin-bottom: 12px">
+        The designed structure is simple to say: optional passes for the
+        convenience of long-distance use — a thru-hike pass, regional passes,
+        an all-access ceiling — with the proceeds directed to the ATC and the
+        maintaining clubs of the trail they came from, and a volunteer
+        exemption so the people doing trail work never pay for the map of the
+        trail they maintain.
+      </p>
+      <p style="margin-bottom: 12px">
+        None of it is live, no dates are promised, and when it does arrive it
+        will be on this page with the accounting alongside it. Payments will
+        only ever happen here on the web — never inside the app — so app-store
+        fees never take a cut of trail money.
+      </p>
+      <p>
+        Running costs today are small and covered by the volunteers building
+        it: the map data is served from commodity storage, the site is static
+        hosting, and the design goal is that it stays cheap enough to be
+        inherited (<a
+          href="https://github.com/OurHike/OurHike/blob/main/OurHikeValues.md"
+          >value #7</a
+        >).
+      </p>
+    </section>
+
+    <section class="section--tight prose" style="padding-bottom: 24px">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Other ways to help</h2>
+      </div>
+      <p>
+        Report what you find on the trail from inside the app — a dry spring, a
+        blowdown, a washed-out crossing reaches a moderator who can act on it.
+        Or help build the thing itself:
+        <a href="https://github.com/OurHike/OurHike">the whole project is open
+        source</a>, and the issue tracker is where the work is.
+      </p>
+    </section>
+  </main>
+</Base>

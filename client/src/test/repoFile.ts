@@ -22,8 +22,12 @@ import { dirname, resolve } from 'node:path'
 
 export const OUT_OF_TREE_READS = [
   'pipeline/reference/gain_vectors.json',
-  'site/index.html',
-  // ciScope.test.ts reads the workflow to check the two entries above are
+  // The list-layout contract and the step-with-a-link case moved with the
+  // content when the one-page site became the built site (#116): the rules
+  // live in the stylesheet, the markup in the install page.
+  'site/src/styles/site.css',
+  'site/src/pages/get-the-app.astro',
+  // ciScope.test.ts reads the workflow to check the entries above are
   // scoped - which makes the workflow itself an out-of-tree read, held to
   // the same rule it enforces.
   '.github/workflows/client-tests.yml',

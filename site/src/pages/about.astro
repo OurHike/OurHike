@@ -1,0 +1,170 @@
+---
+// WEBSITE.md §5.8: the mission and values edited for a public audience, the
+// privacy position, and the data sources with their honest confidence - the
+// ODbL line here is a legal obligation, not a courtesy. The full values
+// document lives in the repository and is linked rather than duplicated;
+// this page is the reading of it a hiker or a journalist needs.
+import Base from '../layouts/Base.astro'
+
+const title = 'About OurHike'
+const description =
+  'What OurHike is, the values it is built against, where its data comes from, and why position never leaves your phone.'
+
+const values = [
+  {
+    name: 'Hike your own hike',
+    line: 'Accurate information and good tools, then we get out of the way. No streaks, no scores, no "right" way to hike.',
+  },
+  {
+    name: 'Built by the community that built the trail',
+    line: 'Volunteers cut the first mile of the AT in 1923 and have maintained it since. Conditions and corrections come from hikers and maintainers on the ground.',
+  },
+  {
+    name: 'Open by default',
+    line: 'Open source, open formats. If OurHike ever disappears, any club can fork it and keep going — that is designed in, not hoped for.',
+  },
+  {
+    name: 'Trustworthy above all',
+    line: 'People decide which way at a junction with this. Honesty about uncertainty beats polish, every time it is a choice.',
+  },
+  {
+    name: 'Free for every hiker',
+    line: 'Conditions, closures, hazards and the map itself stay free, forever. Safety never sits behind a paywall.',
+  },
+  {
+    name: 'Belongs to the trails, not the platform',
+    line: 'Money and data follow the trail they came from, back to the people who maintain it.',
+  },
+  {
+    name: 'Built to be inherited',
+    line: 'Every decision is tested against one question: could another trail club pick this up with minimal friction?',
+  },
+  {
+    name: 'Sustainable, not just launched',
+    line: 'Boring, well-supported technology that survives its builders losing weekends.',
+  },
+  {
+    name: 'Be magical',
+    line: 'And after all of that — the moment the map draws in a dead zone should still feel like a small miracle.',
+  },
+]
+---
+
+<Base title={title} description={description}>
+  <main class="wrap">
+    <header class="section">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>What this is</h2>
+      </div>
+      <p class="lede">
+        OurHike is a free, open-source, offline-first map of the Appalachian
+        Trail — built by volunteers, for the places where a map that needs
+        signal is no map at all. It exists because the tools trail communities
+        depend on keep getting bought, closed, or shut down, and the answer to
+        that is a tool the community can own outright: source open, data
+        formats open, and the whole thing designed to be handed to a trail
+        club and survive.
+      </p>
+      <p class="lede" style="margin-top: 12px">
+        OurHike is an independent project. It is not affiliated with or
+        endorsed by the Appalachian Trail Conservancy or any trail club — it
+        exists to serve them, and everything about how it is run is written
+        down in the open.
+      </p>
+    </header>
+
+    <section class="section--tight">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>The nine values</h2>
+      </div>
+      <p class="lede" style="margin-bottom: 20px">
+        Every design decision in this project is argued against nine written
+        values. The short reading of each — the
+        <a href="https://github.com/OurHike/OurHike/blob/main/OurHikeValues.md"
+          >full document</a
+        > argues them properly:
+      </p>
+      <ol class="values">
+        {
+          values.map((value) => (
+            <li>
+              <strong>{value.name}.</strong> {value.line}
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section class="section--tight prose">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Privacy: position never leaves the phone</h2>
+      </div>
+      <p style="margin-bottom: 12px">
+        Where you are on the trail is the most sensitive thing this app could
+        know, and the design answer is that it never leaves the device. The
+        map, your position, your plans and your trip log live in the phone's
+        own storage. No analytics follow you down the trail, and no background
+        location runs when the app is closed.
+      </p>
+      <p>
+        Some things you can choose to send — a trail-condition report, a shared
+        photo — and sending is always your explicit act, never a background
+        one. The <a href="/Privacy/">privacy policy</a> is written in plain
+        language rather than lawyer's.
+      </p>
+    </section>
+
+    <section class="section--tight prose" style="padding-bottom: 24px">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Where the data comes from</h2>
+      </div>
+      <p style="margin-bottom: 12px">
+        The trail centerline and facilities come from the Appalachian Trail
+        Conservancy's published GIS layers. The topo background is USGS US
+        Topo; elevation is sampled from USGS 3DEP survey data. Water sources
+        draw on © OpenStreetMap contributors (ODbL) and the National
+        Hydrography Dataset.
+      </p>
+      <p>
+        Those sources are not equally certain, and the app says so instead of
+        flattening them: an ATC-surveyed shelter and a crowd-mapped spring are
+        labelled as what they are, and anything unverified is marked
+        unverified where you read it. A confidently wrong answer is more
+        dangerous than an honest unknown — that rule is written into the
+        project and it outranks looking finished.
+      </p>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .values {
+    margin: 0;
+    padding-left: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: var(--container-narrow);
+  }
+
+  .values li {
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--fg-2);
+    padding-left: 6px;
+  }
+
+  .values li strong {
+    color: var(--fg-1);
+  }
+
+  .values li::marker {
+    font-family: var(--font-mono);
+    color: var(--brand-primary);
+    font-weight: 600;
+  }
+</style>

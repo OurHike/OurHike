@@ -1,6 +1,6 @@
 """Tests that the privacy policy still describes the app (#104).
 
-`site/Privacy/index.html` is a legal document, and the one way it goes wrong is
+`site/public/Privacy/index.html` is a legal document, and the one way it goes wrong is
 by staying still while the code moves. Both stores require it, and a policy
 that names a sign-in method the build does not offer, or omits a third party
 the app talks to, is worse than a missing one: it is a specific promise nobody
@@ -38,7 +38,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-POLICY = REPO_ROOT / "site" / "Privacy" / "index.html"
+POLICY = REPO_ROOT / "site" / "public" / "Privacy" / "index.html"
 CLIENT_LIB = REPO_ROOT / "client" / "src" / "lib"
 CLIENT_MAP = REPO_ROOT / "client" / "src" / "map"
 

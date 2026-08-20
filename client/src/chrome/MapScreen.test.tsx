@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, act, within } from '@testing-library/react'
+import { render, screen, cleanup, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, ScaleControl, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
@@ -790,5 +790,219 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
       'aria-live',
       'polite',
     )
+  })
+})
+
+// --- The desktop chart (#135) ----------------------------------------------
+//
+// Above the breakpoint the thin ribbon and its lanes hand the slot to the
+// full chart, which needs no GPS fix - the ribbon's `elevation` prop can be
+// missing entirely (a desk has no fix) and the chart still renders from the
+// published profile alone. The chart's hover and selection reach the map
+// through converters the shell supplies, so this screen stays ignorant of
+// mile axes; what it owns is attaching the focus overlay to the live map.
+
+describe('the desktop chart (#135)', () => {
+  function rampProfile() {
+    const distanceMi = new Float32Array(101)
+    const elevationFt = new Float32Array(101)
+    for (let i = 0; i <= 100; i += 1) {
+      distanceMi[i] = i
+      elevationFt[i] = 1000 + i * 10
+    }
+    return { distanceMi, elevationFt }
+  }
+
+  function chartProps() {
+    return {
+      profile: rampProfile(),
+      currentMile: null,
+      mileToCoordinate: vi.fn((): [number, number] | null => [-77.5, 39.5]),
+      stretchToRuns: vi.fn(() => [
+        [[-77.5, 39.5] as [number, number], [-77.4, 39.6] as [number, number]],
+      ]),
+    }
+  }
+
+  /** The one thing the stylesheet cannot fake in jsdom: the breakpoint.
+   *  Answers the desktop for width queries and leaves every other query
+   *  (pointer, color-scheme) unmatched, the way a mouse-less 1440px window
+   *  would. */
+  function stubDesktop(): () => void {
+    const original = window.matchMedia
+    window.matchMedia = (query: string): MediaQueryList =>
+      ({
+        matches: query.includes('min-width: 900px'),
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList
+    return () => {
+      window.matchMedia = original
+    }
+  }
+
+  it('swaps the ribbon and the lanes for the chart above the breakpoint', () => {
+    const restore = stubDesktop()
+    try {
+      render(<MapScreen {...PROPS} chart={chartProps()} />)
+
+      expect(screen.getByTestId('elevation-chart')).toBeInTheDocument()
+      // The ribbon and lanes are the phone's; misaligned pins under a
+      // zoomable axis would be worse than none (see MapScreen's comment).
+      expect(
+        screen.queryByRole('img', { name: 'Elevation profile ahead' }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('renders the chart from the profile alone, with no ribbon data at all', () => {
+    const restore = stubDesktop()
+    try {
+      render(
+        <MapScreen
+          {...PROPS}
+          elevation={undefined}
+          waypoints={undefined}
+          chart={chartProps()}
+        />,
+      )
+      expect(screen.getByTestId('elevation-chart')).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('keeps the phone exactly as it was: ribbon and lanes, no chart', () => {
+    render(<MapScreen {...PROPS} chart={chartProps()} />)
+
+    expect(
+      screen.getByRole('img', { name: 'Elevation profile ahead' }),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    expect(screen.queryByTestId('elevation-chart')).not.toBeInTheDocument()
+  })
+
+  it('attaches the focus overlay and routes hover through the shell converters', () => {
+    const restore = stubDesktop()
+    const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 150,
+      width: 1000,
+      height: 150,
+      toJSON: () => ({}),
+    } as DOMRect)
+    try {
+      const chart = chartProps()
+      render(<MapScreen {...PROPS} chart={chart} />)
+      const [map] = MockMap.live
+
+      // The overlay attached itself at runtime - the one module that does.
+      expect(map.getSource('chart-focus')).toBeDefined()
+
+      fireEvent.pointerMove(screen.getByRole('application'), {
+        clientX: 500,
+        pointerId: 1,
+      })
+
+      expect(chart.mileToCoordinate).toHaveBeenCalled()
+      const data = map.sourceData.get('chart-focus') as {
+        features: Array<{ geometry: { type: string; coordinates: unknown } }>
+      }
+      expect(data.features).toEqual([
+        expect.objectContaining({
+          geometry: { type: 'Point', coordinates: [-77.5, 39.5] },
+        }),
+      ])
+    } finally {
+      rectSpy.mockRestore()
+      restore()
+    }
+  })
+
+  // --- The controlled selection and the camera (PR #885 review) -----------
+
+  it('draws the band from the controlled selection, so a route stop entered in the builder lands on the canvas', () => {
+    const restore = stubDesktop()
+    try {
+      const chart = chartProps()
+      const { rerender } = render(
+        <MapScreen {...PROPS} chart={{ ...chart, selection: null }} />,
+      )
+      const [map] = MockMap.live
+
+      rerender(
+        <MapScreen
+          {...PROPS}
+          chart={{ ...chart, selection: { startMile: 20, endMile: 70 } }}
+        />,
+      )
+
+      expect(chart.stretchToRuns).toHaveBeenCalledWith(20, 70)
+      const data = map.sourceData.get('chart-focus') as {
+        features: Array<{ geometry: { type: string } }>
+      }
+      expect(data.features).toEqual([
+        expect.objectContaining({
+          geometry: expect.objectContaining({ type: 'MultiLineString' }),
+        }),
+      ])
+    } finally {
+      restore()
+    }
+  })
+
+  it('moves the camera with "Zoom to stretch" and back out with "Whole trail"', async () => {
+    const restore = stubDesktop()
+    try {
+      const wholeTrail: [[number, number], [number, number]] = [
+        [-84.73, 34.2],
+        [-68.3, 46.34],
+      ]
+      const chart = chartProps()
+      render(
+        <MapScreen
+          {...PROPS}
+          chart={{
+            ...chart,
+            selection: { startMile: 20, endMile: 70 },
+            southbound: false,
+            wholeTrailBounds: wholeTrail,
+          }}
+        />,
+      )
+      const [map] = MockMap.live
+
+      await userEvent.click(screen.getByRole('button', { name: 'Zoom to stretch' }))
+
+      // Framed from the stretch's own centerline runs - the geometry the
+      // band draws - not a straight line between two mileposts.
+      expect(map.cameraMoves).toContainEqual(
+        expect.objectContaining({
+          fitBounds: [
+            [-77.5, 39.5],
+            [-77.4, 39.6],
+          ],
+        }),
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'Whole trail' }))
+      expect(map.cameraMoves).toContainEqual(
+        expect.objectContaining({ fitBounds: wholeTrail }),
+      )
+    } finally {
+      restore()
+    }
   })
 })

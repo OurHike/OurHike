@@ -418,6 +418,22 @@ phone and web" is not met today.
 **#206 is a spike and blocks nothing.** Photography sourcing has the longest lead time of
 anything in this group.
 
+**Where this stands, 2026-08-20.** Most of this group was built overnight on
+`claude/v2-topic-category-idfvcl`, to mockups reviewed in session. **#135 — The full
+elevation chart the desktop has room for** is built: whole-trail resting domain (a desk
+has no GPS fix, so unlike the ribbon it needs none), drag-to-measure with `legFigures`'
+own arithmetic, min–max envelope decimation so summits survive the pixels, hover and
+selection mirrored onto the map through the mileAnchors bridge. **#206 — Design spike:
+carry the brand on a phone without spending map pixels** closed as the doc it asked
+for — [features/MAP_CHROME.md](features/MAP_CHROME.md), whose finding is that the
+shipped screen already holds the line and whose value is the recorded declines. **#116 —
+Build the real website** has Phases 1–2 landed: Astro inside the Pages workflow, the
+first four pages in the design system's own self-hosted type, and §10's open decisions
+taken by the maintainer in session (Astro; independent-project voice; money as intent
+plus direct club giving links). **Still open here:** #116's Phase 0 (photography — the
+built hero is designed to be good without it) and Phases 4–6 (Explore + client routing,
+the generated pages behind their two gates, For clubs / Get involved / Status).
+
 ## Q. Field notes and freshness
 
 **#256 — The POI staleness tiers have no producer and no consumer** ·

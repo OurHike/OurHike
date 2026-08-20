@@ -1,0 +1,693 @@
+/* The site's own stylesheet, on top of the app's design tokens.
+ *
+ * TOKENS COME FROM THE CLIENT. src/layouts/Base.astro imports
+ * client/src/design-system/tokens/colors.css before this file, which is the
+ * answer to WEBSITE.md §7's "decide where the canonical copy lives before
+ * there are three": the client's copy is canonical, and this surface CONSUMES
+ * it rather than keeping a second one to drift. Nothing in this file may name
+ * a base colour (`--pine-900`); it reads the semantic aliases, the same rule
+ * themeTokens.test.ts holds the app to.
+ *
+ * TYPE IS SELF-HOSTED (§3): Bitter for display, Public Sans for body, IBM
+ * Plex Mono for anything numeric and trail-specific. The woff2 files in
+ * public/fonts/ are the latin subsets of the variable fonts, fetched from
+ * Google Fonts (all three are OFL - public/fonts/LICENSES.md carries the
+ * licences); the @font-face blocks below are ours, so no page makes a
+ * third-party request to render a word.
+ *
+ * MEASURE AND RHYTHM (§3): prose at --container-narrow (760px), everything
+ * else out to --container-max (1200px), vertical rhythm off the 4px scale.
+ * The contrast between full-bleed bands and narrow prose is the point - one
+ * width for the whole page is the diagnosis (§1.3), not a style.
+ */
+
+@font-face {
+  font-family: 'Bitter';
+  src: url('/fonts/bitter-latin.woff2') format('woff2');
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Public Sans';
+  src: url('/fonts/public-sans-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/plex-mono-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-display: 'Bitter', Georgia, 'Times New Roman', serif;
+  --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  --container-max: 1200px;
+  --container-narrow: 760px;
+}
+
+/* The site has no theme JS, so the tokens' `data-theme` dark block never
+ * matches here; this mirrors its choices for the aliases THIS SURFACE reads,
+ * behind the OS preference. Kept deliberately short, and kept in step with
+ * tokens/colors.css's dark block by hand - if an alias is added below, check
+ * it against that block first. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg-page: var(--ink-900);
+    --bg-surface: var(--ink-850);
+    --fg-1: var(--bone-100);
+    --fg-2: var(--bone-300);
+    --fg-3: var(--bone-500);
+    --border-1: var(--ink-700);
+    --brand-primary: var(--moss-400);
+    --brand-primary-hover: var(--moss-300);
+    --warning: var(--blaze-yellow);
+    --accent-blaze-orange: var(--blaze-orange-light);
+    --bg-chrome: var(--ink-900);
+    --fg-chrome-1: var(--bone-100);
+    --fg-chrome-2: var(--bone-300);
+    --fg-chrome-3: var(--bone-500);
+    --border-chrome: var(--ink-700);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg-1);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  line-height: 1.15;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--brand-primary);
+}
+
+a:hover {
+  color: var(--fg-1);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* ---------- Containers ---------- */
+
+.wrap {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.prose {
+  max-width: var(--container-narrow);
+}
+
+/* ---------- Navigation ---------- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 18px 0;
+}
+
+.nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--fg-1);
+  margin-right: auto;
+}
+
+.nav__word {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.nav__link {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg-2);
+  text-decoration: none;
+}
+
+.nav__link:hover,
+.nav__link[aria-current='page'] {
+  color: var(--fg-1);
+}
+
+.nav__cta {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  border: 1.5px solid var(--brand-primary);
+  border-radius: 8px;
+  padding: 8px 16px;
+  text-decoration: none;
+}
+
+.nav__cta:hover {
+  background: var(--brand-primary);
+  color: var(--bg-surface);
+}
+
+@media (max-width: 720px) {
+  .nav {
+    flex-wrap: wrap;
+    gap: 14px 18px;
+    padding: 14px 0;
+  }
+
+  .nav__brand {
+    flex-basis: 100%;
+  }
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-block;
+  background: var(--brand-primary);
+  color: var(--bg-surface);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 13px 26px;
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+.btn:hover {
+  background: var(--brand-primary-hover);
+  color: var(--bg-surface);
+}
+
+.btn--ghost {
+  background: transparent;
+  border: 1.5px solid var(--brand-primary);
+  color: var(--brand-primary);
+  padding: 11.5px 24px;
+}
+
+.btn--ghost:hover {
+  background: transparent;
+  color: var(--fg-1);
+  border-color: var(--fg-1);
+}
+
+/* ---------- The hero ---------- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 72px 0 0;
+}
+
+.hero__contours {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Stroke and opacity live on the artwork itself (Contours.astro), which is
+   the one sanctioned exception to reading aliases: a drawing is pigment. */
+
+.hero__inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 780px;
+}
+
+.hero h1 {
+  font-size: clamp(38px, 6vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hero__tagline {
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--fg-2);
+  max-width: 620px;
+}
+
+.hero__cta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--fg-2);
+}
+
+/* A painted white blaze: the organising motif (§3), used sparingly. The
+   shadow is what makes it read as a painted chip rather than a missing
+   glyph on plain paper - white on paper needs an edge. */
+.blaze {
+  display: inline-block;
+  width: 9px;
+  height: 20px;
+  background: var(--blaze-white);
+  border: 1px solid var(--stone-300);
+  border-radius: 1.5px;
+  box-shadow: 0 1px 2px rgb(43 38 32 / 0.25);
+  flex-shrink: 0;
+}
+
+/* The ridge silhouette closing the hero - kept from the current page, which
+ * found it first. */
+.ridge {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin-top: 42px;
+}
+
+.ridge path {
+  fill: var(--bg-chrome);
+}
+
+/* ---------- The beta honesty, designed rather than bolted on (§4) ---------- */
+
+.register {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
+  padding: 16px 18px;
+  max-width: 620px;
+  margin-top: 10px;
+}
+
+.register svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  stroke: var(--fg-2);
+}
+
+.register p {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* ---------- Full-bleed bands ---------- */
+
+.band {
+  padding: 64px 0;
+}
+
+.band--pine {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-2);
+}
+
+.band--pine h2 {
+  color: var(--fg-chrome-1);
+}
+
+.band--pine a {
+  color: var(--fg-chrome-2);
+}
+
+.band--pine a:hover {
+  color: var(--fg-chrome-1);
+}
+
+.band__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.band h2 {
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 600;
+}
+
+/* ---------- Stats (the offline promise, shown) ---------- */
+
+.stats {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat__figure {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--fg-chrome-1);
+}
+
+.stat__label {
+  font-size: 12px;
+  color: var(--fg-chrome-3);
+}
+
+/* ---------- Cards ---------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card h3 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.card p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.card svg {
+  stroke: var(--brand-primary);
+}
+
+.card__link {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: auto;
+}
+
+/* ---------- Checklists (what works / not yet) ---------- */
+
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checks li {
+  padding-left: 26px;
+  position: relative;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.checks li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--brand-primary);
+  -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>')
+    center / contain no-repeat;
+  mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>')
+    center / contain no-repeat;
+}
+
+.checks--pending li::before {
+  border-radius: 50%;
+  background: var(--fg-3);
+  -webkit-mask: none;
+  mask: none;
+  width: 7px;
+  height: 7px;
+  left: 4px;
+  top: 8px;
+}
+
+/* ---------- Steps ---------- */
+
+.steps {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.steps li {
+  font-size: 15.5px;
+  line-height: 1.55;
+  padding-left: 6px;
+}
+
+.steps li::marker {
+  font-family: var(--font-mono);
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+/* ---------- Download tiers (Get the app) ---------- */
+
+.tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.tier {
+  display: grid;
+  grid-template-columns: 110px 90px 1fr;
+  gap: 4px 16px;
+  align-items: baseline;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+
+.tier--pick {
+  border-color: var(--brand-primary);
+}
+
+.tier__name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.tier__pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  border: 1px solid var(--brand-primary);
+  border-radius: 20px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.tier__size {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.tier__for {
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+@media (max-width: 560px) {
+  .tier {
+    grid-template-columns: 1fr auto;
+  }
+
+  .tier__for {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Notes and warnings ---------- */
+
+.warn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.note {
+  font-size: 14px;
+  color: var(--fg-2);
+  border-top: 1px dashed var(--border-1);
+  padding-top: 12px;
+  margin-top: 20px;
+}
+
+/* ---------- Page sections ---------- */
+
+.section {
+  padding: 56px 0;
+}
+
+.section--tight {
+  padding: 36px 0;
+}
+
+.section h2 {
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 600;
+}
+
+.section__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.section .lede {
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+  max-width: var(--container-narrow);
+}
+
+/* ---------- The page footer ---------- */
+
+.footer {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-2);
+  padding: 44px 0;
+  margin-top: 72px;
+}
+
+.footer a {
+  color: var(--fg-chrome-2);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--fg-chrome-1);
+  text-decoration: underline;
+}
+
+.footer__cols {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.footer__about {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 460px;
+}
+
+.footer__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg-chrome-1);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.footer__independence {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-chrome-3);
+}
+
+.footer__col {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 13.5px;
+}
+
+.footer__heading {
+  font-weight: 700;
+  color: var(--fg-chrome-1);
+  font-size: 12px;
+  letter-spacing: 0.07em;
+}
+
+.footer__credits {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-chrome);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--fg-chrome-3);
+}

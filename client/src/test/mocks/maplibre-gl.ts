@@ -264,6 +264,48 @@ export class MockMap {
   }
 
   /**
+   * Runtime additions, for the one module that adds its own source and
+   * layers to a live map rather than riding the style build
+   * (map/chartFocusLayers.ts). Real MapLibre throws on a duplicate add and
+   * on removing what is not there, and callers have to cope - so the mock
+   * does too.
+   */
+  addSource(id: string, source: unknown): this {
+    if (this.sourceIds.includes(id) || this.sources.has(id)) {
+      throw new Error(`Source "${id}" already exists.`)
+    }
+    this.sourceIds.push(id)
+    const data = (source as { data?: unknown } | undefined)?.data
+    if (data !== undefined) this.sourceData.set(id, data)
+    return this
+  }
+
+  addLayer(layer: { id: string }): this {
+    if (this.getLayer(layer.id) !== undefined) {
+      throw new Error(`A layer with id "${layer.id}" already exists.`)
+    }
+    this.layerIds.push(layer.id)
+    return this
+  }
+
+  removeLayer(id: string): this {
+    if (this.getLayer(id) === undefined) {
+      throw new Error(`The layer '${id}' does not exist in the map's style.`)
+    }
+    this.layerIds = this.layerIds.filter((layerId) => layerId !== id)
+    return this
+  }
+
+  removeSource(id: string): this {
+    if (!this.sourceIds.includes(id)) {
+      throw new Error(`There is no source with ID "${id}".`)
+    }
+    this.sourceIds = this.sourceIds.filter((sourceId) => sourceId !== id)
+    this.sourceData.delete(id)
+    return this
+  }
+
+  /**
    * Real `queryRenderedFeatures` answers from what is actually drawn, so it
    * returns nothing for a layer the style does not hold - and fires an error
    * event rather than throwing, which is why a caller that forgets to check

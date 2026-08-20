@@ -1,0 +1,179 @@
+---
+// The home page's one job (WEBSITE.md §5.1): in five seconds, what this is
+// and why it exists - without a megabyte count anywhere on it. The install
+// mechanics live at /get-the-app/, where somebody who has already decided
+// goes next.
+//
+// The H1 and tagline are the original landing page's own lines, kept on
+// purpose: §4 called the writing the best thing about that page, and a
+// redesign that throws away proven copy to feel new is spending the wrong
+// thing.
+import Base from '../layouts/Base.astro'
+import Contours from '../components/Contours.astro'
+
+const title = 'OurHike — The whole Appalachian Trail, offline'
+const description =
+  'A free, open-source offline map of the Appalachian Trail: topo, water, shelters and elevation, working with no bars and no data plan.'
+---
+
+<Base title={title} description={description}>
+  <header class="hero">
+    <Contours />
+    <div class="wrap">
+      <div class="hero__inner">
+        <span class="eyebrow"><span class="blaze"></span>HIKE YOUR OWN HIKE</span>
+        <h1>The whole Appalachian&nbsp;Trail, offline.</h1>
+        <p class="hero__tagline">
+          Download it once over wifi. After that the map works with no bars and
+          no data plan — the way the trail actually is. Free, open source, and
+          built to hand back to the communities that maintain the trail.
+        </p>
+        <div class="hero__cta">
+          <a class="btn" href="/get-the-app/">Get the app</a>
+          <a class="btn btn--ghost" href="/app/">Open it in the browser</a>
+        </div>
+        <div class="register">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 3v18M5 6h11l2 2.5L16 11H5zM19 14H8l-2 2.5L8 19h11z"></path>
+          </svg>
+          <p>
+            <strong>This is a beta, and worth treating as one.</strong> It has
+            not been field-tested across the whole trail. Carry a paper map and
+            a compass, tell someone your plan, and don't make a navigation
+            decision you couldn't make without a phone.
+          </p>
+        </div>
+      </div>
+    </div>
+    <svg class="ridge" viewBox="0 0 800 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 78 L48 62 L96 70 L150 40 L196 55 L242 30 L300 52 L352 22 L404 46 L456 28 L510 58 L566 36 L618 64 L672 44 L726 68 L800 50 L800 100 L0 100 Z"></path>
+    </svg>
+  </header>
+
+  <section class="band band--pine">
+    <div class="wrap">
+      <div class="band__head">
+        <span class="blaze"></span>
+        <h2>It works where there is no signal</h2>
+      </div>
+      <p class="prose" style="color: inherit">
+        The whole point. Download the trail once, in town: from then on the
+        topo map, the elevation profile and every waypoint live on the phone
+        itself, and airplane mode changes nothing. Fifty miles from the nearest
+        bar of signal is exactly where this app is meant to be.
+      </p>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat__figure">2,197.4 mi</span>
+          <span class="stat__label">Springer Mountain to Katahdin</span>
+        </div>
+        <div class="stat">
+          <span class="stat__figure">~141,000</span>
+          <span class="stat__label">elevation samples, from USGS survey data</span>
+        </div>
+        <div class="stat">
+          <span class="stat__figure">280</span>
+          <span class="stat__label">shelters, from ATC's own inventory</span>
+        </div>
+      </div>
+      <p class="prose" style="color: var(--fg-chrome-3); font-size: 13.5px; margin-top: 14px">
+        Where the data comes from matters, so the app never flattens it: ATC
+        facility data is labelled as theirs, water sources drawn from
+        OpenStreetMap and the National Hydrography Dataset are marked
+        approximate and unverified — on every single one.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>What works today, and what doesn't yet</h2>
+      </div>
+      <p class="lede">
+        A trail app owes you the truth about itself above everything else. The
+        honest state, kept current:
+      </p>
+      <div style="display: flex; gap: 48px; flex-wrap: wrap; margin-top: 20px">
+        <ul class="checks" style="flex: 1; min-width: 280px">
+          <li>The full topo map offline, with the trail drawn by blaze colour</li>
+          <li>Your position and mile marker along the trail</li>
+          <li>Shelters, water, campsites and resupply — searchable with no signal</li>
+          <li>The elevation profile, and the climb ahead with an honest ≈time</li>
+          <li>Routes and multi-day plans, built and kept on your phone</li>
+          <li>Reporting a problem, saved on your phone, no account needed</li>
+        </ul>
+        <ul class="checks checks--pending" style="flex: 1; min-width: 280px">
+          <li>
+            Sending those reports onward — the service that receives them is not
+            deployed yet, so they queue on your phone until it is
+          </li>
+          <li>
+            The wrong-way alert — built, but its thresholds are unvalidated, so
+            it is deliberately switched off rather than shipped as a safety
+            feature that might not work
+          </li>
+          <li>App-store versions for iOS and Android — in progress</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section--tight">
+    <div class="wrap">
+      <div class="cards">
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+            <rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect>
+            <path d="M10 18.5h4"></path>
+          </svg>
+          <h3>Get the app</h3>
+          <p>
+            On the phone you'll carry — with the whole trail downloaded before
+            you leave town, and tested in airplane mode before you go.
+          </p>
+          <a class="card__link" href="/get-the-app/">Set your phone up →</a>
+        </div>
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 21c-5-4.5-8-7.8-8-11a8 8 0 0 1 16 0c0 3.2-3 6.5-8 11z"></path>
+            <path d="M9.5 9.5 12 7l2.5 2.5M12 7v7"></path>
+          </svg>
+          <h3>Support the trail</h3>
+          <p>
+            Where money goes, what will never be behind a paywall, and the
+            giving that reaches the ground today.
+          </p>
+          <a class="card__link" href="/support/">How this is funded →</a>
+        </div>
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 21v-4a4 4 0 0 1 8 0v4M3 10l9-7 9 7M5 8.5V21h14V8.5"></path>
+          </svg>
+          <h3>Get involved</h3>
+          <p>
+            Report conditions from the trail inside the app, or bring an issue
+            or a pull request — the whole project is open source.
+          </p>
+          <a
+            class="card__link"
+            href="https://github.com/OurHike/OurHike/blob/main/CONTRIBUTING.md"
+            >Ways to help →</a
+          >
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .register svg,
+  .card svg {
+    stroke: var(--fg-2);
+  }
+
+  .card svg {
+    stroke: var(--brand-primary);
+  }
+</style>

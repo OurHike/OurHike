@@ -16,6 +16,7 @@ import {
   insertRoutePoint,
   legFigures,
   mileAtWalkingMinutes,
+  restretchStops,
   routeDirection,
   routeLegs,
   totalFigures,
@@ -81,6 +82,37 @@ describe('routeLegs and routeDirection', () => {
   it('reads direction from the ends alone', () => {
     expect(routeDirection([at(1), at(9)])).toBe('NOBO')
     expect(routeDirection([at(9), at(1)])).toBe('SOBO')
+  })
+})
+
+describe('restretchStops', () => {
+  it('replaces the ends and keeps the destinations still inside', () => {
+    const stops = [at(10), at(25), at(40), at(60)]
+    expect(miles(restretchStops(stops, at(20), at(50)))).toEqual([20, 25, 40, 50])
+  })
+
+  it('drops destinations the new stretch no longer reaches', () => {
+    const stops = [at(10), at(25), at(40), at(60)]
+    expect(miles(restretchStops(stops, at(30), at(50)))).toEqual([30, 40, 50])
+  })
+
+  it('keeps a southbound route southbound, whichever way the drag ran', () => {
+    // A drag normalises to low-then-high before it gets here; a southbound
+    // route re-stretched must not come back walking north.
+    const stops = [at(60), at(40), at(25), at(10)]
+    expect(miles(restretchStops(stops, at(20), at(50)))).toEqual([50, 40, 25, 20])
+  })
+
+  it('drops a destination landing exactly on a new end', () => {
+    // A via at an end would make a zero-length leg - the same refusal
+    // insertRoutePoint makes for an equal mile.
+    const stops = [at(10), at(25), at(60)]
+    expect(miles(restretchStops(stops, at(25), at(50)))).toEqual([25, 50])
+  })
+
+  it('treats fewer than two existing stops as northbound', () => {
+    expect(miles(restretchStops([], at(5), at(15)))).toEqual([5, 15])
+    expect(miles(restretchStops([at(8)], at(5), at(15)))).toEqual([5, 15])
   })
 })
 

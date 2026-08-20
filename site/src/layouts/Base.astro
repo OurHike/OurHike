@@ -1,0 +1,61 @@
+---
+// The shared frame for every page: head, fonts, tokens, nav, footer.
+//
+// The token import is the §7 "canonical copy" decision in one line: the
+// CLIENT's token file is the one copy, and this surface consumes it. See
+// src/styles/site.css's header for the whole argument.
+import '../../../client/src/design-system/tokens/colors.css'
+import '../styles/site.css'
+import NavBar from '../components/NavBar.astro'
+import Footer from '../components/Footer.astro'
+
+interface Props {
+  title: string
+  description: string
+}
+const { title, description } = Astro.props
+const canonical = new URL(Astro.url.pathname, Astro.site)
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {
+      /* Preloaded because the whole page is set in them and font-display:
+         swap without a preload means a visible reflash on every first visit.
+         Three files, ~76 KB total, latin subsets - see site.css. */
+    }
+    <link
+      rel="preload"
+      href="/fonts/bitter-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/public-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/plex-mono-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+  </head>
+  <body>
+    <NavBar />
+    <slot />
+    <Footer />
+  </body>
+</html>

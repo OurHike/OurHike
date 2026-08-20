@@ -4,7 +4,7 @@ Companion to [ROADMAP.md](ROADMAP.md), which says what the v2 *features* are and
 **This document is about the other question: given 117 open issues all labelled `v2`, what
 can one session finish in one branch without colliding with another session?**
 
-It groups every open issue into twenty-three bodies of work. The grouping is by **conflict
+It groups every open issue into twenty-four bodies of work. The grouping is by **conflict
 surface and dependency**, not by subject — [BRANCHING.md](BRANCHING.md) §2 is emphatic
 about the difference, and the measurement behind it is that twelve of the last
 twenty-seven real conflicts were all in `client/src/App.tsx` between branches whose
@@ -16,7 +16,9 @@ by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, o
 group **V** the same day, and two more (#795–#796) were filed 2026-08-18 and added as
 group **W** the same day. Four more (#876–#879) were filed 2026-08-20 — the halves of
 FIELD_NOTES.md and the volunteering build that PR #873 did not reach — and added to
-groups **Q** and **U** the same day. If you add an issue, add it to a group here or the
+groups **Q** and **U** the same day. Seven more (#890–#896) were filed 2026-08-20 —
+[features/ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md)'s phases, scoped that day by a
+maintainer ask — and added as group **X** the same day. If you add an issue, add it to a group here or the
 next person will find it by accident.
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
@@ -605,6 +607,51 @@ alternatives, and lands on `Settings` — a recommendation, not a ruling. It als
 without resolving, two seams for whoever is next in **T** or **U**: `Your hike`'s home once
 the `Plan` tab (group T) is fully built, and how this screen's `Contribute` section reads
 next to **#759**'s condition-nudge surface once group U's first phase ships.
+
+## X. The same account on two devices
+
+**#890 — v2: the same account on two devices — a hiker's plans and photos follow them between the web and their phone** ·
+**#891 — Preferences sync at last: two endpoints that are finished, tested, and have never been called** ·
+**#892 — Trips and the planned hike follow the account, and a plan edited on two devices keeps both** ·
+**#893 — Private photo sync: the 640 px rendering, opt-in, and never in the store shared photos live in** ·
+**#894 — A hiker cannot tell whether their plan is safe: say what has synced, what is on this device only, and how to stop** ·
+**#895 — There is no way to delete an OurHike account, and sync is what turns that from harmless into a broken promise** ·
+**#896 — Spike: weigh a 640 px card photo, because every storage number in the sync design is arithmetic rather than measurement**
+
+**Why together:** [features/ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md)'s five phases plus its
+spike, filed the same day the doc was written (2026-08-20) so this feature does not repeat
+the *Gaps* failure at the foot of this document. #890 is the program and closes when the
+phases do.
+
+**Order is real: #891 → #892 → #894, with #893 behind a maintainer decision and #895 landing
+no later than #893.** #896 is independent of all of them and needs nothing but a phone and
+twenty minutes.
+
+**What you are walking into.** Three things, and the first one is the reason this group is
+not as big as it looks:
+
+- **Half the server already exists and nothing calls it.** `GET`/`PUT /preferences/me` and
+  the whole of `/hikes` are finished and uncalled — measured 2026-08-20. #891 is wiring, and
+  it is deliberately first because it proves the loop against the one payload where being
+  wrong costs a toggle.
+- **"Which device wins" is answered, and the answer is neither.** `plannedHike.ts` stopped
+  at that question and the doc takes it: the device holds the truth while it is offline, and
+  two devices that disagree about a trip **keep both** — the older one renamed for where it
+  came from. Anyone tempted to save a screen by shipping last-write-wins on a plan is about
+  to delete somebody's fortnight of planning silently.
+- **#895 is the one that must not slip.** Nothing deletes an account today, and that is
+  harmless only while uninstalling *is* deletion. #893 ends that. Shipping private photo
+  sync without a delete path is the change of deal this repository would rather not make by
+  accident.
+
+**Where this collides.** #891 and #894 touch `client/src/App.tsx` and the More/Settings
+screen, which puts them next to group **W** (#795/#796) — land the `App.tsx` branch first,
+per BRANCHING.md §4. #893 touches `backend/app/core/photos.py`'s neighbourhood and the photo
+client, so it wants group **D**'s sharing work landed first, which it is.
+
+**Blocked on other people's issues, and honestly so:** #875 (sign-in does not finish) and
+#600 (no hosted backend) gate every phase except the spike. The design is settled; the code
+should wait rather than be written against a system nobody can observe.
 
 ---
 

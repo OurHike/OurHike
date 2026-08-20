@@ -324,7 +324,7 @@ outbox that holds a hiker's unsent reports.
 **#502 — The API seam checks field presence and nullability, but not that a type narrowed** ·
 **#503 — The client suite's CI scope list has no guard, so #317 can happen again** ·
 **#253 — BASEMAP.md's "it is only reordering" is inferred from five agreeing metrics, not proved** ·
-**#488 — Decide whether the auth-redirect check runs daily, given only one scheduled workflow may reach Supabase** ·
+~~**#488 — Decide whether the auth-redirect check runs daily, given only one scheduled workflow may reach Supabase**~~ ·
 **#660 — Automation audit follow-ups: the ledger's hand copy, the pins that float, and guards that grep for prose**
 
 **Why together:** they are all "the tests are not telling us what we think they are", and
@@ -336,6 +336,13 @@ times"* — was written from these exact failures. #323 removes sleep-then-asser
 #343 is what those waits were hiding.
 
 **#503 is a guard against a regression that already happened once** (#317) and is cheap.
+
+**#488 resolved 2026-08-20.** Went with the guard-amendment option: `test_supabase_keepalive_workflow.py`
+had already stopped enforcing "exactly one" in favour of a named `SCHEDULED_ROSTER` (#656, before
+this issue was ever filed against the older wording), so the redirect check joined it as a fourth
+entrant rather than reopening that design question. It now runs daily at 09:45 UTC as
+`check-auth-redirects.yml`, reporting through the same tracking-issue mechanism as its two siblings
+rather than failing the run — the thing #488's own body flagged as needed "once the schedule exists."
 
 ## N. The pipeline and the publish path
 

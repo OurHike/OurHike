@@ -10,13 +10,12 @@ from datetime import datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
-from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.assignments import assignments_covering
-from app.core.auth import bearer_scheme, get_current_user
+from app.core.auth import get_current_user, get_current_user_optional
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -70,24 +69,6 @@ def _visibility_for(report_type: ReportType) -> Visibility:
     if report_type is ReportType.thanks:
         return Visibility.club_only
     return Visibility.internal_only if report_type in _INTERNAL_ONLY_TYPES else Visibility.public
-
-
-def _get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: Session = Depends(get_db),
-) -> Profile | None:
-    """Like `get_current_user`, but returns None instead of raising.
-
-    Used by endpoints that work with or without auth (browsing needs no
-    account) but still want to know who's asking, if anyone, e.g. so a
-    reporter can see their own otherwise-hidden report.
-    """
-    if credentials is None:
-        return None
-    try:
-        return get_current_user(credentials=credentials, db=db)
-    except HTTPException:
-        return None
 
 
 def _already_filed(db: Session, report_id: str, current_user: Profile) -> Report | None:
@@ -348,7 +329,7 @@ def create_report(
 @router.get("", response_model=list[ReportOut])
 def list_reports(
     db: Session = Depends(get_db),
-    current_user: Profile | None = Depends(_get_current_user_optional),
+    current_user: Profile | None = Depends(get_current_user_optional),
 ) -> list[ReportOut]:
     """List reports the caller may see: public and moderated, plus their own
     at any status.
@@ -493,7 +474,7 @@ def list_my_thanks(
 def get_report(
     report_id: str,
     db: Session = Depends(get_db),
-    current_user: Profile | None = Depends(_get_current_user_optional),
+    current_user: Profile | None = Depends(get_current_user_optional),
 ) -> ReportOut:
     """Return a single report, with the same visibility filtering as the
     list endpoint - except the reporter can always see their own report."""
@@ -685,7 +666,7 @@ def get_report_photo_link(
     report_id: str,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: Profile | None = Depends(_get_current_user_optional),
+    current_user: Profile | None = Depends(get_current_user_optional),
 ) -> ReportPhotoLink:
     """The same photo as below, handed back as a URL instead of a redirect (#385).
 
@@ -748,7 +729,7 @@ def get_report_photo_link(
 def get_report_photo(
     report_id: str,
     db: Session = Depends(get_db),
-    current_user: Profile | None = Depends(_get_current_user_optional),
+    current_user: Profile | None = Depends(get_current_user_optional),
 ) -> RedirectResponse:
     """Serve a report's photo, behind the report's own visibility (#234).
 

@@ -203,7 +203,15 @@ import {
   signOut,
   signUpWithEmail,
 } from './lib/auth'
-import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
+import {
+  enqueueAppFailure,
+  listQueued,
+  removeQueued,
+  retryQueued,
+  type AppFailureDraft,
+  type FlushResult,
+} from './lib/outbox'
+import { AppFailureReport } from './screens/AppFailureReport'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import { conditionsAgeLabel, worstOf } from './lib/conditionState'
 import { useConditions } from './lib/useConditions'
@@ -467,6 +475,16 @@ function App() {
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
 
   const [reporting, setReporting] = useState<ReportingState>(null)
+  /**
+   * Whether the app-failure report is open (#848).
+   *
+   * Its own flag rather than a step on `ReportingState`, because it is not a
+   * report: nothing about it is drawn on the map, nothing moderates it, and
+   * it does not go through the sign-in and reporter-type questions
+   * `handleSubmitReport` asks. Sharing the state would have meant sharing
+   * those.
+   */
+  const [reportingFailure, setReportingFailure] = useState(false)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
    * The route being built (#755), or null when the builder is closed. Held
@@ -731,9 +749,13 @@ function App() {
     )
   }, [])
 
+  // Re-read after either thing that can add to the queue closes. `reporting`
+  // is the condition report; `reportingFailure` is the app-failure report
+  // (#848), and leaving it out would have left the "waiting to send" count
+  // stale for exactly the report a hiker most wants to see acknowledged.
   useEffect(() => {
     void refreshOutbox()
-  }, [reporting, refreshOutbox])
+  }, [reporting, reportingFailure, refreshOutbox])
 
   // Sending is the one thing that waits for signal. Everything else a hiker
   // does - writing the report, reading the map - already happened offline.
@@ -2523,6 +2545,37 @@ function App() {
     [account, preferences.reporter_type, askForIdentity, markSynced],
   )
 
+  /**
+   * Queue an app-failure report and send it if there is anything to send it
+   * with (#848).
+   *
+   * Shorter than `handleSubmitReport` above by exactly the things this report
+   * does not need. No sign-in step: the endpoint takes no account, because a
+   * hiker whose app just failed may never have made one. No reporter-type
+   * question: nothing about this is attributed to a kind of hiker. What it
+   * keeps is the part that matters out here - saved to the outbox FIRST, so
+   * everything after this line can fail without costing them what they wrote.
+   *
+   * The screen is not closed here. It shows its own acknowledgement, and
+   * closes when the hiker presses Done - somebody who has just described
+   * being lost should be told what happens next rather than dropped back on
+   * the map.
+   */
+  const handleSubmitAppFailure = useCallback(
+    async (draft: AppFailureDraft, authoredAt: Date) => {
+      await enqueueAppFailure(draft, authoredAt)
+
+      // Explicitly, for the reason #640 gives about the report path:
+      // useOutboxSync fires on a CHANGE to `online` or the account, and
+      // filing this changes neither. Not awaited - a network round trip must
+      // not stand between somebody and the acknowledgement.
+      void syncOutbox().then((result) => {
+        if (result !== null && result.sent > 0) markSynced()
+      })
+    },
+    [markSynced],
+  )
+
   /** Answered: both fields land together, which is what the screen collects.
    *  An empty trail name is stored as null rather than as "", so Settings can
    *  keep saying "Not set" rather than showing a blank. */
@@ -2693,6 +2746,20 @@ function App() {
       <IdentitySetup
         onSave={handleSaveIdentity}
         onSkip={() => setCollectingIdentity(false)}
+      />
+    )
+  }
+
+  // Before the report screens below and after the auth ones above, which is
+  // the order this file already keeps: a full-screen flow renders instead of
+  // the map. Nothing here is gated on an account, deliberately - see
+  // handleSubmitAppFailure.
+  if (reportingFailure) {
+    return (
+      <AppFailureReport
+        online={online}
+        onSubmit={(draft, authoredAt) => void handleSubmitAppFailure(draft, authoredAt)}
+        onClose={() => setReportingFailure(false)}
       />
     )
   }
@@ -2887,6 +2954,7 @@ function App() {
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   onEditHike={() => setPickingHike(true)}
                   onStartReport={() => setReporting({ step: 'pick' })}
+                  onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}

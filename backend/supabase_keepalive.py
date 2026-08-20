@@ -68,6 +68,10 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # deferring to this sweep. e5b2f7c1a903 locked the table; this is what
     # notices if that lock ever comes undone in a live project.
     "alembic_version",
+    # The app-failure inbox (#848). It carries a contact detail somebody gave
+    # while shaken, so of every table here it is the one where "readable with
+    # the anon key" would be worst.
+    "app_failures",
     "clubs",
     "closures",
     "hikes",

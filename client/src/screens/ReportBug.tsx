@@ -18,6 +18,15 @@
 // would test that. So the steer comes before the options rather than under
 // them, and it names the flow that IS right rather than only refusing this one.
 //
+// ONE ROW HERE IS NOT A LINK, AND THAT IS THE POINT OF IT (#848). Everything
+// else on this screen sends somebody to GitHub, which needs signal - and the
+// worst thing this app can do is fail while somebody is navigating by it,
+// which happens where there is none. "It broke while I was out there" is a
+// screen instead: it queues in the outbox a blowdown already queues in, it
+// takes no account, and it carries a contact detail, which is the field a
+// public issue tracker must never hold. features/APP_FAILURE_REPORTS.md is
+// the whole path.
+//
 // WHY THE INVITATION IS HERE AND NOT IN A DOC NOBODY OPENS. This project is
 // built to be handed to the clubs that maintain the trails rather than owned
 // by whoever wrote it (README.md, CONTRIBUTING.md). Somebody who has read
@@ -41,9 +50,18 @@ export interface ReportBugProps {
    * commit, so a test asserting on it would be asserting on when it ran.
    */
   build?: BuildInfo
+  /**
+   * Opens the in-app app-failure report (#848).
+   *
+   * Optional, and its absence draws nothing rather than drawing a dead
+   * control - the same stance More.tsx takes about `onOpenModeration`. A
+   * build that has not wired it up should not offer a hiker a way to describe
+   * being lost that ends in nothing.
+   */
+  onReportFailure?: () => void
 }
 
-export function ReportBug({ build = BUILD_INFO }: ReportBugProps) {
+export function ReportBug({ build = BUILD_INFO, onReportFailure }: ReportBugProps) {
   return (
     <section className="settings__group">
       <h2 className="settings__heading">Report a bug</h2>
@@ -56,6 +74,32 @@ export function ReportBug({ build = BUILD_INFO }: ReportBugProps) {
         a moderator sees it and can act on it. Nobody is watching the issue tracker for
         those.
       </p>
+
+      {/* ABOVE the four, and drawn unlike them, because it is not one of them.
+
+          The four below are `<a href>`s into GitHub, and ReportBug's own note
+          further down admits what that costs: they need signal. The failure
+          this row is for happens where there is none - the app breaking while
+          somebody navigates by it is nearly always the offline path breaking -
+          so it is a screen that queues in the outbox rather than a link that
+          opens a browser.
+
+          It also carries the one field a public issue tracker must not: a way
+          to reach the person who wrote it. */}
+      {onReportFailure !== undefined && (
+        <button
+          type="button"
+          className="settings__link settings__link--urgent"
+          onClick={onReportFailure}
+        >
+          It broke while I was out there
+          <span className="settings__link-hint">
+            The app failed while you were relying on it — lost, out of water, in front of
+            something dangerous, or stuck. Works with no signal, and you can leave a way
+            for us to get back to you.
+          </span>
+        </button>
+      )}
 
       <div className="settings__links">
         {BUG_REPORT_OPTIONS.map((option) => (
@@ -78,9 +122,10 @@ export function ReportBug({ build = BUILD_INFO }: ReportBugProps) {
           so the note says what to do instead - and what to do is read the
           three rows immediately above, which is where the copy button is. */}
       <p className="settings__note">
-        Each of these opens GitHub in your browser, so they need signal. Out of range,
+        The four above open GitHub in your browser, so they need signal. Out of range,
         write down what happened while you can still see it — the build details above are
-        the part worth copying.
+        the part worth copying. The report at the top of this section is the one that
+        works without any.
       </p>
 
       <p className="settings__note">

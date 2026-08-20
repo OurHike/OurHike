@@ -1,11 +1,17 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ReportBug } from './ReportBug'
 import { readBuildInfo } from '../lib/buildInfo'
 
 // #626. Two things this section has to do that no unit test of the URLs can
 // see: keep a trail condition out of the issue tracker, and be honest that
-// every one of these links needs signal in an app built for having none.
+// the GitHub links need signal in an app built for having none.
+//
+// #848 added the row that answers the second of those rather than only
+// admitting it - the app-failure report, which is a screen and not a link
+// precisely because the failure it is for happens where the links do not
+// work. The tests for it are below, mixed in with the four they sit above.
 
 const RELEASE = readBuildInfo({
   version: '1.0.0',
@@ -60,6 +66,48 @@ describe('ReportBug', () => {
     expect(screen.getByText(/need signal/i)).toBeInTheDocument()
   })
 
+  // #848. The row that is not a link, and the reason this section needed one.
+  // Everything else here opens GitHub in a browser, which the note below the
+  // options admits needs signal - and the app failing while somebody
+  // navigates by it happens where there is none.
+  it('offers the app failing on the trail as its own thing, above the four', () => {
+    render(<ReportBug build={RELEASE} onReportFailure={() => {}} />)
+
+    const row = screen.getByRole('button', { name: /broke while I was out there/i })
+    expect(row).toHaveTextContent(/lost, out of water/i)
+    expect(row).toHaveTextContent(/no signal/i)
+    // The half a GitHub issue cannot carry.
+    expect(row).toHaveTextContent(/get back to you/i)
+  })
+
+  it('opens it in the app rather than sending anybody to a browser', async () => {
+    const user = userEvent.setup()
+    const onReportFailure = vi.fn()
+    render(<ReportBug build={RELEASE} onReportFailure={onReportFailure} />)
+
+    await user.click(screen.getByRole('button', { name: /broke while I was out there/i }))
+
+    expect(onReportFailure).toHaveBeenCalledTimes(1)
+  })
+
+  // Nothing rather than a dead control: a hiker should not be offered a way
+  // to describe being lost that ends in nothing happening.
+  it('draws no such row in a build that has not wired it up', () => {
+    render(<ReportBug build={RELEASE} />)
+
+    expect(
+      screen.queryByRole('button', { name: /broke while I was out there/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('no longer claims every option here needs signal, because one does not', () => {
+    render(<ReportBug build={RELEASE} onReportFailure={() => {}} />)
+
+    const note = screen.getByText(/need signal/i)
+    expect(note).toHaveTextContent(/four above/i)
+    expect(note).toHaveTextContent(/works without any/i)
+  })
+
   it('invites whoever writes code to the repository', () => {
     render(<ReportBug build={RELEASE} />)
 
@@ -76,7 +124,9 @@ describe('ReportBug', () => {
   // hiker out of a map they may be mid-navigation on, and an installed PWA
   // does not always give them a back button to return with.
   it('opens every link away from the app, and without handing it a window', () => {
-    render(<ReportBug build={RELEASE} />)
+    // With the app-failure row present, so this asserts about the LINKS
+    // rather than passing because the button is the only other control.
+    render(<ReportBug build={RELEASE} onReportFailure={() => {}} />)
 
     for (const link of screen.getAllByRole('link')) {
       expect(link).toHaveAttribute('target', '_blank')

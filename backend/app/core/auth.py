@@ -178,6 +178,38 @@ def get_current_user(
     return _get_or_create_profile(db, user_id)
 
 
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Profile | None:
+    """Like `get_current_user`, but returns None instead of raising.
+
+    For endpoints that work with or without an account but still want to
+    know who is asking, if anyone. Two kinds of caller need it, and they are
+    not the same kind:
+
+      - A READ that has never needed an account (browsing), which still
+        wants the token when there is one so a reporter can see their own
+        unmoderated report - app/routers/reports.py.
+      - A WRITE this project decided not to gate, which is
+        app/routers/app_failures.py and nothing else. Requiring an account
+        before somebody can say the app nearly got them lost gets the
+        priority backwards; knowing WHICH account, when there is one, is
+        still worth having.
+
+    Lived privately in routers/reports.py until the second caller arrived.
+    A bad or expired token is treated as no token rather than as an error,
+    which is the behaviour both callers want: the request is one that works
+    anonymously, so an unusable credential should not turn it into a 401.
+    """
+    if credentials is None:
+        return None
+    try:
+        return get_current_user(credentials=credentials, db=db)
+    except HTTPException:
+        return None
+
+
 def require_role(*roles: str):
     """Return a FastAPI dependency that only lets the given roles through.
 

@@ -33,7 +33,8 @@ Ordered top to bottom, today:
    (*Later*), and the locked notice that closures and warnings are never hideable
 7. **Your data** — last synced + sync, export GPX/GeoJSON, attribution
 8. **About this build** — version, commit, build time, copy-build-details
-9. **Report a bug** — four linked GitHub issue forms
+9. **Report a bug** — four linked GitHub issue forms, plus the in-app
+   app-failure report above them ([APP_FAILURE_REPORTS.md](APP_FAILURE_REPORTS.md))
 10. **Downloads** — one footer link to the download window
 
 Every section already shares the same `settings__group` / `settings__heading`
@@ -81,7 +82,7 @@ would be a third caller of a component that already exists, not a new one.
 | **You** | Your hike, You, Contribute | Everything about this hiker specifically — who they are on a report, what they are walking, what they have already reported. |
 | **Map & Display** | The map, Display | Everything about how the app looks and draws, map-specific or not. `UX_CUSTOMIZATION.md` keeps these as two data models (`MapDisplaySettings`, and the app-wide `theme` + `unit_system`) for a real reason — they change independently — but that is a reason to keep two data models, not two tabs. A hiker asking "how do I make this look right" does not care which model answers. |
 | **Safety & Privacy** | Safety & privacy | Kept alone deliberately, not folded into Map & Display. [CLAUDE.md](../CLAUDE.md) names four ways this app can hurt somebody, and the location toggle and the wrong-way alert are two of the controls that answer them — a control worth finding quickly should not share a tab with detail-level radio buttons. |
-| **About** | Your data, About this build, Report a bug, Downloads | Reference material and rarely-touched actions — things a hiker consults, not things a hiker sets. |
+| **About** | Your data, About this build, Report a bug, Downloads | Reference material and rarely-touched actions — things a hiker consults, not things a hiker sets. **One row here is neither**, and it arrived after this table was written: the app-failure report at the top of `Report a bug` ([APP_FAILURE_REPORTS.md](APP_FAILURE_REPORTS.md)) is a hiker saying this software failed them out on the trail, which is not reference material and is not rarely-touched by the person doing it. It sits here because `Report a bug` does; whether a report about being nearly lost belongs behind the same tab as the attribution list is a fair question this doc does not settle. |
 
 **Row order inside each tab matters less than tab membership, and is deliberately
 not pinned down further here** — `UX_CUSTOMIZATION.md` made the same call about its

@@ -49,7 +49,13 @@ from pathlib import Path
 import pytest
 
 from app.core.photos import MAX_PHOTO_BYTES
+from app.models.app_failure import Harm
 from app.models.report import ReporterType, ReportStatus, ReportType
+from app.schemas.app_failure import (
+    SHORT_FIELD_MAX_CHARS,
+    WHAT_HAPPENED_MAX_CHARS,
+    AppFailureCreate,
+)
 from app.schemas.report import ReportCreate
 
 CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
@@ -260,3 +266,64 @@ def test_a_type_the_client_invented_is_refused_by_the_schema():
         ReportCreate(type="rockfall", reporter_type="thru")
 
     assert "type" in str(refused.value)
+
+
+# --- The app-failure report (#848) ----------------------------------------
+#
+# A fourth vocabulary on the same file, and the drift here is quieter than the
+# three above rather than louder, which is why it is worth a test at all.
+#
+# The server drops a harm it does not recognise instead of refusing the report
+# - deliberately, so an older deployment meeting a newer client keeps the
+# report rather than losing it. That is the right behaviour and it means
+# nothing anywhere goes red: the hiker's report arrives, the triage signal
+# they ticked is silently gone, and the only symptom is a table where nobody
+# ever selected `stranded`. This is what says so out loud.
+
+
+def test_the_client_can_only_send_harms_the_server_records():
+    client_harms = _type_union(_read(OUTBOX), "AppFailureHarm")
+    server_harms = {harm.value for harm in Harm}
+
+    assert client_harms == server_harms, (
+        "The four harms CLAUDE.md names are written in both "
+        "client/src/lib/outbox.ts and backend/app/models/app_failure.py. A "
+        "word only the client sends is dropped on arrival with nothing "
+        "reported; a word only the server knows is one no hiker can ever "
+        "pick."
+    )
+
+
+def test_the_clients_field_caps_match_the_ones_the_server_truncates_at():
+    """The client stops the typing; the server cuts what arrives.
+
+    Both numbers exist because the cap has to be known offline, where there
+    is nothing to ask - the same trade `lib/reportPhoto.ts` makes about the
+    photo limit. Drift is not loud here either: the server truncates rather
+    than refusing, so a client cap set higher than the server's loses the tail
+    of somebody's report between the keyboard and the row, and says nothing.
+    """
+    outbox = _read(OUTBOX)
+
+    assert _number_constant(outbox, "APP_FAILURE_MAX_CHARS") == WHAT_HAPPENED_MAX_CHARS
+    assert _number_constant(outbox, "APP_FAILURE_SHORT_MAX_CHARS") == SHORT_FIELD_MAX_CHARS
+
+
+def test_the_draft_the_client_queues_is_a_body_the_server_accepts():
+    """Every field on `AppFailureDraft` names one on `AppFailureCreate`.
+
+    A field the client sends and the schema has no home for is dropped
+    silently by pydantic - which for `contact` would mean a hiker leaving a
+    way to be reached and nobody ever having it.
+    """
+    body = re.search(r"export interface AppFailureDraft \{\n(.*?)\n\}", _read(OUTBOX), re.DOTALL)
+    assert body is not None, "Could not find `export interface AppFailureDraft { ... }`"
+
+    client_fields = set(re.findall(r"^  (\w+)\??:", body.group(1), re.MULTILINE))
+
+    assert client_fields <= set(AppFailureCreate.model_fields), (
+        "client/src/lib/outbox.ts queues a field backend/app/schemas/"
+        "app_failure.py does not accept. Pydantic ignores it rather than "
+        "refusing the request, so the report arrives with that field missing "
+        "and nothing anywhere says so."
+    )

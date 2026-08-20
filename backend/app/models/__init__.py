@@ -9,6 +9,7 @@ app/db/base.py's own docstring warning that a model must be "imported
 somewhere reachable from here... before autogenerate will see it."
 """
 
+from app.models.app_failure import AppFailure, Harm
 from app.models.closure import Closure, ClosureStatus, ModerationStatus, ReasonType
 from app.models.club import Club
 from app.models.hike import Hike
@@ -26,6 +27,8 @@ from app.models.report import (
 )
 
 __all__ = [
+    "AppFailure",
+    "Harm",
     "Closure",
     "ClosureStatus",
     "ModerationStatus",

@@ -179,6 +179,34 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
 }
 
 /**
+ * A write the server accepts with or without an account, carrying the token
+ * when there is one.
+ *
+ * A fourth stance, and the only endpoint that wants it is `/app-failures`
+ * (#848). `authedFetch` refuses without a token, which is right for a write
+ * the server would refuse anyway - and this is a write the server would NOT
+ * refuse, deliberately: a hiker reporting that the app nearly got them lost
+ * may never have signed in, and browsing the map has never asked them to.
+ * `readFetch` has the right token handling and is GET-shaped.
+ *
+ * The token still goes when it exists, because knowing which account filed a
+ * report is the second way to reach somebody when the contact detail they
+ * left turns out to be wrong.
+ */
+async function openFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await accessToken()
+
+  return apiFetch(path, {
+    ...init,
+    headers: {
+      ...init.headers,
+      'Content-Type': 'application/json',
+      ...(token === null ? {} : { Authorization: `Bearer ${token}` }),
+    },
+  })
+}
+
+/**
  * What `GET /reports` returns, limited to the fields this app reads.
  *
  * The backend sends more (`received_at`, `follow_up`, `club_id` and the rest
@@ -377,15 +405,44 @@ async function sendReportPhoto(reportId: string, photo: Blob): Promise<void> {
 const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 413, 415])
 
 /**
+ * Sends one queued app-failure report (#848).
+ *
+ * `openFetch` rather than `authedFetch`, which is the whole difference: this
+ * is the one write in the app that goes without an account. Signed out,
+ * `authedFetch` would throw `NotSignedInError` before spending a request and
+ * the report would wait in the queue for an account the hiker has no other
+ * reason to make.
+ *
+ * `authored_at` travels for the same reason it does on a report, and it
+ * matters at least as much here: this report is written where the app broke,
+ * which is where there is no signal, so days between writing and sending is
+ * the ordinary case rather than the edge one.
+ */
+export async function sendAppFailure(item: OutboxItem): Promise<void> {
+  await openFetch('/app-failures', {
+    method: 'POST',
+    // Idempotent on `id`, exactly as `/reports` is - the request that commits
+    // and whose response never arrives is the ordinary one-bar failure.
+    body: JSON.stringify({
+      ...item.appFailure,
+      id: item.id,
+      authored_at: item.authoredAt,
+    }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds two families now: condition reports (the original
- * cargo), and photo actions (#577/#579 - share, withdraw, report). One
- * dispatcher, so `flushOutbox` keeps its single `send` seam and the queue
- * stays one queue - a hiker's unsent work is one list, not two.
+ * The outbox holds three families now: condition reports (the original
+ * cargo), photo actions (#577/#579 - share, withdraw, report), and
+ * app-failure reports (#848). One dispatcher, so `flushOutbox` keeps its
+ * single `send` seam and the queue stays one queue - a hiker's unsent work is
+ * one list, not three.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
+  if (item.appFailure !== undefined) return sendAppFailure(item)
   return sendReport(item)
 }
 

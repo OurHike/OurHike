@@ -181,6 +181,30 @@ export function formatShortDistance(feet: number, units: UnitSystem): string {
  * question a hiker actually has - "can I get this in metres?" - and answering
  * it with a word from a customs schedule is how a setting goes unfound.
  */
+/**
+ * A walking speed, from the canonical miles per hour (#880).
+ *
+ * One decimal in both systems, which is the resolution the pace control
+ * offers: a tenth of a mile per hour is about the smallest difference a hiker
+ * can hold an opinion about, and a second decimal would claim more.
+ */
+export function formatSpeed(mph: number, units: UnitSystem): string {
+  if (units === 'metric') return `${(mph * KM_PER_MILE).toFixed(1)} km/h`
+  return `${mph.toFixed(1)} mph`
+}
+
+/**
+ * Metres to the canonical feet, for callers whose own unit is metric.
+ *
+ * Naismith's ascent term is defined in metres ("one hour per 600 m"), so the
+ * pace profile stores metres while formatElevation takes feet. Exported rather
+ * than repeated at the call site: FEET_PER_METRE lives here, and a second copy
+ * is how two parts of the app come to disagree about a conversion.
+ */
+export function feetFromMetres(metres: number): number {
+  return metres * FEET_PER_METRE
+}
+
 export function unitSystemLabel(units: UnitSystem): string {
   return units === 'metric' ? 'Metres' : 'Feet'
 }

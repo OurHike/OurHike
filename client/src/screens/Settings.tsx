@@ -14,6 +14,7 @@
 // and what it holds is a promise that gets kept.
 
 import { syncAgeLabel } from '../lib/syncAge'
+import type { PaceProfile } from '../lib/pace'
 import type {
   BackgroundSource,
   ReporterType,
@@ -55,6 +56,19 @@ export interface SettingsProps {
    * should do.
    */
   onChangeBackground?: (next: BackgroundSource) => void
+  /**
+   * The hiker's own pace (#880), and its setter.
+   *
+   * Its OWN pair rather than a `UserPreferences` field written through
+   * `onChange`, for the reason PERSONALIZED_PACE.md §4 gives: a pace profile is
+   * not a sync target even once an account exists, and `UserPreferences` IS a
+   * whole-blob sync target. Same shape as `onChangeBackground` above, which
+   * already sidesteps `onChange` for its own reasons.
+   *
+   * Optional, so a surface that does not offer the control still compiles.
+   */
+  pace?: PaceProfile
+  onChangePace?: (next: PaceProfile) => void
   lastSyncedAt: Date | null
   onSync: () => void
   onExport: (format: 'gpx' | 'geojson') => void

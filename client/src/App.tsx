@@ -259,7 +259,7 @@ import { LineSheet } from './chrome/LineSheet'
 import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
 import { HighlightSheet } from './chrome/HighlightSheet'
 import { buildHighlightDetail, type HighlightDetail } from './lib/highlightDetail'
-import { readStoredPace } from './lib/pace'
+import { readStoredPace, writeStoredPace, type PaceProfile } from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
   readWalked,
@@ -764,10 +764,17 @@ function App() {
    *  preferences, which is a sync target - PERSONALIZED_PACE.md §4 keeps a
    *  pace profile off the wire even once an account exists. State rather than
    *  a bare read so the Pace screen can change it and every estimate follows. */
-  // Read once at mount. There is nothing that CHANGES it yet - the Pace
-  // screen is the next commit - so this is deliberately not state: a setter
-  // nothing calls would be a claim that the value is live when it is not.
-  const pace = useMemo(() => readStoredPace(), [])
+  /** The hiker's own pace (#880). Its own local key rather than a preference:
+   *  PERSONALIZED_PACE.md §4 keeps a pace profile off the wire even once an
+   *  account exists, and `UserPreferences` is a whole-blob sync target. */
+  const [pace, setPace] = useState<PaceProfile>(() => readStoredPace())
+
+  const handleChangePace = useCallback((next: PaceProfile) => {
+    // Written through readPace's clamp, so nothing out of range is stored even
+    // if a control is ever wired to a wider range than the estimator allows.
+    writeStoredPace(next)
+    setPace(readStoredPace())
+  }, [])
 
   const resolvedTheme = useTheme(preferences.theme)
   // Whether this is the big-screen layout - and, for the download, whether the
@@ -3365,6 +3372,8 @@ function App() {
                   preferences={preferences}
                   onChange={updatePreferences}
                   onChangeBackground={handleChangeBackground}
+                  pace={pace}
+                  onChangePace={handleChangePace}
                   lastSyncedAt={lastSyncedAt}
                   onSync={notYet}
                   onExport={notYet}

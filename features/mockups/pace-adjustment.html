@@ -1,0 +1,790 @@
+<title>Your Pace, Not a Pace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   Tokens.
+
+   Every colour is one of the app's own, copied from
+   client/src/design-system/tokens/colors.css and client/src/lib/blaze.ts, so
+   the phone frames render in the product's real palette rather than an
+   approximation of it. The document chrome sits one step deeper than the app's
+   paper so a phone screen reads as an object lying ON the page.
+--------------------------------------------------------------------------- */
+:root {
+  --pine-900:#122016; --pine-800:#1c2f1f; --pine-700:#284029;
+  --forest-600:#355c3a; --forest-500:#47784b;
+  --moss-400:#6b9463; --moss-300:#96b98c; --moss-200:#b7d3ad;
+  --sage-200:#c7dabd; --sage-100:#e3ecda;
+  --stone-900:#2b2620; --stone-700:#5a5346; --stone-500:#8a8271;
+  --stone-300:#c3baa4; --stone-150:#e4ddca;
+  --paper-100:#f7f3e9; --paper-0:#fffdf7;
+  --blaze-orange:#c1611a; --blaze-orange-dark:#994e15; --blaze-orange-light:#e0813c;
+  --blaze-yellow:#d69a2d; --blaze-blue:#1c6ea4;
+  --ink-950:#0e0d0a; --ink-900:#15140f; --ink-850:#1c1a15; --ink-800:#24211a;
+  --ink-700:#332f26; --ink-600:#454033;
+  --bone-100:#ece7db; --bone-300:#b9b2a2; --bone-500:#8b8474;
+  --alert-red:#b2321f; --alert-red-light:#ef7f68;
+
+  /* The only two line colours this feature is allowed, and both already exist.
+     blaze.ts: BLAZE_COLORS.White = #fffdf7, NEUTRAL_FALLBACK = #8a8271.
+     WIREFRAMES.md line 325: "the neutral-grey fallback is #8a8271". */
+  --blaze-white:#fffdf7;
+  --blaze-neutral:#8a8271;
+  --trail-casing:#14130f;
+
+  --ground:#e7e0cd;
+  --ground-2:#ded6c0;
+  --surface:var(--paper-0);
+  --ink:var(--pine-900);
+  --ink-2:var(--stone-700);
+  --ink-3:var(--stone-500);
+  --rule:var(--stone-300);
+  --rule-soft:#d5cdb6;
+  --accent:var(--blaze-orange);
+  --accent-soft:rgb(193 97 26 / 12%);
+
+  --measured:var(--forest-600);
+  --measured-bg:rgb(53 92 58 / 11%);
+  --reasoned:var(--blaze-blue);
+  --reasoned-bg:rgb(28 110 164 / 11%);
+  --unvalidated:var(--blaze-orange-dark);
+  --unvalidated-bg:rgb(214 154 45 / 20%);
+  --blocked:var(--alert-red);
+  --blocked-bg:rgb(178 50 31 / 12%);
+
+  --app-page:var(--paper-100);
+  --app-surface:#ffffff;
+  --app-fg1:var(--stone-900);
+  --app-fg2:var(--stone-700);
+  --app-fg3:var(--stone-500);
+  --app-border:var(--stone-150);
+  --app-chrome:var(--pine-900);
+  --app-chrome-fg:var(--paper-0);
+  --app-chrome-fg2:var(--sage-200);
+  --app-chrome-fg3:var(--moss-300);
+  --app-accent:var(--blaze-orange-light);
+  --app-brand:var(--forest-600);
+  --map-land:#efe9d8;
+  --map-relief:#e2dac4;
+  --sel:var(--blaze-orange);
+  --tick:var(--stone-700);
+  --pin-water:var(--blaze-blue);
+  --pin-shelter:var(--forest-600);
+  --pin-other:var(--stone-700);
+  --pin-core:var(--app-surface);
+  --phone-shell:var(--pine-900);
+  --phone-shadow:rgb(18 32 22 / 22%);
+
+  --measure:66ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:var(--ink-950);
+    --ground-2:var(--ink-900);
+    --surface:var(--ink-850);
+    --ink:var(--bone-100);
+    --ink-2:var(--bone-300);
+    --ink-3:var(--bone-500);
+    --rule:var(--ink-700);
+    --rule-soft:var(--ink-800);
+    --accent:var(--blaze-orange-light);
+    --accent-soft:rgb(224 129 60 / 15%);
+
+    --measured:var(--moss-400);
+    --measured-bg:rgb(107 148 99 / 15%);
+    --reasoned:#4ea3d8;
+    --reasoned-bg:rgb(78 163 216 / 14%);
+    --unvalidated:var(--blaze-yellow);
+    --unvalidated-bg:rgb(214 154 45 / 18%);
+    --blocked:var(--alert-red-light);
+    --blocked-bg:rgb(239 127 104 / 15%);
+
+    --app-page:var(--ink-900);
+    --app-surface:var(--ink-850);
+    --app-fg1:var(--bone-100);
+    --app-fg2:var(--bone-300);
+    --app-fg3:var(--bone-500);
+    --app-border:var(--ink-700);
+    --app-chrome:var(--ink-900);
+    --app-chrome-fg:var(--bone-100);
+    --app-chrome-fg2:var(--bone-300);
+    --app-chrome-fg3:var(--bone-500);
+    --app-accent:var(--moss-400);
+    --app-brand:var(--moss-400);
+    --map-land:#20201a;
+    --map-relief:#2a291f;
+    --sel:var(--blaze-orange-light);
+    --tick:var(--bone-500);
+    --pin-water:#4ea3d8;
+    --pin-shelter:var(--moss-400);
+    --pin-other:var(--bone-300);
+    --pin-core:var(--ink-950);
+    --phone-shell:#000000;
+    --phone-shadow:rgb(0 0 0 / 55%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:var(--ink-950);
+  --ground-2:var(--ink-900);
+  --surface:var(--ink-850);
+  --ink:var(--bone-100);
+  --ink-2:var(--bone-300);
+  --ink-3:var(--bone-500);
+  --rule:var(--ink-700);
+  --rule-soft:var(--ink-800);
+  --accent:var(--blaze-orange-light);
+  --accent-soft:rgb(224 129 60 / 15%);
+
+  --measured:var(--moss-400);
+  --measured-bg:rgb(107 148 99 / 15%);
+  --reasoned:#4ea3d8;
+  --reasoned-bg:rgb(78 163 216 / 14%);
+  --unvalidated:var(--blaze-yellow);
+  --unvalidated-bg:rgb(214 154 45 / 18%);
+  --blocked:var(--alert-red-light);
+  --blocked-bg:rgb(239 127 104 / 15%);
+
+  --app-page:var(--ink-900);
+  --app-surface:var(--ink-850);
+  --app-fg1:var(--bone-100);
+  --app-fg2:var(--bone-300);
+  --app-fg3:var(--bone-500);
+  --app-border:var(--ink-700);
+  --app-chrome:var(--ink-900);
+  --app-chrome-fg:var(--bone-100);
+  --app-chrome-fg2:var(--bone-300);
+  --app-chrome-fg3:var(--bone-500);
+  --app-accent:var(--moss-400);
+  --app-brand:var(--moss-400);
+  --map-land:#20201a;
+  --map-relief:#2a291f;
+  --sel:var(--blaze-orange-light);
+  --tick:var(--bone-500);
+  --pin-water:#4ea3d8;
+  --pin-shelter:var(--moss-400);
+  --pin-other:var(--bone-300);
+  --pin-core:var(--ink-950);
+  --phone-shell:#000000;
+  --phone-shadow:rgb(0 0 0 / 55%);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+
+.spine { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 0; }
+.spine__rail { grid-column: 1; border-right: 1px solid var(--rule); padding-top: 40px; position: relative; }
+.spine__mark {
+  position: sticky; top: 16px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.75rem; color: var(--ink-3);
+  text-align: right; padding-right: 14px; letter-spacing: 0.02em;
+}
+.spine__mark strong { display: block; font-size: 1.0625rem; font-weight: 500; color: var(--accent); letter-spacing: 0; }
+.spine__body { grid-column: 2; padding: 40px 0 40px 32px; min-width: 0; }
+
+@media (max-width: 860px) {
+  .spine { grid-template-columns: 1fr; }
+  .spine__rail { grid-column: 1; border-right: 0; border-top: 1px solid var(--rule); padding-top: 20px; }
+  .spine__mark { position: static; text-align: left; padding-right: 0; }
+  .spine__mark strong { display: inline; margin-right: 10px; }
+  .spine__body { grid-column: 1; padding: 12px 0 40px; }
+}
+
+.masthead { padding: 64px 0 20px; }
+.eyebrow {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 20px;
+}
+h1 {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: clamp(2.4rem, 5.5vw, 3.9rem);
+  line-height: 1.04; font-weight: 700; letter-spacing: -0.015em;
+  margin: 0 0 18px; text-wrap: balance;
+}
+.standfirst {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: 1.2rem; line-height: 1.55; color: var(--ink-2);
+  max-width: var(--measure); margin: 0 0 32px;
+}
+.standfirst em { color: var(--ink); font-style: italic; }
+
+.docket { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 0 0; border-top: 1px solid var(--rule); }
+.docket__item {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  padding: 7px 12px; border: 1px solid var(--rule); border-radius: 2px;
+  color: var(--ink-2); background: var(--surface);
+}
+.docket__item b { color: var(--ink); font-weight: 500; }
+.docket__item--open { border-color: var(--accent); color: var(--accent); }
+.docket__item--blocked { border-color: var(--blocked); color: var(--blocked); }
+
+h2 {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: clamp(1.65rem, 3vw, 2.15rem); line-height: 1.15;
+  font-weight: 700; letter-spacing: -0.01em; margin: 0 0 14px; text-wrap: balance;
+}
+h3 { font-family: 'Bitter', ui-serif, Georgia, serif; font-size: 1.28rem; line-height: 1.28; font-weight: 600; margin: 0 0 10px; text-wrap: balance; }
+p { margin: 0 0 16px; max-width: var(--measure); }
+p:last-child { margin-bottom: 0; }
+strong { font-weight: 600; color: var(--ink); }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+code, .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.875em; }
+code { background: var(--ground-2); padding: 1px 5px; border-radius: 2px; }
+
+.grade {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 2px; font-weight: 500;
+  white-space: nowrap; vertical-align: middle;
+}
+.grade--measured { color: var(--measured); background: var(--measured-bg); }
+.grade--reasoned { color: var(--reasoned); background: var(--reasoned-bg); }
+.grade--unvalidated { color: var(--unvalidated); background: var(--unvalidated-bg); }
+.grade--decided { color: var(--accent); background: var(--accent-soft); }
+.grade--blocked { color: var(--blocked); background: var(--blocked-bg); }
+
+.pair { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (max-width: 900px) { .pair { grid-template-columns: 1fr; gap: 28px; } }
+
+.frames { display: flex; flex-wrap: wrap; gap: 28px; }
+.stack { display: flex; flex-direction: column; gap: 24px; }
+
+.note { border-left: 2px solid var(--accent); padding: 2px 0 2px 18px; margin: 0 0 20px; color: var(--ink-2); max-width: var(--measure); }
+.note p { margin-bottom: 10px; }
+
+.callout { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 22px 24px; margin: 0 0 22px; }
+.callout h3 { margin-bottom: 8px; }
+.callout--blocked { border-left: 3px solid var(--blocked); }
+
+.phone { width: 300px; flex: 0 0 auto; }
+.phone__label {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  color: var(--ink-3); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 10px;
+}
+.phone__label b { color: var(--ink); font-weight: 500; }
+.phone__screen {
+  width: 300px; height: 538px; background: var(--app-page);
+  border: 9px solid var(--phone-shell); border-radius: 26px; overflow: hidden;
+  position: relative; box-shadow: 0 10px 28px -12px var(--phone-shadow);
+  display: flex; flex-direction: column;
+}
+.phone__screen--fit { height: auto; }
+.phone__caption { font-size: 0.8125rem; color: var(--ink-2); margin: 10px 0 0; max-width: 300px; line-height: 1.5; }
+
+.app-header {
+  background: var(--app-chrome); color: var(--app-chrome-fg);
+  padding: 7px 12px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.6875rem; flex: 0 0 auto;
+}
+.app-header__title { font-family: 'Bitter', serif; font-weight: 600; font-size: 0.8125rem; }
+.app-header__ico { color: var(--app-chrome-fg2); letter-spacing: 3px; }
+.app-status {
+  background: var(--app-chrome); color: var(--app-chrome-fg3);
+  padding: 0 12px 6px; font-size: 0.625rem; flex: 0 0 auto;
+  display: flex; gap: 8px; align-items: center; font-family: 'IBM Plex Mono', monospace;
+}
+.app-map { position: relative; flex: 1 1 auto; overflow: hidden; background: var(--map-land); }
+.app-map svg { display: block; width: 100%; height: 100%; }
+
+.app-tabs {
+  background: var(--app-chrome); flex: 0 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  font-size: 0.5625rem; color: var(--app-chrome-fg3); text-align: center; padding: 6px 0 8px;
+}
+.app-tabs span { display: block; }
+.app-tabs .on { color: var(--app-chrome-fg); }
+.app-tabs .on::before { content: ''; display: block; height: 2px; width: 22px; background: var(--app-accent); margin: -6px auto 5px; border-radius: 1px; }
+.app-tabs .off::before { content: ''; display: block; height: 2px; margin: -6px auto 5px; }
+
+.app-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--app-surface); border-top: 1px solid var(--app-border);
+  border-radius: 12px 12px 0 0; padding: 12px 14px 14px;
+  box-shadow: 0 -6px 18px -10px rgb(0 0 0 / 30%); color: var(--app-fg1);
+}
+.sheet__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.sheet__title { font-family: 'Bitter', serif; font-size: 0.9375rem; font-weight: 600; margin: 0; line-height: 1.25; }
+.sheet__x { color: var(--app-fg3); font-size: 0.875rem; }
+.sheet__status { font-size: 0.6875rem; color: var(--app-fg2); margin: 0 0 7px; }
+.sheet__range { font-size: 0.75rem; color: var(--app-fg1); margin: 0 0 3px; }
+.sheet__meta { font-size: 0.625rem; color: var(--app-fg3); margin: 7px 0 0; line-height: 1.45; }
+.sheet__empty { font-size: 0.6875rem; color: var(--app-fg2); margin: 0; }
+.sheet__derived {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--app-fg1);
+  background: var(--app-page); border: 1px solid var(--app-border); border-radius: 3px;
+  padding: 6px 8px; margin: 7px 0 0; display: flex; gap: 10px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.sheet__legs { margin: 7px 0 0; padding: 0; list-style: none; }
+.sheet__legs li {
+  font-size: 0.6875rem; color: var(--app-fg1); padding: 3px 0 3px 12px;
+  border-left: 2px solid var(--app-border); margin-bottom: 2px; line-height: 1.35;
+}
+.sheet__legs li span { color: var(--app-fg3); font-family: 'IBM Plex Mono', monospace; font-size: 0.9em; }
+.sheet__basis {
+  display: inline-block; font-size: 0.5625rem; letter-spacing: 0.07em; text-transform: uppercase;
+  font-weight: 700; padding: 2px 6px; border-radius: 2px; margin: 8px 0 0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.basis--named { color: var(--app-brand); border: 1px solid var(--app-brand); }
+.basis--published { color: var(--pin-water); border: 1px solid var(--pin-water); }
+
+.legend-row { display: flex; align-items: center; gap: 7px; font-size: 0.6875rem; color: var(--app-fg1); padding: 2px 0; }
+.legend-swatch { width: 18px; height: 4px; border-radius: 1px; flex: 0 0 auto; outline: 1px solid var(--trail-casing); }
+
+.table-scroll { overflow-x: auto; margin: 0 0 22px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.875rem; }
+th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; border-bottom: 1px solid var(--rule); background: var(--ground-2);
+}
+tbody tr:last-child td { border-bottom: 0; }
+.basis-name { font-family: 'IBM Plex Mono', monospace; font-weight: 500; color: var(--ink); }
+
+.decision { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 3px; padding: 22px 24px; margin: 0 0 18px; }
+.decision--blocked { border-left-color: var(--blocked); }
+.decision__q { font-family: 'Bitter', serif; font-size: 1.15rem; font-weight: 600; margin: 0 0 10px; line-height: 1.3; }
+.decision__rec { margin: 14px 0 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 2px; font-size: 0.9375rem; max-width: none; }
+.decision__rec b { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500; }
+.decision__rec--blocked { background: var(--blocked-bg); }
+.decision__rec--blocked b { color: var(--blocked); }
+
+.ol-plain { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ol-plain li { margin-bottom: 10px; }
+.ul-tight { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ul-tight li { margin-bottom: 8px; }
+
+hr.rule { grid-column: 1 / -1; border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+footer { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 0.8125rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   This document's own components. Everything above is corridor-view.html's
+   token system, reused verbatim so the two mockups read as one family.
+
+   One new semantic pair, and it reuses existing hues rather than adding any:
+   the STANDARD estimate is drawn in --blaze-neutral, the hiker's OWN in
+   --accent. That is the same two-colour discipline the corridor view keeps,
+   and it means "whose number is this" is answerable at a glance.
+--------------------------------------------------------------------------- */
+.est { display: inline-flex; align-items: baseline; gap: 6px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.est--std { color: var(--blaze-neutral); }
+.est--mine { color: var(--accent); font-weight: 500; }
+.est__rel { white-space: nowrap; font-size: 0.6875rem; letter-spacing: 0.04em; color: var(--app-fg3); }
+
+.optgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 16px; margin: 0 0 22px; }
+.opt { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+.opt--pick { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.opt__tag { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.opt--pick .opt__tag { color: var(--accent); }
+.opt__demo { background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 2px; padding: 11px 12px; font-size: 0.8125rem; color: var(--app-fg1); }
+.opt p { margin: 0; font-size: 0.8125rem; color: var(--ink-2); }
+
+/* The pace control itself. Range inputs are faked as static bars: this is a
+   drawing of a screen, not a working control. */
+.ctl { display: flex; flex-direction: column; gap: 4px; padding: 9px 0; }
+.ctl__top { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--app-fg1); }
+.ctl__val { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--app-accent); font-weight: 500; }
+.ctl__track { position: relative; height: 4px; border-radius: 2px; background: var(--app-border); }
+.ctl__fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--app-accent); }
+.ctl__knob { position: absolute; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: var(--app-surface); border: 2px solid var(--app-accent); }
+.ctl__scale { display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.625rem; color: var(--app-fg3); }
+.ctl__base { position: absolute; top: -3px; width: 1px; height: 10px; background: var(--app-fg3); }
+
+.sheet__rel { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.6875rem; color: var(--app-fg3); letter-spacing: 0.03em; margin: 3px 0 0; }
+.sheet__derived--mine { color: var(--app-accent); font-weight: 500; }
+
+.routing { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.routing th { text-align: left; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); font-weight: 500; padding: 11px 14px; border-bottom: 1px solid var(--rule); }
+.routing td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; color: var(--ink-2); }
+.routing tr:last-child td { border-bottom: 0; }
+.routing td:first-child { font-family: 'IBM Plex Mono', ui-monospace, monospace; color: var(--ink); white-space: nowrap; }
+.yes { color: var(--measured); font-weight: 600; }
+.no { color: var(--blocked); font-weight: 600; }
+</style>
+<div class="wrap">
+<div class="spine">
+  <div></div>
+  <header class="masthead">
+    <p class="eyebrow">OurHike · mock-ups for approval · 2026-08-20</p>
+    <h1>Your Pace, Not a Pace</h1>
+    <p class="standfirst">
+      Naismith answers <em>how long does this take <strong>a</strong> hiker</em>. What somebody
+      actually wants is <em>how long does this take <strong>me</strong></em>. This is the control that
+      closes that gap — and the line that stops it becoming a way to lie to yourself.
+    </p>
+    <div class="docket">
+      <span class="grade grade--decided">decided</span>
+      <span class="grade grade--unvalidated">2 open questions</span>
+      <span class="mono">#880</span>
+      <span class="mono">PERSONALIZED_PACE.md §1</span>
+    </div>
+  </header>
+</div>
+
+<div class="spine">
+  <div></div>
+  <section>
+    <h2>Three screens print a time, and none of them say whose</h2>
+    <p class="note">
+      Every figure below is what the app renders today, computed with the real
+      <code>naismithMinutes()</code> — 5&nbsp;km/h plus an hour per 600&nbsp;m of ascent, rounded to five
+      minutes, prefixed <code>≈</code>. Distances are ATC's, measured against the live layers this
+      morning. Ascent figures are illustrative.
+    </p>
+
+    <div class="frames">
+      <div class="phone">
+        <p class="phone__label"><span>Highlight sheet</span><b>today</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">McAfee Knob</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Appalachian Trail · mi 711.0 – 715.0</p>
+              <p class="sheet__derived"><span class="est est--std">4.0 mi · 1,740 ft ascent · ≈2h 10m</span></p>
+              <p class="sheet__meta">Worked out on your phone from the elevation profile.</p>
+              <p class="sheet__basis">On our list</p>
+              <p class="sheet__meta">Maintained by RATC.</p>
+            </div>
+          </div>
+          <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+        </div>
+      </div>
+
+      <div class="phone">
+        <p class="phone__label"><span>Day plan</span><b>today</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">Plan</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">Day 3</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Punchbowl Shelter → The Priest</p>
+              <p class="sheet__derived"><span class="est est--std">12.4 mi · 3,200 ft ascent · ≈5h 35m</span></p>
+              <p class="sheet__meta">Moving time. Stops are yours to add.</p>
+              <p class="sheet__meta" style="margin-top:8px">Side trip: Spy Rock <span class="mono">≈15m there and back</span></p>
+            </div>
+          </div>
+          <div class="app-tabs"><span class="off">Map</span><span class="on">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h3>The seam this plugs into already exists</h3>
+      <p>
+        <span class="grade grade--measured">measured</span>
+        <code>naismith.ts</code> exports <code>naismithMinutes()</code> — a raw number — separately from
+        <code>formatNaismithMinutes()</code>, and <code>route.ts</code> already sums minutes across a day
+        before formatting once. So a coefficient multiplies <strong>minutes</strong>, and the five-minute
+        step and the <code>≈</code> still happen exactly once, at the end. No rounding drift, and
+        <code>naismithTime()</code> itself is never touched.
+      </p>
+    </div>
+  </section>
+</div>
+
+<div class="spine">
+  <div></div>
+  <section>
+    <h2>The control: what you know about yourself, in two numbers</h2>
+    <p class="note">
+      <code>PERSONALIZED_PACE.md</code> §1: <em>"a hiker who has been walking for thirty years should
+      not have to wait a week for the app to discover what they already know."</em> The tick under each
+      track is the standard value, so the baseline is visible while you drag.
+    </p>
+
+    <div class="pair">
+      <div class="phone">
+        <p class="phone__label"><span>More → Pace</span><b>proposed</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">Pace</span><span class="app-header__ico">←</span></div>
+          <div class="app-map" style="background:var(--app-page)">
+            <div style="padding:14px 15px;display:flex;flex-direction:column;gap:6px">
+              <p style="margin:0 0 4px;font-size:0.75rem;color:var(--app-fg2);line-height:1.5">
+                Estimates start from a standard walking rule. Adjust it to match yourself.
+              </p>
+
+              <div class="ctl">
+                <div class="ctl__top"><span>Flat pace</span><span class="ctl__val">2.6 mph</span></div>
+                <div class="ctl__track">
+                  <div class="ctl__fill" style="right:58%"></div>
+                  <div class="ctl__base" style="left:62%"></div>
+                  <div class="ctl__knob" style="left:42%"></div>
+                </div>
+                <div class="ctl__scale"><span>1.5</span><span>standard 3.1</span><span>4.5</span></div>
+              </div>
+
+              <div class="ctl">
+                <div class="ctl__top"><span>Climbing penalty</span><span class="ctl__val">+1h / 480 m</span></div>
+                <div class="ctl__track">
+                  <div class="ctl__fill" style="right:32%"></div>
+                  <div class="ctl__base" style="left:50%"></div>
+                  <div class="ctl__knob" style="left:68%"></div>
+                </div>
+                <div class="ctl__scale"><span>gentler</span><span>standard 600 m</span><span>steeper</span></div>
+              </div>
+
+              <div style="margin-top:10px;padding:11px 12px;background:var(--app-surface);border:1px solid var(--app-border);border-radius:2px">
+                <p style="margin:0 0 5px;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--app-fg3);font-family:'IBM Plex Mono',monospace">Your estimates now read</p>
+                <p style="margin:0;font-size:0.8125rem;color:var(--app-fg1)">
+                  <span class="est est--mine">≈2h 50m</span><br>
+                  <span class="est__rel">was ≈2h 10m · 1.3× standard</span>
+                </p>
+                <p style="margin:5px 0 0;font-size:0.6875rem;color:var(--app-fg3)">for a 4.0 mi walk with 1,740 ft of climb</p>
+              </div>
+
+              <p style="margin:10px 0 0;font-size:0.6875rem;color:var(--app-fg3);line-height:1.5">
+                Kept on this phone. Reset to standard at any time.
+              </p>
+            </div>
+          </div>
+          <div class="app-tabs"><span class="off">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="on">More</span></div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="callout">
+          <h3>Two controls, not three</h3>
+          <p style="margin-bottom:12px">
+            <span class="grade grade--decided">recommended</span>
+            <strong>No descent control.</strong> <code>PERSONALIZED_PACE.md</code> asks this outright and
+            leaves it to you: <em>"Most people know their flat pace and can guess their climbing penalty;
+            almost nobody has a number for descent."</em> A control nobody can answer honestly gets set
+            by fiddling, and fiddling with a safety number is the thing to avoid.
+          </p>
+          <p>
+            It costs nothing later: descent is the layer the <strong>learned</strong> model adds, where it
+            comes from evidence rather than a guess. Shipping two controls now does not close that door.
+          </p>
+        </div>
+
+        <div class="callout">
+          <h3>Why a live preview, not just sliders</h3>
+          <p>
+            The units are unintuitive — nobody has a feel for "an hour per 480 metres". The preview turns
+            both controls into the only number that matters: <strong>what a real walk now reads.</strong>
+            It is the same walk each time, so dragging shows change rather than noise.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="spine">
+  <div></div>
+  <section>
+    <h2>Never show an adjusted time without saying it was adjusted</h2>
+    <p class="note">
+      This is the maintainer's addition and the reason the feature is safe to ship at all. A hiker who set
+      their pace optimistic in week one and forgot is exactly the hazard <strong>#851 — Naismith
+      under-reads technical terrain</strong> is about: a time reading low is somebody planning to be
+      somewhere before dark that they reach after it. Four ways it could read.
+    </p>
+
+    <div class="optgrid">
+      <div class="opt">
+        <span class="opt__tag">A · multiplier only</span>
+        <div class="opt__demo">
+          <span class="est est--mine">4.0 mi · 1,740 ft · ≈2h 50m</span><br>
+          <span class="est__rel">1.3× standard</span>
+        </div>
+        <p>Compact, and it travels anywhere. But "1.3×" is arithmetic, not a duration — it does not tell you what you would have been told.</p>
+      </div>
+
+      <div class="opt opt--pick">
+        <span class="opt__tag">B · was, and by how much ✦</span>
+        <div class="opt__demo">
+          <span class="est est--mine">4.0 mi · 1,740 ft · ≈2h 50m</span><br>
+          <span class="est__rel">was ≈2h 10m · 1.3× standard</span>
+        </div>
+        <p>Carries the baseline as a <em>time</em>, which is the unit the decision is actually made in, and the multiplier for people who think that way. One extra line.</p>
+      </div>
+
+      <div class="opt">
+        <span class="opt__tag">C · both, side by side</span>
+        <div class="opt__demo">
+          <span class="est est--mine">≈2h 50m</span> <span class="est est--std" style="font-size:0.8125rem">/ ≈2h 10m std</span>
+        </div>
+        <p>Densest, and reads as two competing answers. On a sheet already carrying distance, ascent, basis and club, it is one number too many.</p>
+      </div>
+
+      <div class="opt">
+        <span class="opt__tag">D · settings only</span>
+        <div class="opt__demo">
+          <span class="est est--mine">4.0 mi · 1,740 ft · ≈2h 50m</span>
+        </div>
+        <p><strong>Rejected.</strong> This is the failure mode itself — a number that silently stopped being the standard one, on the screen where somebody decides whether they beat the dark.</p>
+      </div>
+    </div>
+
+    <div class="decision">
+      <h3>Recommending B, everywhere a time appears</h3>
+      <p style="margin-bottom:12px">
+        <span class="grade grade--reasoned">reasoned</span>
+        <strong>The baseline belongs in the same unit as the decision.</strong> Nobody plans a day in
+        multipliers. "was ≈2h 10m" is instantly checkable against what the app used to say and against
+        what a guidebook says; "1.3×" needs mental arithmetic at the exact moment somebody is tired.
+      </p>
+      <p>
+        The relationship line is <strong>omitted entirely when the pace is standard</strong> — no
+        "1.0× standard" on a fresh install. A caveat on every line reads exactly like a caveat on none,
+        and this one has to keep its weight for the hikers who did move the slider.
+      </p>
+    </div>
+  </section>
+</div>
+
+<div class="spine">
+  <div></div>
+  <section>
+    <h2>Should the app let you tell it you are fast?</h2>
+    <p class="note">
+      The open question I cannot answer for you, because it is a values call rather than a technical one.
+      Below is what a 0.85× setting does to the same three screens.
+    </p>
+
+    <div class="frames">
+      <div class="phone">
+        <p class="phone__label"><span>Set faster than standard</span><b>0.85×</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">Day 3</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Punchbowl Shelter → The Priest</p>
+              <p class="sheet__derived sheet__derived--mine">12.4 mi · 3,200 ft ascent · ≈4h 45m</p>
+              <p class="sheet__rel">was ≈5h 35m · 0.85× standard</p>
+              <p class="sheet__meta" style="margin-top:9px">Moving time. Stops are yours to add.</p>
+            </div>
+          </div>
+          <div class="app-tabs"><span class="off">Map</span><span class="on">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="callout callout--blocked">
+          <h3>Fifty minutes of daylight, on one slider</h3>
+          <p style="margin-bottom:12px">
+            <span class="grade grade--measured">measured</span>
+            That day moves from <span class="est est--std">≈5h 35m</span> to
+            <span class="est est--mine">≈4h 45m</span> — computed with the real rule, not illustrative.
+            Over a five-day plan the same setting hides roughly four hours.
+          </p>
+          <p>
+            <code>CLAUDE.md</code>: <em>"round toward caution, and say which way you rounded."</em> A
+            control that only ever rounds toward caution is not much of a control; one that rounds away
+            from it without saying so is the failure this whole feature is meant to prevent.
+          </p>
+        </div>
+
+        <div class="callout">
+          <h3>Three ways to go</h3>
+          <ul class="ul-tight" style="margin-bottom:0">
+            <li><strong>Allow it, marked.</strong> Same "was ≈5h 35m" line, and the figure keeps the accent so it never reads as the standard answer. Treats the hiker as an adult and stays honest. <em>My lean.</em></li>
+            <li><strong>Allow it, and say so once.</strong> As above, plus a one-time note when they cross below standard. Costs a friction point on a setting most fast hikers legitimately want.</li>
+            <li><strong>Clamp at standard.</strong> Slowest-only. Safest and slightly dishonest — a genuinely fast hiker is then told a number the app knows is wrong for them, which is its own way of not being trusted.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="spine">
+  <div></div>
+  <section>
+    <h2>Two call sites must not get the coefficient</h2>
+    <p class="note">
+      <code>naismith.ts</code> feeds eleven places. Threading a multiplier through all of them looks like
+      the careful thing to do and would be wrong twice.
+    </p>
+
+    <div class="table-scroll">
+      <table class="routing">
+        <thead><tr><th>Call site</th><th>Coefficient</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>highlightDetail.ts</td><td class="yes">yes</td><td>The sheet that started this. Carries the relationship line.</td></tr>
+          <tr><td>route.ts</td><td class="yes">yes</td><td>Sums raw minutes then formats once — the cleanest place it lands.</td></tr>
+          <tr><td>RouteStopsPanel.tsx</td><td class="yes">yes</td><td>Renders <code>route.ts</code>'s minutes; inherits it.</td></tr>
+          <tr><td>ElevationRibbon.tsx</td><td class="yes">yes</td><td>Same day, same number — must agree with the panel above it.</td></tr>
+          <tr><td>spurDestination.ts</td><td class="yes">yes</td><td>"≈15m there and back" is a walking time like any other.</td></tr>
+          <tr><td>Plan.tsx</td><td class="yes">yes</td><td>Displays the route's totals.</td></tr>
+          <tr>
+            <td>dayReach.ts</td><td class="no">NO</td>
+            <td><strong>Already personal.</strong> Its own docstring: it reads the miles a hiker's own days covered, off their trip log, <em>including the two hours at the shelter</em>. Multiplying it applies the personalization twice — and it is the instrument that answers "which piece fits the five days I have."</td>
+          </tr>
+          <tr>
+            <td>upcomingClimb.ts</td><td class="no">care</td>
+            <td><code>MIN_CLIMB_FT</code> is <em>derived</em> as the smallest climb that can move the number the callout prints. Scale the number and that derivation changes with it. Either re-derive against the hiker's coefficient or state plainly that the threshold stays on the standard rule.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <h3>And <code>naismithTime()</code> itself is not touched</h3>
+      <p>
+        <code>PERSONALIZED_PACE.md</code> is firm and correct here: <code>naismith.ts</code> has no
+        <code>descentFt</code> parameter <em>"not just 'ignored if passed' but structurally absent, so a
+        future call site can't accidentally wire descent in without touching this function's signature
+        first."</em> The personalized estimator is a <strong>new function alongside it</strong>. The guard
+        did its job; the replacement keeps the property.
+      </p>
+    </div>
+  </section>
+</div>
+
+<div class="spine">
+  <div></div>
+  <section>
+    <h2>What I would build, in what order</h2>
+    <ol class="ol-plain">
+      <li><strong>The coefficient and its storage.</strong> A new estimator beside <code>naismithMinutes()</code>, the preference on the path <code>units</code> already uses, defaulting to standard so nothing changes until somebody moves a slider.</li>
+      <li><strong>The relationship line, treatment B</strong>, and the rule that it is omitted at standard. Built before the control, so no screen can ever show an adjusted time without it.</li>
+      <li><strong>The Pace screen</strong> with two controls and the live preview.</li>
+      <li><strong>Thread the six call sites</strong>, leave <code>dayReach.ts</code> alone, and decide <code>upcomingClimb.ts</code>'s threshold explicitly rather than by omission.</li>
+      <li><strong>A test that no surface prints an adjusted time without its baseline</strong> — the invariant, held the way <code>style.test.ts</code> holds the blaze colour.</li>
+    </ol>
+
+    <div class="decision">
+      <h3>Two things I need from you before step 3</h3>
+      <ul class="ul-tight" style="margin-bottom:0">
+        <li><strong>Faster than standard</strong> — allow marked, allow with a one-time note, or clamp.</li>
+        <li><strong>Descent control</strong> — I recommend leaving it out and letting the learned layer earn it. Say if you want all three.</li>
+      </ul>
+    </div>
+
+    <p class="note" style="margin-top:22px">
+      Not in scope here: the <strong>learned</strong> layer (<strong>#881</strong>, blocked on a GPS
+      observation store and on reconciling the upload decision with the promise that position never leaves
+      the phone), and the terrain problem (<strong>#882</strong> — Mahoosuc Notch has no POI to anchor to,
+      so the ground where the clock lies worst cannot currently be named at all).
+    </p>
+  </section>
+</div>
+</div>

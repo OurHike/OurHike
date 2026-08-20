@@ -33,6 +33,18 @@
   align-items: center;
   gap: var(--space-3, 12px);
   padding: 4px var(--space-4, 16px);
+  /* The strip is the top of the map screen, so in the edge-to-edge WebViews
+     the Capacitor shells run (#101) it is what sits under the notch and the
+     clock. The inset pushes the strip's content below them and its paper
+     surface becomes the status bar's backdrop; in a portrait browser tab the
+     inset is 0 and this line is the 4px it always was. Same pattern as the
+     three bottom-inset paddings this file and onboarding.css already carry.
+     The side insets are for landscape on a notched phone - nonzero there in
+     the shells AND in Safari, because viewport-fit=cover (index.html) turns
+     off the auto-insetting Safari would otherwise do. */
+  padding-top: calc(4px + env(safe-area-inset-top, 0px));
+  padding-left: max(var(--space-4, 16px), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4, 16px), env(safe-area-inset-right, 0px));
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--fg-3);
@@ -62,6 +74,9 @@
   justify-content: space-between;
   gap: var(--space-4, 16px);
   padding: var(--space-2, 8px) var(--space-4, 16px);
+  /* Landscape on a notched phone, same reasoning as .status-strip above. */
+  padding-left: max(var(--space-4, 16px), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4, 16px), env(safe-area-inset-right, 0px));
   background: var(--bg-page);
   border-bottom: 1px solid var(--border-1);
 }
@@ -253,6 +268,9 @@
   border-top: 1px solid var(--border-1);
   /* Keeps the bar clear of the home indicator on notched phones. */
   padding-bottom: env(safe-area-inset-bottom, 0);
+  /* And of the sensor housing in landscape (see .status-strip). */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* The tabs' own box, which exists so that `role="tablist"` can own tabs and

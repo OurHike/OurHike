@@ -5,6 +5,13 @@ node_modules/
 public/dev-data/
 src/design-system/
 package-lock.json
+# The Capacitor native shells (#101). Generated scaffolds whose layout is
+# owned by `npx cap add` and the platform tools, not by this formatter - and
+# `cap sync` fills them with copies of the built web assets (gitignored by
+# each tree's own .gitignore, but prettier only reads ignore files at its own
+# CWD, so they must be named here too).
+android/
+ios/
 # Vendored detector models (#837): the bytes ARE the provenance - each
 # README beside them records the sha256 of the file as fetched/extracted,
 # and a reformat would break the checksum while changing nothing real.

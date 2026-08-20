@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Geolocation stays the web API (navigator.geolocation, see
+         capacitor.config.ts). For that to work in the WebView, Capacitor's
+         BridgeWebChromeClient.onGeolocationPermissionsShowPrompt requests
+         exactly these two permissions at runtime and forwards the grant —
+         declaring them here is the only manifest half of the handshake.
+         FINE as well as COARSE because useGeolocation.ts asks for
+         enableHighAccuracy: "Under tree cover a coarse fix can be hundreds
+         of feet out." The runtime ask itself happens in context, not at
+         launch (features/ONBOARDING.md, the location step's "Allow
+         location"). No background-location permission: nothing in the app
+         asks for fixes while it is hidden - the app-level watch
+         (useGeolocation.ts) pauses itself, and a backgrounded WebView gets
+         no JS time for MapLibre's own watch either - and the shell does not
+         change that. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+</manifest>

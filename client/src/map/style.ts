@@ -69,6 +69,11 @@ import { buildClosureLayers } from '../lib/closureStyle'
 import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
+import {
+  buildCorridorLayers,
+  buildCorridorSource,
+  CORRIDOR_SOURCE_ID,
+} from './corridorLayers'
 import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
 import {
@@ -696,6 +701,7 @@ export function buildMapStyle({
       // over a closure somebody walked up to and photographed would be a false
       // statement about where it came from.
       [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      [CORRIDOR_SOURCE_ID]: buildCorridorSource(),
       // The route being built (#755). Empty until the hiker drops points, and
       // no `attribution`: what it draws is the hiker's own intent, and there
       // is no third party to credit for a line they chose themselves.
@@ -833,6 +839,17 @@ export function buildMapStyle({
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
         },
       },
+      // The corridor view's attribution, over the blaze and under everything
+      // else (#598). Over, because the grey on an unattributed run has to
+      // COVER the white blaze rather than sit beside it; under the route and
+      // the closures, because a barrier or a hiker's own line crossing this
+      // stretch matters more than who maintains it. Every layer here stops at
+      // the seam - see corridorLayers.ts's CORRIDOR_MAX_ZOOM.
+      ...buildCorridorLayers({
+        casingColor: trailCasingColor(appearance),
+        blazeWidth: BLAZE_LINE_WIDTH,
+        casingWidth: CASING_LINE_WIDTH,
+      }),
       // The route being built, over the blaze it retraces - a route drawn
       // UNDER the trail line would be invisible along its whole length -
       // and beneath the closure bands, deliberately: a closure crossing the

@@ -26,6 +26,13 @@ import {
   type WarningPoint,
 } from './warningLayers'
 import { WARNING_ICON_ID } from './warningPin'
+import {
+  CORRIDOR_KIND_PROPERTY,
+  CORRIDOR_SOURCE_ID,
+  EMPTY_CORRIDOR,
+  UNATTRIBUTED_KIND,
+  type CorridorFeatureCollection,
+} from './corridorLayers'
 import type { MapPoint } from '../lib/legendContents'
 
 // Lifecycle is the whole risk surface here. A map that gets built twice means
@@ -379,12 +386,38 @@ describe('POI pins', () => {
     { id: 's1', type: 'shelter', lat: 40.1, lon: -76.4, confidence: 'low' },
   ]
 
+  /** One unattributed run, already in map coordinates - what App.tsx's
+   *  corridorFeatures() hands down. */
+  const CORRIDOR: CorridorFeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'MultiLineString',
+          coordinates: [
+            [
+              [-77, 39],
+              [-77, 39.1],
+            ],
+          ],
+        },
+        properties: { [CORRIDOR_KIND_PROPERTY]: UNATTRIBUTED_KIND },
+      },
+    ],
+  }
+
   /** Real MapLibre has its layers and sources by the time `load` fires. */
   function loadStyle(map: MockMap): void {
     // Both waypoint ranks (#597): attachPoiFilter waits for the dot layer as
     // well as the pin one, so a stub holding only pins never filters at all.
     map.layerIds = [POI_DOT_LAYER_ID, POI_LAYER_ID, WARNING_LAYER_ID]
-    map.sourceIds = [POI_SOURCE_ID, CLOSURE_SOURCE_ID, WARNING_SOURCE_ID]
+    map.sourceIds = [
+      POI_SOURCE_ID,
+      CLOSURE_SOURCE_ID,
+      WARNING_SOURCE_ID,
+      CORRIDOR_SOURCE_ID,
+    ]
     map.emit('load')
   }
 
@@ -527,6 +560,29 @@ describe('POI pins', () => {
     expect(map.sourceData.get(CLOSURE_SOURCE_ID)).toEqual(
       closureFeatureCollection(CLOSURES),
     )
+  })
+
+  it('draws the corridor attribution it was given (#598)', () => {
+    // The proof that the artifact reaches the canvas at all. Everything
+    // between the bucket and here is tested on its own; this is the join.
+    render(<MapView {...PROPS} corridor={CORRIDOR} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.sourceData.get(CORRIDOR_SOURCE_ID)).toEqual(CORRIDOR)
+  })
+
+  it('pushes an empty corridor rather than leaving a stale one drawn', () => {
+    // A hiker who re-downloads from a release that publishes no attribution
+    // must not keep looking at the previous release's grey runs.
+    const { rerender } = render(<MapView {...PROPS} corridor={CORRIDOR} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    rerender(<MapView {...PROPS} corridor={EMPTY_CORRIDOR} />)
+
+    expect(map.sourceData.get(CORRIDOR_SOURCE_ID)).toEqual(EMPTY_CORRIDOR)
   })
 
   it('draws the serious warnings it was given as pins', () => {

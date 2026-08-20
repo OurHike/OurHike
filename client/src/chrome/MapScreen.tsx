@@ -29,6 +29,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
+import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
@@ -119,6 +120,9 @@ export interface MapScreenProps {
    * its mind.
    */
   closures?: readonly ClosureBand[]
+  /** The corridor view's attribution, already in map coordinates (#598).
+   *  Coordinates rather than mile ranges for the reason `closures` gives. */
+  corridor?: CorridorFeatureCollection
   /** The ATC's own notices, drawn at the same weight as a closure and read
    *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
   atcUpdates?: readonly ClosureBand[]
@@ -422,6 +426,7 @@ export function MapScreen({
   advisoryAhead = null,
   warningsAhead = null,
   closures,
+  corridor,
   atcUpdates,
   atcUpdatePoints,
   onSelectAtcUpdate,
@@ -633,6 +638,7 @@ export function MapScreen({
               drought={drought}
               showDrought={droughtShown}
               closures={closures}
+              corridor={corridor}
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}

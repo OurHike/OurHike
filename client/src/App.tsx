@@ -238,6 +238,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
+import { corridorFeatures, EMPTY_CORRIDOR } from './map/corridorLayers'
 import {
   isSeriousWarning,
   placeAll,
@@ -590,6 +591,7 @@ function App() {
     pois,
     spurs,
     elevation,
+    clubSections,
     trailsUrl,
     haveTrailLines,
     error: dataError,
@@ -1092,6 +1094,24 @@ function App() {
     if (placedClosures === null || trailIndex === null) return []
     return closureBands(placedClosures, trailIndex)
   }, [placedClosures, trailIndex])
+
+  /**
+   * Who maintains which stretch, as the corridor view draws it (#598).
+   *
+   * Needs the centerline index for the same reason the closure bands do: the
+   * published artifact carries mile ranges and no geometry, so `trailSlice`
+   * is what turns "miles 1,013.4 to 1,015.2" into a line. Everything the map
+   * draws from it stops at the seam - see map/corridorLayers.ts.
+   *
+   * Not gated on a GPS fix or on a hike, deliberately, in the same way the
+   * closure bands are not: who looks after a stretch of trail is a fact about
+   * the trail, and the corridor view is what somebody at a kitchen table is
+   * looking at before they have either.
+   */
+  const corridorOnMap = useMemo(() => {
+    if (trailIndex === null) return EMPTY_CORRIDOR
+    return corridorFeatures(clubSections, trailIndex)
+  }, [clubSections, trailIndex])
 
   /**
    * The ATC's notices as bands, through exactly the same geometry.
@@ -2974,6 +2994,7 @@ function App() {
           advisoryAhead={advisoryAhead}
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
+          corridor={corridorOnMap}
           atcUpdates={atcBandsOnMap}
           atcUpdatePoints={atcPointsOnMap}
           onSelectAtcUpdate={setSelectedAtcBandId}

@@ -69,7 +69,7 @@ jobs:
           # read files outside client/ at runtime:
           #
           #   pipeline/reference/gain_vectors.json  lib/elevationGain.test.ts
-          #   site/index.html                       test/siteLayout.test.ts
+          #   site/src/ (stylesheet, install page)  test/siteLayout.test.ts
           #   .github/ISSUE_TEMPLATE/*.yml          test/issueFormPrefill.test.ts
           #
           # Scoped to client/ alone, a pull request editing the shared gain

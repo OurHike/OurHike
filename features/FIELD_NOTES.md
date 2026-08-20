@@ -305,6 +305,17 @@ orphans**, into one issue updated in place. Every note keeps its `lat`/`lon`, so
 is re-anchorable rather than lost — which is also why the fallback anchor is in the model
 rather than being derivable from the POI.
 
+**Built** ([#878](https://github.com/OurHike/OurHike/issues/878)):
+`pipeline/check_note_anchors.py`, run weekly by `check-note-anchors.yml` into a
+`data-freshness` tracking issue. It diffs over the *published* artifacts —
+`conditions/notes.json` against every `poi_*.geojson` the manifest names, with
+`retired_poi.geojson` explaining what the ledger can — rather than over Postgres, so it
+holds no credential and adds no scheduled road to the database. The trade is the notes
+artifact's own window: the check sees exactly the anchors a hiker can currently see, and a
+hidden or expired note's orphaning waits until it republishes — losing nothing, since the
+anchor is permanent and re-anchoring works whenever the orphan is caught. The script's
+docstring and the decision record on #878 carry the reasoning.
+
 **The contract itself now has a design: [POI_IDENTITY.md](POI_IDENTITY.md)**
 ([#666](https://github.com/OurHike/OurHike/issues/666) — *A POI's identity is its upstream
 key, so one ATC annual refresh can orphan every photo and comment*). Under its ledger, both

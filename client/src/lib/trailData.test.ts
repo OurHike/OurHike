@@ -1447,6 +1447,7 @@ describe('the highlights', () => {
         citations: { named: { by: 'OurHike', note: 'A ledge.', reviewed: '2026-08-20' } },
         legs: [{ trail: 'AT', startMile: 705.6, endMile: 709.1 }],
         club: 'RATC',
+        caution: '',
       },
     ])
   })

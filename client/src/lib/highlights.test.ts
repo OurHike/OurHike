@@ -50,6 +50,8 @@ describe('parseHighlights', () => {
       },
       legs: [{ trail: 'AT', startMile: 705.6, endMile: 709.1 }],
       club: 'RATC',
+      // #851's hook, empty on every record published today.
+      caution: '',
     })
   })
 

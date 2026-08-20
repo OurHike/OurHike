@@ -83,6 +83,16 @@ export interface Highlight {
   /** The maintaining club the first leg starts in, or null where the club
    *  sections do not name one - the 38.5 unattributed miles. */
   club: string | null
+  /**
+   * A warning that the usual time estimate does not fit this ground (#851).
+   *
+   * Empty on every record published today - nothing sets it yet. It is here
+   * because the problem is not hypothetical: Mahoosuc Arm is one of the ten
+   * entries #856 published and is the climb out of Mahoosuc Notch, where
+   * Naismith reads badly low. Carrying the field now means whichever way #851
+   * is decided is a line on a sheet rather than a schema change.
+   */
+  caution: string
 }
 
 export const NO_HIGHLIGHTS: readonly Highlight[] = []
@@ -157,6 +167,7 @@ function parseHighlight(value: unknown): Highlight | null {
     citations: parseCitations(value.citations),
     legs,
     club: typeof value.club === 'string' && value.club !== '' ? value.club : null,
+    caution: text(value.caution),
   }
 }
 

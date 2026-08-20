@@ -228,6 +228,8 @@ import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { ClubSheet } from './chrome/ClubSheet'
 import { LineSheet } from './chrome/LineSheet'
 import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
+import { HighlightSheet } from './chrome/HighlightSheet'
+import { buildHighlightDetail, type HighlightDetail } from './lib/highlightDetail'
 import {
   MAX_FIX_GAP_MILES,
   readWalked,
@@ -249,7 +251,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
-import { corridorFeatures, EMPTY_CORRIDOR } from './map/corridorLayers'
+import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorLayers'
 import {
   isSeriousWarning,
   placeAll,
@@ -532,6 +534,7 @@ function App() {
    *  reports them (map/lineTaps.ts); what they mean - the spur record, the
    *  destination's name - is resolved here, where the data is. */
   const [selectedLine, setSelectedLine] = useState<TappedLine | null>(null)
+  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null)
   /**
    * Whether the full list of ATC notices is open.
    *
@@ -603,6 +606,7 @@ function App() {
     spurs,
     elevation,
     clubSections,
+    highlights,
     trailsUrl,
     haveTrailLines,
     error: dataError,
@@ -1162,8 +1166,8 @@ function App() {
    */
   const corridorOnMap = useMemo(() => {
     if (trailIndex === null) return EMPTY_CORRIDOR
-    return corridorFeatures(clubSections, trailIndex)
-  }, [clubSections, trailIndex])
+    return corridorWithHighlights(clubSections, highlights, trailIndex)
+  }, [clubSections, highlights, trailIndex])
 
   /**
    * The ATC's notices as bands, through exactly the same geometry.
@@ -1401,6 +1405,21 @@ function App() {
       ? 'Maintaining club not recorded along here.'
       : `Maintained by the ${run.club.name}.`
   }, [belowSeam, camera, trailIndex, clubRuns])
+
+  /**
+   * The tapped highlight's sheet content (#858).
+   *
+   * Resolved here for the reason the club sheet is: the map reports which
+   * mark was touched, and the shell is what holds the records, the elevation
+   * profile the numbers are derived from, the hiker's units and what they
+   * have walked.
+   */
+  const selectedHighlightDetail: HighlightDetail | null = useMemo(() => {
+    if (selectedHighlightId === null) return null
+    const highlight = highlights.find((entry) => entry.id === selectedHighlightId)
+    if (highlight === undefined) return null
+    return buildHighlightDetail(highlight, elevation, units, walked)
+  }, [selectedHighlightId, highlights, elevation, units, walked])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -2427,6 +2446,16 @@ function App() {
   // taps do - the null is the tap-elsewhere dismissal, and it also fires
   // when a tap lands on a pin or an ATC notice (map/lineTaps.ts yields to
   // both), which is what keeps this sheet from stacking under theirs.
+  // A tapped mark closes the legend the way a tapped line does, and clears
+  // the line selection so the two sheets can never both be open.
+  const handleSelectHighlight = useCallback((id: string | null) => {
+    setSelectedHighlightId(id)
+    if (id !== null) {
+      setLegendOpen(false)
+      setSelectedLine(null)
+    }
+  }, [])
+
   const handleSelectLine = useCallback((line: TappedLine | null) => {
     setSelectedLine(line)
     if (line !== null) setLegendOpen(false)
@@ -3117,6 +3146,7 @@ function App() {
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
           corridor={corridorOnMap}
+          onSelectHighlight={handleSelectHighlight}
           maintainerLine={maintainerLine}
           atcUpdates={atcBandsOnMap}
           atcUpdatePoints={atcPointsOnMap}
@@ -3132,7 +3162,15 @@ function App() {
           }
           onSelectLine={handleSelectLine}
           lineSheet={
-            // The club sheet wins below the seam, and the two never stack:
+            // A tapped highlight wins over both: it is a small, aimed-at mark
+            // sitting ON the corridor, the same rule map/lineTaps.ts applies
+            // when a pin beats the line under it.
+            selectedHighlightDetail !== null ? (
+              <HighlightSheet
+                detail={selectedHighlightDetail}
+                onClose={() => setSelectedHighlightId(null)}
+              />
+            ) : // The club sheet wins below the seam, and the two never stack:
             // one tap asks one question, and which question it is depends on
             // what the map is showing.
             selectedClubDetail !== null ? (

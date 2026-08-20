@@ -57,9 +57,16 @@ import type {
   GeoJSONSourceSpecification,
   LayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import type {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  MapMouseEvent,
+  PointLike,
+} from 'maplibre-gl'
 import { NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { clubBoundaryMiles, clubTimeline, type ClubSections } from '../lib/clubSections'
+import { PROFILED_TRAIL } from '../lib/highlightDetail'
+import type { Highlight } from '../lib/highlights'
 import { trailPointAtMile, trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { whenStyleReady } from './styleReady'
@@ -69,6 +76,7 @@ export const CORRIDOR_SOURCE_ID = 'corridor'
 export const CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID = 'corridor-unattributed-casing'
 export const CORRIDOR_UNATTRIBUTED_LAYER_ID = 'corridor-unattributed'
 export const CORRIDOR_BOUNDARY_LAYER_ID = 'corridor-boundary'
+export const CORRIDOR_HIGHLIGHT_LAYER_ID = 'corridor-highlight'
 
 /** Which of this source's two kinds of feature a layer wants. Both ride in one
  *  source because they are one answer - the corridor read end to end - and a
@@ -76,6 +84,13 @@ export const CORRIDOR_BOUNDARY_LAYER_ID = 'corridor-boundary'
 export const CORRIDOR_KIND_PROPERTY = 'corridor_kind'
 export const UNATTRIBUTED_KIND = 'unattributed'
 export const BOUNDARY_KIND = 'boundary'
+export const HIGHLIGHT_KIND = 'highlight'
+
+/** Where a highlight marker carries its id, so a tap resolves to a record.
+ *  A property rather than the GeoJSON feature id, for the reason
+ *  CLOSURE_ID_PROPERTY gives: MapLibre runs a string feature id through
+ *  parseInt, and a highlight id is a slug. */
+export const HIGHLIGHT_ID_PROPERTY = 'highlight_id'
 
 /**
  * Where the corridor view gives way to the waypoint map.
@@ -102,6 +117,18 @@ export const UNATTRIBUTED_DASH: readonly [number, number] = [2, 1.3]
 export const BOUNDARY_RADIUS = 2.6
 
 /**
+ * A highlight's mark, in pixels.
+ *
+ * Bigger than a boundary tick and smaller than a waypoint pin: it is the one
+ * thing on this map a hiker is meant to want to tap, and it competes with
+ * nothing - the pins do not draw down here at all (POI_PIN_MIN_ZOOM).
+ *
+ * @unvalidated Picked against the approved mock-up rather than measured. What
+ * would settle it is the same outdoor pass #105 owes the rest of the chrome.
+ */
+export const HIGHLIGHT_RADIUS = 5
+
+/**
  * What the corridor has to know about the trail it is drawn over.
  *
  * Passed in rather than imported, and the widths are here for a stronger
@@ -113,6 +140,9 @@ export const BOUNDARY_RADIUS = 2.6
  */
 export interface CorridorTrailPaint {
   casingColor: string
+  /** What a selected or reachable thing is drawn in - the sheet's own blaze
+   *  orange. Passed in for the reason the casing is: style.ts builds these. */
+  selectionColor: string
   /** The blaze layer's width for the through-route. */
   blazeWidth: number
   /** The casing under it, already including its overhang. */
@@ -121,6 +151,8 @@ export interface CorridorTrailPaint {
 
 interface CorridorProperties {
   [CORRIDOR_KIND_PROPERTY]: string
+  /** Present only on a highlight mark. */
+  [HIGHLIGHT_ID_PROPERTY]?: string
 }
 
 export interface CorridorFeatureCollection {
@@ -183,6 +215,66 @@ export function corridorFeatures(
 }
 
 /**
+ * The highlights, as one mark each at the start of the first A.T. leg (#858).
+ *
+ * A POINT rather than a line along the walk, and that is the two-colour
+ * decision showing through: the trail's own colour means `blaze_color`, so a
+ * highlight cannot recolour the ground it covers. It marks where the walk
+ * BEGINS and the sheet says how far it runs - which is also the only thing
+ * that stays true for a highlight whose other legs are on trails this map may
+ * not be drawing (features/NEARBY_TRAILS.md: one chosen trail at a time).
+ *
+ * One mark, not every leg: a loop that leaves the A.T. and comes back is one
+ * place on the corridor, and three marks for it would read as three walks.
+ *
+ * The FIRST leg that is on the A.T., rather than the first leg outright. All
+ * ten entries published today are single-leg A.T. highlights, so nothing
+ * exercises the difference yet - but a loop is naturally written in walking
+ * order, and Franconia Ridge's is `[Falling Waters, A.T., Old Bridle Path]`.
+ * Keyed off leg zero, that record would draw no mark at all and simply not be
+ * on the map, which is the silent absence rather than the honest one.
+ */
+export function highlightFeatures(
+  highlights: readonly Highlight[],
+  index: TrailIndex,
+): CorridorFeatureCollection {
+  const features = highlights.flatMap((highlight) => {
+    const leg = highlight.legs.find((candidate) => candidate.trail === PROFILED_TRAIL)
+    // A highlight entirely off the A.T. has no place on this map to mark. It
+    // still exists as a record; features/NEARBY_TRAILS.md's one-trail-at-a-time
+    // rule is what would eventually draw it.
+    if (leg === undefined) return []
+    const point = trailPointAtMile(index, leg.startMile)
+    if (point === null) return []
+    return [
+      {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: point },
+        properties: {
+          [CORRIDOR_KIND_PROPERTY]: HIGHLIGHT_KIND,
+          [HIGHLIGHT_ID_PROPERTY]: highlight.id,
+        },
+      },
+    ]
+  })
+  return { type: 'FeatureCollection', features }
+}
+
+/** The corridor and the highlights in one collection - one source, because
+ *  they are one answer about the same stretch of map. */
+export function corridorWithHighlights(
+  sections: ClubSections,
+  highlights: readonly Highlight[],
+  index: TrailIndex,
+): CorridorFeatureCollection {
+  const corridor = corridorFeatures(sections, index)
+  return {
+    type: 'FeatureCollection',
+    features: [...corridor.features, ...highlightFeatures(highlights, index).features],
+  }
+}
+
+/**
  * The corridor source, empty.
  *
  * Empty for the reason buildClosureSource is: the attribution is read out of
@@ -204,6 +296,7 @@ const isKind = (kind: string): FilterSpecification => [
  */
 export function buildCorridorLayers({
   casingColor,
+  selectionColor,
   blazeWidth,
   casingWidth,
 }: CorridorTrailPaint): LayerSpecification[] {
@@ -254,7 +347,98 @@ export function buildCorridorLayers({
         'circle-stroke-width': 1,
       },
     },
+    // LAST, over the boundary ticks - because at these zooms the two collide
+    // often, not rarely. Reasoned from the projection and the club count
+    // rather than measured off a render: at z5 Web Mercator gives 29.7 px per
+    // degree of latitude at 40 degrees N, so a pixel is ~2.3 straight-line
+    // miles, and the A.T.'s 2,197 miles fit inside ~780 straight-line ones -
+    // call it 6 trail miles to the pixel. HIGHLIGHT_RADIUS is 5 px, so a mark
+    // covers tens of trail miles, against an average gap between club
+    // boundaries of 2,197 / ~30 = ~73 miles. Drawn the other way round a
+    // neutral tick punches a hole through the one thing on this map a hiker is
+    // meant to tap.
+    {
+      id: CORRIDOR_HIGHLIGHT_LAYER_ID,
+      type: 'circle' as const,
+      source: CORRIDOR_SOURCE_ID,
+      maxzoom: CORRIDOR_MAX_ZOOM,
+      filter: isKind(HIGHLIGHT_KIND),
+      paint: {
+        // The selection colour, which is the one hue this view has beyond the
+        // blaze and the neutral - and it is spent here because a highlight is
+        // the thing on this map a hiker is meant to reach for.
+        'circle-radius': HIGHLIGHT_RADIUS,
+        'circle-color': selectionColor,
+        'circle-stroke-color': casingColor,
+        'circle-stroke-width': 1.5,
+      },
+    },
   ]
+}
+
+/**
+ * How far off a highlight mark a touch may land and still open it, in CSS
+ * pixels.
+ *
+ * Derived from the mark the same way LINE_TAP_SLOP_PX is derived from the
+ * widest line: `--min-touch-target` is 44 px, the mark is a circle of
+ * HIGHLIGHT_RADIUS, and the slop is what turns one into the other.
+ */
+export const HIGHLIGHT_TAP_SLOP_PX = Math.max(0, (44 - HIGHLIGHT_RADIUS * 2) / 2)
+
+function highlightTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
+  return [
+    [point.x - HIGHLIGHT_TAP_SLOP_PX, point.y - HIGHLIGHT_TAP_SLOP_PX],
+    [point.x + HIGHLIGHT_TAP_SLOP_PX, point.y + HIGHLIGHT_TAP_SLOP_PX],
+  ]
+}
+
+/**
+ * The highlight mark under a point, or null.
+ *
+ * Exported so map/lineTaps.ts can YIELD to it: a mark is a small, aimed-at
+ * target sitting on the corridor, and the line under it is the ambient thing.
+ * That is the same rule tappedLineAt already applies to pins and ATC notices.
+ */
+export function highlightIdAt(
+  map: MapLibreMap,
+  point: { x: number; y: number } | undefined,
+): string | null {
+  // A click carrying no screen point at all. Real MapLibre always supplies
+  // one, but this app's own route-drawing flow emits clicks built by hand, and
+  // a tap handler that throws on an event shape it did not expect takes the
+  // whole map down with it - which is what this cost before the guard existed.
+  if (point === undefined || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return null
+  }
+  // Querying a layer the style does not hold fires an error event rather than
+  // throwing - the guard poiTaps.ts documents.
+  if (map.getLayer(CORRIDOR_HIGHLIGHT_LAYER_ID) === undefined) return null
+  const features = map.queryRenderedFeatures(highlightTapBox(point), {
+    layers: [CORRIDOR_HIGHLIGHT_LAYER_ID],
+  })
+  for (const feature of features) {
+    const id = (feature.properties ?? {})[HIGHLIGHT_ID_PROPERTY]
+    if (typeof id === 'string' && id !== '') return id
+  }
+  return null
+}
+
+/** Wires taps on the highlight marks to `onSelect`, and returns a detach.
+ *
+ *  Every tap reports, misses included, which is how the sheet closes on a tap
+ *  elsewhere - the gesture attachLineTaps already teaches. */
+export function attachHighlightTaps(
+  map: MapLibreMap,
+  onSelect: (id: string | null) => void,
+): () => void {
+  const onClick = (event: MapMouseEvent) => {
+    onSelect(highlightIdAt(map, event.point))
+  }
+  map.on('click', onClick)
+  return () => {
+    map.off('click', onClick)
+  }
 }
 
 /** Pushes the drawn corridor onto the live map's source, and returns a detach. */

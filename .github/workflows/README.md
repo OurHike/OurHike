@@ -1,6 +1,6 @@
 # The workflows
 
-30 files, 39 jobs. Each file's header comment is the design record for that
+31 files, 40 jobs. Each file's header comment is the design record for that
 workflow and is the place to find out *why* it is the way it is — this file is
 the level above: what exists, what makes each one run, and the three or four
 facts that are dangerous to learn by discovering them.
@@ -125,6 +125,7 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 | `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |
 | `check-pending-approvals.yml` | tracking issue | whether a run is sitting in `waiting` for an approval nobody was told about |
+| `check-auth-redirects.yml` | tracking issue | whether a sign-in can still come back to a declared origin (#488) |
 | `schema-drift.yml` | failing the run | both databases against the models; being behind head is normal and never fails |
 | `supabase-keepalive.yml` | failing the run | keeps a free-plan project from being paused; also reads all seven tables with the anon key |
 | `protections-check.yml` | failing the run | branch protection, environments and labels |
@@ -160,11 +161,18 @@ would have silently reset that monitor's clock to today, for ever, with the
 body still saying "first seen". `.github/tests/test_tracking_issue.py` drives
 the real module under `node` and asserts the round trip.
 
-Exactly one scheduled workflow may reach the Supabase project —
-`supabase-keepalive.yml` — and `.github/tests/test_supabase_keepalive_workflow.py`
-fails if a second appears. It asserts the longest gap the cron leaves rather
-than the string it is written as, because `50 */20 * * *` reads like "every 20
-hours" and actually fires 20 hours apart and then 4.
+Every scheduled road into the Supabase project has to be on a named roster -
+`.github/tests/test_supabase_keepalive_workflow.py`'s `SCHEDULED_ROSTER` -
+each entry with its own reason. It used to enforce "exactly one" instead, but
+`schema-drift.yml` and `publish-conditions.yml` already reach the project's
+databases on their own schedules for reasons that have nothing to do with
+keeping it awake, so #656 replaced the single-workflow census with a named
+list: a new entrant fails the test until it joins by name, which is the
+enforcement "exactly one" claimed and could not deliver. `check-auth-redirects.yml`
+joined it the same way (#488). Separately, the test asserts the *keepalive's*
+longest gap rather than the cron string it is written as, because
+`50 */20 * * *` reads like "every 20 hours" and actually fires 20 hours apart
+and then 4.
 
 ### Runs when someone is shipping
 
@@ -183,7 +191,7 @@ All dispatch-only, none of them gates anything.
 | | |
 |---|---|
 | `r2-credentials-check.yml` | whether the R2 credentials still work |
-| `supabase-config-check.yml` | the project's auth settings, and whether a sign-in can still come back. No schedule — see #488 |
+| `supabase-config-check.yml` | the project's auth settings - providers, signing keys. The redirect-allow-list probe moved to its own scheduled file, `check-auth-redirects.yml`, in #488 |
 | `package-overlap-spike.yml` | how many bytes a second overlapping package duplicates (#193) |
 | `shard-seam-spike.yml` | whether a sharded continental basemap build is lossless (#194) |
 
@@ -204,6 +212,7 @@ gathered rather than restated.
 | `40 8 * * *` | daily | `publish-conditions.yml` |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
+| `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |
 | `40 9 * * 1` | Mondays | `smoke-published.yml` |
 | `50 */20 * * *` | 00:50 and 20:50 | `supabase-keepalive.yml` |
 

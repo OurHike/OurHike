@@ -14,7 +14,6 @@ import {
 // that never invents a distance for a row nobody placed.
 
 const NOW = new Date('2026-08-20T12:00:00Z')
-const DAY_MS = 24 * 60 * 60 * 1000
 
 function project(overrides: Partial<WorkProjectSummary>): WorkProjectSummary {
   return {

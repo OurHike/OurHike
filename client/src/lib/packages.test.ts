@@ -9,11 +9,13 @@ import {
   MAP_PACKAGES,
   offeredPackages,
   offeredSheets,
+  offlineBackgroundAvailable,
   packageArtifactKey,
   packageDownloadUrl,
   packageSizeBytes,
   sheetSizeBytes,
   USGS_SHEET,
+  withdrawnSheets,
   type BackgroundSheet,
   type OfferedPackage,
 } from './packages'
@@ -25,9 +27,10 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 // The catalog is where a package's identity lives, so what these cover is
 // mostly identity: keys that must not change under a phone that already holds
 // an archive, keys that must not collide, keys that are never trail-scoped,
-// and the two rules that keep the Downloads screen honest - a package with
-// nothing published behind it is never offered, and the USGS raster is a
-// sheet a hiker opts into rather than part of everyone's download (#237).
+// and the three rules that keep the Downloads screen honest - a package with
+// nothing published behind it is never offered, the USGS raster is a sheet a
+// hiker opts into rather than part of everyone's download (#237), and a
+// withdrawn sheet stops being offered without becoming undeletable (#855).
 
 const PUBLISHED_ELSEWHERE: OfferedPackage = {
   id: 'example',
@@ -137,9 +140,13 @@ describe('offering only what is actually published', () => {
     }
   })
 
-  it('always offers the USGS sheet, whose raster is published', () => {
-    expect(offeredSheets()).toContain(USGS_SHEET)
+  it('does not offer the withdrawn USGS sheet, though its raster is published', () => {
+    // The two filters are different questions and this sheet answers them
+    // differently: its archive IS published, and it is still not on offer
+    // (#855). A test that only checked `offeredPackages` would pass whether
+    // or not the withdrawal worked.
     expect(offeredPackages(USGS_SHEET)).toEqual([CORRIDOR_BACKGROUND_PACKAGE])
+    expect(offeredSheets()).not.toContain(USGS_SHEET)
   })
 
   it('keeps offering a package whatever state it is in on the phone', () => {
@@ -157,6 +164,43 @@ describe('offering only what is actually published', () => {
         expect(packageSizeBytes(pkg, 'standard', 'fine')).toBeGreaterThan(0)
       }
     }
+  })
+})
+
+describe('a sheet that is published but withdrawn (#855)', () => {
+  // The USGS raster is the one this is written against, but every assertion
+  // below is about the MECHANISM rather than about that sheet: withdrawing
+  // an offer must not strand the bytes somebody already took, and putting
+  // the raster back must not need any of this to change.
+
+  it('keeps a withdrawn sheet out of what a hiker is asked to download', () => {
+    expect(offeredSheets().every((sheet) => sheet.withdrawn !== true)).toBe(true)
+  })
+
+  it('still lists it separately, so its archive stays deletable', () => {
+    // The whole reason this is not `source: null`. A phone that took the
+    // Fine tier is holding 1.18 GB (downloadDetail.ts, measured against the
+    // published bucket 2026-08-09), and the card is the only way to free it.
+    expect(withdrawnSheets()).toContain(USGS_SHEET)
+    expect(offeredPackages(USGS_SHEET)).toEqual([CORRIDOR_BACKGROUND_PACKAGE])
+  })
+
+  it('accounts for every catalogued sheet in exactly one of the two lists', () => {
+    // Nothing may fall between them: a sheet in neither is bytes the app can
+    // store and no screen can show.
+    const listed = [...offeredSheets(), ...withdrawnSheets()]
+
+    expect(new Set(listed).size).toBe(listed.length)
+    expect(listed).toHaveLength(
+      BACKGROUND_SHEETS.filter((sheet) => offeredPackages(sheet).length > 0).length,
+    )
+  })
+
+  it('withdraws the offline background with the sheet it draws, unless it is here', () => {
+    // `usgs_topo_offline` draws that archive and nothing else, so the option
+    // and the card come and go together - offered, or already downloaded.
+    expect(offlineBackgroundAvailable(false)).toBe(false)
+    expect(offlineBackgroundAvailable(true)).toBe(true)
   })
 })
 

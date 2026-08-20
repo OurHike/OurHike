@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Onboarding } from './Onboarding'
 import { ONBOARDING_STEPS } from '../lib/onboardingSteps'
+import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
 
 // WIREFRAMES.md §5, plus TESTING.md item 11 (first run).
 //
@@ -75,19 +76,22 @@ describe('Onboarding', () => {
     expect(screen.getByText('1.14 GB')).toBeInTheDocument()
   })
 
-  it('asks the map-size question in the download window\u2019s shape (#298)', async () => {
+  it('asks the map-size question in the download window\u2019s shape (#298, #855)', async () => {
     // First run ends by opening that window, so the two are consecutive
     // views of one decision. They looked like two: a flat list here, a sheet
     // per tab there.
+    //
+    // With the USGS sheet withdrawn there is one sheet on offer, and the
+    // shape they have to share is now the window's OTHER shape: no strip at
+    // all, because "a single tab is a heading pretending to be a control"
+    // (screens/Downloads.tsx). Asserting the absence of the strip is
+    // asserting the same rule the tabs were asserting before it.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
-    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getByText(HIKING_SHEET.summary)).toBeInTheDocument()
   })
 
   it('greys the hiking sheet\u2019s missing Light rung rather than dropping it (#298)', async () => {
@@ -102,37 +106,25 @@ describe('Onboarding', () => {
     expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
   })
 
-  it('names and prices the USGS sheet without configuring it here (#277)', async () => {
-    // #277 took the raster's tiers out of first run on purpose. The tab
-    // shows what the optional map would cost and points at Downloads; every
-    // level under it is greyed, so nothing about it is chosen in this flow.
+  it('never mentions the withdrawn USGS sheet at all (#855)', async () => {
+    // #277 had first run NAME and PRICE the optional map without configuring
+    // it - a greyed ladder under its own tab, pointing at Downloads. That was
+    // right while Downloads sold it. It is withdrawn now, so pricing it here
+    // would send a newcomer to a window that does not carry it, and the tab
+    // reads the catalog rather than listing the sheets - so it simply is not
+    // built.
+    //
+    // Two assertions, because the tab going while the copy stayed would be
+    // the failure worth catching: the sheet is not named anywhere on this
+    // step, and every level shown is the hiking sheet's own, operable one.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
-    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
 
-    for (const level of screen.getAllByRole('radio')) {
-      expect(level).toBeDisabled()
-      expect(level).not.toBeChecked()
-    }
-    expect(screen.getByText(/chosen in downloads/i)).toBeInTheDocument()
-  })
-
-  it('finishes with the hiking level even after a look at the USGS tab', async () => {
-    // Switching tabs is looking, not choosing: the USGS tab writes nothing,
-    // so what first run reports is still the hiking sheet's level.
-    const user = userEvent.setup()
-    render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
-    await user.click(screen.getByRole('radio', { name: /fine/i }))
-    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
-    await user.click(screen.getByRole('tab', { name: /hiking sheet/i }))
-    await advance(user, 1)
-    await user.click(screen.getByRole('button', { name: /allow/i }))
-
-    expect(PROPS.onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ hikingDetailLevel: 'fine' }),
-    )
+    expect(screen.queryByText(/usgs/i)).toBeNull()
+    expect(screen.queryByText(USGS_SHEET.summary)).toBeNull()
+    expect(screen.queryByText(/chosen in downloads/i)).toBeNull()
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
   })
 
   it('marks Standard as the recommended size', async () => {

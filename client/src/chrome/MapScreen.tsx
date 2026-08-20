@@ -315,6 +315,16 @@ export interface MapScreenProps {
   backgroundChoice?: BackgroundSource
   onChangeBackground?: (next: BackgroundSource) => void
   /**
+   * Whether "downloaded only" is a background this phone can get at all.
+   *
+   * The USGS sheet was withdrawn for v2 (#855) and that option draws its
+   * archive and nothing else, so on a phone that did not already take it
+   * there is one background and no choice to offer. Carried from the shell
+   * for the same reason `backgroundOverride` is: what is on the phone is the
+   * shell's knowledge, and the legend's picker must not go and re-derive it.
+   */
+  offlineBackgroundAvailable?: boolean
+  /**
    * Opens the download window, which the legend's picker links to.
    *
    * The window itself is the shell's, not this screen's: it opens over the
@@ -493,6 +503,7 @@ export function MapScreen({
   backgroundOverride = null,
   backgroundChoice,
   onChangeBackground,
+  offlineBackgroundAvailable = true,
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
@@ -766,6 +777,7 @@ export function MapScreen({
             onChangeBackground={onChangeBackground}
             backgroundOverride={backgroundOverride}
             belowArchiveZoom={belowArchiveZoom}
+            offlineBackgroundAvailable={offlineBackgroundAvailable}
             drawnCounts={drawnCounts}
             belowPoiZoom={belowPoiZoom}
             onOpenDownloads={onOpenDownloads}

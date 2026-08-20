@@ -36,6 +36,7 @@ import {
   CORRIDOR_BACKGROUND_PACKAGE,
   offeredPackages,
   offeredSheets,
+  withdrawnSheets,
 } from './lib/packages'
 import { TRAILS_SOURCE_ID } from './map/style'
 import { OSM_SOURCE_ID } from './map/liveTopo'
@@ -132,11 +133,18 @@ const isPreferences = (key: string) => key === PREFERENCES_KEY
 
 /**
  * The download store's keys, taken from the package catalogue rather than
- * spelled out - there are three archives behind the two sheets today and the
+ * spelled out - there are three archives behind the sheets today and the
  * count is not this file's business. Each is read under its own key and then,
  * when nothing finished is there, under a `:progress` one beside it.
+ *
+ * WITHDRAWN sheets included, and it has to be the same set App.tsx registers
+ * (#855). The shell holds off its first map until every registered archive
+ * has been READ - a package it has not read yet answers "not downloaded",
+ * which is also the answer for one that is genuinely absent - so a key
+ * missing from this list is a read this helper never lands and a map that is
+ * never built.
  */
-const ARCHIVE_KEYS = offeredSheets().flatMap((sheet) =>
+const ARCHIVE_KEYS = [...offeredSheets(), ...withdrawnSheets()].flatMap((sheet) =>
   offeredPackages(sheet).map((pkg) => pkg.idbKey),
 )
 const isArchive = (key: string) =>

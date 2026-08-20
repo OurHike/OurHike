@@ -349,11 +349,17 @@ times"* — was written from these exact failures. #323 removes sleep-then-asser
 **#248 — Cutting a package from a sharded build: extract_package.py takes one source, and seam tiles have no rule** ·
 **#250 — The sharded regional build: no workflow, no cadence, and nothing that publishes** ·
 **#278 — Offer quad_sheet_z14 as the USGS sheet's full-detail tier, once a full raster run publishes it** ·
+**#855 — Withdraw the USGS raster sheet from the app and stop building it, until it earns the compute back** ·
 **#99 — Expand the unified POI schema beyond its first slice** ·
 **#100 — Build the dbt ELT transform layer before NYNJTC's own trail network arrives** ·
 **#659 — Pipeline audit follow-ups: a narrow z14 band, hashes trusted across a gap, and the retry library nobody calls**
 
 **#750 is in flight** on `claude/v2-roadmap-issues-evc1gc` (PR #751) — do not take it.
+
+**#855 is in flight** on `claude/disable-usgs-raster-builds-cj3s7g` — do not take it. It is the
+decision *not* to fund a full raster run, which is exactly what **#278** waits on, so **#278 is
+blocked for as long as #855 holds** and the "sharded regional build" cluster below is two issues
+rather than three until then.
 
 **Three clusters that do not collide:**
 

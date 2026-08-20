@@ -112,6 +112,20 @@ const BELOW_ARCHIVE_NOTE =
 export interface BackgroundPickerProps {
   value: BackgroundSource
   onChange: (next: BackgroundSource) => void
+  /**
+   * Whether "downloaded only" is a background this phone can actually get.
+   *
+   * It draws the USGS raster archive and nothing else, and that sheet was
+   * withdrawn for v2 (lib/packages.ts, #855) - so on a phone that did not
+   * already take it, the option is a map nobody can obtain. False makes this
+   * control render nothing at all, which is deliberate and is explained at
+   * the render below.
+   *
+   * Defaults to true: the offline background is the older and more common
+   * state, and a screen that forgets to say otherwise should keep offering
+   * what it has always offered rather than silently hiding a control.
+   */
+  offlineBackgroundAvailable?: boolean
   /** Why the drawn background differs from `value`, if it does. */
   override?: BackgroundOverride | null
   /** Whether the view is zoomed out past what the download covers. Distinct
@@ -132,8 +146,24 @@ export function BackgroundPicker({
   onChange,
   override = null,
   belowArchiveZoom = false,
+  offlineBackgroundAvailable = true,
   idPrefix = 'background',
 }: BackgroundPickerProps) {
+  // NOTHING, rather than one lone radio, when the offline background is not
+  // available (#855).
+  //
+  // A segmented pair with one segment left in it is not a choice; it is a
+  // label that looks like a control. And the notes below would be worse than
+  // useless here: the only override reachable in this state is
+  // "nothing-downloaded", whose copy ends "Download the map and this setting
+  // takes effect" - which stopped being true the moment the sheet was
+  // withdrawn. `belowArchiveZoom` cannot fire at all without an archive.
+  //
+  // What a hiker loses is the word "Background" over a decision they no
+  // longer have. What they gain is not being told to go and download
+  // something that is not on the download screen.
+  if (!offlineBackgroundAvailable) return null
+
   return (
     <fieldset className="bg-picker">
       <legend className="bg-picker__legend">Background</legend>

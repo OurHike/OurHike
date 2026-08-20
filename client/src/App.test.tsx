@@ -135,14 +135,16 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /**
- * The USGS sheet's card, behind its own tab in the download window (#298).
+ * The hiking sheet's card - the one every phone is offered.
  *
- * The sheets are tabs rather than a stack, so the card a test wants is not on
- * screen until its tab is chosen - which is exactly what a hiker does.
+ * No tab click: the USGS sheet is withdrawn (#855), so the window usually
+ * holds one card and renders no strip at all (screens/Downloads.tsx), and
+ * where a second card does appear this one is still the open tab. Finding the
+ * region by name works in both, which keeps these tests about the download
+ * rather than about how many sheets happen to be on offer.
  */
-async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
-  return screen.findByRole('region', { name: /usgs sheet/i })
+function hikingSheetCard() {
+  return screen.findByRole('region', { name: /hiking sheet/i })
 }
 
 function styleOf(map: MockMap): { sources: Record<string, unknown> } {
@@ -374,9 +376,13 @@ describe('App shell', () => {
     await openDownloads(user)
 
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
-    // Two sheets, one tab each, and the open one's button (#237, #298).
-    expect(await screen.findByRole('tab', { name: /hiking sheet/i })).toBeVisible()
-    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeVisible()
+    // One sheet on offer and so no strip, which is the window's own rule for
+    // a single sheet (#237, #298) - the USGS raster is withdrawn and this
+    // phone never took it (#855). Still exactly one download button: what
+    // this test is really about is that opening the window costs nobody the
+    // map behind it.
+    expect(await screen.findByRole('region', { name: /hiking sheet/i })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: /usgs sheet/i })).toBeNull()
     const buttons = screen.getAllByRole('button', { name: /download the map/i })
     expect(buttons).toHaveLength(1)
     expect(buttons[0]).toBeVisible()
@@ -398,39 +404,28 @@ describe('App shell', () => {
     expect(await liveMap()).toBe(map)
   })
 
-  it('opens the download when the hiker asks for a background this phone does not have', async () => {
-    // "Downloaded only" with nothing downloaded is a request for a map that is
-    // not here. Storing that silently would answer it with a note explaining
-    // there isn't one; the window that fixes it opens instead.
+  it('offers no background choice at all on a phone that cannot have one (#855)', async () => {
+    // These two used to be a pair: choosing "downloaded only" with nothing
+    // downloaded opened the download window, and stored the choice anyway so
+    // it would take effect when an archive landed. Both were right while the
+    // window sold that archive.
+    //
+    // The USGS sheet is withdrawn, so on this phone there is one background
+    // and the picker renders nothing (chrome/BackgroundPicker.tsx). The rule
+    // those tests covered is not deleted - App's `handleChangeBackground`
+    // still opens the window for an unobtainable choice - it simply cannot be
+    // reached from any screen until the sheet comes back. What IS still
+    // reachable is asserted directly below, on a phone holding the archive.
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
-    await user.click(await screen.findByRole('radio', { name: /downloaded/i }))
 
-    expect(
-      await screen.findByRole('dialog', { name: /offline map/i }),
-    ).toBeInTheDocument()
-  })
-
-  it('still saves that choice, so it takes effect the moment a download lands', async () => {
-    // The window is not a veto. lib/dataSaver.ts already draws the live sheet
-    // until there is an archive, so the preference costs nothing meanwhile -
-    // and refusing to store it would make the choice unmakeable in advance.
-    const user = userEvent.setup()
-    returningHiker()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-
-    await user.click(await screen.findByRole('button', { name: /legend/i }))
-    await user.click(await screen.findByRole('radio', { name: /downloaded/i }))
-
-    await waitFor(() => {
-      const saved = store.get(PREFERENCES_KEY) as { background_source: string }
-      expect(saved.background_source).toBe('usgs_topo_offline')
-    })
+    const legend = await screen.findByRole('dialog', { name: 'Legend' })
+    expect(within(legend).queryByRole('group', { name: /background/i })).toBeNull()
+    expect(within(legend).queryByRole('radio', { name: /downloaded/i })).toBeNull()
   })
 
   it('does not interrupt that choice on a phone that already has the download', async () => {
@@ -872,8 +867,8 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/404|not found|failed/i)).toBeInTheDocument()
@@ -896,8 +891,8 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/trail details could not be fetched/i)).toBeInTheDocument()

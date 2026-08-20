@@ -103,7 +103,7 @@ never interleave. All are dispatch-only except `publish-conditions.yml`.
 |---|---|
 | `build-basemap.yml` | vector basemap → `build`, `publish` |
 | `build-dem.yml` | DEM archive → `build`, `publish` |
-| `build-raster.yml` | raster background → `compute-cells`, `render`, `assemble`, `publish` |
+| `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download |
 | `publish-conditions.yml` | closures and warnings, on a daily schedule as well as dispatch |
 

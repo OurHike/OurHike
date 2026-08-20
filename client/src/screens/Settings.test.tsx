@@ -242,11 +242,37 @@ describe('MapSettings', () => {
   const backgroundRadios = () =>
     within(screen.getByRole('group', { name: /background/i })).getAllByRole('radio')
 
+  /**
+   * MapSettings in the state where a background is still a choice.
+   *
+   * Since #855 that is a phone already holding the USGS archive: the sheet is
+   * withdrawn, and "downloaded only" draws it and nothing else, so on an
+   * empty phone there is one background and the control is not rendered at
+   * all. Every test that operates the picker says so through this rather than
+   * through a bare `renderMap`, because a `queryBy(...).toBeNull()` against
+   * an absent control passes for the wrong reason.
+   */
+  const renderPicker = (overrides: Partial<MapSettingsProps> = {}) =>
+    renderMap({ archiveDownloaded: true, ...overrides })
+
+  it('renders no background control at all when there is nothing to choose', () => {
+    // The withdrawal reaching the screen (#855). Not merely "the offline
+    // radio is gone": a segmented pair with one segment left is a label
+    // pretending to be a control, and the notes beneath it would be offering
+    // a download that is no longer on the Downloads screen.
+    renderMap({ preferences: offline })
+
+    expect(screen.queryByRole('group', { name: /background/i })).toBeNull()
+    expect(
+      screen.queryByText(/download the map and this setting takes effect/i),
+    ).toBeNull()
+  })
+
   it('offers the background as a real control, on the canonical field name', () => {
     // A radio group since 2026-08-05, not a select - the same component the
     // legend shows, so the two cannot drift. The canonical field name is still
     // what the inputs are grouped by.
-    renderMap()
+    renderPicker()
     const radios = backgroundRadios()
 
     expect(radios.length).toBeGreaterThan(0)
@@ -258,7 +284,7 @@ describe('MapSettings', () => {
   })
 
   it('offers exactly the backgrounds the map can actually draw', () => {
-    renderMap()
+    renderPicker()
     const values = backgroundRadios().map((radio) => (radio as HTMLInputElement).value)
 
     expect(values.sort()).toEqual([...BACKGROUND_SOURCES].sort())
@@ -266,7 +292,7 @@ describe('MapSettings', () => {
 
   it('reports a background change against the canonical field name', async () => {
     const user = userEvent.setup()
-    renderMap()
+    renderPicker()
 
     await user.click(screen.getByRole('radio', { name: /downloaded/i }))
 
@@ -281,7 +307,7 @@ describe('MapSettings', () => {
     // shell can only apply that rule if the choice reaches it.
     const user = userEvent.setup()
     const onChangeBackground = vi.fn()
-    renderMap({ onChangeBackground })
+    renderPicker({ onChangeBackground })
 
     await user.click(screen.getByRole('radio', { name: /downloaded/i }))
 
@@ -292,7 +318,7 @@ describe('MapSettings', () => {
   it('says the live background still falls back to the download with no signal', () => {
     // The one thing someone choosing between these actually needs to know, and
     // the one thing a provider name would not tell them.
-    renderMap({ preferences: live })
+    renderPicker({ preferences: live })
 
     expect(screen.getByText(/no signal/i)).toBeInTheDocument()
   })
@@ -320,18 +346,18 @@ describe('MapSettings', () => {
     // Data Saver is on and being ignored, because "downloaded only" has no
     // download to draw. Saying "Data Saver is on, so the map is using your
     // download only" would be false twice over: it is not, and there is none.
+    //
+    // Since #855 this screen answers by showing nothing rather than by
+    // showing the OTHER notice, which used to be asserted here: "Download the
+    // map and this setting takes effect" points at a sheet the Downloads
+    // window no longer sells. The copy is not gone and neither is its
+    // coverage - it is exercised where it can still be reached, in
+    // chrome/BackgroundPicker.test.tsx, which renders the picker with the
+    // offline background available.
     renderMap({ preferences: offline, dataSaver: true })
 
-    expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/nothing is downloaded yet/i)).toBeInTheDocument()
-  })
-
-  it('explains that an offline choice waits for a download to honour it', () => {
-    renderMap({ preferences: offline })
-
-    expect(
-      screen.getByText(/download the map and this setting takes effect/i),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/data saver is on/i)).toBeNull()
+    expect(screen.queryByText(/nothing is downloaded yet/i)).toBeNull()
   })
 
   it('stays quiet when Data Saver merely agrees with what was already picked', () => {
@@ -343,13 +369,15 @@ describe('MapSettings', () => {
   })
 
   it('stays quiet when nothing is overriding anything', () => {
-    renderMap({ preferences: live })
+    // With the picker rendered, so the absence of the notice is about the
+    // notice rather than about the whole control being gone.
+    renderPicker({ preferences: live })
 
     expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
   })
 
   it('says the offline background fetches nothing, which is why anyone picks it', () => {
-    renderMap({ preferences: offline })
+    renderPicker({ preferences: offline })
 
     expect(screen.getByText(/no background data is fetched/i)).toBeInTheDocument()
   })

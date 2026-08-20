@@ -62,18 +62,30 @@ export const STANDARD_PACE: PaceProfile = {
 }
 
 /**
- * What the controls may be set to.
+ * What the flat-pace control may be set to, and in what steps.
  *
- * @unvalidated Picked to bracket the standard generously rather than measured
- * against real hikers - the range a slider offers is a UI decision and this
- * build has no pace observations to derive one from. What would settle it is
- * #881's observation store, which is the same evidence the learned layer needs.
+ * 1 to 4 mph in quarter-mile steps, decided by the maintainer on #888. It
+ * replaces a placeholder that was tagged @unvalidated for exactly this - picked
+ * to bracket the standard generously, never measured - so these are somebody's
+ * number rather than nobody's.
  *
- * The FLOOR on flat pace and the CEILING on the ascent term are the two that
- * matter: together they bound how optimistic a hiker can make the app.
+ * FASTER THAN STANDARD IS ALLOWED, up to 4 mph against the standard's 3.107.
+ * That is the decision, and the safeguard is not a clamp: it is that an
+ * adjusted estimate always carries what it was adjusted from (#851), so a
+ * pace set optimistic in week one cannot quietly become the number a hiker
+ * plans their evening around.
  */
-export const MIN_FLAT_PACE_MPH = 1.5
-export const MAX_FLAT_PACE_MPH = 4.5
+export const MIN_FLAT_PACE_MPH = 1
+export const MAX_FLAT_PACE_MPH = 4
+export const FLAT_PACE_STEP_MPH = 0.25
+
+/**
+ * What the climbing control may be set to.
+ *
+ * @unvalidated Unchanged and still picked rather than measured - #888 decided
+ * the flat pace only. What would settle it is #881's observation store, which
+ * is the same evidence the learned layer needs.
+ */
 export const MIN_ASCENT_METERS_PER_HOUR = 300
 export const MAX_ASCENT_METERS_PER_HOUR = 900
 
@@ -109,7 +121,19 @@ export function readPace(
   }
 }
 
-/** Whether a profile is the standard rule, within floating-point noise. */
+/**
+ * Whether a profile is the standard rule, within floating-point noise.
+ *
+ * NOT REACHABLE BY DRAGGING, and that is deliberate rather than an oversight.
+ * The standard flat pace is 5 km/h - 3.107 mph - which does not sit on the
+ * quarter-mile grid the control offers: the nearest stops are 3.0 and 3.25.
+ * So once a hiker moves the flat slider, "Reset to standard" is the only way
+ * back to exactly the rule.
+ *
+ * The alternative would be snapping the standard onto the grid, and that is
+ * the wrong trade: a fresh install would then disagree with the rule it claims
+ * to use, which is the whole property the two-term design protects.
+ */
 export function isStandardPace(pace: PaceProfile): boolean {
   return (
     Math.abs(pace.flatPaceMph - STANDARD_FLAT_PACE_MPH) < 1e-9 &&

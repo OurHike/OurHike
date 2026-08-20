@@ -22,6 +22,7 @@
 // shows change rather than noise.
 
 import {
+  FLAT_PACE_STEP_MPH,
   MAX_ASCENT_METERS_PER_HOUR,
   MAX_FLAT_PACE_MPH,
   MIN_ASCENT_METERS_PER_HOUR,
@@ -94,7 +95,7 @@ export function PaceSettings({ pace, units, onChange }: PaceSettingsProps) {
           type="range"
           min={MIN_FLAT_PACE_MPH}
           max={MAX_FLAT_PACE_MPH}
-          step={0.1}
+          step={FLAT_PACE_STEP_MPH}
           value={pace.flatPaceMph}
           onChange={(event) =>
             onChange({ ...pace, flatPaceMph: Number(event.target.value) })

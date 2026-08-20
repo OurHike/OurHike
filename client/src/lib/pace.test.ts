@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
+  FLAT_PACE_STEP_MPH,
   MAX_ASCENT_METERS_PER_HOUR,
   MAX_FLAT_PACE_MPH,
   MIN_ASCENT_METERS_PER_HOUR,
@@ -266,5 +267,70 @@ describe('the pace store', () => {
     clearStoredPace()
     expect(readStoredPace()).toEqual(STANDARD_PACE)
     expect(isStandardPace(readStoredPace())).toBe(true)
+  })
+})
+
+/**
+ * The range the maintainer chose (#888): 1 to 4 mph in quarter-mile steps.
+ *
+ * Replacing bounds that were tagged @unvalidated - picked to bracket the
+ * standard, never measured.
+ */
+describe('the flat pace control range', () => {
+  it('runs from 1 to 4 mph', () => {
+    expect(MIN_FLAT_PACE_MPH).toBe(1)
+    expect(MAX_FLAT_PACE_MPH).toBe(4)
+  })
+
+  it('steps in quarter miles per hour', () => {
+    expect(FLAT_PACE_STEP_MPH).toBe(0.25)
+  })
+
+  it('reaches FASTER than the standard, which is the decision', () => {
+    // The point of the range, asserted rather than implied by two numbers.
+    // The safeguard is not a clamp - it is that an adjusted estimate always
+    // carries what it was adjusted from.
+    expect(MAX_FLAT_PACE_MPH).toBeGreaterThan(STANDARD_FLAT_PACE_MPH)
+  })
+
+  it('reaches a genuinely slow walk, for rough ground and a heavy pack', () => {
+    expect(MIN_FLAT_PACE_MPH).toBeLessThan(STANDARD_FLAT_PACE_MPH)
+  })
+})
+
+/**
+ * The consequence of that grid, pinned so nobody "fixes" it.
+ *
+ * 5 km/h is 3.107 mph, which is not a multiple of 0.25. Snapping the standard
+ * onto the grid would make a fresh install disagree with the rule it claims to
+ * use - the exact property the two-term design exists to protect.
+ */
+describe('the standard sits off the quarter-mile grid', () => {
+  it('is not reachable by dragging, so Reset is the way back', () => {
+    const offGrid =
+      Math.abs(
+        STANDARD_FLAT_PACE_MPH / FLAT_PACE_STEP_MPH -
+          Math.round(STANDARD_FLAT_PACE_MPH / FLAT_PACE_STEP_MPH),
+      ) > 1e-9
+    expect(offGrid).toBe(true)
+  })
+
+  it('is not standard at either neighbouring stop', () => {
+    // 3.0 and 3.25 bracket it. Neither is the rule, and isStandardPace says so
+    // - which is what makes the Reset control load-bearing rather than a
+    // convenience.
+    for (const stop of [3.0, 3.25]) {
+      expect(isStandardPace({ ...STANDARD_PACE, flatPaceMph: stop })).toBe(false)
+    }
+  })
+
+  it('still IS exactly 5 km/h, which is the thing worth protecting', () => {
+    expect(STANDARD_FLAT_PACE_MPH * 1.609344).toBeCloseTo(5, 9)
+  })
+
+  it('survives a round trip through the store, off-grid and all', () => {
+    writeStoredPace(STANDARD_PACE)
+    expect(isStandardPace(readStoredPace())).toBe(true)
+    clearStoredPace()
   })
 })

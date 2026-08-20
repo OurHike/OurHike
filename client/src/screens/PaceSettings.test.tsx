@@ -2,6 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { PaceSettings } from './PaceSettings'
 import {
+  FLAT_PACE_STEP_MPH,
+  MAX_FLAT_PACE_MPH,
+  MIN_FLAT_PACE_MPH,
   MAX_ASCENT_METERS_PER_HOUR,
   MIN_ASCENT_METERS_PER_HOUR,
   STANDARD_PACE,
@@ -45,6 +48,46 @@ describe('the pace controls', () => {
  * The preview is the control: nobody has a feel for "an hour per 480 metres",
  * and both sliders are only legible through what a real walk now reads.
  */
+describe('the flat pace slider (#888)', () => {
+  it('offers 1 to 4 mph in quarter-mile steps', () => {
+    render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={vi.fn()} />)
+    const flat = screen.getByLabelText('Flat pace')
+    expect(flat).toHaveAttribute('min', String(MIN_FLAT_PACE_MPH))
+    expect(flat).toHaveAttribute('max', String(MAX_FLAT_PACE_MPH))
+    expect(flat).toHaveAttribute('step', String(FLAT_PACE_STEP_MPH))
+  })
+
+  it('lets a hiker say they are faster than standard', () => {
+    // The decision. A hiker who genuinely moves at 4 mph should not be told a
+    // number the app knows is wrong for them.
+    const onChange = vi.fn()
+    render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={onChange} />)
+    fireEvent.change(screen.getByLabelText('Flat pace'), { target: { value: '4' } })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ flatPaceMph: 4 }))
+  })
+
+  it('marks a faster-than-standard estimate rather than clamping it', () => {
+    // The safeguard is the baseline line, not a floor on the control. A hiker
+    // reading a shorter time can always see the standard one beside it.
+    const faster: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 4 }
+    render(<PaceSettings pace={faster} units="imperial" onChange={vi.fn()} />)
+    expect(screen.getByText(/was ≈2h 10m · 0\.\d× standard/)).toBeInTheDocument()
+  })
+
+  it('offers Reset once dragged, because the standard is off the grid', () => {
+    // 3.107 mph is not a multiple of 0.25, so no stop on this slider is the
+    // standard. Reset is the only way back to exactly the rule.
+    render(
+      <PaceSettings
+        pace={{ ...STANDARD_PACE, flatPaceMph: 3.25 }}
+        units="imperial"
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Reset to standard' })).toBeInTheDocument()
+  })
+})
+
 describe('the live preview', () => {
   it('shows the standard estimate, and no baseline, at the standard pace', () => {
     render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={vi.fn()} />)

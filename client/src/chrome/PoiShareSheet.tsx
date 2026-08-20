@@ -15,23 +15,58 @@
 // What this sheet never becomes (#577): no "share all", no default-on
 // toggle, no count of anything. It appears when the hiker taps Share on
 // their own photo, and declining is one tap that is never mentioned again.
+//
+// Since #837 the sheet also runs the on-device screen (lib/photoScreen.ts)
+// while the hiker reads the terms, and a finding adds one step between
+// "Share with every hiker" and the queue - the maintainer-adopted
+// screening mockups ("Sharing a Photo" canvas, 2026-08-19), sentence for
+// sentence. The step never refuses: faces get the fact and the same two
+// buttons; nudity gets told a moderator looks first, and its primary
+// button says what it now does ("Send it for review"). A screen that
+// found nothing, or could not run at all, adds nothing - by contract the
+// two are indistinguishable here (#570, flag never block).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { loadPreferences } from '../lib/preferences'
 import { COOLING_OFF_HOURS } from '../lib/photoShare'
+import { screenPhoto, type ScreenFinding } from '../lib/photoScreen'
 
 export interface PoiShareSheetProps {
   /** Object URL of the stored 640px rendering - the exact bytes a share
    *  sends, previewed so "what they get" is the thing on screen. */
   photoUrl: string
+  /** The stored bytes themselves, for the on-device screen (#837). */
+  photoBlob: Blob
   /** Measured size of those bytes. */
   photoBytes: number
   /** The month the card prints for this photo, e.g. "Jun 2026". */
   photoMonth: string
   poiName: string
-  onShare: () => void
+  /** Called with what the screen found, which rides the queued share as its
+   *  `flagged` value - null both when nothing was found and when the check
+   *  could not run, indistinguishably (see lib/photoScreen.ts). */
+  onShare: (flagged: 'nudity' | 'faces' | null) => void
   onClose: () => void
+}
+
+/** "One face" / "Two faces" / "11 faces" - the mockup's headline counts in
+ *  words, and past what a photo plausibly holds the digits are honest. */
+function faceCount(faces: number): string {
+  const words = [
+    'No',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+  ]
+  const count = words[faces] ?? String(faces)
+  return `${count} ${faces === 1 ? 'face' : 'faces'}`
 }
 
 interface SheetIdentity {
@@ -41,6 +76,7 @@ interface SheetIdentity {
 
 export function PoiShareSheet({
   photoUrl,
+  photoBlob,
   photoBytes,
   photoMonth,
   poiName,
@@ -52,6 +88,42 @@ export function PoiShareSheet({
   // anonymity window will withhold it for a while. Null until loaded -
   // the sheet renders its facts only once it can state them truthfully.
   const [identity, setIdentity] = useState<SheetIdentity | null>(null)
+
+  // The on-device screen (#837), started the moment the sheet opens so it
+  // runs while the hiker reads. A ref rather than state because nothing
+  // renders from it until Share is tapped - the tap awaits this promise,
+  // which by then has usually settled.
+  const screening = useRef<Promise<ScreenFinding> | null>(null)
+  useEffect(() => {
+    screening.current ??= screenPhoto(photoBlob)
+  }, [photoBlob])
+
+  // Which face of the sheet is up: the terms, or the screening step a
+  // finding earns. `checking` covers the gap between tapping Share and the
+  // screen settling - normally imperceptible, real on a first-ever share
+  // where the models are still arriving.
+  const [found, setFound] = useState<ScreenFinding>(null)
+  const [step, setStep] = useState<'terms' | 'screen'>('terms')
+  const [checking, setChecking] = useState(false)
+  // The nudity step hides the preview until tapped - the mockup's own
+  // treatment: the sheet must not display to a shoulder-surfer what it is
+  // telling the hiker a moderator has to look at first.
+  const [revealed, setRevealed] = useState(false)
+
+  const proceed = async () => {
+    setChecking(true)
+    // The seam promises never to reject; the catch is for the day that
+    // promise breaks, because the price here would be a Share button that
+    // silently does nothing.
+    const finding = await (screening.current ?? Promise.resolve(null)).catch(() => null)
+    setChecking(false)
+    if (finding === null) {
+      onShare(null)
+      return
+    }
+    setFound(finding)
+    setStep('screen')
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -85,7 +157,20 @@ export function PoiShareSheet({
       </div>
 
       <div className="share-sheet__subject">
-        <img className="share-sheet__preview" src={photoUrl} alt="" />
+        {step === 'screen' && found?.flag === 'nudity' && !revealed ? (
+          // The mockup's own treatment: the sheet must not show a
+          // shoulder-surfer what it is saying a moderator looks at first.
+          <button
+            type="button"
+            className="share-sheet__hidden-preview"
+            data-testid="share-sheet-reveal"
+            onClick={() => setRevealed(true)}
+          >
+            Hidden until you tap
+          </button>
+        ) : (
+          <img className="share-sheet__preview" src={photoUrl} alt="" />
+        )}
         <div className="share-sheet__facts">
           <p className="share-sheet__poi">{poiName}</p>
           <p className="share-sheet__meta">
@@ -94,7 +179,79 @@ export function PoiShareSheet({
         </div>
       </div>
 
-      {identity === null ? null : identity.trailName === null ? (
+      {step === 'screen' && found !== null ? (
+        found.flag === 'faces' ? (
+          <div className="share-sheet__screen" data-testid="share-sheet-screen-faces">
+            <h3>{faceCount(found.faces)} found on this phone</h3>
+            <p>There are faces in this photo, and a public share puts them on a map.</p>
+            <p>
+              That is often the whole point — a photo of the shelter where you met your
+              tramily is exactly what this is for. But the people in it are not here to be
+              asked, and the licence you are about to attach cannot be taken back on their
+              behalf either.
+            </p>
+            <p>
+              <strong>This is not a refusal.</strong> Nothing is being blocked, and
+              nothing left your phone to work it out. The check ran here and it only
+              answers <em>is there a face</em>. It does not know whether anyone is
+              recognisable, and it did not ask them. It will also miss some.
+            </p>
+            <div className="share-sheet__actions">
+              <button
+                type="button"
+                className="share-sheet__share"
+                data-testid="share-sheet-share-faces"
+                onClick={() => onShare('faces')}
+              >
+                Share with every hiker
+              </button>
+              <button
+                type="button"
+                className="share-sheet__cancel"
+                data-testid="share-sheet-cancel"
+                onClick={onClose}
+              >
+                Keep it private
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="share-sheet__screen" data-testid="share-sheet-screen-nudity">
+            <h3>This one goes to a person before it goes public.</h3>
+            <p>
+              The check on your phone thinks there is nudity here. It is often wrong about
+              that — a swimming hole in July looks the same to it — so it does not get to
+              decide. A moderator at the maintaining club does.
+            </p>
+            <p>
+              You can still send it. It just will not appear on the card until somebody
+              has looked, and no licence attaches until it does.
+            </p>
+            <p>
+              This is not a refusal and it is not a rejection — it is the only case where
+              a stranger sees the photo before the trail does.
+            </p>
+            <div className="share-sheet__actions">
+              <button
+                type="button"
+                className="share-sheet__share"
+                data-testid="share-sheet-send-review"
+                onClick={() => onShare('nudity')}
+              >
+                Send it for review
+              </button>
+              <button
+                type="button"
+                className="share-sheet__cancel"
+                data-testid="share-sheet-cancel"
+                onClick={onClose}
+              >
+                Keep it private
+              </button>
+            </div>
+          </div>
+        )
+      ) : identity === null ? null : identity.trailName === null ? (
         // No trail name means nothing to credit the photo to, and the
         // server would refuse the share for exactly that reason. Said
         // here, before anything queues, rather than discovered as a
@@ -154,9 +311,12 @@ export function PoiShareSheet({
               type="button"
               className="share-sheet__share"
               data-testid="share-sheet-share"
-              onClick={onShare}
+              disabled={checking}
+              onClick={() => void proceed()}
             >
-              Share with every hiker
+              {checking
+                ? 'Looking at the photo on this phone…'
+                : 'Share with every hiker'}
             </button>
             <button
               type="button"

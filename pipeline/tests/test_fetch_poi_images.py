@@ -207,13 +207,22 @@ def test_a_prior_outcome_is_carried_forward_without_any_api_calls(tmp_path, monk
             found["id"]: {
                 "status": "found",
                 "checked": "2026-08-01",
-                "photo": {"url": "u", "taken": FRESH, "digest": digest},
+                # Already screened (#836) - so the carry-forward changes
+                # nothing at all, and the fail-if-called stub below pins
+                # that each photo is screened exactly once, ever.
+                "photo": {
+                    "url": "u",
+                    "taken": FRESH,
+                    "digest": digest,
+                    "screen": {"faces": 0, "screener": "test", "on": "2026-08-01"},
+                },
             },
             missed["id"]: {"status": "none", "checked": "2026-08-01"},
         }
     }
     (tmp_path / "poi_images.json").write_text(json.dumps(prior))
     requests_mock.get(fetch_poi_images.API_URL, json=_geosearch())
+    monkeypatch.setattr(fetch_poi_images, "screen_bytes", lambda _: pytest.fail("a screened photo must not be re-screened"))
 
     fetch_poi_images.main()
 
@@ -302,6 +311,82 @@ def test_a_downloaded_photo_is_cached_under_its_own_digest_and_carries_it(tmp_pa
     # No stray temp file: the write is atomic, so a half-written image can
     # never sit under a name promising a digest its bytes do not have.
     assert list(local_photo_path(tmp_path, digest).parent.glob("*.tmp")) == []
+
+
+def test_a_fresh_download_is_screened_as_it_is_stored(tmp_path, monkeypatch, requests_mock):
+    """The face check (#836) runs at store time - the one moment the bytes
+    are guaranteed in hand - and its result rides inside the record, so
+    export_poi.py's gate never needs the image to know what was found."""
+    _no_sleep(monkeypatch)
+    _use_pois(monkeypatch, tmp_path, [_poi()])
+    requests_mock.get(
+        fetch_poi_images.API_URL,
+        [
+            {"json": _geosearch(("File:Test Shelter.jpg", 40.0))},
+            {"json": {"query": {"pages": _imageinfo_page(1, "File:Test Shelter.jpg")}}},
+        ],
+    )
+    _serve_image(requests_mock)
+    screened = []
+    stub = {"faces": 2, "screener": "test", "on": "2026-08-20"}
+    monkeypatch.setattr(fetch_poi_images, "screen_bytes", lambda image_bytes: screened.append(image_bytes) or stub)
+
+    fetch_poi_images.main()
+
+    assert screened == [JPEG_BYTES]  # the exact bytes that were stored
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["screen"] == stub
+
+
+def test_a_carried_forward_photo_from_before_the_screen_is_screened_from_cache(tmp_path, monkeypatch, requests_mock):
+    """The screen reaches the standing corpus without a re-crawl: a prior
+    record with no screen gets one from the cached bytes, spending no API
+    calls - and the result persists, so it happens once."""
+    _no_sleep(monkeypatch)
+    poi = _poi()
+    _use_pois(monkeypatch, tmp_path, [poi])
+    digest = _cache_image(tmp_path)
+    prior = {
+        "pois": {poi["id"]: {"status": "found", "checked": "2026-08-01", "photo": {"url": "u", "taken": FRESH, "digest": digest}}}
+    }
+    (tmp_path / "poi_images.json").write_text(json.dumps(prior))
+    screened = []
+    stub = {"faces": 1, "screener": "test", "on": "2026-08-20"}
+    monkeypatch.setattr(fetch_poi_images, "screen_bytes", lambda image_bytes: screened.append(image_bytes) or stub)
+
+    fetch_poi_images.main()
+
+    assert requests_mock.call_count == 0
+    assert screened == [JPEG_BYTES]  # read back from the local cache
+    saved = _saved(tmp_path)[poi["id"]]
+    assert saved["photo"]["screen"] == stub
+    assert saved["checked"] == "2026-08-01"  # the outcome itself still stands
+
+
+def test_a_digest_only_record_stays_unscreened_rather_than_being_downloaded_for_it(tmp_path, monkeypatch, requests_mock):
+    """The #465 posture holds against the screen too: a record whose bytes
+    live only in the bucket is publishable as it stands, and re-downloading
+    it just to screen it would re-run the exact traffic #465 removed. It
+    ships unscreened - counted, not held, by export_poi.py's gate - until a
+    --recheck naturally screens the fresh download."""
+    _no_sleep(monkeypatch)
+    poi = _poi()
+    _use_pois(monkeypatch, tmp_path, [poi])
+    prior = {
+        "pois": {
+            poi["id"]: {
+                "status": "found",
+                "checked": "2026-08-01",
+                "photo": {"url": "https://upload.wikimedia.org/1-640.jpg", "taken": FRESH, "digest": photo_digest(JPEG_BYTES)},
+            }
+        }
+    }
+    (tmp_path / "poi_images.json").write_text(json.dumps(prior))
+    monkeypatch.setattr(fetch_poi_images, "screen_bytes", lambda _: pytest.fail("no bytes on disk, so nothing must be screened"))
+
+    fetch_poi_images.main()
+
+    assert requests_mock.call_count == 0
+    assert "screen" not in _saved(tmp_path)[poi["id"]]["photo"]
 
 
 def test_a_found_photo_that_aged_past_the_freshness_window_is_requeried(tmp_path, monkeypatch, requests_mock):

@@ -54,6 +54,7 @@ import boto3
 from lib import data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
+from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
@@ -278,11 +279,22 @@ def collect_photos() -> dict[str, str]:
     That also means they never trigger a version bump on their own, which is
     correct: a photo only becomes visible through a `poi_*.geojson` that
     references it, and that artifact's bytes changing is the real event.
+
+    Minus what the face gate holds (#836): a flagged-undecided or refused
+    photo must not reach the bucket at all, because "unreferenced" is not
+    "private" - the digest that names it travels in the published outcome
+    sidecars. If a held digest is somehow still referenced by an exported
+    artifact (the same bytes reaching the export another way),
+    verify_photo_promises() fails the publish loudly rather than letting
+    this exclusion silently break a card.
     """
     photos_dir = RAW_DIR / PHOTOS_DIRNAME
     if not photos_dir.is_dir():
         return {}
-    return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}"))}
+    held = unpublishable_digests(RAW_DIR / "poi_images.json", load_decisions())
+    if held:
+        print(f"{len(held)} photo(s) held from the bucket by the face gate (#836 - review_flagged_photos.py).")
+    return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
 
 
 def upload_photos(s3_client, bucket: str, photos: dict[str, str], prefix: str = "") -> list[str]:

@@ -1,0 +1,21 @@
+{
+  "_README": [
+    "What a person concluded about each Commons photo the face screen",
+    "flagged (#836), keyed by the sha256 content digest that names the",
+    "photo's bytes everywhere (lib/photo_store.py). lib/photo_screen.py",
+    "reads this at export time; review_flagged_photos.py writes it -",
+    "build the review page, look at each held photo, then --clear or",
+    "--refuse its digest.",
+    "",
+    "`cleared`: a person looked and the photo is a picture of a place -",
+    "it ships on the next export, and identical bytes never re-ask.",
+    "`refused`: a person looked and it must not ship, whatever the",
+    "screen thought - stays out permanently.",
+    "",
+    "Committed, in reference/, because every row IS a reviewed judgement",
+    "about publishing a photo with a possible person in it - the exact",
+    "bar .github/tests/test_no_committed_data.py sets for this",
+    "directory. The photos themselves stay in data/ and the bucket."
+  ],
+  "decisions": {}
+}

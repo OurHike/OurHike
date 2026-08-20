@@ -50,6 +50,7 @@ from lib import fetch_receipts
 from lib.commons import eligible_photo, may_be_a_jpeg, pick_photo
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.photo_screen import screen_bytes
 from lib.photo_store import local_photo_path, photo_digest
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
@@ -291,6 +292,10 @@ def store_photo(session: requests.Session, photo: dict) -> dict:
 
     Idempotent by construction: an image already cached under its own digest
     is already the right bytes, so a re-run costs nothing.
+
+    The face screen (#836) runs here because this is the one moment the
+    bytes are guaranteed in hand - the result rides inside the record so no
+    later stage needs the image to know what the check found.
     """
     resp = request_with_retry(session, photo["url"])
     image_bytes = resp.content
@@ -306,7 +311,7 @@ def store_photo(session: requests.Session, photo: dict) -> dict:
         tmp_path.write_bytes(image_bytes)
         os.replace(tmp_path, path)
 
-    return {**photo, "digest": digest}
+    return {**photo, "digest": digest, "screen": screen_bytes(image_bytes)}
 
 
 def cached_photo_missing(record: dict) -> bool:
@@ -325,6 +330,26 @@ def cached_photo_missing(record: dict) -> bool:
     if record.get("status") != "found":
         return False
     return record.get("photo", {}).get("digest") is None
+
+
+def screen_carried_forward(record: dict) -> dict:
+    """Fill in the face screen (#836) for a prior "found" record from before
+    the check existed, using the cached bytes - so the screen reaches the
+    standing corpus without a re-crawl, and each photo is screened exactly
+    once (the result persists inside the record; a screened record passes
+    straight through here).
+
+    A record whose bytes are gone (digest-only, #465) stays unscreened
+    rather than being re-downloaded for this: export_poi.py's gate counts
+    unscreened photos and ships them - unscreened is not flagged - and the
+    next --recheck screens the fresh download anyway."""
+    photo = record.get("photo", {})
+    if "screen" in photo or not photo.get("digest"):
+        return record
+    path = local_photo_path(RAW_DIR, photo["digest"])
+    if not path.exists():
+        return record
+    return {**record, "photo": {**photo, "screen": screen_bytes(path.read_bytes())}}
 
 
 def corridor_pois() -> list[dict]:
@@ -444,7 +469,7 @@ def main(recheck: bool = False) -> None:
     for index, poi in enumerate(pois, start=1):
         prior_record = prior.get(poi["id"])
         if keep_prior(prior_record, cutoff, recheck) and not cached_photo_missing(prior_record):
-            records[poi["id"]] = prior_record
+            records[poi["id"]] = screen_carried_forward(prior_record)
             kept += 1
         elif keep_prior(prior_record, cutoff, recheck):
             # The outcome still stands; only its bytes went missing (a

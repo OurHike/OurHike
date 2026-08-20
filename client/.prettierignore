@@ -5,3 +5,7 @@ node_modules/
 public/dev-data/
 src/design-system/
 package-lock.json
+# Vendored detector models (#837): the bytes ARE the provenance - each
+# README beside them records the sha256 of the file as fetched/extracted,
+# and a reformat would break the checksum while changing nothing real.
+public/models/

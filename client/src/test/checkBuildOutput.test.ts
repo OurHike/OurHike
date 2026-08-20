@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -65,6 +65,13 @@ function passingDist() {
     fonts.push(name)
     writeFileSync(join(dist, name), '')
   }
+
+  // The share screen's detector engine and its model files (#837): present
+  // in the build, absent from the precache - that pairing IS the passing
+  // state check 7 pins.
+  writeFileSync(join(dist, 'assets', 'photoScreenEngine-x.js'), '// engine')
+  mkdirSync(join(dist, 'models', 'nsfw'), { recursive: true })
+  writeFileSync(join(dist, 'models', 'nsfw', 'model.json'), '{}')
 
   writeFileSync(
     join(dist, 'sw.js'),
@@ -226,5 +233,41 @@ describe('check-build-output.mjs', () => {
 
     expect(code).toBe(1)
     expect(output).toContain('Missing from the built CSS')
+  })
+
+  it('fails when the detector engine chunk vanished from the build', () => {
+    // Vite renaming the chunk (an upgrade changing its naming scheme) would
+    // otherwise just quietly precache a TensorFlow runtime (#837).
+    passingDist()
+    rmSync(join(dist, 'assets', 'photoScreenEngine-x.js'))
+
+    const { code, output } = runCheck()
+
+    expect(code).toBe(1)
+    expect(output).toContain('No photoScreenEngine chunk')
+  })
+
+  it('fails when the detector model files vanished from the build', () => {
+    passingDist()
+    rmSync(join(dist, 'models'), { recursive: true })
+
+    const { code, output } = runCheck()
+
+    expect(code).toBe(1)
+    expect(output).toContain('No detector model files')
+  })
+
+  it('fails when the detector engine leaks into the precache', () => {
+    passingDist()
+    const sw = readFileSync(join(dist, 'sw.js'), 'utf8')
+    writeFileSync(
+      join(dist, 'sw.js'),
+      sw.replace(']', ',"assets/photoScreenEngine-x.js"]'),
+    )
+
+    const { code, output } = runCheck()
+
+    expect(code).toBe(1)
+    expect(output).toContain('Detector files precached')
   })
 })

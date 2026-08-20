@@ -246,6 +246,8 @@ from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
 from lib.hashing import sha256_file
+from lib.photo_screen import gate_photos
+from lib.photo_screen import load_decisions as load_screen_decisions
 from lib.photo_store import photo_key
 from lib.poi_description import (
     describe_campsite,
@@ -1490,6 +1492,26 @@ def main() -> dict:
     print(f"  {with_miles} POIs carry a mile, on the marker-calibrated axis the profile shares (#753, #652).")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
+    # The face gate (#836) covers the Commons crawl and not the ATC layers,
+    # and that split is a judgement worth stating: Commons is the source
+    # whose photographer is an anonymous stranger with strangers in frame,
+    # while the ATC photos are the organisation's own facility-inventory
+    # shoot, published by ATC as documentation of the structures. If a
+    # review of that corpus ever finds people in it, the gate is one
+    # load_screen_decisions/gate_photos pair away from covering it too -
+    # but its fetch would need the screen wired in first
+    # (fetch_atc_photos.py stores no screen today).
+    commons_photos, screened = gate_photos(commons_photos, load_screen_decisions())
+    if screened["held"] or screened["refused"]:
+        print(
+            f"  Face gate: {screened['held']} Commons photo(s) held for a human look "
+            f"(review_flagged_photos.py), {screened['refused']} refused and staying out (#836)."
+        )
+    if screened["unscreened"]:
+        print(
+            f"  Face gate: {screened['unscreened']} Commons photo(s) predate the screen and ship unscreened - "
+            "the next fetch run screens any with cached bytes, --recheck the rest."
+        )
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)
     photos = {**commons_photos, **atc_photos}  # ATC last: it wins any overlap
     if photos:

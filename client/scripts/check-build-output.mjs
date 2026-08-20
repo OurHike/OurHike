@@ -322,12 +322,53 @@ for (const { what, selectors, why } of REQUIRED_STYLESHEETS) {
   )
 }
 
+// 7. The share screen's detector engine (#837) shipped, and stayed OUT of
+// the precache.
+//
+// The inverse of every check above, for one chunk and its model files: the
+// engine carries a TensorFlow.js runtime behind a dynamic import, and the
+// precache exclusion is a name pattern in vite.config.ts (globIgnores) that
+// Vite's chunk naming could silently stop matching on any upgrade. Precached
+// by accident, every install pays megabytes up front for a feature most
+// hikers never touch - a regression nothing else would notice, because the
+// app still works.
+const engineChunks = [...present].filter((p) => /photoScreenEngine-[^/]*\.js$/.test(p))
+const modelFiles = [...present].filter(
+  (p) => p.startsWith('models/') && !p.endsWith('.md'),
+)
+if (engineChunks.length === 0) {
+  problems.push(
+    'No photoScreenEngine chunk in the build output.',
+    '  src/lib/photoScreen.ts dynamically imports it; if the chunk name changed,',
+    '  update workbox.globIgnores in vite.config.ts and this check together.',
+  )
+}
+if (modelFiles.length === 0) {
+  problems.push(
+    'No detector model files under models/ in the build output.',
+    '  public/models/{nsfw,blazeface}/ should be copied into dist verbatim.',
+  )
+}
+if (serviceWorker !== undefined) {
+  const precache = readFileSync(serviceWorker, 'utf8')
+  const leaked = [...engineChunks, ...modelFiles].filter(
+    (p) => precache.includes(p) || precache.includes(p.split('/').pop()),
+  )
+  if (leaked.length > 0) {
+    problems.push(
+      `Detector files precached that must arrive on demand instead: ${leaked.join(', ')}`,
+      '  Check workbox.globIgnores / globPatterns in vite.config.ts (#837).',
+    )
+  }
+}
+
 if (problems.length > 0) fail(problems)
 
 console.log(
   `Build output OK: ${referenced.size} referenced assets all published, ` +
     `${REQUIRED_ASSETS.length} required asset(s) wired up and precached, ` +
     `${fontsInDist.length} UI font file(s) vendored and precached, ` +
+    `${engineChunks.length} detector engine chunk(s) and ${modelFiles.length} model file(s) shipped un-precached, ` +
     `no cross-origin CSS, ` +
     `${REQUIRED_STYLESHEETS.length} required stylesheet(s) in the built CSS.`,
 )

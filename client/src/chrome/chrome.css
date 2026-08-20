@@ -2468,6 +2468,42 @@ a.poi-card__credit::after {
   color: var(--fg-3);
 }
 
+/* The screening step (#837) - one finding's worth of friction between the
+   terms and the queue, per the maintainer-adopted screening mockups. */
+.share-sheet__screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.share-sheet__screen h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.share-sheet__screen p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* The nudity step's covered preview: same footprint as the image it stands
+   in for, so revealing it reflows nothing. */
+.share-sheet__hidden-preview {
+  width: 84px;
+  height: 60px;
+  border: 1px dashed var(--border-strong, var(--fg-3));
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  color: var(--fg-3);
+  font-size: 10px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
 /* ---------- Serious warning sheet ---------- */
 
 .warning-sheet {

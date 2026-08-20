@@ -161,9 +161,16 @@ refusal**. **The sharing slice is built end to end as of 2026-08-20** — #576's
 #578's rungs, #577's sheet (with the two-hour cooling-off decided in the
 maintainer-adopted mockups) and #579's moderation surface all landed on
 `claude/photos-work-ulp2yd`, built to the "Sharing a Photo" mockup canvas after its
-mockup-stage claims were declared stale by the maintainer in session. **What is left in
-this group:** #837's detector (its flag, hold and queue-priority consequences are built
-and waiting), #836's fetch-time check, and #361 behind #101's native pickers.
+mockup-stage claims were declared stale by the maintainer in session. **Screening landed
+2026-08-20 on both paths:** #837's on-device detector (nsfwjs + BlazeFace, lazy-loaded,
+never precached, every failure indistinguishable from "nothing found") runs at the share
+sheet with the adopted mockups' friction copy, and #836's fetch-time face check holds a
+flagged Commons photo from export and bucket until a person records a verdict in the
+committed decisions ledger. The pipeline's nudity half is deliberately out — no
+in-the-wheel detector exists, so it is a maintainer dependency decision, held as
+**#850 — The pipeline's Commons screen checks faces but not nudity, because a nudity
+model means a new heavyweight dependency**. **What is left in this group:** #850's
+dependency decision, and #361 behind #101's native pickers.
 
 ## E. Offline coverage in pieces
 

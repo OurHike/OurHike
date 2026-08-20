@@ -582,6 +582,21 @@ function App() {
     markSynced,
   } = useConditions(online)
 
+  /**
+   * First run: the three entry steps are showing over the map (#721).
+   *
+   * Read here rather than beside the render below, because it decides what the
+   * shell does as well as what it draws: the steps are a card over the map, and
+   * the only thing behind them is the trail line, so the POIs are held back
+   * until they are gone (#857, and see useTrailData's TrailDataOptions).
+   *
+   * True until the phone's own preferences have been read, which is the same
+   * answer a first run gives and the safe one for a returning hiker - nothing
+   * renders during that window either way (`preferencesLoaded` below), and the
+   * read that follows fills the map in.
+   */
+  const entering = !preferences.onboarding_completed
+
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
   // nothing else writes them.
@@ -594,7 +609,7 @@ function App() {
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
-  } = useTrailData(online)
+  } = useTrailData(online, { centerlineOnly: entering })
 
   /**
    * Closure miles, re-read against the release this phone is holding (#674).
@@ -2457,9 +2472,6 @@ function App() {
   // back to defaults if it rejects, and every path through the archive read,
   // including its catch, sets a status.
   if (!preferencesLoaded || !archivesRead) return null
-
-  /** First run: the three entry steps are showing over the map (#721). */
-  const entering = !preferences.onboarding_completed
 
   /**
    * Where the opening view has room to be, which during first run is not the

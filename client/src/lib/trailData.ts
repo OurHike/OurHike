@@ -798,9 +798,37 @@ export async function downloadTrailData({
   report('Done')
 }
 
-export async function loadTrailData(): Promise<TrailData | null> {
+/**
+ * The trail line alone.
+ *
+ * A Blob HANDLE, so this costs an IndexedDB round trip and reads none of the
+ * twelve megabytes behind it - which is what makes it worth having separately
+ * from {@link loadTrailData}. Everything else that read is holding is
+ * deserialised structured-clone data: 2,837 POI objects and a 141,000-sample
+ * elevation profile, paid whether or not the caller wanted them. First run
+ * wants exactly this and nothing else (lib/useTrailData.ts).
+ */
+export async function loadTrailLines(): Promise<Blob | null> {
   const trails = (await get(TRAILS_BLOB_KEY)) as Blob | undefined
-  if (!(trails instanceof Blob)) return null
+  return trails instanceof Blob ? trails : null
+}
+
+/**
+ * Whether a download has committed to this phone.
+ *
+ * Exactly the question `loadTrailData() !== null` answers - both are the
+ * trails blob's presence, because the commit writes all four keys or none -
+ * and the reason to ask it this way is that the caller which asks it most
+ * (the launch fetch, deciding whether to fetch at all) then throws every
+ * other artifact away.
+ */
+export async function haveTrailData(): Promise<boolean> {
+  return (await loadTrailLines()) !== null
+}
+
+export async function loadTrailData(): Promise<TrailData | null> {
+  const trails = await loadTrailLines()
+  if (trails === null) return null
 
   const pois = ((await get(POIS_KEY)) as StoredPoi[] | undefined) ?? []
   const spurs =

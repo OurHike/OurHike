@@ -18,7 +18,9 @@ import { DATA_CONFIGURED } from './config'
 import { buildTrailIndex, type TrailIndex } from './trailPosition'
 import {
   downloadTrailData,
+  haveTrailData,
   loadTrailData,
+  loadTrailLines,
   TrailDataHashMismatchError,
   type StoredPoi,
 } from './trailData'
@@ -100,7 +102,41 @@ export interface TrailData {
   ensure(): Promise<boolean>
 }
 
-export function useTrailData(online: boolean): TrailData {
+export interface TrailDataOptions {
+  /**
+   * Draw the centerline and read nothing else off the phone (#857).
+   *
+   * First run is the case this exists for. The three entry steps sit over the
+   * map (App.tsx's `entering`), the card covers up to 78% of the screen, and
+   * the only thing anybody can see behind it is the trail line - while the
+   * shell reads 2,837 POIs back out of IndexedDB, places every one of them on
+   * a mile axis, folds them into sites, hands them to MapLibre and rasterises
+   * 46 pin images for them. None of that reaches a pixel a hiker can see, and
+   * all of it is on the thread the Skip button is waiting for.
+   *
+   * Measured 2026-08-20, Chromium at 390x844 on a 4x CPU throttle against a
+   * build serving artifacts at the live release's sizes (#717's figures),
+   * replaying first run with the release already on the phone: 5,479 ms of
+   * blocking work in 22 long tasks while the steps were up, the longest of
+   * them 2,374 ms, and the second Skip could not be clicked for 3.4 s after
+   * the first. Same run with this held back: 3,673 ms, longest task 434 ms,
+   * the three taps answered in 11, 4 and 220 ms.
+   *
+   * So the centerline is published and everything else waits. Nothing is
+   * skipped, only held: the moment this goes false the second effect below
+   * reads the rest, and the map fills in.
+   *
+   * NOT the download - that keeps running while the steps are read, which is
+   * the whole reason it starts before them. This is about what the shell does
+   * with what has landed.
+   */
+  centerlineOnly?: boolean
+}
+
+export function useTrailData(
+  online: boolean,
+  { centerlineOnly = false }: TrailDataOptions = {},
+): TrailData {
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
   const [pois, setPois] = useState<StoredPoi[]>([])
   const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
@@ -109,18 +145,46 @@ export function useTrailData(online: boolean): TrailData {
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [error, setError] = useState<TrailDataError | null>(null)
 
-  /** Returns whether anything was actually on the phone to load. */
-  const refresh = useCallback(async () => {
-    const data = await loadTrailData()
-    if (data === null) return false
+  /**
+   * Bumped when a download commits, which is the one thing that changes what
+   * the phone holds while the app is up.
+   *
+   * The two reads below are keyed off it rather than chained onto the
+   * download, because they no longer run at the same moment as each other:
+   * the centerline is read whenever there is new data, the rest is read when
+   * there is new data AND first run is out of the way. A counter is what lets
+   * those two schedules be written as two effects instead of a callback that
+   * has to know which of them has already happened.
+   */
+  const [downloaded, setDownloaded] = useState(0)
 
-    setTrailsUrl(URL.createObjectURL(data.trails))
+  /**
+   * The trail line, onto the map.
+   *
+   * Its own read, and the cheap one: `loadTrailLines` hands back a Blob
+   * HANDLE, so this costs an IndexedDB round trip and an object URL rather
+   * than deserialising every POI beside it.
+   */
+  const drawCenterline = useCallback(async () => {
+    const lines = await loadTrailLines()
+    if (lines === null) return
+
+    setTrailsUrl(URL.createObjectURL(lines))
     // Set here rather than derived from `trailsUrl`, which starts life as a
     // perfectly valid object URL for an empty collection and so cannot answer
     // "is there a trail on this map". Nothing else can answer it either: the
     // POIs are a separate artifact and the index is best-effort, so a phone
     // can hold both and still be drawing no line.
     setHaveTrailLines(true)
+  }, [])
+
+  /** Everything the centerline does not need: the waypoints, the spur
+   *  destinations, the elevation profile, and the index that puts a
+   *  coordinate on a mile. */
+  const readTheRest = useCallback(async () => {
+    const data = await loadTrailData()
+    if (data === null) return
+
     setPois(data.pois)
     setSpurs(data.spurs)
     setElevation(data.elevation)
@@ -132,15 +196,14 @@ export function useTrailData(online: boolean): TrailData {
     //
     // buildTrailIndex() guards the shape it is handed, but JSON.parse runs
     // first and throws on the more likely symptom of a truncated download -
-    // half a file. Uncaught, that escaped through the `void refresh()` below as
-    // an unhandled rejection: no index, no message, and no search either, which
-    // is the failure this whole path was rebuilt to avoid.
+    // half a file. Uncaught, that escaped through the `void readTheRest()`
+    // below as an unhandled rejection: no index, no message, and no search
+    // either, which is the failure this whole path was rebuilt to avoid.
     try {
       setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
     } catch {
       setTrailIndex(null)
     }
-    return true
   }, [])
 
   /**
@@ -174,10 +237,13 @@ export function useTrailData(online: boolean): TrailData {
 
     const attempt = (async () => {
       // Asked directly rather than assumed: a phone that already has the lines
-      // needs no network at all.
-      if ((await loadTrailData()) !== null) return
+      // needs no network at all. `haveTrailData` rather than a full read, which
+      // is the same question - both answer off the trails blob's presence - for
+      // an IndexedDB round trip instead of deserialising 2,837 POIs and a
+      // 141,000-sample profile to throw them away.
+      if (await haveTrailData()) return
       await downloadTrailData()
-      await refresh()
+      setDownloaded((count) => count + 1)
     })()
     inFlight.current = attempt
     const clear = () => {
@@ -185,7 +251,7 @@ export function useTrailData(online: boolean): TrailData {
     }
     attempt.then(clear, clear)
     return attempt
-  }, [refresh])
+  }, [])
 
   // Reading what is already on the phone, and unconditionally. This has to stay
   // independent of the fetch below: an unconfigured build and a phone with no
@@ -193,8 +259,18 @@ export function useTrailData(online: boolean): TrailData {
   // on either one would leave a hiker on a ridge - the exact person the offline
   // store exists for - looking at a map with no trail.
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    void drawCenterline()
+  }, [drawCenterline, downloaded])
+
+  // And the rest of it, which is everything the entry steps do not show. Held
+  // rather than skipped: `centerlineOnly` going false is what runs this, so a
+  // hiker who finishes first run gets their waypoints on the same read they
+  // would have had, one step later. See TrailDataOptions for what that step is
+  // worth.
+  useEffect(() => {
+    if (centerlineOnly) return
+    void readTheRest()
+  }, [centerlineOnly, readTheRest, downloaded])
 
   // The trail lines load themselves, rather than waiting for someone to tap
   // Download.

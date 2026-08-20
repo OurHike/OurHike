@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, del } from 'idb-keyval'
 import {
   downloadTrailData,
+  haveTrailData,
   loadTrailData,
+  loadTrailLines,
   deleteTrailData,
   ELEVATION_STORE_KEY,
   POIS_KEY,
@@ -827,6 +829,43 @@ describe('trail data', () => {
 
   it('says there is nothing downloaded rather than returning an empty map', async () => {
     expect(await loadTrailData()).toBeNull()
+  })
+
+  it('hands back the centerline on its own, without reading anything beside it', async () => {
+    // What first run reads and all it reads (#857, lib/useTrailData.ts). The
+    // saving is not the trail line - that is a Blob handle either way - it is
+    // the 2,837 POI objects and the 141,000-sample profile that the full read
+    // deserialises whether or not the caller wanted them.
+    serve()
+    await downloadTrailData()
+    const reads: string[] = []
+    vi.mocked(get).mockImplementation((key) => {
+      reads.push(String(key))
+      return Promise.resolve(store.get(String(key)))
+    })
+
+    const lines = await loadTrailLines()
+
+    expect(lines).toBeInstanceOf(Blob)
+    expect(reads).toEqual([TRAILS_BLOB_KEY])
+  })
+
+  it('says nothing is downloaded when the centerline is not there either', async () => {
+    expect(await loadTrailLines()).toBeNull()
+    expect(await haveTrailData()).toBe(false)
+  })
+
+  it('answers "is a release here" the same way the full read does', async () => {
+    // The two must not drift: `haveTrailData` exists only to answer
+    // `loadTrailData() !== null` without paying for the read, and a commit
+    // writes all four keys or none, so the trails blob IS the question.
+    expect(await haveTrailData()).toBe(false)
+
+    serve()
+    await downloadTrailData()
+
+    expect(await haveTrailData()).toBe(true)
+    expect(await loadTrailData()).not.toBeNull()
   })
 
   it('reclaims both the trail lines and the POIs on delete', async () => {

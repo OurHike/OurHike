@@ -550,10 +550,25 @@ export function MapView({
   // split. The other two now share a clock (see below) and are still two
   // effects, because a POI download landing should not re-run a `setFilter` and
   // the pair reads as what it is: two different questions about the same tap.
+  //
+  // AND NOT UNTIL THERE IS A PIN TO DRAW (#857). A map with no POIs on it
+  // cannot ask for a single one of the 46 images - the style's `match` arms
+  // are reached by a feature or not at all - so on the launch where that bill
+  // was largest it bought nothing. That is every first run: the entry steps
+  // hold the waypoints back (lib/useTrailData.ts), and this is what stops the
+  // map paying for them anyway.
+  //
+  // The bill is 2,521 ms of rasterising, measured 2026-08-20 on a 4x CPU
+  // throttle; map/poiIconImages.ts has the measurement and the other half of
+  // the fix, which is where that work runs when it does run.
+  //
+  // `havePois` rather than `pois`, so this still runs once and not per
+  // download: the images are the same 46 whatever is in the array.
+  const havePois = pois.length > 0
   useEffect(() => {
-    if (map === null) return
+    if (map === null || !havePois) return
     return attachPoiIcons(map)
-  }, [map])
+  }, [map, havePois])
 
   // The hidden set is in BOTH of the next two effects, and deliberately. The
   // filter decides which pins are drawn; the source decides which POIs get a

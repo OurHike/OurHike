@@ -5,7 +5,8 @@ import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
 import { BACKDROP_LAYER_ID, MAP_BACKDROP, TRAILS_SOURCE_ID } from './style'
 import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
-import { poiIconId } from './poiIcons'
+import { poiIconImages } from './poiIconImages'
+import { buildPoiIcons, poiIconId } from './poiIcons'
 import {
   poiFeatureCollection,
   poiFilter,
@@ -388,11 +389,45 @@ describe('POI pins', () => {
     map.emit('load')
   }
 
-  it('registers the pin images once the style is up', () => {
+  it('registers the pin images once the style is up', async () => {
     render(<MapView {...PROPS} pois={POIS} />)
     const [map] = MockMap.live
 
     loadStyle(map)
+    // The images are rasterised off the main thread now (#857,
+    // map/poiIconImages.ts), so they land a beat after the attach rather than
+    // inside it - see poiLayers.test.ts's `iconsBuilt` for why awaiting the
+    // module's own promise is enough to order this after the registration.
+    await poiIconImages()
+
+    expect(map.images.has(poiIconId('water', 'high'))).toBe(true)
+  })
+
+  it('rasterises no pin at all for a map with no waypoints on it', async () => {
+    // First run is this map (#857): the entry steps hold the waypoints back
+    // (lib/useTrailData.ts), and 46 images nothing can ask for were 2,521 ms
+    // of rasterising - measured 2026-08-20 on a 4x CPU throttle - in front of
+    // the Skip button. The style's `match` arms are reached by a feature or
+    // not at all, so a map with an empty source needs none of them.
+    render(<MapView {...PROPS} pois={[]} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+    await poiIconImages()
+
+    // Every pin image, not a sample of them - and not `images.size`, which
+    // also counts the serious-warning pin (map/warningPin.ts), a single image
+    // on its own clock.
+    for (const { id } of buildPoiIcons()) expect(map.images.has(id)).toBe(false)
+  })
+
+  it('registers them as soon as the first waypoints arrive', async () => {
+    const { rerender } = render(<MapView {...PROPS} pois={[]} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    rerender(<MapView {...PROPS} pois={POIS} />)
+    await poiIconImages()
 
     expect(map.images.has(poiIconId('water', 'high'))).toBe(true)
   })

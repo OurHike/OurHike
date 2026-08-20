@@ -75,6 +75,11 @@ import { exifCaptureDate } from '../lib/exifDate'
 import { CARD_PHOTO_EDGE, type OwnPhotoSource } from '../lib/poiPhotos'
 import { useOwnPhotos, type OwnCardPhoto } from '../lib/useOwnPhotos'
 import { useCommunityPhotos } from '../lib/useCommunityPhotos'
+import { enqueueAction } from '../lib/outbox'
+import { syncOutbox } from '../lib/outboxSync'
+import { remainingLabel, sharePhase, takenClaimForShare } from '../lib/photoShare'
+import { PoiShareSheet } from './PoiShareSheet'
+import type { PoiPhotoSummary } from '../lib/api'
 
 export interface PoiDetail {
   id: string
@@ -278,6 +283,9 @@ interface CardPhoto {
    *  what the manage strip needs to offer choose and remove, and what the
    *  credit line keys on to say "Your photo" instead of naming an author. */
   own?: OwnCardPhoto
+  /** Present when this is a community photo (rung 2) - what the
+   *  report-this-photo path needs (#579). */
+  community?: PoiPhotoSummary
 }
 
 /**
@@ -608,6 +616,7 @@ export function PoiCard({
       // without a name, which is provenance stated, not missing.
       ...(photo.attribution !== null ? { author: photo.attribution } : {}),
       license: photo.license,
+      community: photo,
     })),
     ...cardPhotos(shown),
   ]
@@ -641,12 +650,19 @@ export function PoiCard({
     setReview(null)
   }, [])
 
+  // The share sheet (#577) and the report chooser (#579), both scoped to
+  // the part on screen the same way the review is.
+  const [sharing, setSharing] = useState(false)
+  const [reportChooser, setReportChooser] = useState(false)
+
   // Swapping parts or waypoints drops an unkept review - nothing was
   // written, so there is nothing to keep - and clears the notes with it.
   // The cleanup shape means unmounting revokes too.
   useEffect(() => {
     setPhotoNote(null)
     setRemoveArmed(false)
+    setSharing(false)
+    setReportChooser(false)
     return discardReview
   }, [shown.id, discardReview])
 
@@ -709,6 +725,77 @@ export function PoiCard({
       setPhotoIndex(0)
     } catch {
       setPhotoNote('This phone could not remove the photo.')
+    }
+  }
+
+  // The share, once the sheet's "Share with every hiker" is tapped (#577).
+  // Two records in order: the phone's memory of the decision, then the
+  // queued act - and the capture-date claim is coarsened to its month
+  // before it is ever queued, so the sheet's "the picture and the month"
+  // is made true here rather than trusted to a server's rendering.
+  const shareOwn = async (photo: OwnCardPhoto) => {
+    setSharing(false)
+    try {
+      await own.setShared(photo.id, new Date().toISOString())
+      await enqueueAction(
+        {
+          kind: 'poi_photo_share',
+          poiId: shown.id,
+          taken: takenClaimForShare(photo.takenClaim),
+          // No detector ships yet (#837); when one does, its finding
+          // arrives here and nowhere else.
+          flagged: null,
+        },
+        photo.blob,
+      )
+      setPhotoNote(
+        'Queued to share. It leaves when you have signal and goes live about two hours after that.',
+      )
+      void syncOutbox()
+    } catch {
+      setPhotoNote('This phone could not queue the share, so nothing was shared.')
+    }
+  }
+
+  // The withdrawal - "Take it back" inside the cooling-off window, "Stop
+  // sharing" after it. Same act either way; what differs is what it can
+  // still achieve, and the note says which.
+  const withdrawOwn = async (photo: OwnCardPhoto, undo: boolean) => {
+    try {
+      await own.setShared(photo.id, null)
+      await enqueueAction({ kind: 'poi_photo_withdraw', poiId: shown.id })
+      setPhotoNote(
+        undo
+          ? 'Taken back. Nobody ever had it, so nothing was released.'
+          : 'OurHike will stop showing it. Copies already made under the licence are beyond reach.',
+      )
+      void syncOutbox()
+    } catch {
+      setPhotoNote('This phone could not queue that, so nothing changed.')
+    }
+  }
+
+  // Report a community photo (#579). Queued like every write - the report
+  // sheet's own honesty holds here: the photo stays on the card until a
+  // club moderator has looked.
+  const reportCommunity = async (
+    photo: PoiPhotoSummary,
+    reason: 'wrong_place' | 'person' | 'other',
+  ) => {
+    setReportChooser(false)
+    try {
+      await enqueueAction({
+        kind: 'poi_photo_report',
+        poiId: shown.id,
+        photoId: photo.id,
+        reason,
+      })
+      setPhotoNote(
+        'Reported. This goes to the maintaining club, and the photo stays on the card until one of them has looked.',
+      )
+      void syncOutbox()
+    } catch {
+      setPhotoNote('This phone could not queue the report.')
     }
   }
 
@@ -956,6 +1043,113 @@ export function PoiCard({
                 {removeArmed ? 'Tap again to remove' : 'Remove'}
               </button>
             </div>
+
+            {/* The share verb (#577), and after a share, the truth about
+                which phase it is in. Inside the cooling-off window taking
+                it back is a complete undo - nobody ever had it - and the
+                strip stops making that claim at the earliest moment it
+                could be stale (lib/photoShare.ts). */}
+            {ownShown.shared === undefined ? (
+              <button
+                type="button"
+                className="poi-card__own-action poi-card__own-share"
+                data-testid="poi-card-share"
+                onClick={() => setSharing(true)}
+              >
+                Share this photo
+              </button>
+            ) : (
+              (() => {
+                const phase = sharePhase(ownShown.shared)
+                return phase.phase === 'cooling' ? (
+                  <>
+                    <p className="poi-card__own-note" data-testid="poi-card-share-state">
+                      {`Shared — goes live in about ${remainingLabel(phase.remainingMinutes)}. Until then, taking it back is a complete undo.`}
+                    </p>
+                    <button
+                      type="button"
+                      className="poi-card__own-action"
+                      data-testid="poi-card-unshare"
+                      onClick={() => void withdrawOwn(ownShown, true)}
+                    >
+                      Take it back
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="poi-card__own-note" data-testid="poi-card-share-state">
+                      Shared with every hiker, under CC BY-SA 4.0.
+                    </p>
+                    <button
+                      type="button"
+                      className="poi-card__own-action"
+                      data-testid="poi-card-unshare"
+                      onClick={() => void withdrawOwn(ownShown, false)}
+                    >
+                      Stop sharing
+                    </button>
+                  </>
+                )
+              })()
+            )}
+          </div>
+        )}
+
+        {/* Somebody else's photo, on rung 2: the one thing a hiker can do
+            about it is put it in front of the maintaining club (#579). The
+            chooser's three reasons are the report sheet's, and the honesty
+            line renders in the note after queueing. */}
+        {review === null && current?.community !== undefined && (
+          <div className="poi-card__own" data-testid="poi-card-community-strip">
+            {reportChooser ? (
+              <>
+                <p className="poi-card__own-note">What is wrong with it?</p>
+                <div className="poi-card__report-options">
+                  <button
+                    type="button"
+                    className="poi-card__own-action"
+                    data-testid="poi-card-report-wrong-place"
+                    onClick={() =>
+                      void reportCommunity(current.community!, 'wrong_place')
+                    }
+                  >
+                    It is not this place
+                  </button>
+                  <button
+                    type="button"
+                    className="poi-card__own-action"
+                    data-testid="poi-card-report-person"
+                    onClick={() => void reportCommunity(current.community!, 'person')}
+                  >
+                    Somebody in it did not agree to this
+                  </button>
+                  <button
+                    type="button"
+                    className="poi-card__own-action"
+                    data-testid="poi-card-report-other"
+                    onClick={() => void reportCommunity(current.community!, 'other')}
+                  >
+                    It should not be public
+                  </button>
+                  <button
+                    type="button"
+                    className="poi-card__own-action"
+                    onClick={() => setReportChooser(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="poi-card__own-action"
+                data-testid="poi-card-report"
+                onClick={() => setReportChooser(true)}
+              >
+                Report this photo
+              </button>
+            )}
           </div>
         )}
 
@@ -1317,6 +1511,19 @@ export function PoiCard({
           </p>
         )}
       </div>
+
+      {/* The share sheet (#577), over the live map through a portal - see
+          PoiShareSheet.tsx for why the card cannot host it in place. */}
+      {sharing && ownShown !== undefined && (
+        <PoiShareSheet
+          photoUrl={ownShown.url}
+          photoBytes={ownShown.blob.size}
+          photoMonth={photoMonth(ownShown.taken) ?? ''}
+          poiName={shown.name}
+          onShare={() => void shareOwn(ownShown)}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </div>
   )
 }

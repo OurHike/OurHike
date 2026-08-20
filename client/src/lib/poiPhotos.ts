@@ -53,6 +53,15 @@ export interface OwnPhoto {
   /** The day it was kept, "YYYY-MM-DD" - the dating fallback. */
   added: string
   source: OwnPhotoSource
+  /**
+   * When the hiker shared this photo from this device (ISO 8601), or
+   * absent while it is private - which is the state every photo starts in
+   * and every photo stored before sharing existed is already in (#577).
+   * This is the device's own record of its hiker's decision, not the
+   * server's state: it is what the strip's "goes live in..." and "stop
+   * sharing" render from, and clearing it travels with the withdrawal.
+   */
+  shared?: string
 }
 
 interface PoiPhotoRecord {
@@ -117,6 +126,35 @@ export async function listOwnPhotos(poiId: string): Promise<OwnPhoto[]> {
   const chosen = byRecency.find((photo) => photo.id === stored.chosenId)
   if (chosen === undefined) return byRecency
   return [chosen, ...byRecency.filter((photo) => photo !== chosen)]
+}
+
+/**
+ * Record the hiker's decision to share (or stop sharing) this photo.
+ *
+ * `at` is the share moment, ISO 8601; null clears it (a withdrawal). The
+ * decision is recorded here and the network act queues in the outbox -
+ * two writes, and this one is the phone's memory of what its hiker chose,
+ * kept whether or not signal ever arrives.
+ */
+export async function setOwnPhotoShared(
+  poiId: string,
+  id: string,
+  at: string | null,
+): Promise<void> {
+  await update<PoiPhotoRecord>(keyFor(poiId), (stored) => {
+    if (stored === undefined) return { photos: [] }
+    return {
+      ...stored,
+      photos: stored.photos.map((photo) => {
+        if (photo.id !== id) return photo
+        if (at === null) {
+          const { shared: _shared, ...cleared } = photo
+          return cleared
+        }
+        return { ...photo, shared: at }
+      }),
+    }
+  })
 }
 
 /** Make this photo the one the card shows. The choice sticks until the

@@ -7,6 +7,8 @@ import { preparePhoto, PhotoUnusable } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { fetchPoiPhotos } from '../lib/api'
 import { clearCommunityPhotoCache } from '../lib/useCommunityPhotos'
+import { loadPreferences } from '../lib/preferences'
+import { OUTBOX_KEY, type OutboxItem } from '../lib/outbox'
 
 // The hiker's own photo on the waypoint card: capture with a keep-or-discard
 // review (#571), several per place with a sticky choice (#575), the honest
@@ -38,6 +40,13 @@ vi.mock('../lib/exifDate', () => ({ exifCaptureDate: vi.fn() }))
 // the hook, so the hook's cache and silent-failure behaviour stay under test.
 vi.mock('../lib/api', () => ({ fetchPoiPhotos: vi.fn() }))
 
+// The share and report paths (#577/#579) queue through the real outbox into
+// the same mocked idb-keyval store, so "what was queued" is asserted against
+// storage; only the flush trigger and the sheet's preferences read are
+// doubled.
+vi.mock('../lib/outboxSync', () => ({ syncOutbox: vi.fn() }))
+vi.mock('../lib/preferences', () => ({ loadPreferences: vi.fn() }))
+
 const mockedGet = vi.mocked(get)
 const mockedUpdate = vi.mocked(update)
 const mockedDel = vi.mocked(del)
@@ -45,6 +54,7 @@ const mockedKeys = vi.mocked(keys)
 const mockedPrepare = vi.mocked(preparePhoto)
 const mockedExifDate = vi.mocked(exifCaptureDate)
 const mockedFetchPoiPhotos = vi.mocked(fetchPoiPhotos)
+const mockedLoadPreferences = vi.mocked(loadPreferences)
 
 /** In-memory IndexedDB, with update() applied synchronously against the
  *  stored value - the real one's single-transaction semantics. */
@@ -92,6 +102,10 @@ beforeEach(() => {
   mockedPrepare.mockResolvedValue(PREPARED)
   mockedExifDate.mockResolvedValue('2026-06-18')
   mockedFetchPoiPhotos.mockResolvedValue([])
+  mockedLoadPreferences.mockResolvedValue({
+    trail_name: 'Sawyer',
+    anonymity_window_days: 0,
+  } as Awaited<ReturnType<typeof loadPreferences>>)
   // jsdom implements neither; the card only ever hands these URLs to <img>
   // and <a>, so strings are all a test needs. Assigned onto the real URL
   // rather than replacing the global, which would take the constructor
@@ -395,6 +409,167 @@ describe('which copy is which (#573)', () => {
 
     await screen.findByTestId('poi-card-review-photo')
     expect(screen.queryByTestId('poi-card-save-original')).not.toBeInTheDocument()
+  })
+})
+
+describe('the share sheet and its verbs (#577)', () => {
+  const outbox = (stored: Map<string, unknown>) =>
+    (stored.get(OUTBOX_KEY) as OutboxItem[] | undefined) ?? []
+
+  it('says the terms, then queues the share and shows the cooling-off truth', async () => {
+    const stored = withStore()
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2026-06-18',
+      source: 'library',
+    })
+    await renderCard()
+    await screen.findByText('Your photo · Jun 2026')
+
+    fireEvent.click(screen.getByTestId('poi-card-share'))
+
+    // The sheet's load-bearing sentences, verbatim from the adopted mockup.
+    expect(await screen.findByText('Two different promises')).toBeInTheDocument()
+    expect(screen.getByText(/OurHike never had it/)).toBeInTheDocument()
+    expect(screen.getByText(/The licence cannot be taken back/)).toBeInTheDocument()
+    // Nothing queued while the sheet is open - the share is the tap below.
+    expect(outbox(stored)).toHaveLength(0)
+
+    fireEvent.click(screen.getByTestId('share-sheet-share'))
+
+    await screen.findByTestId('poi-card-share-state')
+    const queued = outbox(stored)
+    expect(queued).toHaveLength(1)
+    expect(queued[0].action).toEqual({
+      kind: 'poi_photo_share',
+      poiId: SHELTER.id,
+      // The claim is coarsened to the month BEFORE it is queued - the
+      // sheet's "the picture and the month" made true in storage.
+      taken: '2026-06-01',
+      flagged: null,
+    })
+    expect(queued[0].photo).toBe(PREPARED)
+    // And the strip stops offering Share and starts telling the truth.
+    expect(screen.getByTestId('poi-card-share-state')).toHaveTextContent(
+      /goes live in about 2h/,
+    )
+    expect(screen.getByTestId('poi-card-unshare')).toHaveTextContent('Take it back')
+  })
+
+  it('take it back queues the withdrawal and returns the photo to private', async () => {
+    const stored = withStore()
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2026-06-18',
+      source: 'library',
+    })
+    await renderCard()
+    await screen.findByText('Your photo · Jun 2026')
+    fireEvent.click(screen.getByTestId('poi-card-share'))
+    fireEvent.click(await screen.findByTestId('share-sheet-share'))
+    await screen.findByTestId('poi-card-unshare')
+
+    fireEvent.click(screen.getByTestId('poi-card-unshare'))
+
+    await screen.findByTestId('poi-card-share')
+    const queued = outbox(stored)
+    expect(queued).toHaveLength(2)
+    expect(queued[1].action).toEqual({
+      kind: 'poi_photo_withdraw',
+      poiId: SHELTER.id,
+    })
+    expect(
+      screen.getByText(/Nobody ever had it, so nothing was released/),
+    ).toBeInTheDocument()
+  })
+
+  it('with no trail name the sheet refuses with the reason, not a stuck outbox item', async () => {
+    const stored = withStore()
+    mockedLoadPreferences.mockResolvedValue({
+      trail_name: null,
+      anonymity_window_days: 0,
+    } as Awaited<ReturnType<typeof loadPreferences>>)
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2026-06-18',
+      source: 'library',
+    })
+    await renderCard()
+    await screen.findByText('Your photo · Jun 2026')
+
+    fireEvent.click(screen.getByTestId('poi-card-share'))
+
+    expect(await screen.findByTestId('share-sheet-no-name')).toHaveTextContent(
+      /needs a trail name/,
+    )
+    expect(screen.queryByTestId('share-sheet-share')).not.toBeInTheDocument()
+    expect(outbox(stored)).toHaveLength(0)
+  })
+
+  it('the anonymity window is said to the sharer in days, when one is set', async () => {
+    withStore()
+    mockedLoadPreferences.mockResolvedValue({
+      trail_name: 'Sawyer',
+      anonymity_window_days: 12,
+    } as Awaited<ReturnType<typeof loadPreferences>>)
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2026-06-18',
+      source: 'library',
+    })
+    await renderCard()
+    await screen.findByText('Your photo · Jun 2026')
+
+    fireEvent.click(screen.getByTestId('poi-card-share'))
+
+    expect(
+      await screen.findByText(/For 12 more days even Sawyer is withheld/),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('reporting a community photo (#579)', () => {
+  const COMMUNITY_PHOTO = {
+    id: 'p9',
+    poi_id: SHELTER.id,
+    url: 'https://photos.example/signed/p9',
+    taken_month: '2026-05',
+    attribution: 'Somebody',
+    license: 'CC BY-SA 4.0',
+    pinned: false,
+  }
+
+  it('offers the three reasons and queues the chosen one', async () => {
+    const stored = withStore()
+    mockedFetchPoiPhotos.mockResolvedValue([COMMUNITY_PHOTO])
+    await renderCard()
+    await screen.findByTestId('poi-card-community-strip')
+
+    fireEvent.click(screen.getByTestId('poi-card-report'))
+    fireEvent.click(await screen.findByTestId('poi-card-report-person'))
+
+    await screen.findByText(/stays on the card until one of them has looked/)
+    const queued = (stored.get(OUTBOX_KEY) as OutboxItem[] | undefined) ?? []
+    expect(queued).toHaveLength(1)
+    expect(queued[0].action).toEqual({
+      kind: 'poi_photo_report',
+      poiId: SHELTER.id,
+      photoId: 'p9',
+      reason: 'person',
+    })
+  })
+
+  it('offers no report verb on the hiker’s own photo', async () => {
+    withStore()
+    await addOwnPhoto(SHELTER.id, {
+      blob: PREPARED,
+      taken: '2026-06-18',
+      source: 'library',
+    })
+    await renderCard()
+    await screen.findByText('Your photo · Jun 2026')
+
+    expect(screen.queryByTestId('poi-card-report')).not.toBeInTheDocument()
   })
 })
 

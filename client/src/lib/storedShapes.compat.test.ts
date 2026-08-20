@@ -102,8 +102,8 @@ describe('a stored phone from the baseline release', () => {
     expect(queued).toHaveLength(4)
     expect(queued[0].id).toBe('5f8e1b3a-0c4d-4a2e-9f1b-2c3d4e5f6a7b')
     expect(queued[0].authoredAt).toBe('2026-08-01T14:32:00.000Z')
-    expect(queued[0].payload.type).toBe('blowdown')
-    expect(queued[0].payload.mile).toBe(1407.2)
+    expect(queued[0].payload?.type).toBe('blowdown')
+    expect(queued[0].payload?.mile).toBe(1407.2)
     expect(queued[0].photo).toBeInstanceOf(Blob)
     expect(queued[0].photo?.size).toBe(4)
   })
@@ -111,8 +111,8 @@ describe('a stored phone from the baseline release', () => {
   it('still reads a report stored with only its required fields', async () => {
     const queued = await listQueued()
 
-    expect(queued[1].payload.type).toBe('thanks')
-    expect(queued[1].payload.reporter_type).toBe('day')
+    expect(queued[1].payload?.type).toBe('thanks')
+    expect(queued[1].payload?.reporter_type).toBe('day')
     expect(queued[1].photo).toBeUndefined()
     expect(queued[1].failure).toBeUndefined()
   })

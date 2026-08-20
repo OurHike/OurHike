@@ -175,6 +175,20 @@ export interface LegendProps {
    *  Passed straight through: this panel has no opinion about downloads, it is
    *  just the piece of chrome the link ended up in. Omitted, no link is drawn
    *  - a control that does nothing is worse than one that is not there. */
+  /**
+   * Who maintains the trail in front of the hiker - "Maintained by the
+   * Potomac Appalachian Trail Club" (#598).
+   *
+   * A SENTENCE rather than a club, because the shell is what holds the
+   * published attribution and the centerline index that turns the camera into
+   * a mile; this panel has no business asking for either. The same division
+   * `drawnCounts` keeps.
+   *
+   * Absent above nothing in particular: it is omitted below the seam, where
+   * the map itself is drawing the answer and a second copy in the legend would
+   * be the panel repeating the screen.
+   */
+  maintainerLine?: string | null
   onOpenDownloads?: () => void
   /** Whether a finished archive is on the phone, which words that link. */
   hasDownload?: boolean
@@ -227,6 +241,7 @@ export function Legend({
   belowArchiveZoom = false,
   drawnCounts,
   belowPoiZoom = false,
+  maintainerLine = null,
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
@@ -631,6 +646,20 @@ export function Legend({
           desktop the panel is full height and this whole block is pushed to the
           bottom of it - see desktop.css, which pushes the block rather than the
           link precisely so the two do not come apart again. */}
+      {/* Who looks after the ground under the hiker (#598).
+          features/CORRIDOR_VIEW.md leaves open whether a club section should
+          be tappable above the seam; this is the cheap half of the answer -
+          the polygon stops at the seam and the SENTENCE does not, because
+          "who maintains where I am standing" is a good question at any zoom
+          and a thirty-run recolouring over a map somebody is navigating by is
+          clutter competing with pins that matter more.
+
+          Here rather than in the status strip because this panel is already
+          where the app puts its provenance, it costs no map ink, and a hiker
+          opens it deliberately. If it reads as clutter it is deleted without
+          touching a layer; if it earns its place it can graduate. */}
+      {maintainerLine !== null && <p className="legend__maintainer">{maintainerLine}</p>}
+
       {(hasPicker || onOpenDownloads !== undefined) && (
         <div className="legend__downloads">
           {backgroundChoice !== undefined && onChangeBackground !== undefined && (

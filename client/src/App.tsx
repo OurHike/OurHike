@@ -224,7 +224,11 @@ import {
   writeAtcAlertSilence,
 } from './lib/atcAlertsBanner'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
+import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { ClubSheet } from './chrome/ClubSheet'
 import { LineSheet } from './chrome/LineSheet'
+import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
+import { clubRunAtMile, clubTimeline } from './lib/clubSections'
 import { buildLineDetail, type LineDetail } from './lib/lineDetail'
 import type { TappedLine } from './map/lineTaps'
 import { AtcNoticeList } from './chrome/AtcNoticeList'
@@ -1279,6 +1283,76 @@ function App() {
     if (selectedLine === null) return null
     return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME)
   }, [selectedLine, spurs, pois, units])
+
+  /**
+   * The corridor read end to end, in mile order.
+   *
+   * Memoised because it is rebuilt from the published artifact and read on
+   * every tap - and because `clubTimeline` sorts, which is not free to redo
+   * on each render of a screen a hiker pans around.
+   */
+  const clubRuns = useMemo(() => clubTimeline(clubSections), [clubSections])
+
+  /**
+   * Below the seam, a tap on the trail asks a different question.
+   *
+   * "Who maintains this?" is what the map is ABOUT down here
+   * (features/CORRIDOR_VIEW.md), so the club sheet takes the tap and the
+   * blaze sheet stands down; above the seam the hiker is navigating and the
+   * line's own facts are what they asked for. One tap path either way - this
+   * chooses which sentences it produces, and never shows both.
+   *
+   * `camera === null` IS below the seam: that is the opening view, fitted to
+   * CORRIDOR_BOUNDS, which lands near z4.9 on a phone.
+   */
+  const belowSeam = camera === null || camera.zoom < POI_PIN_MIN_ZOOM
+
+  const selectedClubDetail: ClubDetail | null = useMemo(() => {
+    if (!belowSeam || selectedLine === null || trailIndex === null) return null
+    // The tapped point is already snapped to the line (map/lineTaps.ts), so
+    // this is asking "which mile is that vertex" rather than "is the thumb
+    // near the trail" - which at this zoom it need not be.
+    const mile = mileOnTrail(trailIndex, {
+      lon: selectedLine.at[0],
+      lat: selectedLine.at[1],
+    })
+    if (mile === null) return null
+    return buildClubDetail(clubSections, clubRuns, mile, units)
+  }, [belowSeam, selectedLine, trailIndex, clubSections, clubRuns, units])
+
+  /**
+   * Who maintains the trail the hiker is looking at, for the legend (#598).
+   *
+   * From the camera's centre rather than from a GPS fix, deliberately: this
+   * answers "who looks after what is on my screen", which is a question
+   * somebody planning at a kitchen table has as much as somebody standing on
+   * the trail - and it is the only version of the question that has an answer
+   * before the phone knows where it is.
+   *
+   * Omitted below the seam, where the map is already drawing the attribution
+   * and the legend would be repeating the screen back at the hiker.
+   *
+   * The FULL name, where features/CORRIDOR_VIEW.md's mock-up showed the
+   * acronym. Above the seam nothing is tappable to expand "PATC" into anything
+   * - the club sections are not drawn up here - so an acronym would be a
+   * four-letter word with no way to find out what it means.
+   */
+  const maintainerLine: string | null = useMemo(() => {
+    if (belowSeam || camera === null || trailIndex === null) return null
+    const mile = mileOnTrail(trailIndex, {
+      lon: camera.center[0],
+      lat: camera.center[1],
+    })
+    if (mile === null) return null
+    const run = clubRunAtMile(clubRuns, mile)
+    if (run === null) return null
+    // The unattributed miles get a sentence of their own rather than silence:
+    // 38.5 miles of the trail are like this, and "we do not know" is the
+    // answer OurHikeValues.md #4 asks for over a blank.
+    return run.club === null
+      ? 'Maintaining club not recorded along here.'
+      : `Maintained by the ${run.club.name}.`
+  }, [belowSeam, camera, trailIndex, clubRuns])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -2995,6 +3069,7 @@ function App() {
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
           corridor={corridorOnMap}
+          maintainerLine={maintainerLine}
           atcUpdates={atcBandsOnMap}
           atcUpdatePoints={atcPointsOnMap}
           onSelectAtcUpdate={setSelectedAtcBandId}
@@ -3009,7 +3084,15 @@ function App() {
           }
           onSelectLine={handleSelectLine}
           lineSheet={
-            selectedLineDetail === null ? null : (
+            // The club sheet wins below the seam, and the two never stack:
+            // one tap asks one question, and which question it is depends on
+            // what the map is showing.
+            selectedClubDetail !== null ? (
+              <ClubSheet
+                detail={selectedClubDetail}
+                onClose={() => setSelectedLine(null)}
+              />
+            ) : selectedLineDetail === null ? null : (
               <LineSheet
                 detail={selectedLineDetail}
                 onClose={() => setSelectedLine(null)}

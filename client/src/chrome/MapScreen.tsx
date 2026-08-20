@@ -123,6 +123,9 @@ export interface MapScreenProps {
   /** The corridor view's attribution, already in map coordinates (#598).
    *  Coordinates rather than mile ranges for the reason `closures` gives. */
   corridor?: CorridorFeatureCollection
+  /** Who maintains the trail in front of the hiker, as a sentence, for the
+   *  legend (#598). Null above nothing in particular - see Legend's own prop. */
+  maintainerLine?: string | null
   /** The ATC's own notices, drawn at the same weight as a closure and read
    *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
   atcUpdates?: readonly ClosureBand[]
@@ -427,6 +430,7 @@ export function MapScreen({
   warningsAhead = null,
   closures,
   corridor,
+  maintainerLine,
   atcUpdates,
   atcUpdatePoints,
   onSelectAtcUpdate,
@@ -748,6 +752,7 @@ export function MapScreen({
             droughtShown={droughtShown}
             onToggleDrought={onToggleDrought}
             units={units}
+            maintainerLine={maintainerLine}
             droughtSummary={
               drought === undefined
                 ? undefined

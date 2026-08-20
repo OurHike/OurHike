@@ -123,6 +123,29 @@ class PoiPhoto(Base):
     pinned_by = Column(String, ForeignKey("profiles.id"), nullable=True)
 
     # Who took it down and when - the moderation-trail pair every moderated
-    # resource here carries (#658). Null until #579's takedown exists.
+    # resource here carries (#658).
     dismissed_at = Column(DateTime, nullable=True)
     dismissed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+    # What the on-device check found, claimed by the client at share time
+    # (#837): 'nudity' or 'faces', null when nothing was found or no check
+    # ran. A claim like `taken` is - the server cannot verify it - and the
+    # decided posture holds: the flag never decides. 'faces' is friction on
+    # the sheet and priority in the queue; 'nudity' additionally HOLDS the
+    # photo from the public gallery until one human glance (`reviewed_at`),
+    # the narrow hold #837 names - not the general pre-moderation the design
+    # rejects, because it reaches only what the phone itself flagged.
+    flagged = Column(String, nullable=True)
+
+    # A hiker's report against this photo (#579's report-this-photo path,
+    # the mechanism that makes the rolling twelve safe without
+    # pre-approval). One report is enough to surface it; reason 'person'
+    # ("somebody in it did not agree to this") sorts first.
+    reported_at = Column(DateTime, nullable=True)
+    reported_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    reported_reason = Column(String, nullable=True)
+
+    # One human looked (#579's "leave it in the twelve"): clears a hold and
+    # takes the row out of the queue's attention without touching the photo.
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String, ForeignKey("profiles.id"), nullable=True)

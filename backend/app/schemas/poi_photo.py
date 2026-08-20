@@ -10,23 +10,42 @@ masking applied at the only precision this surface ever had.
 """
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.core.time import utc_now
+from app.core.time import UtcDatetime, utc_now
 from app.models.poi_photo import PoiPhoto
 
 
 class PoiPhotoShare(BaseModel):
-    """What a share carries besides the bytes: the capture-date claim.
+    """What a share carries besides the bytes: the capture-date claim, and
+    what the on-device check found.
 
     Nothing else is the client's to say. Attribution comes from the
     sharer's profile, the licence from the design, the timestamps from the
     server - a share that could name its own attribution would be a share
     sheet able to sign someone else's name.
+
+    `flagged` is the phone's own claim about its own photo (#837), and it
+    can only make things MORE reviewed, never less: 'faces' sorts the queue,
+    'nudity' holds the photo for one human glance. A client lying "nothing
+    found" gets exactly the report-driven posture every photo has anyway.
     """
 
     taken: date | None = None
+    flagged: Literal["nudity", "faces"] | None = None
+
+
+class PoiPhotoReport(BaseModel):
+    """Why a hiker reported a photo (#579's report-this-photo path).
+
+    Three reasons, from the report sheet: it is not this place; somebody in
+    it did not agree to this ('person' - sorts to the top of the queue); it
+    should not be public for any other reason.
+    """
+
+    reason: Literal["wrong_place", "person", "other"]
 
 
 class PoiPhotoOut(BaseModel):
@@ -62,4 +81,37 @@ class PoiPhotoOut(BaseModel):
             attribution=None if masked else photo.attribution_name,
             license=photo.license,
             pinned=photo.pinned_at is not None,
+        )
+
+
+class PoiPhotoModerationOut(PoiPhotoOut):
+    """A queue row: the public shape plus what a moderator's decision needs.
+
+    The trail name stays masked here exactly as it is on the card - the
+    queue mockup shows the withheld state to the moderator rather than the
+    name, and a moderator judges the photograph, not the photographer. What
+    is added is the machinery: when it was offered, what the phone flagged,
+    whether it is held from the gallery, and what a hiker reported.
+    """
+
+    shared_at: UtcDatetime
+    masked_until: UtcDatetime | None
+    flagged: str | None
+    # True while a nudity flag waits on its one human glance - the only
+    # state in this feature where a photo exists and nobody can see it.
+    held: bool
+    reported_reason: str | None
+    reported_at: UtcDatetime | None
+
+    @classmethod
+    def from_moderation_row(cls, photo: PoiPhoto, url: str) -> "PoiPhotoModerationOut":
+        base = PoiPhotoOut.from_row(photo, url)
+        return cls(
+            **base.model_dump(),
+            shared_at=photo.shared_at,
+            masked_until=photo.masked_until,
+            flagged=photo.flagged,
+            held=photo.flagged == "nudity" and photo.reviewed_at is None,
+            reported_reason=photo.reported_reason,
+            reported_at=photo.reported_at,
         )

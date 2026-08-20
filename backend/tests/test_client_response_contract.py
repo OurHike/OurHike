@@ -110,10 +110,11 @@ class Field:
 def interface_fields(source: str, name: str) -> dict[str, Field]:
     """The fields of one `export interface`, following a single `extends`.
 
-    `QueuedReport extends ReportSummary` is the only inheritance in this file
-    and it is one level deep. Followed rather than ignored because the
-    inherited fields are exactly the ones a moderation screen reads - skipping
-    them would leave the widest consumer of `ReportOut` unchecked.
+    `QueuedReport extends ReportSummary` and `PoiPhotoQueueEntry extends
+    PoiPhotoSummary` are the only inheritance in that file and both are one
+    level deep. Followed rather than ignored because the inherited fields
+    are exactly the ones a moderation screen reads - skipping them would
+    leave the widest consumers unchecked.
     """
     declaration = re.search(
         rf"export interface {name}(?: extends (\w+))? \{{\n(.*?)\n\}}",
@@ -179,6 +180,7 @@ SEAMS = [
     ("QueuedReport", "/moderation/queue", "reports"),
     ("QueuedClosure", "/moderation/queue", "closures"),
     ("PoiPhotoSummary", "/waypoints/{poi_id}/photos", None),
+    ("PoiPhotoQueueEntry", "/moderation/poi-photos", None),
 ]
 
 

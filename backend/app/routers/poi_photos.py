@@ -10,19 +10,24 @@ use (#369): POST creates or replaces the caller's share row, PUT lands the
 bytes. Either half retries safely - the row upserts on its (poi, contributor)
 identity, and the object overwrites at its derived key.
 
-WHAT IS DELIBERATELY NOT HERE
+What a hiker can do here: share, upload, withdraw, and report somebody
+else's photo (#579's report path - the mechanism that keeps the rolling
+twelve safe without pre-approval). The moderator's half - pin, unpin,
+review, refuse - lives with the rest of the moderation workflow in
+app/routers/moderation.py, the one review mechanism this app has.
 
-Pinning, unpinning and moderator takedown are #579's, being designed on its
-own claim - this router serves pins the moment those actions exist, and none
-of them before. Screening (#837) is not a gate anywhere by decision, so
-there is nothing of it in this path to build around.
+Screening (#837) is not a gate anywhere by decision. What this path carries
+of it is the phone's own flag arriving with a share, and the one narrow
+consequence the queue mockups drew: a nudity flag holds the photo from the
+gallery until one human glance. Held is not refused - the share succeeded,
+the queue has it, and a moderator decides.
 """
 
 import re
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import Date, cast, func
+from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -45,7 +50,7 @@ from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.routers.reports import read_capped_body
-from app.schemas.poi_photo import PoiPhotoOut, PoiPhotoShare
+from app.schemas.poi_photo import PoiPhotoOut, PoiPhotoReport, PoiPhotoShare
 
 router = APIRouter(prefix="/waypoints/{poi_id}/photos", tags=["poi-photos"])
 
@@ -58,6 +63,18 @@ router = APIRouter(prefix="/waypoints/{poi_id}/photos", tags=["poi-photos"])
 # thirteenth photo arrives.
 PINNED_MAX = 3
 ROLLING_WINDOW = 12
+
+# The cooling-off window (#577, drawn in the maintainer-adopted share-sheet
+# mockups and settled here): a shared photo goes public TWO HOURS after its
+# bytes land. Inside the window a withdrawal is a true undo - nobody ever
+# saw the photo, so no copy exists and the CC licence has reached no one;
+# after it, withdrawal remains available forever but stops being an undo.
+# POI_PHOTOS.md sketched "hours, not days... a delay nobody would notice,
+# since moderation already sits in that path", and two hours is that shape:
+# the doc's own regret case is minutes-scale, and a gallery two hours
+# behind the newest snapshot is a lag no hiker's decision turns on.
+# Photos are never safety-relevant, so nothing time-critical is delayed.
+COOLING_OFF_HOURS = 2
 
 # What a POI id may look like before it goes into an object key. The real
 # ids are the pipeline's "source:identifier" strings ("atc_shelters:abc");
@@ -91,6 +108,35 @@ def _recency():
     the share date. The same date the card prints, so what the gallery
     serves and what it evicts cannot disagree about which photo is newer."""
     return func.coalesce(PoiPhoto.taken, cast(PoiPhoto.shared_at, Date))
+
+
+def _held():
+    """A nudity flag waiting on its one human glance (#837): the photo
+    exists, the queue can see it, and the gallery may not - the narrow hold
+    the decided posture allows, reaching only what the phone itself
+    flagged."""
+    return (PoiPhoto.flagged == "nudity") & PoiPhoto.reviewed_at.is_(None)
+
+
+def _not_held():
+    """The gallery-side complement, spelled out rather than `~_held()`.
+
+    NOT of the expression above is a three-valued-logic trap: for an
+    unflagged row `flagged == 'nudity'` is NULL, the AND is NULL, and NOT
+    NULL is still NULL - which a WHERE treats as false, silently filtering
+    out every ordinary photo. Each disjunct here is null-safe.
+    """
+    return or_(
+        PoiPhoto.flagged.is_(None),
+        PoiPhoto.flagged != "nudity",
+        PoiPhoto.reviewed_at.isnot(None),
+    )
+
+
+def _public_from():
+    """When an upload becomes the gallery's to serve: its bytes landed at
+    least the cooling-off window ago."""
+    return utc_now() - timedelta(hours=COOLING_OFF_HOURS)
 
 
 @router.post("", response_model=PoiPhotoOut, status_code=status.HTTP_201_CREATED)
@@ -144,6 +190,16 @@ def share_photo(
     photo.pinned_by = None
     photo.dismissed_at = None
     photo.dismissed_by = None
+    # A replacement is a different photograph, so nothing decided about the
+    # old one carries: not the pin (above), not a hiker's report against it,
+    # not the human glance that cleared it, and not the old flag. What the
+    # phone found in THIS photo is what arrives with this share.
+    photo.flagged = payload.flagged
+    photo.reported_at = None
+    photo.reported_by = None
+    photo.reported_reason = None
+    photo.reviewed_at = None
+    photo.reviewed_by = None
 
     commit_and_refresh(db, photo)
     return PoiPhotoOut.from_row(photo, url=_url_or_placeholder(photo))
@@ -245,6 +301,10 @@ def _evict_beyond_rolling_window(db: Session, poi_id: str) -> None:
             PoiPhoto.status == PoiPhotoStatus.live,
             PoiPhoto.uploaded_at.isnot(None),
             PoiPhoto.pinned_at.is_(None),
+            # A held photo neither fills a window slot nor gets evicted by
+            # recency: it is a queue item waiting on a person, and deleting
+            # it here would erase the decision it is waiting for.
+            _not_held(),
         )
         .order_by(_recency().desc(), PoiPhoto.shared_at.desc(), PoiPhoto.id)
         .offset(ROLLING_WINDOW)
@@ -278,6 +338,13 @@ def list_photos(poi_id: str, db: Session = Depends(get_db)):
     the anonymity window is honoured by masking the credit, not by hiding
     the photograph.
 
+    Two things a live upload can still be excluded for, both temporary:
+    the cooling-off window (COOLING_OFF_HOURS - inside it a withdrawal is
+    a true undo, so nothing is public yet), and a nudity hold waiting on a
+    moderator's glance (#837). Both apply to the pinned branch too - a pin
+    inside a photographer's cooling-off window would publish early and
+    break the undo the sheet promised.
+
     An unconfigured deployment serves an empty gallery rather than URLs
     that cannot be signed - offline and not-configured land on the same
     honest answer the card already has, which is falling through the
@@ -292,6 +359,8 @@ def list_photos(poi_id: str, db: Session = Depends(get_db)):
         PoiPhoto.poi_id == poi_id,
         PoiPhoto.status == PoiPhotoStatus.live,
         PoiPhoto.uploaded_at.isnot(None),
+        PoiPhoto.uploaded_at <= _public_from(),
+        _not_held(),
     )
 
     pinned = (
@@ -345,5 +414,52 @@ def withdraw_photo(
         # Row gone, object orphaned; the sweep reclaims it. The promise kept
         # is "no longer served", and that is true the moment the row is gone.
         pass
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{photo_id}/report", status_code=status.HTTP_204_NO_CONTENT)
+def report_photo(
+    poi_id: str,
+    photo_id: str,
+    payload: PoiPhotoReport,
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    """Flag a photo for the maintaining club (#579's report-this-photo path).
+
+    This is the mechanism that makes the rolling twelve safe without
+    pre-approval: the twelve go straight up, and they come down when
+    somebody reports one and a moderator agrees. The photo STAYS on the
+    card until that human look - the report sheet says so to the reporter's
+    face, because promising it comes down sooner is a promise volunteer
+    clubs cannot keep.
+
+    Latest report wins and re-surfaces the row: a photo reviewed last month
+    and reported again today is back in front of a person, because the
+    second reporter may have seen what the first look missed. Requires an
+    account, like every write - a report against somebody's photograph
+    needs a reporter to weigh it by.
+    """
+    poi_id = _checked_poi_id(poi_id)
+
+    photo = (
+        db.query(PoiPhoto)
+        .filter(
+            PoiPhoto.id == photo_id,
+            PoiPhoto.poi_id == poi_id,
+            PoiPhoto.status == PoiPhotoStatus.live,
+        )
+        .one_or_none()
+    )
+    if photo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    photo.reported_at = utc_now()
+    photo.reported_by = current_user.id
+    photo.reported_reason = payload.reason
+    photo.reviewed_at = None
+    photo.reviewed_by = None
+    db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

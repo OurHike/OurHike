@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: without it, env(safe-area-inset-*) is 0 in the
+         full-screen WebViews the Capacitor shells run (#101) and in the
+         installed iOS PWA, and the paddings written against those insets
+         (chrome.css, App.css, onboarding.css) never fire. A portrait browser
+         tab is unaffected. The one web case it does change: landscape Safari
+         on a notched phone stops auto-insetting content from the sensor
+         housing, which is why the top-of-viewport surfaces and the tab bar
+         also pad against the left/right insets. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>OurHike</title>
   </head>
   <body>

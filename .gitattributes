@@ -5,9 +5,17 @@
 # Prettier - whose `endOfLine` default is "lf" - then reports every freshly
 # checked-out file as unformatted. That makes `npm run format:check` fail
 # locally while passing in CI, which is exactly the kind of it-works-on-CI
-# split that hides real failures. Nothing in this repo is a Windows-native
-# script (no .bat/.cmd/.ps1), so LF everywhere is safe.
+# split that hides real failures.
 * text=auto eol=lf
+
+# The one Windows-native script, exempted from the LF rule above. This file
+# used to say "Nothing in this repo is a Windows-native script (no
+# .bat/.cmd/.ps1), so LF everywhere is safe" - true until the Capacitor
+# Android shell (#101) brought gradlew.bat in. cmd.exe's goto/label scanning
+# is documented-unreliable in LF-only batch files, which is why Gradle's own
+# repository pins *.bat to CRLF; no CI runner executes it, so only a Windows
+# checkout would ever have noticed.
+*.bat text eol=crlf
 
 # Images are binary - never munge their bytes.
 *.png binary
@@ -15,6 +23,11 @@
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# So is a jar (the Gradle wrapper, #101 - the only one tracked). Content
+# auto-detection happened to classify it right, but this file's own policy is
+# to declare binary types rather than rely on that.
+*.jar binary
 
 # Large geospatial artifacts are binary too (these are gitignored today, but
 # declare it so an accidental add can't corrupt one).

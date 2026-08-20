@@ -215,8 +215,13 @@ describe('the legend', () => {
     // The version this replaces looked the button up by /hide|show/, read an
     // `aria-label` that control never had, and then asserted no button was
     // named `''` - which was true before the click as well. It could not fail.
+    //
+    // Explicitly all-on (#865): DEFAULT_PREFERENCES now starts with only the
+    // curated subset shown, and this test is about the toggle mechanism, not
+    // about which categories start on - that is waypointVisibility.test.ts's
+    // and userPreferences.test.ts's job.
     const user = userEvent.setup()
-    hikerOnTrail()
+    hikerOnTrail({ waypoint_types_shown: [] })
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 

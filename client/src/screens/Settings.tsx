@@ -276,7 +276,7 @@ export function MapSettings({
           lib/waypointVisibility.ts's HIDEABLE_TYPES excludes them, so there is
           nothing here to build an affordance from. */}
       <fieldset className="settings__waypoints">
-        <legend className="settings__label">Waypoints shown</legend>
+        <legend className="settings__label">Default Waypoints shown</legend>
         {HIDEABLE_TYPES.map((type) => {
           const shown = !hiddenTypesFrom(preferences.waypoint_types_shown).has(type)
           return (

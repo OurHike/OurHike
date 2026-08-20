@@ -12,7 +12,8 @@
 // (features/POI_VISIBILITY.md Option 3): a list of what to show means a category
 // a later release adds is visible by default, where a list of what to hide would
 // make it invisible to everyone who had ever opened this screen. `[]` means ALL,
-// which is what it has always meant and what a fresh install gets.
+// which is what it has always meant - though a fresh install no longer starts
+// there. See DEFAULT_SHOWN_TYPES below for what it opens to instead (#865).
 //
 // WHY THIS IS WORTH HAVING RATHER THAN TIDY. Hiding a category hands its
 // collision budget to the ones left. With #528's counts on screen that is
@@ -43,10 +44,31 @@ export const HIDEABLE_TYPES: readonly string[] = POI_TYPES.filter(
   (type) => !NEVER_HIDEABLE.has(type),
 )
 
+/**
+ * What a fresh install - or an account that has never touched this
+ * preference - opens the map to. The other four (resupply, crossing,
+ * viewpoint, parking) start hidden, reachable the same way any hidden
+ * category is: Settings or the legend.
+ *
+ * Maintainer decision (#865), resolving the "all-on vs. a curated subset"
+ * open question UX_CUSTOMIZATION.md and POI_VISIBILITY.md both carried:
+ * shelter, water and campsite are where a thru-hiker's day plan is anchored
+ * and privy is the fourth every one of those stops has reason to also show.
+ * The four left off are also this module's own evidence for what crowds a
+ * map most - viewpoint alone is 1,223 of the corridor's waypoints, last in
+ * POI_PRIORITY for exactly that reason.
+ */
+export const DEFAULT_SHOWN_TYPES: readonly string[] = [
+  'shelter',
+  'water',
+  'campsite',
+  'privy',
+]
+
 /** What the map and the legend consume: the categories NOT to draw. */
 export function hiddenTypesFrom(shown: readonly string[]): Set<string> {
-  // The all-on case, and the one a fresh install is in. Not "hide everything
-  // except an empty list" - that would open the app with a blank map.
+  // The all-on case. Not "hide everything except an empty list" - that would
+  // open the app with a blank map.
   if (shown.length === 0) return new Set()
 
   const allowed = new Set(shown)

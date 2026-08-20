@@ -375,11 +375,28 @@ describe('MapSettings', () => {
     })
 
     it('shows every category as on when the preference is empty', () => {
-      // `[]` means all, which is what a fresh install has.
+      // `[]` means all - though a fresh install no longer starts there, see
+      // "defaults to shelter, campsite, water and privy" below (#865).
       renderMap({ preferences: { ...DEFAULT_PREFERENCES, waypoint_types_shown: [] } })
 
       const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
       for (const box of group.getAllByRole('checkbox')) expect(box).toBeChecked()
+    })
+
+    it('defaults to shelter, campsite, water and privy - not every category (#865)', () => {
+      renderMap()
+
+      const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+      for (const shown of ['shelter', 'campsite', 'water', 'privy']) {
+        expect(
+          group.getByRole('checkbox', { name: new RegExp(shown, 'i') }),
+        ).toBeChecked()
+      }
+      for (const hidden of ['resupply', 'crossing', 'viewpoint', 'parking']) {
+        expect(
+          group.getByRole('checkbox', { name: new RegExp(hidden, 'i') }),
+        ).not.toBeChecked()
+      }
     })
 
     it('writes the preference when a category is turned off', async () => {

@@ -12,6 +12,7 @@ somewhere reachable from here... before autogenerate will see it."
 from app.models.app_failure import AppFailure, Harm
 from app.models.closure import Closure, ClosureStatus, ModerationStatus, ReasonType
 from app.models.club import Club
+from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
@@ -34,6 +35,9 @@ __all__ = [
     "ModerationStatus",
     "ReasonType",
     "Club",
+    "FieldNote",
+    "NoteFlag",
+    "Observation",
     "Hike",
     "MaintainerAssignment",
     "PoiPhoto",

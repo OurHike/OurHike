@@ -1,0 +1,150 @@
+"""The `field_notes` table - dated observations about a place, and the
+`note_flags` table that keeps them honest.
+
+See ../../../features/FIELD_NOTES.md for the whole design. The short
+version: upstream (ATC's GIS) owns what exists and where; the field owns
+what a place is like today; and the two LAYER rather than merge, so nothing
+here ever edits an upstream fact. A note is what someone saw, where, and
+when they saw it - not a rating, not a thread, not a reply.
+
+A note is visible the moment it lands, which is the opposite default from
+`reports` and is argued rather than assumed (FIELD_NOTES.md §5): a note
+that waits for review is not fresh, and freshness is the entire feature. A
+condition note is low-stakes and self-correcting - the next hiker's note
+supersedes it in hours - where a closure is not, which is why closures keep
+their queue. Moderation here is flag-and-hide: `hidden_at` set by a
+moderator acting on a `NoteFlag`, the row hidden and never deleted, so a
+wrong removal is recoverable and a pattern of abuse stays legible.
+
+`observed_at` is not `posted_at`, and the split is the point. Hikers write
+at camp or in town days later; a note stamped with its upload time is a lie
+the system tells by accident, and it is the exact lie this project cares
+most about (value #4's own example is "reported 3 days ago vs. confirmed
+today"). Same pair as Report's `timestamp`/`received_at`, renamed to the
+design's own words.
+
+`poi_id` follows report.py's precedent exactly: a plain nullable string,
+never a ForeignKey, because it is a soft reference into the pipeline's
+static POI export - a dataset that lives outside this database entirely.
+`lat`/`lon`/`mile` are the fallback anchor, and what re-anchors a note
+whose POI id an upstream refresh has orphaned (FIELD_NOTES.md §7).
+
+See app/models/profile.py for the naive-UTC convention every datetime
+column here follows.
+"""
+
+import enum
+import uuid
+
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, Text
+
+from app.core.time import utc_now
+from app.db.base import Base
+from app.models.report import ReporterType
+
+
+class Observation(str, enum.Enum):
+    """The one-tap tags, all POI types' values in one enum.
+
+    FIELD_NOTES.md scopes them by poi_type - water gets flowing/trickling/
+    dry, shelters and campsites fine/damaged/full, resupply open/limited/
+    closed, and `not_found` is the dispute value every type shares. They
+    live in ONE enum because this backend cannot police the pairing: a POI's
+    type is a fact of the published artifact, not of any table here, so a
+    per-type check would need data the server does not hold. The client's
+    picker only offers the right values; a hand-built request that files
+    "dry" on a shelter produces a nonsense note the next hiker's note
+    supersedes, which is the same self-correction the whole surface leans on.
+
+    `not_found` is deliberately accepted at the wire even though tonight's
+    client never sends it: it is FIELD_NOTES.md §4's dispute value, one
+    observation among the others rather than a second model, and refusing it
+    here would force a schema change the moment the dispute rendering lands.
+    """
+
+    # Water
+    flowing = "flowing"
+    trickling = "trickling"
+    dry = "dry"
+    # Shelters and campsites
+    fine = "fine"
+    damaged = "damaged"
+    full = "full"
+    # Resupply
+    open = "open"
+    limited = "limited"
+    closed = "closed"
+    # Any type - the dispute (FIELD_NOTES.md §4)
+    not_found = "not_found"
+
+
+class FieldNote(Base):
+    __tablename__ = "field_notes"
+
+    # Client-minted UUID string, the same shape and reason as Report.id: the
+    # outbox names the id before the row exists, which is what makes the
+    # idempotent retry in routers/field_notes.py possible at all.
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    reporter_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
+
+    # Soft reference into the published POI export - see module docstring.
+    # Indexed because the card's read and the bake's per-POI roll-up both
+    # filter on it.
+    poi_id = Column(String, nullable=True, index=True)
+
+    # The fallback anchor. The client fills these from the POI's own
+    # coordinates when the note is written from a card, or from the GPS fix
+    # when it is not - so an orphaned note is re-anchorable rather than lost.
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
+    mile = Column(Float, nullable=True)
+
+    # native_enum=False, matching every enum in this schema - see
+    # profile.py for why a native enum is the harder one to change later.
+    observation = Column(Enum(Observation, native_enum=False, length=20), nullable=True)
+
+    note = Column(Text, nullable=True)
+
+    # When the hiker was there - their claim, bounded at the future end by
+    # the schema, unbounded into the past because being off-grid for two
+    # weeks is ordinary on a thru-hike.
+    observed_at = Column(DateTime, nullable=False, default=utc_now)
+
+    # When it reached this server - always server truth, never the claim.
+    posted_at = Column(DateTime, nullable=False, default=utc_now)
+
+    # The only public attribution (FIELD_NOTES.md §6): it informs without
+    # identifying. reporter_id above is never serialised to anyone but the
+    # author and moderators, and never baked.
+    reporter_type = Column(Enum(ReporterType, native_enum=False, length=20), nullable=False)
+
+    # Flag-and-hide (FIELD_NOTES.md §5). Set means hidden from every public
+    # read and from the bake; the row is kept, never deleted, so a wrong
+    # removal is recoverable. Indexed because every public read filters on
+    # IS NULL.
+    hidden_at = Column(DateTime, nullable=True, index=True)
+    hidden_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+
+class NoteFlag(Base):
+    """One reader saying a note needs a moderator's eyes.
+
+    Flagging is the whole moderation entry point for notes - moderators see
+    only what is flagged (FIELD_NOTES.md §5), so this table is the queue's
+    source rather than an audit sidecar. A flag never hides anything by
+    itself; a person does.
+    """
+
+    __tablename__ = "note_flags"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    note_id = Column(String, ForeignKey("field_notes.id"), nullable=False, index=True)
+    flagged_by = Column(String, ForeignKey("profiles.id"), nullable=False)
+
+    # Free text, capped at the wire (schemas/common.NoteText). Optional: "this
+    # is wrong" with no essay is a complete flag.
+    reason = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=utc_now)

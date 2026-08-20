@@ -245,6 +245,12 @@ export default defineConfig({
         // demTiles.ts, which are tested; jsdom cannot run a worker at all,
         // so covering the three lines of wiring would mean pretending to.
         'src/map/demWorker.ts',
+        // The pin rasteriser's worker entry, on the same reasoning: one line
+        // of glue over poiIcons.ts, which is tested to the pixel. Which side
+        // of the boundary a build happens on IS tested - see
+        // src/map/poiIconImages.test.ts, which drives every way the worker
+        // can fail.
+        'src/map/poiIconWorker.ts',
       ],
     },
   },

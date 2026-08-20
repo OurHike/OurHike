@@ -50,6 +50,28 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# WHICH INTERPRETER RUNS THE PYTHON SUITES (#859). This script used to shell
+# out to bare `python` and `python3` ten times with no selection at all, while
+# .claude/hooks/session-start.sh went to real trouble to install everything
+# under the interpreter CI uses - so on a web session the hook provisioned
+# 3.13 and this script ran Debian's 3.11, and the one command CLAUDE.md names
+# died on its first step with "No module named ruff". Worse than a failure:
+# that message reads as a missing package, and `pip install ruff` into 3.11
+# cannot satisfy the pins, so the actionable-looking diagnosis is the wrong
+# one.
+#
+# The selection is shared with the hook (scripts/pick_python.sh - one home,
+# so the install side and the run side cannot decide differently again), and
+# probed rather than inferred: bare `python` first, because a developer's
+# activated venv is exactly the interpreter they installed into and must win.
+# Two answers, because the needs differ - the suites need ruff and pytest,
+# while reading the workflow scope lists needs only yaml (which the web
+# image's 3.11 does have, as a Debian dist-package). One combined probe would
+# fail the scope reading for want of tools it never uses.
+. scripts/pick_python.sh
+PY="$(python_with ruff pytest || true)"
+SCOPE_PY="$(python_with yaml || echo python3)"
+
 run_all=false
 list_only=false
 with_coverage=false
@@ -141,7 +163,7 @@ resolve_base() {
 # since #660, shared with scripts/threads.sh so the two cannot drift from
 # each other any more than from CI.
 scope_for_suite_workflows() {
-  python3 scripts/suite_scopes.py "$1" 2>/dev/null || true
+  "${SCOPE_PY}" scripts/suite_scopes.py "$1" 2>/dev/null || true
 }
 
 # The three test workflows carry a machine-readable scope; the settings
@@ -273,6 +295,20 @@ step() {
   echo "   ok ($((SECONDS - started))s)"
 }
 
+# Said BEFORE the first step rather than left to `python -m ruff` to discover,
+# and said with the real reason (#859): "No module named ruff" points at a
+# package when the problem is an interpreter, and the fix it suggests makes
+# things worse. Only the Python suites need this - a hypothetical client-only
+# selection runs without any Python at all.
+if [ -z "$PY" ] && { selected_has pipeline || selected_has backend || selected_has settings; }; then
+  echo "!! no interpreter here can run the suites: \`python\` is $(python --version 2>&1)," >&2
+  echo "   and neither it, \`python3\`, nor the newest python3.N on this machine can" >&2
+  echo "   import ruff and pytest. The suites are installed under some interpreter -" >&2
+  echo "   run .claude/hooks/session-start.sh (web sessions), or install the dev" >&2
+  echo "   requirements into the one you mean to use, or put it first on PATH." >&2
+  exit 1
+fi
+
 # Suites run one at a time, each using every core internally rather than four
 # suites fighting over them. Measured on a four-core machine: run concurrently,
 # the three big suites took 100s, 104s and 209s; run one after another with the
@@ -309,16 +345,16 @@ fi
 # and prettier ahead of three minutes of tests turns that round trip into a
 # line of output.
 if selected_has pipeline; then
-  step "pipeline ruff check"   python -m ruff check pipeline
-  step "pipeline ruff format"  python -m ruff format --check pipeline
+  step "pipeline ruff check"   "$PY" -m ruff check pipeline
+  step "pipeline ruff format"  "$PY" -m ruff format --check pipeline
 fi
 if selected_has backend; then
-  step "backend ruff check"    python -m ruff check backend
-  step "backend ruff format"   python -m ruff format --check backend
+  step "backend ruff check"    "$PY" -m ruff check backend
+  step "backend ruff format"   "$PY" -m ruff format --check backend
 fi
 if selected_has settings; then
-  step "settings ruff check"   python -m ruff check .github/tests
-  step "settings ruff format"  python -m ruff format --check .github/tests
+  step "settings ruff check"   "$PY" -m ruff check .github/tests
+  step "settings ruff format"  "$PY" -m ruff format --check .github/tests
 fi
 if selected_has client; then
   step "client lint"           npm --prefix client run lint
@@ -328,13 +364,13 @@ fi
 
 # Then the suites, cheapest first, so the common failure arrives soonest.
 if selected_has settings; then
-  step "settings tests" python -m pytest .github/tests -q "${PYTEST_PARALLEL[@]}"
+  step "settings tests" "$PY" -m pytest .github/tests -q "${PYTEST_PARALLEL[@]}"
 fi
 if selected_has pipeline; then
-  step "pipeline tests" env -C pipeline python -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
+  step "pipeline tests" env -C pipeline "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
 fi
 if selected_has backend; then
-  step "backend tests"  env -C backend python -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
+  step "backend tests"  env -C backend "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
 fi
 if selected_has client; then
   # The build is part of the client's checks rather than an extra: npm run

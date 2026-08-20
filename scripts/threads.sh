@@ -78,9 +78,18 @@ bold=$'\033[1m'; dim=$'\033[2m'; red=$'\033[31m'; green=$'\033[32m'; off=$'\033[
 # scripts/suite_scopes.py - the same one home scripts/test.sh reads. If the
 # YAML cannot be read the ledger says so per-branch instead of guessing -
 # an unreadable scope is not evidence a suite is unreachable.
-scope_client=$(python3 scripts/suite_scopes.py client 2>/dev/null || true)
-scope_pipeline=$(python3 scripts/suite_scopes.py pipeline 2>/dev/null || true)
-scope_backend=$(python3 scripts/suite_scopes.py backend 2>/dev/null || true)
+#
+# Through an interpreter probed for yaml rather than bare `python3` (#859,
+# the same wrong-interpreter trap test.sh fell into): where `python3` cannot
+# import yaml, the scopes were unreadable and every branch here shrugged,
+# while the interpreter the session-start hook provisioned sat one probe
+# away. The `|| echo python3` keeps the per-branch "scope unreadable" path
+# as the honest answer when no interpreter anywhere has yaml.
+. scripts/pick_python.sh
+scope_py="$(python_with yaml || echo python3)"
+scope_client=$("$scope_py" scripts/suite_scopes.py client 2>/dev/null || true)
+scope_pipeline=$("$scope_py" scripts/suite_scopes.py pipeline 2>/dev/null || true)
+scope_backend=$("$scope_py" scripts/suite_scopes.py backend 2>/dev/null || true)
 
 # Kept in the order CONTRIBUTING.md lists the build commands, so the output
 # reads as a to-run list rather than a set. The settings suite runs on every

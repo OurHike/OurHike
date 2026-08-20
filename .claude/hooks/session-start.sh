@@ -37,43 +37,14 @@ cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 # That is the second time this hook has silently provisioned nothing; see
 # pip_install_pinned's comment for the first.
 #
-# Chosen rather than hardcoded, because both obvious constants are wrong within
-# one image update: naming `python3.13` breaks when the image ships 3.14 or
-# drops 3.13, and naming CI's version breaks whenever the image does not have
-# it. So: prefer the version CI actually uses, read out of the workflow rather
-# than copied (one home for it), and otherwise take the newest interpreter
-# present. Newest, not `python3` - the whole failure was that `python3` is the
-# oldest thing installed.
-#
-# There is no floor test here on purpose. If the chosen interpreter cannot
-# satisfy the pins, pip says so by name and the gate at the end of this script
-# fails loudly - which is better than a floor that has to be kept in step with
-# whatever the lockfiles currently need.
-ci_python_version() {
-  sed -n 's/^[[:space:]]*python-version:[[:space:]]*"\([0-9][0-9.]*\)".*/\1/p' \
-    .github/workflows/pipeline-tests.yml | head -1
-}
-
-available_pythons() {
-  # Real interpreters only - `ls python3.*` also matches python3.11-config.
-  ls -1 /usr/local/bin/python3.* /usr/bin/python3.* 2>/dev/null \
-    | grep -E '/python3\.[0-9]+$' \
-    | xargs -r -n1 basename \
-    | sort -u -t. -k2 -n -r
-}
-
-pick_python() {
-  local ci
-  ci="$(ci_python_version)"
-  local candidate
-  for candidate in ${ci:+"python${ci}"} $(available_pythons); do
-    if command -v "${candidate}" >/dev/null 2>&1; then
-      echo "${candidate}"
-      return 0
-    fi
-  done
-  return 1
-}
+# The selection itself lives in scripts/pick_python.sh - one home, shared
+# with scripts/test.sh and scripts/threads.sh, because the install side and
+# the run side deciding differently is exactly #859: this hook installed into
+# 3.13 while test.sh shelled out to bare `python`, Debian's 3.11, and died on
+# "No module named ruff". The reasoning for how pick_python chooses (CI's
+# version read from the workflow, else the newest interpreter present) moved
+# there with the code.
+. scripts/pick_python.sh
 
 PY="$(pick_python)" || {
   echo "[session-start] no python3.N interpreter found on PATH" >&2

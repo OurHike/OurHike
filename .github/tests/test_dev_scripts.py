@@ -19,7 +19,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = [REPO_ROOT / "scripts" / "test.sh", REPO_ROOT / "scripts" / "threads.sh"]
+SCRIPTS = [
+    REPO_ROOT / "scripts" / "test.sh",
+    REPO_ROOT / "scripts" / "threads.sh",
+    REPO_ROOT / "scripts" / "pick_python.sh",
+]
 SUITE_SCOPES = REPO_ROOT / "scripts" / "suite_scopes.py"
 
 
@@ -55,6 +59,26 @@ def test_the_client_scope_carries_the_entries_whose_absence_was_the_drift():
     assert "site/" in scope
     assert "pipeline/reference/" in scope
     assert ".github/ISSUE_TEMPLATE/" in scope
+
+
+def test_no_script_invokes_a_bare_python_or_python3():
+    """The #859 regression, pinned. test.sh shelled out to bare `python` ten
+    times while the session-start hook installed everything under the
+    interpreter CI uses, so the one command CLAUDE.md names died on its first
+    step with "No module named ruff" - a message pointing at a package when
+    the problem was the interpreter. Both scripts now select through
+    scripts/pick_python.sh; a bare `python`/`python3` command word is the
+    drift this catches. The `|| echo python3` scope fallbacks and prose in
+    comments or error messages are not command words and do not match."""
+    for script in SCRIPTS[:2]:  # pick_python.sh is the selector itself
+        offenders = [
+            line.strip()
+            for line in script.read_text(encoding="utf-8").splitlines()
+            if not line.strip().startswith("#") and {"python", "python3"} & set(line.split())
+        ]
+        assert offenders == [], (
+            f"{script.name} must run Python through the shared selection, not bare `python`/`python3`: {offenders}"
+        )
 
 
 def test_an_unknown_suite_is_an_error_not_an_empty_answer():

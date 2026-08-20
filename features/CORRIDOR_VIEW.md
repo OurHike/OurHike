@@ -82,6 +82,14 @@ turned up that **`centerline` already carries the club on every one of its 3,025
 | attribution sits on | the trail line → **exact mile ranges** | polygons → derived by point-in-polygon |
 | already fetched | yes, and already exported | fetched, read by nothing |
 
+**Both dates in that table are now published rather than measured by hand.** They were read
+off the FeatureServer once, for this table, and lived only here and in a docstring — so the
+club sheet could say *"Who maintains it: the ATC's trail centerline"* and could not finish the
+sentence. `export_club_sections.py` now reads each layer's `dataLastEditDate` out of the raw
+manifest `fetch_all.py` already writes, and publishes it under `source_edited`, keyed by layer.
+A layer whose lookup failed upstream is absent rather than null, and a release that carries no
+dates at all — every one before this — still renders the undated sentence rather than a gap.
+
 So `export_club_sections.py` uses the centerline for **which stretch belongs to whom**, and the
 polygon layer for **how a club's name is spelled** and its region. Fresh source decides the
 fact; stale source decides only the wording. That split is what keeps ATC's two misspellings

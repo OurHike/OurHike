@@ -6,6 +6,7 @@ import {
   clubRunAtMile,
   clubTimeline,
   parseClubSections,
+  storedClubSections,
   unattributedTotal,
   type ClubSections,
 } from './clubSections'
@@ -207,5 +208,95 @@ describe('unattributedTotal', () => {
 
   it('is zero rather than absent when every mile is attributed', () => {
     expect(unattributedTotal(EMPTY_CLUB_SECTIONS)).toEqual({ miles: 0, runs: 0 })
+  })
+})
+
+/**
+ * The source edit dates (#852).
+ *
+ * They arrive in their own block rather than inside `sources`, because a phone
+ * can hold app code older than the artifact it downloaded and that code reads
+ * `sources.attribution` as a string.
+ */
+describe('the source edit dates', () => {
+  it('reads the dates a release carries', () => {
+    const parsed = parseClubSections({
+      ...ARTIFACT,
+      source_edited: { centerline: '2026-08-04', trail_club_sections: '2024-08-15' },
+    })
+    expect(parsed.sourceEdited).toEqual({
+      centerline: '2026-08-04',
+      trail_club_sections: '2024-08-15',
+    })
+  })
+
+  it('is empty for a release published before the dates existed', () => {
+    // Every artifact before #852, and every phone still holding one.
+    expect(parseClubSections(ARTIFACT).sourceEdited).toEqual({})
+  })
+
+  it('keeps the club names when the dates are missing entirely', () => {
+    // The compatibility direction that matters most: a new client reading an
+    // old artifact must lose the DATE, not the corridor.
+    const parsed = parseClubSections(ARTIFACT)
+    expect(parsed.clubs.length).toBeGreaterThan(0)
+    expect(parsed.sources.attribution).toBe('centerline')
+  })
+
+  it('drops anything that is not an ISO day rather than passing it through', () => {
+    const parsed = parseClubSections({
+      ...ARTIFACT,
+      source_edited: {
+        centerline: '4 Aug 2026',
+        trail_club_sections: 20240815,
+        half_mile_points_from_springer: null,
+      },
+    })
+    expect(parsed.sourceEdited).toEqual({})
+  })
+
+  it('survives the block being an array or a string', () => {
+    for (const junk of [[], 'centerline', 7, null]) {
+      expect(
+        parseClubSections({ ...ARTIFACT, source_edited: junk }).sourceEdited,
+      ).toEqual({})
+    }
+  })
+})
+
+describe('storedClubSections and the app update that outruns the download', () => {
+  it('fills in dates for a value stored before this version existed', () => {
+    // The hazard this function exists for, one version on. What IndexedDB
+    // holds may have been written by the app BEFORE #852, so it carries no
+    // `sourceEdited` at all - and a cast would hand back undefined, so the
+    // first lookup on it throws, on a hiker whose only act was updating the
+    // app.
+    const storedByTheOldVersion = {
+      clubs: [{ acronym: 'GATC', name: 'GATC', region: null, runs: [], miles: 0 }],
+      unattributed: [],
+      sources: { attribution: 'centerline', names: null, miles: null },
+    }
+    const restored = storedClubSections(storedByTheOldVersion)
+    expect(restored.sourceEdited).toEqual({})
+    expect(restored.clubs).toHaveLength(1)
+    expect(restored.sources.attribution).toBe('centerline')
+  })
+
+  it('round-trips the dates a current version stored', () => {
+    const parsed = parseClubSections({
+      ...ARTIFACT,
+      source_edited: { centerline: '2026-08-04' },
+    })
+    expect(storedClubSections(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed)
+  })
+
+  it('re-checks a stored date rather than trusting it', () => {
+    const tampered = {
+      clubs: [],
+      unattributed: [],
+      sources: { attribution: null, names: null, miles: null },
+      sourceEdited: { centerline: 'whenever' },
+    }
+    expect(storedClubSections(tampered).sourceEdited).toEqual({})
   })
 })

@@ -54,8 +54,8 @@ import requests
 from pmtiles.reader import Reader, traverse
 
 from lib import data_env
+from lib.content_types import COMPRESSIBLE_TYPES
 from lib.freshness_state import utc_today
-from publish import COMPRESSIBLE_TYPES
 
 MANIFEST_KEY = "latest.json"
 

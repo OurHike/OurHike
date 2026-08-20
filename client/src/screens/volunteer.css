@@ -79,3 +79,49 @@
   color: var(--fg-3);
   white-space: nowrap;
 }
+
+.volunteer__age {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.volunteer__workdays {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.volunteer__workday {
+  padding: var(--space-3, 12px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+  margin-bottom: var(--space-2, 8px);
+}
+
+.volunteer__workday-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.volunteer__workday-meta {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.volunteer__workday-description {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.volunteer__workday-contact {
+  display: inline-block;
+  margin-top: var(--space-2, 8px);
+  font-size: 13px;
+  color: var(--accent, #1c6ea4);
+}

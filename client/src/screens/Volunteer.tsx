@@ -18,6 +18,14 @@
 // the only push this app sends.
 
 import type { UnitSystem } from '../lib/units'
+import {
+  opportunitiesUsable,
+  sortWorkProjects,
+  upcomingWorkProjects,
+  workProjectDates,
+  type WorkProjectSummary,
+} from '../lib/workProjects'
+import { syncAgeLabel } from '../lib/syncAge'
 import './volunteer.css'
 
 export interface PassedPlace {
@@ -41,6 +49,18 @@ export interface VolunteerProps {
    *  the one-tap ask lives. The list is a shortcut to it, not a second form. */
   onOpenPlace: (id: string) => void
   units: UnitSystem
+  /**
+   * The published workdays (#760), or null when no artifact has been read -
+   * which is a different claim from an empty list, and rendered differently:
+   * "could not check" is never allowed to look like "no club has asked".
+   */
+  opportunities: readonly WorkProjectSummary[] | null
+  /** The bake's clock, for the age line and the 48-hour ceiling. */
+  opportunitiesAsOf: Date | null
+  /** The hiker's own trail mile, for nearest-first ordering; null sorts by
+   *  date instead - with no fix, the calendar is the only honest distance. */
+  gpsMile: number | null
+  now: Date
   /** Below the contribution section: the opportunities list (#760), hours
    *  (#761) - the tab's later residents, composed by the shell so this
    *  screen does not accumulate their plumbing. */
@@ -64,14 +84,29 @@ export function Volunteer({
   passedToday,
   onOpenPlace,
   units,
+  opportunities,
+  opportunitiesAsOf,
+  gpsMile,
+  now,
   children,
 }: VolunteerProps) {
+  const upcoming =
+    opportunities === null
+      ? []
+      : sortWorkProjects(upcomingWorkProjects(opportunities, now), gpsMile)
+  // Out of date replaces the LIST, never hedges it row by row: a hedged
+  // invitation still reads as an invitation, and sending someone to a
+  // trailhead for a workday cancelled on Thursday is this feature's own
+  // failure mode (#760, value #4).
+  const opportunitiesStale =
+    opportunitiesAsOf !== null && !opportunitiesUsable(opportunitiesAsOf, now)
+
   return (
     <div className="volunteer" data-testid="volunteer-screen">
       <h1 className="volunteer__title">Volunteer</h1>
       <p className="volunteer__intro">
-        The people who cut this tread are volunteers. Everything here is a way
-        to hand something back — starting with the smallest one there is.
+        The people who cut this tread are volunteers. Everything here is a way to hand
+        something back — starting with the smallest one there is.
       </p>
 
       <section className="volunteer__section" aria-labelledby="volunteer-contribute">
@@ -90,14 +125,14 @@ export function Volunteer({
           </span>
         </label>
         <p className="volunteer__note">
-          A one-tap answer on a waypoint’s card — flowing or dry, fine or full —
-          is the single most useful thing a hiker can hand the next one. With
-          this on, the card offers a longer note too, and today’s water and
-          shelters gather below so you can answer from camp.
+          A one-tap answer on a waypoint’s card — flowing or dry, fine or full — is the
+          single most useful thing a hiker can hand the next one. With this on, the card
+          offers a longer note too, and today’s water and shelters gather below so you can
+          answer from camp.
         </p>
         <p className="volunteer__note">
-          Never a notification, and never a score. OurHike only asks when
-          you’re already looking.
+          Never a notification, and never a score. OurHike only asks when you’re already
+          looking.
         </p>
       </section>
 
@@ -129,6 +164,79 @@ export function Volunteer({
           </ul>
         </section>
       )}
+
+      <section className="volunteer__section" aria-labelledby="volunteer-workdays">
+        <h2 id="volunteer-workdays" className="volunteer__heading">
+          Workdays in the next two weeks
+        </h2>
+
+        {opportunities === null ? (
+          // Null is "we could not check", and it must not read as "no club
+          // has asked" - the two draw the same empty list and mean opposite
+          // things about the trail's people (#249's rule, applied here).
+          <p className="volunteer__note">
+            The workday list needs signal to load, and hasn’t yet.
+          </p>
+        ) : opportunitiesStale ? (
+          <p className="volunteer__note" role="status">
+            {`This list is out of date — last updated ${syncAgeLabel(opportunitiesAsOf, now)}. A workday can be cancelled after a list this old was written, so check with the club before traveling to one.`}
+          </p>
+        ) : upcoming.length === 0 ? (
+          <p className="volunteer__note">
+            No workdays are posted here yet. Clubs add them as they schedule crews.
+          </p>
+        ) : (
+          <>
+            {opportunitiesAsOf !== null && (
+              <p className="volunteer__age">
+                {`Updated ${syncAgeLabel(opportunitiesAsOf, now)}.`}
+              </p>
+            )}
+            <ul className="volunteer__workdays">
+              {upcoming.map((project) => (
+                <li key={project.id} className="volunteer__workday">
+                  <p className="volunteer__workday-title">{project.title}</p>
+                  <p className="volunteer__workday-meta">
+                    {project.club_name}
+                    <span aria-hidden="true"> · </span>
+                    {workProjectDates(project)}
+                    {project.mile !== null && gpsMile !== null && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        {`${Math.abs(project.mile - gpsMile).toLocaleString('en-US', {
+                          maximumFractionDigits: 1,
+                        })} trail mi away`}
+                      </>
+                    )}
+                    {project.capacity !== null && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        {`room for ${project.capacity}`}
+                      </>
+                    )}
+                  </p>
+                  {project.description !== null && (
+                    <p className="volunteer__workday-description">
+                      {project.description}
+                    </p>
+                  )}
+                  {/* An introduction, not an enrolment (VOLUNTEERING.md):
+                      the link is the club's own channel, and the app never
+                      renders a roster claim of its own invention. */}
+                  {project.signup_contact !== null && (
+                    <a
+                      className="volunteer__workday-contact"
+                      href={project.signup_contact}
+                    >
+                      Ask the crew about joining
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
 
       {children}
     </div>

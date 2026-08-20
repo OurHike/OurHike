@@ -31,10 +31,12 @@ import {
   fetchPublishedDrought,
   fetchPublishedFieldNotes,
   fetchPublishedReports,
+  fetchPublishedWorkProjects,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
 import type { NoteSummary } from './fieldNotes'
+import type { WorkProjectSummary } from './workProjects'
 
 /**
  * How often the published baselines are re-read while the app is open.
@@ -96,6 +98,15 @@ export interface Conditions {
   /** The Tuesday-to-Monday week those bands describe, or null if none
    *  arrived. NOT the bake's clock - see publishedConditions.ts. */
   droughtWeek: { start: Date; end: Date } | null
+  /**
+   * The volunteer workdays (#760), and the bake's own clock beside them -
+   * the first data in this app that EXPIRES, so the age is not decoration:
+   * lib/workProjects.ts turns it into "stop calling these opportunities"
+   * past 48 hours. Null until an artifact has been read; like the ATC
+   * notices there is no live tier for this to be a baseline OF.
+   */
+  workProjects: readonly WorkProjectSummary[] | null
+  workProjectsGeneratedAt: Date | null
   /** When something last actually reached the server. Null until it has. */
   lastSyncedAt: Date | null
   /** Stamp that clock. Exposed because the outbox flush is the other thing
@@ -120,6 +131,12 @@ export function useConditions(online: boolean): Conditions {
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
+  const [workProjects, setWorkProjects] = useState<readonly WorkProjectSummary[] | null>(
+    null,
+  )
+  const [workProjectsGeneratedAt, setWorkProjectsGeneratedAt] = useState<Date | null>(
+    null,
+  )
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -223,6 +240,15 @@ export function useConditions(online: boolean): Conditions {
       setAtcReviewedAt(published.reviewedAt ?? null)
     })
 
+    // The volunteer workdays (#760). Reviewed-file data like the ATC
+    // notices, so a plain set - and the generated_at travels because the
+    // 48-hour opportunity ceiling is judged against it.
+    void fetchPublishedWorkProjects().then((published) => {
+      if (cancelled || published === null) return
+      setWorkProjects(published.items)
+      setWorkProjectsGeneratedAt(published.generatedAt)
+    })
+
     // The drought bands (#720). No `withBaseline` and no race, like the ATC
     // notices: there is no live endpoint behind this, so the published
     // artifact is the only tier there is.
@@ -309,6 +335,8 @@ export function useConditions(online: boolean): Conditions {
     atcReviewedAt,
     drought,
     droughtWeek,
+    workProjects,
+    workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
   }

@@ -16,6 +16,8 @@ const PASSED: PassedPlace[] = [
   { id: 's1', name: 'Peck’s Corner Shelter', type: 'shelter', mile: 217.9 },
 ]
 
+const NOW = new Date('2026-08-20T12:00:00Z')
+
 function renderTab(overrides: Partial<Parameters<typeof Volunteer>[0]> = {}) {
   const props = {
     contributeConditions: false,
@@ -23,6 +25,10 @@ function renderTab(overrides: Partial<Parameters<typeof Volunteer>[0]> = {}) {
     passedToday: PASSED,
     onOpenPlace: vi.fn(),
     units: 'imperial' as const,
+    opportunities: [] as const,
+    opportunitiesAsOf: NOW,
+    gpsMile: null,
+    now: NOW,
     ...overrides,
   }
   render(<Volunteer {...props} />)
@@ -70,10 +76,11 @@ describe('Volunteer', () => {
     expect(screen.queryByText('Places you passed today')).toBeNull()
   })
 
-  it('never counts anything, anywhere on the screen', () => {
+  it('never counts contributions, anywhere on the screen', () => {
     // "It never counts, and it never mentions what was skipped"
     // (DATA_NUDGES.md) - the trap this list was named with. No "2 places",
-    // no "0 answered", no progress of any kind.
+    // no "0 answered", no progress of any kind. (A workday's own capacity
+    // is a club's stated fact about their crew, not a count of the hiker.)
     const { container } = (() => {
       const props = {
         contributeConditions: true,
@@ -81,10 +88,67 @@ describe('Volunteer', () => {
         passedToday: PASSED,
         onOpenPlace: vi.fn(),
         units: 'imperial' as const,
+        opportunities: [] as const,
+        opportunitiesAsOf: NOW,
+        gpsMile: null,
+        now: NOW,
       }
       return render(<Volunteer {...props} />)
     })()
 
-    expect(container.textContent).not.toMatch(/\d+ (places|of \d+|answered|skipped|left)/i)
+    expect(container.textContent).not.toMatch(
+      /\d+ (places|of \d+|answered|skipped|left)/i,
+    )
+  })
+
+  const WORKDAY = {
+    id: 'sample:one',
+    club_name: 'NY-NJ Trail Conference',
+    title: 'Bear Mountain steps',
+    description: 'Gloves provided.',
+    lat: 41.31,
+    lon: -73.99,
+    mile: 1407.6,
+    starts_on: '2026-08-24',
+    ends_on: '2026-08-24',
+    status: 'upcoming' as const,
+    capacity: 12,
+    signup_mode: 'contact' as const,
+    signup_contact: 'mailto:volunteer@example.org',
+  }
+
+  it('lists an upcoming workday with the club’s own signup channel', () => {
+    renderTab({ opportunities: [WORKDAY], gpsMile: 1400.0 })
+
+    expect(screen.getByText('Bear Mountain steps')).toBeTruthy()
+    expect(screen.getByText(/NY-NJ Trail Conference/)).toBeTruthy()
+    expect(screen.getByText(/7\.6 trail mi away/)).toBeTruthy()
+    // An introduction, not an enrolment: the link is the club's channel, and
+    // no green tick of the app's invention appears anywhere.
+    const link = screen.getByRole('link', { name: /ask the crew/i })
+    expect(link.getAttribute('href')).toBe('mailto:volunteer@example.org')
+  })
+
+  it('replaces the whole list once the artifact is older than the ceiling', () => {
+    // A hedged invitation still reads as an invitation (#760): past 48 hours
+    // the rows go away entirely and the age is said out loud.
+    const twoAndAHalfDaysAgo = new Date(NOW.getTime() - 60 * 60 * 60 * 1000)
+    renderTab({ opportunities: [WORKDAY], opportunitiesAsOf: twoAndAHalfDaysAgo })
+
+    expect(screen.queryByText('Bear Mountain steps')).toBeNull()
+    expect(screen.getByText(/out of date/i)).toBeTruthy()
+  })
+
+  it('says it could not check, which is not the same as no workdays', () => {
+    renderTab({ opportunities: null, opportunitiesAsOf: null })
+
+    expect(screen.getByText(/needs signal/i)).toBeTruthy()
+    expect(screen.queryByText(/No workdays are posted/i)).toBeNull()
+  })
+
+  it('says plainly when nothing is posted, without inventing urgency', () => {
+    renderTab({ opportunities: [] })
+
+    expect(screen.getByText(/No workdays are posted here yet/)).toBeTruthy()
   })
 })

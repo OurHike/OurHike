@@ -629,6 +629,8 @@ function App() {
     atcReviewedAt,
     drought,
     droughtWeek,
+    workProjects,
+    workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
   } = useConditions(online)
@@ -3397,6 +3399,10 @@ function App() {
                 passedToday={passedPlacesToday}
                 onOpenPlace={handleOpenPassedPlace}
                 units={units}
+                opportunities={workProjects}
+                opportunitiesAsOf={workProjectsGeneratedAt}
+                gpsMile={fix?.mile ?? null}
+                now={now}
               />
             </ErrorBoundary>
           </div>

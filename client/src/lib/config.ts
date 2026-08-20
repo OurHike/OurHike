@@ -55,6 +55,22 @@ export const TRAILS_KEY = 'trails.geojson'
 // as a failed download.
 export const SPURS_KEY = 'spurs.json'
 
+// Who maintains which stretch of trail, published by
+// pipeline/export_club_sections.py (#594): 30 clubs tiling 2,197.5 miles, plus
+// the 38.5 miles in 27 runs ATC's own centerline cannot attribute.
+//
+// A separate artifact for the same reason spurs.json is one - the client hands
+// trails.geojson to MapLibre as an opaque Blob and never reads a property off
+// it. It carries mile ranges and no geometry, which is enough:
+// lib/trailPosition.ts's trailSlice and trailPointAtMile turn a mile range into
+// the coordinates the corridor view draws (features/CORRIDOR_VIEW.md, #598),
+// so nothing about this needs the published centerline schema to change.
+//
+// Absent from releases built before export_club_sections.py, which
+// lib/trailData.ts treats as "no attribution" rather than a failed download -
+// the same way spurs.json is treated.
+export const CLUB_SECTIONS_KEY = 'club_sections.json'
+
 // The along-the-trail elevation profile, published by
 // pipeline/export_elevation.py: ~141,000 {distance_mi, elevation_ft} samples at
 // 25 m spacing along the real centerline. 7.0 MB of JSON that gzips to 0.89 MB,

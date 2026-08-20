@@ -52,6 +52,7 @@ from pathlib import Path
 import boto3
 
 from lib import data_env, releases
+from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
 from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
@@ -193,49 +194,10 @@ SIDECARS = {
 }
 
 
-# What an artifact is served as, by extension.
-#
-# UNTIL #717 THIS WAS NOTHING AT ALL. `upload_file` was called with no
-# ExtraArgs, so every object landed in R2 with no Content-Encoding, no
-# Cache-Control, and - for `.geojson`, which Python's mimetypes does not know -
-# no Content-Type either. R2 does not compress on the fly, so what the bucket
-# served was what a hiker downloaded, byte for byte.
-#
-# Measured against the live bucket 2026-08-15, requesting with
-# `Accept-Encoding: gzip, br`, over the eleven artifacts the client fetches on
-# every first launch:
-#
-#     served    21.5 MB   (22,542,491 bytes)
-#     gzip -6    5.3 MB   ( 5,554,379 bytes)   4.1x
-#
-# trails.geojson alone is 12,308,084 -> 4,142,846, and elevation_profile.json
-# 6,996,308 -> 914,415. The client's own comments have quoted the gzipped
-# figures for years (client/src/lib/config.ts on elevation_profile.json: "6.5
-# MB of JSON that gzips to 0.87 MB"); nothing was gzipping them.
-#
-# ONLY TEXT. The .pmtiles archives and .fgb files are read by BYTE RANGE -
-# client/src/map/pmtilesSource.ts seeks within the archive, and
-# client/src/lib/archiveDownload.ts resumes a partial transfer with a Range
-# header. A stored Content-Encoding makes ranges refer to compressed offsets
-# and breaks both, so those two extensions are deliberately absent from this
-# table. They are also already compressed internally, so there is nothing to
-# win and a download to lose.
-#
-# The published SHA-256 does not move. `latest.json` records the hash of the
-# file on disk, and a client's `fetch` decodes Content-Encoding before any of
-# its code sees the bytes - so client/src/lib/trailData.ts hashes exactly what
-# was hashed here.
-COMPRESSIBLE_TYPES = {
-    ".json": "application/json",
-    ".geojson": "application/geo+json",
-}
-
-# Everything else, named rather than guessed, so a new extension is a decision
-# instead of an empty Content-Type.
-BINARY_TYPES = {
-    ".pmtiles": "application/vnd.pmtiles",
-    ".fgb": "application/vnd.flatgeobuf",
-}
+# The content-type tables live in lib/content_types.py (#845), not here.
+# smoke_published.py needs COMPRESSIBLE_TYPES and verify_release.py imports
+# smoke_published - and the release gate runs without boto3 on purpose, so a
+# constant reached through this module stops it starting at all.
 
 # Long enough that nothing re-fetches within a session, short enough that a
 # republish reaches a phone the same day.

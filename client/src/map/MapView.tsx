@@ -42,6 +42,11 @@ import {
   type AtcUpdatePoint,
 } from './atcUpdateLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
+import {
+  attachCorridorData,
+  EMPTY_CORRIDOR,
+  type CorridorFeatureCollection,
+} from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
@@ -98,6 +103,15 @@ export interface MapViewProps {
    * closureLayers.ts's `closureBands`.
    */
   closures?: readonly ClosureBand[]
+  /**
+   * The corridor view's attribution - the miles with no recorded club, and the
+   * marks where responsibility changes hands - already in map coordinates
+   * (#598).
+   *
+   * Coordinates rather than mile ranges, for the reason `closures` gives: the
+   * centerline index belongs to the shell. See map/corridorLayers.ts.
+   */
+  corridor?: CorridorFeatureCollection
   /**
    * This week's drought bands, already as published polygons (#720).
    *
@@ -287,6 +301,10 @@ export function MapView({
   hiddenTypes = NOTHING_HIDDEN,
   verifiedOnly = false,
   closures = NO_CLOSURES,
+  // A stable empty collection, for the reason NO_CLOSURES is one: a fresh
+  // object literal in a default would be a new identity every render, and the
+  // effect below would re-push it to MapLibre on each one.
+  corridor = EMPTY_CORRIDOR,
   drought = NO_DROUGHT,
   showDrought = false,
   atcUpdates = NO_ATC_UPDATES,
@@ -585,6 +603,15 @@ export function MapView({
     if (map === null) return
     return attachClosureData(map, closures)
   }, [map, closures])
+
+  // Its own effect rather than folded into the closures above: the two arrive
+  // on completely different schedules - closures from the network whenever
+  // conditions sync, the attribution once from IndexedDB at launch - and
+  // sharing one would re-push thirty clubs' geometry on every conditions poll.
+  useEffect(() => {
+    if (map === null) return
+    return attachCorridorData(map, corridor)
+  }, [map, corridor])
 
   // Two effects rather than one, and deliberately: the bands arrive from the
   // network once and the switch moves whenever a hiker taps it. Folding them

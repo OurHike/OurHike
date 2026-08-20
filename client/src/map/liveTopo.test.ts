@@ -8,6 +8,11 @@ import {
 import { buildMapStyle, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
 import { OSM_CREDIT } from './credits'
 import {
+  CORRIDOR_BOUNDARY_LAYER_ID,
+  CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
+  CORRIDOR_UNATTRIBUTED_LAYER_ID,
+} from './corridorLayers'
+import {
   HILLSHADE_EXAGGERATION,
   HILLSHADE_HANDOVER_END_ZOOM,
   HILLSHADE_HANDOVER_START_ZOOM,
@@ -574,6 +579,15 @@ describe('the offline-only background', () => {
       DROUGHT_LAYER_ID,
       'trail-casing',
       'trail-blaze',
+      // The corridor view's attribution, over the blaze it covers and under
+      // everything a hiker acts on (#598). It survives the subtraction for
+      // the plainest reason of all: club_sections.json is ON THE PHONE, so
+      // there is nothing about drawing it that needs signal, and the person
+      // most likely to be reading the whole trail at once is the person
+      // planning rather than walking.
+      CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
+      CORRIDOR_UNATTRIBUTED_LAYER_ID,
+      CORRIDOR_BOUNDARY_LAYER_ID,
       // The route being built survives the subtraction too (#755): planning
       // an evening's next stretch at a shelter with no signal is a normal
       // use of it, not an edge case.

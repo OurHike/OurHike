@@ -25,7 +25,8 @@
 // last.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { get } from 'idb-keyval'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
@@ -38,6 +39,8 @@ import {
   offeredSheets,
   withdrawnSheets,
 } from './lib/packages'
+import { POI_SOURCE_ID } from './map/poiLayers'
+import { buildPoiIcons } from './map/poiIcons'
 import { TRAILS_SOURCE_ID } from './map/style'
 import { OSM_SOURCE_ID } from './map/liveTopo'
 
@@ -298,5 +301,128 @@ describe('what a cold start costs', () => {
 
     await screen.findByText('What OurHike is')
     expect(MockMap.live).toHaveLength(1)
+  })
+})
+
+/**
+ * The other cost a launch has, and the one a hiker feels rather than counts.
+ *
+ * The file above counts WebGL contexts. This counts what runs on the main
+ * thread while the three entry steps are up - which is the thread the Skip
+ * button on those steps is waiting for.
+ *
+ * The report (#857): "when I hit skip on the first 3 screens there is some
+ * serious lag. A lot of times it feels like that button is broken." Measured
+ * 2026-08-20 in Chromium at 390x844 on a 4x CPU throttle, against a build
+ * served locally with artifacts at the live release's sizes and counts (#717's
+ * figures, synthetic data behind them), replaying first run with that release
+ * already downloaded: 5,479 ms of blocking work in 22 long
+ * tasks while the steps were up, the longest of them 2,374 ms, and the second
+ * Skip could not be clicked for 3.4 s after the first. None of it drew
+ * anything - the card covers up to 78% of the screen and the only thing behind
+ * it is the trail line.
+ *
+ * Same phone, same profile, after: 3,673 ms, longest task 434 ms, the three
+ * taps answered in 11, 4 and 220 ms.
+ */
+describe('what the first-run steps cost', () => {
+  /**
+   * A phone that has been used before, showing first run again.
+   *
+   * The expensive case rather than a contrived one: everything is already in
+   * the store, so every read lands while the steps are up instead of several
+   * seconds later behind a download. It is also the case a developer hits
+   * every time they clear preferences to look at onboarding again.
+   */
+  function aReleaseOnThePhone(): void {
+    store.set(CORRIDOR_BACKGROUND_PACKAGE.idbKey, new Blob(['pmtiles']))
+    store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
+    store.set(POIS_KEY, [
+      {
+        id: 'atc_water:1',
+        type: 'water',
+        name: 'Big Spring',
+        lat: 39.3,
+        lon: -77.1,
+        confidence: 'high',
+      },
+    ])
+  }
+
+  /** Every read answered, in the order a phone answers them - the map built
+   *  first, so what reaches it afterwards is visible in `sourceData` rather
+   *  than hidden in the style it was seeded with. */
+  async function launch(): Promise<MockMap> {
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+    await land(isTrailData)
+    await landEverything()
+    await screen.findByText('What OurHike is')
+
+    const map = MockMap.live[0]
+    expect(map).toBeDefined()
+    return map
+  }
+
+  it('puts the trail line on the map behind them', async () => {
+    // The steps are a card over the map, not a page instead of one, and the
+    // line is what makes that worth doing. Held back with the rest, first run
+    // would be a card over an empty background.
+    aReleaseOnThePhone()
+
+    const map = await launch()
+
+    expect(map.sourceData.get(TRAILS_SOURCE_ID)).toEqual(expect.stringContaining('blob:'))
+  })
+
+  it('and nothing else - no waypoints, and no pins rasterised for them', async () => {
+    // `landEverything` above answers every read the app has asked for, so a
+    // shell that had asked for the waypoints would have them by here. This
+    // passes because it never asks.
+    aReleaseOnThePhone()
+
+    const map = await launch()
+
+    // The empty collection IS written - the map screen wires its POI source up
+    // whether or not there is anything in it, and an empty write costs nothing.
+    // What must not have happened is any waypoint reaching it, or a single one
+    // of the 46 pin images being rasterised for them.
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(
+      expect.objectContaining({ features: [] }),
+    )
+    // Every pin image, rather than a count: `images` also holds the
+    // serious-warning pin (map/warningPin.ts), which is one image on its own
+    // clock and not what the steps were paying for.
+    for (const { id } of buildPoiIcons()) expect(map.images.has(id)).toBe(false)
+  })
+
+  it('fills the waypoints in as soon as the steps are done', async () => {
+    // Held, not dropped, and this is the half that says so. The read the steps
+    // went without runs when they end, so a hiker who skips straight through
+    // lands on a map with its waypoints rather than on the next launch.
+    aReleaseOnThePhone()
+    const user = userEvent.setup()
+
+    const map = await launch()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: /not now/i }))
+    await landEverything()
+
+    await waitFor(() =>
+      expect(
+        (map.sourceData.get(POI_SOURCE_ID) as { features: unknown[] }).features,
+      ).toHaveLength(1),
+    )
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(
+      expect.objectContaining({
+        features: expect.arrayContaining([
+          expect.objectContaining({
+            properties: expect.objectContaining({ poi_id: 'atc_water:1' }),
+          }),
+        ]),
+      }),
+    )
   })
 })

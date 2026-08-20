@@ -13,6 +13,7 @@ import {
   siteMemberCombinations,
   UNKNOWN_POI_TYPE,
 } from './poiIcons'
+import { poiIconImages } from './poiIconImages'
 import { SITE_ANCHOR_TYPES, SITE_MEMBERS_PROPERTY, siteMembersKey } from './poiSites'
 import {
   attachPoiFilter,
@@ -626,34 +627,67 @@ describe('pushing all of it onto a live map', () => {
     vi.restoreAllMocks()
   })
 
-  it('registers every pin image once the style is up', () => {
+  /**
+   * The images, once they have been built.
+   *
+   * Every assertion about a registered pin has to go through this since #857,
+   * because the rasterising moved off the main thread (map/poiIconImages.ts)
+   * and `attachPoiIcons` now returns before a single image exists. Awaiting
+   * the module's own promise is enough to order this after the registration:
+   * `attachPoiIcons` put its continuation on that promise before the test put
+   * this one, and a promise runs its continuations in the order they were
+   * added.
+   *
+   * jsdom has no Worker, so what is being awaited here is a synchronous build
+   * behind a resolved promise - which is the fallback path the app also takes
+   * where a worker cannot be constructed.
+   */
+  const iconsBuilt = () => poiIconImages()
+
+  it('registers every pin image once the style is up', async () => {
     attachPoiIcons(map as never)
     map.emit('load')
+    await iconsBuilt()
 
     for (const { id } of buildPoiIcons()) expect(map.images.has(id)).toBe(true)
   })
 
-  it('registers them at 2x, so a 60px badge is not drawn 60px wide', () => {
+  it('registers them at 2x, so a 60px badge is not drawn 60px wide', async () => {
     attachPoiIcons(map as never)
     map.emit('load')
+    await iconsBuilt()
 
     expect(map.imageOptions.get(poiIconId('water', 'high'))).toEqual({ pixelRatio: 2 })
   })
 
-  it('registers immediately when the style has already loaded', () => {
+  it('registers without a further style event when the style has already loaded', async () => {
     // A style that finished before this ran will never fire `load` again.
     // Waiting on the event alone leaves the map permanently pinless on
     // exactly the fast path.
     map.styleLoaded = true
 
     attachPoiIcons(map as never)
+    await iconsBuilt()
 
     expect(map.images.size).toBeGreaterThan(0)
   })
 
-  it('does nothing after detaching, even if the layer arrives late', () => {
+  it('does nothing after detaching, even if the images are still being built', async () => {
+    // The window this opens (#857): a detach can now land while the rasteriser
+    // is still running, which is before there is any style listener to remove.
+    // Nothing is registered on a map the shell has already let go of.
+    const detach = attachPoiIcons(map as never)
+
+    detach()
+    await iconsBuilt()
+
+    expect(map.images.size).toBe(0)
+  })
+
+  it('does nothing after detaching, even if the layer arrives late', async () => {
     map.layerIds = []
     const detach = attachPoiIcons(map as never)
+    await iconsBuilt()
 
     detach()
     map.layerIds = [POI_LAYER_ID]
@@ -663,7 +697,7 @@ describe('pushing all of it onto a live map', () => {
     expect(map.listenerCount('styledata')).toBe(0)
   })
 
-  it('honours a detach that lands part-way through the style event itself', () => {
+  it('honours a detach that lands part-way through the style event itself', async () => {
     // Not hypothetical: MapLibre dispatches to a snapshot of its listeners, so
     // an earlier handler unmounting the map screen removes this one from the
     // map and cannot remove it from the snapshot. Without the detached check,
@@ -672,6 +706,7 @@ describe('pushing all of it onto a live map', () => {
     let detach = () => {}
     map.on('styledata', () => detach())
     detach = attachPoiIcons(map as never)
+    await iconsBuilt()
 
     map.layerIds = [POI_LAYER_ID]
     map.emit('styledata')
@@ -703,15 +738,17 @@ describe('pushing all of it onto a live map', () => {
     expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(pois))
   })
 
-  it('does not re-register images a previous map screen already added', () => {
+  it('does not re-register images a previous map screen already added', async () => {
     // Images outlive a style reload and MapLibre throws on a duplicate id.
     // Every trip through the More tab builds a new map, so this is the
     // ordinary path, not an edge case.
     map.styleLoaded = true
     attachPoiIcons(map as never)
+    await iconsBuilt()
     const addImage = vi.spyOn(map, 'addImage')
 
     attachPoiIcons(map as never)
+    await iconsBuilt()
 
     expect(addImage).not.toHaveBeenCalled()
     expect(map.images.size).toBe(buildPoiIcons().length)

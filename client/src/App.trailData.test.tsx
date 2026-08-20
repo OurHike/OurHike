@@ -11,7 +11,10 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { get } from 'idb-keyval'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness } from './test/appHarness'
-import { TRAILS_BLOB_KEY } from './lib/trailData'
+import { liveMap } from './test/liveMap'
+import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { PREFERENCES_KEY } from './lib/preferences'
+import { TRAILS_SOURCE_ID } from './map/style'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -105,6 +108,51 @@ describe('trail data on a phone that has downloaded nothing', () => {
     await waitFor(() => {
       expect(requested().some((url) => url.includes('trails'))).toBe(true)
     })
+  })
+
+  it('draws the trail line behind the first-run steps, before the waypoints are fetched', async () => {
+    // #863, and the reason the download is ordered the way it is. The entry
+    // steps are a card over the map, and on a phone holding nothing there was
+    // no map behind them: the commit waited for the whole release, which is
+    // ~12 s on a 4x-throttled phone profile at 12 Mbps, against about eight
+    // seconds to click through three steps. So a newcomer read three sentences
+    // about a map over an empty background.
+    //
+    // The waypoints are held here rather than answered, which is what makes
+    // this a statement about ORDER: the line is on the map while their fetches
+    // are still outstanding, not merely by the end.
+    store.delete(PREFERENCES_KEY)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).includes('poi_')
+          ? new Promise(() => {})
+          : Promise.resolve({
+              ok: true,
+              status: 200,
+              headers: new Headers(),
+              arrayBuffer: () => Promise.resolve(new TextEncoder().encode(TRAILS).buffer),
+              blob: () => Promise.resolve(new Blob([TRAILS])),
+              text: () => Promise.resolve(TRAILS),
+              json: () => Promise.resolve(JSON.parse(TRAILS)),
+            } as unknown as Response),
+      ),
+    )
+
+    const { default: App } = await import('./App')
+    render(<App />)
+    await screen.findByText('What OurHike is')
+    const map = await liveMap()
+
+    await waitFor(() =>
+      expect(map.sourceData.get(TRAILS_SOURCE_ID)).toEqual(
+        expect.stringContaining('blob:'),
+      ),
+    )
+    // Still out there, which is the half that makes the other half worth
+    // having.
+    expect(requested().some((url) => url.includes('poi_'))).toBe(true)
+    expect(store.has(POIS_KEY)).toBe(false)
   })
 
   it('stores what it fetched, so the next launch reads it off the phone', async () => {
@@ -372,7 +420,7 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     const card = await hikingSheetCard()
     await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
-    const notice = await screen.findByText(/none of it was saved/i)
+    const notice = await screen.findByText(/this release was not kept/i)
     expect(notice).toHaveTextContent(/untouched/i)
     expect(notice).toHaveTextContent(/fresh copy from the start/i)
     // Nothing was stored, exactly as the sentence claims.

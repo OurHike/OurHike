@@ -53,8 +53,8 @@ import {
   type SiteVisibility,
 } from './poiSites'
 import { POI_PRIORITY } from './poiPriority'
+import { poiIconImages } from './poiIconImages'
 import {
-  buildPoiIcons,
   PIN_HALO_COLOR,
   poiColor,
   poiIconId,
@@ -489,22 +489,48 @@ export function poiFilter(
   ]
 }
 
-/** Registers every pin image on a live map, and returns a detach function. */
+/**
+ * Registers every pin image on a live map, and returns a detach function.
+ *
+ * TWO WAITS, NOT ONE, AND THE NEW ONE IS THE IMAGES THEMSELVES (#857). They
+ * are rasterised off the main thread now (map/poiIconImages.ts), so they
+ * arrive a beat after this is called rather than inside it - which is why the
+ * style wait is set up in a `then` rather than returned directly. MapLibre
+ * handles the late arrival: a tile that asked for an image it did not have is
+ * re-laid out when one is added (`_updateTilesForChangedImages`), so a pin
+ * whose artwork lands second is drawn rather than lost.
+ *
+ * The detach has to cover both waits, because either can be outstanding when
+ * the map screen goes away: the images may still be building, or they may
+ * have arrived and be waiting on a style that is mid tile fetch.
+ */
 export function attachPoiIcons(map: MapLibreMap): () => void {
-  return whenStyleReady(
-    map,
-    // The pin layer existing proves the style spec carrying it is parsed,
-    // which is the condition addImage actually requires. There is no narrower
-    // question to ask: an image is not addressable until it has been added.
-    () => map.getLayer(POI_LAYER_ID) !== undefined,
-    () => {
-      for (const { id, image, pixelRatio } of buildPoiIcons()) {
-        // Images outlive a style reload, and re-adding one throws.
-        if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio })
-      }
-    },
-    'POI pin images',
-  )
+  let detached = false
+  let stopWaitingForStyle: (() => void) | null = null
+
+  void poiIconImages().then((icons) => {
+    if (detached) return
+
+    stopWaitingForStyle = whenStyleReady(
+      map,
+      // The pin layer existing proves the style spec carrying it is parsed,
+      // which is the condition addImage actually requires. There is no narrower
+      // question to ask: an image is not addressable until it has been added.
+      () => map.getLayer(POI_LAYER_ID) !== undefined,
+      () => {
+        for (const { id, image, pixelRatio } of icons) {
+          // Images outlive a style reload, and re-adding one throws.
+          if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio })
+        }
+      },
+      'POI pin images',
+    )
+  })
+
+  return () => {
+    detached = true
+    stopWaitingForStyle?.()
+  }
 }
 
 /**

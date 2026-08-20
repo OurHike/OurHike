@@ -930,4 +930,79 @@ describe('the desktop chart (#135)', () => {
       restore()
     }
   })
+
+  // --- The controlled selection and the camera (PR #885 review) -----------
+
+  it('draws the band from the controlled selection, so a route stop entered in the builder lands on the canvas', () => {
+    const restore = stubDesktop()
+    try {
+      const chart = chartProps()
+      const { rerender } = render(
+        <MapScreen {...PROPS} chart={{ ...chart, selection: null }} />,
+      )
+      const [map] = MockMap.live
+
+      rerender(
+        <MapScreen
+          {...PROPS}
+          chart={{ ...chart, selection: { startMile: 20, endMile: 70 } }}
+        />,
+      )
+
+      expect(chart.stretchToRuns).toHaveBeenCalledWith(20, 70)
+      const data = map.sourceData.get('chart-focus') as {
+        features: Array<{ geometry: { type: string } }>
+      }
+      expect(data.features).toEqual([
+        expect.objectContaining({
+          geometry: expect.objectContaining({ type: 'MultiLineString' }),
+        }),
+      ])
+    } finally {
+      restore()
+    }
+  })
+
+  it('moves the camera with "Zoom to stretch" and back out with "Whole trail"', async () => {
+    const restore = stubDesktop()
+    try {
+      const wholeTrail: [[number, number], [number, number]] = [
+        [-84.73, 34.2],
+        [-68.3, 46.34],
+      ]
+      const chart = chartProps()
+      render(
+        <MapScreen
+          {...PROPS}
+          chart={{
+            ...chart,
+            selection: { startMile: 20, endMile: 70 },
+            southbound: false,
+            wholeTrailBounds: wholeTrail,
+          }}
+        />,
+      )
+      const [map] = MockMap.live
+
+      await userEvent.click(screen.getByRole('button', { name: 'Zoom to stretch' }))
+
+      // Framed from the stretch's own centerline runs - the geometry the
+      // band draws - not a straight line between two mileposts.
+      expect(map.cameraMoves).toContainEqual(
+        expect.objectContaining({
+          fitBounds: [
+            [-77.5, 39.5],
+            [-77.4, 39.6],
+          ],
+        }),
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'Whole trail' }))
+      expect(map.cameraMoves).toContainEqual(
+        expect.objectContaining({ fitBounds: wholeTrail }),
+      )
+    } finally {
+      restore()
+    }
+  })
 })

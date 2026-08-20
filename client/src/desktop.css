@@ -340,8 +340,12 @@
 
   .elevation-chart__figures {
     display: flex;
+    /* The row grew controls with the plan sync (PR #885 review); at the
+       narrow end of the breakpoint it wraps rather than squeezing the
+       figures into ellipses. */
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-4, 16px);
+    gap: var(--space-1, 4px) var(--space-4, 16px);
     padding: var(--space-2, 8px) var(--space-4, 16px) 2px;
     font-size: 13px;
     color: var(--fg-2);

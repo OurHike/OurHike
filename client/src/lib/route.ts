@@ -107,6 +107,33 @@ export function routeDirection<T extends RouteMile>(
   return last > first ? 'NOBO' : 'SOBO'
 }
 
+/**
+ * The route after a drag redefined its stretch (the desktop chart's
+ * selection overriding the builder, PR #885 review): `lo` and `hi` become
+ * the new ends, and the destinations a hiker placed survive where they
+ * still can - strictly inside the new stretch, in the walk order they
+ * already had. A via AT an end is dropped rather than kept, for the reason
+ * insertRoutePoint refuses an equal mile: a zero-length leg describes no
+ * trail.
+ *
+ * Direction is the route's own (routeDirection), not the drag's - a drag
+ * normalises to low-then-high before it gets here, and re-deriving which
+ * way the hiker is walking from pointer travel would flip a southbound
+ * route on every re-stretch. Fewer than two existing stops read as
+ * northbound, the entrance's own default.
+ */
+export function restretchStops<T extends RouteMile>(
+  stops: readonly T[],
+  lo: T,
+  hi: T,
+): T[] {
+  const south = routeDirection(stops) === 'SOBO'
+  const vias = stops
+    .slice(1, -1)
+    .filter((via) => via.mile > lo.mile && via.mile < hi.mile)
+  return south ? [hi, ...vias, lo] : [lo, ...vias, hi]
+}
+
 /** What one leg (or one day) costs to walk. Unrounded working numbers -
  *  display rules (units.ts, naismith.ts's ≈ and 5-minute step) apply at the
  *  edge, never here, so totals summed from these cannot drift from their

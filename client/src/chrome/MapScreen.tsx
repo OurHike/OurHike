@@ -24,6 +24,7 @@ import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { ElevationChart, type ChartStretch } from './ElevationChart'
+import type { ChartDomain } from '../lib/chartProfile'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import {
   attachChartFocus,
@@ -48,6 +49,12 @@ import type { DownloadActivity } from '../lib/downloadActivity'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
+
+/** Room the camera leaves around a stretch the chart asked it to frame.
+ *  Wider than MapView's opening FIT_PADDING (24): the chart has already
+ *  padded the MILES by 8% each side, and these are the pixels that keep the
+ *  band's ends off the very frame edge. */
+const CHART_FIT_PADDING = 48
 import type { ResolvedTheme } from '../lib/theme'
 import type {
   BackgroundSource,
@@ -292,6 +299,22 @@ export interface MapScreenProps {
     currentMile: number | null
     mileToCoordinate: (mile: number) => [number, number] | null
     stretchToRuns: (startMile: number, endMile: number) => StretchRuns
+    /**
+     * The settled selection, owned by the shell (PR #885 review): while the
+     * route builder is open it IS the route's stretch, so a stop entered
+     * there selects here and a drag here re-stretches the route. The band
+     * on the map follows this value - not the chart's callbacks - so a
+     * selection the PLAN changed lands on the canvas too.
+     */
+    selection?: ChartStretch | null
+    southbound?: boolean
+    selectionFromPlan?: boolean
+    onSelectStretch?: (stretch: ChartStretch | null) => void
+    onToggleSouthbound?: () => void
+    onPlanStretch?: () => void
+    /** Where "Whole trail" sends the camera - the shell's own opening frame,
+     *  so the button and a fresh open agree about what the whole trail is. */
+    wholeTrailBounds?: [[number, number], [number, number]]
   }
   /**
    * `onSelectPoi` omitted deliberately, the way `units` is left off the ribbon
@@ -593,6 +616,36 @@ export function MapScreen({
     }
   }, [liveMap, isDesktop, hasChart])
 
+  // The latest chart config, for the effect and callbacks below - a ref
+  // rather than a dependency, because the shell rebuilds the object on every
+  // GPS tick and neither the band nor the camera should be re-written for a
+  // fix that moved. Assigned in its own effect so it is fresh before the
+  // selection effect (declared after) reads it.
+  const chartRef = useRef(chart)
+  useEffect(() => {
+    chartRef.current = chart
+  })
+
+  // The band follows the CONTROLLED selection value, not the chart's
+  // callbacks (PR #885 review): while the route builder owns the selection,
+  // a stop entered there changes it with no chart gesture at all, and the
+  // canvas has to follow that change too. `hasChart`/`liveMap`/`isDesktop`
+  // re-run this after the overlay re-attaches, so a fresh handle starts
+  // with the current stretch rather than empty.
+  const chartSelection = chart?.selection ?? null
+  useEffect(() => {
+    const handle = chartFocusRef.current
+    const c = chartRef.current
+    if (handle === null || c === undefined) return
+    // An uncontrolled chart's band is written by handleChartStretch below.
+    if (c.selection === undefined) return
+    handle.setStretch(
+      chartSelection === null
+        ? null
+        : c.stretchToRuns(chartSelection.startMile, chartSelection.endMile),
+    )
+  }, [liveMap, isDesktop, hasChart, chartSelection])
+
   const handleChartHover = useCallback(
     (mile: number | null) => {
       const handle = chartFocusRef.current
@@ -602,15 +655,62 @@ export function MapScreen({
     [chart],
   )
 
-  const handleChartStretch = useCallback(
-    (stretch: ChartStretch | null) => {
+  const handleChartStretch = useCallback((stretch: ChartStretch | null) => {
+    const c = chartRef.current
+    if (c === undefined) return
+    if (c.selection === undefined) {
+      // Uncontrolled: the chart's own claim is the band.
       const handle = chartFocusRef.current
-      if (handle === null || chart === undefined) return
-      handle.setStretch(
-        stretch === null ? null : chart.stretchToRuns(stretch.startMile, stretch.endMile),
+      handle?.setStretch(
+        stretch === null ? null : c.stretchToRuns(stretch.startMile, stretch.endMile),
+      )
+      return
+    }
+    // Controlled: the shell decides what the gesture means - a measurement
+    // moved, or a route re-stretched - and the band follows its answer
+    // through the effect above.
+    c.onSelectStretch?.(stretch)
+  }, [])
+
+  // "Zoom to stretch" and "Whole trail" move the camera with the chart (PR
+  // #885 review). The stretch is framed from its own centerline runs - the
+  // geometry the band draws - so the camera frames the ground, not a
+  // straight line between two mileposts.
+  const handleChartZoom = useCallback(
+    (domain: ChartDomain | null) => {
+      const c = chartRef.current
+      if (liveMap === null || c === undefined) return
+      if (domain === null) {
+        if (c.wholeTrailBounds !== undefined) {
+          liveMap.fitBounds(c.wholeTrailBounds, { padding: CHART_FIT_PADDING })
+        }
+        return
+      }
+      const runs = c.stretchToRuns(domain.startMile, domain.endMile)
+      let west = Infinity
+      let south = Infinity
+      let east = -Infinity
+      let north = -Infinity
+      for (const run of runs) {
+        for (const [lon, lat] of run) {
+          if (lon < west) west = lon
+          if (lon > east) east = lon
+          if (lat < south) south = lat
+          if (lat > north) north = lat
+        }
+      }
+      // No geometry to frame (a pre-#753 download has no anchors): the
+      // chart still zooms, the camera stays.
+      if (west > east) return
+      liveMap.fitBounds(
+        [
+          [west, south],
+          [east, north],
+        ],
+        { padding: CHART_FIT_PADDING },
       )
     },
-    [chart],
+    [liveMap],
   )
 
   // The same rows the legend builds, from the same arguments, so the canvas count
@@ -885,8 +985,14 @@ export function MapScreen({
             profile={chart.profile}
             currentMile={chart.currentMile}
             units={units}
+            selection={chart.selection}
+            southbound={chart.southbound}
+            selectionFromPlan={chart.selectionFromPlan}
             onHoverMile={handleChartHover}
             onSelectStretch={handleChartStretch}
+            onToggleSouthbound={chart.onToggleSouthbound}
+            onPlanStretch={chart.onPlanStretch}
+            onZoomDomain={handleChartZoom}
           />
         )}
 

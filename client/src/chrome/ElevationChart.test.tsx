@@ -181,4 +181,131 @@ describe('ElevationChart', () => {
     const { container } = render(<ElevationChart profile={empty} />)
     expect(container).toBeEmptyDOMElement()
   })
+
+  // --- The controlled selection (PR #885 review) ---------------------------
+  //
+  // While the route builder is open the shell owns the selection and the
+  // direction, so a stop typed into the builder selects here and a drag here
+  // re-stretches the route. The chart's job narrows to rendering what it is
+  // handed and reporting what the hiker did.
+
+  it('renders a controlled selection, unsnapped, with its figures', () => {
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+      />,
+    )
+
+    expect(screen.getByTestId('chart-selection')).toBeInTheDocument()
+    expect(screen.getByText('mi 20.0 – 70.0')).toBeInTheDocument()
+    expect(screen.getByText('↑ 600 ft')).toBeInTheDocument()
+    expect(screen.getByText('≈16h 25m walking')).toBeInTheDocument()
+  })
+
+  it('reads a controlled direction and asks the shell to turn the route around', async () => {
+    const onToggleSouthbound = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={true}
+        onToggleSouthbound={onToggleSouthbound}
+      />,
+    )
+
+    // Southbound figures for the same ground - the direction arrived, not
+    // a local default.
+    expect(screen.getByText('↑ 480 ft')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /southbound/i }))
+    expect(onToggleSouthbound).toHaveBeenCalledTimes(1)
+    // And nothing flipped locally - the shell decides what turning means.
+    expect(screen.getByText('↑ 480 ft')).toBeInTheDocument()
+  })
+
+  it('will not let a click or Escape unmake a route', () => {
+    const onSelectStretch = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+        selectionFromPlan
+        onSelectStretch={onSelectStretch}
+      />,
+    )
+
+    fireEvent.pointerDown(plot(), { clientX: 400, pointerId: 1 })
+    fireEvent.pointerUp(plot(), { clientX: 400, pointerId: 1 })
+    fireEvent.keyDown(plot(), { key: 'Escape' })
+
+    expect(onSelectStretch).not.toHaveBeenCalled()
+    expect(screen.getByTestId('chart-selection')).toBeInTheDocument()
+    // Clearing is the builder's close, so the Clear control steps aside -
+    // and the row says whose selection this is.
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument()
+    expect(screen.getByText('route')).toBeInTheDocument()
+  })
+
+  it('still reports a drag over a route - the override the review asked for', () => {
+    const onSelectStretch = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+        selectionFromPlan
+        onSelectStretch={onSelectStretch}
+      />,
+    )
+
+    dragStretch(100, 300)
+    expect(onSelectStretch).toHaveBeenLastCalledWith({ startMile: 10, endMile: 30 })
+  })
+
+  it('offers to plan a measured stretch, and not the route it came from', async () => {
+    const onPlanStretch = vi.fn()
+    const { rerender } = render(
+      <ElevationChart profile={rampProfile()} onPlanStretch={onPlanStretch} />,
+    )
+    dragStretch(200, 700)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Plan this stretch' }))
+    expect(onPlanStretch).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+        selectionFromPlan
+        onPlanStretch={onPlanStretch}
+      />,
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Plan this stretch' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('reports zoom acts so the screen can move the map with the chart', async () => {
+    const onZoomDomain = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        selection={{ startMile: 20, endMile: 70 }}
+        southbound={false}
+        onZoomDomain={onZoomDomain}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom to stretch' }))
+    // The same padded window the chart itself zooms to - 20-70 plus 8% of
+    // the span each side - so the map's frame and the profile's agree.
+    expect(onZoomDomain).toHaveBeenLastCalledWith({ startMile: 16, endMile: 74 })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Whole trail' }))
+    expect(onZoomDomain).toHaveBeenLastCalledWith(null)
+  })
 })

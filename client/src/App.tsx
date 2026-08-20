@@ -137,11 +137,13 @@ import {
   insertRoutePoint,
   legFigures,
   mileAtWalkingMinutes,
+  restretchStops,
   routeDirection,
   routeLegs,
   type MileAnchor,
 } from './lib/route'
 import { DEFAULT_WALKING_HOURS, nearestStopBeyond, type ViaStop } from './lib/dayPlanner'
+import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteEntranceSheet, type EntranceEnd } from './chrome/RouteEntranceSheet'
 import { RouteStopsPanel, type RouteLegDisplay } from './chrome/RouteStopsPanel'
 import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
@@ -501,6 +503,17 @@ function App() {
   const [entranceRefusedTap, setEntranceRefusedTap] = useState(false)
   /** The stop picker over the draft, or null while every field rests. */
   const [stopPick, setStopPick] = useState<StopPickState | null>(null)
+  /**
+   * The desktop chart's own settled selection - a measurement, nothing more
+   * - read only while no route draft is open (PR #885 review). With a draft
+   * open the chart's selection IS the draft's stretch, derived below, so
+   * the two instruments cannot disagree; this one is cleared when a draft
+   * opens so a stale measurement does not resurface when it closes.
+   */
+  const [freeChartStretch, setFreeChartStretch] = useState<ChartStretch | null>(null)
+  /** Which way the chart's free measurement reads. The route's direction,
+   *  when a draft is open, comes from the draft itself. */
+  const [freeChartSouth, setFreeChartSouth] = useState(false)
   /**
    * Every trip the hiker has kept, and which one the Plan tab is showing
    * (#787). This replaced a single `HikePlan` state: the plan below is
@@ -1630,37 +1643,6 @@ function App() {
     return anchoredMile(fix.mile, mileAnchors)
   }, [fix, mileAnchors])
 
-  // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
-  // fix - a desk has none - only the published profile; the fix, when one
-  // exists, rides along on the profile's own axis (gpsPlanMile above). The
-  // two converters are how chart focus reaches the map: a profile-axis mile
-  // crosses to the client index's scale through the POI anchors
-  // (lib/route.ts), then trailPointAtMile / trailSlice turn it into
-  // geometry. No anchors (a pre-#753 download) costs the map linkage and
-  // nothing else - the chart still draws and measures.
-  const desktopChart = useMemo(() => {
-    if (elevation === null) return undefined
-    const mileToCoordinate = (mile: number): [number, number] | null => {
-      if (trailIndex === null) return null
-      const clientMile = anchoredClientMile(mile, mileAnchors)
-      if (clientMile === null) return null
-      return trailPointAtMile(trailIndex, clientMile)
-    }
-    const stretchToRuns = (startMile: number, endMile: number) => {
-      if (trailIndex === null) return []
-      const from = anchoredClientMile(startMile, mileAnchors)
-      const to = anchoredClientMile(endMile, mileAnchors)
-      if (from === null || to === null) return []
-      return trailSlice(trailIndex, from, to)
-    }
-    return {
-      profile: elevation,
-      currentMile: gpsPlanMile,
-      mileToCoordinate,
-      stretchToRuns,
-    }
-  }, [elevation, trailIndex, mileAnchors, gpsPlanMile])
-
   /**
    * The trip the Plan tab is showing, and its plan (#787). Everything below
    * that says `plan` reads this - deriving it keeps one copy of a trip's
@@ -1944,6 +1926,9 @@ function App() {
       setLegendOpen(false)
       setSearchOpen(false)
       setTargetRequest(null)
+      // The chart's selection now mirrors the draft; a measurement left
+      // behind here would resurface the moment the builder closed.
+      setFreeChartStretch(null)
       setRouteDraft((draft) => {
         if (draft === null) {
           return {
@@ -2107,6 +2092,168 @@ function App() {
       })),
     })
   }, [routeDraft])
+
+  // --- The desktop chart and the route: one selection (PR #885 review) -----
+
+  /**
+   * The draft's stretch on the chart's own axis, or null while the draft
+   * has no two ends yet. The entrance's span is start-to-resolved-end - the
+   * same pair routeDrawing draws - so the chart tracks the "how far" slider
+   * live; the editor's span is its ends.
+   */
+  const draftStretch = useMemo<ChartStretch | null>(() => {
+    if (routeDraft === null) return null
+    let a: number
+    let b: number
+    if (routeDraft.phase === 'editor') {
+      if (routeDraft.stops.length < 2) return null
+      a = routeDraft.stops[0].mile
+      b = routeDraft.stops[routeDraft.stops.length - 1].mile
+    } else {
+      const end = routeDraft.fixedEnd ?? entranceEnd?.stop ?? null
+      if (routeDraft.start === null || end === null) return null
+      a = routeDraft.start.mile
+      b = end.mile
+    }
+    if (a === b) return null
+    return { startMile: Math.min(a, b), endMile: Math.max(a, b) }
+  }, [routeDraft, entranceEnd])
+
+  const chartSelection = routeDraft !== null ? draftStretch : freeChartStretch
+  const chartSouth =
+    routeDraft === null
+      ? freeChartSouth
+      : routeDraft.phase === 'entrance'
+        ? routeDraft.south
+        : routeDirection(routeDraft.stops) === 'SOBO'
+
+  /** A profile-axis mile as a route stop: unnamed - a chart mile has no
+   *  name - and drawable through the same anchor carry every
+   *  distance-derived stop uses. */
+  const chartStop = useCallback(
+    (mile: number): RouteDraftStop => ({
+      mile,
+      clientMile: anchoredClientMile(mile, mileAnchors),
+    }),
+    [mileAnchors],
+  )
+
+  /**
+   * A drag settled on the chart. With no draft open it is a measurement and
+   * nothing more. With one open it re-stretches the route (the review's
+   * "overriding what was selected"): the ends move, destinations still
+   * inside survive, the walk's direction stands (lib/route.ts's
+   * restretchStops). On the entrance it answers both of that screen's
+   * questions at once, so it lands straight on the editor the way "Use this
+   * stretch" does. A null - a click - changes no route: clearing one is the
+   * builder's close button, and the chart already refuses to send it.
+   */
+  const handleChartStretch = useCallback(
+    (stretch: ChartStretch | null) => {
+      if (routeDraft === null) {
+        setFreeChartStretch(stretch)
+        return
+      }
+      if (stretch === null) return
+      const lo = chartStop(stretch.startMile)
+      const hi = chartStop(stretch.endMile)
+      if (lo.mile === hi.mile) return
+      setRouteDraft((draft) => {
+        if (draft === null) return draft
+        if (draft.phase === 'editor')
+          return { ...draft, stops: restretchStops(draft.stops, lo, hi) }
+        return { phase: 'editor', stops: draft.south ? [hi, lo] : [lo, hi] }
+      })
+      // The picker's slot may name a stop the re-stretch just removed.
+      setStopPick(null)
+    },
+    [routeDraft, chartStop],
+  )
+
+  /** The chart's direction toggle turns the ROUTE around while one is being
+   *  built - reversing the stops, which is what walking it the other way
+   *  means - and is a display choice only while measuring. */
+  const handleChartSouth = useCallback(() => {
+    if (routeDraft === null) {
+      setFreeChartSouth((was) => !was)
+      return
+    }
+    setRouteDraft((draft) => {
+      if (draft === null) return draft
+      if (draft.phase === 'entrance') return { ...draft, south: !draft.south }
+      return { ...draft, stops: [...draft.stops].reverse() }
+    })
+  }, [routeDraft])
+
+  /** "Plan this stretch": the measured selection becomes a route - ends at
+   *  its ends, walked the way the figures were just reading. */
+  const handlePlanChartStretch = useCallback(() => {
+    if (freeChartStretch === null) return
+    const lo = chartStop(freeChartStretch.startMile)
+    const hi = chartStop(freeChartStretch.endMile)
+    if (lo.mile === hi.mile) return
+    // The same one-thing-open-at-a-time sweep opening the builder makes.
+    setSelectedPoiId(null)
+    setLegendOpen(false)
+    setSearchOpen(false)
+    setTargetRequest(null)
+    setFreeChartStretch(null)
+    setRouteDraft({ phase: 'editor', stops: freeChartSouth ? [hi, lo] : [lo, hi] })
+  }, [freeChartStretch, freeChartSouth, chartStop])
+
+  // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
+  // fix - a desk has none - only the published profile; the fix, when one
+  // exists, rides along on the profile's own axis (gpsPlanMile above). The
+  // two converters are how chart focus reaches the map: a profile-axis mile
+  // crosses to the client index's scale through the POI anchors
+  // (lib/route.ts), then trailPointAtMile / trailSlice turn it into
+  // geometry. No anchors (a pre-#753 download) costs the map linkage and
+  // nothing else - the chart still draws and measures.
+  //
+  // The selection and direction ride down CONTROLLED (PR #885 review): the
+  // route draft's stretch while the builder is open, the free measurement
+  // otherwise - so a stop entered in the builder selects on the chart, and
+  // a drag on the chart re-stretches the route.
+  const desktopChart = useMemo(() => {
+    if (elevation === null) return undefined
+    const mileToCoordinate = (mile: number): [number, number] | null => {
+      if (trailIndex === null) return null
+      const clientMile = anchoredClientMile(mile, mileAnchors)
+      if (clientMile === null) return null
+      return trailPointAtMile(trailIndex, clientMile)
+    }
+    const stretchToRuns = (startMile: number, endMile: number) => {
+      if (trailIndex === null) return []
+      const from = anchoredClientMile(startMile, mileAnchors)
+      const to = anchoredClientMile(endMile, mileAnchors)
+      if (from === null || to === null) return []
+      return trailSlice(trailIndex, from, to)
+    }
+    return {
+      profile: elevation,
+      currentMile: gpsPlanMile,
+      mileToCoordinate,
+      stretchToRuns,
+      selection: chartSelection,
+      southbound: chartSouth,
+      selectionFromPlan: routeDraft !== null,
+      onSelectStretch: handleChartStretch,
+      onToggleSouthbound: handleChartSouth,
+      onPlanStretch: handlePlanChartStretch,
+      wholeTrailBounds: CORRIDOR_BOUNDS,
+    }
+  }, [
+    elevation,
+    trailIndex,
+    mileAnchors,
+    gpsPlanMile,
+    chartSelection,
+    chartSouth,
+    routeDraft,
+    handleChartStretch,
+    handleChartSouth,
+    handlePlanChartStretch,
+  ])
 
   // Re-targeting an existing plan runs the same sheet over the plan's own
   // route, seeded with what it aimed at last time. The route is the ends

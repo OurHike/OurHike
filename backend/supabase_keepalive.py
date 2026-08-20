@@ -74,12 +74,20 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     "app_failures",
     "clubs",
     "closures",
+    # The field-notes pair (features/FIELD_NOTES.md): notes carry a
+    # reporter_id beside a position and a date - #252's route-reconstruction
+    # pair - so their RLS staying on is worth a read an hour.
+    "field_notes",
     "hikes",
     "maintainer_assignments",
+    "note_flags",
     "poi_photos",
     "profiles",
     "reports",
     "user_preferences",
+    # A volunteer's own logbook (#761), locations and free-text notes - the
+    # resource whose whole design is that it is private.
+    "volunteer_hours",
 )
 
 TIMEOUT_SECONDS = 15

@@ -237,12 +237,28 @@ export const POI_ICON_SIZE_EXPRESSION: unknown[] = [
   1,
 ]
 
+/**
+ * The stale fade, on the pin itself (lib/stalenessDisplay.ts's `opacity:
+ * 0.5` for the stale tier, applied where the pin is actually drawn). Every
+ * other state - fresh, ageing, never - draws at full strength; the ring
+ * layer below carries the rest of the treatment.
+ */
+export const POI_ICON_OPACITY_EXPRESSION: unknown[] = [
+  'case',
+  ['==', ['get', 'staleness_faded'], true],
+  0.5,
+  1,
+]
+
 export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecification {
   return {
     id: POI_LAYER_ID,
     type: 'symbol',
     source: sourceId,
     minzoom: POI_PIN_MIN_ZOOM,
+    paint: {
+      'icon-opacity': POI_ICON_OPACITY_EXPRESSION as unknown as number,
+    },
     layout: {
       'icon-image': POI_ICON_EXPRESSION as unknown as string,
       'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
@@ -261,6 +277,98 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // is worse than no pin label: it would be missing exactly when the map
       // is the only thing a hiker has. Names stay in search and the legend,
       // which work the same either way.
+    },
+  }
+}
+
+/**
+ * The staleness ring: DATA_NUDGES.md's passive prominence, drawn (#759).
+ *
+ * A `circle` layer under the pins, for exactly the reason the dot rank is
+ * one: circles join no collision pass, so a ring can never cost a
+ * neighbouring pin its placement. It reads the same source as both other
+ * ranks and takes the same legend filter, so a hidden category's rings go
+ * with its pins.
+ *
+ * WHICH RING A WAYPOINT WEARS IS NOT DECIDED HERE. lib/stalenessDisplay.ts
+ * owns the whole policy - the tier treatments, and the maintainer's
+ * day-one decision (2026-08-20, #256) that never-confirmed water alone
+ * carries a faint invite while everything else unconfirmed stays neutral.
+ * The shell precomputes `staleness_ring` and `staleness_faded` per feature
+ * through that module ({@link poiFeatureCollection}), and this layer just
+ * draws what the property says: policy in one home, paint in another.
+ */
+export const POI_STALENESS_LAYER_ID = 'poi-staleness-rings'
+
+/** No ring - the property value that filters a feature out of the ring
+ *  layer entirely. Ageing and never-confirmed both land here on purpose:
+ *  the absence IS the middle state (stalenessDisplay.ts). */
+export const NO_RING = 'none'
+
+// The ring colours, one per stalenessDisplay ring name. Green reads as
+// "somebody said fine, recently" against every sheet; the stale grey is the
+// treatment's fade taken to the rim; the invite is water's own accent worn
+// faintly, so the nudge points at the category it is about.
+const RING_COLORS: Record<string, string> = {
+  green: '#2e7d32',
+  'grey-dotted': '#757575',
+  'faint-invite': poiColor('water'),
+}
+
+const RING_OPACITIES: Record<string, number> = {
+  green: 0.9,
+  'grey-dotted': 0.55,
+  // Subtle is the decision, not a compromise: on day one this is most of
+  // the water on the map, and a loud ring on all of it would be the
+  // "nothing here is trustworthy" opening #256 warns about, one channel
+  // over.
+  'faint-invite': 0.35,
+}
+
+/**
+ * Sized to sit just outside the pin at every zoom: half the 38 px pin box
+ * times the same 0.8 -> 1.0 ramp the icons ride
+ * ({@link POI_ICON_SIZE_EXPRESSION}), plus 3 px of air.
+ */
+const RING_RADIUS_EXPRESSION: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  POI_PIN_MIN_ZOOM,
+  19 * POI_PIN_MIN_SCALE + 3,
+  13,
+  22,
+]
+
+export function buildPoiStalenessLayer(
+  sourceId: string = POI_SOURCE_ID,
+): LayerSpecification {
+  return {
+    id: POI_STALENESS_LAYER_ID,
+    type: 'circle',
+    source: sourceId,
+    // Rings exist to invite a tap, and only a pin can be tapped - so they
+    // start where the pins do, not where the dots do.
+    minzoom: POI_PIN_MIN_ZOOM,
+    filter: ['!=', ['get', 'staleness_ring'], NO_RING] as never,
+    paint: {
+      'circle-radius': RING_RADIUS_EXPRESSION as unknown as number,
+      // The ring is a rim, not a disc: the fill is fully transparent so the
+      // map underneath stays readable inside it.
+      'circle-opacity': 0,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': [
+        'match',
+        ['get', 'staleness_ring'],
+        ...Object.entries(RING_COLORS).flat(),
+        RING_COLORS.green,
+      ] as unknown as string,
+      'circle-stroke-opacity': [
+        'match',
+        ['get', 'staleness_ring'],
+        ...Object.entries(RING_OPACITIES).flat(),
+        0,
+      ] as unknown as number,
     },
   }
 }
@@ -420,9 +528,20 @@ export interface PoiFeatureCollection {
       confidence: string
       [POI_ID_PROPERTY]: string
       [SITE_MEMBERS_PROPERTY]: string
+      staleness_ring: string
+      staleness_faded: boolean
     }
   }>
 }
+
+/**
+ * Which ring a waypoint wears and whether its pin fades - precomputed by the
+ * shell through lib/stalenessDisplay.ts, which owns the policy. The default
+ * is the day-one truth for a build with no notes at all: no ring, no fade.
+ */
+export type PinCondition = { ring: string; faded: boolean }
+
+const NO_CONDITION: PinCondition = { ring: NO_RING, faded: false }
 
 /**
  * Carries what the style reads - the two attributes the expressions above
@@ -433,6 +552,7 @@ export interface PoiFeatureCollection {
 export function poiFeatureCollection(
   pois: readonly MapPoint[],
   visibility: SiteVisibility = {},
+  pinCondition: (poiId: string, poiType: string) => PinCondition = () => NO_CONDITION,
 ): PoiFeatureCollection {
   // ONE FEATURE PER SITE, not per POI (#524). The members are removed here
   // rather than filtered in the style, which is the whole mechanism: a style
@@ -445,24 +565,37 @@ export function poiFeatureCollection(
   // can take that pin off - so this collection has to be rebuilt when the hidden
   // set changes, not merely re-filtered. That is a rebuild of ~2,800 points on a
   // legend tap, which is the cost the design doc weighed and accepted.
+  //
+  // The staleness pair rides the same rebuild: notes arrive at most hourly
+  // (lib/useConditions.ts) plus once per submitted confirmation, so the
+  // rebuild cadence is the legend tap's plus that - the same cost, paid a
+  // little more often, for the map's only freshness channel. A site anchor
+  // wears ITS OWN notes' condition; a folded member's notes reach the card
+  // (per-part reads) but not the shared pin, which is a known simplification
+  // rather than a rule.
   const { drawn, membersFor } = composeSites(pois, visibility)
 
   return {
     type: 'FeatureCollection',
-    features: drawn.map((poi) => ({
-      type: 'Feature',
-      id: poi.id,
-      geometry: { type: 'Point', coordinates: [poi.lon, poi.lat] },
-      properties: {
-        poi_type: poi.type,
-        confidence: poi.confidence,
-        [POI_ID_PROPERTY]: poi.id,
-        // Always present, empty where the pin carries nothing, so the style's
-        // `match` needs no `coalesce` and a pin with no site is not a separate
-        // expression path that could drift from the one with.
-        [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
-      },
-    })),
+    features: drawn.map((poi) => {
+      const condition = pinCondition(poi.id, poi.type)
+      return {
+        type: 'Feature',
+        id: poi.id,
+        geometry: { type: 'Point', coordinates: [poi.lon, poi.lat] },
+        properties: {
+          poi_type: poi.type,
+          confidence: poi.confidence,
+          [POI_ID_PROPERTY]: poi.id,
+          // Always present, empty where the pin carries nothing, so the style's
+          // `match` needs no `coalesce` and a pin with no site is not a separate
+          // expression path that could drift from the one with.
+          [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
+          staleness_ring: condition.ring,
+          staleness_faded: condition.faded,
+        },
+      }
+    }),
   }
 }
 
@@ -545,6 +678,7 @@ export function attachPoiData(
   map: MapLibreMap,
   pois: readonly MapPoint[],
   visibility: SiteVisibility = {},
+  pinCondition?: (poiId: string, poiType: string) => PinCondition,
 ): () => void {
   return whenStyleReady(
     map,
@@ -559,7 +693,7 @@ export function attachPoiData(
       const source = map.getSource<GeoJSONSource>(POI_SOURCE_ID)
       if (source === undefined || typeof source.setData !== 'function') return
 
-      source.setData(poiFeatureCollection(pois, visibility) as never)
+      source.setData(poiFeatureCollection(pois, visibility, pinCondition) as never)
     },
     'POI data',
   )
@@ -579,16 +713,25 @@ export function attachPoiFilter(
   hiddenTypes: ReadonlySet<string>,
   verifiedOnly = false,
 ): () => void {
-  const layers = [POI_LAYER_ID, POI_DOT_LAYER_ID]
+  const layers = [POI_LAYER_ID, POI_DOT_LAYER_ID, POI_STALENESS_LAYER_ID]
   return whenStyleReady(
     map,
     // setFilter throws outright on a layer the style does not hold, so the
-    // layers' presence is exactly the precondition. Both, because a style
-    // mid-reload can hold one and not the other.
+    // layers' presence is exactly the precondition. All three, because a
+    // style mid-reload can hold some and not the rest.
     () => layers.every((layer) => map.getLayer(layer) !== undefined),
     () => {
       const filter = poiFilter(hiddenTypes, verifiedOnly)
-      for (const layer of layers) map.setFilter(layer, filter as never)
+      map.setFilter(POI_LAYER_ID, filter as never)
+      map.setFilter(POI_DOT_LAYER_ID, filter as never)
+      // The ring rank keeps its own membership clause AND takes the legend's:
+      // a hidden category's rings must go with its pins, and a shown one must
+      // still only ring what has a ring to wear.
+      map.setFilter(POI_STALENESS_LAYER_ID, [
+        'all',
+        filter,
+        ['!=', ['get', 'staleness_ring'], NO_RING],
+      ] as never)
     },
     'POI visibility',
   )

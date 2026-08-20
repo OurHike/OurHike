@@ -14,8 +14,10 @@ subjects had nothing to do with each other.
 by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, on
 2026-08-17. Eight more (#768–#772, #780, #782–#783) were filed 2026-08-18 and added as
 group **V** the same day, and two more (#795–#796) were filed 2026-08-18 and added as
-group **W** the same day. If you add an issue, add it to a group here or the next person
-will find it by accident.
+group **W** the same day. Four more (#876–#879) were filed 2026-08-20 — the halves of
+FIELD_NOTES.md and the volunteering build that PR #873 did not reach — and added to
+groups **Q** and **U** the same day. If you add an issue, add it to a group here or the
+next person will find it by accident.
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
 [HIKE_PLANNING.md](features/HIKE_PLANNING.md)'s and
@@ -418,19 +420,28 @@ anything in this group.
 
 ## Q. Field notes and freshness
 
-**#256 — The POI staleness tiers have no producer and no consumer**
+**#256 — The POI staleness tiers have no producer and no consumer** ·
+**#876 — Disputes: not_found, the existence axis, and the fix that files upstream (FIELD_NOTES.md §4, unbuilt)** ·
+**#878 — Nothing notices when the POI id under a field note stops existing** ·
+**#879 — A field note cannot carry the photo the contribution opt-in promises**
 
-**Why alone:** it is the whole visible surface of a designed v2 feature —
-[features/FIELD_NOTES.md](features/FIELD_NOTES.md) — that has **no other issues filed**
-(see *Gaps*). ROADMAP.md states plainly that the field-notes roll-up is the producer #256
-has been missing since spring.
+**Where this stands, 2026-08-20.** FIELD_NOTES.md steps 1–4 and its flag-and-hide are
+built on `claude/v2-features-overnight-pyqhse` (PR #873), as the foundation under
+**#759 — The Volunteer tab and the contribution toggle**: the `FieldNote` record, the
+write path from the card, the roll-up wired to `staleness.ts` (both halves of #256), and
+`conditions/notes.json` beside the closures. The three issues added above are the halves
+that would otherwise have gone invisible when #256 closed — the *Gaps* failure at the
+foot of this document, pre-empted this time: #876 is the doc's step 5 whole, #878 its §7
+orphan backstop, and #879 the note-photo question the build deliberately declined to
+answer by accident. **#877 — A flagged note and a claimed hour both wait in queues no
+screen shows** is the client moderation surface this group and group **U** now share; it
+is listed under U, where the club side lives.
 
-**What you are walking into:** `client/src/lib/staleness.ts` declares `FRESH_MAX_DAYS = 14`
-and `AGEING_MAX_DAYS = 60` **with no evidence for either**, and CLAUDE.md uses this exact
-file as its worked example of the problem — WIREFRAMES.md wrote them as "≤ ~14 days" and
-"~14–60 days", and the tildes did not survive into the code. Those two constants decide
-whether a hiker reads a water report as trustworthy. **Do not ship a producer for tiers
-whose boundaries nobody has justified without at least tagging them `@unvalidated`.**
+**What you are walking into:** the day-one rendering is DECIDED — maintainer, 2026-08-20,
+recorded on #256: never-confirmed is its own tier rendered neutral, except water, which
+wears a faint "No recent word" invite; `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60`
+stand, tagged `@unvalidated`, with real confirmation volume named as what settles them.
+Do not re-open that from the code side; field data is what moves it next.
 
 ## R. Launch, community, and the things money touches
 
@@ -502,10 +513,22 @@ it.
 **#760 — Volunteer opportunities on a map, the next fourteen days — the first layer in this app whose data expires** ·
 **#761 — Hours, self-logged, and the private impact record that must not become a scoreboard** ·
 **#762 — In-app signup and club confirmation — an introduction, never an enrolment** ·
-**#763 — Ridge Runner At-Large, and the club-side work-project module**
+**#763 — Ridge Runner At-Large, and the club-side work-project module** ·
+**#877 — A flagged note and a claimed hour both wait in queues no screen shows**
 
 **Why together:** [features/VOLUNTEERING.md](features/VOLUNTEERING.md)'s five phases, each
 useful alone by design.
+
+**Where this stands, 2026-08-20.** Phases A and C are built and B is half built, all on
+`claude/v2-features-overnight-pyqhse` (PR #873): #759 whole (the fourth tab, the opt-in,
+the card and lane surfaces, places-passed-today — on the FieldNote foundation group **Q**
+records), #761 whole (the outbox's fifth cargo, the bounded-claims backend, the dashboard
+under §5's four rules, with the claimed-counts-until-disputed decision recorded on the
+issue), and #760's list half (the reviewed file with UA-only samples, the 14-day window,
+the 48-hour ceiling). **#760 stays open for its map-pin half** — a pin needs a tap and a
+tap needs a sheet, its own small design. #762's endpoints for hours confirmation exist;
+the signup model and every screen are still its to build, and #877 is where the
+club-facing queue screens (notes and hours both) now live. #763 stays `blocked-external`.
 
 **#759 is worth doing whether or not the rest follows** — the doc says so outright. It is
 the piece that touches every hiker rather than the few who attend a workday, and it ships
@@ -597,8 +620,12 @@ in one sitting rather than discovered one at a time.
    it rises, and its Phase A is already merged.
 4. **Who is field-testing, and when?** Group K is four issues that no amount of code
    advances. #93 gates #308, which gates the app's only notification.
-5. **What are `FRESH_MAX_DAYS` and `AGEING_MAX_DAYS` supposed to be?** (#256, group Q.)
-   Currently 14 and 60 with nothing behind them.
+5. ~~**What are `FRESH_MAX_DAYS` and `AGEING_MAX_DAYS` supposed to be?**~~ **Answered
+   2026-08-20, by the maintainer in session (recorded on #256):** they stand at 14 and
+   60, tagged `@unvalidated` with real confirmation volume named as what settles them —
+   and the day-one question underneath got the real decision: never-confirmed is its own
+   neutral tier rather than `stale`, except water, which wears a faint "No recent word"
+   invite because the OSM/USGS water data is unverified by FEATURES.md's own admission.
 6. ~~**Is `post-mvp` still a meaningful label?**~~ **Answered 2026-08-17: no, and it has
    been removed** from all 44 open issues that carried it. It had come to sit on issues
    that were all also `v2`, so it no longer distinguished anything. Note the label itself
@@ -617,11 +644,11 @@ and "build v2" were not the same programme.
   (#753–#758): its five phases plus the spike run.
 - **[features/VOLUNTEERING.md](features/VOLUNTEERING.md)** — **filed**, as group **U**
   (#759–#763): its five phases.
-- **[features/FIELD_NOTES.md](features/FIELD_NOTES.md)** — **still open as a gap.** One
-  issue (**#256 — The POI staleness tiers have no producer and no consumer**) covers one
-  corner of it. The rest of the design — dated observations on a POI, the roll-up that
-  gives staleness a producer, and the disputed pin that files a correction upstream rather
-  than forking ATC's data — has nothing in the tracker.
+- **[features/FIELD_NOTES.md](features/FIELD_NOTES.md)** — **closed 2026-08-20, the
+  third of three.** Steps 1–4 and flag-and-hide are built (group **Q**, PR #873), and
+  the remainder is filed rather than invisible: **#876** (disputes, the doc's step 5),
+  **#878** (the §7 orphan backstop), **#879** (the note-photo question), and **#877**
+  (the moderation screens, listed under **U**).
 
 **The lesson is worth keeping even though two of the three are fixed:** a feature that is
 designed and unfiled looks identical, from the issue list, to a feature nobody has thought

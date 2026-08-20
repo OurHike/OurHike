@@ -8,11 +8,18 @@ read-mostly data is the shape this pipeline already serves as static bytes
 with free egress. Serving it from a running container makes the safety read
 path depend on the single most fragile component in the system.
 
-Two artifacts, two predicates, and the difference is the whole risk (#436):
+Three artifacts, three predicates, and the differences are the whole risk (#436):
 
     conditions/closures.json   moderation_status = 'verified'
     conditions/reports.json    status IN ('verified', 'resolved')
                                AND visibility = 'public'
+    conditions/notes.json      hidden_at IS NULL
+
+Notes gate on one column because their moderation model is the reverse of
+reports' (features/FIELD_NOTES.md §5): a note publishes the moment it lands
+and a moderator hides it on a flag, so the reader policy's whole job is
+enforcing the hiding - a hidden note structurally cannot reach the artifact,
+the same guarantee the verified filter gives with the opposite default.
 
 Reports gate on two columns because two different things are being decided.
 `status` mirrors `_MODERATED_STATUSES` in `backend/app/routers/reports.py` -
@@ -99,6 +106,7 @@ ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "data" / "processed" / "conditions"
 CLOSURES_OUT_PATH = OUT_DIR / "closures.json"
 REPORTS_OUT_PATH = OUT_DIR / "reports.json"
+NOTES_OUT_PATH = OUT_DIR / "notes.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "conditions_manifest.json"
 
 URL_ENV_VAR = "CONDITIONS_DATABASE_URL"
@@ -175,17 +183,67 @@ PUBLIC_REPORTS_SQL = """
      ORDER BY "timestamp", id
 """
 
+# Field notes (features/FIELD_NOTES.md §6): the roll-up's input for every
+# POI, baked as each place's most recent few inside a window rather than the
+# whole history - an artifact that grows without bound is a download that
+# eventually fails on the trail. The column list tracks what FieldNoteOut
+# serves an ANONYMOUS caller, like the reports list above: no reporter_id
+# (many dated notes along a corridor from one identifier reconstruct a hike,
+# the exact pair #252 removed from reports) and no posted_at (the second
+# clock). backend/tests/test_conditions_publisher_contract.py holds this to
+# the schema the same way it holds the other two.
+#
+# The 90-day window and 5-per-place cap mirror NOTES_WINDOW_DAYS and
+# NOTES_PER_POI in backend/app/routers/field_notes.py - the live read and
+# the baseline must be the same document from two doors, and both constants
+# are @unvalidated there with what would settle them. Literals here because
+# the contract test parses this string; the pairing is enforced by
+# test_export_conditions.py reading both files.
+#
+# The inner query wears the WHERE; the outer SELECT is the published shape,
+# first in the string so the contract test's SELECT...FROM parse reads the
+# public column list and nothing else.
+PUBLIC_NOTES_SQL = """
+    SELECT id,
+           poi_id,
+           lat,
+           lon,
+           mile,
+           observation,
+           note,
+           observed_at,
+           reporter_type
+      FROM (
+            SELECT *,
+                   row_number() OVER (
+                       PARTITION BY coalesce(poi_id, id)
+                       ORDER BY observed_at DESC, id
+                   ) AS recency_rank
+              FROM public.field_notes
+             WHERE hidden_at IS NULL
+               AND observed_at >= now() - interval '90 days'
+           ) recent
+     WHERE recency_rank <= 5
+     ORDER BY observed_at, id
+"""
+
 # Which of the columns above are timestamps, and so need stamping on the way
 # out. Listed rather than detected, so adding a column is a decision about its
 # wire form rather than something type inference makes quietly.
 CLOSURE_TIMESTAMP_FIELDS = ("reported_at", "verified_at", "closed_since", "expected_reopen")
 REPORT_TIMESTAMP_FIELDS = ("timestamp",)
+NOTE_TIMESTAMP_FIELDS = ("observed_at",)
 
 # What each table's policy must let through - quoted back at whoever has to
 # write the missing CREATE POLICY, so the refusal carries its own fix.
 POLICY_PREDICATES = {
     "closures": "moderation_status = 'verified'",
     "reports": "status IN ('verified', 'resolved') AND visibility = 'public'",
+    # Hidden-never-deleted is the whole moderation model for notes
+    # (FIELD_NOTES.md §5), so the policy is its single predicate: a flagged
+    # note a moderator hid clears from this bake within a day, which is the
+    # honest cost CONDITIONS_DELIVERY.md already accepts for closures.
+    "field_notes": "hidden_at IS NULL",
 }
 
 
@@ -312,6 +370,16 @@ def read_reports(conn) -> list[dict]:
     return _read_rows(conn, PUBLIC_REPORTS_SQL, REPORT_TIMESTAMP_FIELDS)
 
 
+def read_notes(conn) -> list[dict]:
+    rows = _read_rows(conn, PUBLIC_NOTES_SQL, NOTE_TIMESTAMP_FIELDS)
+    # The window function's plumbing must not reach the wire: the client's
+    # NoteSummary declares exactly the public nine, and a tenth field would
+    # teach it to read what the shape never promised.
+    for row in rows:
+        row.pop("recency_rank", None)
+    return rows
+
+
 def build_document(key: str, rows: list[dict], generated_at: datetime) -> dict:
     """Wrap the rows with the one fact the rows cannot carry.
 
@@ -357,23 +425,25 @@ def connect():
 
 def main() -> dict:
     with connect() as conn:
-        # Both tables checked before either read, so a half-configured
-        # database - the closures policy applied, the reports one forgotten -
-        # publishes nothing rather than one artifact of two. Half a baseline
-        # would look exactly like a day with no reports.
-        for table in ("closures", "reports"):
+        # Every table checked before any read, so a half-configured database -
+        # the closures policy applied, the notes one forgotten - publishes
+        # nothing rather than two artifacts of three. Half a baseline would
+        # look exactly like a day with no reports.
+        for table in ("closures", "reports", "field_notes"):
             assert_reader_permissions(conn, table)
         closures = read_closures(conn)
         reports = read_reports(conn)
+        notes = read_notes(conn)
 
-    # One clock for both documents: they came from one read of one database,
-    # and two timestamps would invite the client to reason about a skew that
-    # does not exist.
+    # One clock for all three documents: they came from one read of one
+    # database, and two timestamps would invite the client to reason about a
+    # skew that does not exist.
     generated_at = datetime.now(timezone.utc)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     CLOSURES_OUT_PATH.write_text(json.dumps(build_document("closures", closures, generated_at), indent=2) + "\n")
     REPORTS_OUT_PATH.write_text(json.dumps(build_document("reports", reports, generated_at), indent=2) + "\n")
+    NOTES_OUT_PATH.write_text(json.dumps(build_document("notes", notes, generated_at), indent=2) + "\n")
 
     manifest = {
         "artifacts": {
@@ -389,12 +459,19 @@ def main() -> dict:
                 "count": len(reports),
                 "generated_at": _stamp_utc(generated_at),
             },
+            "notes": {
+                "path": str(NOTES_OUT_PATH),
+                "sha256": sha256_file(NOTES_OUT_PATH),
+                "count": len(notes),
+                "generated_at": _stamp_utc(generated_at),
+            },
         }
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
     print(f"Wrote {len(closures)} verified closure(s) to {CLOSURES_OUT_PATH}.")
     print(f"Wrote {len(reports)} public report(s) to {REPORTS_OUT_PATH}.")
+    print(f"Wrote {len(notes)} visible field note(s) to {NOTES_OUT_PATH}.")
     return manifest
 
 

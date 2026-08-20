@@ -27,6 +27,7 @@ import {
   POI_DOT_LAYER_ID,
   POI_DOT_MIN_ZOOM,
   POI_DOT_RADIUS_EXPRESSION,
+  POI_STALENESS_LAYER_ID,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
@@ -312,7 +313,25 @@ describe('poiFeatureCollection', () => {
       // the property arrived - a `toMatchObject` here would have let a fourth
       // property appear unnoticed.
       [SITE_MEMBERS_PROPERTY]: '',
+      // The day-one defaults with no note roll-up supplied: no ring, no fade
+      // (#256's maintainer decision, lib/stalenessDisplay.ts).
+      staleness_ring: 'none',
+      staleness_faded: false,
     })
+  })
+
+  it('carries the ring and fade the staleness lookup answers, per waypoint', () => {
+    const collection = poiFeatureCollection(pois, {}, (poiId) =>
+      poiId === 'w1'
+        ? { ring: 'faint-invite', faded: false }
+        : { ring: 'grey-dotted', faded: true },
+    )
+    const [water, shelter] = collection.features
+
+    expect(water.properties.staleness_ring).toBe('faint-invite')
+    expect(water.properties.staleness_faded).toBe(false)
+    expect(shelter.properties.staleness_ring).toBe('grey-dotted')
+    expect(shelter.properties.staleness_faded).toBe(true)
   })
 
   // One pin per site (#524). The mechanism lives in map/poiSites.ts and is
@@ -616,10 +635,11 @@ describe('pushing all of it onto a live map', () => {
   beforeEach(() => {
     resetMapLibreMock()
     map = new MockMap({})
-    // Both ranks, because the real style carries both (#597) and
-    // attachPoiFilter waits for both before writing. A stub holding only the
-    // pin layer would make every filter test here pass by never running.
-    map.layerIds = [POI_LAYER_ID, POI_DOT_LAYER_ID]
+    // All three ranks, because the real style carries all three (#597, and
+    // the staleness rings with #759) and attachPoiFilter waits for every one
+    // before writing. A stub holding only the pin layer would make every
+    // filter test here pass by never running.
+    map.layerIds = [POI_LAYER_ID, POI_DOT_LAYER_ID, POI_STALENESS_LAYER_ID]
     map.sourceIds = [POI_SOURCE_ID]
   })
 
@@ -784,7 +804,7 @@ describe('pushing all of it onto a live map', () => {
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water']), true))
   })
 
-  it('hides a type on BOTH ranks, so no dot outlives the pin it belonged to', () => {
+  it('hides a type on ALL ranks, so no dot or ring outlives the pin it belonged to', () => {
     // The failure this exists for is silent: hide privies, the pins go, and a
     // stipple of privy dots stays behind saying the legend is lying. Nothing
     // throws, nothing logs, and the only symptom is on a screen.
@@ -795,6 +815,14 @@ describe('pushing all of it onto a live map', () => {
     const expected = poiFilter(new Set(['privy']), true)
     expect(map.filters.get(POI_LAYER_ID)).toEqual(expected)
     expect(map.filters.get(POI_DOT_LAYER_ID)).toEqual(expected)
+    // The ring rank takes the same legend filter AND keeps its own
+    // membership clause - a hidden category's rings go with its pins, and a
+    // shown one still only rings what has a ring to wear.
+    expect(map.filters.get(POI_STALENESS_LAYER_ID)).toEqual([
+      'all',
+      expected,
+      ['!=', ['get', 'staleness_ring'], 'none'],
+    ])
   })
 
   it('waits for both ranks rather than filtering whichever arrived first', () => {

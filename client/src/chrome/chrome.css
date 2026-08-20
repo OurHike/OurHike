@@ -578,6 +578,28 @@
   color: var(--fg-1);
   background: var(--bg-surface);
   border: 1px solid var(--border-2);
+}
+
+/* The lane's copy of the staleness treatments (lib/stalenessDisplay.ts,
+   #759): the same three rings the map pins wear, at lane-pin scale. The
+   neutral state adds no class at all, so most pins are untouched. */
+.waypoint-pin--fresh {
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 1px #2e7d3255;
+}
+
+.waypoint-pin--stale {
+  border-style: dotted;
+  border-color: #757575;
+}
+
+.waypoint-pin--faded {
+  opacity: 0.55;
+}
+
+.waypoint-pin--no-word {
+  /* Water's day-one invite (#256): the category's own accent, worn faintly. */
+  box-shadow: 0 0 0 1px #1c6ea455;
   border-radius: 9px;
   cursor: pointer;
 }
@@ -2226,6 +2248,110 @@ a.poi-card__credit::after {
   color: var(--fg-2);
   background: var(--bg-sunken);
   border-radius: 10px;
+}
+
+/* The conditions section (FieldNoteSection.tsx): what the field has said,
+   and the one-tap way to answer. Same quiet register as the unverified
+   sentence above it - a fact panel, not a call to action. */
+.poi-card__conditions {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.poi-card__last-confirmed {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__note-headline {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__contested {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  color: var(--fg-1);
+}
+
+.poi-card__contested p {
+  margin: 0;
+}
+
+.poi-card__note {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__note-tag {
+  font-weight: 600;
+  margin-right: var(--space-1, 4px);
+}
+
+.poi-card__note-input {
+  width: 100%;
+  margin-top: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-raised, var(--bg-0));
+  border: 1px solid var(--bg-sunken);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.poi-card__observations {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+.poi-card__observation {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-1, 4px);
+  font-size: 12px;
+  color: var(--fg-2);
+  background: none;
+  border: 1px solid var(--bg-sunken);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+.poi-card__observation:hover {
+  background: var(--bg-raised, var(--bg-0));
+  color: var(--fg-1);
+}
+
+.poi-card__noted {
+  margin-top: var(--space-2, 8px);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__noted p {
+  margin: 0;
+}
+
+.poi-card__escalate,
+.poi-card__report-here {
+  display: block;
+  margin-top: var(--space-2, 8px);
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-2);
+  background: none;
+  border: 1px solid var(--bg-sunken);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
 }
 
 .poi-card__source {

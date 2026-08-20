@@ -38,6 +38,7 @@ vi.mock('./lib/api', () => ({
   // The map's own reads, irrelevant here and required for App to mount.
   fetchReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
+  fetchFieldNotes: vi.fn(async () => []),
   fetchMyProfile: vi.fn(async () => ({ id: 'p-1', role: 'hiker', display_name: null })),
 }))
 vi.mock('./lib/auth', async (importOriginal) => ({

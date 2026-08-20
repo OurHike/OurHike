@@ -66,8 +66,12 @@ describe('stalenessTier', () => {
     expect(stalenessTier(daysAgo(0))).toBe('fresh')
   })
 
-  it('is stale when never confirmed at all (null)', () => {
-    expect(stalenessTier(null)).toBe('stale')
+  it('is never - its own tier, not stale - when never confirmed at all (null)', () => {
+    // Maintainer decision 2026-08-20 (recorded on #256): on a map with no
+    // confirmation history yet, null-means-stale would render every pin
+    // stale on day one and read as "nothing here is trustworthy". `stale`
+    // now means "was confirmed, went quiet"; `never` means nobody has said.
+    expect(stalenessTier(null)).toBe('never')
   })
 
   it.each([

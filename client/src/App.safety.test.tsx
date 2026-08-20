@@ -41,6 +41,7 @@ vi.mock('./lib/api', () => ({
   permanentFailureReason: vi.fn(() => null),
   fetchReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
+  fetchFieldNotes: vi.fn(async () => []),
 }))
 
 /** A verified closure between two miles of the synthetic centerline. */

@@ -192,9 +192,22 @@ UserPreferences                    (IDENTITY_AND_PRIVACY.md's existing canonical
 
 The same shape [HIKE_PLANNING.md](HIKE_PLANNING.md) uses, and for the same reason: a phase that is not useful on its own is a phase that can be cut without noticing.
 
-- **A — The tab, and the contribution toggle.** Third tab, the opt-in preference, the waypoint-lane and waypoint-card surfaces. Ships [DATA_NUDGES.md](DATA_NUDGES.md), which has been designed and unbuilt since July, and needs no new backend beyond what [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) already has. **Depends on [#89](https://github.com/OurHike/OurHike/issues/89)** for photos to survive.
-- **B — Opportunities, read-only.** `WorkProject` from a reviewed pipeline-fed file, the fourteen-day map layer and list, honest staleness, contact-mode signup (a mailto). A club can be useful to a hiker here with no admin tooling and no write path at all.
-- **C — Hours, self-logged.** `VolunteerHoursRecord` in `claimed`, and the first version of the dashboard on top of it. Useful to the volunteer immediately; useful to nobody else until D.
+- **A — The tab, and the contribution toggle.** **Built 2026-08-20 (#759, with #256 and
+  FIELD_NOTES.md steps 1–3 underneath it).** The tab landed fourth rather than third —
+  the Plan tab (#756) arrived first — and the record a confirmation becomes is a
+  `FieldNote`, per DATA_NUDGES.md's 2026-08-09 handoff. One delta shipped differently
+  than written here: an opted-in hiker's photo travels on the report *escalation* rather
+  than on the note itself, because a note publishes unmoderated and an unmoderated public
+  photo is the class of thing POI_PHOTOS.md spent a whole design on — the note-photo
+  question is filed rather than answered.
+- **B — Opportunities, read-only.** **The list half built 2026-08-20 (#760):** the
+  reviewed pipeline-fed file, the fourteen-day list, honest staleness with the 48-hour
+  ceiling, contact-mode signup. The *map pins* half is still open on #760 — a pin needs a
+  tap and a tap needs a sheet, which is its own small design.
+- **C — Hours, self-logged.** **Built 2026-08-20 (#761).** `VolunteerHoursRecord` in
+  `claimed`, and the first version of the dashboard on top of it. Useful to the volunteer
+  immediately; the club-side confirmation *screens* wait on D even though the endpoints
+  exist.
 - **D — In-app signup and club confirmation.** `WorkProjectSignup`, attendance, hours confirmation. **This is the phase [PRICING_MODEL.md](PRICING_MODEL.md)'s volunteer exemption unblocks on** — worth knowing, since that dependency has been sitting in that doc unresolved.
 - **E — Ridge Runner At-Large, and the club admin module.** The most scope, the most club conversation needed, and the least useful without A–D underneath. Deliberately last.
 
@@ -210,6 +223,15 @@ And, per value #9's own warnings: no broadcasting of large gatherings, and nothi
 
 - **The Ridge Runner name, and whether ATC is comfortable with it.** Recommendation above is to qualify it in anything a third party sees. This is a conversation with ATC, not a decision this repository can make alone — and it should happen before the name reaches a screen, not after.
 - **Recurrence for work projects.** Deliberately unmodelled above; a date range covers a single day and a weekend. "Every third Saturday" needs real structure and should be decided from what clubs actually run, not guessed at.
-- **Whether hours in `claimed` count for anything before confirmation.** They are real to the volunteer immediately. Whether an unconfirmed hour is exportable, or reportable, or shows in a club's totals, is a policy question with an audit consequence — flagged, not decided.
+- ~~**Whether hours in `claimed` count for anything before confirmation.**~~ **Decided
+  2026-08-20, by the maintainer in session (recorded on
+  [#761](https://github.com/OurHike/OurHike/issues/761)): claimed hours count everywhere
+  immediately — the fee exemption included — until a club disputes them.** Confirmation
+  upgrades the state, a dispute removes the record from every total, and the state always
+  travels wherever an hour is shown or exported, so a reader can always tell a claim from
+  a grant. This deliberately supersedes [PRICING_MODEL.md](PRICING_MODEL.md)'s
+  "grant, don't self-report" posture for the exemption; that doc carries the update. The
+  audit consequence is answered by the labeling: the CSV export includes every state as a
+  column, so the first export cannot launder a claim into a grant.
 - **What happens to a signup when a hiker's plan changes**, which on a thru-hike it constantly does. A no-show costs a club a crew slot, and the honest mitigation is probably making cancellation one tap and utterly consequence-free rather than tracking reliability — but that edges toward a reputation score, which rule 1 above rules out. Worth deciding explicitly.
 - **Minimum age, waivers, and tool training**, which are real club and ATC requirements the app currently knows nothing about. The introduction-not-enrolment framing keeps this from being a liability the app takes on, but a club will eventually want to state a requirement before someone travels to a trailhead for nothing.

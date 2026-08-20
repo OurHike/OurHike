@@ -146,17 +146,24 @@ export function useTrailData(
   const [error, setError] = useState<TrailDataError | null>(null)
 
   /**
-   * Bumped when a download commits, which is the one thing that changes what
-   * the phone holds while the app is up.
+   * Two counters, because the two halves of a release no longer land at the
+   * same moment (#863).
    *
-   * The two reads below are keyed off it rather than chained onto the
-   * download, because they no longer run at the same moment as each other:
-   * the centerline is read whenever there is new data, the rest is read when
-   * there is new data AND first run is out of the way. A counter is what lets
-   * those two schedules be written as two effects instead of a callback that
-   * has to know which of them has already happened.
+   * `centerlineAt` is bumped when trail lines become readable - which on a
+   * phone that held nothing is BEFORE the waypoints have been fetched, and on
+   * every other download is at the final commit. `releaseAt` is bumped when
+   * the whole release is committed.
+   *
+   * One counter would not do. Bumping it twice on a first download would
+   * re-read the same trail lines and mint a second object URL for them, and
+   * re-pointing that source costs MapLibre a re-tile of twelve megabytes of
+   * coordinates - at the exact moment the download window is opening. Counters
+   * rather than callbacks so each read is an effect with its own schedule
+   * (and its own cleanup) instead of a promise chain that has to know which
+   * of them has already happened.
    */
-  const [downloaded, setDownloaded] = useState(0)
+  const [centerlineAt, setCenterlineAt] = useState(0)
+  const [releaseAt, setReleaseAt] = useState(0)
 
   /**
    * The trail line, onto the map.
@@ -236,14 +243,17 @@ export function useTrailData(
     if (current !== null) return current
 
     const attempt = (async () => {
-      // Asked directly rather than assumed: a phone that already has the lines
-      // needs no network at all. `haveTrailData` rather than a full read, which
-      // is the same question - both answer off the trails blob's presence - for
-      // an IndexedDB round trip instead of deserialising 2,837 POIs and a
-      // 141,000-sample profile to throw them away.
+      // Asked directly rather than assumed: a phone that already has a WHOLE
+      // release needs no network at all. A read of two small things rather
+      // than of everything - see haveTrailData, which also decides what a
+      // half-downloaded release means.
       if (await haveTrailData()) return
-      await downloadTrailData()
-      setDownloaded((count) => count + 1)
+      // The lines are drawn the moment they are on the phone, which on a first
+      // download is several seconds before the waypoints beside them - that is
+      // the whole of #863, and the reason this is a callback rather than
+      // something read after the promise resolves.
+      await downloadTrailData({ onCenterline: () => setCenterlineAt((at) => at + 1) })
+      setReleaseAt((at) => at + 1)
     })()
     inFlight.current = attempt
     const clear = () => {
@@ -260,7 +270,7 @@ export function useTrailData(
   // store exists for - looking at a map with no trail.
   useEffect(() => {
     void drawCenterline()
-  }, [drawCenterline, downloaded])
+  }, [drawCenterline, centerlineAt])
 
   // And the rest of it, which is everything the entry steps do not show. Held
   // rather than skipped: `centerlineOnly` going false is what runs this, so a
@@ -270,7 +280,7 @@ export function useTrailData(
   useEffect(() => {
     if (centerlineOnly) return
     void readTheRest()
-  }, [centerlineOnly, readTheRest, downloaded])
+  }, [centerlineOnly, readTheRest, releaseAt])
 
   // The trail lines load themselves, rather than waiting for someone to tap
   // Download.

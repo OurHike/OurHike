@@ -472,14 +472,49 @@ export interface TrailDataProgress {
 export interface DownloadTrailDataOptions {
   onProgress?: (progress: TrailDataProgress) => void
   signal?: AbortSignal
+  /**
+   * The trail lines are on the phone and can be drawn (#863).
+   *
+   * Fired exactly once per download, at the moment `loadTrailLines()` would
+   * start answering with these bytes - which is before the waypoints are
+   * fetched on a first download, and at the final commit on every other one
+   * (see below for why those differ). The centerline itself does not travel
+   * through here: it is in IndexedDB by then, and one path for minting the
+   * object URL is worth more than saving the caller a Blob-handle read.
+   */
+  onCenterline?: () => void
 }
+
+/**
+ * A release that is only half here, so the next launch finishes it rather
+ * than reading the phone as done.
+ *
+ * ABSENT MEANS COMPLETE, which is what makes this safe to add to a store that
+ * already has releases in it: every phone that downloaded before this existed
+ * has a whole one and no marker, and reads correctly.
+ *
+ * The marker is the answer to the objection that kept the commit
+ * all-or-nothing until now - that a store holding trail lines and no
+ * waypoints is *invisible*, so the map draws its trail while search and the
+ * legend are silently empty. It is not invisible any more: {@link
+ * haveTrailData} answers false while it is set, so the launch fetch downloads
+ * the release again instead of stopping.
+ */
+export const TRAIL_DATA_PARTIAL_KEY = 'ourhike:trail-data-partial'
 
 /**
  * An artifact could not be what the bucket says it should be.
  *
- * Its own type rather than a bare Error because nothing partial is committed
- * when this is thrown: the phone keeps whatever trail data it already had,
- * which is a materially different situation from a fetch that failed halfway.
+ * Its own type rather than a bare Error because of what the phone holds
+ * afterwards: whatever trail data it ALREADY had, untouched, which is a
+ * materially different situation from a fetch that failed halfway.
+ *
+ * "Untouched" is exact, and since #863 it is also the whole of the claim. A
+ * phone that held nothing may keep the trail lines this download had already
+ * fetched and verified - they are drawn, they are marked as a release that is
+ * not finished, and the next attempt fetches the release again from the start.
+ * Nothing that was there before is replaced or removed either way, which is
+ * what the sentence below says and all it says.
  */
 export class TrailDataHashMismatchError extends Error {
   readonly artifactKey: string
@@ -487,7 +522,7 @@ export class TrailDataHashMismatchError extends Error {
   constructor(artifactKey: string) {
     super(
       `The trail data that arrived is not what was published (${artifactKey}), ` +
-        `so none of it was saved. Any map already on this phone is untouched.`,
+        `so this release was not kept. Any map already on this phone is untouched.`,
     )
     this.name = 'TrailDataHashMismatchError'
     this.artifactKey = artifactKey
@@ -710,6 +745,7 @@ async function fetchElevation(
 export async function downloadTrailData({
   onProgress,
   signal,
+  onCenterline,
 }: DownloadTrailDataOptions = {}): Promise<void> {
   const total = POI_TYPES.length + 3
   let completed = 0
@@ -742,6 +778,35 @@ export async function downloadTrailData({
   // read of the response.
   const trails = new Blob([fetchedTrails.buffer], { type: fetchedTrails.contentType })
   finished('Trail lines')
+
+  // THE CENTERLINE GOES ON THE PHONE NOW, ON A PHONE THAT HAS NOTHING (#863).
+  //
+  // A first run's entry steps are a card over the map, and on an empty phone
+  // there was no map behind them: the commit below waits for the whole
+  // release, which on a 4x-throttled phone profile at 12 Mbps was ~12 s, and
+  // three steps take about eight seconds to click through. So the hiker read
+  // three sentences about a map over an empty background, and the download
+  // window opened before the trail line appeared. Measured 2026-08-20: the
+  // lines themselves were fetched and hash-checked at 4.8 s, then sat in
+  // memory for seven seconds waiting for eight POI files and a profile.
+  //
+  // ONLY WHEN THE PHONE HOLDS NOTHING, which is the state this is fixing.
+  // Where a release is already stored, nothing is written until the whole new
+  // one has arrived, exactly as before - that map already has a line to draw,
+  // and new lines beside the previous release's waypoints would be a
+  // downgrade rather than a fix (the test below holds it).
+  //
+  // The marker is what stops this being the invisible half-release the commit
+  // below exists to prevent - see TRAIL_DATA_PARTIAL_KEY. Set BEFORE the
+  // bytes, so a phone killed between the two reads as partial rather than as
+  // done.
+  const committingCenterlineFirst = (await loadTrailLines()) === null
+  if (committingCenterlineFirst) {
+    await set(TRAIL_DATA_PARTIAL_KEY, true)
+    await set(TRAILS_BLOB_KEY, trails)
+    writeTrailsMerged(sniffMergedChains(decode(fetchedTrails.bytes)))
+    onCenterline?.()
+  }
 
   // The eight POI files and the spurs together, rather than one after another.
   // Nothing orders them against each other - they are eight independent
@@ -785,7 +850,13 @@ export async function downloadTrailData({
   // gone from a React state variable by the next launch. Holding both until
   // the end costs the few megabytes already in hand and makes a failed
   // download leave the phone exactly as it found it.
-  await set(TRAILS_BLOB_KEY, trails)
+  //
+  // Still true of every download onto a phone that already holds a release.
+  // The one exception is the block above, where there is no previous release
+  // to keep whole and the invisibility is answered by a marker instead.
+  if (!committingCenterlineFirst) {
+    await set(TRAILS_BLOB_KEY, trails)
+  }
   await set(POIS_KEY, pois)
   await set(SPURS_STORE_KEY, spurs)
   await set(ELEVATION_STORE_KEY, elevation)
@@ -794,7 +865,16 @@ export async function downloadTrailData({
   // `tolerance` for them on every later launch (lib/trailShape.ts, #161).
   // Written on every commit, not just when true - a re-download from an
   // older release has to take the flag back down with it.
-  writeTrailsMerged(sniffMergedChains(decode(fetchedTrails.bytes)))
+  if (!committingCenterlineFirst) {
+    writeTrailsMerged(sniffMergedChains(decode(fetchedTrails.bytes)))
+  }
+  // The release is whole. Last of all, so every earlier line above can fail
+  // and leave a phone that knows it has to come back.
+  await del(TRAIL_DATA_PARTIAL_KEY)
+  // On the atomic path this is the moment the lines became readable, so it is
+  // the moment to say so; on the other path it has already been said, once,
+  // eight artifacts ago.
+  if (!committingCenterlineFirst) onCenterline?.()
   report('Done')
 }
 
@@ -814,16 +894,24 @@ export async function loadTrailLines(): Promise<Blob | null> {
 }
 
 /**
- * Whether a download has committed to this phone.
+ * Whether a WHOLE release has committed to this phone.
  *
- * Exactly the question `loadTrailData() !== null` answers - both are the
- * trails blob's presence, because the commit writes all four keys or none -
- * and the reason to ask it this way is that the caller which asks it most
- * (the launch fetch, deciding whether to fetch at all) then throws every
- * other artifact away.
+ * Two questions since #863, because the commit is no longer always
+ * all-or-nothing: are the trail lines here, and is the release they belong to
+ * finished. The second is a small boolean rather than a read of the waypoints
+ * themselves - the caller that asks this most is the launch fetch, deciding
+ * whether to fetch at all, and it would then throw 2,837 deserialised POIs
+ * away.
+ *
+ * False for a half-downloaded release, which is what sends the launch fetch
+ * back for the WHOLE thing rather than resuming into it. Resuming would mean
+ * a newer manifest's waypoints against the centerline of whatever release was
+ * interrupted - a mixed measurement rather than a saving, and the trail lines
+ * are the cheapest artifact in the set to fetch again.
  */
 export async function haveTrailData(): Promise<boolean> {
-  return (await loadTrailLines()) !== null
+  if ((await loadTrailLines()) === null) return false
+  return (await get(TRAIL_DATA_PARTIAL_KEY)) !== true
 }
 
 export async function loadTrailData(): Promise<TrailData | null> {
@@ -858,5 +946,8 @@ export async function deleteTrailData(): Promise<void> {
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
   await del(ELEVATION_STORE_KEY)
+  // No data, no claim about how much of it is here (#863) - the same
+  // reasoning as clearTrailsMerged() below.
+  await del(TRAIL_DATA_PARTIAL_KEY)
   clearTrailsMerged()
 }

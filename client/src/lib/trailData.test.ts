@@ -6,6 +6,7 @@ import {
   loadTrailData,
   loadTrailLines,
   deleteTrailData,
+  TRAIL_DATA_PARTIAL_KEY,
   ELEVATION_STORE_KEY,
   POIS_KEY,
   SPURS_STORE_KEY,
@@ -880,18 +881,72 @@ describe('trail data', () => {
     expect(readTrailsMerged()).toBe(false)
   })
 
-  it('stores nothing at all when a POI fetch fails partway', async () => {
-    // The bug: the trail lines were committed the moment they arrived, so
-    // signal dropping during the POI fetches - the ordinary way this fails,
-    // not an edge case - left new trail lines behind with no POIs. That state
-    // is invisible on the next launch: the map draws its trail, and search and
-    // the legend are just empty, with the error long gone from React state.
+  it('keeps the trail lines a failed first download did fetch, and says the release is not here', async () => {
+    // This USED to assert that nothing at all was stored, and the reasoning
+    // was right about the danger and has been answered rather than dropped
+    // (#863). The danger: trail lines committed the moment they arrive, with
+    // signal dropping during the POI fetches - the ordinary way this fails -
+    // leave a store holding lines and no waypoints, and that state was
+    // INVISIBLE on the next launch. The map drew its trail, search and the
+    // legend were just empty, and the error was long gone from React state.
+    //
+    // It is visible now: the marker makes `haveTrailData` answer false, so the
+    // next launch downloads the release again instead of reading the phone as
+    // done. What that buys is the twelve seconds a first run spent looking at
+    // a card over an empty background.
     serveUntilPoiFails('campsite')
 
     await expect(downloadTrailData()).rejects.toThrow(/poi_campsite/)
 
-    expect(store.has(TRAILS_BLOB_KEY)).toBe(false)
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     expect(store.has(POIS_KEY)).toBe(false)
+    expect(await haveTrailData()).toBe(false)
+  })
+
+  it('draws the centerline before the waypoints are even asked for', async () => {
+    // The whole point of #863, asserted at the moment it matters rather than
+    // afterwards: the callback fires while the POI fetches are still to come,
+    // which is what lets the map behind the first-run steps have a trail on it
+    // seven seconds earlier.
+    const linesAt: Array<string | undefined> = []
+    serveUntilPoiFails('campsite')
+
+    await expect(
+      downloadTrailData({
+        onCenterline: () => {
+          linesAt.push(
+            store.get(TRAILS_BLOB_KEY) instanceof Blob ? 'lines stored' : undefined,
+          )
+        },
+      }),
+    ).rejects.toThrow(/poi_campsite/)
+
+    // Fired once, with the lines readable and the waypoints not yet fetched.
+    expect(linesAt).toEqual(['lines stored'])
+    expect(store.has(POIS_KEY)).toBe(false)
+  })
+
+  it('says the release is here once the rest of it lands', async () => {
+    serve()
+
+    await downloadTrailData()
+
+    expect(await haveTrailData()).toBe(true)
+    expect(store.has(TRAIL_DATA_PARTIAL_KEY)).toBe(false)
+  })
+
+  it('reports the lines once, at the commit, when a release is already here', async () => {
+    // The other path. A phone with a release keeps it whole until the new one
+    // has entirely arrived, so there is nothing to report early - and the
+    // callback must not fire twice either, because each firing re-points a
+    // GeoJSON source at twelve megabytes.
+    serve()
+    await downloadTrailData()
+    let reported = 0
+
+    await downloadTrailData({ onCenterline: () => (reported += 1) })
+
+    expect(reported).toBe(1)
   })
 
   it('leaves a working download alone when a re-download fails partway', async () => {
@@ -1069,8 +1124,8 @@ describe('spur detail', () => {
     )
 
     await expect(downloadTrailData()).rejects.toThrow(/503/)
-    // Nothing committed, same rule the POI failure already follows.
-    expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+    // The release is not here, the same rule the POI failure follows (#863).
+    expect(await haveTrailData()).toBe(false)
   })
 
   it('loads spur detail back with the rest of the trail data', async () => {
@@ -1131,8 +1186,10 @@ describe('the elevation profile', () => {
     serveUntilElevationFails(503, 'Service Unavailable')
 
     await expect(downloadTrailData()).rejects.toThrow(/503/)
-    // Nothing committed, the same rule the POI failure already follows.
-    expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+    // The release is not here, the same rule the POI failure follows - the
+    // trail lines a first download managed to fetch stay, marked (#863).
+    expect(await haveTrailData()).toBe(false)
+    expect(store.has(POIS_KEY)).toBe(false)
   })
 
   it('costs the ribbon and not the map when the profile arrives malformed', async () => {

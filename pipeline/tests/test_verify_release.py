@@ -691,6 +691,37 @@ class TestPoiIdentity:
         assert reports[0]["state"] == FAILED
         assert "RETIRED" in reports[0]["detail"]
 
+    def test_a_numeric_source_key_is_not_a_disagreement(self, tmp_path, monkeypatch, requests_mock):
+        """#847. opentrail's `dbid` is a number, so the ledger keeps
+        `source_feature_id` as an int while the published GeoJSON carries a
+        string. Compared raw, that reported a mismatch between two values
+        that are the same - 174 of 4,158 features in the first release this
+        check ever ran against, each printing `1573` against `1573`.
+
+        The check had never executed before then: the gate could not start
+        (#845), so this shipped unexercised."""
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"opentrail_at:1573": self._row(source="opentrail_at", sfid=1573)})
+        self._serve(requests_mock, [self._feature(poi_id="opentrail_at:1573", source="opentrail_at", sfid="1573")])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert [r["state"] for r in reports] == [OK, OK]
+
+    def test_a_real_rekey_still_fails_when_the_types_match(self, tmp_path, monkeypatch, requests_mock):
+        """The other half: normalising types must not stop the check
+        catching the drift it exists for."""
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"opentrail_at:1573": self._row(source="opentrail_at", sfid=1573)})
+        self._serve(requests_mock, [self._feature(poi_id="opentrail_at:1573", source="opentrail_at", sfid="9999")])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert reports[0]["state"] == FAILED
+        assert "9999" in reports[0]["detail"]
+
     def test_provenance_disagreement_fails(self, tmp_path, monkeypatch, requests_mock):
         """The ledger carried the id onto a new key; an artifact still
         publishing the old key is a stale export, not a release."""

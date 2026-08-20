@@ -958,10 +958,10 @@ def check_poi_identity(base: str, manifest: dict, session=None) -> list[dict]:
             if row is None:
                 verdict = "a RETIRED ledger row" if poi_id in pois else "no ledger row at all"
                 problems.append(f"{poi_id}: published live against {verdict}")
-            elif (row["source"], row["source_feature_id"]) != (properties.get("source"), properties.get("source_feature_id")):
+            elif _provenance(row) != _provenance(properties):
                 problems.append(
-                    f"{poi_id}: ledger says ({row['source']}, {row['source_feature_id']}), the artifact "
-                    f"says ({properties.get('source')}, {properties.get('source_feature_id')})"
+                    f"{poi_id}: ledger says ({row['source']}, {row['source_feature_id']!r}), the artifact "
+                    f"says ({properties.get('source')}, {properties.get('source_feature_id')!r})"
                 )
             if poi_id in seen:
                 problems.append(f"{poi_id}: also published in {seen[poi_id]} - one id, one place, once")
@@ -975,6 +975,35 @@ def check_poi_identity(base: str, manifest: dict, session=None) -> list[dict]:
 
     reports += check_retired_poi(base, manifest, pois, seen, session)
     return reports
+
+
+def _provenance(record: dict) -> tuple[str, str]:
+    """`(source, source_feature_id)` as strings, for comparing a ledger row
+    against a published feature (#847).
+
+    Normalised because the two sides legitimately carry different JSON types
+    for the same value. opentrail's `dbid` is a NUMBER, so the ledger - built
+    from `export_poi.read_sources` - keeps `source_feature_id` as an int,
+    while the published GeoJSON carries it as a string. Compared raw, 174 of
+    the 4,158 features in a real release report a mismatch between two values
+    that are the same, printing `1573` against `1573` and giving a reader
+    nothing to act on.
+
+    Measured against the UA release of 2026-08-20: 174 features fail the raw
+    comparison, 0 fail this one, and every one of the 174 differs only by
+    int-versus-string. So this hides no genuine drift - it is the same
+    assertion, made about the value rather than about its JSON type.
+
+    Nothing is weakened. A source that really re-keys a feature changes the
+    string too, which is the drift check 21 exists to catch; and the id
+    itself is unaffected either way, because `poi_schema` mints it by
+    interpolation and so has always been a string on both sides.
+
+    Repr'd rather than bare in the failure message above, so the next person
+    reading a genuine mismatch can see a type difference instead of two
+    identical-looking values.
+    """
+    return str(record.get("source")), str(record.get("source_feature_id"))
 
 
 def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dict, session=None) -> list[dict]:

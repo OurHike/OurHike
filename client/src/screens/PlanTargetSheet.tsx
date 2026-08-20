@@ -33,6 +33,7 @@ import { applyRhythm, NEARO_MAX_MI } from '../lib/restRhythm'
 import { legFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import { formatDistance, type UnitSystem } from '../lib/units'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import './plan.css'
 
 export interface PlanTargetSheetProps {
@@ -43,6 +44,9 @@ export interface PlanTargetSheetProps {
   pois: readonly StoredPoi[]
   elevation: ElevationProfile | null
   units: UnitSystem
+  /** The hiker's own pace (#880), so a target in walking hours means THEIR
+   *  hours rather than a generic walker's. */
+  pace?: PaceProfile
   /** Where the sheet starts when re-targeting an existing plan. */
   initialTarget?: PlanTarget
   initialStartDate?: string
@@ -61,6 +65,7 @@ export function PlanTargetSheet({
   pois,
   elevation,
   units,
+  pace = STANDARD_PACE,
   initialTarget,
   initialStartDate,
   initialRhythm,
@@ -98,7 +103,7 @@ export function PlanTargetSheet({
       const profile = elevation as ElevationProfile
       return planDaysVia(pois, route, hours, {
         effort: (from: CandidateStop, to: CandidateStop) =>
-          legFigures(profile, from.mile, to.mile).minutes / 60,
+          legFigures(profile, from.mile, to.mile, pace).minutes / 60,
       })
     }
     return planDaysVia(pois, route, miles)

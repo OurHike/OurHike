@@ -1513,8 +1513,8 @@ function App() {
    */
   const selectedLineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
-    return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME)
-  }, [selectedLine, spurs, pois, units])
+    return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME, pace)
+  }, [selectedLine, spurs, pois, units, pace])
 
   /**
    * The corridor read end to end, in mile order.
@@ -1787,6 +1787,7 @@ function App() {
             start.mile,
             days * DEFAULT_WALKING_HOURS * 60,
             south ? 'SOBO' : 'NOBO',
+            pace,
           )
         : start.mile + (south ? -miles : miles)
     const reachMi = Math.abs(raw - start.mile)
@@ -1990,7 +1991,7 @@ function App() {
             descentFt: null,
             minutes: null,
           }
-        : legFigures(elevation, from.mile, to.mile),
+        : legFigures(elevation, from.mile, to.mile, pace),
     )
   }, [routeDraft, elevation])
 
@@ -2380,6 +2381,7 @@ function App() {
         pois={pois}
         elevation={elevation}
         units={units}
+        pace={pace}
         {...(targetRequest.initialTarget === undefined
           ? {}
           : { initialTarget: targetRequest.initialTarget })}
@@ -3418,6 +3420,7 @@ function App() {
                 pois={pois}
                 gpsMile={gpsPlanMile}
                 units={units}
+                pace={pace}
                 draftLive={routeDraft !== null}
                 onStartOnMap={openRouteBuilder}
                 onChangeTarget={handleChangeTarget}

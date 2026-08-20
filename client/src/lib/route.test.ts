@@ -6,6 +6,7 @@
 // fall out of it rather than be special-cased.
 
 import { describe, expect, it } from 'vitest'
+import { STANDARD_PACE, type PaceProfile } from './pace'
 
 import type { ElevationProfile } from './elevationProfile'
 import { naismithMinutes } from './naismith'
@@ -242,5 +243,60 @@ describe('mileAtWalkingMinutes', () => {
     const budget = naismithMinutes({ distanceMi: 100, ascentFt: 0 })
     expect(mileAtWalkingMinutes(flat(), 5, budget, 'NOBO')).toBeCloseTo(40, 5)
     expect(mileAtWalkingMinutes(flat(), 5, budget, 'SOBO')).toBeCloseTo(0, 5)
+  })
+})
+
+/**
+ * The hiker's own pace, through the route (#880).
+ *
+ * Every figure the planner prints comes from here, so a pace that reached the
+ * highlight sheet and not this would have two screens disagreeing about one
+ * day.
+ */
+describe("a route measured at the hiker's own pace", () => {
+  const SLOWER: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2.6 }
+  const FASTER: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 4.0 }
+
+  /** Ten miles climbing steadily, sampled every mile. */
+  const rising = profile(
+    Array.from({ length: 11 }, (_, i) => [i, i * 200] as [number, number]),
+  )
+
+  it('defaults to the standard, so callers that pass none are unchanged', () => {
+    expect(legFigures(rising, 0, 5).minutes).toBeCloseTo(
+      legFigures(rising, 0, 5, STANDARD_PACE).minutes,
+      9,
+    )
+  })
+
+  it('takes longer over the same ground for a slower hiker', () => {
+    expect(legFigures(rising, 0, 5, SLOWER).minutes).toBeGreaterThan(
+      legFigures(rising, 0, 5, STANDARD_PACE).minutes,
+    )
+  })
+
+  it('lets a faster hiker reach FURTHER in the same walking minutes', () => {
+    // FLAT ground, twenty miles of it, and deliberately so. The bound inside
+    // mileAtWalkingMinutes is derived from flat walking, and on a climbing
+    // profile the ascent term dominates so completely that the bound never
+    // binds - a version of this test on `rising` passes whether or not the
+    // bound uses the hiker's pace, which is a test that cannot fail.
+    //
+    // Here it binds. Two hours at the standard 3.107 mph reaches 6.2 mi; at
+    // 4.0 mph it reaches 8.0. With the bound left on the standard pace, the
+    // faster hiker is clamped to 6.2 - silently short, never an error.
+    const flat = profile(Array.from({ length: 21 }, (_, i) => [i, 0] as [number, number]))
+    const standard = mileAtWalkingMinutes(flat, 0, 120, 'NOBO', STANDARD_PACE)
+    const faster = mileAtWalkingMinutes(flat, 0, 120, 'NOBO', FASTER)
+
+    expect(standard).toBeCloseTo(6.2, 1)
+    expect(faster).toBeCloseTo(8.0, 1)
+    expect(faster).toBeGreaterThan(standard)
+  })
+
+  it('stops a slower hiker sooner, in the same minutes', () => {
+    const standard = mileAtWalkingMinutes(rising, 0, 120, 'NOBO', STANDARD_PACE)
+    const slower = mileAtWalkingMinutes(rising, 0, 120, 'NOBO', SLOWER)
+    expect(slower).toBeLessThan(standard)
   })
 })

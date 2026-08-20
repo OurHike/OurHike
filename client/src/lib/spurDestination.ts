@@ -19,7 +19,7 @@
 // spurs would save nothing and make the sheet inconsistent. Any cutoff would
 // be wrong on one side of itself.
 
-import { naismithTime } from './naismith'
+import { STANDARD_PACE, paceEstimate, type PaceProfile } from './pace'
 import { formatDistance, type UnitSystem } from './units'
 
 /** How close the spur's far end must sit to a POI before that POI is named.
@@ -79,6 +79,7 @@ export function describeSpur(
   spur: SpurRecord | undefined | null,
   units: UnitSystem = 'imperial',
   nameWithinM = NAME_DESTINATION_WITHIN_M,
+  pace: PaceProfile = STANDARD_PACE,
 ): SpurDetail {
   const empty: SpurDetail = {
     destinationPoiId: null,
@@ -97,7 +98,7 @@ export function describeSpur(
       distanceMi === null
         ? null
         : `${formatDistance(distanceMi, units, 'fine')} each way`,
-    roundTripLabel: distanceMi === null ? null : roundTrip(distanceMi),
+    roundTripLabel: distanceMi === null ? null : roundTrip(distanceMi, pace),
   }
 }
 
@@ -120,7 +121,7 @@ function usableLengthMi(lengthFt: number | null | undefined): number | null {
   return lengthFt / FEET_PER_MILE
 }
 
-function roundTrip(distanceMi: number): string {
+function roundTrip(distanceMi: number, pace: PaceProfile): string {
   // ONE figure for both legs, not two.
   //
   // SPUR_TRAILS.md sketches this as "≈10 min down, ≈15 min back", which needs
@@ -136,8 +137,13 @@ function roundTrip(distanceMi: number): string {
   // under-counts, and it is worse on exactly the spurs that matter most -
   // water is downhill.
   //
-  // naismithTime is reused rather than reimplemented because it already
-  // refuses to give an arrival clock, which is precisely the false precision
-  // to avoid here.
-  return `${naismithTime({ distanceMi: distanceMi * 2, ascentFt: 0 })} there and back`
+  // paceEstimate is reused rather than reimplemented because it already
+  // refuses to give an arrival clock - precisely the false precision to avoid
+  // here - and because it carries the baseline, so a hiker who has adjusted
+  // their pace sees what this figure was adjusted from (#851). The baseline
+  // is appended rather than dropped: a spur is short, and a short walk is
+  // exactly where an optimistic pace is easiest to stop noticing.
+  const estimate = paceEstimate({ distanceMi: distanceMi * 2, ascentFt: 0 }, pace)
+  const shown = `${estimate.text} there and back`
+  return estimate.relativeLine === null ? shown : `${shown} (${estimate.relativeLine})`
 }

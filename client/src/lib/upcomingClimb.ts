@@ -32,6 +32,26 @@ import {
  * climb becomes a pacing decision. It stays far below anything anyone names:
  * Albert Mountain is ~500 ft, Blood Mountain ~1,400 ft, a Presidential day
  * 3,000-4,000 ft.
+ *
+ * DELIBERATELY NOT SCALED BY THE HIKER'S OWN PACE (#880)
+ *
+ * The derivation above is a floor on what can move a PRINTED number, and the
+ * hiker's ascent coefficient changes what that floor is: at one hour per 300 m
+ * of ascent - the steepest the pace control allows - a rounding step is 82 ft
+ * rather than 164, so a smaller climb would qualify.
+ *
+ * It stays on the standard rule anyway, and the reason is what this constant
+ * is for. It decides which climbs are WORTH MENTIONING, not how long any of
+ * them takes; the second sentence of the derivation is the load-bearing one -
+ * "roughly where a climb becomes a pacing decision" - and that is a fact about
+ * the ground rather than about who is walking it. Scaling it would mean two
+ * hikers on the same trail get callouts at different hills, which is a worse
+ * kind of inconsistency than a threshold that is slightly conservative for the
+ * slowest of them.
+ *
+ * Recorded rather than left silent, because "the threshold did not change" is
+ * indistinguishable from "nobody thought about the threshold" six months from
+ * now.
  */
 export const MIN_CLIMB_FT = 300
 

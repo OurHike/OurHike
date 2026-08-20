@@ -28,6 +28,7 @@
 //   spur's own elevation profile, which does not exist.
 
 import { describeSpur, type SpurRecord } from './spurDestination'
+import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
 import type { UnitSystem } from './units'
 
@@ -121,6 +122,9 @@ export function buildLineDetail(
   pois: readonly StoredPoi[],
   units: UnitSystem = 'imperial',
   trailName = 'Appalachian Trail',
+  /** The hiker's own pace (#880), so a spur's round trip is measured the same
+   *  way as every other estimate rather than quoting a generic walker's. */
+  pace: PaceProfile = STANDARD_PACE,
 ): LineDetail {
   const throughRoute = line.source !== null && THROUGH_ROUTE_SOURCES.includes(line.source)
   const spur = line.id !== null ? spurs[line.id] : undefined
@@ -131,7 +135,7 @@ export function buildLineDetail(
   // that ATC classifies as something else.
   const kind = throughRoute ? trailName : spur !== undefined ? 'spur' : 'side trail'
 
-  const detail = describeSpur(spur, units)
+  const detail = describeSpur(spur, units, undefined, pace)
   const destination =
     detail.destinationPoiId === null
       ? undefined

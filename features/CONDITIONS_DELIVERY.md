@@ -135,9 +135,10 @@ CREATE ROLE ourhike_conditions_reader LOGIN PASSWORD '<generated>';
 GRANT CONNECT ON DATABASE postgres TO ourhike_conditions_reader;
 GRANT USAGE  ON SCHEMA public      TO ourhike_conditions_reader;
 
--- Two tables. Deliberately not `profiles`: the artifact names nobody (#430),
+-- Three tables. Deliberately not `profiles`: the artifacts name nobody (#430),
 -- and no grant means the exporter could not resolve a person if it tried.
-GRANT SELECT ON public.closures, public.reports TO ourhike_conditions_reader;
+GRANT SELECT ON public.closures, public.reports, public.field_notes
+  TO ourhike_conditions_reader;
 
 CREATE POLICY conditions_reader_closures
   ON public.closures FOR SELECT TO ourhike_conditions_reader
@@ -148,6 +149,13 @@ CREATE POLICY conditions_reader_closures
 CREATE POLICY conditions_reader_reports
   ON public.reports FOR SELECT TO ourhike_conditions_reader
   USING (status IN ('verified', 'resolved') AND visibility = 'public');
+
+-- Field notes publish on landing and are hidden on a moderator's flag
+-- (features/FIELD_NOTES.md §5), so the policy is that removal, enforced:
+-- a hidden note structurally cannot reach conditions/notes.json.
+CREATE POLICY conditions_reader_notes
+  ON public.field_notes FOR SELECT TO ourhike_conditions_reader
+  USING (hidden_at IS NULL);
 ```
 
 String literals rather than enum casts because those columns are `native_enum=False`, so

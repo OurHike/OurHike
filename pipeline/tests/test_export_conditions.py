@@ -34,6 +34,7 @@ from export_conditions import (
     MAY_SELECT_SQL,
     POLICY_COUNT_SQL,
     PUBLIC_CLOSURES_SQL,
+    PUBLIC_NOTES_SQL,
     PUBLIC_REPORTS_SQL,
     RLS_ENABLED_SQL,
     _stamp_utc,
@@ -42,6 +43,7 @@ from export_conditions import (
     connection_url,
     permission_problem,
     read_closures,
+    read_notes,
     read_reports,
 )
 
@@ -99,6 +101,29 @@ REPORTS_DDL = """
         verified_at   TIMESTAMP,
         maintainer_id VARCHAR,
         club_id       VARCHAR
+    )
+"""
+
+
+# Mirrors backend/app/models/field_note.py, with the drift caveat the two
+# DDLs above carry - and the same enforcement closing it:
+# backend/tests/test_conditions_publisher_contract.py compares the SQL's
+# column list against the served FieldNoteOut schema.
+FIELD_NOTES_DDL = """
+    CREATE TABLE public.field_notes (
+        id            VARCHAR PRIMARY KEY,
+        reporter_id   VARCHAR NOT NULL,
+        poi_id        VARCHAR,
+        lat           DOUBLE PRECISION,
+        lon           DOUBLE PRECISION,
+        mile          DOUBLE PRECISION,
+        observation   VARCHAR(20),
+        note          TEXT,
+        observed_at   TIMESTAMP NOT NULL,
+        posted_at     TIMESTAMP NOT NULL,
+        reporter_type VARCHAR(20) NOT NULL,
+        hidden_at     TIMESTAMP,
+        hidden_by     VARCHAR
     )
 """
 
@@ -222,6 +247,7 @@ READER_PASSWORD = "conditions-test-only"
 POLICIES = {
     "closures": "conditions_reader_closures",
     "reports": "conditions_reader_reports",
+    "field_notes": "conditions_reader_notes",
 }
 
 
@@ -244,6 +270,7 @@ def conditions_db():
     with psycopg.connect(SCRATCH_URL, autocommit=True) as conn:
         conn.execute(CLOSURES_DDL)
         conn.execute(REPORTS_DDL)
+        conn.execute(FIELD_NOTES_DDL)
         yield conn
 
     with _admin_connection() as conn:
@@ -294,7 +321,7 @@ def rls_subject(clean_tables):
         )
 
     clean_tables.execute(f"GRANT USAGE ON SCHEMA public TO {READER}")
-    clean_tables.execute(f"GRANT SELECT ON public.closures, public.reports TO {READER}")
+    clean_tables.execute(f"GRANT SELECT ON public.closures, public.reports, public.field_notes TO {READER}")
 
     reader_url = SCRATCH_URL.split("://", 1)[1].split("@", 1)[1]
     with psycopg.connect(f"postgresql://{READER}:{READER_PASSWORD}@{reader_url}", autocommit=True) as conn:
@@ -306,7 +333,7 @@ def rls_subject(clean_tables):
     # rather than after this one, which is too late to help here.
     for table, policy in POLICIES.items():
         clean_tables.execute(f"DROP POLICY IF EXISTS {policy} ON public.{table}")
-    clean_tables.execute(f"REVOKE ALL ON public.closures, public.reports FROM {READER}")
+    clean_tables.execute(f"REVOKE ALL ON public.closures, public.reports, public.field_notes FROM {READER}")
     clean_tables.execute(f"REVOKE ALL ON SCHEMA public FROM {READER}")
     clean_tables.execute(f"DROP ROLE IF EXISTS {READER}")
 
@@ -458,6 +485,117 @@ def test_exported_report_timestamps_are_stamped(clean_tables):
     assert row["timestamp"] == "2026-08-01T09:00:00Z"
 
 
+def _insert_note(
+    conn,
+    *,
+    note_id,
+    poi_id="osm_water:1",
+    observation="dry",
+    observed=None,
+    hidden=False,
+):
+    conn.execute(
+        """
+        INSERT INTO public.field_notes
+            (id, reporter_id, poi_id, lat, lon, mile, observation, note,
+             observed_at, posted_at, reporter_type, hidden_at, hidden_by)
+        VALUES (%s, %s, %s, 41.2, -74.1, 1382.4, %s, 'a word for the next hiker',
+                %s, %s, 'thru', %s, %s)
+        """,
+        (
+            note_id,
+            "note-author-profile-id",
+            poi_id,
+            observation,
+            observed if observed is not None else datetime.now(timezone.utc) - timedelta(days=1),
+            datetime.now(timezone.utc),
+            datetime.now(timezone.utc) if hidden else None,
+            "moderator-profile-id" if hidden else None,
+        ),
+    )
+
+
+def test_a_hidden_note_never_reaches_the_artifact(clean_tables):
+    """FIELD_NOTES.md §5's guarantee from the reports side, with the opposite
+    default: notes publish on landing, so the ONE thing this predicate does
+    is enforce a moderator's removal - and a removal that leaked would put
+    the flagged content back in front of every hiker with the next bake."""
+    _insert_note(clean_tables, note_id="n1")
+    _insert_note(clean_tables, note_id="n2", observation="flowing", hidden=True)
+
+    exported = read_notes(clean_tables)
+
+    assert [row["id"] for row in exported] == ["n1"]
+
+
+def test_the_notes_export_names_nobody_and_keeps_one_clock(clean_tables):
+    """No reporter_id - many dated notes along a corridor from one identifier
+    reconstruct a hike (#252's pair, refused here before the leak) - and no
+    posted_at, the second clock ReportOut withholds as received_at."""
+    _insert_note(clean_tables, note_id="n1")
+
+    [row] = read_notes(clean_tables)
+
+    for withheld in ("reporter_id", "posted_at", "hidden_at", "hidden_by", "recency_rank"):
+        assert withheld not in row
+    assert "note-author-profile-id" not in json.dumps(build_document("notes", [row], datetime.now(timezone.utc)))
+
+
+def test_the_notes_export_keeps_each_places_most_recent_few(clean_tables):
+    """The size rule (FIELD_NOTES.md §6): the bake carries the most recent K
+    notes per POI inside a window, never the history - an artifact that grows
+    without bound is a download that eventually fails on the trail."""
+    for index in range(8):
+        _insert_note(
+            clean_tables,
+            note_id=f"n{index}",
+            observed=datetime.now(timezone.utc) - timedelta(days=index),
+        )
+    _insert_note(clean_tables, note_id="elsewhere", poi_id="atc_shelters:9")
+
+    exported = read_notes(clean_tables)
+    here = [row for row in exported if row["poi_id"] == "osm_water:1"]
+
+    # 5 mirrors NOTES_PER_POI in backend/app/routers/field_notes.py - the
+    # live read and the baseline must be the same document from two doors.
+    assert len(here) == 5
+    assert [row["id"] for row in exported if row["poi_id"] == "atc_shelters:9"] == ["elsewhere"]
+
+
+def test_the_notes_export_drops_observations_older_than_the_window(clean_tables):
+    _insert_note(clean_tables, note_id="old", observed=datetime.now(timezone.utc) - timedelta(days=120))
+    _insert_note(clean_tables, note_id="fresh")
+
+    exported = read_notes(clean_tables)
+
+    assert [row["id"] for row in exported] == ["fresh"]
+
+
+def test_exported_note_timestamps_are_stamped(clean_tables):
+    _insert_note(clean_tables, note_id="n1", observed=datetime(2026, 8, 18, 9, 0, 0))
+
+    [row] = read_notes(clean_tables)
+
+    assert row["observed_at"] == "2026-08-18T09:00:00Z"
+
+
+def test_the_notes_window_and_cap_mirror_the_backends(clean_tables):
+    """Two files, two languages, one pair of numbers: the live endpoint's
+    NOTES_WINDOW_DAYS/NOTES_PER_POI and this SQL's literals. Read as text the
+    way the publisher contract test reads this file, so moving one without
+    the other fails here rather than as a baseline quietly narrower or wider
+    than the live overlay."""
+    backend_router = (export_conditions.ROOT.parent / "backend" / "app" / "routers" / "field_notes.py").read_text()
+
+    import re
+
+    window = re.search(r"NOTES_WINDOW_DAYS = (\d+)", backend_router)
+    per_poi = re.search(r"NOTES_PER_POI = (\d+)", backend_router)
+    assert window and per_poi, "the backend's window/cap constants moved; fix this pairing test"
+    assert f"interval '{window.group(1)} days'" in PUBLIC_NOTES_SQL
+    assert f"recency_rank <= {per_poi.group(1)}" in PUBLIC_NOTES_SQL
+
+
 def test_row_level_security_turns_a_missing_policy_into_silence(clean_tables, rls_subject):
     """The failure this script exists to catch, reproduced rather than argued.
 
@@ -551,10 +689,10 @@ def test_a_half_configured_database_is_refused_before_anything_is_read(clean_tab
 
 
 def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
-    """The three SQL constants, run for real against both tables. A typo in
+    """The three SQL constants, run for real against every table. A typo in
     one of them would otherwise only show up against production, where it
     fails open."""
-    for table in ("closures", "reports"):
+    for table in ("closures", "reports", "field_notes"):
         with clean_tables.cursor() as cur:
             cur.execute(MAY_SELECT_SQL, (f"public.{table}",))
             assert cur.fetchone()[0] is True

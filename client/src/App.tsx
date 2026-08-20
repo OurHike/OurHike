@@ -222,6 +222,15 @@ import type { FieldNoteDraft, NoteSummary } from './lib/fieldNotes'
 import { rollupByPoi } from './lib/noteRollup'
 import { pinConditionFor, stalenessPresentation } from './lib/stalenessDisplay'
 import { stalenessTier } from './lib/staleness'
+import {
+  advanceToday,
+  passedPlaces,
+  readPassedToday,
+  writePassedToday,
+  type PassedToday,
+} from './lib/passedToday'
+import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
+import { Volunteer } from './screens/Volunteer'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
@@ -1111,6 +1120,13 @@ function App() {
   const [walked, setWalked] = useState<MileRange[]>(() => readWalked())
   const previousWalkedMile = useRef<number | null>(null)
 
+  // Today's slice of the same record (lib/passedToday.ts), for the Volunteer
+  // tab's "places you passed today" - the one surface DATA_NUDGES.md calls
+  // genuinely new (#759). Same fixes, same gate, one extra local date.
+  const [passedToday, setPassedToday] = useState<PassedToday>(() =>
+    readPassedToday(new Date()),
+  )
+
   useEffect(() => {
     const mile = fix?.mile ?? null
     if (mile === null) return
@@ -1121,6 +1137,7 @@ function App() {
     // per fix that changed nothing would re-run every memo on this screen.
     if (previous === null || Math.abs(mile - previous) > MAX_FIX_GAP_MILES) return
     setWalked((current) => recordStep(current, previous, mile))
+    setPassedToday((current) => advanceToday(current, new Date(), previous, mile))
   }, [fix?.mile])
 
   // Persisted in its own effect rather than inside the updater above: React
@@ -1129,6 +1146,10 @@ function App() {
   useEffect(() => {
     writeWalked(walked)
   }, [walked])
+
+  useEffect(() => {
+    writePassedToday(passedToday)
+  }, [passedToday])
 
   useEffect(() => {
     if (fix === null) return
@@ -2798,6 +2819,45 @@ function App() {
     ],
   )
 
+  /**
+   * Today's walked-past water, shelters, campsites and resupply, oldest mile
+   * first - the Volunteer tab's list (lib/passedToday.ts). Names come from
+   * the same searchable index every other list reads.
+   */
+  const passedPlacesToday = useMemo(
+    () =>
+      passedPlaces(
+        passedToday.ranges,
+        searchablePois.flatMap((poi) =>
+          poi.mile === undefined
+            ? []
+            : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
+        ),
+        NOTE_SCOPED_TYPES,
+      ),
+    [passedToday.ranges, searchablePois],
+  )
+
+  /**
+   * A tap on a passed place opens its card, on the map, framed - the exact
+   * behaviour a search result has (#527), because the list is a second way
+   * to name a place, not a second kind of screen.
+   */
+  const handleOpenPassedPlace = useCallback(
+    (id: string) => {
+      setActiveTab('trail')
+      handleSelectPoi(id)
+      const found = pois.find((candidate) => candidate.id === id)
+      if (found !== undefined && map !== null) {
+        map.jumpTo({
+          center: [found.lon, found.lat],
+          zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+        })
+      }
+    },
+    [pois, map, handleSelectPoi],
+  )
+
   /** Answered: both fields land together, which is what the screen collects.
    *  An empty trail name is stored as null rather than as "", so Settings can
    *  keep saying "Not set" rather than showing a blank. */
@@ -3310,6 +3370,33 @@ function App() {
                       ),
                     }
                   : {})}
+              />
+            </ErrorBoundary>
+          </div>
+          <TabBar active={activeTab} onSelect={setActiveTab} />
+        </div>
+        {downloadsWindow}
+      </>
+    )
+  }
+
+  if (activeTab === 'volunteer') {
+    return (
+      <>
+        <div className="app__screen">
+          <div>
+            {/* Its own boundary like More's and Plan's, for their shared
+                reason: a throw here must not cost the map, and the tab bar
+                underneath is the way back. */}
+            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
+              <Volunteer
+                contributeConditions={preferences.contribute_conditions}
+                onToggleContribute={(next) =>
+                  updatePreferences({ contribute_conditions: next })
+                }
+                passedToday={passedPlacesToday}
+                onOpenPlace={handleOpenPassedPlace}
+                units={units}
               />
             </ErrorBoundary>
           </div>

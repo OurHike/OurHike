@@ -80,6 +80,23 @@ def test_the_reports_artifact_selects_a_subset_of_reportout():
     )
 
 
+def test_the_notes_artifact_selects_the_anonymous_slice_of_fieldnoteout():
+    """Reports' rule, applied to the third artifact: a subset of the schema,
+    with the two withheld fields never selected at all. reporter_id matters
+    more here than anywhere - many dated notes along a corridor from one
+    identifier reconstruct a hike (features/FIELD_NOTES.md §6, #252) - and a
+    baked identifier cannot be recalled from a bucket."""
+    selected = _selected_columns(_sql_constant("PUBLIC_NOTES_SQL"))
+
+    assert selected <= _schema_properties("FieldNoteOut"), (
+        "the notes artifact selects columns FieldNoteOut does not serve - a "
+        f"rename has split the two: {sorted(selected - _schema_properties('FieldNoteOut'))}"
+    )
+    assert "reporter_id" not in selected
+    assert "posted_at" not in selected
+    assert len(selected) >= 8
+
+
 def test_the_reports_artifact_still_omits_photo_url():
     """#436's decision, pinned: the live endpoint answers photos with a
     short-lived presigned URL, so a baked artifact publishing one would be

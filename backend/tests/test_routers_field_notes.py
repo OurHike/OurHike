@@ -165,9 +165,7 @@ def test_the_unfiltered_list_caps_each_place_at_its_most_recent_few(client):
     user_id = str(uuid.uuid4())
     for days_ago in range(NOTES_PER_POI + 2):
         observed = datetime.now(timezone.utc) - timedelta(days=days_ago)
-        assert (
-            _post_note(client, user_id, id=str(uuid.uuid4()), observed_at=observed.isoformat()).status_code == 201
-        )
+        assert _post_note(client, user_id, id=str(uuid.uuid4()), observed_at=observed.isoformat()).status_code == 201
 
     listed = client.get("/field-notes").json()
 
@@ -201,9 +199,7 @@ def test_flagging_requires_auth_and_counts_people_not_taps(client, db_session):
     flagger = str(uuid.uuid4())
 
     anonymous = client.post(f"/field-notes/{note_id}/flag", json={})
-    first = client.post(
-        f"/field-notes/{note_id}/flag", json={"reason": "spam"}, headers=auth_headers(flagger)
-    )
+    first = client.post(f"/field-notes/{note_id}/flag", json={"reason": "spam"}, headers=auth_headers(flagger))
     again = client.post(f"/field-notes/{note_id}/flag", json={}, headers=auth_headers(flagger))
 
     assert anonymous.status_code == 401
@@ -223,8 +219,9 @@ def test_hide_removes_a_note_from_every_public_read_and_unhide_restores_it(clien
     moderator = make_profile(db_session, Role.maintainer)
     note_id = _post_note(client, author.id).json()["id"]
     assert (
-        client.post(f"/field-notes/{note_id}/flag", json={"reason": "abusive"}, headers=auth_headers(str(uuid.uuid4())))
-        .status_code
+        client.post(
+            f"/field-notes/{note_id}/flag", json={"reason": "abusive"}, headers=auth_headers(str(uuid.uuid4()))
+        ).status_code
         == 201
     )
 
@@ -239,10 +236,7 @@ def test_hide_removes_a_note_from_every_public_read_and_unhide_restores_it(clien
     assert client.get("/field-notes", params={"poi_id": "atc_shelters:abc-123"}).json() == []
     assert client.get("/field-notes", headers=auth_headers(author.id)).json() == []
     # Flagging a hidden note answers exactly like flagging a missing one.
-    assert (
-        client.post(f"/field-notes/{note_id}/flag", json={}, headers=auth_headers(str(uuid.uuid4()))).status_code
-        == 404
-    )
+    assert client.post(f"/field-notes/{note_id}/flag", json={}, headers=auth_headers(str(uuid.uuid4()))).status_code == 404
     # The row survives - hidden, never deleted (§5).
     assert db_session.query(FieldNote).count() == 1
 
@@ -273,8 +267,7 @@ def test_the_queue_lists_flagged_work_first_and_hidden_notes_as_the_record(clien
 
     for flagger in (str(uuid.uuid4()), str(uuid.uuid4())):
         assert (
-            client.post(f"/field-notes/{flagged_id}/flag", json={"reason": "wrong"}, headers=auth_headers(flagger))
-            .status_code
+            client.post(f"/field-notes/{flagged_id}/flag", json={"reason": "wrong"}, headers=auth_headers(flagger)).status_code
             == 201
         )
     assert client.post(f"/field-notes/{hidden_id}/hide", headers=auth_headers(moderator.id)).status_code == 200

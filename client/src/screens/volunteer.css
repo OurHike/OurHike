@@ -1,0 +1,81 @@
+/* The Volunteer tab (features/VOLUNTEERING.md, #759). Same quiet register as
+   the settings screens: this is a place a hiker stands in, not a campaign. */
+
+.volunteer {
+  padding: var(--space-4, 16px);
+  padding-bottom: calc(var(--space-4, 16px) + 64px);
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.volunteer__title {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 20px;
+  color: var(--fg-1);
+}
+
+.volunteer__intro {
+  margin: 0 0 var(--space-4, 16px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.volunteer__section {
+  margin-bottom: var(--space-5, 24px);
+}
+
+.volunteer__heading {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+.volunteer__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target, 44px);
+  font-size: 14px;
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.volunteer__note {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.volunteer__passed {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.volunteer__place {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg-1);
+  text-align: left;
+  background: var(--bg-sunken);
+  border: none;
+  border-radius: 10px;
+  margin-bottom: var(--space-2, 8px);
+  cursor: pointer;
+}
+
+.volunteer__place-mile {
+  font-size: 12px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}

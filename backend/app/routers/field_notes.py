@@ -218,11 +218,7 @@ def flag_field_note(
     if note is None or note.hidden_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
-    existing = (
-        db.query(NoteFlag)
-        .filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == current_user.id)
-        .first()
-    )
+    existing = db.query(NoteFlag).filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == current_user.id).first()
     if existing is not None:
         response.status_code = status.HTTP_200_OK
         return {"status": "already flagged"}
@@ -242,9 +238,7 @@ class QueueScope(str, enum.Enum):
 
 
 def _queue_entry(db: Session, note: FieldNote, viewer: Profile) -> FlaggedNoteOut:
-    flags = (
-        db.query(NoteFlag).filter(NoteFlag.note_id == note.id).order_by(NoteFlag.created_at, NoteFlag.id).all()
-    )
+    flags = db.query(NoteFlag).filter(NoteFlag.note_id == note.id).order_by(NoteFlag.created_at, NoteFlag.id).all()
     return FlaggedNoteOut(
         note=FieldNoteOut.for_viewer(note, viewer),
         flag_count=len(flags),

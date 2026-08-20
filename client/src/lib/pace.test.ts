@@ -271,7 +271,8 @@ describe('the pace store', () => {
 })
 
 /**
- * The range the maintainer chose (#888): 1 to 4 mph in quarter-mile steps.
+ * The range the maintainer chose (#888) and the step asked for in review on
+ * #889: 1 to 4 mph in tenths.
  *
  * Replacing bounds that were tagged @unvalidated - picked to bracket the
  * standard, never measured.
@@ -282,8 +283,8 @@ describe('the flat pace control range', () => {
     expect(MAX_FLAT_PACE_MPH).toBe(4)
   })
 
-  it('steps in quarter miles per hour', () => {
-    expect(FLAT_PACE_STEP_MPH).toBe(0.25)
+  it('steps in tenths of a mile per hour', () => {
+    expect(FLAT_PACE_STEP_MPH).toBe(0.1)
   })
 
   it('reaches FASTER than the standard, which is the decision', () => {
@@ -301,11 +302,12 @@ describe('the flat pace control range', () => {
 /**
  * The consequence of that grid, pinned so nobody "fixes" it.
  *
- * 5 km/h is 3.107 mph, which is not a multiple of 0.25. Snapping the standard
- * onto the grid would make a fresh install disagree with the rule it claims to
- * use - the exact property the two-term design exists to protect.
+ * 5 km/h is 3.1069 mph, which is not a multiple of 0.1 either - the finer step
+ * moved the nearest stop from 3.0 to 3.1 without putting the standard ON the
+ * grid. Snapping it there would make a fresh install disagree with the rule it
+ * claims to use, the exact property the two-term design exists to protect.
  */
-describe('the standard sits off the quarter-mile grid', () => {
+describe('the standard sits off the grid, at any step', () => {
   it('is not reachable by dragging, so Reset is the way back', () => {
     const offGrid =
       Math.abs(
@@ -316,10 +318,11 @@ describe('the standard sits off the quarter-mile grid', () => {
   })
 
   it('is not standard at either neighbouring stop', () => {
-    // 3.0 and 3.25 bracket it. Neither is the rule, and isStandardPace says so
+    // 3.1 and 3.2 bracket it. Neither is the rule, and isStandardPace says so
     // - which is what makes the Reset control load-bearing rather than a
-    // convenience.
-    for (const stop of [3.0, 3.25]) {
+    // convenience. 3.1 is the interesting one: it prints the SAME estimate as
+    // the standard, so the baseline line stays silent while Reset does not.
+    for (const stop of [3.1, 3.2]) {
       expect(isStandardPace({ ...STANDARD_PACE, flatPaceMph: stop })).toBe(false)
     }
   })

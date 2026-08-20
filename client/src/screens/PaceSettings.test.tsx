@@ -49,7 +49,7 @@ describe('the pace controls', () => {
  * and both sliders are only legible through what a real walk now reads.
  */
 describe('the flat pace slider (#888)', () => {
-  it('offers 1 to 4 mph in quarter-mile steps', () => {
+  it('offers 1 to 4 mph in tenths', () => {
     render(<PaceSettings pace={STANDARD_PACE} units="imperial" onChange={vi.fn()} />)
     const flat = screen.getByLabelText('Flat pace')
     expect(flat).toHaveAttribute('min', String(MIN_FLAT_PACE_MPH))
@@ -74,12 +74,17 @@ describe('the flat pace slider (#888)', () => {
     expect(screen.getByText(/was ≈2h 10m · 0\.\d× standard/)).toBeInTheDocument()
   })
 
-  it('offers Reset once dragged, because the standard is off the grid', () => {
-    // 3.107 mph is not a multiple of 0.25, so no stop on this slider is the
-    // standard. Reset is the only way back to exactly the rule.
+  it('offers Reset at the nearest stop, which is not the standard', () => {
+    // 3.1069 mph is not a multiple of 0.1, so no stop on this slider is the
+    // standard - 3.1 is the closest and is still not it. Reset is the only way
+    // back to exactly the rule.
+    //
+    // 3.1 also prints the SAME estimate as the standard, so this is the case
+    // where the baseline line stays silent and Reset does not: they answer
+    // different questions.
     render(
       <PaceSettings
-        pace={{ ...STANDARD_PACE, flatPaceMph: 3.25 }}
+        pace={{ ...STANDARD_PACE, flatPaceMph: 3.1 }}
         units="imperial"
         onChange={vi.fn()}
       />,

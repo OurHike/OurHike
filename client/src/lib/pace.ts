@@ -64,10 +64,11 @@ export const STANDARD_PACE: PaceProfile = {
 /**
  * What the flat-pace control may be set to, and in what steps.
  *
- * 1 to 4 mph in quarter-mile steps, decided by the maintainer on #888. It
- * replaces a placeholder that was tagged @unvalidated for exactly this - picked
- * to bracket the standard generously, never measured - so these are somebody's
- * number rather than nobody's.
+ * 1 to 4 mph in tenths, decided by the maintainer on #888 - the range there,
+ * and the step asked for in review on #889. It replaces a placeholder that was
+ * tagged @unvalidated for exactly this - picked to bracket the standard
+ * generously, never measured - so these are somebody's number rather than
+ * nobody's.
  *
  * FASTER THAN STANDARD IS ALLOWED, up to 4 mph against the standard's 3.107.
  * That is the decision, and the safeguard is not a clamp: it is that an
@@ -77,7 +78,7 @@ export const STANDARD_PACE: PaceProfile = {
  */
 export const MIN_FLAT_PACE_MPH = 1
 export const MAX_FLAT_PACE_MPH = 4
-export const FLAT_PACE_STEP_MPH = 0.25
+export const FLAT_PACE_STEP_MPH = 0.1
 
 /**
  * What the climbing control may be set to.
@@ -125,10 +126,16 @@ export function readPace(
  * Whether a profile is the standard rule, within floating-point noise.
  *
  * NOT REACHABLE BY DRAGGING, and that is deliberate rather than an oversight.
- * The standard flat pace is 5 km/h - 3.107 mph - which does not sit on the
- * quarter-mile grid the control offers: the nearest stops are 3.0 and 3.25.
- * So once a hiker moves the flat slider, "Reset to standard" is the only way
- * back to exactly the rule.
+ * The standard flat pace is 5 km/h - 3.1069 mph - which does not sit on the
+ * tenths grid the control offers: the nearest stop is 3.1, seven thousandths
+ * below. So once a hiker moves the flat slider, "Reset to standard" is the
+ * only way back to exactly the rule.
+ *
+ * At 3.1 the printed estimate is identical to the standard's - 130.5 minutes
+ * against 130.3 on the preview's walk, both ≈2h 10m - so the baseline line
+ * correctly says nothing while the Reset control correctly still offers itself.
+ * Those two are answering different questions: "is this a different answer"
+ * and "is this exactly the rule".
  *
  * The alternative would be snapping the standard onto the grid, and that is
  * the wrong trade: a fresh install would then disagree with the rule it claims

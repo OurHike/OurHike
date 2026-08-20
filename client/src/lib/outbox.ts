@@ -39,6 +39,7 @@ import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
 import type { FieldNoteDraft } from './fieldNotes'
+import type { VolunteerHoursDraft } from './volunteerHours'
 
 export const OUTBOX_KEY = 'ourhike:outbox'
 
@@ -255,6 +256,13 @@ export interface OutboxItem {
    */
   fieldNote?: FieldNoteDraft
   /**
+   * A day's volunteer hours (#761) - the fifth cargo, and queued for the
+   * plainest reason of all: hours are logged at camp, and camp has no
+   * signal. The draft carries its own `worked_on` date, so `authoredAt`
+   * here is only the idempotency clock, not the claim.
+   */
+  volunteerHours?: VolunteerHoursDraft
+  /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
    * **The bytes and not a URL**, which is the whole reason this field exists
@@ -432,6 +440,25 @@ export async function enqueueFieldNote(
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     fieldNote,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a day's volunteer hours (#761). Same queue, same four properties -
+ * a resend is recognisably the same record because `POST /volunteer-hours`
+ * takes the id as its idempotency key.
+ */
+export async function enqueueVolunteerHours(
+  volunteerHours: VolunteerHoursDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    volunteerHours,
   }
 
   await mutateQueue((queue) => [...queue, item])

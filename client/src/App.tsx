@@ -231,6 +231,10 @@ import {
 } from './lib/passedToday'
 import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
 import { Volunteer } from './screens/Volunteer'
+import { VolunteerHours } from './screens/VolunteerHours'
+import { enqueueVolunteerHours } from './lib/outbox'
+import { fetchMyVolunteerHours } from './lib/api'
+import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
@@ -2822,6 +2826,82 @@ function App() {
   )
 
   /**
+   * The hours logbook (#761): what the backend holds, fetched when the
+   * Volunteer tab is actually open - a private record read by one screen
+   * does not earn a fetch on every launch - plus this phone's own unsent
+   * records echoed locally, the same immediately-real contract the field
+   * notes keep. Null until either exists.
+   */
+  const [myHours, setMyHours] = useState<VolunteerHoursSummary[] | null>(null)
+  const [localHours, setLocalHours] = useState<readonly VolunteerHoursSummary[]>([])
+
+  useEffect(() => {
+    if (!online || account === null || activeTab !== 'volunteer') return
+    let cancelled = false
+    fetchMyVolunteerHours().then(
+      (records) => {
+        if (!cancelled) setMyHours(records)
+      },
+      // Unreachable backend, unconfigured build, expired session - all the
+      // ordinary conditions out here. The logbook keeps whatever it had.
+      () => undefined,
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [online, account, activeTab])
+
+  const hoursRecords = useMemo(() => {
+    if (myHours === null && localHours.length === 0) return null
+    const fetched = myHours ?? []
+    const fetchedIds = new Set(fetched.map((record) => record.id))
+    // The echo wins only until the server copy arrives under the same id -
+    // then the server's state (a club may have confirmed it) is the record.
+    return [
+      ...localHours.filter((record) => !fetchedIds.has(record.id)),
+      ...fetched,
+    ].sort((a, b) => b.worked_on.localeCompare(a.worked_on) || a.id.localeCompare(b.id))
+  }, [myHours, localHours])
+
+  /** Queue a day's hours - saved first, echoed at once, sign-in asked after
+   *  (contributionFlow.ts's ordering, the same walk every write takes). */
+  const handleLogHours = useCallback(
+    async (draft: VolunteerHoursDraft) => {
+      const item = await enqueueVolunteerHours(draft)
+
+      setLocalHours((current) => [
+        {
+          id: item.id,
+          club_id: draft.club_id ?? null,
+          worked_on: draft.worked_on,
+          hours: draft.hours,
+          work_project_id: draft.work_project_id ?? null,
+          activity: draft.activity,
+          note: draft.note ?? null,
+          mile: draft.mile ?? null,
+          lat: draft.lat ?? null,
+          lon: draft.lon ?? null,
+          state: 'claimed',
+          confirmed_at: null,
+          recorded_at: item.authoredAt,
+        },
+        ...current,
+      ])
+
+      void syncOutbox().then((result) => {
+        if (result !== null && result.sent > 0) markSynced()
+      })
+
+      const next = stepAfterSaving({
+        hasAccount: account !== null,
+        hasIdentity: hasStatedReporterType(preferences.reporter_type),
+      })
+      if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
+    },
+    [account, preferences.reporter_type, markSynced],
+  )
+
+  /**
    * Today's walked-past water, shelters, campsites and resupply, oldest mile
    * first - the Volunteer tab's list (lib/passedToday.ts). Names come from
    * the same searchable index every other list reads.
@@ -3403,7 +3483,13 @@ function App() {
                 opportunitiesAsOf={workProjectsGeneratedAt}
                 gpsMile={fix?.mile ?? null}
                 now={now}
-              />
+              >
+                <VolunteerHours
+                  records={hoursRecords}
+                  onLog={(draft) => void handleLogHours(draft)}
+                  now={now}
+                />
+              </Volunteer>
             </ErrorBoundary>
           </div>
           <TabBar active={activeTab} onSelect={setActiveTab} />

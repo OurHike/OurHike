@@ -21,6 +21,7 @@ import type { OutboxItem, PhotoAction } from './outbox'
 import type { BackendReportStatus } from './reportStatus'
 import type { ClosureReason, ClosureStatus } from './closureBanner'
 import type { NoteSummary } from './fieldNotes'
+import type { VolunteerHoursSummary } from './volunteerHours'
 import { PHOTO_CONTENT_TYPE } from './reportPhoto'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -488,18 +489,30 @@ export async function sendFieldNote(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Sends one queued day of volunteer hours (#761). The draft carries its own
+ * `worked_on` date - the claim - so only the idempotency key is added here.
+ */
+export async function sendVolunteerHours(item: OutboxItem): Promise<void> {
+  await authedFetch('/volunteer-hours', {
+    method: 'POST',
+    body: JSON.stringify({ ...item.volunteerHours, id: item.id }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds four families now: condition reports (the original
+ * The outbox holds five families now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
- * reports (#848), and field notes (features/FIELD_NOTES.md). One
- * dispatcher, so `flushOutbox` keeps its single `send` seam and the queue
- * stays one queue - a hiker's unsent work is one list, not four.
+ * reports (#848), field notes (features/FIELD_NOTES.md), and volunteer
+ * hours (#761). One dispatcher, so `flushOutbox` keeps its single `send`
+ * seam and the queue stays one queue - a hiker's unsent work is one list.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
   if (item.appFailure !== undefined) return sendAppFailure(item)
   if (item.fieldNote !== undefined) return sendFieldNote(item)
+  if (item.volunteerHours !== undefined) return sendVolunteerHours(item)
   return sendReport(item)
 }
 
@@ -832,6 +845,18 @@ export interface NoteQueueEntry {
   flag_count: number
   reasons: string[]
   hidden: boolean
+}
+
+/**
+ * The caller's own logbook (#761), every state included - the dashboard
+ * computes and labels its totals from this (lib/volunteerHours.ts owns
+ * which states count, per the 2026-08-20 decision).
+ */
+export async function fetchMyVolunteerHours(
+  signal?: AbortSignal,
+): Promise<VolunteerHoursSummary[]> {
+  const response = await authedFetch('/volunteer-hours/mine', { method: 'GET', signal })
+  return (await response.json()) as VolunteerHoursSummary[]
 }
 
 export async function fetchNoteQueue(signal?: AbortSignal): Promise<NoteQueueEntry[]> {

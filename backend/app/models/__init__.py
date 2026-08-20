@@ -26,6 +26,7 @@ from app.models.report import (
     Severity,
     Visibility,
 )
+from app.models.volunteer_hours import HoursActivity, HoursState, VolunteerHoursRecord
 
 __all__ = [
     "AppFailure",
@@ -51,4 +52,7 @@ __all__ = [
     "ReportType",
     "Severity",
     "Visibility",
+    "HoursActivity",
+    "HoursState",
+    "VolunteerHoursRecord",
 ]

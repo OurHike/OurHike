@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { syncOutbox, useOutboxSync } from './outboxSync'
-import { flushOutbox } from './outbox'
+import { flushOutbox, hasWorkThatNeedsNoAccount } from './outbox'
 import { accessToken, sendOutboxItem, permanentFailureReason } from './api'
 
 // #231's other half: the outbox had queued correctly since it was written and
@@ -13,7 +13,10 @@ import { accessToken, sendOutboxItem, permanentFailureReason } from './api'
 // Coming back into signal is precisely when that happens, because the `online`
 // event and a screen mounting can land in the same tick.
 
-vi.mock('./outbox', () => ({ flushOutbox: vi.fn() }))
+vi.mock('./outbox', () => ({
+  flushOutbox: vi.fn(),
+  hasWorkThatNeedsNoAccount: vi.fn(),
+}))
 vi.mock('./api', () => ({
   accessToken: vi.fn(),
   sendOutboxItem: vi.fn(),
@@ -23,10 +26,15 @@ vi.mock('./api', () => ({
 
 const mockedFlush = vi.mocked(flushOutbox)
 const mockedToken = vi.mocked(accessToken)
+const mockedNeedsNoAccount = vi.mocked(hasWorkThatNeedsNoAccount)
 
 beforeEach(() => {
   mockedToken.mockResolvedValue('a-real-token')
   mockedFlush.mockResolvedValue({ sent: 1, failed: 0, stuck: 0 })
+  // The ordinary queue: reports and photo actions, all of which need an
+  // account. The app-failure report is the exception, and the tests that are
+  // about it say so.
+  mockedNeedsNoAccount.mockResolvedValue(false)
 })
 
 afterEach(() => {
@@ -48,6 +56,19 @@ describe('syncOutbox', () => {
 
     expect(await syncOutbox()).toBeNull()
     expect(mockedFlush).not.toHaveBeenCalled()
+  })
+
+  // #848. The app-failure report is the one write that takes no account, and
+  // an unconditional "signed out, do not flush" left exactly that report
+  // waiting for one - a hiker who has just been lost is not going to make an
+  // account first, and should not have to.
+  it('flushes while signed out when something queued needs no account', async () => {
+    mockedToken.mockResolvedValue(null)
+    mockedNeedsNoAccount.mockResolvedValue(true)
+
+    await syncOutbox()
+
+    expect(mockedFlush).toHaveBeenCalledWith(sendOutboxItem, permanentFailureReason)
   })
 
   it('reports a flush that ran, so a caller can record a real sync time', async () => {

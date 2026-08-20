@@ -118,6 +118,20 @@
   border: 1px solid var(--border-2);
   border-radius: 10px;
 }
+/* The app-failure row (#848). Deliberately the danger treatment .more__stuck
+   and .settings__locked already use, and deliberately the only thing in this
+   section drawn that way: a hiker scanning a page of grey rows for where to
+   say the app nearly got them lost should not have to read four hints first.
+   `text-align: left` because it is a <button> and not an <a> - the four below
+   inherit the paragraph alignment, and a button does not. */
+.settings__link--urgent {
+  text-align: left;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  cursor: pointer;
+}
+
 .settings__link-hint {
   font-size: 11px;
   font-weight: 400;

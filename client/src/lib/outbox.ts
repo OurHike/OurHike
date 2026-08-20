@@ -137,6 +137,84 @@ export type PhotoAction =
       reason: 'wrong_place' | 'person' | 'other'
     }
 
+/**
+ * The four ways ../../../CLAUDE.md says this app can hurt somebody: "Lost,
+ * out of water, in front of something dangerous, or unable to get off the
+ * trail quickly." One token each.
+ *
+ * The backend holds the same four (`app/models/app_failure.py`) and drops
+ * any word it does not know rather than refusing the report, so the two ends
+ * may drift without a hiker losing anything - but they are compared anyway,
+ * by backend/tests/test_client_report_contract.py, because a harm this end
+ * can send and that end silently discards is a triage signal that vanishes
+ * with nobody told.
+ */
+export type AppFailureHarm = 'lost' | 'water' | 'hazard' | 'stranded'
+
+/**
+ * What the hiker may write before the field is cut.
+ *
+ * **Duplicated from `backend/app/schemas/app_failure.py` rather than
+ * fetched**, the same trade `lib/reportPhoto.ts` makes about the photo cap:
+ * the number is needed while composing, offline, and there is nothing to ask.
+ * The two ends disagreeing is a bug worth having loudly, so
+ * backend/tests/test_client_report_contract.py compares them.
+ *
+ * Enforced here as a `maxLength` on the field rather than as a refusal at
+ * submit. The server truncates instead of rejecting (see that schema for
+ * why), so the only question this number answers is whether the hiker finds
+ * out at the keyboard or silently afterwards.
+ */
+export const APP_FAILURE_MAX_CHARS = 8000
+
+/** The same, for the two short fields - where they were, how to reach them. */
+export const APP_FAILURE_SHORT_MAX_CHARS = 500
+
+/**
+ * A report that this app failed somebody while they were out on the trail
+ * (#848) - the outbox's third cargo, and the one that most needs to be here.
+ *
+ * The other two are queued because the trail has no signal. This one is
+ * queued because the FAILURE has no signal: the app breaking while somebody
+ * navigates by it is, nearly always, the offline path breaking, and the four
+ * GitHub links in screens/ReportBug.tsx all need a browser and a connection.
+ * A hiker who has just been lost cannot file any of them until town, by which
+ * time the detail that would have let us reproduce it is gone.
+ *
+ * Deliberately NOT a `ReportDraft` with an eighth type. A report is about the
+ * trail, is drawn on the map, and is public; this is about the software, is
+ * drawn nowhere, and carries `contact` - a way to reach a real person, which
+ * must never be one forgotten field away from the public serialisation
+ * (features/IDENTITY_AND_PRIVACY.md, and #252 for what that costs).
+ */
+export interface AppFailureDraft {
+  /** What broke. The only field the server requires. */
+  what_happened: string
+  /** Where they were, in their own words. No GPS is attached - see
+   *  features/APP_FAILURE_REPORTS.md for why this app asks rather than takes. */
+  whereabouts?: string
+  /** However they chose to be reachable. Never parsed, never required. */
+  contact?: string
+  /** Which of the four this came near, as the hiker answered. Empty is an
+   *  answer ("none of these"), not an unanswered question. */
+  harms: AppFailureHarm[]
+  /** `buildSummary(BUILD_INFO)` - attached, so nobody retypes a commit. */
+  build: string
+  /**
+   * Whether the phone thought it was offline while this was being written.
+   *
+   * Attached rather than asked: bug_report.yml asks for it in words, and for
+   * this class of failure it is nearly always the answer.
+   *
+   * **A claim, and asymmetrically reliable.** `true` is trustworthy - the
+   * browser says it has no connection and it does not. `false` is
+   * `navigator.onLine`'s optimism, which lib/useOnline.ts already documents:
+   * it reports a captive portal, or a bar of signal carrying no data, as
+   * online. So a `false` here does not mean the request could have gone.
+   */
+  was_offline: boolean
+}
+
 export interface OutboxItem {
   /**
    * Stable across retries, so a resend is recognisably the same report -
@@ -153,6 +231,16 @@ export interface OutboxItem {
   payload?: ReportDraft
   /** The photo action, on the items that are one (#577/#579). */
   action?: PhotoAction
+  /**
+   * The app-failure report, on the items that are one (#848).
+   *
+   * A third optional field rather than a discriminated union over the whole
+   * item, for the reason `payload` gives above: every item already sitting in
+   * a phone's IndexedDB predates this one, and a union would invalidate all
+   * of them at once - on a device whose queue is the only copy of what
+   * somebody wrote down.
+   */
+  appFailure?: AppFailureDraft
   /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
@@ -266,6 +354,46 @@ export async function enqueueAction(
 
   await mutateQueue((queue) => [...queue, item])
   return item
+}
+
+/**
+ * Queue a report that the app failed somebody on the trail (#848).
+ *
+ * Same queue and the same four properties, which is the point: the authored
+ * time travels, a failed send leaves it queued, and the id makes a resend
+ * recognisably the same report. A hiker's unsent work stays one list.
+ */
+export async function enqueueAppFailure(
+  appFailure: AppFailureDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    appFailure,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Whether anything queued can be sent without an account (#848).
+ *
+ * lib/outboxSync.ts declines to flush at all while signed out, on the sound
+ * grounds that every item would be refused. That stopped being true when the
+ * app-failure report arrived: its endpoint takes no account, because a hiker
+ * whose app just failed may never have signed in and asking them to fix that
+ * first gets the priority backwards. Without this, their report would sit in
+ * the queue until they made an account they had no other reason to want.
+ *
+ * Deliberately does not exclude items already marked `failure`. A permanently
+ * failed item is skipped by the flush anyway, so the cost of including it is
+ * one IndexedDB read and no request - and excluding it would silently undo
+ * the build-changed retry rule flushOutbox implements.
+ */
+export async function hasWorkThatNeedsNoAccount(): Promise<boolean> {
+  return (await readQueue()).some((item) => item.appFailure !== undefined)
 }
 
 export async function removeQueued(id: string): Promise<void> {

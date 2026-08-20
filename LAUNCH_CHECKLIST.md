@@ -332,7 +332,7 @@ That is why these two settings are `*_MIGRATION_DATABASE_URL` and not the `DATAB
 
 **Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)`. Inspecting the applied schema on a real Postgres for the first time shows what that renders as: a bare `VARCHAR(20)`, with **no** `CHECK` constraint — SQLAlchemy has defaulted `create_constraint` to `False` since 1.4, so the allowed values are enforced in Python and not by the database. Nothing is broken by that (every write goes through the API's pydantic schemas), but it is worth knowing before you assume the database will reject a bad `role` or `visibility`. See `backend/app/models/profile.py`.
 
-Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`.
+Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`, `poi_photos` ([#576](https://github.com/OurHike/OurHike/issues/576)), `app_failures` ([#848](https://github.com/OurHike/OurHike/issues/848)). The last two were added by revisions after the initial schema, and this line had already stopped listing `poi_photos` — `backend/tests/test_migration_rls.py` compares the migrations against `Base.metadata` and is what actually keeps the set honest; this sentence is a reader's convenience.
 
 ---
 

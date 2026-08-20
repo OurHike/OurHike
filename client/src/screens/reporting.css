@@ -221,3 +221,22 @@
   color: var(--fg-3);
   text-align: center;
 }
+
+/* The harm checkboxes on AppFailureReport.tsx (#848). A fieldset rather than
+   a div, so the four options are announced as one question - and fieldsets
+   carry browser default borders and padding that no other field here has. */
+.reporting__checks {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.reporting__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  /* The 44px minimum applies to a checkbox as much as to a button, and a cold
+     thumb ticking the wrong harm is the failure this size prevents. */
+  min-height: var(--min-touch-target, 44px);
+  font-size: 14px;
+  color: var(--fg-1);
+}

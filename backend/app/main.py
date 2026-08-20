@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.routers import (
+    app_failures,
     closures,
     hikes,
     maintainer_assignments,
@@ -78,3 +79,4 @@ app.include_router(closures.router)
 app.include_router(wrong_way.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
+app.include_router(app_failures.router)

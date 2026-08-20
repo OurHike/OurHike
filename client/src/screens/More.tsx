@@ -79,6 +79,12 @@ export interface MoreProps extends SettingsProps {
   /** Opens the download window, from the link in the About tab. Omitted, no
    *  link is drawn. */
   onOpenDownloads?: () => void
+  /**
+   * Opens the app-failure report (#848), from the row at the top of "Report a
+   * bug". Omitted, no row is drawn - see ReportBug.tsx for why an unwired
+   * build should draw nothing rather than a dead control.
+   */
+  onReportFailure?: () => void
   /** Which build this is (#378), for the About tab. Injectable for the same
    *  reason `now` is - see screens/AboutBuild.tsx. Omitted, the real one is
    *  shown. */
@@ -105,6 +111,7 @@ export function More({
   hasDownload = false,
   downloadActivity = null,
   onOpenDownloads,
+  onReportFailure,
   build,
   ...settings
 }: MoreProps) {
@@ -272,7 +279,7 @@ export function More({
             to name and these links carry it (#626). The same `build` reaches
             both, so the section that displays it and the links that send it
             can never disagree about which one this is. */}
-        <ReportBug build={build} />
+        <ReportBug build={build} onReportFailure={onReportFailure} />
 
         {/* Last: the only way to the download, and still a once-a-season
             errand, so it gets the foot of the tab rather than the top. */}

@@ -62,6 +62,20 @@ const ITEM: OutboxItem = {
   },
 }
 
+/** An app-failure report waiting in the outbox (#848). */
+const FAILURE_ITEM: OutboxItem = {
+  id: 'outbox-9',
+  authoredAt: '2026-06-01T08:30:00.000Z',
+  appFailure: {
+    what_happened: 'The map went blank and would not come back.',
+    whereabouts: 'the ford below Fontana',
+    contact: 'sparrow@example.com',
+    harms: ['lost'],
+    build: 'OurHike 1.0.0 · commit 6e23f12 · built 2026-06-01 00:00 UTC',
+    was_offline: true,
+  },
+}
+
 beforeEach(() => {
   withSession('a-real-token')
 })
@@ -231,6 +245,87 @@ describe('the request a configured build sends', () => {
     mockFetch(201)
 
     await expect(api.sendReport(ITEM)).resolves.toBeUndefined()
+  })
+})
+
+// The one write in the app that goes without an account (#848). Every
+// assertion here is about that difference: the report a hiker files when the
+// app failed them on the trail must not wait for a sign-in they may never do.
+describe('sending an app-failure report', () => {
+  async function configured() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org/')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('sends while signed out, rather than refusing the way a report does', async () => {
+    withSession(null)
+    const api = await configured()
+    const spy = mockFetch()
+
+    await api.sendAppFailure(FAILURE_ITEM)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBeUndefined()
+  })
+
+  it('attaches the token when there is one, so a reply has a second route', async () => {
+    const api = await configured()
+    const spy = mockFetch()
+
+    await api.sendAppFailure(FAILURE_ITEM)
+
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('carries the report, the id and the time it was written', async () => {
+    const api = await configured()
+    const spy = mockFetch()
+
+    await api.sendAppFailure(FAILURE_ITEM)
+
+    const call = spy.mock.calls[0]
+    expect(String(call[0])).toBe('https://api.example.org/app-failures')
+    const body = JSON.parse(String((call[1] as RequestInit).body))
+    expect(body.what_happened).toBe('The map went blank and would not come back.')
+    expect(body.contact).toBe('sparrow@example.com')
+    expect(body.harms).toEqual(['lost'])
+    // The idempotency key, and the authored time - days old is the ordinary
+    // case here, because the failure happens where there is no signal.
+    expect(body.id).toBe('outbox-9')
+    expect(body.authored_at).toBe('2026-06-01T08:30:00.000Z')
+  })
+
+  it('throws on a refusal, so the report stays queued', async () => {
+    const api = await configured()
+    mockFetch(500)
+
+    await expect(api.sendAppFailure(FAILURE_ITEM)).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it('is what sendOutboxItem picks for an item carrying one', async () => {
+    // The dispatch, not the transport: an item with an appFailure must not
+    // fall through to sendReport, which would POST it to /reports and be
+    // refused for having no type.
+    const api = await configured()
+    const spy = mockFetch()
+
+    await api.sendOutboxItem(FAILURE_ITEM)
+
+    expect(String(spy.mock.calls[0][0])).toContain('/app-failures')
   })
 })
 

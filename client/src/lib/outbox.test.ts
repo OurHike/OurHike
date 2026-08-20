@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { get, set, update } from 'idb-keyval'
 import {
   enqueue,
+  enqueueAppFailure,
+  hasWorkThatNeedsNoAccount,
   listQueued,
   removeQueued,
   retryQueued,
   flushOutbox,
   OUTBOX_KEY,
+  type AppFailureDraft,
 } from './outbox'
 import { BUILD_INFO } from './buildInfo'
 
@@ -502,5 +505,104 @@ describe('atomicity of the mutators (#288)', () => {
 
     const remaining = read() as Array<{ authoredAt: string }>
     expect(remaining.map((item) => item.authoredAt)).toEqual(['2026-07-27T09:00:00.000Z'])
+  })
+})
+
+// The outbox's third cargo (#848): a report that this app failed somebody on
+// the trail. It is queued for a reason the other two are not - the FAILURE
+// has no signal, not just the trail - and it is the only item in the queue
+// that can be sent without an account.
+describe('an app-failure report in the queue', () => {
+  const FAILURE: AppFailureDraft = {
+    what_happened: 'The map went blank and would not come back.',
+    contact: 'sparrow@example.com',
+    harms: ['lost'],
+    build: 'OurHike 1.0.0 · commit 6e23f12 · built 2026-06-01 00:00 UTC',
+    was_offline: true,
+  }
+
+  it('joins the same queue the reports are in, rather than a second one', async () => {
+    const read = withStoredQueue()
+
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    await enqueueAppFailure(FAILURE, new Date('2026-07-27T09:00:00Z'))
+
+    expect(read()).toHaveLength(1 + 1)
+  })
+
+  it('keeps the time it was written, which out here is days before it sends', async () => {
+    const read = withStoredQueue()
+    const written = new Date('2026-07-27T09:00:00Z')
+
+    await enqueueAppFailure(FAILURE, written)
+
+    expect((read()[0] as { authoredAt: string }).authoredAt).toBe(written.toISOString())
+  })
+
+  it('carries the report rather than a payload, so the send can tell them apart', async () => {
+    const read = withStoredQueue()
+
+    await enqueueAppFailure(FAILURE, new Date('2026-07-27T09:00:00Z'))
+
+    const item = read()[0] as { appFailure?: AppFailureDraft; payload?: unknown }
+    expect(item.appFailure?.contact).toBe('sparrow@example.com')
+    expect(item.payload).toBeUndefined()
+  })
+
+  it('gets an id, which is what makes the resend after a lost response safe', async () => {
+    const read = withStoredQueue()
+
+    await enqueueAppFailure(FAILURE, new Date('2026-07-27T09:00:00Z'))
+
+    expect((read()[0] as { id: string }).id).toBeTruthy()
+  })
+})
+
+// The predicate lib/outboxSync.ts consults before declining to flush while
+// signed out. Without it the one report that needs no account waited for one.
+describe('hasWorkThatNeedsNoAccount', () => {
+  const FAILURE: AppFailureDraft = {
+    what_happened: 'It stopped drawing my position.',
+    harms: [],
+    build: 'OurHike 1.0.0 · commit 6e23f12 · built 2026-06-01 00:00 UTC',
+    was_offline: true,
+  }
+
+  it('is false for an empty queue', async () => {
+    withStoredQueue()
+
+    expect(await hasWorkThatNeedsNoAccount()).toBe(false)
+  })
+
+  it('is false when only reports are waiting, which do need one', async () => {
+    withStoredQueue()
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+
+    expect(await hasWorkThatNeedsNoAccount()).toBe(false)
+  })
+
+  it('is true as soon as one app-failure report is waiting', async () => {
+    withStoredQueue()
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    await enqueueAppFailure(FAILURE, new Date('2026-07-27T09:00:00Z'))
+
+    expect(await hasWorkThatNeedsNoAccount()).toBe(true)
+  })
+
+  // Deliberate: a permanently failed item is skipped by the flush anyway, and
+  // excluding it here would silently undo the build-changed retry rule -
+  // flushOutbox gives a marked item one more try after an app update, which is
+  // exactly the case where an old client's refusal is the thing that was wrong.
+  it('still counts a report an older build gave up on', async () => {
+    withStoredQueue([
+      {
+        id: 'failed-1',
+        authoredAt: '2026-07-27T09:00:00.000Z',
+        appFailure: FAILURE,
+        failure: { reason: 'refused', at: '2026-07-27T10:00:00.000Z', build: 'older' },
+      },
+    ])
+
+    expect(await hasWorkThatNeedsNoAccount()).toBe(true)
   })
 })

@@ -6,7 +6,7 @@
 // request, plus the guard that stops two flushes overlapping.
 
 import { useEffect } from 'react'
-import { flushOutbox, type FlushResult } from './outbox'
+import { flushOutbox, hasWorkThatNeedsNoAccount, type FlushResult } from './outbox'
 import {
   accessToken,
   sendOutboxItem,
@@ -35,11 +35,19 @@ async function run(): Promise<FlushResult | null> {
   // a real state (see api.ts), and one a hiker cannot do anything about.
   if (!API_CONFIGURED) return null
 
-  // Signed out. Every item would be refused and stay queued, which is the
-  // correct outcome, so this only avoids spending requests to reach it: a
+  // Signed out. Almost every item would be refused and stay queued, which is
+  // the correct outcome, so this only avoids spending requests to reach it: a
   // report written before signing in waits for an account rather than being
   // lost, and goes the moment one exists.
-  if ((await accessToken()) === null) return null
+  //
+  // **Almost, since #848.** The app-failure report is the one write that
+  // takes no account, because a hiker whose app just failed may never have
+  // signed in and asking them to fix that first gets the priority backwards.
+  // Unconditionally returning here left exactly that report waiting for an
+  // account it does not need. So a queue holding one is flushed anyway - and
+  // the reports and photo actions beside it still cost nothing to skip, since
+  // `authedFetch` refuses on a missing token before spending a request.
+  if ((await accessToken()) === null && !(await hasWorkThatNeedsNoAccount())) return null
 
   // The one place transport knowledge (which HTTP statuses are hopeless)
   // meets storage (what to do with a report that will never be accepted).

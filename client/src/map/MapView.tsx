@@ -83,6 +83,13 @@ export interface MapViewProps {
    */
   pois?: readonly MapPoint[]
   /**
+   * Which staleness ring each waypoint wears and whether its pin fades -
+   * lib/stalenessDisplay.ts's `pinConditionFor`, precomputed by the shell
+   * from the field-note roll-up. Absent means no notes have arrived, which
+   * renders exactly as the day-one map: no rings, no fades (#256, #759).
+   */
+  pinCondition?: (poiId: string, poiType: string) => { ring: string; faded: boolean }
+  /**
    * POI categories the hiker has hidden from the legend. Applied as a filter
    * on the pin layer, so hiding a category costs a filter, not a rebuild.
    */
@@ -298,6 +305,7 @@ export function MapView({
   trailsUrl,
   background = 'hiking_topo_live',
   pois = NO_POIS,
+  pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
   verifiedOnly = false,
   closures = NO_CLOSURES,
@@ -596,8 +604,8 @@ export function MapView({
   // that, and 2,800 points is the cost it weighed.
   useEffect(() => {
     if (map === null) return
-    return attachPoiData(map, pois, { hiddenTypes, verifiedOnly })
-  }, [map, pois, hiddenTypes, verifiedOnly])
+    return attachPoiData(map, pois, { hiddenTypes, verifiedOnly }, pinCondition)
+  }, [map, pois, hiddenTypes, verifiedOnly, pinCondition])
 
   useEffect(() => {
     if (map === null) return

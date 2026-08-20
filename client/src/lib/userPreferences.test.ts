@@ -63,6 +63,7 @@ describe('UserPreferences schema', () => {
         'anonymity_window_days',
         'auto_rotate_enabled',
         'background_source',
+        'contribute_conditions',
         'download_choice_made',
         'drought_layer_shown',
         'hiking_detail_level',

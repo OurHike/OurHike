@@ -73,6 +73,14 @@ export interface ReportFormProps {
   reporterType: ReportDraft['reporter_type']
   /** Null when there is no GPS fix at all - see the note above. */
   location: ReportFormLocation | null
+  /**
+   * The place this report is about, when it started from a place's card
+   * (FIELD_NOTES.md step 1). The soft reference `reports.poi_id` has carried
+   * end to end since the schema landed, with nothing in the client
+   * populating it - this is what does. Absent on every report that starts
+   * from Settings, which is anchored by the fix alone exactly as before.
+   */
+  poiId?: string
   onSubmit: (submission: ReportFormSubmission) => void
   onCancel: () => void
   online?: boolean
@@ -87,6 +95,7 @@ export function ReportForm({
   trailName,
   reporterType,
   location,
+  poiId,
   onSubmit,
   onCancel,
   online = true,
@@ -215,6 +224,10 @@ export function ReportForm({
             onSubmit({
               type,
               reporter_type: reporterType,
+              // Present exactly when the report started from a place's card
+              // - the anchor a re-measured mile cannot move (FIELD_NOTES.md
+              // step 1). Spread so an unanchored report has no key at all.
+              ...(poiId !== undefined ? { poi_id: poiId } : {}),
               note: note.trim() === '' ? undefined : note.trim(),
               // Both omitted rather than zeroed with no fix. The reports API
               // takes lat and lon as optional for exactly this case, and a

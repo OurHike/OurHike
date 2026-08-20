@@ -77,6 +77,7 @@ import { useOwnPhotos, type OwnCardPhoto } from '../lib/useOwnPhotos'
 import { useCommunityPhotos } from '../lib/useCommunityPhotos'
 import { enqueueAction } from '../lib/outbox'
 import { syncOutbox } from '../lib/outboxSync'
+import { FieldNoteSection, type FieldNoteContext } from './FieldNoteSection'
 import { remainingLabel, sharePhase, takenClaimForShare } from '../lib/photoShare'
 import { PoiShareSheet } from './PoiShareSheet'
 import type { PoiPhotoSummary } from '../lib/api'
@@ -217,6 +218,16 @@ export interface PoiCardProps {
    * are the two that used to disagree: the chips, and the nearby sentence.
    */
   units?: UnitSystem
+  /**
+   * The conditions section's world: this place's notes, the hiker's own
+   * standing (reporter type, the #759 opt-in), and where a tap or an
+   * escalation goes (chrome/FieldNoteSection.tsx). Absent means the shell
+   * has not wired field notes - a test rendering the card alone, or a
+   * screenshot - and the card renders exactly as it did before they
+   * existed, which is the same backward-compatibility rule every optional
+   * field above states.
+   */
+  noteContext?: FieldNoteContext
   onClose: () => void
 }
 
@@ -511,6 +522,7 @@ export function PoiCard({
   site = [],
   map,
   units = 'imperial',
+  noteContext,
   onClose,
 }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -1409,6 +1421,21 @@ export function PoiCard({
           <p className="poi-card__unverified" role="note">
             Unverified — nobody has confirmed this one is really there.
           </p>
+        )}
+
+        {/* The conditions section (FIELD_NOTES.md, #759's card surface) -
+            what the field has said about this place and the one-tap way to
+            answer back. `shown`, not `poi`: a chip swap is a different
+            place with its own notes, exactly as the description above. */}
+        {noteContext !== undefined && (
+          <FieldNoteSection
+            poiId={shown.id}
+            poiType={shown.type}
+            lat={shown.lat}
+            lon={shown.lon}
+            {...(shown.mile !== undefined ? { mile: shown.mile } : {})}
+            context={noteContext}
+          />
         )}
 
         <p className="poi-card__coords">

@@ -80,6 +80,7 @@ import {
   buildPoiDotLayer,
   buildPoiLayer,
   buildPoiSource,
+  buildPoiStalenessLayer,
   POI_SOURCE_ID,
 } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
@@ -875,6 +876,11 @@ export function buildMapStyle({
       // category, and why a non-colliding circle layer beside them does not
       // undo that argument.
       buildPoiDotLayer(),
+      // The staleness rings between the two ranks (#759's nudge surface):
+      // over the dots, so a ring is never sliced by its own waypoint's dot,
+      // and under the pins, so the pin's artwork stays whole and the ring
+      // reads as a rim around it rather than a wash over it.
+      buildPoiStalenessLayer(),
       buildPoiLayer(),
       // And the serious-warning pins over every waypoint. The collision engine
       // already keeps them from being dropped (warningLayers.ts); this keeps

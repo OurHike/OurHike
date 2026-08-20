@@ -46,7 +46,7 @@ import {
   DEM_SOURCE_ID,
   ELEVATION_ATTRIBUTION,
 } from './terrain'
-import { POI_DOT_LAYER_ID, POI_LAYER_ID } from './poiLayers'
+import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
@@ -596,9 +596,11 @@ describe('the offline-only background', () => {
       ROUTE_POINT_LAYER_ID,
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
-      // Both waypoint ranks (#597), dots under pins - a waypoint that wins its
-      // collision hides its own dot, and one that loses still leaves it.
+      // All three waypoint ranks (#597, and the staleness rings with #759),
+      // dots under rings under pins - a waypoint that wins its collision
+      // hides its own dot, and one that loses still leaves it.
       POI_DOT_LAYER_ID,
+      POI_STALENESS_LAYER_ID,
       POI_LAYER_ID,
       WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the

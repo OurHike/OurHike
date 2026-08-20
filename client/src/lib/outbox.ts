@@ -38,6 +38,7 @@
 import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
+import type { FieldNoteDraft } from './fieldNotes'
 
 export const OUTBOX_KEY = 'ourhike:outbox'
 
@@ -242,6 +243,18 @@ export interface OutboxItem {
    */
   appFailure?: AppFailureDraft
   /**
+   * The field note, on the items that are one (features/FIELD_NOTES.md) -
+   * the outbox's fourth cargo, and the one written most often with no
+   * signal at all: a quick tap at a spring is exactly the moment
+   * DATA_NUDGES.md designed the ask around. A fourth optional field rather
+   * than a union, for `payload`'s reason above.
+   *
+   * `authoredAt` is the note's `observed_at` - the moment of the tap, which
+   * on this cargo really is the moment of observation, since the whole
+   * interaction is one tap while standing at the thing observed.
+   */
+  fieldNote?: FieldNoteDraft
+  /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
    * **The bytes and not a URL**, which is the whole reason this field exists
@@ -394,6 +407,35 @@ export async function enqueueAppFailure(
  */
 export async function hasWorkThatNeedsNoAccount(): Promise<boolean> {
   return (await readQueue()).some((item) => item.appFailure !== undefined)
+}
+
+/**
+ * Queue a field note (features/FIELD_NOTES.md). Same queue and the same four
+ * properties: the observed time travels as `authoredAt`, a failed send
+ * leaves it queued, and the id makes a resend recognisably the same note -
+ * `POST /field-notes` takes it as an idempotency key exactly as `/reports`
+ * does.
+ *
+ * Deliberately NO photo parameter, unlike every other cargo. A note
+ * publishes to every hiker with no moderation gate (FIELD_NOTES.md §5), and
+ * an unmoderated public photo is the class of thing POI_PHOTOS.md spent a
+ * whole design on - screening, licence, withdrawal. Until notes settle
+ * those same questions, DATA_NUDGES.md's opted-in photo travels on the
+ * report escalation instead, whose photos are moderated evidence with
+ * settled rules.
+ */
+export async function enqueueFieldNote(
+  fieldNote: FieldNoteDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    fieldNote,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
 }
 
 export async function removeQueued(id: string): Promise<void> {

@@ -217,6 +217,12 @@ import { AppFailureReport } from './screens/AppFailureReport'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import { conditionsAgeLabel, worstOf } from './lib/conditionState'
 import { useConditions } from './lib/useConditions'
+import { enqueueFieldNote } from './lib/outbox'
+import type { FieldNoteDraft, NoteSummary } from './lib/fieldNotes'
+import { rollupByPoi } from './lib/noteRollup'
+import { pinConditionFor, stalenessPresentation } from './lib/stalenessDisplay'
+import { stalenessTier } from './lib/staleness'
+import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import {
@@ -339,7 +345,10 @@ function cardDetail(poi: StoredPoi, searchable: readonly SearchablePoi[]): PoiDe
   return { ...poi, mile: searchable.find((candidate) => candidate.id === poi.id)?.mile }
 }
 
-type ReportingState = null | { step: 'pick' } | { step: 'form'; type: ReportTypeId }
+type ReportingState =
+  | null
+  | { step: 'pick'; anchor?: ReportAnchor }
+  | { step: 'form'; type: ReportTypeId; anchor?: ReportAnchor }
 
 /**
  * A dropped route point (#755), on both mile scales at once.
@@ -604,6 +613,7 @@ function App() {
   const {
     closures,
     reports,
+    notes,
     closureState,
     reportState,
     atcUpdates,
@@ -613,6 +623,38 @@ function App() {
     lastSyncedAt,
     markSynced,
   } = useConditions(online)
+
+  /**
+   * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
+   *
+   * A tapped "dry" freshens the pin for THIS hiker immediately - the tap is
+   * the newest observation there is, and waiting for it to round-trip
+   * through a backend that may be days of walking away would render their
+   * own answer as somebody else's staleness. Session-lived on purpose: the
+   * durable copy is the outbox item, and once it flushes the ordinary
+   * live/baseline reads carry it back like anyone else's.
+   */
+  const [localNotes, setLocalNotes] = useState<readonly NoteSummary[]>([])
+
+  // The working set the roll-up reads: what the wire said, with this phone's
+  // own unsent notes in front. Null still means "we could not ask" - a local
+  // echo is real data, so it upgrades null to a list of one.
+  const allNotes = useMemo(() => {
+    if (notes === null) return localNotes.length === 0 ? null : localNotes
+    return localNotes.length === 0 ? notes : [...localNotes, ...notes]
+  }, [notes, localNotes])
+
+  // Per-place roll-ups (FIELD_NOTES.md §3), recomputed at render time from
+  // whatever notes are held - never stored, the derive-don't-duplicate rule.
+  const noteRollups = useMemo(() => rollupByPoi(allNotes ?? [], now), [allNotes, now])
+
+  // Which ring each waypoint wears (#256's consumer, #759's nudge). The
+  // policy lives in lib/stalenessDisplay.ts; this just binds it to the
+  // roll-up above, and MapView hands it to the source rebuild.
+  const pinCondition = useMemo(
+    () => pinConditionFor((poiId) => noteRollups.get(poiId)?.lastConfirmedAt ?? null),
+    [noteRollups],
+  )
 
   /**
    * First run: the three entry steps are showing over the map (#721).
@@ -1562,8 +1604,15 @@ function App() {
       ),
       startMile: ribbon.window.startMile,
       endMile: ribbon.window.endMile,
+      // The lanes' copy of the tier styling (#759's "highest-value surface"):
+      // the same roll-up the pin rings read, through the same policy module.
+      stalenessFor: (poiId: string, poiType: string) =>
+        stalenessPresentation(
+          poiType,
+          stalenessTier(noteRollups.get(poiId)?.lastConfirmedAt ?? null),
+        ),
     }
-  }, [ribbon, searchablePois])
+  }, [ribbon, searchablePois, noteRollups])
 
   /**
    * Every POI whose position is known on BOTH mile scales (#755) - the
@@ -2656,6 +2705,99 @@ function App() {
     [markSynced],
   )
 
+  /**
+   * Queue a field note (FIELD_NOTES.md, #759's card surface), echo it
+   * locally, and walk the same after-saving steps a report walks.
+   *
+   * Saved first, exactly as handleSubmitReport: everything below the
+   * enqueue can fail without costing the hiker their tap. The local echo is
+   * what freshens their own pin immediately - see `localNotes` above.
+   */
+  const handleAddFieldNote = useCallback(
+    async (draft: FieldNoteDraft) => {
+      const item = await enqueueFieldNote(draft)
+
+      setLocalNotes((current) => [
+        {
+          id: item.id,
+          poi_id: draft.poi_id ?? null,
+          lat: draft.lat ?? null,
+          lon: draft.lon ?? null,
+          mile: draft.mile ?? null,
+          observation: draft.observation ?? null,
+          note: draft.note ?? null,
+          observed_at: item.authoredAt,
+          reporter_type: draft.reporter_type,
+        },
+        ...current,
+      ])
+
+      // Explicitly, for #640's reason on the report path: useOutboxSync
+      // fires on a CHANGE to `online` or the account, and a signed-in hiker
+      // with signal changes neither by tapping.
+      void syncOutbox().then((result) => {
+        if (result !== null && result.sent > 0) markSynced()
+      })
+
+      const next = stepAfterSaving({
+        hasAccount: account !== null,
+        hasIdentity: hasStatedReporterType(preferences.reporter_type),
+      })
+      if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
+      else if (next === 'identity') askForIdentity()
+    },
+    [account, preferences.reporter_type, askForIdentity, markSynced],
+  )
+
+  /**
+   * A report that starts from a place card carries the place (FIELD_NOTES.md
+   * step 1): the escalation after a problem-shaped tap, and the card's own
+   * "report a problem here". With a type it goes straight to the form -
+   * `damaged` names shelter_repair - and without one it opens the picker,
+   * because no report type is "a dry spring" and pre-picking a wrong one
+   * would file a flooding report about the absence of water.
+   */
+  const handleReportFromPoi = useCallback(
+    (anchor: ReportAnchor, type?: 'shelter_repair') => {
+      setSelectedPoiId(null)
+      setReporting(
+        type === undefined ? { step: 'pick', anchor } : { step: 'form', type, anchor },
+      )
+    },
+    [],
+  )
+
+  /**
+   * The conditions section's whole world, built once per change of its
+   * inputs so the card is not re-rendered by every unrelated shell state.
+   */
+  const noteContext: FieldNoteContext = useMemo(
+    () => ({
+      notesFor: (poiId: string) => {
+        if (allNotes === null) return null
+        return allNotes
+          .filter((note) => note.poi_id === poiId)
+          .sort(
+            (a, b) =>
+              new Date(b.observed_at).getTime() - new Date(a.observed_at).getTime(),
+          )
+      },
+      reporterType: preferences.reporter_type,
+      contributeConditions: preferences.contribute_conditions,
+      onAddNote: (draft: FieldNoteDraft) => void handleAddFieldNote(draft),
+      onReportProblem: handleReportFromPoi,
+      now,
+    }),
+    [
+      allNotes,
+      preferences.reporter_type,
+      preferences.contribute_conditions,
+      handleAddFieldNote,
+      handleReportFromPoi,
+      now,
+    ],
+  )
+
   /** Answered: both fields land together, which is what the screen collects.
    *  An empty trail name is stored as null rather than as "", so Settings can
    *  keep saying "Not set" rather than showing a blank. */
@@ -2843,9 +2985,19 @@ function App() {
 
   if (reporting !== null) {
     if (reporting.step === 'pick') {
+      const anchor = reporting.anchor
       return (
         <ReportTypePicker
-          onPick={(type) => setReporting({ step: 'form', type })}
+          // The anchor rides through the pick (FIELD_NOTES.md step 1): a
+          // report that started from a place card stays about that place
+          // whichever type gets chosen.
+          onPick={(type) =>
+            setReporting(
+              anchor === undefined
+                ? { step: 'form', type }
+                : { step: 'form', type, anchor },
+            )
+          }
           onCancel={() => setReporting(null)}
         />
       )
@@ -2860,15 +3012,27 @@ function App() {
         // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
         // for why the fallback is the weakest claim rather than that one.
         reporterType={signReportAs(preferences.reporter_type)}
-        // Null with no fix, rather than 0,0 - which is a real place in the
-        // Atlantic, and one a maintainer cannot tell from a missing location.
-        // The mile is separately unknown when the fix is off the centerline or
-        // the trail index has not been downloaded yet.
+        // Anchored reports carry the PLACE (FIELD_NOTES.md step 1): the
+        // POI's own coordinates and mile, which need no GPS fix - it is the
+        // place being reported on, not the hiker's position. Un-anchored
+        // ones keep the fix: null with no fix, rather than 0,0 - a real
+        // place in the Atlantic a maintainer cannot tell from a missing
+        // location. The mile is separately unknown when the fix is off the
+        // centerline or the trail index has not been downloaded yet.
         location={
-          gps.status === 'located'
-            ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
-            : null
+          reporting.anchor !== undefined
+            ? {
+                lat: reporting.anchor.lat,
+                lon: reporting.anchor.lon,
+                ...(reporting.anchor.mile !== undefined
+                  ? { mile: reporting.anchor.mile }
+                  : {}),
+              }
+            : gps.status === 'located'
+              ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
+              : null
         }
+        poiId={reporting.anchor?.poiId}
         online={online}
         onSubmit={(submission) => void handleSubmitReport(submission)}
         onCancel={() => setReporting(null)}
@@ -3488,6 +3652,8 @@ function App() {
           droughtWeek={droughtWeek}
           selectedPoi={selectedPoi}
           selectedSite={selectedSite}
+          noteContext={noteContext}
+          pinCondition={pinCondition}
           onSelectPoi={handleSelectPoi}
           onClosePoi={handleClosePoi}
           // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing

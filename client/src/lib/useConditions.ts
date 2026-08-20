@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   API_CONFIGURED,
   fetchClosures,
+  fetchFieldNotes,
   fetchReports,
   type ClosureSummary,
   type ReportSummary,
@@ -28,10 +29,12 @@ import {
   fetchPublishedAtcUpdates,
   fetchPublishedClosures,
   fetchPublishedDrought,
+  fetchPublishedFieldNotes,
   fetchPublishedReports,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
+import type { NoteSummary } from './fieldNotes'
 
 /**
  * How often the published baselines are re-read while the app is open.
@@ -53,9 +56,18 @@ export interface Conditions {
    */
   closures: readonly ClosureSummary[] | null
   reports: readonly ReportSummary[] | null
-  /** The states behind those two lists, for the "as of" the strip prints. */
+  /**
+   * Visible field notes - the map's working set, each place's most recent
+   * few (features/FIELD_NOTES.md §3's roll-up input). Null carries the same
+   * distinction as `closures`: "we have not managed to ask" is not "nobody
+   * has said anything", and only the second may render a spring as merely
+   * unconfirmed.
+   */
+  notes: readonly NoteSummary[] | null
+  /** The states behind those lists, for the "as of" the strip prints. */
   closureState: ConditionState<ClosureSummary>
   reportState: ConditionState<ReportSummary>
+  noteState: ConditionState<NoteSummary>
   /**
    * The ATC's own notices, and deliberately NOT a `ConditionState` (#461).
    *
@@ -103,6 +115,7 @@ export function useConditions(online: boolean): Conditions {
     useState<ConditionState<ClosureSummary>>(UNAVAILABLE)
   const [reportState, setReportState] =
     useState<ConditionState<ReportSummary>>(UNAVAILABLE)
+  const [noteState, setNoteState] = useState<ConditionState<NoteSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
@@ -188,6 +201,16 @@ export function useConditions(online: boolean): Conditions {
       )
     })
 
+    // Field notes ride the same two-tier read as reports (FIELD_NOTES.md
+    // §6): the baseline is what a hiker has when the backend is down, and
+    // the live read wins whenever it lands.
+    void fetchPublishedFieldNotes().then((published) => {
+      if (cancelled || published === null) return
+      setNoteState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
+    })
+
     // The ATC's notices. No `withBaseline` and no race to lose: there is no
     // live read to be overwritten by, so this is a plain set. `null` covers the
     // 404 the bucket serves while nobody has reviewed the source file, and
@@ -259,6 +282,12 @@ export function useConditions(online: boolean): Conditions {
       stamp()
     }, leaveUnknown)
 
+    void fetchFieldNotes().then((next) => {
+      if (cancelled) return
+      setNoteState(withLive(next))
+      stamp()
+    }, leaveUnknown)
+
     return () => {
       cancelled = true
     }
@@ -272,8 +301,10 @@ export function useConditions(online: boolean): Conditions {
   return {
     closures: itemsOf(closureState),
     reports: itemsOf(reportState),
+    notes: itemsOf(noteState),
     closureState,
     reportState,
+    noteState,
     atcUpdates,
     atcReviewedAt,
     drought,

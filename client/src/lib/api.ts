@@ -20,6 +20,7 @@ import { getAuthClient } from './supabase'
 import type { OutboxItem, PhotoAction } from './outbox'
 import type { BackendReportStatus } from './reportStatus'
 import type { ClosureReason, ClosureStatus } from './closureBanner'
+import type { NoteSummary } from './fieldNotes'
 import { PHOTO_CONTENT_TYPE } from './reportPhoto'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -340,6 +341,40 @@ export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummar
 }
 
 /**
+ * Visible field notes (features/FIELD_NOTES.md): the map's working set when
+ * `poiId` is absent - each place's most recent few inside the server's
+ * window - or one place's recent story for its card.
+ *
+ * Same throw-on-failure rule as the two above: an empty list and a failed
+ * fetch draw the same map, and "no one has said anything" and "we could not
+ * ask" are opposite claims about a spring.
+ */
+export async function fetchFieldNotes(
+  poiId?: string,
+  signal?: AbortSignal,
+): Promise<NoteSummary[]> {
+  const path =
+    poiId === undefined
+      ? '/field-notes'
+      : `/field-notes?poi_id=${encodeURIComponent(poiId)}`
+  const response = await readFetch(path, signal)
+  return (await response.json()) as NoteSummary[]
+}
+
+/**
+ * Ask for a moderator's eyes on a note. Fire-and-forget from the card - a
+ * flag needs signal (there is nothing to queue offline that would still
+ * matter days later; the note itself may be gone), so a failure surfaces as
+ * the button staying pressable rather than as outbox cargo.
+ */
+export async function flagFieldNote(noteId: string, reason?: string): Promise<void> {
+  await authedFetch(`/field-notes/${encodeURIComponent(noteId)}/flag`, {
+    method: 'POST',
+    body: JSON.stringify(reason === undefined ? {} : { reason }),
+  })
+}
+
+/**
  * Sends one queued report.
  *
  * `authored_at` travels with it, and that is the reason this function exists
@@ -432,17 +467,39 @@ export async function sendAppFailure(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Sends one queued field note (features/FIELD_NOTES.md).
+ *
+ * `observed_at` is the item's authored time, and it carries the same weight
+ * `authored_at` does on a report: a quick tap at a spring on Monday that
+ * flushes in town on Thursday has to read as Monday, or the freshness
+ * signal this whole surface produces is a lie about its own subject.
+ */
+export async function sendFieldNote(item: OutboxItem): Promise<void> {
+  await authedFetch('/field-notes', {
+    method: 'POST',
+    // `id` is the idempotency key, exactly as on `/reports` - the server
+    // returns the stored note instead of filing a second one.
+    body: JSON.stringify({
+      ...item.fieldNote,
+      id: item.id,
+      observed_at: item.authoredAt,
+    }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds three families now: condition reports (the original
- * cargo), photo actions (#577/#579 - share, withdraw, report), and
- * app-failure reports (#848). One dispatcher, so `flushOutbox` keeps its
- * single `send` seam and the queue stays one queue - a hiker's unsent work is
- * one list, not three.
+ * The outbox holds four families now: condition reports (the original
+ * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
+ * reports (#848), and field notes (features/FIELD_NOTES.md). One
+ * dispatcher, so `flushOutbox` keeps its single `send` seam and the queue
+ * stays one queue - a hiker's unsent work is one list, not four.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
   if (item.appFailure !== undefined) return sendAppFailure(item)
+  if (item.fieldNote !== undefined) return sendFieldNote(item)
   return sendReport(item)
 }
 
@@ -762,6 +819,43 @@ export async function verifyClosure(closureId: string): Promise<void> {
 
 export async function dismissClosure(closureId: string): Promise<void> {
   await authedFetch(`/closures/${closureId}/dismiss`, { method: 'POST', body: '{}' })
+}
+
+/**
+ * One entry in the field-note moderation queue (backend FlaggedNoteOut):
+ * the note - with `reporter_id`, which the queue alone gets, because a
+ * pattern of abuse is a pattern across one account's notes - how many
+ * people flagged it, what they said, and whether it is currently hidden.
+ */
+export interface NoteQueueEntry {
+  note: NoteSummary & { reporter_id: string | null }
+  flag_count: number
+  reasons: string[]
+  hidden: boolean
+}
+
+export async function fetchNoteQueue(signal?: AbortSignal): Promise<NoteQueueEntry[]> {
+  const response = await authedFetch('/moderation/field-notes', { method: 'GET', signal })
+  return (await response.json()) as NoteQueueEntry[]
+}
+
+export async function hideFieldNote(noteId: string): Promise<NoteQueueEntry> {
+  const response = await authedFetch(`/field-notes/${encodeURIComponent(noteId)}/hide`, {
+    method: 'POST',
+    body: '{}',
+  })
+  return (await response.json()) as NoteQueueEntry
+}
+
+export async function unhideFieldNote(noteId: string): Promise<NoteQueueEntry> {
+  const response = await authedFetch(
+    `/field-notes/${encodeURIComponent(noteId)}/unhide`,
+    {
+      method: 'POST',
+      body: '{}',
+    },
+  )
+  return (await response.json()) as NoteQueueEntry
 }
 
 /**

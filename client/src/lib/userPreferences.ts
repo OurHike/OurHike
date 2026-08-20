@@ -162,6 +162,17 @@ export interface UserPreferences {
   wrong_way_alert_enabled: boolean
   anonymity_window_days: number
 
+  /**
+   * The Volunteer tab's opt-in (#759, features/DATA_NUDGES.md): "yes, ask me
+   * more thoroughly when I am already looking" - the longer note form on the
+   * card, and the places-you-passed list. Off by default, because the
+   * passive surface interrupts nobody and the assertive one is only
+   * legitimate when it was asked for. NOT a notification consent of any
+   * kind: nothing behind this toggle ever interrupts anyone, and the
+   * wrong-way alert above stays the only notification this app sends.
+   */
+  contribute_conditions: boolean
+
   // Onboarding progress
   onboarding_completed: boolean
   download_choice_made: boolean
@@ -200,6 +211,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 
   wrong_way_alert_enabled: true,
   anonymity_window_days: 0,
+
+  contribute_conditions: false,
 
   onboarding_completed: false,
   download_choice_made: false,

@@ -29,6 +29,7 @@
 
 import type { ClosureSummary, ReportSummary } from './api'
 import type { AtcUpdate } from './atcUpdates'
+import type { NoteSummary } from './fieldNotes'
 import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
@@ -38,6 +39,7 @@ export const PUBLISHED_CLOSURES_KEY = 'conditions/closures.json'
 export const PUBLISHED_REPORTS_KEY = 'conditions/reports.json'
 export const PUBLISHED_ATC_UPDATES_KEY = 'conditions/atc_updates.json'
 export const PUBLISHED_DROUGHT_KEY = 'conditions/drought.json'
+export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -89,7 +91,7 @@ export interface PublishedConditions<T> {
  */
 async function fetchPublished<T>(
   key: string,
-  field: 'closures' | 'reports' | 'atc_updates' | 'drought',
+  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes',
   signal?: AbortSignal,
 ): Promise<PublishedConditions<T> | null> {
   if (!DATA_CONFIGURED) return null
@@ -166,6 +168,20 @@ export async function fetchPublishedReports(
   signal?: AbortSignal,
 ): Promise<PublishedConditions<ReportSummary> | null> {
   return fetchPublished(PUBLISHED_REPORTS_KEY, 'reports', signal)
+}
+
+/**
+ * Field notes as published bytes (features/FIELD_NOTES.md §6): the roll-up's
+ * input for every POI, most recent few per place, baked by
+ * pipeline/export_conditions.py alongside closures and reports. Same
+ * baseline-under-live contract as reports: the live `GET /field-notes` read
+ * wins whenever it lands, and this is what a hiker has when the backend is
+ * unreachable - day-old word from the trail, labelled as day-old.
+ */
+export async function fetchPublishedFieldNotes(
+  signal?: AbortSignal,
+): Promise<PublishedConditions<NoteSummary> | null> {
+  return fetchPublished(PUBLISHED_NOTES_KEY, 'notes', signal)
 }
 
 /**

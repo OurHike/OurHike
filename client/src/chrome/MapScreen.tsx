@@ -25,6 +25,7 @@ import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
+import type { FieldNoteContext } from './FieldNoteSection'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import type { DroughtBand } from '../map/droughtLayers'
@@ -120,6 +121,13 @@ export interface MapScreenProps {
    * its mind.
    */
   closures?: readonly ClosureBand[]
+  /** Which staleness ring each waypoint wears (#759's nudge surface, #256's
+   *  consumer). Passed straight through to MapView; the policy lives in
+   *  lib/stalenessDisplay.ts's `pinConditionFor`. */
+  pinCondition?: (poiId: string, poiType: string) => { ring: string; faded: boolean }
+  /** The card's conditions section, passed straight through to PoiCard -
+   *  the shell is what holds the notes and the write path. */
+  noteContext?: FieldNoteContext
   /** The corridor view's attribution, already in map coordinates (#598).
    *  Coordinates rather than mile ranges for the reason `closures` gives. */
   corridor?: CorridorFeatureCollection
@@ -439,6 +447,8 @@ export function MapScreen({
   advisoryAhead = null,
   warningsAhead = null,
   closures,
+  pinCondition,
+  noteContext,
   corridor,
   maintainerLine,
   atcUpdates,
@@ -648,6 +658,7 @@ export function MapScreen({
               trailsUrl={trailsUrl}
               background={background}
               pois={viewportPoints}
+              pinCondition={pinCondition}
               hiddenTypes={hiddenTypes}
               verifiedOnly={verifiedOnly}
               drought={drought}
@@ -711,6 +722,7 @@ export function MapScreen({
                 site={selectedSite}
                 map={liveMap}
                 units={units}
+                noteContext={noteContext}
                 onClose={onClosePoi}
               />
             )}

@@ -19,7 +19,10 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 > nothing below answers itself. `CORRIDOR_BOUNDS` is untouched and the section below stands.
 
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
-corridor, which lands near z4 on a phone. `POI_MIN_ZOOM = 9` means no waypoints. So the opening
+corridor, which lands at **z4.87** on a phone — `fitBounds` over `[[-84.73, 34.2], [-68.3, 46.34]]`
+on a 390 × 700 canvas with `FIT_PADDING = 24`, Web Mercator, measured 2026-08-19 (#598). It is
+**width**-limited, which is why it is not tighter, and 55% of that screen carries nothing: the
+corridor's trace occupies y 197–505 of 700 px. This doc said "near z4" until the number was taken. `POI_MIN_ZOOM = 9` means no waypoints. So the opening
 screen is a thin line down fourteen states with nothing on it, and the legend says *Nothing on
 this part of the map yet — pan or zoom out to see more*, which is false in both halves.
 
@@ -223,7 +226,25 @@ range, and the source date it came from. Thirty features. The backend already ho
 ([`maintainerLookup.ts`](../client/src/lib/maintainerLookup.ts) is the client's half); this is the
 map's copy for drawing and for working offline, and where the two disagree the backend is right.
 
-**Stretches.**
+**Stretches — renamed `Highlight`, 2026-08-19 (#598).** The word `stretch` belongs to the ~50-mile
+offline download unit `pipeline/cut_stretches.py` cuts (#552, decided 2026-08-18, after this doc was
+written), and the maintainer's call is that nothing else reuses it. Two further decisions taken with
+it: a **Highlight is its own entity**, not a property of a trail, and it **may cross trails** — so
+the mile range moves down a level into an ordered list of legs, since a mile only means something
+relative to one trail ([NEARBY_TRAILS.md](NEARBY_TRAILS.md): switching trails swaps the mile frame).
+`naismith.ts` already exports `naismithMinutes` separately for exactly this, so legs sum unrounded
+and the ≈ happens once. The `named` list is seeded **one per maintaining club, about thirty** — not
+per state, which is meaningless where the trail hopscotches between them, and clubs are the unit
+that maps to volunteering.
+
+```
+Highlight
+  id                  stable, minted once - referenceable across trails
+  name
+  legs: [ { trail_id, start_mile, end_mile } ]   ordered; one for a simple highlight
+```
+
+The shape this doc originally gave, kept for the record:
 
 ```
 Stretch

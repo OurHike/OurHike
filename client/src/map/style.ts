@@ -278,6 +278,17 @@ export function trailCasingColor(appearance: SheetAppearance): string {
  */
 export const RED_LIGHT_BLAZE_COLOR = '#e8804a'
 
+/**
+ * What the corridor view marks a highlight in (#858) - the app's blaze orange.
+ *
+ * NOT a blaze colour, and it never touches a trail line: it paints a mark
+ * BESIDE the corridor, which is what keeps the two-colour rule intact while
+ * still giving a hiker something to reach for. Fixed across appearances,
+ * because a mark that changes hue with the sheet is a mark that has to be
+ * relearned; it carries on paper and on ink alike.
+ */
+export const CORRIDOR_SELECTION_COLOR = '#c1611a'
+
 /** `line-color` for the blaze layer, per appearance. */
 export function blazeLineColor(appearance: SheetAppearance): unknown {
   return redLightActive(appearance) ? RED_LIGHT_BLAZE_COLOR : BLAZE_MATCH_EXPRESSION
@@ -847,6 +858,7 @@ export function buildMapStyle({
       // the seam - see corridorLayers.ts's CORRIDOR_MAX_ZOOM.
       ...buildCorridorLayers({
         casingColor: trailCasingColor(appearance),
+        selectionColor: CORRIDOR_SELECTION_COLOR,
         blazeWidth: BLAZE_LINE_WIDTH,
         casingWidth: CASING_LINE_WIDTH,
       }),

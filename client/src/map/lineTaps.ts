@@ -23,6 +23,7 @@
 
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { atcBandIdAt } from './atcUpdateLayers'
+import { highlightIdAt } from './corridorLayers'
 import { poiIdAt } from './poiTaps'
 import { BLAZE_LAYER_ID, PRIMARY_TRAIL_SOURCES, PRIMARY_TRAIL_WIDTH } from './style'
 
@@ -160,6 +161,9 @@ export function tappedLineAt(
   // aimed at, and their handlers will act on this same click.
   if (poiIdAt(map, point) !== null) return null
   if (atcBandIdAt(map, point) !== null) return null
+  // And a highlight mark (#858), for the same reason: it is a small target a
+  // hiker aimed at, sitting on the corridor line that is always under it.
+  if (highlightIdAt(map, point) !== null) return null
 
   const features = map.queryRenderedFeatures(lineTapBox(point), {
     layers: [BLAZE_LAYER_ID],

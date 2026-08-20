@@ -18,6 +18,7 @@ const FULL: ClubDetail = {
   scaleLine: null,
   attributionSourceLine: 'Who maintains it: the ATC’s trail centerline',
   nameSourceLine: 'Club name: the ATC’s club-section map',
+  walkedLine: 'You have walked 12.4 mi of this section.',
 }
 
 const UNRECORDED: ClubDetail = {
@@ -29,6 +30,7 @@ const UNRECORDED: ClubDetail = {
   scaleLine: '1.8 mi of the trail are like this, in 1 run.',
   attributionSourceLine: 'Who maintains it: the ATC’s trail centerline',
   nameSourceLine: null,
+  walkedLine: null,
 }
 
 afterEach(cleanup)
@@ -76,6 +78,20 @@ describe('the club sheet', () => {
     expect(
       screen.getByText('1.8 mi of the trail are like this, in 1 run.'),
     ).toBeInTheDocument()
+  })
+
+  it('says what this hiker has walked of it, and only when they have', () => {
+    // #598's `visited`, answered on the phone about the phone's own fixes.
+    // Absent means they have walked none of it - this app does not tell
+    // anybody how much of the A.T. they have not done.
+    render(<ClubSheet detail={FULL} onClose={vi.fn()} />)
+    expect(
+      screen.getByText('You have walked 12.4 mi of this section.'),
+    ).toBeInTheDocument()
+
+    cleanup()
+    render(<ClubSheet detail={UNRECORDED} onClose={vi.fn()} />)
+    expect(screen.queryByText(/You have walked/)).not.toBeInTheDocument()
   })
 
   it('closes on the close control', async () => {

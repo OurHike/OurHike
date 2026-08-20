@@ -228,6 +228,13 @@ import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { ClubSheet } from './chrome/ClubSheet'
 import { LineSheet } from './chrome/LineSheet'
 import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
+import {
+  MAX_FIX_GAP_MILES,
+  readWalked,
+  recordStep,
+  writeWalked,
+  type MileRange,
+} from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
 import { buildLineDetail, type LineDetail } from './lib/lineDetail'
 import type { TappedLine } from './map/lineTaps'
@@ -947,6 +954,47 @@ function App() {
     return locateOnTrail(trailIndex, gps.at)
   }, [trailIndex, gps])
 
+  /**
+   * Which miles this hiker has actually walked (#598's `visited`).
+   *
+   * The maintainer's rule, 2026-08-19: two fixes count as walking between them
+   * when they are no more than half a mile apart. lib/walkedMiles.ts holds the
+   * gate and the arithmetic; this is only the pair of fixes it needs.
+   *
+   * NOTHING IS UPLOADED, and that is the design rather than an omission.
+   * features/EVENTING.md rule 2 forbids geography in the event pipe - "no
+   * coordinates, no mile, no segment id, no POI id, no region" - and the rule
+   * above needs none of it, because the phone is asking about its own fixes.
+   * What is kept is the ANSWER (mile intervals, merged) and never the evidence:
+   * no coordinates, no timestamps, no ordering, so what sits on the device
+   * cannot be replayed into a route down the corridor the way a fix log can.
+   *
+   * A count ACROSS hikers - the popularity number `visited` was first posed as
+   * - is a different feature and needs an explicit, dated decision about rule 2
+   * before anybody builds it. This is not that, and does not become it.
+   */
+  const [walked, setWalked] = useState<MileRange[]>(() => readWalked())
+  const previousWalkedMile = useRef<number | null>(null)
+
+  useEffect(() => {
+    const mile = fix?.mile ?? null
+    if (mile === null) return
+    const previous = previousWalkedMile.current
+    previousWalkedMile.current = mile
+    // The gate lives in recordStep and is checked here too, so a refused pair
+    // costs no render at all - `watchPosition` fires often, and a state update
+    // per fix that changed nothing would re-run every memo on this screen.
+    if (previous === null || Math.abs(mile - previous) > MAX_FIX_GAP_MILES) return
+    setWalked((current) => recordStep(current, previous, mile))
+  }, [fix?.mile])
+
+  // Persisted in its own effect rather than inside the updater above: React
+  // may call a state updater twice, and a writer that runs twice is a writer
+  // in the wrong place.
+  useEffect(() => {
+    writeWalked(walked)
+  }, [walked])
+
   useEffect(() => {
     if (fix === null) return
     setDirection((previous) =>
@@ -1317,8 +1365,8 @@ function App() {
       lat: selectedLine.at[1],
     })
     if (mile === null) return null
-    return buildClubDetail(clubSections, clubRuns, mile, units)
-  }, [belowSeam, selectedLine, trailIndex, clubSections, clubRuns, units])
+    return buildClubDetail(clubSections, clubRuns, mile, units, walked)
+  }, [belowSeam, selectedLine, trailIndex, clubSections, clubRuns, units, walked])
 
   /**
    * Who maintains the trail the hiker is looking at, for the legend (#598).

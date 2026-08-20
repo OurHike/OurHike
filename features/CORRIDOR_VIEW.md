@@ -153,6 +153,25 @@ freshness, publish with attribution — and it is not blocked on anything.
 
 ### `visited` — real, and it must not come from analytics
 
+> **Built 2026-08-20 (#598), and by a third route this section did not consider.** The maintainer's
+> rule: a stretch counts as walked when **two GPS fixes fall in it no more than half a mile apart**.
+> As first specified that ran through event tracking, which is what rule 2 below forbids in as many
+> words — so what shipped runs **on the phone, about the phone's own fixes**, and uploads nothing
+> (`client/src/lib/walkedMiles.ts`).
+>
+> The half-mile gate is the mechanism: further apart than that and the pair could be a car, a
+> shuttle, a hitch, or the app having been shut for a day, and claiming the ground between them
+> would be a statement about somebody's legs that nothing observed.
+>
+> What is kept on the device is the **answer** — mile intervals, merged — and never the evidence: no
+> coordinates, no timestamps, no ordering, so it cannot be replayed into a route down the corridor
+> the way a fix log can. It says *"you have walked 12.4 mi of this section"* on the club sheet.
+>
+> **This is not the popularity count this section is about**, and does not become it. A number
+> across hikers still needs everything below, and now also needs an explicit, dated decision about
+> rule 2 — which has not been taken. The k = 25 floor, the coarse grain and the labelling rule all
+> still stand for the day it is.
+
 This is the one that could go badly, so the rule is worth stating before the feature is:
 
 **Never from the eventing pipe.** [EVENTING.md](EVENTING.md)'s rule 2 is *"No geography, ever. No

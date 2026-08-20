@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { clubTimeline, parseClubSections, type ClubSections } from './clubSections'
 import { buildClubDetail } from './clubDetail'
+import type { MileRange } from './walkedMiles'
 
 const ARTIFACT = {
   sources: {
@@ -146,5 +147,51 @@ describe('a tap outside the published corridor', () => {
   it('gets no sheet, which is a different fact from an unattributed mile', () => {
     expect(detail(3000)).toBeNull()
     expect(detail(-1)).toBeNull()
+  })
+})
+
+/**
+ * #598's `visited`, answered on the phone about the phone's own fixes.
+ *
+ * The count across hikers this basis was originally posed as needs an explicit
+ * decision about features/EVENTING.md rule 2 before anybody builds it; what
+ * ships here needs none, because it uploads nothing.
+ */
+describe('what this hiker has walked', () => {
+  const sections = parseClubSections(ARTIFACT)
+
+  function withWalked(mile: number, walked: readonly MileRange[]) {
+    return buildClubDetail(sections, clubTimeline(sections), mile, 'imperial', walked)
+  }
+
+  it('reports the overlap with the run under the finger', () => {
+    // PATC's first run is 940.2-1,013.4; only the part inside it counts.
+    const walked: MileRange[] = [{ startMile: 1000, endMile: 1020 }]
+    expect(withWalked(1000, walked)?.walkedLine).toBe(
+      'You have walked 13.4 mi of this section.',
+    )
+  })
+
+  it('says nothing when they have walked none of it', () => {
+    // Most people, on most of the trail. A "0 mi" line is a scold, not a fact.
+    expect(withWalked(1000, [])?.walkedLine).toBeNull()
+    expect(withWalked(1000, [{ startMile: 1, endMile: 2 }])?.walkedLine).toBeNull()
+  })
+
+  it('says nothing for a walk too short to round to a tenth', () => {
+    expect(
+      withWalked(1000, [{ startMile: 1000, endMile: 1000.02 }])?.walkedLine,
+    ).toBeNull()
+  })
+
+  it('answers for an unrecorded stretch too, which is still ground underfoot', () => {
+    expect(withWalked(1014, [{ startMile: 1013.4, endMile: 1015.2 }])?.walkedLine).toBe(
+      'You have walked 1.8 mi of this section.',
+    )
+  })
+
+  it('defaults to nothing walked, so every existing caller is unchanged', () => {
+    const plain = buildClubDetail(sections, clubTimeline(sections), 1000, 'imperial')
+    expect(plain?.walkedLine).toBeNull()
   })
 })

@@ -47,6 +47,14 @@ export function ClubSheet({ detail, onClose }: ClubSheetProps) {
         <p className="closure-sheet__range">{detail.scaleLine}</p>
       )}
 
+      {/* What this hiker has actually walked of it (#598's `visited`), worked
+          out on the phone from the phone's own fixes and never uploaded - see
+          lib/walkedMiles.ts. Above the provenance because it is about the
+          hiker, and the provenance is about the data. */}
+      {detail.walkedLine !== null && (
+        <p className="closure-sheet__range">{detail.walkedLine}</p>
+      )}
+
       {/* Two provenance lines rather than one, because they are two different
           claims: which club, and how the club's name is spelled. */}
       {detail.attributionSourceLine !== null && (

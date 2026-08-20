@@ -34,6 +34,7 @@ import { clubRunAtMile, type ClubRun, type ClubSections } from './clubSections'
 import { unattributedTotal } from './clubSections'
 import { formatDistance } from './units'
 import type { UnitSystem } from './units'
+import { walkedWithin, type MileRange } from './walkedMiles'
 
 export interface ClubDetail {
   /** The club's full name, or "Club not recorded". */
@@ -60,6 +61,18 @@ export interface ClubDetail {
   /** "Club name: the ATC’s club-section map". Null for an unrecorded stretch,
    *  where no name was taken from anywhere. */
   nameSourceLine: string | null
+  /**
+   * "You have walked 12.4 mi of this section" - #598's `visited`, answered on
+   * the phone about the phone's own fixes (lib/walkedMiles.ts).
+   *
+   * Null when the hiker has walked none of it, which is most people on most of
+   * the trail. A "0 mi" line would be a nag rather than a fact, and this app
+   * does not tell anybody how much of the A.T. they have not done.
+   *
+   * "Section" and not "stretch": the word belongs to the offline download unit
+   * (#552), and this sheet already uses "section" for a club's own pieces.
+   */
+  walkedLine: string | null
 }
 
 /**
@@ -109,9 +122,18 @@ export function buildClubDetail(
   timeline: readonly ClubRun[],
   mile: number,
   units: UnitSystem,
+  walked: readonly MileRange[] = [],
 ): ClubDetail | null {
   const run = clubRunAtMile(timeline, mile)
   if (run === null) return null
+
+  // Below a tenth of a mile shows nothing: a line reading "0.0 mi" claims
+  // less than silence does and reads as a scold.
+  const walkedMiles = walkedWithin(walked, run)
+  const walkedLine =
+    walkedMiles < 0.05
+      ? null
+      : `You have walked ${formatDistance(walkedMiles, units)} of this section.`
 
   const rangeLine = `mi ${formatMileMarker(run.startMile)} – ${formatMileMarker(run.endMile)}`
   const attributionSourceLine = (() => {
@@ -136,6 +158,7 @@ export function buildClubDetail(
           : `${formatDistance(miles, units)} of the trail are like this, in ${runs} ${plural(runs, 'run', 'runs')}.`,
       attributionSourceLine,
       nameSourceLine: null,
+      walkedLine,
     }
   }
 
@@ -162,5 +185,6 @@ export function buildClubDetail(
       nameLabel === null || sections.sources.names === sections.sources.attribution
         ? null
         : `Club name: ${nameLabel}`,
+    walkedLine,
   }
 }

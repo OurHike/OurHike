@@ -50,6 +50,22 @@ export interface TappedLine {
   source: string | null
   name: string | null
   blazeColor: string | null
+  /**
+   * A point ON the tapped line, nearest the touch - not the touch itself.
+   *
+   * For callers that need a MILE rather than a feature: the corridor view's
+   * club sheet (#598) turns this into one through lib/trailPosition.ts's
+   * `mileOnTrail`, which refuses anything further than MAX_OFF_TRAIL_MILES
+   * from the centerline.
+   *
+   * Snapped rather than unprojected, and the seam is why. LINE_TAP_SLOP_PX is
+   * ~20 px, which is a thumb's width at any zoom - but in GROUND terms it is
+   * about 90 miles at the corridor view's opening camera (z4.87, where a pixel
+   * spans some 4.6 miles). The raw touch would sit far outside that 3-mile
+   * tolerance for a tap the map had already decided landed on the trail, so
+   * the sheet would refuse to open on most of the taps it exists for.
+   */
+  at: [number, number]
 }
 
 /** The touch, as the box that is actually queried. */
@@ -68,14 +84,63 @@ function stringProp(
   return typeof value === 'string' && value !== '' ? value : null
 }
 
-function asTappedLine(feature: {
-  properties?: Record<string, unknown> | null
-}): TappedLine {
+/** Every coordinate of a LineString or MultiLineString, flat. Both shapes are
+ *  real here for the reason export_trails.py's geometry_to_wkt gives: treating
+ *  them as one type is how trail mileage gets silently dropped. */
+function* coordinatesOf(geometry: unknown): Generator<[number, number]> {
+  const shape = geometry as { type?: string; coordinates?: unknown } | null | undefined
+  const coordinates = shape?.coordinates
+  if (!Array.isArray(coordinates)) return
+  if (shape?.type === 'LineString') {
+    for (const point of coordinates) {
+      if (Array.isArray(point) && point.length >= 2)
+        yield [point[0] as number, point[1] as number]
+    }
+  } else if (shape?.type === 'MultiLineString') {
+    for (const part of coordinates) {
+      if (!Array.isArray(part)) continue
+      for (const point of part) {
+        if (Array.isArray(point) && point.length >= 2)
+          yield [point[0] as number, point[1] as number]
+      }
+    }
+  }
+}
+
+/**
+ * The vertex of `geometry` closest to `near`, or `near` itself when the
+ * feature carries no usable coordinates.
+ *
+ * Squared degrees rather than great-circle metres, deliberately: this is
+ * picking the nearest of a handful of candidates on one screen, where the two
+ * orderings agree, and lib/trailPosition.ts does the real distance work
+ * afterwards.
+ */
+function nearestVertex(geometry: unknown, near: [number, number]): [number, number] {
+  let best = near
+  let bestDistance = Infinity
+  for (const [lon, lat] of coordinatesOf(geometry)) {
+    const dLon = lon - near[0]
+    const dLat = lat - near[1]
+    const distance = dLon * dLon + dLat * dLat
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = [lon, lat]
+    }
+  }
+  return best
+}
+
+function asTappedLine(
+  feature: { properties?: Record<string, unknown> | null; geometry?: unknown },
+  near: [number, number],
+): TappedLine {
   return {
     id: stringProp(feature.properties, 'id'),
     source: stringProp(feature.properties, 'source'),
     name: stringProp(feature.properties, 'name'),
     blazeColor: stringProp(feature.properties, 'blaze_color'),
+    at: nearestVertex(feature.geometry, near),
   }
 }
 
@@ -108,7 +173,8 @@ export function tappedLineAt(
     (feature) =>
       !PRIMARY_TRAIL_SOURCES.includes(stringProp(feature.properties, 'source') ?? ''),
   )
-  return asTappedLine(sideTrail ?? features[0])
+  const touch = map.unproject([point.x, point.y])
+  return asTappedLine(sideTrail ?? features[0], [touch.lng, touch.lat])
 }
 
 /**

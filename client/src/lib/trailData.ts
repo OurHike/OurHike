@@ -27,11 +27,18 @@ import {
   dataUrl,
   ELEVATION_KEY,
   POI_TYPES,
+  CLUB_SECTIONS_KEY,
   poiKey,
   SPURS_KEY,
   TRAILS_KEY,
   type PoiType,
 } from './config'
+import {
+  EMPTY_CLUB_SECTIONS,
+  parseClubSections,
+  storedClubSections,
+  type ClubSections,
+} from './clubSections'
 import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
@@ -43,6 +50,7 @@ export const TRAILS_BLOB_KEY = 'ourhike:trails'
 export const POIS_KEY = 'ourhike:pois'
 export const SPURS_STORE_KEY = 'ourhike:spurs'
 export const ELEVATION_STORE_KEY = 'ourhike:elevation'
+export const CLUB_SECTIONS_STORE_KEY = 'ourhike:club-sections'
 
 export interface StoredPoi {
   id: string
@@ -215,6 +223,10 @@ export interface TrailData {
    *  not publish one. Null costs the elevation ribbon and the waypoint lanes
    *  and nothing else - App.tsx omits both rather than drawing an empty one. */
   elevation: ElevationProfile | null
+  /** Who maintains which stretch of trail. Empty for a release built before
+   *  export_club_sections.py existed, which costs the corridor view its
+   *  subject and nothing else - the trail still draws, in its blaze. */
+  clubSections: ClubSections
 }
 
 interface PoiProperties {
@@ -682,6 +694,22 @@ async function fetchSpurs(
   return parsed as Record<string, SpurRecord>
 }
 
+/** Who maintains which stretch, or nothing when this release does not publish it.
+ *
+ *  A 404 is treated the way fetchSpurs() treats one, and for the same reason:
+ *  `club_sections.json` did not exist before pipeline/export_club_sections.py,
+ *  and a phone pointed at an older release should still get its trails and
+ *  POIs. The corridor view then has no subject below the seam, which is
+ *  exactly the screen this app shipped with. */
+async function fetchClubSections(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<ClubSections> {
+  const fetched = await fetchOptionalArtifact(CLUB_SECTIONS_KEY, expected, signal)
+  if (fetched === null) return EMPTY_CLUB_SECTIONS
+  return parseClubSections(JSON.parse(decode(fetched.bytes)) as unknown)
+}
+
 /** The elevation profile, or null when this release does not publish one.
  *
  *  A 404 is treated the way fetchSpurs() treats one, for the same reason:
@@ -753,7 +781,7 @@ export async function downloadTrailData({
   // Still all-or-nothing: `Promise.all` rejects on the first failure and
   // nothing below commits, which is the property the `set()` calls at the end
   // depend on.
-  const [poiGroups, spurs] = await Promise.all([
+  const [poiGroups, spurs, clubSections] = await Promise.all([
     Promise.all(
       POI_TYPES.map(async (type) => {
         const fetched = await fetchArtifact(poiKey(type), expected, signal)
@@ -763,6 +791,13 @@ export async function downloadTrailData({
     ),
     fetchSpurs(expected, signal).then((value) => {
       finished('Spur destinations')
+      return value
+    }),
+    // Beside the spurs rather than after them: another small keyed artifact
+    // that nothing else is waiting on, and a serial fetch here would buy a
+    // round trip of dead time for 30 clubs' worth of JSON.
+    fetchClubSections(expected, signal).then((value) => {
+      finished('Maintaining clubs')
       return value
     }),
   ])
@@ -788,6 +823,7 @@ export async function downloadTrailData({
   await set(TRAILS_BLOB_KEY, trails)
   await set(POIS_KEY, pois)
   await set(SPURS_STORE_KEY, spurs)
+  await set(CLUB_SECTIONS_STORE_KEY, clubSections)
   await set(ELEVATION_STORE_KEY, elevation)
   // Recorded beside the bytes it describes, and only here: whether the
   // trails just stored have the merged-chain shape decides the map's
@@ -810,7 +846,11 @@ export async function loadTrailData(): Promise<TrailData | null> {
   // - and neither is a state the map screen has to tell apart.
   const elevation =
     ((await get(ELEVATION_STORE_KEY)) as ElevationProfile | undefined) ?? null
-  return { trails, pois, spurs, elevation }
+  // Through storedClubSections rather than a bare cast: what is in the store
+  // was written by whatever version of this app was installed then, and the
+  // corridor view reads it on every camera move.
+  const clubSections = storedClubSections(await get(CLUB_SECTIONS_STORE_KEY))
+  return { trails, pois, spurs, elevation, clubSections }
 }
 
 /**
@@ -829,6 +869,7 @@ export async function deleteTrailData(): Promise<void> {
   await del(TRAILS_BLOB_KEY)
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
+  await del(CLUB_SECTIONS_STORE_KEY)
   await del(ELEVATION_STORE_KEY)
   clearTrailsMerged()
 }

@@ -38,7 +38,7 @@ import {
   TOPO_PALETTE_DARK,
   TOPO_PALETTE_RED,
 } from './liveTopo'
-import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
+import { POI_LAYER_ID, POI_SOURCE_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
@@ -808,5 +808,148 @@ describe('the map style and red light (MAP_STYLE_SPEC.md)', () => {
       MAP_BACKDROP.light,
     )
     expect(m.styles).toEqual([])
+  })
+})
+
+/**
+ * A blaze colour is a fact about the ground, and zoom is not a hiker's choice.
+ *
+ * The corridor view (#598) draws the trail differently BELOW the seam: the
+ * 38.5 miles ATC's centerline names no maintaining club for render in the
+ * neutral grey, dashed. That is a deliberate relaxation of WIREFRAMES.md §3's
+ * no-dash rule, scoped by the maintainer on 2026-08-19 to
+ * z <= POI_PIN_MIN_ZOOM, on the grounds that down there the line is
+ * representational - 2.5 px standing for 2,197 miles, with no contours behind
+ * it and nobody following it.
+ *
+ * This file asserts the OTHER half of that decision, which is the half a
+ * later change can break without anybody noticing: ABOVE the seam a blaze
+ * renders in its real colour, at every zoom. style.ts already says why, in
+ * RED_LIGHT_BLAZE_COLOR's own docstring - "a blaze colour is a fact about the
+ * ground, and recolouring facts is exactly what this map exists not to do".
+ *
+ * Red light is the one sanctioned exception and the distinction is the whole
+ * point: it is an APPEARANCE, armed deliberately by a hiker who has accepted
+ * the loss and can disarm it. A zoom-varying colour is neither chosen nor
+ * reversible by anyone reading the map, which is why the corridor view's
+ * treatments have to live in their own layer capped at the seam rather than
+ * in this one's paint.
+ *
+ * The blazes are spelled out rather than imported from blaze.ts's private
+ * table on purpose: this is the list a reviewer should have to read.
+ */
+describe('a blaze never changes colour where a hiker is navigating by it (#598)', () => {
+  const BLAZES = [
+    'White',
+    'Blue',
+    'Yellow',
+    'Orange',
+    'Red',
+    'Green',
+    'Purple',
+    'None',
+    'Other',
+    'Unknown',
+  ]
+
+  /** The seam itself, and a spread of the zooms a hiker actually navigates at. */
+  const NAVIGATIONAL_ZOOMS = [POI_PIN_MIN_ZOOM, 10, 11, 12, 13, 14, 16, 18, 22]
+
+  const APPEARANCES: {
+    name: string
+    options: Partial<typeof STYLE_OPTIONS> & Record<string, unknown>
+  }[] = [
+    { name: 'field by day', options: { theme: 'light', mapStyle: 'field' } },
+    { name: 'the dark sheet', options: { theme: 'dark', mapStyle: 'field' } },
+    { name: 'night hike', options: { theme: 'dark', mapStyle: 'night_hike' } },
+    {
+      name: 'night hike under red light',
+      options: { theme: 'dark', mapStyle: 'night_hike', redLight: true },
+    },
+  ]
+
+  /** The blaze layer's `line-color`, evaluated by MapLibre's own engine. */
+  function blazeColorAt(
+    options: Record<string, unknown>,
+    blazeColor: string,
+    zoom: number,
+  ): string {
+    const built = buildMapStyle({ ...STYLE_OPTIONS, ...options })
+    const found = built.layers.find((l) => l.id === BLAZE_LAYER_ID)
+    if (found === undefined) throw new Error('no blaze layer in the style')
+    const compiled = createExpression(
+      (found.paint as Record<string, unknown>)['line-color'] as never,
+      latest.paint_line['line-color'] as never,
+    )
+    if (compiled.result === 'error') {
+      throw new Error('the blaze layer’s line-color is not a valid expression')
+    }
+    return JSON.stringify(
+      compiled.value.evaluate({ zoom }, {
+        properties: { blaze_color: blazeColor },
+      } as never),
+    )
+  }
+
+  /** Whether an expression reads the zoom at all, at any depth. */
+  function readsZoom(expression: unknown): boolean {
+    if (!Array.isArray(expression)) return false
+    if (expression[0] === 'zoom') return true
+    return expression.some(readsZoom)
+  }
+
+  it.each(APPEARANCES)(
+    'paints every blaze the same colour at every navigational zoom — $name',
+    ({ options }) => {
+      for (const blaze of BLAZES) {
+        const atTheSeam = blazeColorAt(options, blaze, POI_PIN_MIN_ZOOM)
+        for (const zoom of NAVIGATIONAL_ZOOMS) {
+          // Not `toEqual(atTheSeam)` on a collected array: naming the zoom in
+          // the assertion is what makes a failure say WHERE the blaze moved.
+          expect({ blaze, zoom, color: blazeColorAt(options, blaze, zoom) }).toEqual({
+            blaze,
+            zoom,
+            color: atTheSeam,
+          })
+        }
+      }
+    },
+  )
+
+  it.each(APPEARANCES)(
+    'never lets zoom into the blaze paint at all — $name',
+    ({ options }) => {
+      // The stronger statement, and the one that survives a future expression
+      // this test did not think to evaluate: if the paint cannot read the zoom,
+      // it cannot vary with it - above the seam or below.
+      const built = buildMapStyle({ ...STYLE_OPTIONS, ...options })
+      const found = built.layers.find((l) => l.id === BLAZE_LAYER_ID)
+      if (found === undefined) throw new Error('no blaze layer in the style')
+      expect(readsZoom((found.paint as Record<string, unknown>)['line-color'])).toBe(
+        false,
+      )
+    },
+  )
+
+  it('keeps the blazes distinct from one another, so the rule has something to protect', () => {
+    // Without this, collapsing every blaze to one hue would pass every
+    // assertion above - it is perfectly zoom-invariant.
+    const day = { theme: 'light', mapStyle: 'field' } as const
+    const painted = new Set(BLAZES.map((blaze) => blazeColorAt(day, blaze, 14)))
+    // Seven real hues; None, Other and Unknown share the neutral grey by
+    // contract (blaze.ts), so ten blazes make eight colours.
+    expect(painted.size).toBe(8)
+  })
+
+  it('takes red light as the one recolouring, and takes it honestly', () => {
+    // MAP_STYLE_SPEC.md's decision: under red light every hue would render as
+    // a barely-distinguishable dark red anyway, so the loss is taken openly -
+    // one colour, every trail, and blaze identity moves to the tap sheet.
+    const redLight = { theme: 'dark', mapStyle: 'night_hike', redLight: true } as const
+    const painted = new Set(BLAZES.map((blaze) => blazeColorAt(redLight, blaze, 14)))
+    expect(painted.size).toBe(1)
+    // And it is still a choice rather than a zoom - covered by the cases
+    // above, which run this appearance through both.
+    expect(redLightActive(redLight)).toBe(true)
   })
 })

@@ -17,8 +17,17 @@ function buildMap(): MockMap {
   return map
 }
 
-function line(id: string, source: string, blaze = 'Blue', name: string | null = null) {
-  return { properties: { id, source, name, blaze_color: blaze } }
+function line(
+  id: string,
+  source: string,
+  blaze = 'Blue',
+  name: string | null = null,
+  coordinates: Array<[number, number]> = [],
+) {
+  return {
+    properties: { id, source, name, blaze_color: blaze },
+    geometry: { type: 'LineString', coordinates },
+  }
 }
 
 function touchAt(x: number, y: number) {
@@ -45,6 +54,9 @@ describe('tapping a line', () => {
       source: 'side_trails',
       name: 'Rocky Run Spur Trail',
       blazeColor: 'Blue',
+      // No geometry on this fixture, so there is nothing to snap to and the
+      // touch itself is the honest answer - the mock projects identically.
+      at: [120, 240],
     })
   })
 
@@ -122,6 +134,7 @@ describe('tapping a line', () => {
       source: 'centerline',
       name: null,
       blazeColor: 'White',
+      at: [10, 10],
     })
   })
 
@@ -142,5 +155,85 @@ describe('tapping a line', () => {
     map.emit('click', touchAt(10, 10))
 
     expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * `at` exists so the corridor view can turn a tap into a MILE (#598), and it
+ * is snapped to the line rather than being the touch itself.
+ *
+ * The reason is the seam. LINE_TAP_SLOP_PX is about a thumb's width at every
+ * zoom, but in ground terms it is roughly 90 miles at the corridor view's
+ * opening camera - where one pixel spans some 4.6 miles. lib/trailPosition.ts
+ * refuses anything more than MAX_OFF_TRAIL_MILES (3) from the centerline, so
+ * an unsnapped point would be rejected for most of the taps this exists to
+ * serve, and the club sheet would simply not open.
+ */
+describe('where the tap landed on the line', () => {
+  it('snaps to the line’s nearest vertex, not to the touch', () => {
+    const map = buildMap()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      line('centerline:chain:0', 'centerline', 'White', null, [
+        [100, 200],
+        [130, 260],
+        [160, 320],
+      ]),
+    ])
+    const onSelect = vi.fn()
+
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    // The mock projects identically, so this touch is 5 units from the middle
+    // vertex and further from both others.
+    map.emit('click', touchAt(133, 264))
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ at: [130, 260] }))
+  })
+
+  it('walks every part of a MultiLineString, which the real geometry has', () => {
+    // export_trails.py's geometry_to_wkt makes the same point: treating the
+    // two shapes as one is how real trail mileage gets dropped.
+    const map = buildMap()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: {
+          id: 'centerline:chain:1',
+          source: 'centerline',
+          blaze_color: 'White',
+        },
+        geometry: {
+          type: 'MultiLineString',
+          coordinates: [
+            [
+              [10, 10],
+              [20, 20],
+            ],
+            [
+              [300, 300],
+              [310, 310],
+            ],
+          ],
+        },
+      },
+    ])
+    const onSelect = vi.fn()
+
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(305, 302))
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ at: [300, 300] }))
+  })
+
+  it('falls back to the touch when the feature carries no coordinates', () => {
+    // A clipped tile can hand back a feature whose geometry this cannot read.
+    // The touch is then the only answer there is, and trailPosition will
+    // decline it honestly if it is too far off the trail.
+    const map = buildMap()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [line('x', 'centerline', 'White')])
+    const onSelect = vi.fn()
+
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(42, 43))
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ at: [42, 43] }))
   })
 })

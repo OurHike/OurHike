@@ -1,0 +1,1106 @@
+<title>Below the Seam</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   Tokens.
+
+   Every colour is one of the app's own, copied from
+   client/src/design-system/tokens/colors.css and client/src/lib/blaze.ts, so
+   the phone frames render in the product's real palette rather than an
+   approximation of it. The document chrome sits one step deeper than the app's
+   paper so a phone screen reads as an object lying ON the page.
+--------------------------------------------------------------------------- */
+:root {
+  --pine-900:#122016; --pine-800:#1c2f1f; --pine-700:#284029;
+  --forest-600:#355c3a; --forest-500:#47784b;
+  --moss-400:#6b9463; --moss-300:#96b98c; --moss-200:#b7d3ad;
+  --sage-200:#c7dabd; --sage-100:#e3ecda;
+  --stone-900:#2b2620; --stone-700:#5a5346; --stone-500:#8a8271;
+  --stone-300:#c3baa4; --stone-150:#e4ddca;
+  --paper-100:#f7f3e9; --paper-0:#fffdf7;
+  --blaze-orange:#c1611a; --blaze-orange-dark:#994e15; --blaze-orange-light:#e0813c;
+  --blaze-yellow:#d69a2d; --blaze-blue:#1c6ea4;
+  --ink-950:#0e0d0a; --ink-900:#15140f; --ink-850:#1c1a15; --ink-800:#24211a;
+  --ink-700:#332f26; --ink-600:#454033;
+  --bone-100:#ece7db; --bone-300:#b9b2a2; --bone-500:#8b8474;
+  --alert-red:#b2321f; --alert-red-light:#ef7f68;
+
+  /* The only two line colours this feature is allowed, and both already exist.
+     blaze.ts: BLAZE_COLORS.White = #fffdf7, NEUTRAL_FALLBACK = #8a8271.
+     WIREFRAMES.md line 325: "the neutral-grey fallback is #8a8271". */
+  --blaze-white:#fffdf7;
+  --blaze-neutral:#8a8271;
+  --trail-casing:#14130f;
+
+  --ground:#e7e0cd;
+  --ground-2:#ded6c0;
+  --surface:var(--paper-0);
+  --ink:var(--pine-900);
+  --ink-2:var(--stone-700);
+  --ink-3:var(--stone-500);
+  --rule:var(--stone-300);
+  --rule-soft:#d5cdb6;
+  --accent:var(--blaze-orange);
+  --accent-soft:rgb(193 97 26 / 12%);
+
+  --measured:var(--forest-600);
+  --measured-bg:rgb(53 92 58 / 11%);
+  --reasoned:var(--blaze-blue);
+  --reasoned-bg:rgb(28 110 164 / 11%);
+  --unvalidated:var(--blaze-orange-dark);
+  --unvalidated-bg:rgb(214 154 45 / 20%);
+  --blocked:var(--alert-red);
+  --blocked-bg:rgb(178 50 31 / 12%);
+
+  --app-page:var(--paper-100);
+  --app-surface:#ffffff;
+  --app-fg1:var(--stone-900);
+  --app-fg2:var(--stone-700);
+  --app-fg3:var(--stone-500);
+  --app-border:var(--stone-150);
+  --app-chrome:var(--pine-900);
+  --app-chrome-fg:var(--paper-0);
+  --app-chrome-fg2:var(--sage-200);
+  --app-chrome-fg3:var(--moss-300);
+  --app-accent:var(--blaze-orange-light);
+  --app-brand:var(--forest-600);
+  --map-land:#efe9d8;
+  --map-relief:#e2dac4;
+  --sel:var(--blaze-orange);
+  --tick:var(--stone-700);
+  --pin-water:var(--blaze-blue);
+  --pin-shelter:var(--forest-600);
+  --pin-other:var(--stone-700);
+  --pin-core:var(--app-surface);
+  --phone-shell:var(--pine-900);
+  --phone-shadow:rgb(18 32 22 / 22%);
+
+  --measure:66ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:var(--ink-950);
+    --ground-2:var(--ink-900);
+    --surface:var(--ink-850);
+    --ink:var(--bone-100);
+    --ink-2:var(--bone-300);
+    --ink-3:var(--bone-500);
+    --rule:var(--ink-700);
+    --rule-soft:var(--ink-800);
+    --accent:var(--blaze-orange-light);
+    --accent-soft:rgb(224 129 60 / 15%);
+
+    --measured:var(--moss-400);
+    --measured-bg:rgb(107 148 99 / 15%);
+    --reasoned:#4ea3d8;
+    --reasoned-bg:rgb(78 163 216 / 14%);
+    --unvalidated:var(--blaze-yellow);
+    --unvalidated-bg:rgb(214 154 45 / 18%);
+    --blocked:var(--alert-red-light);
+    --blocked-bg:rgb(239 127 104 / 15%);
+
+    --app-page:var(--ink-900);
+    --app-surface:var(--ink-850);
+    --app-fg1:var(--bone-100);
+    --app-fg2:var(--bone-300);
+    --app-fg3:var(--bone-500);
+    --app-border:var(--ink-700);
+    --app-chrome:var(--ink-900);
+    --app-chrome-fg:var(--bone-100);
+    --app-chrome-fg2:var(--bone-300);
+    --app-chrome-fg3:var(--bone-500);
+    --app-accent:var(--moss-400);
+    --app-brand:var(--moss-400);
+    --map-land:#20201a;
+    --map-relief:#2a291f;
+    --sel:var(--blaze-orange-light);
+    --tick:var(--bone-500);
+    --pin-water:#4ea3d8;
+    --pin-shelter:var(--moss-400);
+    --pin-other:var(--bone-300);
+    --pin-core:var(--ink-950);
+    --phone-shell:#000000;
+    --phone-shadow:rgb(0 0 0 / 55%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:var(--ink-950);
+  --ground-2:var(--ink-900);
+  --surface:var(--ink-850);
+  --ink:var(--bone-100);
+  --ink-2:var(--bone-300);
+  --ink-3:var(--bone-500);
+  --rule:var(--ink-700);
+  --rule-soft:var(--ink-800);
+  --accent:var(--blaze-orange-light);
+  --accent-soft:rgb(224 129 60 / 15%);
+
+  --measured:var(--moss-400);
+  --measured-bg:rgb(107 148 99 / 15%);
+  --reasoned:#4ea3d8;
+  --reasoned-bg:rgb(78 163 216 / 14%);
+  --unvalidated:var(--blaze-yellow);
+  --unvalidated-bg:rgb(214 154 45 / 18%);
+  --blocked:var(--alert-red-light);
+  --blocked-bg:rgb(239 127 104 / 15%);
+
+  --app-page:var(--ink-900);
+  --app-surface:var(--ink-850);
+  --app-fg1:var(--bone-100);
+  --app-fg2:var(--bone-300);
+  --app-fg3:var(--bone-500);
+  --app-border:var(--ink-700);
+  --app-chrome:var(--ink-900);
+  --app-chrome-fg:var(--bone-100);
+  --app-chrome-fg2:var(--bone-300);
+  --app-chrome-fg3:var(--bone-500);
+  --app-accent:var(--moss-400);
+  --app-brand:var(--moss-400);
+  --map-land:#20201a;
+  --map-relief:#2a291f;
+  --sel:var(--blaze-orange-light);
+  --tick:var(--bone-500);
+  --pin-water:#4ea3d8;
+  --pin-shelter:var(--moss-400);
+  --pin-other:var(--bone-300);
+  --pin-core:var(--ink-950);
+  --phone-shell:#000000;
+  --phone-shadow:rgb(0 0 0 / 55%);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+
+.spine { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 0; }
+.spine__rail { grid-column: 1; border-right: 1px solid var(--rule); padding-top: 40px; position: relative; }
+.spine__mark {
+  position: sticky; top: 16px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.75rem; color: var(--ink-3);
+  text-align: right; padding-right: 14px; letter-spacing: 0.02em;
+}
+.spine__mark strong { display: block; font-size: 1.0625rem; font-weight: 500; color: var(--accent); letter-spacing: 0; }
+.spine__body { grid-column: 2; padding: 40px 0 40px 32px; min-width: 0; }
+
+@media (max-width: 860px) {
+  .spine { grid-template-columns: 1fr; }
+  .spine__rail { grid-column: 1; border-right: 0; border-top: 1px solid var(--rule); padding-top: 20px; }
+  .spine__mark { position: static; text-align: left; padding-right: 0; }
+  .spine__mark strong { display: inline; margin-right: 10px; }
+  .spine__body { grid-column: 1; padding: 12px 0 40px; }
+}
+
+.masthead { padding: 64px 0 20px; }
+.eyebrow {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 20px;
+}
+h1 {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: clamp(2.4rem, 5.5vw, 3.9rem);
+  line-height: 1.04; font-weight: 700; letter-spacing: -0.015em;
+  margin: 0 0 18px; text-wrap: balance;
+}
+.standfirst {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: 1.2rem; line-height: 1.55; color: var(--ink-2);
+  max-width: var(--measure); margin: 0 0 32px;
+}
+.standfirst em { color: var(--ink); font-style: italic; }
+
+.docket { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 0 0; border-top: 1px solid var(--rule); }
+.docket__item {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  padding: 7px 12px; border: 1px solid var(--rule); border-radius: 2px;
+  color: var(--ink-2); background: var(--surface);
+}
+.docket__item b { color: var(--ink); font-weight: 500; }
+.docket__item--open { border-color: var(--accent); color: var(--accent); }
+.docket__item--blocked { border-color: var(--blocked); color: var(--blocked); }
+
+h2 {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: clamp(1.65rem, 3vw, 2.15rem); line-height: 1.15;
+  font-weight: 700; letter-spacing: -0.01em; margin: 0 0 14px; text-wrap: balance;
+}
+h3 { font-family: 'Bitter', ui-serif, Georgia, serif; font-size: 1.28rem; line-height: 1.28; font-weight: 600; margin: 0 0 10px; text-wrap: balance; }
+p { margin: 0 0 16px; max-width: var(--measure); }
+p:last-child { margin-bottom: 0; }
+strong { font-weight: 600; color: var(--ink); }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+code, .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.875em; }
+code { background: var(--ground-2); padding: 1px 5px; border-radius: 2px; }
+
+.grade {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 2px; font-weight: 500;
+  white-space: nowrap; vertical-align: middle;
+}
+.grade--measured { color: var(--measured); background: var(--measured-bg); }
+.grade--reasoned { color: var(--reasoned); background: var(--reasoned-bg); }
+.grade--unvalidated { color: var(--unvalidated); background: var(--unvalidated-bg); }
+.grade--decided { color: var(--accent); background: var(--accent-soft); }
+.grade--blocked { color: var(--blocked); background: var(--blocked-bg); }
+
+.pair { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (max-width: 900px) { .pair { grid-template-columns: 1fr; gap: 28px; } }
+
+.frames { display: flex; flex-wrap: wrap; gap: 28px; }
+.stack { display: flex; flex-direction: column; gap: 24px; }
+
+.note { border-left: 2px solid var(--accent); padding: 2px 0 2px 18px; margin: 0 0 20px; color: var(--ink-2); max-width: var(--measure); }
+.note p { margin-bottom: 10px; }
+
+.callout { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 22px 24px; margin: 0 0 22px; }
+.callout h3 { margin-bottom: 8px; }
+.callout--blocked { border-left: 3px solid var(--blocked); }
+
+.phone { width: 300px; flex: 0 0 auto; }
+.phone__label {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  color: var(--ink-3); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 10px;
+}
+.phone__label b { color: var(--ink); font-weight: 500; }
+.phone__screen {
+  width: 300px; height: 538px; background: var(--app-page);
+  border: 9px solid var(--phone-shell); border-radius: 26px; overflow: hidden;
+  position: relative; box-shadow: 0 10px 28px -12px var(--phone-shadow);
+  display: flex; flex-direction: column;
+}
+.phone__caption { font-size: 0.8125rem; color: var(--ink-2); margin: 10px 0 0; max-width: 300px; line-height: 1.5; }
+
+.app-header {
+  background: var(--app-chrome); color: var(--app-chrome-fg);
+  padding: 7px 12px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.6875rem; flex: 0 0 auto;
+}
+.app-header__title { font-family: 'Bitter', serif; font-weight: 600; font-size: 0.8125rem; }
+.app-header__ico { color: var(--app-chrome-fg2); letter-spacing: 3px; }
+.app-status {
+  background: var(--app-chrome); color: var(--app-chrome-fg3);
+  padding: 0 12px 6px; font-size: 0.625rem; flex: 0 0 auto;
+  display: flex; gap: 8px; align-items: center; font-family: 'IBM Plex Mono', monospace;
+}
+.app-map { position: relative; flex: 1 1 auto; overflow: hidden; background: var(--map-land); }
+.app-map svg { display: block; width: 100%; height: 100%; }
+
+.app-tabs {
+  background: var(--app-chrome); flex: 0 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  font-size: 0.5625rem; color: var(--app-chrome-fg3); text-align: center; padding: 6px 0 8px;
+}
+.app-tabs span { display: block; }
+.app-tabs .on { color: var(--app-chrome-fg); }
+.app-tabs .on::before { content: ''; display: block; height: 2px; width: 22px; background: var(--app-accent); margin: -6px auto 5px; border-radius: 1px; }
+.app-tabs .off::before { content: ''; display: block; height: 2px; margin: -6px auto 5px; }
+
+.app-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--app-surface); border-top: 1px solid var(--app-border);
+  border-radius: 12px 12px 0 0; padding: 12px 14px 14px;
+  box-shadow: 0 -6px 18px -10px rgb(0 0 0 / 30%); color: var(--app-fg1);
+}
+.sheet__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.sheet__title { font-family: 'Bitter', serif; font-size: 0.9375rem; font-weight: 600; margin: 0; line-height: 1.25; }
+.sheet__x { color: var(--app-fg3); font-size: 0.875rem; }
+.sheet__status { font-size: 0.6875rem; color: var(--app-fg2); margin: 0 0 7px; }
+.sheet__range { font-size: 0.75rem; color: var(--app-fg1); margin: 0 0 3px; }
+.sheet__meta { font-size: 0.625rem; color: var(--app-fg3); margin: 7px 0 0; line-height: 1.45; }
+.sheet__empty { font-size: 0.6875rem; color: var(--app-fg2); margin: 0; }
+.sheet__derived {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--app-fg1);
+  background: var(--app-page); border: 1px solid var(--app-border); border-radius: 3px;
+  padding: 6px 8px; margin: 7px 0 0; display: flex; gap: 10px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.sheet__legs { margin: 7px 0 0; padding: 0; list-style: none; }
+.sheet__legs li {
+  font-size: 0.6875rem; color: var(--app-fg1); padding: 3px 0 3px 12px;
+  border-left: 2px solid var(--app-border); margin-bottom: 2px; line-height: 1.35;
+}
+.sheet__legs li span { color: var(--app-fg3); font-family: 'IBM Plex Mono', monospace; font-size: 0.9em; }
+.sheet__basis {
+  display: inline-block; font-size: 0.5625rem; letter-spacing: 0.07em; text-transform: uppercase;
+  font-weight: 700; padding: 2px 6px; border-radius: 2px; margin: 8px 0 0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.basis--named { color: var(--app-brand); border: 1px solid var(--app-brand); }
+.basis--published { color: var(--pin-water); border: 1px solid var(--pin-water); }
+
+.legend-row { display: flex; align-items: center; gap: 7px; font-size: 0.6875rem; color: var(--app-fg1); padding: 2px 0; }
+.legend-swatch { width: 18px; height: 4px; border-radius: 1px; flex: 0 0 auto; outline: 1px solid var(--trail-casing); }
+
+.table-scroll { overflow-x: auto; margin: 0 0 22px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.875rem; }
+th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; border-bottom: 1px solid var(--rule); background: var(--ground-2);
+}
+tbody tr:last-child td { border-bottom: 0; }
+.basis-name { font-family: 'IBM Plex Mono', monospace; font-weight: 500; color: var(--ink); }
+
+.decision { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 3px; padding: 22px 24px; margin: 0 0 18px; }
+.decision--blocked { border-left-color: var(--blocked); }
+.decision__q { font-family: 'Bitter', serif; font-size: 1.15rem; font-weight: 600; margin: 0 0 10px; line-height: 1.3; }
+.decision__rec { margin: 14px 0 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 2px; font-size: 0.9375rem; max-width: none; }
+.decision__rec b { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500; }
+.decision__rec--blocked { background: var(--blocked-bg); }
+.decision__rec--blocked b { color: var(--blocked); }
+
+.ol-plain { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ol-plain li { margin-bottom: 10px; }
+.ul-tight { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ul-tight li { margin-bottom: 8px; }
+
+hr.rule { grid-column: 1 / -1; border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+footer { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 0.8125rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">OurHike · Feature mockup · Revision 2 · Five answers folded in · one blocked</p>
+    <h1>Below the Seam</h1>
+    <p class="standfirst">
+      What the map draws at z0–z8, where waypoint pins do not. Redrawn against the maintainer's
+      answers of 19&nbsp;August — <em>two colours only, highlights as their own entity, and the corridor
+      view steps aside for anybody with a plan.</em>
+    </p>
+    <div class="docket">
+      <span class="docket__item docket__item--open"><b>#598</b> · client · open · claimed</span>
+      <span class="docket__item docket__item--open"><b>#595</b> · pipeline · open · unclaimed</span>
+      <span class="docket__item docket__item--blocked"><b>visited</b> · blocked on EVENTING.md rule 2</span>
+      <span class="docket__item"><b>#594</b> · club sections · merged</span>
+      <span class="docket__item"><b>#593</b> · the seam · merged</span>
+    </div>
+  </header>
+
+  <div class="spine">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>z4.9</strong>today</div></div>
+    <div class="spine__body">
+      <h2>What the opening screen actually shows today</h2>
+      <p>
+        Both issue bodies describe an empty line and a legend reading <em>"pan or zoom out to see
+        more."</em> <strong>Half of that has already been fixed.</strong> <strong>#603 — The opening map shows
+        nothing, and the legend tells the hiker to zoom the wrong way</strong> landed
+        <code>POI_DOT_MIN_ZOOM&nbsp;=&nbsp;0</code>, so the corridor now carries a stipple of every waypoint and
+        the legend says <em>"Waypoints show as dots at this zoom"</em> — which is true. What is still
+        missing is a <strong>subject</strong>.
+      </p>
+
+      <div class="pair">
+        <div class="phone">
+          <p class="phone__label"><span>Today, opening view</span><b>z4.87</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="0 0 390 700" preserveAspectRatio="xMidYMid meet" role="img" aria-label="The Appalachian Trail corridor as a thin diagonal white line with waypoint dots, most of the screen empty">
+                <rect x="0" y="0" width="390" height="700" fill="var(--map-land)"/>
+                <rect x="0" y="0" width="390" height="190" fill="var(--map-relief)" opacity="0.5"/>
+                <rect x="0" y="512" width="390" height="188" fill="var(--map-relief)" opacity="0.5"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7 124.1,433.9 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3 282.9,261.4 296.5,248.1 303.6,244.9 309.8,237.3 321.5,219.4 340.8,215.0 353.1,196.9"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7 124.1,433.9 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3 282.9,261.4 296.5,248.1 303.6,244.9 309.8,237.3 321.5,219.4 340.8,215.0 353.1,196.9"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+                <g fill="var(--tick)" opacity="0.75">
+                  <circle cx="43" cy="497" r="2.1"/><circle cx="52" cy="484" r="2.1"/><circle cx="66" cy="472" r="2.1"/><circle cx="84" cy="458" r="2.1"/><circle cx="101" cy="443" r="2.1"/><circle cx="122" cy="434" r="2.1"/><circle cx="141" cy="420" r="2.1"/><circle cx="164" cy="389" r="2.1"/><circle cx="180" cy="361" r="2.1"/><circle cx="205" cy="346" r="2.1"/><circle cx="228" cy="333" r="2.1"/><circle cx="252" cy="322" r="2.1"/><circle cx="262" cy="300" r="2.1"/><circle cx="277" cy="262" r="2.1"/><circle cx="300" cy="246" r="2.1"/><circle cx="316" cy="228" r="2.1"/><circle cx="347" cy="206" r="2.1"/><circle cx="47" cy="491" r="2.1"/><circle cx="58" cy="478" r="2.1"/><circle cx="75" cy="466" r="2.1"/><circle cx="93" cy="450" r="2.1"/><circle cx="112" cy="438" r="2.1"/><circle cx="131" cy="427" r="2.1"/><circle cx="152" cy="404" r="2.1"/><circle cx="172" cy="375" r="2.1"/><circle cx="192" cy="353" r="2.1"/><circle cx="217" cy="339" r="2.1"/><circle cx="240" cy="328" r="2.1"/><circle cx="257" cy="311" r="2.1"/><circle cx="268" cy="278" r="2.1"/><circle cx="289" cy="254" r="2.1"/><circle cx="308" cy="238" r="2.1"/><circle cx="333" cy="215" r="2.1"/>
+                </g>
+                <text x="195" y="96" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--blaze-neutral)">empty</text>
+                <text x="195" y="545" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--blaze-neutral)">empty</text>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">Legend</h3><span class="sheet__x">×</span></div>
+                <p class="sheet__empty">Waypoints show as dots at this zoom. Zoom in to see what each one is.</p>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="callout">
+            <h3>Two measurements, taken for these mockups</h3>
+            <p style="margin-bottom:12px">
+              <span class="grade grade--measured">measured</span>
+              <strong>The opening camera is z4.87, not "near z4."</strong> <code>fitBounds</code> over
+              <code>CORRIDOR_BOUNDS</code> <span class="mono">[[-84.73,&nbsp;34.2],&nbsp;[-68.3,&nbsp;46.34]]</span> on a
+              390&nbsp;×&nbsp;700 canvas with <code>FIT_PADDING&nbsp;=&nbsp;24</code>, Web Mercator. <strong>Width</strong>-limited,
+              which is why it is not tighter.
+            </p>
+            <p>
+              <span class="grade grade--measured">measured</span>
+              <strong>55% of the opening screen is empty.</strong> The corridor's trace occupies
+              y&nbsp;197–505 of 700&nbsp;px — roughly 200&nbsp;px above Katahdin and 195&nbsp;px below Springer carry
+              nothing. That is the space this feature has to earn.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>2</strong>colours</div></div>
+    <div class="spine__body">
+      <h2>The corridor, in the blaze's own colour and one grey</h2>
+      <p>
+        <span class="grade grade--decided">decided 19 Aug</span>
+        Two colours, and <strong>both already exist in the code</strong> —
+        <code>blaze.ts</code>'s <code>BLAZE_COLORS.White&nbsp;=&nbsp;#fffdf7</code> and its
+        <code>NEUTRAL_FALLBACK&nbsp;=&nbsp;#8a8271</code>. Nothing new is invented, and the trail keeps rendering
+        in the paint that is actually on the tree.
+      </p>
+
+      <div class="callout" style="border-left:3px solid var(--accent)">
+        <h3>The no-dash rule is scoped to above the seam</h3>
+        <p style="margin-bottom:12px">
+          <span class="grade grade--decided">decided 19 Aug</span>
+          <code>WIREFRAMES.md</code> §3 says <em>"No dashed trail lines (decided 2026-08-03)… Closures
+          are the one exception."</em> I read that as covering this map and drew the unattributed miles
+          solid. <strong>The maintainer's call is that it does not, and the reasoning holds:
+          below the seam the trail is representational.</strong> Nobody navigates by a 2.5&nbsp;px line
+          standing for 2,197 miles.
+        </p>
+        <p style="margin-bottom:12px">
+          The original decision supports the scoping rather than resisting it. Its "Superseded" note
+          records what actually went wrong: lines used to be dashed and <em>"the centerline's blaze is
+          very nearly white — so the AT read as a dotted grey-and-white thread <strong>through the
+          contours</strong> rather than as a trail."</em> That failure is a navigational-zoom failure —
+          contours, a hiker following a line. At z4.9 there are no contours and no following.
+        </p>
+        <p style="margin-bottom:0">
+          <strong>So the dash comes back, below <code>POI_PIN_MIN_ZOOM</code> only, and grey keeps its
+          existing meaning too</strong> — the same note says an undecoded blaze <em>"is still the neutral
+          grey, and the tap sheet still says so in words."</em> Two channels for one fact, which is
+          worth it for the one fact on this screen that is an absence.
+          <strong>The other half of the decision is now a test</strong>, at the maintainer's
+          request — <code>map/style.test.ts</code>'s <em>"a blaze never changes colour where a hiker is
+          navigating by it (#598)"</em>. Above the seam every blaze evaluates to the same colour at
+          z9 through z22 in all four appearances, and the blaze paint may not read <code>zoom</code>
+          at all; red light stays the one sanctioned recolouring, because it is a choice a hiker
+          arms and can disarm. Verified by mutation: making the blaze zoom-dependent turns six of
+          those cases red, and the red-light case correctly stays green.
+          <code>WIREFRAMES.md</code> §3 still needs its dated amendment in the implementation PR —
+          a doc that disagrees with the code is worse than no doc.
+        </p>
+      </div>
+
+      <div class="frames">
+        <div class="phone">
+          <p class="phone__label"><span>Corridor, sections on</span><b>z4.9</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="0 0 390 700" preserveAspectRatio="xMidYMid meet" role="img" aria-label="The corridor in white with club boundary ticks and acronyms, and one grey run where no club is recorded">
+                <rect x="0" y="0" width="390" height="700" fill="var(--map-land)"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7 124.1,433.9 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3 282.9,261.4 296.5,248.1 303.6,244.9 309.8,237.3 321.5,219.4 340.8,215.0 353.1,196.9"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7 124.1,433.9 136.0,425.8 145.4,416.6"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+                <!-- the one run the fresh source cannot name: the same neutral grey blaze.ts
+                     already uses for "we do not know", solid like every other trail line -->
+                <polyline points="145.4,416.6 160.1,394.0" fill="none" stroke="var(--blaze-neutral)" stroke-width="4" stroke-dasharray="6 4" stroke-linecap="butt"/>
+                <polyline points="160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3 282.9,261.4 296.5,248.1 303.6,244.9 309.8,237.3 321.5,219.4 340.8,215.0 353.1,196.9"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+                <!-- club boundaries: ticks, because colour is spent and width means something -->
+                <g stroke="var(--tick)" stroke-width="2" stroke-linecap="round">
+                  <line x1="38" y1="480" x2="52" y2="491"/><line x1="65" y1="461" x2="79" y2="472"/>
+                  <line x1="85" y1="448" x2="99" y2="459"/><line x1="114" y1="429" x2="128" y2="440"/>
+                  <line x1="178" y1="348" x2="192" y2="359"/><line x1="227" y1="323" x2="241" y2="334"/>
+                  <line x1="265" y1="259" x2="279" y2="270"/><line x1="303" y1="232" x2="317" y2="243"/>
+                </g>
+                <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--app-fg2)">
+                  <text x="58" y="497">GATC</text><text x="120" y="470">NHC</text>
+                  <text x="196" y="382">PATC</text><text x="290" y="290">AMC</text><text x="322" y="206">MATC</text>
+                </g>
+                <text x="166" y="406" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--blaze-neutral)">not recorded</text>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">Legend</h3><span class="sheet__x">×</span></div>
+                <div class="legend-row"><span class="legend-swatch" style="background:var(--blaze-white)"></span> White blaze — tap for who maintains it</div>
+                <div class="legend-row"><span class="legend-swatch" style="background:repeating-linear-gradient(90deg,var(--blaze-neutral) 0 5px,transparent 5px 9px);outline:none"></span> Club not recorded (38.5 mi)</div>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+          <p class="phone__caption">
+            Colour now carries <strong>meaning</strong> — known against unknown — instead of alternating for
+            decoration. Club boundaries are ticks and acronyms.
+          </p>
+        </div>
+
+        <div class="phone">
+          <p class="phone__label"><span>Tap a section</span><b>club sheet</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="130 250 178 320" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A club section highlighted in blaze orange, with a sheet naming Potomac Appalachian Trail Club">
+                <rect x="0" y="0" width="390" height="700" fill="var(--map-land)"/>
+                <polyline points="120.6,434.7 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+                <polyline points="120.6,434.7 136.0,425.8 145.4,416.6" fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <polyline points="145.4,416.6 160.1,394.0" fill="none" stroke="var(--blaze-neutral)" stroke-width="2.6" stroke-dasharray="5 4" stroke-linecap="butt"/>
+                <polyline points="160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9" fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <!-- selection: a halo under the line, so the blaze colour itself is never overwritten -->
+                <polyline points="184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6" fill="none" stroke="var(--sel)" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
+                <polyline points="184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6" fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <polyline points="233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3" fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <g fill="var(--sel)"><circle cx="184.5" cy="353.9" r="3.6"/><circle cx="233.6" cy="328.6" r="3.6"/></g>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">Potomac Appalachian Trail Club</h3><span class="sheet__x">×</span></div>
+                <p class="sheet__status">PATC · Mid-Atlantic</p>
+                <p class="sheet__range">Miles 940.2 – 1,180.9</p>
+                <p class="sheet__range">240.7 miles maintained, in 1 section</p>
+                <p class="sheet__meta">
+                  Who maintains it: ATC centerline, 4&nbsp;Aug&nbsp;2026<br>
+                  Club name: ATC club sections, 15&nbsp;Aug&nbsp;2024
+                </p>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+          <p class="phone__caption">
+            Selection is a <strong>halo under</strong> the line, not a recolour of it — a third hue on the
+            trail itself would be the thing you ruled out. Two source dates, deliberately: they are
+            two years apart.
+          </p>
+        </div>
+
+        <div class="phone">
+          <p class="phone__label"><span>Tap the grey run</span><b>absence</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="118 350 178 320" preserveAspectRatio="xMidYMid slice" role="img" aria-label="The grey unattributed run selected, with a sheet reading Club not recorded">
+                <rect x="0" y="0" width="390" height="700" fill="var(--map-land)"/>
+                <polyline points="91.0,453.5 107.3,436.0 120.6,434.7 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+                <polyline points="91.0,453.5 107.3,436.0 120.6,434.7 136.0,425.8 145.4,416.6" fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <polyline points="145.4,416.6 160.1,394.0" fill="none" stroke="var(--sel)" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
+                <polyline points="145.4,416.6 160.1,394.0" fill="none" stroke="var(--blaze-neutral)" stroke-width="2.6" stroke-dasharray="5 4" stroke-linecap="butt"/>
+                <polyline points="160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9" fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <g fill="var(--sel)"><circle cx="145.4" cy="416.6" r="3.6"/><circle cx="160.1" cy="394.0" r="3.6"/></g>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">Club not recorded</h3><span class="sheet__x">×</span></div>
+                <p class="sheet__status">Miles 1,013.4 – 1,015.2</p>
+                <p class="sheet__range">ATC's centerline does not name a club along here.</p>
+                <p class="sheet__range">38.5 miles of the trail are like this, in 27 runs.</p>
+                <p class="sheet__meta">ATC centerline, 4&nbsp;Aug&nbsp;2026</p>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+          <p class="phone__caption">
+            Never <em>"no club maintains this."</em> Somebody almost certainly does; the fresh source
+            cannot name them. Absent means unknown.
+          </p>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:24px">
+        <p>
+          <strong>One cost of spending grey this way, stated so nobody rediscovers it.</strong> Grey already
+          means <em>undecodable blaze</em> above the seam. Below it, it means <em>no club recorded</em>. On the
+          AT that is unambiguous — the blaze is known to be white — but the moment a trail with an
+          undecoded blaze draws below the seam, one colour carries two unknowns. The dash is what keeps them
+          apart — an undecoded blaze is solid grey, an unattributed club run is dashed grey — which
+          is a second reason the relaxation earns its keep. Worth naming before <strong>#772</strong>'s
+          nearby trails arrive.
+        </p>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>H</strong>highlights</div></div>
+    <div class="spine__body">
+      <h2>Highlights are their own entity, and they cross trails</h2>
+      <p>
+        <span class="grade grade--decided">decided 19 Aug</span>
+        The download unit keeps the word <strong>stretch</strong> and this feature does not reuse it. What
+        was called a stretch here is a <strong>Highlight</strong> — its own record, not a property of a
+        trail, and free to span more than one.
+      </p>
+
+      <div class="callout">
+        <h3>The shape that follows from "may cross trails"</h3>
+        <p style="margin-bottom:12px">
+          A highlight cannot be one <code>(start_mile,&nbsp;end_mile)</code> pair, because
+          <code>NEARBY_TRAILS.md</code> settled on 2026-08-18 that <em>"the map's subject is always the
+          chosen trail; one trail at a time"</em> — and switching trails <em>"swaps the mile frame."</em>
+          A mile only means something relative to a trail. So the mile range moves down a level:
+        </p>
+        <div class="table-scroll" style="margin-bottom:12px">
+          <table>
+            <tbody>
+              <tr><td class="basis-name">id</td><td>stable, minted once — a highlight is referenceable across trails</td></tr>
+              <tr><td class="basis-name">name</td><td>Franconia Ridge Loop</td></tr>
+              <tr><td class="basis-name">legs[]</td><td><strong>ordered</strong> <code>{ trail_id, start_mile, end_mile }</code> — one leg for a simple highlight, several for a loop that leaves the AT and comes back</td></tr>
+              <tr><td class="basis-name">bases[]</td><td><code>named</code> · <code>published</code> · <code>visited</code> — one or more, never blended</td></tr>
+              <tr><td class="basis-name">citation</td><td>per basis: who says so, and when</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="margin-bottom:0">
+          <span class="grade grade--measured">measured</span>
+          <strong>The summing already exists and was built for exactly this.</strong>
+          <code>naismith.ts</code> exports <code>naismithMinutes</code> separately from
+          <code>naismithTime</code>, and its docstring names the reason: it is for <em>"the places that
+          must add or compare estimates BEFORE display — a route's total across legs."</em> Rounding each
+          leg to five minutes and then summing would let the printed total drift from the printed
+          legs. Legs sum unrounded; the ≈ and the 5-minute step happen once, at the end.
+        </p>
+      </div>
+
+      <div class="frames">
+        <div class="phone">
+          <p class="phone__label"><span>Highlights appear</span><b>z6</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="0 0 300 460" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A zoomed section of trail with two named highlight markers alongside it">
+                <rect x="0" y="0" width="300" height="460" fill="var(--map-land)"/>
+                <g stroke="var(--map-relief)" stroke-width="1" fill="none" opacity="0.85">
+                  <path d="M-10 90 Q 70 60 150 96 T 310 76"/><path d="M-10 190 Q 80 158 160 198 T 310 176"/>
+                  <path d="M-10 300 Q 70 268 150 306 T 310 288"/><path d="M-10 396 Q 90 366 170 404 T 310 384"/>
+                </g>
+                <path d="M40 452 C 60 400 44 366 74 322 C 100 284 88 250 118 210 C 146 172 140 132 172 92 C 196 62 206 40 216 8"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="6" stroke-linecap="round"/>
+                <path d="M40 452 C 60 400 44 366 74 322 C 100 284 88 250 118 210 C 146 172 140 132 172 92 C 196 62 206 40 216 8"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <!-- a highlight is a bracket BESIDE the trail: the line's colour is the blaze's -->
+                <g stroke="var(--sel)" stroke-width="3" fill="none" stroke-linecap="round">
+                  <path d="M88 338 C 74 310 92 290 100 270"/><path d="M132 198 C 124 178 136 160 148 140"/>
+                </g>
+                <g fill="var(--app-surface)" stroke="var(--sel)" stroke-width="1.8">
+                  <circle cx="94" cy="304" r="4.5"/><circle cx="140" cy="169" r="4.5"/>
+                </g>
+                <g font-family="Public Sans, sans-serif" font-size="11" font-weight="600" fill="var(--app-fg1)">
+                  <text x="107" y="302">McAfee Knob</text><text x="153" y="167">Grayson Highlands</text>
+                </g>
+                <g font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--app-fg3)">
+                  <text x="107" y="315">3.5 mi · ≈2 h</text><text x="153" y="180">11.4 mi · ≈4 h 5 m</text>
+                </g>
+              </svg>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+          <p class="phone__caption">
+            A bracket <strong>beside</strong> the trail. The line itself keeps the blaze's colour, so
+            highlights add no third hue.
+          </p>
+        </div>
+
+        <div class="phone">
+          <p class="phone__label"><span>One trail — <code>published</code></span><b>ATC's claim</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="0 0 300 460" preserveAspectRatio="xMidYMid slice" role="img" aria-label="McAfee Knob highlight selected on a single trail">
+                <rect x="0" y="0" width="300" height="460" fill="var(--map-land)"/>
+                <g stroke="var(--map-relief)" stroke-width="1" fill="none" opacity="0.85">
+                  <path d="M-10 100 Q 70 70 150 106 T 310 86"/><path d="M-10 210 Q 80 178 160 218 T 310 196"/>
+                </g>
+                <path d="M46 448 C 76 402 58 358 96 318 C 130 282 118 240 156 200 C 188 166 184 124 216 84"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="6" stroke-linecap="round"/>
+                <path d="M46 448 C 76 402 58 358 96 318 C 130 282 118 240 156 200 C 188 166 184 124 216 84"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="2.6" stroke-linecap="round"/>
+                <path d="M176 152 C 184 138 186 128 196 116" stroke="var(--sel)" stroke-width="4" fill="none" stroke-linecap="round"/>
+                <g fill="var(--sel)"><circle cx="176" cy="152" r="3.6"/><circle cx="196" cy="116" r="3.6"/></g>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">McAfee Knob</h3><span class="sheet__x">×</span></div>
+                <p class="sheet__status">Appalachian Trail · miles 705.6 – 709.1</p>
+                <div class="sheet__derived"><span>3.5 mi</span><span>1,740 ft ascent</span><span>≈2 h</span></div>
+                <p class="sheet__meta">Worked out on your phone from the elevation profile.</p>
+                <span class="sheet__basis basis--published">Listed by ATC</span>
+                <p class="sheet__meta">
+                  The Appalachian Trail Conservancy lists this as a day hike.<br>
+                  Maintained by RATC · ATC day hikes, retrieved 4&nbsp;Aug&nbsp;2026
+                </p>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+          <p class="phone__caption">
+            One leg, so the sheet reads exactly as before — and names the club, which is the thread
+            back to volunteering.
+          </p>
+        </div>
+
+        <div class="phone">
+          <p class="phone__label"><span>Three trails — <code>named</code></span><b>legs</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>No fix · Corridor downloaded</span></div>
+            <div class="app-map">
+              <svg viewBox="0 0 300 460" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A loop highlight spanning the white-blazed AT and two blue-blazed side trails">
+                <rect x="0" y="0" width="300" height="460" fill="var(--map-land)"/>
+                <g stroke="var(--map-relief)" stroke-width="1" fill="none" opacity="0.85">
+                  <path d="M-10 80 Q 70 50 150 86 T 310 66"/><path d="M-10 180 Q 80 148 160 188 T 310 166"/>
+                </g>
+                <!-- Casings first, then the selection halo, then the blazes ON TOP - so a
+                     leg on a blue-blazed trail still reads as blue, which is the whole
+                     point of the frame. -->
+                <path d="M78 300 C 96 262 84 226 112 190 C 140 154 138 112 168 76 C 186 54 200 44 218 22" fill="none" stroke="var(--trail-casing)" stroke-width="5.5" stroke-linecap="round"/>
+                <path d="M112 190 C 82 176 66 146 82 118 C 96 94 128 86 148 106 C 158 116 162 92 168 76" fill="none" stroke="var(--trail-casing)" stroke-width="3.8" stroke-linecap="round"/>
+                <path d="M112 190 C 140 154 138 112 168 76" fill="none" stroke="var(--sel)" stroke-width="9" opacity="0.55" stroke-linecap="round"/>
+                <path d="M112 190 C 82 176 66 146 82 118 C 96 94 128 86 148 106 C 158 116 162 92 168 76" fill="none" stroke="var(--sel)" stroke-width="7.5" opacity="0.55" stroke-linecap="round"/>
+                <path d="M78 300 C 96 262 84 226 112 190 C 140 154 138 112 168 76 C 186 54 200 44 218 22" fill="none" stroke="var(--blaze-white)" stroke-width="3.6" stroke-linecap="round"/>
+                <path d="M112 190 C 82 176 66 146 82 118 C 96 94 128 86 148 106 C 158 116 162 92 168 76" fill="none" stroke="#1f5fa8" stroke-width="2.4" stroke-linecap="round"/>
+                <g fill="var(--sel)"><circle cx="112" cy="190" r="3.4"/><circle cx="168" cy="76" r="3.4"/></g>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">Franconia Ridge Loop</h3><span class="sheet__x">×</span></div>
+                <p class="sheet__status">Three trails · New Hampshire</p>
+                <div class="sheet__derived"><span>8.9 mi</span><span>3,900 ft ascent</span><span>≈4 h 50 m</span></div>
+                <ul class="sheet__legs">
+                  <li>Appalachian Trail <span>mi 1,823.4–1,825.1 · 1.7 mi</span></li>
+                  <li>Falling Waters Trail <span>3.2 mi</span></li>
+                  <li>Old Bridle Path <span>4.0 mi</span></li>
+                </ul>
+                <span class="sheet__basis basis--named">On our list</span>
+                <p class="sheet__meta">
+                  Editorial, not a measurement. Maintained by AMC · OurHike, 19&nbsp;Aug&nbsp;2026
+                </p>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+          <p class="phone__caption">
+            The legs are the entity earning its keep: 8.9&nbsp;mi and ≈4&nbsp;h&nbsp;50&nbsp;m are sums across three
+            trails, not a number anybody stored.
+          </p>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:26px">
+        <h3>Two things about the numbers</h3>
+        <p style="margin-bottom:12px">
+          <span class="grade grade--unvalidated">unvalidated</span>
+          <strong>Every mile range, ascent and leg length above is illustrative.</strong> I picked them to
+          make the layout real; nobody has measured them against the published profile. Settling them
+          is <strong>#595</strong>'s work.
+        </p>
+        <p style="margin-bottom:0">
+          <span class="grade grade--unvalidated">unvalidated</span>
+          <strong>Naismith fails on terrain, in the optimistic direction.</strong> The rule gives ≈50&nbsp;m for
+          Mahoosuc Notch, a mile widely reported to take one to three hours — it is a boulder
+          scramble, and the rule only knows distance and ascent. <code>FEATURES.md</code>'s own line is
+          that <em>"a confidently wrong prediction is more dangerous than an honest unknown."</em>
+          Nothing in <code>naismith.ts</code> is at fault; nothing in it can see terrain.
+          <strong>This wants its own issue</strong> — either a highlight carries a "the rule under-reads this
+          one" flag, or the sheet prints distance and ascent and declines to print a time.
+        </p>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>30</strong>the list</div></div>
+    <div class="spine__body">
+      <h2>One highlight per maintaining club</h2>
+      <p>
+        <span class="grade grade--decided">decided 19 Aug</span>
+        The <code>named</code> list is seeded <strong>by club, not by state</strong> — about thirty entries,
+        because that is the unit that maps to volunteering, and because the trail hopscotches
+        between states in a way that makes a state a meaningless container for it.
+      </p>
+      <p>
+        It is a better answer than the one I proposed, and for a reason worth writing down: a
+        per-state list would have put three entries in a hundred miles of Virginia border country
+        and none in the Whites. <strong>Per-club is also self-checking</strong> — the club sections already
+        tile the trail exactly, Springer to Katahdin, so a club with no highlight is a visible gap
+        in a list of thirty rather than an absence nobody notices.
+      </p>
+      <div class="note">
+        <p>
+          <strong>Two consequences to accept knowingly.</strong> The 38.5 unattributed miles belong to no
+          club, so they seed no highlight — which is correct and should not be patched around. And a
+          highlight with legs on more than one trail may not sit inside any one club's section, so
+          <em>one per club</em> is how the list is <strong>seeded</strong>, never a constraint the record enforces.
+        </p>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>Plan</strong>steps aside</div></div>
+    <div class="spine__body">
+      <h2>A hiker with a plan is not exploring</h2>
+      <p>
+        <span class="grade grade--decided">decided 19 Aug</span>
+        The corridor view is for people <strong>exploring</strong>. Once a plan is locked in, the club
+        sections and the highlights do not draw.
+      </p>
+
+      <div class="pair">
+        <div class="phone">
+          <p class="phone__label"><span>Plan set</span><b>z4.9</b></p>
+          <div class="phone__screen">
+            <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+            <div class="app-status"><span>●</span><span>Plan: Springer → Damascus</span></div>
+            <div class="app-map">
+              <svg viewBox="0 0 390 700" preserveAspectRatio="xMidYMid meet" role="img" aria-label="With a plan set, the corridor shows only the planned span emphasised and no club sections or highlights">
+                <rect x="0" y="0" width="390" height="700" fill="var(--map-land)"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7 124.1,433.9 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3 282.9,261.4 296.5,248.1 303.6,244.9 309.8,237.3 321.5,219.4 340.8,215.0 353.1,196.9"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" opacity="0.45"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7 124.1,433.9 136.0,425.8 145.4,416.6 160.1,394.0 169.7,383.2 174.5,372.4 184.5,353.9 199.5,348.5 214.0,343.0 223.6,338.3 233.6,328.6 241.1,330.8 247.6,328.9 258.2,315.3 264.8,291.7 271.9,264.3 282.9,261.4 296.5,248.1 303.6,244.9 309.8,237.3 321.5,219.4 340.8,215.0 353.1,196.9"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity="0.45"/>
+                <!-- the plan's own span, full strength, casing included -->
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7"
+                  fill="none" stroke="var(--trail-casing)" stroke-width="6" stroke-linecap="round"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7"
+                  fill="none" stroke="var(--sel)" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+                <polyline points="35.2,505.5 40.7,502.5 47.1,498.4 49.6,496.4 48.4,492.1 47.7,487.7 43.2,484.7 49.6,481.8 51.1,480.6 57.7,476.5 63.5,473.4 72.1,466.7 78.5,468.0 82.1,461.5 85.2,454.3 91.0,453.5 97.5,447.3 107.3,436.0 120.6,434.7"
+                  fill="none" stroke="var(--blaze-white)" stroke-width="3.5" stroke-linecap="round"/>
+                <g fill="var(--sel)"><circle cx="35.2" cy="505.5" r="4"/><circle cx="120.6" cy="434.7" r="4"/></g>
+                <text x="140" y="440" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--app-fg2)">470.7 mi</text>
+              </svg>
+              <div class="app-sheet">
+                <div class="sheet__head"><h3 class="sheet__title">Legend</h3><span class="sheet__x">×</span></div>
+                <p class="sheet__empty" style="margin-bottom:6px">Your hike: Springer Mountain to Damascus, 470.7 miles.</p>
+                <p class="sheet__meta" style="margin-top:0">Maintaining clubs and highlights are hidden while you have a hike set. <u>Show them anyway</u></p>
+              </div>
+            </div>
+            <div class="app-tabs"><span class="on">Map</span><span class="off">Plan</span><span class="off">Report</span><span class="off">More</span></div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="callout">
+            <h3>What "locked in" reads off</h3>
+            <p style="margin-bottom:12px">
+              <code>lib/plannedHike.ts</code> — <em>"the hike a person says they are on: where they
+              started, where they are going, and nothing else (#335)."</em> Two numbers, stored on the
+              phone, not synced. Its presence is the whole test; there is no new state to invent and
+              no new preference key.
+            </p>
+            <p style="margin-bottom:0">
+              This is <strong>not</strong> the GPS-fix question. <code>cameraMemory.ts</code> already decided that
+              a fix moves no camera, and nothing here re-decides it — a hiker standing on the trail
+              with no plan set still gets the corridor view, because they are still exploring.
+            </p>
+          </div>
+          <div class="note">
+            <p>
+              <strong>The one addition I made to your answer, and it is reversible.</strong> You said
+              "probably shouldn't see this", so the mockup hides rather than removes: one
+              <u>Show them anyway</u> link at the foot of the legend. Hiding a feature with no way back
+              is a mode a hiker cannot get out of, and the link costs one line of chrome that only
+              appears for people who have a plan.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>!</strong>blocked</div></div>
+    <div class="spine__body">
+      <h2><code>visited</code> as specified cannot ship</h2>
+      <p>
+        This is the one answer I have not drawn, because building it would break a rule this
+        repository wrote down after paying for it. I would rather say so once, clearly, than
+        implement it quietly.
+      </p>
+
+      <div class="callout callout--blocked">
+        <h3>What the rule says</h3>
+        <p style="margin-bottom:12px">
+          <span class="grade grade--blocked">blocked</span>
+          <code>EVENTING.md</code> §1, rule 2, in full: <strong>"No geography, ever. No coordinates, no
+          mile, no segment id, no POI id, no region. This is the #252 half of the pair, and on a
+          trail app it is the more dangerous half."</strong>
+        </p>
+        <p style="margin-bottom:12px">
+          The ask — <em>two GPS points per user, no more than 0.5 miles apart, through event
+          tracking</em> — is coordinates, plus the per-user linkage needed to pair them. That is exactly
+          the combination <strong>#252</strong> removed from the report API: <em>"a stable account UUID served
+          next to a trail position and a time is a hiker's route down the corridor, recoverable with
+          <code>curl</code> and no account."</em> §1 goes further and names the shape:
+          <em>"An analytics scheme is exactly a machine for producing that pair, several times a day,
+          for every hiker, forever."</em>
+        </p>
+        <p style="margin-bottom:0">
+          And <code>CORRIDOR_VIEW.md</code>'s own <code>visited</code> section opens with the same sentence
+          — <strong>"Never from the eventing pipe"</strong> — so this feature's design doc and the eventing
+          doc already agree with each other. The instruction is the outlier, not the rule.
+        </p>
+      </div>
+
+      <p>
+        <strong>The underlying instinct is right, and I want to be clear about that.</strong> "Somebody
+        walked this end to end" is a far better signal than "somebody filed a report from here",
+        which is biased toward things going wrong. The problem is the mechanism, not the goal.
+        Three ways to get it, for you to pick:
+      </p>
+
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Option</th><th>What ships</th><th>What it costs</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>A. On the phone, and it stays there</strong></td>
+              <td>The device already has the track. It decides "I walked this highlight" and stores that <em>locally</em>. The sheet says <strong>"You've walked this"</strong> — nothing uploaded, no counter, no k floor needed.</td>
+              <td>It is not popularity. It is a personal record — arguably more useful to the hiker, and it answers a different question than the one <code>visited</code> was posed to answer.</td>
+            </tr>
+            <tr>
+              <td><strong>B. Keep the published-records basis</strong></td>
+              <td>What <code>CORRIDOR_VIEW.md</code> already specifies: count reports, photos and thanks, which carry a mile because they must, and which a hiker <em>chose</em> to publish. Suppressed below k&nbsp;=&nbsp;25.</td>
+              <td>Weaker signal, and biased toward where things go wrong. Ships empty and fills in slowly.</td>
+            </tr>
+            <tr>
+              <td><strong>C. Amend rule 2</strong></td>
+              <td>Your call to make — it is your app and your policy. But it should be an explicit, dated amendment to <code>EVENTING.md</code> with its own issue and its own reasoning, weighed against <code>IDENTITY_AND_PRIVACY.md</code>.</td>
+              <td>Not something that should arrive as a side effect of a mockup round, which is why I stopped here rather than drawing it.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <p>
+          <strong>None of this blocks the build.</strong> <code>visited</code> ships empty on day one under every
+          option, so the corridor view can be built in full while this is decided. I have left the
+          basis in the record shape and drawn no count anywhere.
+        </p>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>3</strong>bases</div></div>
+    <div class="spine__body">
+      <h2>The app never says "popular" flatly</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Basis</th><th>What the sheet says</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="basis-name">named</span></td>
+              <td>“We put this on a list of well-known routes. Editorial, not a measurement.”</td>
+              <td>Ships first. ~30, one per club.</td>
+            </tr>
+            <tr>
+              <td><span class="basis-name">published</span></td>
+              <td>“The Appalachian Trail Conservancy lists this as a day hike.”</td>
+              <td>When the source is registered.</td>
+            </tr>
+            <tr>
+              <td><span class="basis-name">visited</span></td>
+              <td>—</td>
+              <td><strong>Mechanism unresolved.</strong> Ships empty regardless.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <p>
+          <strong>No blended score, and no sort order that implies one.</strong> A leaderboard of trail
+          sections is exactly what <code>OurHikeValues.md</code>&nbsp;#1 warns about — "anything that implies
+          there's a 'right' way to hike" — wearing a map.
+        </p>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <!-- ============================================================ -->
+    <div class="spine__rail"><div class="spine__mark"><strong>→</strong>build</div></div>
+    <div class="spine__body">
+      <h2>What I would build, in what order</h2>
+      <ol class="ol-plain">
+        <li>
+          <strong>Read the artifact.</strong> <code>club_sections.json</code> is published and no client file
+          mentions it. A loader plus manifest wiring, no UI.
+        </li>
+        <li>
+          <strong>Draw the corridor in two colours</strong> below <code>POI_PIN_MIN_ZOOM</code> — white blaze,
+          neutral grey for the unattributed runs, boundary ticks and acronyms. This is the
+          <code>App.tsx</code> conflict surface #598 warns about (12 of 27 recorded conflicts), so it goes
+          in its own narrow commit.
+        </li>
+        <li>
+          <strong>The club sheet and the "not recorded" sheet</strong>, on <code>LineSheet.tsx</code>'s existing
+          structure, with both source dates.
+        </li>
+        <li>
+          <strong>The plan gate</strong> — read <code>plannedHike.ts</code>, hide the subject layers, add the
+          "Show them anyway" link.
+        </li>
+        <li>
+          <strong>Stop.</strong> Highlights need <strong>#595</strong> to publish the record first, and that issue is
+          unclaimed and free. The client half is a second branch, after.
+        </li>
+      </ol>
+      <div class="callout">
+        <h3>Two issues I would open alongside</h3>
+        <p style="margin-bottom:10px">
+          <strong>Naismith under-reads technical terrain</strong>, and the corridor view is about to print
+          those numbers at a glance for the first time.
+        </p>
+        <p style="margin-bottom:0">
+          <strong><code>visited</code>'s mechanism</strong>, carrying the three options above, so the decision has
+          a home that is not this pull request.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <p>
+      Revision 2, 19 August 2026, branch <code>claude/corridor-view-mockups-x8hgyy</code>. Redrawn
+      against the maintainer's answers to Q1–Q5. Colours and type are the app's own, from
+      <code>client/src/design-system/tokens/</code> and <code>client/src/lib/blaze.ts</code>; screens are
+      390&nbsp;×&nbsp;700 phone geometry. Mile ranges, ascents and leg lengths are
+      <strong>illustrative and unmeasured</strong>; the zoom figures, the club counts and the 38.5
+      unattributed miles are not.
+    </p>
+  </footer>
+
+</div>

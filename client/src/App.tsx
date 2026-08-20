@@ -224,7 +224,18 @@ import {
   writeAtcAlertSilence,
 } from './lib/atcAlertsBanner'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
+import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { ClubSheet } from './chrome/ClubSheet'
 import { LineSheet } from './chrome/LineSheet'
+import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
+import {
+  MAX_FIX_GAP_MILES,
+  readWalked,
+  recordStep,
+  writeWalked,
+  type MileRange,
+} from './lib/walkedMiles'
+import { clubRunAtMile, clubTimeline } from './lib/clubSections'
 import { buildLineDetail, type LineDetail } from './lib/lineDetail'
 import type { TappedLine } from './map/lineTaps'
 import { AtcNoticeList } from './chrome/AtcNoticeList'
@@ -238,6 +249,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
+import { corridorFeatures, EMPTY_CORRIDOR } from './map/corridorLayers'
 import {
   isSeriousWarning,
   placeAll,
@@ -590,6 +602,7 @@ function App() {
     pois,
     spurs,
     elevation,
+    clubSections,
     trailsUrl,
     haveTrailLines,
     error: dataError,
@@ -941,6 +954,47 @@ function App() {
     return locateOnTrail(trailIndex, gps.at)
   }, [trailIndex, gps])
 
+  /**
+   * Which miles this hiker has actually walked (#598's `visited`).
+   *
+   * The maintainer's rule, 2026-08-19: two fixes count as walking between them
+   * when they are no more than half a mile apart. lib/walkedMiles.ts holds the
+   * gate and the arithmetic; this is only the pair of fixes it needs.
+   *
+   * NOTHING IS UPLOADED, and that is the design rather than an omission.
+   * features/EVENTING.md rule 2 forbids geography in the event pipe - "no
+   * coordinates, no mile, no segment id, no POI id, no region" - and the rule
+   * above needs none of it, because the phone is asking about its own fixes.
+   * What is kept is the ANSWER (mile intervals, merged) and never the evidence:
+   * no coordinates, no timestamps, no ordering, so what sits on the device
+   * cannot be replayed into a route down the corridor the way a fix log can.
+   *
+   * A count ACROSS hikers - the popularity number `visited` was first posed as
+   * - is a different feature and needs an explicit, dated decision about rule 2
+   * before anybody builds it. This is not that, and does not become it.
+   */
+  const [walked, setWalked] = useState<MileRange[]>(() => readWalked())
+  const previousWalkedMile = useRef<number | null>(null)
+
+  useEffect(() => {
+    const mile = fix?.mile ?? null
+    if (mile === null) return
+    const previous = previousWalkedMile.current
+    previousWalkedMile.current = mile
+    // The gate lives in recordStep and is checked here too, so a refused pair
+    // costs no render at all - `watchPosition` fires often, and a state update
+    // per fix that changed nothing would re-run every memo on this screen.
+    if (previous === null || Math.abs(mile - previous) > MAX_FIX_GAP_MILES) return
+    setWalked((current) => recordStep(current, previous, mile))
+  }, [fix?.mile])
+
+  // Persisted in its own effect rather than inside the updater above: React
+  // may call a state updater twice, and a writer that runs twice is a writer
+  // in the wrong place.
+  useEffect(() => {
+    writeWalked(walked)
+  }, [walked])
+
   useEffect(() => {
     if (fix === null) return
     setDirection((previous) =>
@@ -1092,6 +1146,24 @@ function App() {
     if (placedClosures === null || trailIndex === null) return []
     return closureBands(placedClosures, trailIndex)
   }, [placedClosures, trailIndex])
+
+  /**
+   * Who maintains which stretch, as the corridor view draws it (#598).
+   *
+   * Needs the centerline index for the same reason the closure bands do: the
+   * published artifact carries mile ranges and no geometry, so `trailSlice`
+   * is what turns "miles 1,013.4 to 1,015.2" into a line. Everything the map
+   * draws from it stops at the seam - see map/corridorLayers.ts.
+   *
+   * Not gated on a GPS fix or on a hike, deliberately, in the same way the
+   * closure bands are not: who looks after a stretch of trail is a fact about
+   * the trail, and the corridor view is what somebody at a kitchen table is
+   * looking at before they have either.
+   */
+  const corridorOnMap = useMemo(() => {
+    if (trailIndex === null) return EMPTY_CORRIDOR
+    return corridorFeatures(clubSections, trailIndex)
+  }, [clubSections, trailIndex])
 
   /**
    * The ATC's notices as bands, through exactly the same geometry.
@@ -1259,6 +1331,76 @@ function App() {
     if (selectedLine === null) return null
     return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME)
   }, [selectedLine, spurs, pois, units])
+
+  /**
+   * The corridor read end to end, in mile order.
+   *
+   * Memoised because it is rebuilt from the published artifact and read on
+   * every tap - and because `clubTimeline` sorts, which is not free to redo
+   * on each render of a screen a hiker pans around.
+   */
+  const clubRuns = useMemo(() => clubTimeline(clubSections), [clubSections])
+
+  /**
+   * Below the seam, a tap on the trail asks a different question.
+   *
+   * "Who maintains this?" is what the map is ABOUT down here
+   * (features/CORRIDOR_VIEW.md), so the club sheet takes the tap and the
+   * blaze sheet stands down; above the seam the hiker is navigating and the
+   * line's own facts are what they asked for. One tap path either way - this
+   * chooses which sentences it produces, and never shows both.
+   *
+   * `camera === null` IS below the seam: that is the opening view, fitted to
+   * CORRIDOR_BOUNDS, which lands near z4.9 on a phone.
+   */
+  const belowSeam = camera === null || camera.zoom < POI_PIN_MIN_ZOOM
+
+  const selectedClubDetail: ClubDetail | null = useMemo(() => {
+    if (!belowSeam || selectedLine === null || trailIndex === null) return null
+    // The tapped point is already snapped to the line (map/lineTaps.ts), so
+    // this is asking "which mile is that vertex" rather than "is the thumb
+    // near the trail" - which at this zoom it need not be.
+    const mile = mileOnTrail(trailIndex, {
+      lon: selectedLine.at[0],
+      lat: selectedLine.at[1],
+    })
+    if (mile === null) return null
+    return buildClubDetail(clubSections, clubRuns, mile, units, walked)
+  }, [belowSeam, selectedLine, trailIndex, clubSections, clubRuns, units, walked])
+
+  /**
+   * Who maintains the trail the hiker is looking at, for the legend (#598).
+   *
+   * From the camera's centre rather than from a GPS fix, deliberately: this
+   * answers "who looks after what is on my screen", which is a question
+   * somebody planning at a kitchen table has as much as somebody standing on
+   * the trail - and it is the only version of the question that has an answer
+   * before the phone knows where it is.
+   *
+   * Omitted below the seam, where the map is already drawing the attribution
+   * and the legend would be repeating the screen back at the hiker.
+   *
+   * The FULL name, where features/CORRIDOR_VIEW.md's mock-up showed the
+   * acronym. Above the seam nothing is tappable to expand "PATC" into anything
+   * - the club sections are not drawn up here - so an acronym would be a
+   * four-letter word with no way to find out what it means.
+   */
+  const maintainerLine: string | null = useMemo(() => {
+    if (belowSeam || camera === null || trailIndex === null) return null
+    const mile = mileOnTrail(trailIndex, {
+      lon: camera.center[0],
+      lat: camera.center[1],
+    })
+    if (mile === null) return null
+    const run = clubRunAtMile(clubRuns, mile)
+    if (run === null) return null
+    // The unattributed miles get a sentence of their own rather than silence:
+    // 38.5 miles of the trail are like this, and "we do not know" is the
+    // answer OurHikeValues.md #4 asks for over a blank.
+    return run.club === null
+      ? 'Maintaining club not recorded along here.'
+      : `Maintained by the ${run.club.name}.`
+  }, [belowSeam, camera, trailIndex, clubRuns])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -2974,6 +3116,8 @@ function App() {
           advisoryAhead={advisoryAhead}
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
+          corridor={corridorOnMap}
+          maintainerLine={maintainerLine}
           atcUpdates={atcBandsOnMap}
           atcUpdatePoints={atcPointsOnMap}
           onSelectAtcUpdate={setSelectedAtcBandId}
@@ -2988,7 +3132,15 @@ function App() {
           }
           onSelectLine={handleSelectLine}
           lineSheet={
-            selectedLineDetail === null ? null : (
+            // The club sheet wins below the seam, and the two never stack:
+            // one tap asks one question, and which question it is depends on
+            // what the map is showing.
+            selectedClubDetail !== null ? (
+              <ClubSheet
+                detail={selectedClubDetail}
+                onClose={() => setSelectedLine(null)}
+              />
+            ) : selectedLineDetail === null ? null : (
               <LineSheet
                 detail={selectedLineDetail}
                 onClose={() => setSelectedLine(null)}

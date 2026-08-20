@@ -1174,3 +1174,46 @@ describe('the drought row', () => {
     expect(screen.queryByRole('checkbox', { name: /drought/i })).not.toBeInTheDocument()
   })
 })
+
+/**
+ * Who maintains the trail in front of the hiker (#598).
+ *
+ * features/CORRIDOR_VIEW.md leaves open whether a club section should be
+ * tappable above the seam. The answer this ships is: the polygon stops at the
+ * seam and the sentence does not - a thirty-run recolouring over a map
+ * somebody is navigating by is clutter, while "who looks after where I am
+ * standing" stays a good question at any zoom.
+ */
+describe('the maintaining club', () => {
+  it('names the club looking after what is on screen', () => {
+    render(
+      <Legend
+        {...PROPS}
+        maintainerLine="Maintained by the Potomac Appalachian Trail Club."
+      />,
+    )
+    expect(
+      screen.getByText('Maintained by the Potomac Appalachian Trail Club.'),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing when the shell has nothing to say', () => {
+    // Below the seam the map draws the answer itself, and off the corridor
+    // there is no answer - both arrive here as null, and neither is a state
+    // this panel has to tell apart.
+    render(<Legend {...PROPS} />)
+    expect(screen.queryByText(/Maintained by/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Maintaining club/)).not.toBeInTheDocument()
+  })
+
+  it('reports an unrecorded stretch rather than falling silent', () => {
+    // 38.5 miles of the trail carry no club in ATC's centerline. Silence would
+    // read as "no question asked"; the sentence reads as "asked, unanswered".
+    render(
+      <Legend {...PROPS} maintainerLine="Maintaining club not recorded along here." />,
+    )
+    expect(
+      screen.getByText('Maintaining club not recorded along here.'),
+    ).toBeInTheDocument()
+  })
+})

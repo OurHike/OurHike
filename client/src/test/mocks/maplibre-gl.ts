@@ -95,6 +95,18 @@ export class MockMap {
     x: lng,
     y: lat,
   })
+  /**
+   * The inverse of {@link projection}, identity by the same argument: a test
+   * reading a coordinate back gets its own fixture's numbers.
+   *
+   * Its own function rather than an inverted `projection`, which a test is
+   * free to set to something with no inverse at all.
+   */
+  unprojection: (point: { x: number; y: number }) => { lng: number; lat: number } = ({
+    x,
+    y,
+  }) => ({ lng: x, lat: y })
+
   /** Every projection asked for, in order - where "the card tracked the pin,
    *  not some other point" is observable. */
   readonly projectCalls: Array<[number, number]> = []
@@ -317,6 +329,16 @@ export class MockMap {
       : [lngLat.lng, lngLat.lat]
     this.projectCalls.push(pair)
     return this.projection(pair)
+  }
+
+  /** Real `unproject` takes a PointLike, so both spellings are accepted here
+   *  for the reason `project` accepts both. */
+  unproject(point: [number, number] | { x: number; y: number }): {
+    lng: number
+    lat: number
+  } {
+    const pair = Array.isArray(point) ? { x: point[0], y: point[1] } : point
+    return this.unprojection(pair)
   }
 
   getBounds() {

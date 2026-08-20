@@ -7,7 +7,17 @@
 // "Trail line rendering — blazes" section for the exact hex values, which
 // are load-bearing, not decorative.
 
-const NEUTRAL_FALLBACK = '#8a8271'
+/**
+ * The grey a trail line takes when its blaze is not known.
+ *
+ * Exported since #598. The corridor view spends the same grey on the miles
+ * ATC's centerline records no maintaining club for - the same sentence, "we do
+ * not know this", about a different question - and sharing the constant is what
+ * keeps one sentence one colour. WIREFRAMES.md line 325 pins the value.
+ */
+export const NEUTRAL_BLAZE_COLOR = '#8a8271'
+
+const NEUTRAL_FALLBACK = NEUTRAL_BLAZE_COLOR
 
 const BLAZE_COLORS: Record<string, string> = {
   White: '#fffdf7',

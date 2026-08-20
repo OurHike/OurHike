@@ -6,12 +6,20 @@ import {
   deleteTrailData,
   ELEVATION_STORE_KEY,
   POIS_KEY,
+  CLUB_SECTIONS_STORE_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
   TrailDataHashMismatchError,
   type StoredPoi,
 } from './trailData'
-import { dataUrl, ELEVATION_KEY, POI_TYPES, SPURS_KEY, TRAILS_KEY } from './config'
+import {
+  CLUB_SECTIONS_KEY,
+  dataUrl,
+  ELEVATION_KEY,
+  POI_TYPES,
+  SPURS_KEY,
+  TRAILS_KEY,
+} from './config'
 import {
   readTrailsMerged,
   TRAILS_MERGED_STORAGE_KEY,
@@ -81,12 +89,17 @@ afterEach(() => {
  *  spur detail for spurs.json and the given samples for
  *  elevation_profile.json. The elevation default is an empty array, which is
  *  "this release publishes no usable profile" - the tests that care about one
- *  pass their own. */
+ *  pass their own.
+ *
+ *  `clubSections` is last and defaults to an empty object, which parses to no
+ *  attribution at all - the corridor view's own "this release does not publish
+ *  it" case, and the right default for every test that is not about it. */
 function serve(
   pois: string = poiCollection([]),
   spurs: string = '{}',
   elevation: string = '[]',
   trails: string = '{"type":"FeatureCollection"}',
+  clubSections: string = '{}',
 ) {
   vi.stubGlobal(
     'fetch',
@@ -102,9 +115,11 @@ function serve(
                 ? pois
                 : url.includes(SPURS_KEY)
                   ? spurs
-                  : url.includes(ELEVATION_KEY)
-                    ? elevation
-                    : trails,
+                  : url.includes(CLUB_SECTIONS_KEY)
+                    ? clubSections
+                    : url.includes(ELEVATION_KEY)
+                      ? elevation
+                      : trails,
             ),
           ),
         blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
@@ -114,9 +129,11 @@ function serve(
               ? pois
               : url.includes(SPURS_KEY)
                 ? spurs
-                : url.includes(ELEVATION_KEY)
-                  ? elevation
-                  : '{}',
+                : url.includes(CLUB_SECTIONS_KEY)
+                  ? clubSections
+                  : url.includes(ELEVATION_KEY)
+                    ? elevation
+                    : '{}',
           ),
       }),
     ),
@@ -183,8 +200,8 @@ describe('trail data', () => {
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     // Every POI type, plus the trail lines, plus the spur detail, plus the
-    // elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 3)
+    // maintaining clubs, plus the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 4)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {
@@ -1264,5 +1281,105 @@ describe('the published mile (#753)', () => {
 
     const pois = store.get(POIS_KEY) as StoredPoi[]
     expect(pois[0]).not.toHaveProperty('mile')
+  })
+})
+
+/**
+ * The corridor view's own artifact (#598), through the same download and store
+ * path every other artifact takes.
+ *
+ * Worth its own block because the failure mode is silent: club_sections.json
+ * has been published since #594 and read by nothing, so a wiring mistake here
+ * looks exactly like a release that does not publish it - an empty corridor
+ * view and no error anywhere.
+ */
+describe('the maintaining clubs', () => {
+  const ARTIFACT = JSON.stringify({
+    sources: { attribution: 'centerline', names: 'trail_club_sections' },
+    clubs: [
+      {
+        acronym: 'GATC',
+        name: 'Georgia Appalachian Trail Club',
+        region: 'SORO',
+        stretches: [{ start_mile: 0, end_mile: 77 }],
+        miles: 77,
+      },
+    ],
+    unattributed: [{ start_mile: 77, end_mile: 78.5 }],
+  })
+
+  /** Serves everything, but 404s club_sections.json - a release built before
+   *  pipeline/export_club_sections.py existed. */
+  function serveWithoutClubSections() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes(CLUB_SECTIONS_KEY)
+            ? { ok: false, status: 404, statusText: 'Not Found' }
+            : {
+                ok: true,
+                status: 200,
+                headers: new Headers(),
+                arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
+                blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+                text: () => Promise.resolve(poiCollection([])),
+              },
+        ),
+      ),
+    )
+  }
+
+  it('survives the round trip from the bucket to a later launch', async () => {
+    serve(undefined, undefined, undefined, undefined, ARTIFACT)
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+    expect(loaded?.clubSections.clubs).toEqual([
+      {
+        acronym: 'GATC',
+        name: 'Georgia Appalachian Trail Club',
+        region: 'SORO',
+        runs: [{ startMile: 0, endMile: 77 }],
+        miles: 77,
+      },
+    ])
+    expect(loaded?.clubSections.unattributed).toEqual([{ startMile: 77, endMile: 78.5 }])
+    expect(loaded?.clubSections.sources.attribution).toBe('centerline')
+  })
+
+  it('costs a release built before the exporter nothing but its attribution', async () => {
+    // A 404 here is not a failed download. The trail lines and every waypoint
+    // still have to land - the corridor view simply has no subject below the
+    // seam, which is the screen this app already shipped with.
+    serveWithoutClubSections()
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+    expect(loaded?.trails).toBeInstanceOf(Blob)
+    expect(loaded?.clubSections.clubs).toEqual([])
+    expect(loaded?.clubSections.unattributed).toEqual([])
+  })
+
+  it('takes the attribution back down when a re-download no longer serves it', async () => {
+    // The same direction trailShape's merged flag is written in: pointing a
+    // phone at an older release has to REMOVE what the newer one put there,
+    // or the map keeps drawing thirty clubs the current release cannot back.
+    serve(undefined, undefined, undefined, undefined, ARTIFACT)
+    await downloadTrailData()
+    expect((await loadTrailData())?.clubSections.clubs).toHaveLength(1)
+
+    serveWithoutClubSections()
+    await downloadTrailData()
+    expect((await loadTrailData())?.clubSections.clubs).toEqual([])
+  })
+
+  it('is dropped with the rest of the trail data', async () => {
+    serve(undefined, undefined, undefined, undefined, ARTIFACT)
+    await downloadTrailData()
+    expect(store.has(CLUB_SECTIONS_STORE_KEY)).toBe(true)
+
+    await deleteTrailData()
+    expect(store.has(CLUB_SECTIONS_STORE_KEY)).toBe(false)
   })
 })

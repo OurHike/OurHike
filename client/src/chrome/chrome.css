@@ -655,6 +655,16 @@
   font-size: 13px;
 }
 
+/* Who maintains the trail in front of the hiker (#598). The same size and
+   weight as the panel's other provenance, and above the downloads block
+   rather than inside it - it answers a question about the trail, not about
+   what is on the phone. */
+.legend__maintainer {
+  margin: var(--space-3, 12px) 0 0;
+  color: var(--fg-3);
+  font-size: 13px;
+}
+
 .legend__blazes,
 .legend__pins {
   margin: var(--space-3, 12px) 0 0;

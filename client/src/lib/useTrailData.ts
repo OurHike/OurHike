@@ -22,6 +22,7 @@ import {
   TrailDataHashMismatchError,
   type StoredPoi,
 } from './trailData'
+import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import type { ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
 
@@ -77,6 +78,10 @@ export interface TrailData {
    *  goes. */
   spurs: Record<string, SpurRecord>
   elevation: ElevationProfile | null
+  /** Who maintains which stretch (pipeline/export_club_sections.py, #594).
+   *  Empty until a release that publishes it is on the phone, which costs the
+   *  corridor view its subject and nothing else. */
+  clubSections: ClubSections
   trailsUrl: string
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
@@ -105,6 +110,7 @@ export function useTrailData(online: boolean): TrailData {
   const [pois, setPois] = useState<StoredPoi[]>([])
   const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
+  const [clubSections, setClubSections] = useState<ClubSections>(EMPTY_CLUB_SECTIONS)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [error, setError] = useState<TrailDataError | null>(null)
@@ -124,6 +130,7 @@ export function useTrailData(online: boolean): TrailData {
     setPois(data.pois)
     setSpurs(data.spurs)
     setElevation(data.elevation)
+    setClubSections(data.clubSections)
 
     // Best-effort, and separate from the POIs above on purpose. A shelter is
     // findable by name with no geometry at all, so a trails.geojson that
@@ -273,5 +280,15 @@ export function useTrailData(online: boolean): TrailData {
     }
   }, [fetchOnce])
 
-  return { trailIndex, pois, spurs, elevation, trailsUrl, haveTrailLines, error, ensure }
+  return {
+    trailIndex,
+    pois,
+    spurs,
+    elevation,
+    clubSections,
+    trailsUrl,
+    haveTrailLines,
+    error,
+    ensure,
+  }
 }

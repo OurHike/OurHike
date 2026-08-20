@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && npm run check:build",
     "check:build": "node scripts/check-build-output.mjs",
+    "measure:first-run": "node scripts/measure-first-run.mjs",
     "preview": "vite preview",
     "lint": "oxlint",
     "format": "prettier --write .",

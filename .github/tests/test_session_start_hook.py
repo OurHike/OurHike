@@ -36,12 +36,18 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / ".claude" / "hooks" / "session-start.sh"
+PICKER = ROOT / "scripts" / "pick_python.sh"
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 
 @pytest.fixture(scope="module")
 def hook_text() -> str:
     return HOOK.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def picker_text() -> str:
+    return PICKER.read_text(encoding="utf-8")
 
 
 def test_the_hook_is_valid_bash():
@@ -76,12 +82,17 @@ def test_the_interpreter_is_selected_before_anything_installs(hook_text):
     assert picked < first_install
 
 
-def test_ci_s_python_version_is_read_from_the_workflow_not_copied(hook_text):
+def test_ci_s_python_version_is_read_from_the_workflow_not_copied(hook_text, picker_text):
     """One home for the version. A number copied into the hook is a number that
     disagrees with CI the first time CI moves, silently and in the direction of
-    installing against the wrong interpreter."""
-    assert "python-version" in hook_text, "the hook should parse CI's version out of a workflow"
-    assert not re.search(r'CI_PYTHON="?3\.\d+', hook_text), "CI's version must not be hardcoded"
+    installing against the wrong interpreter. The selection lives in
+    scripts/pick_python.sh since #859, shared with test.sh and threads.sh so
+    the install side and the run side cannot decide differently; the hook must
+    source that home rather than grow a second copy."""
+    assert "pick_python.sh" in hook_text, "the hook should source the shared interpreter picker"
+    assert "python-version" in picker_text, "the picker should parse CI's version out of a workflow"
+    for name, text in (("hook", hook_text), ("picker", picker_text)):
+        assert not re.search(r'CI_PYTHON="?3\.\d+', text), f"CI's version must not be hardcoded in the {name}"
 
 
 def test_the_workflow_the_hook_reads_actually_declares_a_version():

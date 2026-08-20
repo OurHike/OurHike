@@ -19,12 +19,15 @@ afterEach(() => {
 })
 
 describe('TabBar', () => {
-  it('has exactly the three tabs, in order', () => {
+  it('has exactly the four tabs, in order', () => {
+    // Volunteer joined with #759 (features/VOLUNTEERING.md) - v2's second
+    // feature, argued against the thumb-zone bar the same way Plan was.
     render(<TabBar {...PROPS} />)
 
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Trail',
       'Plan',
+      'Volunteer',
       'Settings',
     ])
   })

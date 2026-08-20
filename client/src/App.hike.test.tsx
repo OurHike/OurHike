@@ -47,6 +47,7 @@ vi.mock('./lib/api', () => ({
   sendReport: vi.fn(async () => undefined),
   permanentFailureReason: vi.fn(() => null),
   fetchClosures: vi.fn(async () => [CLOSURE]),
+  fetchFieldNotes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
 }))
 

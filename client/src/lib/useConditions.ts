@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   API_CONFIGURED,
   fetchClosures,
+  fetchFieldNotes,
   fetchReports,
   type ClosureSummary,
   type ReportSummary,
@@ -28,10 +29,14 @@ import {
   fetchPublishedAtcUpdates,
   fetchPublishedClosures,
   fetchPublishedDrought,
+  fetchPublishedFieldNotes,
   fetchPublishedReports,
+  fetchPublishedWorkProjects,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
+import type { NoteSummary } from './fieldNotes'
+import type { WorkProjectSummary } from './workProjects'
 
 /**
  * How often the published baselines are re-read while the app is open.
@@ -53,9 +58,18 @@ export interface Conditions {
    */
   closures: readonly ClosureSummary[] | null
   reports: readonly ReportSummary[] | null
-  /** The states behind those two lists, for the "as of" the strip prints. */
+  /**
+   * Visible field notes - the map's working set, each place's most recent
+   * few (features/FIELD_NOTES.md §3's roll-up input). Null carries the same
+   * distinction as `closures`: "we have not managed to ask" is not "nobody
+   * has said anything", and only the second may render a spring as merely
+   * unconfirmed.
+   */
+  notes: readonly NoteSummary[] | null
+  /** The states behind those lists, for the "as of" the strip prints. */
   closureState: ConditionState<ClosureSummary>
   reportState: ConditionState<ReportSummary>
+  noteState: ConditionState<NoteSummary>
   /**
    * The ATC's own notices, and deliberately NOT a `ConditionState` (#461).
    *
@@ -84,6 +98,15 @@ export interface Conditions {
   /** The Tuesday-to-Monday week those bands describe, or null if none
    *  arrived. NOT the bake's clock - see publishedConditions.ts. */
   droughtWeek: { start: Date; end: Date } | null
+  /**
+   * The volunteer workdays (#760), and the bake's own clock beside them -
+   * the first data in this app that EXPIRES, so the age is not decoration:
+   * lib/workProjects.ts turns it into "stop calling these opportunities"
+   * past 48 hours. Null until an artifact has been read; like the ATC
+   * notices there is no live tier for this to be a baseline OF.
+   */
+  workProjects: readonly WorkProjectSummary[] | null
+  workProjectsGeneratedAt: Date | null
   /** When something last actually reached the server. Null until it has. */
   lastSyncedAt: Date | null
   /** Stamp that clock. Exposed because the outbox flush is the other thing
@@ -103,10 +126,17 @@ export function useConditions(online: boolean): Conditions {
     useState<ConditionState<ClosureSummary>>(UNAVAILABLE)
   const [reportState, setReportState] =
     useState<ConditionState<ReportSummary>>(UNAVAILABLE)
+  const [noteState, setNoteState] = useState<ConditionState<NoteSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
+  const [workProjects, setWorkProjects] = useState<readonly WorkProjectSummary[] | null>(
+    null,
+  )
+  const [workProjectsGeneratedAt, setWorkProjectsGeneratedAt] = useState<Date | null>(
+    null,
+  )
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -188,6 +218,16 @@ export function useConditions(online: boolean): Conditions {
       )
     })
 
+    // Field notes ride the same two-tier read as reports (FIELD_NOTES.md
+    // §6): the baseline is what a hiker has when the backend is down, and
+    // the live read wins whenever it lands.
+    void fetchPublishedFieldNotes().then((published) => {
+      if (cancelled || published === null) return
+      setNoteState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
+    })
+
     // The ATC's notices. No `withBaseline` and no race to lose: there is no
     // live read to be overwritten by, so this is a plain set. `null` covers the
     // 404 the bucket serves while nobody has reviewed the source file, and
@@ -198,6 +238,15 @@ export function useConditions(online: boolean): Conditions {
       if (cancelled || published === null) return
       setAtcUpdates(published.items)
       setAtcReviewedAt(published.reviewedAt ?? null)
+    })
+
+    // The volunteer workdays (#760). Reviewed-file data like the ATC
+    // notices, so a plain set - and the generated_at travels because the
+    // 48-hour opportunity ceiling is judged against it.
+    void fetchPublishedWorkProjects().then((published) => {
+      if (cancelled || published === null) return
+      setWorkProjects(published.items)
+      setWorkProjectsGeneratedAt(published.generatedAt)
     })
 
     // The drought bands (#720). No `withBaseline` and no race, like the ATC
@@ -259,6 +308,12 @@ export function useConditions(online: boolean): Conditions {
       stamp()
     }, leaveUnknown)
 
+    void fetchFieldNotes().then((next) => {
+      if (cancelled) return
+      setNoteState(withLive(next))
+      stamp()
+    }, leaveUnknown)
+
     return () => {
       cancelled = true
     }
@@ -272,12 +327,16 @@ export function useConditions(online: boolean): Conditions {
   return {
     closures: itemsOf(closureState),
     reports: itemsOf(reportState),
+    notes: itemsOf(noteState),
     closureState,
     reportState,
+    noteState,
     atcUpdates,
     atcReviewedAt,
     drought,
     droughtWeek,
+    workProjects,
+    workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
   }

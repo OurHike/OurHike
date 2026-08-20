@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.routers import (
     app_failures,
     closures,
+    field_notes,
     hikes,
     maintainer_assignments,
     moderation,
@@ -18,6 +19,7 @@ from app.routers import (
     preferences,
     profiles,
     reports,
+    volunteer_hours,
     wrong_way,
 )
 
@@ -80,3 +82,5 @@ app.include_router(wrong_way.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
 app.include_router(app_failures.router)
+app.include_router(field_notes.router)
+app.include_router(volunteer_hours.router)

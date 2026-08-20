@@ -189,6 +189,19 @@ jobs:
       - name: Export the ATC's reviewed trail updates
         run: python export_atc_updates.py
 
+      # The volunteer workdays (#760), from the same kind of reviewed file as
+      # the ATC leg above and with the same refuse-unreviewed posture. The
+      # one difference: this exporter asks which environment it is baking
+      # for, because the reviewed file's sample rows publish to UA and dev
+      # only (maintainer decision 2026-08-20, recorded on #760) - production
+      # carries exactly what a real club has supplied, which today is an
+      # empty list, published deliberately so the client's read path is live
+      # before the first real row lands.
+      - name: Export the reviewed volunteer work projects
+        env:
+          OURHIKE_DATA_ENV: ${{ matrix.data_environment }}
+        run: python export_work_projects.py
+
       # THE DROUGHT LEG (#720), and its whole design is about being cheap
       # enough to sit on an hourly clock without being rude to NDMC or to
       # this repository's Actions budget (#395).

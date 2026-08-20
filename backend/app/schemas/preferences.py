@@ -205,6 +205,14 @@ class PreferencesIn(BaseModel):
     wrong_way_alert_enabled: bool = True
     anonymity_window_days: int
 
+    # The Volunteer tab's contribution opt-in (#759, DATA_NUDGES.md): "ask me
+    # more thoroughly when I am already looking". Defaulted off for both of
+    # the standing reasons - it is the client's own default (a hiker who
+    # never touched the switch syncs the same answer whichever side answers
+    # first), and rows synced before this key existed must read back as
+    # "off" rather than as a ValidationError.
+    contribute_conditions: bool = False
+
     # Onboarding progress
     onboarding_completed: bool = False
     download_choice_made: bool = False

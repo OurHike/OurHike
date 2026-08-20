@@ -53,7 +53,19 @@ Everything in the free tier is already enough for a day-hiker - keeping it that 
 
 Two things from that doc are worth knowing here. **Hours are claimed, not computed** — GPS would be wrong constantly, and the person knows. And the number has a consumer beyond our own pricing: clubs report volunteer hours to ATC and to land-managing agencies, where they carry weight in real funding decisions. That is the reason confirmation is a club admin's job and not a formality.
 
-**Grant, don't self-report.** Hours get confirmed by a club admin (the same permission tier [AUTHENTICATION.md](AUTHENTICATION.md) already designs for club-admin access), not self-declared by the volunteer - the same "don't let users unlock value by asserting it themselves" reasoning [Hiker Safety's severity tier](HIKER_SAFETY.md) already applied to serious warnings.
+**Grant, don't self-report — softened 2026-08-20, deliberately.** As first written:
+hours get confirmed by a club admin (the same permission tier
+[AUTHENTICATION.md](AUTHENTICATION.md) already designs for club-admin access), not
+self-declared by the volunteer - the same "don't let users unlock value by asserting it
+themselves" reasoning [Hiker Safety's severity tier](HIKER_SAFETY.md) already applied to
+serious warnings. **The maintainer revised this when the hours record was built
+([#761](https://github.com/OurHike/OurHike/issues/761), decision recorded there):
+claimed hours count toward the exemption immediately, and a club's action runs the
+other way — a *dispute* removes them.** The trust posture inverts from allow-list to
+deny-list; what survives unchanged is that the state is always labeled wherever an hour
+is shown or exported, so whoever administers the exemption can still see exactly how much
+of a total is a volunteer's own word. If gaming appears in practice, this paragraph is
+where the original posture is preserved to return to.
 
 **Complementary, with an ask, not a mandate.** A confirmed volunteer defaults to full access at no cost, with a "want to also support the trail directly?" option surfaced with genuine appreciation - never framed as owing anything, per pricing value #4 above.
 

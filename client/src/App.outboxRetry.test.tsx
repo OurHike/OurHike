@@ -39,6 +39,7 @@ vi.mock('./lib/api', () => ({
   // retry path but a mock missing them makes App throw on mount.
   fetchReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
+  fetchFieldNotes: vi.fn(async () => []),
   // The role read (#235). Same reason as the two above: App asks once per
   // sign-in, and a mock without it makes the whole screen throw on mount.
   fetchMyProfile: vi.fn(async () => ({ id: 'p-1', role: 'hiker', display_name: null })),

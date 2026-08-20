@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   stalenessTreatment,
+  stalenessPresentation,
   lastConfirmedText,
   confidenceTreatment,
 } from './stalenessDisplay'
@@ -36,14 +37,58 @@ describe('stalenessTreatment', () => {
     })
   })
 
-  it('never amplifies a stale pin - describing it is MVP, boosting it is not', () => {
-    // Guards against a well-meaning "make stale pins bigger so people confirm
-    // them" change, which is Data Nudges (Post-MVP), not this.
+  it('never amplifies a stale pin - the invitation is a treatment, not a boost', () => {
+    // Data Nudges ships now (#759), so the treatments ARE its passive
+    // invitation - but the mechanism stays a restyle. Guards against a
+    // well-meaning "make stale pins bigger so people confirm them" change,
+    // which is the size/boost channel this design never uses.
     const treatment = stalenessTreatment('stale')
 
     expect(treatment).not.toHaveProperty('boost')
     expect(treatment).not.toHaveProperty('prominence')
     expect(treatment.opacity).toBeLessThanOrEqual(1)
+  })
+
+  it('renders never-confirmed as neutral - indistinguishable from ageing', () => {
+    // Maintainer decision 2026-08-20 (#256): day one must not open stale.
+    expect(stalenessTreatment('never')).toEqual(stalenessTreatment('ageing'))
+  })
+})
+
+describe('stalenessPresentation', () => {
+  it('gives never-confirmed water the subtle invite, in pixels and in words', () => {
+    const presentation = stalenessPresentation('water', 'never')
+
+    expect(presentation?.treatment.ring).toBe('faint-invite')
+    expect(presentation?.treatment.opacity).toBe(1)
+    expect(presentation?.words).toBe('No recent word')
+  })
+
+  it.each(['shelter', 'campsite', 'resupply'] as const)(
+    'keeps a never-confirmed %s neutral until somebody has confirmed it once',
+    (poiType) => {
+      const presentation = stalenessPresentation(poiType, 'never')
+
+      expect(presentation?.treatment).toEqual(stalenessTreatment('never'))
+      expect(presentation?.words).toBe('Never confirmed')
+    },
+  )
+
+  it('applies the fresh/ageing/stale ladder to a place with a confirmation history', () => {
+    expect(stalenessPresentation('shelter', 'stale')?.treatment).toEqual(
+      stalenessTreatment('stale'),
+    )
+    expect(stalenessPresentation('water', 'fresh')?.treatment).toEqual(
+      stalenessTreatment('fresh'),
+    )
+  })
+
+  it('says nothing at all for a type outside the nudge scope', () => {
+    // A viewpoint has no condition to be stale about (DATA_NUDGES.md) - no
+    // ring, no words, no exception for water's day-one invite either.
+    expect(stalenessPresentation('viewpoint', 'never')).toBeNull()
+    expect(stalenessPresentation('parking', 'stale')).toBeNull()
+    expect(stalenessPresentation('privy', 'fresh')).toBeNull()
   })
 })
 

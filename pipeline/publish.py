@@ -71,6 +71,7 @@ CONDITIONS_MANIFESTS = (
     "conditions_manifest.json",
     "atc_updates_manifest.json",
     "drought_manifest.json",
+    "work_projects_manifest.json",
 )
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 

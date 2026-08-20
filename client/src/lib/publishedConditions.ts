@@ -29,6 +29,8 @@
 
 import type { ClosureSummary, ReportSummary } from './api'
 import type { AtcUpdate } from './atcUpdates'
+import type { NoteSummary } from './fieldNotes'
+import type { WorkProjectSummary } from './workProjects'
 import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
@@ -38,6 +40,8 @@ export const PUBLISHED_CLOSURES_KEY = 'conditions/closures.json'
 export const PUBLISHED_REPORTS_KEY = 'conditions/reports.json'
 export const PUBLISHED_ATC_UPDATES_KEY = 'conditions/atc_updates.json'
 export const PUBLISHED_DROUGHT_KEY = 'conditions/drought.json'
+export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
+export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -89,7 +93,7 @@ export interface PublishedConditions<T> {
  */
 async function fetchPublished<T>(
   key: string,
-  field: 'closures' | 'reports' | 'atc_updates' | 'drought',
+  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
   signal?: AbortSignal,
 ): Promise<PublishedConditions<T> | null> {
   if (!DATA_CONFIGURED) return null
@@ -166,6 +170,33 @@ export async function fetchPublishedReports(
   signal?: AbortSignal,
 ): Promise<PublishedConditions<ReportSummary> | null> {
   return fetchPublished(PUBLISHED_REPORTS_KEY, 'reports', signal)
+}
+
+/**
+ * Field notes as published bytes (features/FIELD_NOTES.md §6): the roll-up's
+ * input for every POI, most recent few per place, baked by
+ * pipeline/export_conditions.py alongside closures and reports. Same
+ * baseline-under-live contract as reports: the live `GET /field-notes` read
+ * wins whenever it lands, and this is what a hiker has when the backend is
+ * unreachable - day-old word from the trail, labelled as day-old.
+ */
+export async function fetchPublishedFieldNotes(
+  signal?: AbortSignal,
+): Promise<PublishedConditions<NoteSummary> | null> {
+  return fetchPublished(PUBLISHED_NOTES_KEY, 'notes', signal)
+}
+
+/**
+ * The volunteer workdays (#760) - like the ATC notices, the published
+ * artifact is the only tier there is: rows come from a reviewed file, not a
+ * live endpoint, so nothing overrides this and nothing falls back to it.
+ * `reviewed_at` rides along for the same two-ages honesty as the ATC leg;
+ * `generatedAt` is what lib/workProjects.ts judges the 48-hour ceiling by.
+ */
+export async function fetchPublishedWorkProjects(
+  signal?: AbortSignal,
+): Promise<PublishedConditions<WorkProjectSummary> | null> {
+  return fetchPublished(PUBLISHED_WORK_PROJECTS_KEY, 'work_projects', signal)
 }
 
 /**

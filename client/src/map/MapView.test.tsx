@@ -17,6 +17,7 @@ import {
   poiFilter,
   POI_ID_PROPERTY,
   POI_DOT_LAYER_ID,
+  POI_STALENESS_LAYER_ID,
   POI_LAYER_ID,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -456,9 +457,14 @@ describe('POI pins', () => {
 
   /** Real MapLibre has its layers and sources by the time `load` fires. */
   function loadStyle(map: MockMap): void {
-    // Both waypoint ranks (#597): attachPoiFilter waits for the dot layer as
-    // well as the pin one, so a stub holding only pins never filters at all.
-    map.layerIds = [POI_DOT_LAYER_ID, POI_LAYER_ID, WARNING_LAYER_ID]
+    // All three waypoint ranks (#597, rings with #759): attachPoiFilter waits
+    // for every one, so a stub holding only pins never filters at all.
+    map.layerIds = [
+      POI_DOT_LAYER_ID,
+      POI_STALENESS_LAYER_ID,
+      POI_LAYER_ID,
+      WARNING_LAYER_ID,
+    ]
     map.sourceIds = [
       POI_SOURCE_ID,
       CLOSURE_SOURCE_ID,

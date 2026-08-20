@@ -71,6 +71,23 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **Reused elsewhere:** [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s auto-rotate feature reuses this section's trailing-GPS-window bearing computation directly, preferring it over the device compass while the hiker is actually moving - one bearing calculation, two features.
 
+**No server relay in v1 — decided 2026-08-20, resolving
+[#247](https://github.com/OurHike/OurHike/issues/247).** The backend briefly carried a
+`POST /wrong-way-events` endpoint whose docstring deferred to "a later task wires this
+endpoint's acceptance to an actual push send". It has been removed rather than reshaped:
+its contract required ownership of a `Hike` no client code created, no client code named
+the endpoint at all (the monitor's `relay` is an injected seam, mounted nowhere — #308),
+its acceptance persisted nothing and pushed nothing, and the data model below never
+defined a server-side wrong-way record — `WrongWayCheck` is client-side and ephemeral by
+design. The endpoint was an inference ahead of this doc, not an implementation of it.
+When the open question at the foot of this doc is answered and push infrastructure is
+actually built, the relay should be designed against the reality then — the client's
+declared hike in `plannedHike.ts`, and whatever server story
+[ACCOUNT_SYNC.md](ACCOUNT_SYNC.md) has given plans by that point — not rebuilt from
+today's guess. The client keeps the seam: `createWrongWayMonitor` still takes a `relay`
+dependency and still treats it as fire-and-forget telemetry that may never swallow the
+alert.
+
 ## Data model additions
 
 ```

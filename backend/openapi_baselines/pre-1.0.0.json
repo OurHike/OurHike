@@ -1270,30 +1270,6 @@
         ],
         "title": "Visibility",
         "type": "string"
-      },
-      "WrongWayEventAck": {
-        "properties": {
-          "received": {
-            "default": true,
-            "title": "Received",
-            "type": "boolean"
-          }
-        },
-        "title": "WrongWayEventAck",
-        "type": "object"
-      },
-      "WrongWayEventCreate": {
-        "properties": {
-          "hike_id": {
-            "title": "Hike Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "hike_id"
-        ],
-        "title": "WrongWayEventCreate",
-        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2432,52 +2408,6 @@
         "summary": "Verify Report",
         "tags": [
           "moderation"
-        ]
-      }
-    },
-    "/wrong-way-events": {
-      "post": {
-        "operationId": "create_wrong_way_event_wrong_way_events_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WrongWayEventCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WrongWayEventAck"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Wrong Way Event",
-        "tags": [
-          "wrong-way"
         ]
       }
     }

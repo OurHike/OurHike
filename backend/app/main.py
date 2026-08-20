@@ -20,7 +20,6 @@ from app.routers import (
     profiles,
     reports,
     volunteer_hours,
-    wrong_way,
 )
 
 app = FastAPI(title="OurHike backend")
@@ -78,7 +77,6 @@ app.include_router(preferences.router)
 app.include_router(reports.router)
 app.include_router(poi_photos.router)
 app.include_router(closures.router)
-app.include_router(wrong_way.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
 app.include_router(app_failures.router)

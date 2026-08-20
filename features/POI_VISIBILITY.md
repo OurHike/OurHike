@@ -392,10 +392,11 @@ picture of the current camera is not a preference.
   several waypoints. That is exactly why it needed a rule, and having one is what made it safe to
   build. If it grates on a phone the fallback is to make dots inert, which is a one-line change to
   the same function.
-- **Default `waypoint_types_shown`** — all-on (today) vs. a curated subset. Inherited unchanged
-  from [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s own open list, and it gains weight here: the
-  1,194 in-corridor vistas are 43% of every waypoint published, and under the dot rank they are
-  43% of the stipple.
+- ~~**Default `waypoint_types_shown`**~~ — **decided 2026-08-20** (#865), inherited from
+  [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s resolution: a curated subset, not all-on. Viewpoint
+  is one of the four that now starts hidden, so the 1,194 in-corridor vistas this bullet flagged as
+  43% of every published waypoint no longer draw on a fresh install — a hiker who wants them back
+  turns the category on, same as any other.
 
 ## Related
 

@@ -176,7 +176,11 @@ class PreferencesIn(BaseModel):
     # not just by type - a hiker who never touched the switch syncs the same
     # thing whichever side answers first.
     drought_layer_shown: bool = False
-    waypoint_types_shown: list[str] = []
+    # Mirrors client/src/lib/userPreferences.ts's DEFAULT_PREFERENCES exactly:
+    # the curated subset a maintainer decision (#865) chose over every
+    # category, resolving the open question IDENTITY_AND_PRIVACY.md used to
+    # record as "(default: all)".
+    waypoint_types_shown: list[str] = ["shelter", "water", "campsite", "privy"]
     layer_detail_level: LayerDetailLevel
     auto_rotate_enabled: bool = False
 

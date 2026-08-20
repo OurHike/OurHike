@@ -99,6 +99,29 @@ describe('DownloadCard', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
   })
 
+  it('creeps the fill in tenths while the announced value stays a whole percent (#449)', () => {
+    // 1% of the first sheet is 7.9 MB - about four seconds of a still bar at
+    // trailhead speeds, and a still bar is this app's own signal for
+    // "stalled". The fill takes the finer, floored figure; the value a
+    // screen reader announces stays whole and calm.
+    render(
+      <DownloadCard
+        {...PROPS}
+        status={{
+          state: 'downloading',
+          receivedBytes: 2_000_000,
+          totalBytes: 3_000_000,
+        }}
+      />,
+    )
+
+    const bar = screen.getByRole('progressbar')
+    expect(bar).toHaveAttribute('aria-valuenow', '67')
+    expect(bar.querySelector<HTMLElement>('.downloads__bar-fill')?.style.width).toBe(
+      '66.6%',
+    )
+  })
+
   it('states progress in bytes too, so the number means something concrete', () => {
     render(
       <DownloadCard

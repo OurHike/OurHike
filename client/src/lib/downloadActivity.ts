@@ -109,3 +109,25 @@ export function activeDownload(
 export function downloadPercent(doneBytes: number, totalBytes: number): number {
   return totalBytes === 0 ? 0 : Math.round((doneBytes / totalBytes) * 100)
 }
+
+/**
+ * How far along, for a bar's FILL - tenths of a percent, floored.
+ *
+ * The whole-percent answer above stays what the text says and what a screen
+ * reader hears, but a bar whose width steps in whole percents sits still for
+ * 7.9 MB at a time on the first sheet (789,552,460 bytes - #449 measured),
+ * about four seconds per step at trailhead speeds - and a bar that does not
+ * move is this app's own signal for "stalled", a distinction the `checking`
+ * state (#197) exists to keep trustworthy.
+ *
+ * One decimal rather than the raw ratio, on lib/formatBytes.ts's reasoning
+ * about figures that change faster than anyone can read: a tenth of a percent
+ * of that sheet is ~790 KB, so the fill creeps steadily without the style
+ * churning on literally every chunk. Floored rather than rounded, also that
+ * file's rule: a fill that overstates reads as a lie the moment the transfer
+ * stalls, and flooring means the bar never shows 100% before the last byte.
+ */
+export function downloadFillPercent(doneBytes: number, totalBytes: number): number {
+  if (totalBytes === 0) return 0
+  return Math.min(100, Math.floor((doneBytes / totalBytes) * 1000) / 10)
+}

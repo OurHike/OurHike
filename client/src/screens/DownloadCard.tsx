@@ -31,7 +31,7 @@
 
 import { useState } from 'react'
 import { facingFullDownload } from '../lib/backgroundStatus'
-import { downloadPercent } from '../lib/downloadActivity'
+import { downloadFillPercent, downloadPercent } from '../lib/downloadActivity'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { PersistenceState } from '../lib/storageHealth'
 import { DetailPicker, type DetailOption } from './DetailPicker'
@@ -266,10 +266,14 @@ export function DownloadCard({
             aria-valuemax={100}
             className="downloads__bar"
           >
+            {/* The fill takes the finer figure, the announced value stays a
+                whole percent: the bar is what the eye reads for "still
+                moving", and a whole percent of a real sheet is megabytes of
+                sitting still (#449 - downloadFillPercent has the numbers). */}
             <span
               className="downloads__bar-fill"
               style={{
-                width: `${downloadPercent(status.checkedBytes, status.totalBytes)}%`,
+                width: `${downloadFillPercent(status.checkedBytes, status.totalBytes)}%`,
               }}
             />
           </div>
@@ -296,10 +300,12 @@ export function DownloadCard({
             aria-valuemax={100}
             className="downloads__bar"
           >
+            {/* Same split as the checking bar above: finer fill, calm
+                announced value (#449). */}
             <span
               className="downloads__bar-fill"
               style={{
-                width: `${downloadPercent(status.receivedBytes, status.totalBytes)}%`,
+                width: `${downloadFillPercent(status.receivedBytes, status.totalBytes)}%`,
               }}
             />
           </div>

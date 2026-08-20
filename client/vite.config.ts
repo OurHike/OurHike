@@ -307,6 +307,10 @@ export default defineConfig({
         // src/map/poiIconImages.test.ts, which drives every way the worker
         // can fail.
         'src/map/poiIconWorker.ts',
+        // The hashing worker's entry, on the same reasoning: glue over
+        // sha256Rpc.ts, whose handler and both hasher shapes are tested in
+        // jsdom through a fake channel (src/lib/sha256Rpc.test.ts).
+        'src/lib/sha256Worker.ts',
       ],
     },
   },

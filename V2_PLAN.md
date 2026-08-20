@@ -18,8 +18,19 @@ group **W** the same day. Four more (#876–#879) were filed 2026-08-20 — the 
 FIELD_NOTES.md and the volunteering build that PR #873 did not reach — and added to
 groups **Q** and **U** the same day. Seven more (#890–#896) were filed 2026-08-20 —
 [features/ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md)'s phases, scoped that day by a
-maintainer ask — and added as group **X** the same day. If you add an issue, add it to a group here or the
-next person will find it by accident.
+maintainer ask — and added as group **X** the same day. Four more `v2`-labelled issues
+filed 2026-08-19/20 were placed on 2026-08-20's review: **#854 — No verify-release run
+can pass against UA, and three of its checks vanish rather than fail when a tier is
+missing** into **N**, **#859 — scripts/test.sh picks the interpreter the session-start
+hook exists to avoid** into **M**, **#860 — v1.0.1 was tagged but never reached
+production** into **S**, and **#886 — The desktop chart is the one estimate the hiker's
+pace does not move** into **P**. If you add an issue, add it to a group here or the next
+person will find it by accident.
+
+*Note also, as of that review: open issues without the `v2` label now exist (a `v3`
+issue, bot-owned `deployment-health` trackers, and several unlabelled pace/eventing
+follow-ups, #870/#881/#882/#888 among them). This document governs the `v2` programme
+and does not place those.*
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
 [HIKE_PLANNING.md](features/HIKE_PLANNING.md)'s and
@@ -68,6 +79,13 @@ shape the issue describes — and put the distribution in the issue before touch
 threshold. Note also that this is *not* the `wrongWay.ts` asymmetry: over-filtering water
 hurts a hiker too, so neither direction is the safe one.
 
+**Where this stands, 2026-08-20.** The core is built: **#749** and **#710 — "Corroborated
+by both databases" is worth much less in Virginia than in New Hampshire** closed via
+**PR #813 — Gate OSM water on whether a hiker could walk to it** (merged). What remains
+is **#97 — Validate NHD flowline stream-crossings as a water-source candidate list**
+(research, its own instrument) and **#479 — Act on the A.T. source survey** (mostly
+maintainer outreach, `blocked-external` in substance if not in label).
+
 ## B. Elevation, and the two ways this repo measures a mile
 
 **#652 — The elevation profile's mile axis is out of order in 18 places, by up to 46 miles** ·
@@ -87,6 +105,12 @@ expect to meet it.
 
 There is an open draft PR here already: **#549 — Survey the elevation sources: the data is
 right, the catalogue in front of it is not**. Check its state before branching.
+
+**Where this stands, 2026-08-20.** **#652 — The elevation profile's mile axis is out of
+order in 18 places** and **#133 — Validate the cumulative-ascent threshold against
+published section figures** are both closed; the axis is calibrated to ATC's own markers
+(PR #765/#766's batches). Only **#548 — Survey elevation data sources** remains, with
+draft PR #549 still open against it.
 
 ## C. POI identity across the ATC's annual refresh
 
@@ -197,6 +221,15 @@ while it is open rather than conflict with them later.
 
 **Cheap and independent:** #448 and #449 are small, visible, and need no decision. Good
 first branch if you want to warm up on this file.
+
+**Where this stands, 2026-08-20.** The order inverted in practice: **#556 — Cut and
+publish coverage units from the build that already exists** closed via **PR #766 — v2
+batch: stretch units on ATC's mile axis…** while **#552 — Decide the unit of offline
+coverage, and write it down** — the issue #556 declared itself blocked on — is still
+open. Whoever takes #552 should read #766 first: units exist on the build side now, and
+the doc has to either ratify or argue with them rather than decide in the abstract.
+**#448 and #449 are taken** — claimed 2026-08-20 on `claude/v2-plan-review-mtaue9`, the
+hashing fold moved to a worker and the bars given a tenth-of-a-percent fill.
 
 ## F. The corridor view
 
@@ -341,6 +374,14 @@ times"* — was written from these exact failures. #323 removes sleep-then-asser
 
 **#503 is a guard against a regression that already happened once** (#317) and is cheap.
 
+**Where this stands, 2026-08-20.** Most of this group is closed — #343, #323, #324,
+#318, #319, #503 and #660 all landed. What remains: **#502 — The API seam checks field
+presence and nullability, but not that a type narrowed**, **#253 — BASEMAP.md's "it is
+only reordering" is inferred from five agreeing metrics, not proved**, and the newly
+placed **#859 — scripts/test.sh picks the interpreter the session-start hook exists to
+avoid, so the one command CLAUDE.md names dies on its first step** — a `bug`, and the
+cheapest high-leverage fix in this group since every session runs that command.
+
 **#488 resolved 2026-08-20.** Went with the guard-amendment option: `test_supabase_keepalive_workflow.py`
 had already stopped enforcing "exactly one" in favour of a named `SCHEDULED_ROSTER` (#656, before
 this issue was ever filed against the older wording), so the redirect check joined it as a fourth
@@ -365,12 +406,21 @@ rather than failing the run — the thing #488's own body flagged as needed "onc
 **#100 — Build the dbt ELT transform layer before NYNJTC's own trail network arrives** ·
 **#659 — Pipeline audit follow-ups: a narrow z14 band, hashes trusted across a gap, and the retry library nobody calls**
 
-**#750 is in flight** on `claude/v2-roadmap-issues-evc1gc` (PR #751) — do not take it.
+**#750 landed** (its branch merged; the smoke test hashes the gzip publish.py stores) —
+and so did **#855 — Withdraw the USGS raster sheet from the app and stop building it**,
+whose consequence stands: **#278 — Offer quad_sheet_z14 as the USGS sheet's full-detail
+tier** waits on a full raster run nobody is funding, so **#278 stays blocked** and the
+"sharded regional build" cluster below is two issues rather than three until that
+changes.
 
-**#855 is in flight** on `claude/disable-usgs-raster-builds-cj3s7g` — do not take it. It is the
-decision *not* to fund a full raster run, which is exactly what **#278** waits on, so **#278 is
-blocked for as long as #855 holds** and the "sharded regional build" cluster below is two issues
-rather than three until then.
+**Where this stands, 2026-08-20.** The "checks that pass when they should not" cluster
+is done — #172, #446, #173 and #750 all closed, #465 and #321 and #659 with them, and
+#99's first slice too. What remains: **#463 — A job that proposes parsed ATC updates as
+a pull request, never publishes them**, **#248/#250** (the sharded build, still
+half-built), **#100 — Build the dbt ELT transform layer** (risen, per group **V**), and
+the newly placed **#854 — No verify-release run can pass against UA, and three of its
+checks vanish rather than fail when a tier is missing** — which is this cluster's theme
+returned in release clothing: a gate that cannot go red is not a gate.
 
 **Three clusters that do not collide:**
 
@@ -434,7 +484,9 @@ first four pages in the design system's own self-hosted type, and §10's open de
 taken by the maintainer in session (Astro; independent-project voice; money as intent
 plus direct club giving links). **Still open here:** #116's Phase 0 (photography — the
 built hero is designed to be good without it) and Phases 4–6 (Explore + client routing,
-the generated pages behind their two gates, For clubs / Get involved / Status).
+the generated pages behind their two gates, For clubs / Get involved / Status). Added
+2026-08-20: **#886 — The desktop chart is the one estimate the hiker's pace does not
+move** — a follow-up to #135's built chart, so it lives with the chart it corrects.
 
 ## Q. Field notes and freshness
 
@@ -496,7 +548,14 @@ underlying check goes healthy.
 What they are useful for is *reading*: #732's current contents are the symptom that
 produced #750, and #738 records a real If-Range gap (#566) that the client compensates for.
 
-**#438 and #681 are small, real, and good first issues.**
+**#438 and #681 are small, real, and good first issues.** (#438 closed 2026-08-18;
+#681 still open.)
+
+**Added 2026-08-20: #860 — v1.0.1 was tagged but never reached production — Deploy Pages
+refused it for having no release notes, and nothing recorded that.** A `bug`, and it
+belongs here rather than in a release group because its finding is about the automation:
+a deploy that declines silently is the same failure shape as the tracking issues above,
+one workflow further down the pipe.
 
 ## T. Planning a hike — v2's first feature
 
@@ -512,6 +571,13 @@ order, plus the spike run its own closing line calls "the first thing to close".
 
 **Order is the doc's and it is real: #753 → #755 → #756 → #757 → #758**, with #754
 independent and wanted before #757 is designed.
+
+**This group is BUILT — every issue in it closed by 2026-08-20**, through the overnight
+and follow-on branches (PRs #765 onward through #885/#887). What it left behind is filed
+rather than invisible: pace follow-ups against the shipped planner and chart —
+**#886** (placed in group **P**) and the unlabelled #881/#882/#888, which the note at
+the head of this document flags as outside the `v2` programme until somebody labels
+them.
 
 **#753 is the one to do first and the one to do even if nothing else here happens.** It is
 group **B**'s subject from the other side — the client and the pipeline measure a mile
@@ -601,6 +667,8 @@ they touch the same file (`client/src/chrome/tabs.ts`) — not the hot-file conf
 BRANCHING.md's table tracks (that is `App.tsx`; `tabs.ts` is small and low-traffic), but
 real enough that one branch covers both if that is more convenient than two.
 
+**This group is BUILT — both issues closed by 2026-08-20.**
+
 **What you are walking into:** the doc argues the tab name the way
 [VOLUNTEERING.md](features/VOLUNTEERING.md) argued `Volunteer`'s, against three rejected
 alternatives, and lands on `Settings` — a recommendation, not a ruling. It also flags,
@@ -662,6 +730,12 @@ should wait rather than be written against a system nobody can observe.
 test harness, an uncapped bill on a public app, a smoke test checking nothing).
 **#327 needs a quiet window** in the client. Everything else is parallel. Where two groups
 touch `client/src/App.tsx`, BRANCHING.md §4 applies: land the `App.tsx` branch first.
+
+*2026-08-20: of those three urgent items, #320 and #750 are done. **#395 — Put a ceiling
+on the bill before the app is public** is the one still open, still overdue, and still
+the most important issue on this list that no session has taken — likely because it
+needs the maintainer's accounts, which is a reason to schedule it with them, not a
+reason to leave it.*
 
 ## Questions that need answering before the work does
 

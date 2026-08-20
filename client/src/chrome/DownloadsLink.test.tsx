@@ -62,8 +62,8 @@ describe('DownloadsLink', () => {
 
   it('draws the bar to the figure it just stated', () => {
     // The bar is what the eye reads; the percent beside it is what a screen
-    // reader gets. Two renderings of one number, so they are asserted against
-    // each other rather than separately.
+    // reader gets. Two roundings of one ratio, agreeing wherever the ratio
+    // lands on a whole percent.
     const { container } = render(
       <DownloadsLink
         onOpen={vi.fn()}
@@ -75,6 +75,23 @@ describe('DownloadsLink', () => {
     expect(
       container.querySelector<HTMLElement>('.downloads-link__bar-fill')?.style.width,
     ).toBe('75%')
+  })
+
+  it('creeps the bar in tenths while the stated figure stays whole (#449)', () => {
+    // A whole percent of the first sheet is 7.9 MB of the bar sitting still,
+    // and a still bar is this app's own signal for "stalled". The fill moves
+    // finer; the number a screen reader hears stays calm.
+    const { container } = render(
+      <DownloadsLink
+        onOpen={vi.fn()}
+        downloadActivity={{ kind: 'downloading', doneBytes: 2, totalBytes: 3 }}
+      />,
+    )
+
+    expect(screen.getByText('Downloading 67%')).toBeVisible()
+    expect(
+      container.querySelector<HTMLElement>('.downloads-link__bar-fill')?.style.width,
+    ).toBe('66.6%')
   })
 
   it('names the wait that is the phone rather than the network', () => {

@@ -35,7 +35,11 @@
 // an errand that is HAPPENING RIGHT NOW does, for exactly as long as it is
 // happening, and the link is already where somebody would go to look.
 
-import { downloadPercent, type DownloadActivity } from '../lib/downloadActivity'
+import {
+  downloadFillPercent,
+  downloadPercent,
+  type DownloadActivity,
+} from '../lib/downloadActivity'
 
 /** What the footer calls each wait. Two words at most, because this sits
  *  beside a label it must not outweigh - and the differences matter enough to
@@ -85,6 +89,15 @@ export function DownloadsLink({
       ? null
       : downloadPercent(downloadActivity.doneBytes, downloadActivity.totalBytes)
 
+  // The fill creeps in tenths while the spoken and printed figure stays a
+  // whole percent - the same split the window's bars make, for the same
+  // reason (#449): the bar is the "still moving" signal, and a whole percent
+  // of a real sheet is megabytes of it sitting still.
+  const fill =
+    downloadActivity === null || downloadActivity.kind === 'preparing'
+      ? null
+      : downloadFillPercent(downloadActivity.doneBytes, downloadActivity.totalBytes)
+
   return (
     // The bar lives INSIDE the button rather than beside it, and that is a
     // thumb decision before it is a markup one: the bar is what the eye lands
@@ -107,9 +120,9 @@ export function DownloadsLink({
           </span>
         )}
       </span>
-      {percent !== null && (
+      {fill !== null && (
         <span className="downloads-link__bar" aria-hidden="true">
-          <span className="downloads-link__bar-fill" style={{ width: `${percent}%` }} />
+          <span className="downloads-link__bar-fill" style={{ width: `${fill}%` }} />
         </span>
       )}
     </button>

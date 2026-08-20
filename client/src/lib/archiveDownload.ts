@@ -38,6 +38,14 @@
 // chunks the read loop already sees, one at a time, and carries its own state
 // across a resume. Nothing is ever held in memory that was not already.
 //
+// The fold runs off the main thread where the environment affords it (#448):
+// at the measured ~25 MB/s it is ~32 seconds of solid CPU for a first sheet,
+// and on the main thread that froze the very progress UI it was verifying
+// for. lib/sha256Rpc.ts owns the boundary - which thread, what crosses it,
+// what a dead worker may and may not cost - and hands back the same fold
+// behind promises, so everything this file checks is checked identically on
+// either side of it.
+//
 // Why it matters more than the length check: `totalBytes` is DEFINED as
 // heldBytes + declared, so a completed resume accumulates exactly that and
 // the comparison can only catch a SHORT transfer. Bytes from two different
@@ -96,7 +104,8 @@ import {
 } from './storageHealth'
 import { publishedHash } from './dataManifest'
 import { formatBytes } from './formatBytes'
-import { Sha256, type Sha256State } from './sha256'
+import type { Sha256State } from './sha256'
+import { createArchiveHasher, type ArchiveHasher } from './sha256Rpc'
 import {
   deleteArchiveRecords,
   deleteGeneration,
@@ -387,51 +396,43 @@ function stalePartialError(): Error {
   )
 }
 
-/** How much of a held partial is read at a time when its hash has to be
- *  recomputed. Big enough that a gigabyte is not ten thousand reads, small
- *  enough that it is never one gigabyte-sized ArrayBuffer. */
-const HASH_READ_BYTES = 4 * 1024 * 1024
-
-/** Brings `hash` up to the end of `blob`, reading in windows, reporting as it
- *  goes so a phone doing seconds of local work does not look like a dead
- *  connection. Reports nothing when there is nothing to catch up on. */
-async function hashBlobFrom(
-  hash: Sha256,
-  blob: Blob,
-  from: number,
-  onChecking?: (progress: CheckProgress) => void,
-): Promise<void> {
-  if (from >= blob.size) return
-
-  onChecking?.({ checkedBytes: from, totalBytes: blob.size })
-  for (let at = from; at < blob.size; at += HASH_READ_BYTES) {
-    const window = blob.slice(at, Math.min(at + HASH_READ_BYTES, blob.size))
-    hash.update(new Uint8Array(await window.arrayBuffer()))
-    onChecking?.({ checkedBytes: hash.bytesHashed, totalBytes: blob.size })
-  }
-}
-
 /**
  * The hash accumulator for an attempt: caught up over whatever bytes are
- * already held, from a persisted state where there is a usable one.
+ * already held, from a persisted state where there is a usable one. The
+ * catch-up read runs where the fold does - off the main thread when there is
+ * a worker (#448) - reporting as it goes so a phone doing seconds of local
+ * work does not look like a dead connection, and reporting nothing when
+ * there is nothing to catch up on.
  *
  * A state claiming more bytes than the partial holds is not usable - it can
  * only mean the source record outlived a failed blob write - and re-hashing
  * from zero is always correct, because the partial is append-only, so any
  * shorter state is a prefix of what is there now.
+ *
+ * The caller owns the returned hasher's lifetime; on a failed catch-up there
+ * is nothing to own, so it is disposed here before the failure travels.
  */
 async function resumeHash(
   held: Blob | undefined,
   state: Sha256State | undefined,
   onChecking?: (progress: CheckProgress) => void,
-): Promise<Sha256> {
-  if (held === undefined) return new Sha256()
-  const hash =
-    state !== undefined && state.byteLength <= held.size
-      ? Sha256.fromState(state)
-      : new Sha256()
-  await hashBlobFrom(hash, held, hash.bytesHashed, onChecking)
-  return hash
+): Promise<ArchiveHasher> {
+  if (held === undefined) return createArchiveHasher()
+  const usable = state !== undefined && state.byteLength <= held.size ? state : undefined
+  const hash = createArchiveHasher(usable)
+  try {
+    const from = hash.bytesHashed
+    if (from < held.size) {
+      onChecking?.({ checkedBytes: from, totalBytes: held.size })
+      await hash.hashBlob(held, from, (bytesHashed) =>
+        onChecking?.({ checkedBytes: bytesHashed, totalBytes: held.size }),
+      )
+    }
+    return hash
+  } catch (error) {
+    hash.dispose()
+    throw error
+  }
 }
 
 /**
@@ -500,7 +501,7 @@ async function finish(
   artifactKey: string,
   stored: ArchiveComplete,
   expected: string | null,
-  hash: Sha256 | null,
+  hash: ArchiveHasher | null,
   signal?: AbortSignal,
 ): Promise<void> {
   // What these bytes were finally verified as, which is not always what the
@@ -508,7 +509,11 @@ async function finish(
   let verified = expected
 
   if (expected !== null && hash !== null) {
-    const actual = hash.digest()
+    // Refuses rather than answers when the fold was lost mid-transfer (a
+    // dead worker) - the throw is the verification holding, not failing:
+    // the bytes stay on disk, identified, and the next attempt re-reads and
+    // re-checks them without re-downloading (sha256Rpc.ts).
+    const actual = await hash.digest()
     if (actual !== expected) {
       // Before throwing anything away: a mismatch has an innocent cause. The
       // bucket can be republished between the manifest read at the start of
@@ -707,15 +712,19 @@ export async function downloadArchive(
         expected === null
           ? null
           : await resumeHash(heldBlob, storedSource?.hash, onChecking)
-      onProgress?.({ receivedBytes: heldBytes, totalBytes: heldBytes })
-      await finish(
-        packageKey,
-        artifactKey,
-        { generation, segments: nextSegment, totalBytes: heldBytes },
-        expected,
-        hash,
-        signal,
-      )
+      try {
+        onProgress?.({ receivedBytes: heldBytes, totalBytes: heldBytes })
+        await finish(
+          packageKey,
+          artifactKey,
+          { generation, segments: nextSegment, totalBytes: heldBytes },
+          expected,
+          hash,
+          signal,
+        )
+      } finally {
+        hash?.dispose()
+      }
       return
     }
 
@@ -884,134 +893,146 @@ export async function downloadArchive(
       ? null
       : await resumeHash(resumed ? heldBlob : undefined, storedSource?.hash, onChecking)
 
-  const sourceRecord = (): PartialSource => ({
-    url,
-    etag,
-    sha256: expected ?? undefined,
-    hash: hash?.toState(),
-    generation,
-    segments: nextSegment,
-  })
+  try {
+    // Awaits the fold across the worker boundary, which is also what keeps the
+    // worker's inbox bounded: the fold can only answer after every chunk posted
+    // before the ask (messages arrive in order), so each flush drains it
+    // (sha256Rpc.ts). A fold lost to a dead worker answers undefined, which a
+    // resume already treats as "re-read the held bytes" - slower, never weaker.
+    const sourceRecord = async (): Promise<PartialSource> => ({
+      url,
+      etag,
+      sha256: expected ?? undefined,
+      hash: await hash?.state(),
+      generation,
+      segments: nextSegment,
+    })
 
-  // Bytes that have arrived but are not yet in a segment record. This is the
-  // only thing held in memory now, and SEGMENT_BYTES bounds it - what used to
-  // be a Blob growing to the size of the whole archive.
-  let pending: BlobPart[] = []
-  let pendingBytes = 0
-  // On disk, in segments. What a resume would find, and therefore what the
-  // progress record must say - not `receivedBytes`, which counts bytes the
-  // renderer is still holding and an OS kill would take with it.
-  let flushedBytes = resumed ? heldBytes : 0
-  let receivedBytes = flushedBytes
-  onProgress?.({ receivedBytes, totalBytes })
+    // Bytes that have arrived but are not yet in a segment record. This is the
+    // only thing held in memory now, and SEGMENT_BYTES bounds it - what used to
+    // be a Blob growing to the size of the whole archive.
+    let pending: BlobPart[] = []
+    let pendingBytes = 0
+    // On disk, in segments. What a resume would find, and therefore what the
+    // progress record must say - not `receivedBytes`, which counts bytes the
+    // renderer is still holding and an OS kill would take with it.
+    let flushedBytes = resumed ? heldBytes : 0
+    let receivedBytes = flushedBytes
+    onProgress?.({ receivedBytes, totalBytes })
 
-  /**
-   * Writes the pending bytes as the next segment, and records the transfer's
-   * position.
-   *
-   * The order is the same invariant `persistPartial` has always kept, for the
-   * same reason: identity first, so the dangerous combination (bytes on disk,
-   * nothing saying what they are) is never reachable. Here it also carries the
-   * hash state, which at this instant covers exactly the bytes about to be
-   * written - every arrived chunk has been folded in, and pending is all of
-   * them since the last flush. A segment write that fails after it leaves a
-   * source claiming more bytes than are held, which `resumeHash` already treats
-   * as "hash the held bytes again".
-   */
-  const flush = async (): Promise<void> => {
-    if (pendingBytes === 0) return
-    const segment = new Blob(pending)
-    // Cleared before the awaits, so a failure cannot write the same bytes twice
-    // if the caller flushes again on its way out.
-    pending = []
-    pendingBytes = 0
+    /**
+     * Writes the pending bytes as the next segment, and records the transfer's
+     * position.
+     *
+     * The order is the same invariant `persistPartial` has always kept, for the
+     * same reason: identity first, so the dangerous combination (bytes on disk,
+     * nothing saying what they are) is never reachable. Here it also carries the
+     * hash state, which at this instant covers exactly the bytes about to be
+     * written - every arrived chunk has been folded in, and pending is all of
+     * them since the last flush. A segment write that fails after it leaves a
+     * source claiming more bytes than are held, which `resumeHash` already treats
+     * as "hash the held bytes again".
+     */
+    const flush = async (): Promise<void> => {
+      if (pendingBytes === 0) return
+      const segment = new Blob(pending)
+      // Cleared before the awaits, so a failure cannot write the same bytes twice
+      // if the caller flushes again on its way out.
+      pending = []
+      pendingBytes = 0
+
+      try {
+        await set(sourceKeyFor(packageKey), await sourceRecord())
+        await writeSegment(packageKey, generation, nextSegment, segment)
+      } catch (error) {
+        // The quota answer, now arriving mid-transfer rather than after the last
+        // byte. Translated for the same reason it always was - what a browser
+        // throws here carries no message at all (#544) - and with the numbers the
+        // sentence needs: what is left to write, and what is already safe.
+        if (isQuotaError(error)) {
+          throw new ArchiveTooLargeError(
+            Math.max(totalBytes - flushedBytes, segment.size),
+            (await estimateAvailableBytes()) ?? 0,
+            flushedBytes,
+          )
+        }
+        throw error
+      }
+      nextSegment += 1
+      flushedBytes += segment.size
+      await set(progressKeyFor(packageKey), { receivedBytes: flushedBytes, totalBytes })
+    }
+
+    /** Everything on disk and labelled, pending bytes included. */
+    const persist = async (): Promise<void> => {
+      await flush()
+      // Written even with nothing pending: the next attempt reads these to decide
+      // whether the held segments are usable at all, and a transfer that failed
+      // before its first checkpoint has none of them yet.
+      await set(sourceKeyFor(packageKey), await sourceRecord())
+      await set(progressKeyFor(packageKey), { receivedBytes: flushedBytes, totalBytes })
+    }
+
+    const reader = response.body?.getReader()
+    if (reader === undefined)
+      throw new Error(
+        'The connection opened but no map data arrived. Trying again is safe — ' +
+          'anything already on this phone is untouched.',
+      )
 
     try {
-      await set(sourceKeyFor(packageKey), sourceRecord())
-      await writeSegment(packageKey, generation, nextSegment, segment)
-    } catch (error) {
-      // The quota answer, now arriving mid-transfer rather than after the last
-      // byte. Translated for the same reason it always was - what a browser
-      // throws here carries no message at all (#544) - and with the numbers the
-      // sentence needs: what is left to write, and what is already safe.
-      if (isQuotaError(error)) {
-        throw new ArchiveTooLargeError(
-          Math.max(totalBytes - flushedBytes, segment.size),
-          (await estimateAvailableBytes()) ?? 0,
-          flushedBytes,
-        )
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        // Taken in BEFORE the abort is acted on. These bytes really arrived, and
+        // an abort that lands while they are in hand is no reason to make the next
+        // attempt fetch them again - the catch below writes them down. Checking
+        // first dropped the chunk that had just been read, which is what made
+        // "keeps what arrived when interrupted" hold for an EMPTY partial.
+        pending.push(value)
+        pendingBytes += value.byteLength
+        hash?.update(value)
+        receivedBytes += value.byteLength
+        onProgress?.({ receivedBytes, totalBytes })
+
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+
+        // The checkpoint. Everything before it is durable, so a kill here costs
+        // this segment rather than the transfer.
+        if (pendingBytes >= (segmentBytes ?? SEGMENT_BYTES)) await flush()
       }
+      await flush()
+    } catch (error) {
+      // Everything received so far is kept, including the bytes that had not
+      // reached a segment yet - this is a live failure with a live renderer, so
+      // there is still a chance to write them.
+      await keepQuietly(persist)
       throw error
     }
-    nextSegment += 1
-    flushedBytes += segment.size
-    await set(progressKeyFor(packageKey), { receivedBytes: flushedBytes, totalBytes })
-  }
 
-  /** Everything on disk and labelled, pending bytes included. */
-  const persist = async (): Promise<void> => {
-    await flush()
-    // Written even with nothing pending: the next attempt reads these to decide
-    // whether the held segments are usable at all, and a transfer that failed
-    // before its first checkpoint has none of them yet.
-    await set(sourceKeyFor(packageKey), sourceRecord())
-    await set(progressKeyFor(packageKey), { receivedBytes: flushedBytes, totalBytes })
-  }
-
-  const reader = response.body?.getReader()
-  if (reader === undefined)
-    throw new Error(
-      'The connection opened but no map data arrived. Trying again is safe — ' +
-        'anything already on this phone is untouched.',
-    )
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      // Taken in BEFORE the abort is acted on. These bytes really arrived, and
-      // an abort that lands while they are in hand is no reason to make the next
-      // attempt fetch them again - the catch below writes them down. Checking
-      // first dropped the chunk that had just been read, which is what made
-      // "keeps what arrived when interrupted" hold for an EMPTY partial.
-      pending.push(value)
-      pendingBytes += value.byteLength
-      hash?.update(value)
-      receivedBytes += value.byteLength
-      onProgress?.({ receivedBytes, totalBytes })
-
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-
-      // The checkpoint. Everything before it is durable, so a kill here costs
-      // this segment rather than the transfer.
-      if (pendingBytes >= (segmentBytes ?? SEGMENT_BYTES)) await flush()
+    if (totalBytes > 0 && receivedBytes !== totalBytes) {
+      // Truncation: a short PMTiles archive opens fine and then returns nothing
+      // for tiles past the cut, which looks like missing map rather than a
+      // failed download. The bytes are already kept, so a resume finishes the job.
+      await keepQuietly(persist)
+      throw new ArchiveSizeMismatchError(totalBytes, receivedBytes)
     }
-    await flush()
-  } catch (error) {
-    // Everything received so far is kept, including the bytes that had not
-    // reached a segment yet - this is a live failure with a live renderer, so
-    // there is still a chance to write them.
-    await keepQuietly(persist)
-    throw error
-  }
 
-  if (totalBytes > 0 && receivedBytes !== totalBytes) {
-    // Truncation: a short PMTiles archive opens fine and then returns nothing
-    // for tiles past the cut, which looks like missing map rather than a
-    // failed download. The bytes are already kept, so a resume finishes the job.
-    await keepQuietly(persist)
-    throw new ArchiveSizeMismatchError(totalBytes, receivedBytes)
+    await finish(
+      packageKey,
+      artifactKey,
+      { generation, segments: nextSegment, totalBytes: receivedBytes },
+      expected,
+      hash,
+      signal,
+    )
+  } finally {
+    // However the attempt ended - stored, refused, or interrupted - the fold
+    // has nothing more to answer, and an undisposed worker per attempt would
+    // be a thread leak the next retry compounds.
+    hash?.dispose()
   }
-
-  await finish(
-    packageKey,
-    artifactKey,
-    { generation, segments: nextSegment, totalBytes: receivedBytes },
-    expected,
-    hash,
-    signal,
-  )
 }
 
 /**

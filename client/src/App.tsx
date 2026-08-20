@@ -2335,6 +2335,9 @@ function App() {
       onToggleSouthbound: handleChartSouth,
       onPlanStretch: handlePlanChartStretch,
       wholeTrailBounds: CORRIDOR_BOUNDS,
+      // The hiker's own pace rides down too (#886): the chart and the route
+      // builder share a selection, so they must price it the same way.
+      pace,
     }
   }, [
     elevation,
@@ -2347,6 +2350,7 @@ function App() {
     handleChartStretch,
     handleChartSouth,
     handlePlanChartStretch,
+    pace,
   ])
 
   // Re-targeting an existing plan runs the same sheet over the plan's own

@@ -354,6 +354,17 @@
     min-height: 30px;
   }
 
+  /* Whose estimate the ≈time is (#886): quiet provenance, never a warning -
+     the same voice the highlight sheet's closure-sheet__pace uses, beside
+     the figure it describes. Absent entirely at the standard pace. */
+  .elevation-chart__pace {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-2);
+  }
+
   .elevation-chart__mono {
     font-family: var(--font-mono, ui-monospace, monospace);
   }

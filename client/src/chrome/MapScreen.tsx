@@ -25,6 +25,7 @@ import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { ElevationChart, type ChartStretch } from './ElevationChart'
 import type { ChartDomain } from '../lib/chartProfile'
+import type { PaceProfile } from '../lib/pace'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import {
   attachChartFocus,
@@ -323,6 +324,9 @@ export interface MapScreenProps {
     /** Where "Whole trail" sends the camera - the shell's own opening frame,
      *  so the button and a fresh open agree about what the whole trail is. */
     wholeTrailBounds?: [[number, number], [number, number]]
+    /** The hiker's own pace, so the chart's ≈time and the route builder's
+     *  legs price the same selection the same way (#886). */
+    pace?: PaceProfile
   }
   /**
    * `onSelectPoi` omitted deliberately, the way `units` is left off the ribbon
@@ -1005,6 +1009,7 @@ export function MapScreen({
             onToggleSouthbound={chart.onToggleSouthbound}
             onPlanStretch={chart.onPlanStretch}
             onZoomDomain={handleChartZoom}
+            pace={chart.pace}
           />
         )}
 

@@ -123,6 +123,51 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // The corridor-view centerline, asked for before any of this app's
+    // JavaScript has been parsed (#869).
+    //
+    // WHY IT IS IN THE HTML AND NOT IN main.tsx
+    //
+    // The gap being closed is the boot itself. Measured 2026-08-20, Chromium
+    // at 390x844 on a 4x CPU throttle: first paint at 576 ms, and the launch
+    // fetch's first request at ~1,560 ms - the second between them is the app
+    // chunk downloading, parsing and mounting before any code of ours can ask
+    // for anything. A `<link rel=preload>` in the document head is requested
+    // by the parser, so those bytes arrive DURING that second rather than
+    // after it; by the time the map exists, its sketch of the trail is
+    // already in the HTTP cache and drawing it costs a cache read.
+    //
+    // Nothing has to be written to consume it: lib/trailOverview.ts fetches
+    // the same URL, and the browser matches the two. `as="fetch"` with
+    // `crossorigin` is what makes that match happen for a cross-origin
+    // request - the wrong `as` gets the file downloaded twice and warned
+    // about in the console, which is why the two ends are pinned by
+    // test/preloadContract.test.ts rather than left to match by memory.
+    //
+    // Emitted ONLY when a bucket is configured. A build with no
+    // VITE_DATA_BASE_URL resolves this to the app's own origin, where it is a
+    // 404 on every launch - a wasted request and a console error, on the one
+    // build (a fresh checkout, a preview with no data) that has the least to
+    // spare.
+    {
+      name: 'ourhike-preload-trail-overview',
+      transformIndexHtml() {
+        const base = (process.env.VITE_DATA_BASE_URL ?? '').replace(/\/+$/, '')
+        if (base === '') return []
+        return [
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              as: 'fetch',
+              crossorigin: 'anonymous',
+              href: `${base}/trails_overview.geojson`,
+            },
+            injectTo: 'head' as const,
+          },
+        ]
+      },
+    },
     // Skipped under Vitest: vite-plugin-pwa's manifest/workbox hooks assume a
     // normal build/dev-server lifecycle and throw when Vitest's own Vite
     // instance loads this same config file just for the `test` block below.

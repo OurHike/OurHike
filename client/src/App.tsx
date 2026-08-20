@@ -643,6 +643,7 @@ function App() {
     clubSections,
     highlights,
     trailsUrl,
+    overviewTrailsUrl,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
@@ -3214,6 +3215,7 @@ function App() {
           entering={entering}
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
+          overviewTrailsUrl={overviewTrailsUrl}
           background={effectiveBackground(
             preferences.background_source,
             saveData,

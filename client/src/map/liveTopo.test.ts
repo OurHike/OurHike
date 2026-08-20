@@ -578,6 +578,13 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
+      // The corridor-view sketch (#869), which survives the subtraction for
+      // a duller reason than the others: it is empty unless the shell has a
+      // sketch to put in it, and the shell only has one when the phone has no
+      // trail lines at all. A layer that draws nothing costs nothing, and
+      // keeping one stack rather than two is what stops the offline style
+      // being a second thing to keep in step.
+      'trail-overview-line',
       'trail-casing',
       'trail-blaze',
       // The corridor view's attribution, over the blaze it covers and under

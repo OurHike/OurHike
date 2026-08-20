@@ -43,6 +43,30 @@ export function archiveKey(level: DetailLevel): string {
 
 export const TRAILS_KEY = 'trails.geojson'
 
+/**
+ * The corridor-view centerline: the same trail, simplified to 100 m and
+ * merged into one feature (pipeline/export_trails.py's write_overview, #869).
+ *
+ * 51,068 gzipped bytes against `trails.geojson`'s 4,143,296, measured against
+ * the live bucket 2026-08-20 - 81x smaller, which at 12 Mbps is about 34 ms
+ * of transfer against 2.8 s. That difference is the whole point: a first run
+ * spends its three entry steps looking at the map behind them, and the real
+ * centerline cannot arrive inside them.
+ *
+ * NOT NAVIGATION DATA, and the client has to keep that true. No point on it
+ * is more than 100 m from the surveyed line, which is 0.013 px at the
+ * corridor view and 0.43 px at the pin seam - and 14 px at z14, which is a
+ * line in the wrong place. So it is drawn only below the seam
+ * (map/style.ts's TRAIL_OVERVIEW_LAYER_ID), dropped the moment the real
+ * centerline is on the map, and never stored: a phone with no signal has no
+ * trail line, exactly as before, because what it is missing is the real one.
+ *
+ * Absent from a release exported before it existed, which reads as "no
+ * overview" rather than as a failure - the same rule spurs.json and
+ * elevation_profile.json already follow.
+ */
+export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

@@ -132,6 +132,7 @@ def client_keys() -> dict[str, str]:
 
     keys = {
         _string_const(config, "TRAILS_KEY"): "config.ts TRAILS_KEY",
+        _string_const(config, "TRAILS_OVERVIEW_KEY"): "config.ts TRAILS_OVERVIEW_KEY",
         _string_const(config, "SPURS_KEY"): "config.ts SPURS_KEY",
         _string_const(config, "ELEVATION_KEY"): "config.ts ELEVATION_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
@@ -169,9 +170,12 @@ def published(tmp_path, monkeypatch) -> set[str]:
         path.write_text(f"contents of {name}")
         return {"path": str(path), "sha256": f"sha-{name}"}
 
-    (tmp_path / "trails_manifest.json").write_text(
-        json.dumps({kind: manifest_entry(f"trails.{kind}") for kind in ("geojson", "fgb")})
-    )
+    trails_manifest = {kind: manifest_entry(f"trails.{kind}") for kind in ("geojson", "fgb")}
+    # Its own key in the manifest and its own flat name in the bucket - see
+    # publish.collect_artifacts, and export_trails.write_overview for what it
+    # is (#869).
+    trails_manifest["overview"] = manifest_entry("trails_overview.geojson")
+    (tmp_path / "trails_manifest.json").write_text(json.dumps(trails_manifest))
 
     poi_dir = tmp_path / "poi"
     poi_dir.mkdir()

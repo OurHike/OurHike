@@ -61,6 +61,11 @@ import './chrome.css'
 export interface MapScreenProps {
   topoArchiveUrl: string
   trailsUrl: string
+  /** The corridor-view centerline, while there is no real one to draw (#869).
+   *  Passed straight through - which line the map is drawing is decided in
+   *  lib/useTrailData.ts, and a screen that second-guessed it could put both
+   *  on at once. */
+  overviewTrailsUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -428,6 +433,7 @@ export interface MapScreenProps {
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
+  overviewTrailsUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -649,6 +655,7 @@ export function MapScreen({
             <MapView
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
+              overviewTrailsUrl={overviewTrailsUrl}
               background={background}
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}

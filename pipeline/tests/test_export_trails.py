@@ -8,8 +8,12 @@ feature ATC data or a live network call - see TESTING.md.
 
 import hashlib
 import json
+import math
+from pathlib import Path
 
 import pytest
+from shapely.geometry import LineString, shape
+from shapely.ops import transform as shapely_transform
 
 import export_trails
 from tests.conftest import spatial_connection
@@ -493,3 +497,128 @@ def test_the_manifest_records_the_pre_merge_segment_count(tmp_path, monkeypatch,
     assert manifest["chain_counts"] == {"centerline": 1}
     fc = json.loads((out_dir / "trails.geojson").read_text())
     assert [f["properties"]["id"] for f in fc["features"]] == ["centerline:chain:0"]
+
+
+@pytest.fixture
+def overview_out(tmp_path, monkeypatch):
+    """write_overview writes to OUT_DIR, which is the repository's data
+    directory unless a test says otherwise - and a test that leaves an
+    artifact in it is a test that changes what the next `publish.py` uploads."""
+    out_dir = tmp_path / "processed"
+    monkeypatch.setattr(export_trails, "OUT_DIR", out_dir)
+    return out_dir
+
+
+# The corridor-view centerline (#869). What matters is not that it is small -
+# any simplification is - but that it stays HONEST while being small: the same
+# geometry, no further from the surveyed line than the tolerance it declares,
+# and never mistaken for the artifact a hiker navigates by.
+
+
+def test_the_overview_is_one_feature_whatever_the_export_holds(overview_out):
+    """Per-feature JSON wrappers, not vertices, are most of a simplified
+    centerline: at 250 m the published export's 3,025 wrappers were 466 KB of
+    a 525 KB file. One feature drops all of it, and nothing reads this
+    artifact per-feature - it is a shape to draw, never a trail to identify."""
+    records = [
+        {"id": "c-1", "source": "centerline", "name": "A.T.", "blaze_color": "White", "wkt": "LINESTRING (-74 41, -74.1 41.1)"},
+        {
+            "id": "c-2",
+            "source": "centerline",
+            "name": "A.T.",
+            "blaze_color": "White",
+            "wkt": "LINESTRING (-74.2 41.2, -74.3 41.3)",
+        },
+    ]
+
+    entry = export_trails.write_overview(records)
+    body = json.loads(Path(entry["path"]).read_text())
+
+    assert len(body["features"]) == 1
+    assert body["features"][0]["geometry"]["type"] == "MultiLineString"
+    assert entry["line_count"] == 2
+
+
+def test_the_overview_carries_only_the_centerline(overview_out):
+    """A side trail at the corridor view is sub-pixel and is not what the
+    sketch is for - it exists to answer "where does the A.T. run" while the
+    real line is still arriving."""
+    records = [
+        {"id": "c-1", "source": "centerline", "name": "A.T.", "blaze_color": "White", "wkt": "LINESTRING (-74 41, -74.1 41.1)"},
+        {"id": "s-1", "source": "side_trails", "name": "Spur", "blaze_color": "Blue", "wkt": "LINESTRING (-74 41, -74.01 41.01)"},
+    ]
+
+    entry = export_trails.write_overview(records)
+    body = json.loads(Path(entry["path"]).read_text())
+
+    assert entry["line_count"] == 1
+    assert body["features"][0]["properties"] == {"source": "centerline", "blaze_color": "White"}
+
+
+def test_no_overview_vertex_is_further_from_the_surveyed_line_than_it_claims(overview_out):
+    """The property the client's `maxzoom` is reasoned from. Douglas-Peucker
+    guarantees it; this asserts the guarantee survives the projection either
+    side of it, because a tolerance applied in degrees would mean two
+    different distances depending on direction (simplify_records' block)."""
+    surveyed = LineString([(-74 + i * 0.002, 41 + math.sin(i / 3) * 0.004) for i in range(400)])
+    records = [{"id": "c-1", "source": "centerline", "name": "A.T.", "blaze_color": "White", "wkt": surveyed.wkt}]
+
+    entry = export_trails.write_overview(records)
+    body = json.loads(Path(entry["path"]).read_text())
+    drawn = shape(body["features"][0]["geometry"])
+
+    # In metres, the same projection the simplification used.
+    projected_surveyed = shapely_transform(export_trails._TO_METRIC, surveyed)
+    projected_drawn = shapely_transform(export_trails._TO_METRIC, drawn)
+    # Rounding the coordinates to four decimals moves a point by at most
+    # ~11 m of longitude at these latitudes, so the bar is the tolerance plus
+    # that - not the tolerance alone, which would be a test asserting an
+    # arithmetic it does not perform.
+    assert projected_drawn.hausdorff_distance(projected_surveyed) < (export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M + 20)
+
+
+def test_the_overview_keeps_the_ends_of_the_trail(overview_out):
+    """The two vertices a hiker could notice missing: Springer and Katahdin.
+    Douglas-Peucker preserves endpoints, and a sketch that quietly stopped
+    short of either end would be a false statement about where the trail
+    goes."""
+    surveyed = LineString([(-74 + i * 0.01, 41 + i * 0.01) for i in range(50)])
+    records = [{"id": "c-1", "source": "centerline", "name": "A.T.", "blaze_color": "White", "wkt": surveyed.wkt}]
+
+    entry = export_trails.write_overview(records)
+    line = json.loads(Path(entry["path"]).read_text())["features"][0]["geometry"]["coordinates"][0]
+
+    decimals = export_trails.OVERVIEW_COORDINATE_DECIMALS
+    assert line[0] == [round(surveyed.coords[0][0], decimals), round(surveyed.coords[0][1], decimals)]
+    assert line[-1] == [round(surveyed.coords[-1][0], decimals), round(surveyed.coords[-1][1], decimals)]
+
+
+def test_the_export_publishes_the_overview_beside_the_full_line(tmp_path, monkeypatch, con):
+    """Both artifacts, from one run, with the overview's own manifest entry -
+    which is what publish.py turns into the flat `trails_overview.geojson`
+    key the client fetches."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
+    _write_centerline(raw_dir / "centerline.geojson")
+
+    manifest = export_trails.main()
+
+    assert (out_dir / "trails.geojson").exists()
+    assert (out_dir / "trails_overview.geojson").exists()
+    assert manifest["overview"]["sha256"] == hashlib.sha256((out_dir / "trails_overview.geojson").read_bytes()).hexdigest()
+    assert manifest["overview"]["tolerance_m"] == export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M
+
+
+def test_the_overview_is_a_fraction_of_the_line_it_sketches(tmp_path, monkeypatch, con):
+    """The whole reason it exists. Measured against the live export it is 81x
+    smaller (4,143,296 gzipped bytes against 51,068, 2026-08-20); this
+    fixture is far too small for that ratio, so what is asserted here is the
+    direction and not the figure."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
+    _write_fc(
+        raw_dir / "centerline.geojson",
+        [_line_feature([(-74 + i * 0.001, 41 + math.sin(i / 5) * 0.002) for i in range(800)], {"GlobalID": "c-1"})],
+    )
+
+    export_trails.main()
+
+    assert (out_dir / "trails_overview.geojson").stat().st_size < (out_dir / "trails.geojson").stat().st_size

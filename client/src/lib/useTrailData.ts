@@ -25,6 +25,7 @@ import {
   type StoredPoi,
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
+import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
 import type { ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
@@ -89,6 +90,16 @@ export interface TrailData {
    *  until a release that publishes them is on the phone. */
   highlights: Highlight[]
   trailsUrl: string
+  /**
+   * The corridor-view centerline to draw INSTEAD, while there is no real one
+   * (#869) - and null the moment there is, which is what makes it a stand-in
+   * rather than a second trail line.
+   *
+   * Null too on a phone that has the release already, because it never had a
+   * gap to fill: this is worth 51 KB of somebody's data only on the launch
+   * where the alternative is an empty map for five seconds.
+   */
+  overviewTrailsUrl: string | null
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
   haveTrailLines: boolean
@@ -154,6 +165,11 @@ export function useTrailData(
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
+  const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
+  /** Whether the phone has been asked whether it holds trail lines yet.
+   *  Distinct from holding none: for the first tick of every launch those two
+   *  look the same, and one of them is a reason to spend a hiker's data. */
+  const [centerlineRead, setCenterlineRead] = useState(false)
   const [error, setError] = useState<TrailDataError | null>(null)
 
   /**
@@ -185,6 +201,10 @@ export function useTrailData(
    */
   const drawCenterline = useCallback(async () => {
     const lines = await loadTrailLines()
+    // Answered either way, and before the early return: "no lines" is what
+    // sends the overview fetch below, and it is not the same answer as "not
+    // asked yet".
+    setCenterlineRead(true)
     if (lines === null) return
 
     setTrailsUrl(URL.createObjectURL(lines))
@@ -358,6 +378,61 @@ export function useTrailData(
   // being needed.
   useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
+  /**
+   * The corridor-view sketch, fetched once and only while it would be the
+   * only trail line on the map (#869).
+   *
+   * Gated on what the phone turned out to hold rather than on "is this a
+   * first run", because that is the actual question: a phone with the release
+   * already on it draws the real line within a tick of launching and never has
+   * a gap for this to fill, so fetching it would be 51 KB of somebody's data
+   * spent on a frame nobody sees. On an empty phone the real line is seconds
+   * away and this is the map the entry steps are talking about.
+   *
+   * Which is why it waits for `centerlineRead` and not merely for
+   * `haveTrailLines` to be false. Those two are indistinguishable for the
+   * first tick of EVERY launch - the IndexedDB read has not answered yet - and
+   * starting on that tick would fetch the sketch on every launch a returning
+   * hiker ever makes. The wait costs nothing: the bytes are already in the
+   * HTTP cache by then, preloaded from the document head (vite.config.ts), so
+   * what this runs is a cache read.
+   *
+   * The abort is what makes the race safe rather than lucky: the real line can
+   * land while this is in flight, and the cleanup below both cancels the
+   * request and throws away an answer that arrives anyway.
+   */
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online || !centerlineRead || haveTrailLines) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchTrailOverview(controller.signal).then((url) => {
+      if (url === null) return
+      // Revoked rather than kept: an object URL nothing draws is a blob the
+      // page holds until it is closed, and by here the real line has won.
+      if (!wanted) {
+        URL.revokeObjectURL(url)
+        return
+      }
+      setOverviewUrl(url)
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [online, centerlineRead, haveTrailLines])
+
+  // Dropped as soon as there is a real line, and revoked with it. Both halves
+  // matter: the sketch is only true below the pin seam, and a blob URL that
+  // outlives its layer is a leak with nothing pointing at it.
+  useEffect(() => {
+    if (!haveTrailLines || overviewUrl === null) return
+    URL.revokeObjectURL(overviewUrl)
+    setOverviewUrl(null)
+  }, [haveTrailLines, overviewUrl])
+
   const ensure = useCallback(async () => {
     setError(null)
     try {
@@ -379,6 +454,10 @@ export function useTrailData(
     elevation,
     clubSections,
     highlights,
+    // Never both. The real line winning is what ends the sketch, and saying so
+    // here rather than in the shell means one place decides which line the map
+    // is drawing.
+    overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
     trailsUrl,
     haveTrailLines,
     error,

@@ -1,6 +1,6 @@
 """Tests for the public status page (#467, #431's item 3).
 
-`site/status/index.html` answers "is it me or us?" by checking the data bucket
+`site/public/status/index.html` answers "is it me or us?" by checking the data bucket
 **from the visitor's own browser**. That is not a stylistic choice: the page is
 served from the same origin as the app, so a fetch from it crosses the exact
 CORS boundary the app's fetches cross - the boundary that took the map down for
@@ -25,7 +25,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-STATUS_PAGE = REPO_ROOT / "site" / "status" / "index.html"
+STATUS_PAGE = REPO_ROOT / "site" / "public" / "status" / "index.html"
 PAGES_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pages.yml"
 
 PLACEHOLDER = "__DATA_BASE_URL__"
@@ -48,8 +48,9 @@ def assemble_step() -> str:
 
 
 def test_the_page_exists_where_pages_yml_will_find_it():
-    """`cp -r site/. _site/` puts this at `/OurHike/status/`. The path is the
-    URL, so moving the file moves the address people were given."""
+    """Astro passes public/ through untouched, and `cp -r site/dist/. _site/`
+    puts this at `/status/`. The path is the URL, so moving the file moves
+    the address people were given."""
     assert STATUS_PAGE.is_file()
 
 

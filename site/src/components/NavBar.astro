@@ -1,0 +1,38 @@
+---
+// The site's navigation: only pages that exist. Explore the trail (Phase 4),
+// For clubs and Get involved (Phase 6) join this row when they are real -
+// WEBSITE.md §9 sequences them - and not a day before: a nav link to a page
+// that is not there is a promise the site breaks on its second click.
+import Mark from './Mark.astro'
+
+const here = Astro.url.pathname
+const links = [
+  { href: '/get-the-app/', label: 'Get the app' },
+  { href: '/about/', label: 'About' },
+]
+---
+
+<nav class="wrap nav" aria-label="Site">
+  <a class="nav__brand" href="/">
+    <Mark id="nav-mark" size={34} />
+    <span class="nav__word">OurHike</span>
+  </a>
+  {
+    links.map((link) => (
+      <a
+        class="nav__link"
+        href={link.href}
+        aria-current={here === link.href ? 'page' : undefined}
+      >
+        {link.label}
+      </a>
+    ))
+  }
+  <a
+    class="nav__cta"
+    href="/support/"
+    aria-current={here === '/support/' ? 'page' : undefined}
+  >
+    Support the trail
+  </a>
+</nav>

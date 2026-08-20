@@ -1,0 +1,49 @@
+---
+// The independence line is load-bearing copy, not boilerplate: the voice
+// decision on #116 (2026-08-20, in session) is that this site speaks as an
+// independent project serving the trail communities, and this is where that
+// is said outright so no page has to hedge it.
+//
+// The ODbL credit is a licence condition (LAUNCH_CHECKLIST.md §7), not a
+// courtesy, and it names OpenStreetMap on every page this footer reaches.
+import Mark from './Mark.astro'
+---
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__cols">
+      <div class="footer__about">
+        <span class="footer__brand">
+          <Mark id="footer-mark" size={28} />
+          OurHike
+        </span>
+        <p class="footer__independence">
+          OurHike is an independent, open-source project. It is not affiliated
+          with or endorsed by the Appalachian Trail Conservancy or any trail
+          club — it exists to serve the communities they built, and to be
+          handed to them whole if they ever want it.
+        </p>
+      </div>
+      <div class="footer__col">
+        <span class="footer__heading">THE SITE</span>
+        <a href="/get-the-app/">Get the app</a>
+        <a href="/support/">Support the trail</a>
+        <a href="/about/">About &amp; values</a>
+        <a href="/status/">Status — is it me or us?</a>
+        <a href="/Privacy/">Privacy policy</a>
+      </div>
+      <div class="footer__col">
+        <span class="footer__heading">THE PROJECT</span>
+        <a href="https://github.com/OurHike/OurHike">Source on GitHub — AGPL-3.0</a>
+        <a href="https://github.com/OurHike/OurHike/issues">Tell us what broke</a>
+        <a href="/app/">Open the app</a>
+      </div>
+    </div>
+    <p class="footer__credits">
+      Trail centerline and facilities: ATC GIS · Map data © OpenStreetMap
+      contributors (ODbL) · Topo: USGS US Topo · Elevation: USGS 3DEP · Found a
+      blowdown or a dry spring? Report it in the app — it reaches a moderator
+      who can act on it.
+    </p>
+  </div>
+</footer>

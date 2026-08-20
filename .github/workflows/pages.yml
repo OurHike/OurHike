@@ -5,10 +5,13 @@
 #
 # Three things land, at the paths the site is written to expect:
 #
-#   /         site/index.html         - the beta announcement and install steps
+#   /         site/dist/              - the site, built by Astro from
+#                                       site/src (#116; WEBSITE.md is the plan)
 #   /app/     client/dist/            - the app itself
-#   /status/  site/status/index.html  - "is it me or us?", checked live
-#                                       in the visitor's browser (#467)
+#   /status/  site/public/status/     - "is it me or us?", checked live in the
+#                                       visitor's browser (#467); passed
+#                                       through Astro's public/ untouched, so
+#                                       the substitution below still finds it
 #
 # Those are apex paths because `site/CNAME` moves this site onto `ourhike.org`
 # (#733). It used to be a project site under `/OurHike/`, and the prefix was
@@ -148,11 +151,24 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            site/package-lock.json
 
       - name: Install
         working-directory: client
         run: npm ci
+
+      # The site's own toolchain (#116) - separate from the app's on purpose:
+      # the app is the safety-relevant artifact and its dependency set stays
+      # its own, while the site's can move freely without a client review.
+      - name: Install the site's toolchain
+        working-directory: site
+        run: npm ci
+
+      - name: Build the site
+        working-directory: site
+        run: npm run build
 
       # The data URL is not secret - Vite inlines it into a public JS bundle, so
       # it is readable by anyone who opens the app either way. A variable is the
@@ -291,11 +307,16 @@ jobs:
           DATA_URL: ${{ steps.data.outputs.url }}
         run: |
           mkdir -p _site/app
-          # Carries site/CNAME with it, which is what moves this site onto
-          # ourhike.org (#733). Not copied by name on purpose: a second
-          # spelling of the hostname here is a second place for it to be
-          # wrong, and site/CNAME is the one the test reads.
-          cp -r site/. _site/
+          # The BUILT site, not the source tree - site/src would be shipped
+          # raw otherwise. status/ and Privacy/ ride through Astro's public/
+          # into dist/, so their served paths have not moved.
+          cp -r site/dist/. _site/
+          # site/CNAME stays the one copy of the hostname (#733) - it lives
+          # outside the Astro tree so the repo-settings tests keep reading it
+          # at the path it has always had, and it is copied as a FILE, never
+          # retyped: a second spelling of the hostname here would be a second
+          # place for it to be wrong.
+          cp site/CNAME _site/CNAME
           cp -r client/dist/. _site/app/
           cp client/public/favicon.svg _site/favicon.svg
           # Pages runs Jekyll by default, which skips files beginning with an

@@ -1,0 +1,204 @@
+# Asks, weekly, whether any published field note is anchored on a POI id the
+# current release no longer publishes.
+#
+# features/FIELD_NOTES.md §7 is the design and #878 the issue: notes anchor on
+# `poi_id`, an ATC refresh can re-mint the id underneath one, and until this
+# job nothing would have noticed. Under POI_IDENTITY.md's ledger a re-key
+# carries the id forward and a removal publishes a tombstone, so this check is
+# a backstop EXPECTED TO FIND NOTHING — kept because it is what proves that,
+# and because it is the recovery path for anything written before the ledger
+# existed. Every note keeps its lat/lon, so an orphan is re-anchorable rather
+# than lost, and the report says so per orphan.
+#
+# OVER PUBLISHED ARTIFACTS, NOT THE DATABASE. Both sides of the diff are
+# public HTTPS reads of what a phone reads — conditions/notes.json against
+# every poi_*.geojson latest.json names, with retired_poi.geojson explaining
+# what it can. check_note_anchors.py records the decision and its trade (the
+# notes artifact is windowed, so this sees exactly the anchors a hiker can
+# currently see); the alternative was a new scheduled road into the Supabase
+# project, which test_supabase_keepalive_workflow.py's roster exists to
+# resist. Like smoke-published.yml, IT HOLDS NO CREDENTIALS.
+#
+# WEEKLY, because the event this catches is an upstream refresh — annual for
+# ATC — and the fetch is a handful of megabytes against a rate-limited r2.dev
+# subdomain that #395 is trying to put a ceiling on. Tuesday, so a Monday
+# smoke-test failure (same bucket, broader question) has already said its
+# piece and this job's report is the anchors' own.
+#
+# IT DOES NOT FAIL THE RUN, for the reason check-deployment.yml records:
+# GitHub emails on every scheduled failure, and a persistent fault would send
+# an identical weekly email until it was filtered. The tracking issue is the
+# signal.
+
+name: Check note anchors
+
+on:
+  schedule:
+    # 09:40 UTC on Tuesdays. Off the hour for the reason every cron in this
+    # directory records, and off Monday, where smoke-published runs at the
+    # same minute.
+    - cron: "40 9 * * 2"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Bucket base to check. Defaults to the DATA_BASE_URL variable."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: check-note-anchors
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "Field-note anchors"
+  ISSUE_LABEL: data-freshness
+
+jobs:
+  check:
+    name: Every note's POI still publishes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Is there a bucket to check
+        id: can
+        env:
+          OVERRIDE: ${{ inputs.base }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          BASE="${OVERRIDE:-$CONFIGURED}"
+          if [ -z "$BASE" ]; then
+            echo "::warning::No DATA_BASE_URL is set, so there are no published notes to check. See LAUNCH_CHECKLIST.md step 2."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        working-directory: pipeline
+        run: pip install -r requirements.txt
+
+      # BASE arrives via env rather than ${{ }} inside the script: it can come
+      # verbatim from a workflow_dispatch input, and an expression expansion is
+      # pasted into the shell as literal text before bash parses it.
+      # smoke-published.yml documents the same rule, and the same
+      # set +e / PIPESTATUS discipline (#655): the step's exit status would
+      # otherwise be tee's, and both reserved codes would be invisible.
+      - name: Diff the anchors against the release
+        id: diff
+        if: steps.can.outputs.go == 'true'
+        working-directory: pipeline
+        env:
+          BASE: ${{ steps.can.outputs.base }}
+        run: |
+          set +e
+          python check_note_anchors.py \
+            --base "$BASE" \
+            --json anchors.json \
+            --exit-zero | tee anchors.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          case "$status" in
+            0) ;;
+            2)
+              echo "::error::Nothing is published at $BASE to check anchors against - check_note_anchors.py exited 2."
+              exit 2
+              ;;
+            *)
+              echo "::error::check_note_anchors.py exited $status, which --exit-zero reserves for a crash."
+              exit "$status"
+              ;;
+          esac
+
+      - name: Write the job summary
+        if: always() && steps.can.outputs.go == 'true'
+        working-directory: pipeline
+        run: |
+          {
+            echo "## Field-note anchors"
+            echo
+            if [ -f anchors.txt ]; then
+              echo '```'
+              cat anchors.txt
+              echo '```'
+            else
+              echo "The check did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open, update, or close the tracking issue
+        if: steps.can.outputs.go == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
+            const verdict = JSON.parse(fs.readFileSync('pipeline/anchors.json', 'utf8'))
+
+            const orphans = verdict.orphans ?? []
+            const unknown = orphans.filter(o => o.disposition === 'unknown')
+            const explained = orphans.filter(o => o.disposition !== 'unknown')
+            const failed = verdict.failed ?? []
+            const unreachable = verdict.unreachable ?? []
+
+            // Unknown orphans and broken joins open the issue; a superseded or
+            // retired orphan is the ledger doing its job and rides along as
+            // context rather than as a key that reopens anything.
+            const keys = [
+              ...unknown.map(o => `anchor:${o.poi_id}`),
+              ...failed.map(p => `${p.state}:${p.key}`),
+            ]
+
+            await trackingIssue({github, context, core}, {
+              label: process.env.ISSUE_LABEL,
+              title: process.env.ISSUE_TITLE,
+              checkedAt: verdict.checked_at,
+              keys,
+              healthy: verdict.healthy,
+              allClear: `Every published note's POI id publishes again (or is a ledger-explained tombstone), as of ${verdict.checked_at}. Closing.`,
+
+              render: (firstSeen, cell) => [
+                `${unknown.length} published field-note anchor(s) point at POI ids the current release does not publish and the ledger cannot explain.`,
+                '',
+                '**What this means:** a hiker\'s note is on a place whose id has gone — an upstream re-mint or a positional fallback id, from before the identity ledger could carry it. Nothing is lost: every note keeps its coordinates, so each row below can be re-anchored by hand or by the evidence matcher. features/FIELD_NOTES.md §7 owns this check; #878 has the design.',
+                '',
+                '| anchor | notes | latest observed | re-anchor at | first seen |',
+                '|---|---|---|---|---|',
+                ...unknown.map(o =>
+                  `| \`${cell(o.poi_id)}\` | ${o.notes} | ${cell(o.latest_observed_at)} | ${o.lat}, ${o.lon} (mile ${o.mile}) | ${firstSeen[`anchor:${o.poi_id}`]} |`),
+                '',
+                explained.length
+                  ? `${explained.length} further orphan(s) are tombstones the ledger explains (superseded or retired) — the machinery working, listed in the run log rather than here.`
+                  : '',
+                failed.length
+                  ? ['', '| problem | detail |', '|---|---|',
+                     ...failed.map(p => `| \`${cell(p.key)}\` | ${cell(p.detail)} |`)].join('\n')
+                  : '',
+                unreachable.length
+                  ? `${unreachable.length} artifact(s) could not be read at all and are not counted as orphans.`
+                  : '',
+                '',
+                `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+                '',
+                '---',
+                '_Generated by [Claude Code](https://claude.ai/code)_',
+              ].join('\n'),
+            })

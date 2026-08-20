@@ -5,6 +5,7 @@ import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
 import { BLAZE_LAYER_ID } from './style'
+import { CORRIDOR_HIGHLIGHT_LAYER_ID, HIGHLIGHT_ID_PROPERTY } from './corridorLayers'
 import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
 
 // The behaviour under test is "a hiker touches a trail line and the shell
@@ -13,7 +14,12 @@ import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
 
 function buildMap(): MockMap {
   const map = new MockMap({})
-  map.layerIds = [BLAZE_LAYER_ID, POI_LAYER_ID, ATC_UPDATE_LAYER_ID]
+  map.layerIds = [
+    BLAZE_LAYER_ID,
+    POI_LAYER_ID,
+    ATC_UPDATE_LAYER_ID,
+    CORRIDOR_HIGHLIGHT_LAYER_ID,
+  ]
   return map
 }
 
@@ -235,5 +241,40 @@ describe('where the tap landed on the line', () => {
     map.emit('click', touchAt(42, 43))
 
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ at: [42, 43] }))
+  })
+})
+
+describe('yielding to a highlight mark (#858)', () => {
+  it('reports no line when a highlight is under the thumb', () => {
+    // A mark is a small, aimed-at target sitting ON the corridor, and the
+    // line is always under it. Same rule the pins and the ATC notices get,
+    // and it is also what dismisses an open line sheet when the hiker moves
+    // on to a mark.
+    const map = buildMap()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      line('centerline:0', 'centerline', 'White'),
+    ])
+    map.renderedFeatures.set(CORRIDOR_HIGHLIGHT_LAYER_ID, [
+      { properties: { [HIGHLIGHT_ID_PROPERTY]: 'mcafee-knob' } },
+    ])
+    const onSelect = vi.fn()
+
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(120, 240))
+
+    expect(onSelect).toHaveBeenCalledWith(null)
+  })
+
+  it('still answers with the line when no mark is there', () => {
+    const map = buildMap()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      line('centerline:0', 'centerline', 'White'),
+    ])
+    const onSelect = vi.fn()
+
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(120, 240))
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'centerline:0' }))
   })
 })

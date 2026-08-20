@@ -131,6 +131,8 @@ export interface MapScreenProps {
   /** Who maintains the trail in front of the hiker, as a sentence, for the
    *  legend (#598). Null above nothing in particular - see Legend's own prop. */
   maintainerLine?: string | null
+  /** Told which highlight mark a tap landed on, or null for a miss (#858). */
+  onSelectHighlight?: (id: string | null) => void
   /** The ATC's own notices, drawn at the same weight as a closure and read
    *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
   atcUpdates?: readonly ClosureBand[]
@@ -447,6 +449,7 @@ export function MapScreen({
   closures,
   corridor,
   maintainerLine,
+  onSelectHighlight,
   atcUpdates,
   atcUpdatePoints,
   onSelectAtcUpdate,
@@ -661,6 +664,7 @@ export function MapScreen({
               showDrought={droughtShown}
               closures={closures}
               corridor={corridor}
+              onSelectHighlight={onSelectHighlight}
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}

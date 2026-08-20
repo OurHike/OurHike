@@ -114,10 +114,12 @@ describe('provenance', () => {
     })
   })
 
-  it('prints no date, because the artifact publishes none', () => {
-    // features/CORRIDOR_VIEW.md's mock-up shows dated provenance and the
-    // artifact does not carry the dates - they were measured by hand for #594.
-    // A date invented here would be a claim nobody checked.
+  it('prints no date where the release carries none', () => {
+    // Not hypothetical, and it is why the date is APPENDED rather than
+    // substituted: ARTIFACT has no `source_edited`, which is every release
+    // published before #852 and every phone still holding one. Inventing a
+    // date to fill the slot would be the claim-nobody-checked failure the
+    // dates existed in a docstring to avoid.
     const lines = Object.values(detail(1000) ?? {}).filter(
       (value): value is string => typeof value === 'string',
     )
@@ -140,6 +142,66 @@ describe('provenance', () => {
       sources: { attribution: 'centerline', names: 'centerline' },
     })
     expect(detail(1000, same)?.nameSourceLine).toBeNull()
+  })
+})
+
+/**
+ * The dated release (#852).
+ *
+ * The two dates are the whole argument for publishing them separately: WHICH
+ * club is decided by a layer edited days ago, how it is SPELLED by one edited
+ * two years ago, and a hiker reading a club name is entitled to know which
+ * half they are looking at.
+ */
+describe('provenance, once the release carries the dates', () => {
+  const DATED = parseClubSections({
+    ...ARTIFACT,
+    source_edited: {
+      centerline: '2026-08-04',
+      trail_club_sections: '2024-08-15',
+    },
+  })
+
+  it('finishes both sentences, two years apart', () => {
+    expect(detail(1000, DATED)).toMatchObject({
+      attributionSourceLine: 'Who maintains it: the ATC’s trail centerline, 4 Aug 2026',
+      nameSourceLine: 'Club name: the ATC’s club-section map, 15 Aug 2024',
+    })
+  })
+
+  it('dates the layers it can and still names the one it cannot', () => {
+    // An upstream edit-date lookup can fail for one layer and not another -
+    // fetch_all.py records the layer anyway. The undated line must not go
+    // missing; it falls back to the sentence it had before #852.
+    const partial = parseClubSections({
+      ...ARTIFACT,
+      source_edited: { centerline: '2026-08-04' },
+    })
+    expect(detail(1000, partial)).toMatchObject({
+      attributionSourceLine: 'Who maintains it: the ATC’s trail centerline, 4 Aug 2026',
+      nameSourceLine: 'Club name: the ATC’s club-section map',
+    })
+  })
+
+  it('drops a date it cannot read rather than printing it raw', () => {
+    const junk = parseClubSections({
+      ...ARTIFACT,
+      source_edited: { centerline: 'last Tuesday', trail_club_sections: 20240815 },
+    })
+    expect(detail(1000, junk)).toMatchObject({
+      attributionSourceLine: 'Who maintains it: the ATC’s trail centerline',
+      nameSourceLine: 'Club name: the ATC’s club-section map',
+    })
+  })
+
+  it('dates the unattributed sheet too, which names a source and no club', () => {
+    // The 38.5 miles ATC's own centerline cannot attribute. It still says
+    // which layer could not say, and now when that layer was last edited.
+    expect(detail(1014, DATED)).toMatchObject({
+      heading: 'Club not recorded',
+      attributionSourceLine: 'Who maintains it: the ATC’s trail centerline, 4 Aug 2026',
+      nameSourceLine: null,
+    })
   })
 })
 

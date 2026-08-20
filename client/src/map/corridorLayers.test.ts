@@ -3,16 +3,22 @@ import type { Feature, FeatureCollection } from 'geojson'
 import { buildTrailIndex } from '../lib/trailPosition'
 import { NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { parseClubSections, type ClubSections } from '../lib/clubSections'
+import { parseHighlights } from '../lib/highlights'
 import {
   BOUNDARY_KIND,
   CORRIDOR_BOUNDARY_LAYER_ID,
+  CORRIDOR_HIGHLIGHT_LAYER_ID,
   CORRIDOR_KIND_PROPERTY,
   CORRIDOR_MAX_ZOOM,
   CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_LAYER_ID,
   UNATTRIBUTED_KIND,
+  HIGHLIGHT_ID_PROPERTY,
+  HIGHLIGHT_KIND,
   buildCorridorLayers,
   corridorFeatures,
+  corridorWithHighlights,
+  highlightFeatures,
 } from './corridorLayers'
 import {
   BLAZE_LAYER_ID,
@@ -27,8 +33,11 @@ const CASING = '#14130f'
 
 /** The trail paint style.ts hands down, so the corridor is measured against
  *  the same numbers the blaze layer is actually drawn with. */
+const SELECTION = '#c1611a'
+
 const TRAIL_PAINT = {
   casingColor: CASING,
+  selectionColor: SELECTION,
   blazeWidth: BLAZE_LINE_WIDTH,
   casingWidth: CASING_LINE_WIDTH,
 }
@@ -148,17 +157,38 @@ describe('the corridor layers', () => {
     expect(CORRIDOR_MAX_ZOOM).toBe(POI_PIN_MIN_ZOOM)
   })
 
-  it('spends no colour beyond the neutral grey and the sheet’s own casing', () => {
+  it('spends no colour on a LINE beyond the neutral grey and the casing', () => {
     // "Only use 2 colours - the blaze colour and neutral" (2026-08-19). The
-    // blaze is not repainted, so what this may introduce is the grey; the
-    // casing is the sheet's, already on every trail line.
-    const painted = layers.flatMap((layer) =>
-      Object.entries(layer.paint ?? {})
-        .filter(([property]) => property.endsWith('color'))
-        .map(([, value]) => value),
-    )
-    expect(painted).not.toHaveLength(0)
-    expect(new Set(painted)).toEqual(new Set([NEUTRAL_BLAZE_COLOR, CASING]))
+    // rule is about the trail itself: the blaze is not repainted, so the only
+    // colour a line here may introduce is the grey, over the casing every
+    // trail line already has.
+    const lineColors = layers
+      .filter((layer) => layer.type === 'line')
+      .flatMap((layer) =>
+        Object.entries(layer.paint ?? {})
+          .filter(([property]) => property.endsWith('color'))
+          .map(([, value]) => value),
+      )
+    expect(lineColors).not.toHaveLength(0)
+    expect(new Set(lineColors)).toEqual(new Set([NEUTRAL_BLAZE_COLOR, CASING]))
+  })
+
+  it('lets a MARK carry the selection colour, which is not a trail line', () => {
+    // A highlight is the one thing down here a hiker is meant to reach for,
+    // and it is drawn BESIDE the corridor rather than on it - which is what
+    // keeps the two-colour rule about the trail intact. The approved mock-up
+    // draws these in the app's blaze orange.
+    const mark = layers.find((l) => l.id === CORRIDOR_HIGHLIGHT_LAYER_ID)
+    expect((mark?.paint as Record<string, unknown>)['circle-color']).toBe(SELECTION)
+  })
+
+  it('never lets the selection colour touch a line layer', () => {
+    // The failure this guards: painting the corridor itself orange, which is
+    // recolouring a blaze by another name.
+    for (const layer of layers.filter((l) => l.type === 'line')) {
+      const paint = Object.values(layer.paint ?? {})
+      expect(paint).not.toContain(SELECTION)
+    }
   })
 
   it('carries a casing wide enough to cover the blaze the dash sits over', () => {
@@ -185,6 +215,17 @@ describe('the corridor layers', () => {
     const order = layers.map((l) => l.id)
     expect(order.indexOf(CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID)).toBeLessThan(
       order.indexOf(CORRIDOR_UNATTRIBUTED_LAYER_ID),
+    )
+  })
+
+  it('draws a highlight mark over the boundary ticks, not under them', () => {
+    // These two collide often at corridor zooms rather than rarely - a pixel
+    // is several trail miles at z5, the mark is 5 px, and the ~30 club
+    // boundaries average ~73 miles apart. Under the ticks, a neutral 2.6 px
+    // dot sits in the middle of the one mark a hiker is meant to tap.
+    const order = layers.map((l) => l.id)
+    expect(order.indexOf(CORRIDOR_BOUNDARY_LAYER_ID)).toBeLessThan(
+      order.indexOf(CORRIDOR_HIGHLIGHT_LAYER_ID),
     )
   })
 
@@ -223,5 +264,113 @@ describe('the corridor in the built style', () => {
     const corridor = ids.indexOf(CORRIDOR_BOUNDARY_LAYER_ID)
     const closures = ids.findIndex((id) => id.includes('closure'))
     expect(closures).toBeGreaterThan(corridor)
+  })
+})
+
+/** Two highlights on the A.T., one of them a loop that leaves it. */
+function highlights() {
+  return parseHighlights({
+    highlights: [
+      {
+        id: 'mcafee-knob',
+        name: 'McAfee Knob',
+        bases: ['named'],
+        legs: [{ trail: 'AT', start_mile: 5, end_mile: 8 }],
+      },
+      {
+        id: 'franconia-loop',
+        name: 'Franconia Ridge Loop',
+        bases: ['named'],
+        legs: [
+          { trail: 'AT', start_mile: 20, end_mile: 21.7 },
+          { trail: 'Falling Waters Trail', start_mile: 0, end_mile: 3.2 },
+        ],
+      },
+    ],
+  })
+}
+
+describe('highlightFeatures', () => {
+  it('marks where each walk begins', () => {
+    const drawn = highlightFeatures(highlights(), straightTrail(40))
+    expect(drawn.features).toHaveLength(2)
+    expect(drawn.features.every((f) => f.geometry.type === 'Point')).toBe(true)
+  })
+
+  it('marks a loop once, not once per leg', () => {
+    // Three marks for one walk would read as three walks.
+    const drawn = highlightFeatures(highlights(), straightTrail(40))
+    const loop = drawn.features.filter(
+      (f) => f.properties[HIGHLIGHT_ID_PROPERTY] === 'franconia-loop',
+    )
+    expect(loop).toHaveLength(1)
+  })
+
+  it('carries the id, so a tap can resolve to a record', () => {
+    const drawn = highlightFeatures(highlights(), straightTrail(40))
+    expect(drawn.features.map((f) => f.properties[HIGHLIGHT_ID_PROPERTY]).sort()).toEqual(
+      ['franconia-loop', 'mcafee-knob'],
+    )
+    expect(drawn.features[0].properties[CORRIDOR_KIND_PROPERTY]).toBe(HIGHLIGHT_KIND)
+  })
+
+  it('drops a highlight the centerline index cannot place', () => {
+    // A gap in what this build knows. The sheet still answers from the mile
+    // numbers, so what is lost is the mark and not the record.
+    expect(highlightFeatures(highlights(), straightTrail(4)).features).toEqual([])
+  })
+
+  it('marks a loop written in walking order, whose A.T. leg is not first', () => {
+    // Franconia Ridge really is walked Falling Waters up, A.T. along the
+    // ridge, Old Bridle Path down - so leg zero is off the A.T. and the mile
+    // that can be drawn is on leg one. Keyed off leg zero this record would
+    // simply not be on the map.
+    const walkingOrder = parseHighlights({
+      highlights: [
+        {
+          id: 'franconia-loop',
+          name: 'Franconia Ridge Loop',
+          bases: ['named'],
+          legs: [
+            { trail: 'Falling Waters Trail', start_mile: 0, end_mile: 3.2 },
+            { trail: 'AT', start_mile: 20, end_mile: 21.7 },
+            { trail: 'Old Bridle Path', start_mile: 0, end_mile: 4 },
+          ],
+        },
+      ],
+    })
+    const drawn = highlightFeatures(walkingOrder, straightTrail(40))
+    expect(drawn.features).toHaveLength(1)
+    expect(drawn.features[0].properties[HIGHLIGHT_ID_PROPERTY]).toBe('franconia-loop')
+  })
+
+  it('draws no mark for a highlight that never touches the A.T.', () => {
+    // There is no honest place to put it on a map of this trail. The record
+    // survives; only the mark is absent.
+    const elsewhere = parseHighlights({
+      highlights: [
+        {
+          id: 'welch-dickey',
+          name: 'Welch-Dickey Loop',
+          bases: ['named'],
+          legs: [{ trail: 'Welch-Dickey Loop Trail', start_mile: 0, end_mile: 4.4 }],
+        },
+      ],
+    })
+    expect(highlightFeatures(elsewhere, straightTrail(40)).features).toEqual([])
+  })
+
+  it('draws nothing for a release that publishes no highlights', () => {
+    expect(highlightFeatures([], straightTrail(40)).features).toEqual([])
+  })
+})
+
+describe('corridorWithHighlights', () => {
+  it('puts the corridor and the marks in one source', () => {
+    // One source because they are one answer about the same stretch of map,
+    // and a second would be a second thing to keep in step.
+    const drawn = corridorWithHighlights(sections(), highlights(), straightTrail(40))
+    const kinds = new Set(drawn.features.map((f) => f.properties[CORRIDOR_KIND_PROPERTY]))
+    expect(kinds).toEqual(new Set([UNATTRIBUTED_KIND, BOUNDARY_KIND, HIGHLIGHT_KIND]))
   })
 })

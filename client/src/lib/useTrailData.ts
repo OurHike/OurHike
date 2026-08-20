@@ -26,6 +26,7 @@ import {
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { fetchTrailOverview } from './trailOverview'
+import type { Highlight } from './highlights'
 import type { ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
 
@@ -85,6 +86,9 @@ export interface TrailData {
    *  Empty until a release that publishes it is on the phone, which costs the
    *  corridor view its subject and nothing else. */
   clubSections: ClubSections
+  /** Stretches worth going to (pipeline/export_highlights.py, #595). Empty
+   *  until a release that publishes them is on the phone. */
+  highlights: Highlight[]
   trailsUrl: string
   /**
    * The corridor-view centerline to draw INSTEAD, while there is no real one
@@ -158,6 +162,7 @@ export function useTrailData(
   const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [clubSections, setClubSections] = useState<ClubSections>(EMPTY_CLUB_SECTIONS)
+  const [highlights, setHighlights] = useState<Highlight[]>([])
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
@@ -222,6 +227,7 @@ export function useTrailData(
     setSpurs(data.spurs)
     setElevation(data.elevation)
     setClubSections(data.clubSections)
+    setHighlights(data.highlights)
 
     // Best-effort, and separate from the POIs above on purpose. A shelter is
     // findable by name with no geometry at all, so a trails.geojson that
@@ -447,6 +453,7 @@ export function useTrailData(
     spurs,
     elevation,
     clubSections,
+    highlights,
     // Never both. The real line winning is what ends the sketch, and saying so
     // here rather than in the shell means one place decides which line the map
     // is drawing.

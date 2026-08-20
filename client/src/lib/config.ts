@@ -95,6 +95,18 @@ export const SPURS_KEY = 'spurs.json'
 // the same way spurs.json is treated.
 export const CLUB_SECTIONS_KEY = 'club_sections.json'
 
+// Stretches of trail somebody says are worth going to, published by
+// pipeline/export_highlights.py (#595): a name, ordered legs, and which basis
+// the claim rests on.
+//
+// Small, keyed, and separate for the same reason club_sections.json is - and
+// it carries no length, ascent or time, because the phone derives all three
+// from the elevation profile it already holds (features/CORRIDOR_VIEW.md).
+//
+// Absent from releases built before that exporter, which lib/trailData.ts
+// treats as "nothing to explore yet" rather than a failed download.
+export const HIGHLIGHTS_KEY = 'highlights.json'
+
 // The along-the-trail elevation profile, published by
 // pipeline/export_elevation.py: ~141,000 {distance_mi, elevation_ft} samples at
 // 25 m spacing along the real centerline. 7.0 MB of JSON that gzips to 0.89 MB,

@@ -10,6 +10,7 @@ import {
   ELEVATION_STORE_KEY,
   POIS_KEY,
   CLUB_SECTIONS_STORE_KEY,
+  HIGHLIGHTS_STORE_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
   TrailDataHashMismatchError,
@@ -17,6 +18,7 @@ import {
 } from './trailData'
 import {
   CLUB_SECTIONS_KEY,
+  HIGHLIGHTS_KEY,
   dataUrl,
   ELEVATION_KEY,
   POI_TYPES,
@@ -103,6 +105,7 @@ function serve(
   elevation: string = '[]',
   trails: string = '{"type":"FeatureCollection"}',
   clubSections: string = '{}',
+  highlights: string = '{"highlights":[]}',
 ) {
   vi.stubGlobal(
     'fetch',
@@ -120,9 +123,11 @@ function serve(
                   ? spurs
                   : url.includes(CLUB_SECTIONS_KEY)
                     ? clubSections
-                    : url.includes(ELEVATION_KEY)
-                      ? elevation
-                      : trails,
+                    : url.includes(HIGHLIGHTS_KEY)
+                      ? highlights
+                      : url.includes(ELEVATION_KEY)
+                        ? elevation
+                        : trails,
             ),
           ),
         blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
@@ -134,9 +139,11 @@ function serve(
                 ? spurs
                 : url.includes(CLUB_SECTIONS_KEY)
                   ? clubSections
-                  : url.includes(ELEVATION_KEY)
-                    ? elevation
-                    : '{}',
+                  : url.includes(HIGHLIGHTS_KEY)
+                    ? highlights
+                    : url.includes(ELEVATION_KEY)
+                      ? elevation
+                      : '{}',
           ),
       }),
     ),
@@ -202,9 +209,9 @@ describe('trail data', () => {
     await downloadTrailData()
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
-    // Every POI type, plus the trail lines, plus the spur detail, plus the
-    // maintaining clubs, plus the elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 4)
+    // Every POI type, plus the trail lines, the spur detail, the maintaining
+    // clubs, the highlights, and the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 5)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {
@@ -1477,5 +1484,95 @@ describe('the maintaining clubs', () => {
 
     await deleteTrailData()
     expect(store.has(CLUB_SECTIONS_STORE_KEY)).toBe(false)
+  })
+})
+
+/**
+ * The highlights artifact (#858), through the same download and store path.
+ *
+ * Its own block for the reason the club sections have one: a wiring mistake
+ * here is silent - it looks exactly like a release that publishes no
+ * highlights, which is every release before #856.
+ */
+describe('the highlights', () => {
+  const ARTIFACT = JSON.stringify({
+    source: 'reference/highlights.json',
+    highlights: [
+      {
+        id: 'mcafee-knob',
+        name: 'McAfee Knob',
+        bases: ['named'],
+        citations: { named: { by: 'OurHike', note: 'A ledge.', reviewed: '2026-08-20' } },
+        legs: [{ trail: 'AT', start_mile: 705.6, end_mile: 709.1 }],
+        club: 'RATC',
+      },
+    ],
+  })
+
+  /** Serves everything but highlights.json - a release built before #856. */
+  function serveWithoutHighlights() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes(HIGHLIGHTS_KEY)
+            ? { ok: false, status: 404, statusText: 'Not Found' }
+            : {
+                ok: true,
+                status: 200,
+                headers: new Headers(),
+                arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
+                blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+                text: () => Promise.resolve(poiCollection([])),
+              },
+        ),
+      ),
+    )
+  }
+
+  it('survives the round trip from the bucket to a later launch', async () => {
+    serve(undefined, undefined, undefined, undefined, undefined, ARTIFACT)
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+    expect(loaded?.highlights).toEqual([
+      {
+        id: 'mcafee-knob',
+        name: 'McAfee Knob',
+        bases: ['named'],
+        citations: { named: { by: 'OurHike', note: 'A ledge.', reviewed: '2026-08-20' } },
+        legs: [{ trail: 'AT', startMile: 705.6, endMile: 709.1 }],
+        club: 'RATC',
+        caution: '',
+      },
+    ])
+  })
+
+  it('costs a release built before the exporter nothing but its highlights', async () => {
+    serveWithoutHighlights()
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+    expect(loaded?.trails).toBeInstanceOf(Blob)
+    expect(loaded?.highlights).toEqual([])
+  })
+
+  it('takes them back down when a re-download no longer serves them', async () => {
+    serve(undefined, undefined, undefined, undefined, undefined, ARTIFACT)
+    await downloadTrailData()
+    expect((await loadTrailData())?.highlights).toHaveLength(1)
+
+    serveWithoutHighlights()
+    await downloadTrailData()
+    expect((await loadTrailData())?.highlights).toEqual([])
+  })
+
+  it('is dropped with the rest of the trail data', async () => {
+    serve(undefined, undefined, undefined, undefined, undefined, ARTIFACT)
+    await downloadTrailData()
+    expect(store.has(HIGHLIGHTS_STORE_KEY)).toBe(true)
+
+    await deleteTrailData()
+    expect(store.has(HIGHLIGHTS_STORE_KEY)).toBe(false)
   })
 })

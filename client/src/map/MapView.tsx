@@ -49,6 +49,7 @@ import {
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import {
   attachCorridorData,
+  attachHighlightTaps,
   EMPTY_CORRIDOR,
   type CorridorFeatureCollection,
 } from './corridorLayers'
@@ -127,6 +128,9 @@ export interface MapViewProps {
    * centerline index belongs to the shell. See map/corridorLayers.ts.
    */
   corridor?: CorridorFeatureCollection
+  /** Told which highlight mark a tap landed on, or null for a miss - which is
+   *  how the sheet closes on a tap elsewhere (#858). */
+  onSelectHighlight?: (id: string | null) => void
   /**
    * This week's drought bands, already as published polygons (#720).
    *
@@ -321,6 +325,7 @@ export function MapView({
   // object literal in a default would be a new identity every render, and the
   // effect below would re-push it to MapLibre on each one.
   corridor = EMPTY_CORRIDOR,
+  onSelectHighlight,
   drought = NO_DROUGHT,
   showDrought = false,
   atcUpdates = NO_ATC_UPDATES,
@@ -653,6 +658,11 @@ export function MapView({
     if (map === null) return
     return attachCorridorData(map, corridor)
   }, [map, corridor])
+
+  useEffect(() => {
+    if (map === null || onSelectHighlight === undefined) return
+    return attachHighlightTaps(map, onSelectHighlight)
+  }, [map, onSelectHighlight])
 
   // Two effects rather than one, and deliberately: the bands arrive from the
   // network once and the switch moves whenever a hiker taps it. Folding them

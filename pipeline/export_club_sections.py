@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.club_sections import (
@@ -54,6 +55,11 @@ from lib.spurs import PointIndex
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
+# What fetch_all.py writes: {key: {title, url, feature_count,
+# data_last_edit_date}}, the last being ArcGIS's `editingInfo.dataLastEditDate`
+# in epoch milliseconds. Reading it keeps this exporter NO NETWORK while still
+# dating its sources from the FeatureServer rather than from a docstring (#852).
+RAW_MANIFEST_PATH = RAW_DIR / "manifest.json"
 OUT_PATH = ROOT / "data" / "processed" / "club_sections.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "club_sections_manifest.json"
 
@@ -120,6 +126,75 @@ def attribute_mileposts(milepost_features: list[dict], index: PointIndex) -> lis
     return attributed
 
 
+def edited_day(epoch_ms: object) -> str | None:
+    """An ArcGIS `dataLastEditDate` as an ISO day, or None if it is not one.
+
+    UTC, and that is a choice worth naming: ArcGIS hands back epoch
+    milliseconds with no zone, `lib/freshness_state.py` already reads them as
+    UTC, and a layer edited late in a US evening would otherwise be published
+    under the following day. The error is at most one day either way and the
+    figure is a "how stale is this" signal measured in months and years - the
+    centerline and the polygon layer are two YEARS apart - so a day does not
+    change any sentence the sheet prints.
+
+    None for anything that is not a usable epoch. Every one of those cases is
+    real rather than defensive: fetch_all.py tolerates a failed edit-date
+    lookup and records the layer with a null, which lib/freshness_state.py's
+    `atc_sources` docstring calls out as the case an `is not None` guard once
+    silently dropped.
+    """
+    if isinstance(epoch_ms, bool) or not isinstance(epoch_ms, (int, float)):
+        return None
+    # Zero and negatives are sentinels or corruption, never an answer: a layer
+    # on ATC's FeatureServer cannot have been edited at or before 1970, and
+    # "1969-12-31" on a sheet is a confident wrong claim where no claim was
+    # available.
+    if epoch_ms <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).date().isoformat()
+    except (OverflowError, OSError, ValueError):
+        # A clock far outside what the platform can represent. Publishing no
+        # date beats publishing 1970.
+        return None
+
+
+def source_edit_dates(raw_dir: Path = RAW_DIR) -> dict[str, str]:
+    """When each layer this artifact reads was last edited, keyed by source key.
+
+    Keyed by LAYER rather than by the role it plays, because the date is a
+    property of the layer: if `attribution` and `names` ever came from one
+    layer, a role-keyed block would carry the same date twice and invite the
+    two copies to drift.
+
+    A key with no usable date is ABSENT rather than null. The client drops the
+    date silently where a release does not carry one, so absence and null would
+    render identically - and one of them is a shape the reader has to handle.
+
+    An entirely missing manifest returns {}, which is the same answer and the
+    honest one: a hand-run export against a raw directory somebody unpacked by
+    hand knows nothing about when ATC last edited anything.
+    """
+    manifest_path = raw_dir / RAW_MANIFEST_PATH.name
+    if not manifest_path.exists():
+        return {}
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(manifest, dict):
+        return {}
+    dates = {}
+    for key in (CENTERLINE_KEY, POLYGONS_KEY, MILEPOSTS_KEY):
+        entry = manifest.get(key)
+        if not isinstance(entry, dict):
+            continue
+        day = edited_day(entry.get("data_last_edit_date"))
+        if day is not None:
+            dates[key] = day
+    return dates
+
+
 def build_output(raw_dir: Path = RAW_DIR) -> dict:
     centerline = load_features(raw_dir / f"{CENTERLINE_KEY}.geojson")
     mileposts = load_features(raw_dir / f"{MILEPOSTS_KEY}.geojson")
@@ -137,6 +212,18 @@ def build_output(raw_dir: Path = RAW_DIR) -> dict:
             "names": POLYGONS_KEY,
             "miles": MILEPOSTS_KEY,
         },
+        # When each of those layers was last edited (#852), so the sheet can
+        # finish the sentence it could previously only start.
+        #
+        # A SEPARATE BLOCK rather than turning the entries above into objects,
+        # and that is a compatibility decision rather than a stylistic one:
+        # client/src/lib/clubSections.ts reads `sources.attribution` with
+        # `optionalString`, so an object there parses to null on a client that
+        # has not been updated - and artifacts update independently of app
+        # code, so a phone holding old code and a new download is the ordinary
+        # case, not a corner. That client would lose the attribution line
+        # entirely. An added key it does not know about, it ignores.
+        "source_edited": source_edit_dates(raw_dir),
         "clubs": [
             {
                 "acronym": club.acronym,

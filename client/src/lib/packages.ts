@@ -181,6 +181,25 @@ export interface BackgroundSheet {
   summary: string
   /** Every archive the sheet is made of, in the order they matter. */
   packages: readonly MapPackage[]
+  /**
+   * Set while this sheet is deliberately not on offer, though its archives
+   * are still published and this build can still read them.
+   *
+   * A DIFFERENT FACT FROM `source: null`, and the distinction is the whole
+   * reason it is its own field. A null source says the bytes do not exist -
+   * offering them would 404 on a mountain. This says the bytes exist, a
+   * phone may well be carrying them, and we have stopped asking anyone to
+   * take more. So the two are filtered in opposite directions: an
+   * unpublished package is never listed at all, and a withdrawn sheet stays
+   * listed for exactly as long as its archive is on the phone, because the
+   * card is where the Delete button lives (#855). Withdrawing an offer must
+   * not strand somebody's storage.
+   *
+   * Optional, and read as a boolean rather than a reason string: the reason
+   * belongs in a comment on the sheet, where it can be a paragraph, and no
+   * screen renders one.
+   */
+  withdrawn?: boolean
 }
 
 /**
@@ -202,15 +221,36 @@ export const HIKING_SHEET: BackgroundSheet = {
  * What `background_source: 'usgs_topo_offline'` draws. Never bundled into
  * anyone's download unasked (#237) - it has its own card, its own size, and
  * deleting it never touches the sheet a hiker navigates by.
+ *
+ * WITHDRAWN FOR v2, AND THIS LINE IS THE SWITCH (#855).
+ *
+ * The maintainer's call, 2026-08-20: the raster is not good enough to be
+ * worth what it costs to build. That is a judgement about the sheet, not a
+ * measurement of it, and it is recorded as one - what IS measured is the
+ * build. `build-raster.yml` fans out one render job per 1x1-degree corridor
+ * cell (its own header says 51) with a 150-minute timeout each, then
+ * reconverges them on a single runner with a 300-minute one. Nothing else in
+ * this repository is shaped like that, and the sheet it produces is the
+ * optional second background rather than the one a hiker navigates by.
+ *
+ * Withdrawn rather than deleted, and `source` deliberately left alone: the
+ * tiers are in the bucket and somebody may be carrying up to 1.2 GB of them
+ * (downloadDetail.ts's measured figures). They keep their card and their
+ * Delete button for as long as those bytes are on the phone - see
+ * `withdrawn` on BackgroundSheet, and `catalogSheets` in App.tsx.
+ *
+ * Deleting this one property is the whole of turning it back on.
  */
 export const USGS_SHEET: BackgroundSheet = {
   id: 'usgs-sheet',
   title: 'USGS sheet',
   summary: 'The official government topo, as an optional second map.',
   packages: [CORRIDOR_BACKGROUND_PACKAGE],
+  withdrawn: true,
 }
 
-/** Every sheet, default first. */
+/** Every sheet, default first. Catalogued rather than offered: what a hiker
+ *  may actually be asked to download is `offeredSheets()`. */
 export const BACKGROUND_SHEETS: readonly BackgroundSheet[] = [HIKING_SHEET, USGS_SHEET]
 
 /**
@@ -226,16 +266,70 @@ export function offeredPackages(sheet: BackgroundSheet): OfferedPackage[] {
 }
 
 /**
- * The sheets worth a card at all: those with at least one published archive.
+ * The sheets a hiker can be asked to download right now: at least one
+ * published archive, and not withdrawn.
  *
  * A sheet whose every package is `source: null` is not a decision anyone can
  * act on - rendering it would offer a download that 404s on a mountain, the
  * exact thing the null source exists to prevent. While the raster was the
  * only published artifact this returned the USGS sheet alone, which is why
  * the old single-bundle screen was right by accident (#237).
+ *
+ * A withdrawn sheet is excluded for a different reason and this is the only
+ * place the two meet: its bytes are perfectly obtainable and we have stopped
+ * asking (#855). Every screen that OFFERS a download reads this - the
+ * window's tabs, first run's - and none of them may show a withdrawn sheet.
+ * What a phone already holds is `withdrawnSheets()`'s question, not this
+ * one.
  */
 export function offeredSheets(): BackgroundSheet[] {
-  return BACKGROUND_SHEETS.filter((sheet) => offeredPackages(sheet).length > 0)
+  return BACKGROUND_SHEETS.filter(
+    (sheet) => offeredPackages(sheet).length > 0 && sheet.withdrawn !== true,
+  )
+}
+
+/**
+ * The sheets that are no longer offered but whose archives this build still
+ * knows how to read, store and delete.
+ *
+ * Separate from `offeredSheets()` rather than a flag on it, because the two
+ * answers are used by different screens for opposite purposes: one is "what
+ * may a hiker be asked to take", the other is "what may a hiker still be
+ * carrying". App.tsx joins them - a withdrawn sheet reaches the download
+ * window only while its bytes are actually here, and arrives there with no
+ * Download button, because DownloadCard only offers one in `not-downloaded`.
+ *
+ * Empty in the ordinary case, and that is the point: nothing downstream
+ * needs to know a withdrawal ever happened.
+ */
+export function withdrawnSheets(): BackgroundSheet[] {
+  return BACKGROUND_SHEETS.filter(
+    (sheet) => offeredPackages(sheet).length > 0 && sheet.withdrawn === true,
+  )
+}
+
+/**
+ * Whether `background_source: 'usgs_topo_offline'` is a choice a hiker can
+ * still make on this phone.
+ *
+ * The rule lives here rather than on either picker because both pickers are
+ * the same component rendered twice (chrome/BackgroundPicker.tsx) from two
+ * screens that do not share a parent - and a rule about what the catalog
+ * offers, spelled out separately in the legend and in Settings, is a rule
+ * with two chances to drift.
+ *
+ * It is the SAME question the download window asks about the USGS card, one
+ * step along: that background draws the raster archive and nothing else, so
+ * it is a choice exactly while the sheet behind it is one - published, and
+ * either still on offer or already on this phone. A withdrawn sheet somebody
+ * downloaded before the withdrawal keeps both (#855); a withdrawn sheet
+ * nobody took offers neither.
+ */
+export function offlineBackgroundAvailable(rasterArchiveDownloaded: boolean): boolean {
+  return (
+    offeredPackages(USGS_SHEET).length > 0 &&
+    (USGS_SHEET.withdrawn !== true || rasterArchiveDownloaded)
+  )
 }
 
 /** The hiking sheet's total at a level (#276) - what its picker shows per

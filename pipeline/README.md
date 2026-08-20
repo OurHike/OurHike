@@ -399,6 +399,15 @@ artifacts).
 
 ## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 
+**Not built in CI for v2 ([#855](https://github.com/OurHike/OurHike/issues/855),
+2026-08-20).** Everything below still describes the pipeline and still runs by
+hand; what changed is that `build-raster.yml` refuses every dispatch in seconds
+unless a maintainer ticks `run_despite_withdrawal`, and the app no longer offers
+the sheet these archives make. The reason is the fan-out this section documents —
+51 render jobs and a 300-minute assemble — measured against a maintainer's
+judgement that the sheet is not yet worth it. The published tiers stay in the
+bucket and a phone that already downloaded one keeps it.
+
 Superseded on 2026-08-06: `export_pmtiles.py` and its 11 m intermediate are
 gone. The measured diagnosis in [#191](https://github.com/OurHike/OurHike/issues/191)
 found the old chain shipped ~1/88th of the source's pixels - US Topo

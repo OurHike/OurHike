@@ -11,6 +11,7 @@ import {
   TRAILS_BLOB_KEY,
 } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
+import { BASEMAP_PACKAGE } from './lib/packages'
 import { readArchive, segmentKeyFor } from './lib/archiveStore'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
@@ -84,10 +85,29 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
  *
  * The sheets are tabs rather than a stack, so the card a test wants is not on
  * screen until its tab is chosen - which is exactly what a hiker does.
+ *
+ * ONLY REACHABLE ON A PHONE THAT ALREADY HAS THE RASTER since #855: the sheet
+ * is withdrawn, so its card exists exactly while there are bytes of it here -
+ * finished, or stopped part-way with a Resume on it. Every caller below seeds
+ * the store first for that reason. A test that wants a card to exercise the
+ * download machinery generally wants `hikingSheetCard` instead.
  */
 async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
   return screen.findByRole('region', { name: /usgs sheet/i })
+}
+
+/**
+ * The hiking sheet's card - the one every phone is offered.
+ *
+ * No tab click: with the USGS sheet withdrawn there is usually one sheet and
+ * so no strip at all (screens/Downloads.tsx), and where a second card does
+ * appear this one is still the open tab. Finding the region by name works in
+ * both, which is what keeps these tests about the download rather than about
+ * how many sheets happen to be on offer.
+ */
+function hikingSheetCard() {
+  return screen.findByRole('region', { name: /hiking sheet/i })
 }
 
 describe('once there is a GPS fix', () => {
@@ -556,15 +576,16 @@ describe('downloading everything', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    // The USGS card, named: two sheets each have a download button now (#237).
-    const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+    // The hiking sheet's card, named: each sheet has its own download button
+    // (#237), and this is the one every phone is offered (#855).
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
     // Read through the accessor the map uses: since #553 a finished archive is a
     // run of segment records named by a completion marker, not one record.
     await waitFor(async () =>
-      expect(await readArchive(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob),
+      expect(await readArchive(BASEMAP_PACKAGE.idbKey)).toBeInstanceOf(Blob),
     )
   })
 
@@ -591,22 +612,27 @@ describe('downloading everything', () => {
     expect(store.has(POIS_KEY)).toBe(true)
   })
 
-  it('records a new detail level as a max background zoom', async () => {
+  it('records a level chosen on a card as the sheet’s own preference', async () => {
+    // Each sheet's picker writes its own dial, never a shared one (#276).
+    //
+    // Asserted against the HIKING sheet since #855. It used to be the raster
+    // card and `max_background_zoom`, which is that sheet's dial - and with
+    // the USGS sheet withdrawn there is no card to turn it on, so a test
+    // driving it through the UI would be testing a screen no hiker can
+    // reach. The preference itself is untouched and still validated where it
+    // is defined (lib/userPreferences.test.ts, and the backend's mirror).
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    // The levels live on the sheet that has them - the USGS raster. One
-    // stored level all the same: max_background_zoom is what the next
-    // download is fetched at.
-    await usgsSheetCard(user)
-    await user.click(await screen.findByRole('radio', { name: /light/i }))
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('radio', { name: /fine/i }))
 
     await waitFor(() => {
-      const saved = store.get(PREFERENCES_KEY) as { max_background_zoom: number }
-      expect(saved.max_background_zoom).toBe(11)
+      const saved = store.get(PREFERENCES_KEY) as { hiking_detail_level: string }
+      expect(saved.hiking_detail_level).toBe('fine')
     })
   })
 })
@@ -908,8 +934,8 @@ describe('when the trail data cannot be downloaded', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     const notice = await screen.findByText(/could not be fetched/i)
     expect(notice).toHaveTextContent(/trails\.geojson/)
@@ -936,29 +962,39 @@ describe('a download left running', () => {
     // download in progress IS. Held open deliberately: a stream that closes
     // races the assertions to 'downloaded', and the state under test would be
     // gone before anything could look at it.
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      headers: new Headers({ 'content-length': '10' }),
-      body: new ReadableStream({
-        start(controller) {
-          controller.enqueue(new Uint8Array([1, 2, 3, 4]))
-        },
-      }),
-    } as unknown as Response)
+    //
+    // Built per call rather than handed back as one object, because the sheet
+    // under test is the hiking one and that is two archives (#855 withdrew
+    // the single-archive raster sheet these flows used to drive). A
+    // ReadableStream can be read once, so a shared Response would leave the
+    // second transfer reading a locked body - and the footer's figure is the
+    // two of them combined, which is the number this asserts.
+    vi.mocked(fetch).mockImplementation(
+      () =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: new Headers({ 'content-length': '10' }),
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array([1, 2, 3, 4]))
+            },
+          }),
+        }) as unknown as Promise<Response>,
+    )
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     // The window's own bar first: proof the transfer really is running, so
     // that what the footer says next is a report and not a coincidence.
     await waitFor(() =>
-      expect(within(usgsCard).getByRole('progressbar')).toHaveAttribute(
+      expect(within(card).getByRole('progressbar')).toHaveAttribute(
         'aria-valuenow',
         '40',
       ),

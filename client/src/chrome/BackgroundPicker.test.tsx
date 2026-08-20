@@ -14,6 +14,51 @@ afterEach(() => {
 })
 
 describe('BackgroundPicker', () => {
+  describe('when the offline background cannot be had (#855)', () => {
+    // The USGS sheet is withdrawn, so on a phone that never took it there is
+    // one background and nothing to choose. What this asserts is that the
+    // control disappears WHOLE - not that it drops to one radio, and not that
+    // it keeps its notes.
+
+    it('renders nothing rather than a choice of one', () => {
+      const { container } = render(
+        <BackgroundPicker
+          value="hiking_topo_live"
+          onChange={vi.fn()}
+          offlineBackgroundAvailable={false}
+        />,
+      )
+
+      expect(container).toBeEmptyDOMElement()
+    })
+
+    it('says nothing about a download that would honour the old choice', () => {
+      // The note under the picker reads "Download the map and this setting
+      // takes effect", which is exactly the promise the withdrawal broke.
+      // Rendering it here would send a hiker to a Downloads window that no
+      // longer carries the sheet.
+      render(
+        <BackgroundPicker
+          value="usgs_topo_offline"
+          onChange={vi.fn()}
+          override="nothing-downloaded"
+          offlineBackgroundAvailable={false}
+        />,
+      )
+
+      expect(screen.queryByText(/nothing is downloaded yet/i)).toBeNull()
+      expect(screen.queryByRole('radio')).toBeNull()
+    })
+
+    it('is offered by default, so a screen that says nothing loses no control', () => {
+      // The prop defaults to true on purpose: forgetting to pass it must not
+      // silently hide the background choice on some screen nobody rechecked.
+      render(<BackgroundPicker value="hiking_topo_live" onChange={vi.fn()} />)
+
+      expect(screen.getAllByRole('radio')).toHaveLength(BACKGROUND_SOURCES.length)
+    })
+  })
+
   it('offers exactly the backgrounds the map can draw', () => {
     render(<BackgroundPicker value="hiking_topo_live" onChange={vi.fn()} />)
 

@@ -152,6 +152,11 @@ export interface LegendProps {
   backgroundOverride?: BackgroundOverride | null
   /** Whether the view is zoomed out past what the download covers (#216). */
   belowArchiveZoom?: boolean
+  /** Whether "downloaded only" is a background this phone can get at all -
+   *  false since the USGS sheet was withdrawn (#855), except on a phone that
+   *  already holds it. Carried rather than derived here: it is the shell that
+   *  knows what is on the phone. See chrome/BackgroundPicker.tsx. */
+  offlineBackgroundAvailable?: boolean
   /**
    * How many waypoints of each category the map actually drew
    * (map/drawnPois.ts). Omitted where nobody measured, and then the rows read
@@ -239,6 +244,7 @@ export function Legend({
   onChangeBackground,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  offlineBackgroundAvailable = true,
   drawnCounts,
   belowPoiZoom = false,
   maintainerLine = null,
@@ -286,7 +292,15 @@ export function Legend({
   // Gates the wrapper only. The picker's own two props are re-checked where it
   // is drawn, because that is what narrows them from optional to present - and
   // an empty block would still take the desktop panel's `margin-top: auto`.
-  const hasPicker = backgroundChoice !== undefined && onChangeBackground !== undefined
+  //
+  // The availability test is here as well as inside the picker for exactly
+  // that last reason: a picker that renders null (#855) still leaves this
+  // wrapper claiming the space, and on the desktop panel that is a visible
+  // gap above the downloads link.
+  const hasPicker =
+    backgroundChoice !== undefined &&
+    onChangeBackground !== undefined &&
+    offlineBackgroundAvailable
 
   return (
     <div
@@ -668,6 +682,7 @@ export function Legend({
               onChange={onChangeBackground}
               override={backgroundOverride}
               belowArchiveZoom={belowArchiveZoom}
+              offlineBackgroundAvailable={offlineBackgroundAvailable}
               idPrefix="legend"
             />
           )}

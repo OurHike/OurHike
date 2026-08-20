@@ -44,6 +44,13 @@
 // greyed, pointing at Downloads. Showing what the optional map costs is not
 // the same as asking a newcomer to configure it.
 //
+// That tab is ABSENT for v2, and the paragraph above is kept whole for when
+// it returns. The USGS sheet is withdrawn (lib/packages.ts, #855), and a
+// first-run step that prices a map the Downloads window will not sell would
+// be worse than one that never mentions it. SHEET_TABS reads the catalog
+// rather than listing the sheets, so nothing here had to learn about the
+// withdrawal to stop showing it.
+//
 // What this step does NOT have at all is the download itself - no progress,
 // no buttons, nothing on the phone to delete. That is the window's, one
 // screen later; duplicating it would mean starting a download inside a flow
@@ -53,7 +60,7 @@ import { useState } from 'react'
 import { Logo } from '../design-system/components'
 import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingSteps'
 import type { HikingDetailLevel } from '../lib/userPreferences'
-import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
+import { HIKING_SHEET, offeredSheets, USGS_SHEET } from '../lib/packages'
 import { DetailPicker, hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 import { useAvailableBytes } from '../lib/useAvailableBytes'
 import { Tabs } from './Tabs'
@@ -83,14 +90,20 @@ export interface OnboardingProps {
   onComplete: (result: OnboardingResult) => void
 }
 
-/** The two sheets, in the download window's own order - the background
- *  everyone gets first, the optional second map after it. Named from the
- *  catalog so first run and the window cannot come to call them different
- *  things (lib/packages.ts). */
-const SHEET_TABS = [
-  { id: HIKING_SHEET.id, label: HIKING_SHEET.title },
-  { id: USGS_SHEET.id, label: USGS_SHEET.title },
-]
+/**
+ * The sheets on offer, in the download window's own order - the background
+ * everyone gets first, any optional second map after it. Named from the
+ * catalog so first run and the window cannot come to call them different
+ * things, and FILTERED by it too: a withdrawn sheet is not something to put
+ * in front of a newcomer, and since #855 that is the USGS raster.
+ *
+ * So this is usually one tab today, and the strip disappears when it is -
+ * the download window's own rule, for its own reason (Downloads.tsx): "a
+ * single tab is a heading pretending to be a control". The two screens are
+ * two consecutive views of one decision and they have to keep looking like
+ * it.
+ */
+const SHEET_TABS = offeredSheets().map((sheet) => ({ id: sheet.id, label: sheet.title }))
 
 export function Onboarding({ onComplete }: OnboardingProps) {
   const [stepIndex, setStepIndex] = useState(0)
@@ -108,6 +121,40 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     currentStepId: step.id,
     skippedStepIds: [],
   })
+
+  /** The open sheet's body - its summary and its levels. Lifted out of the
+   *  tab strip because it is now rendered with or without one, and a panel
+   *  that only exists inside `<Tabs>` cannot be shown when there is nothing
+   *  to switch between. */
+  const sheetPanel =
+    openSheetId === HIKING_SHEET.id ? (
+      <>
+        <p className="onboarding__sheet-summary">{HIKING_SHEET.summary}</p>
+        <DetailPicker
+          options={hikingDetailOptions()}
+          value={hikingLevel}
+          onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
+          name="onboarding-detail"
+          availableBytes={availableBytes}
+        />
+      </>
+    ) : (
+      <>
+        <p className="onboarding__sheet-summary">{USGS_SHEET.summary}</p>
+        {/* Named and priced, not configured (#277). Locked rather
+            than absent so the newcomer can see what the optional map
+            would cost before deciding they want it at all. */}
+        <DetailPicker
+          options={rasterDetailOptions()}
+          value=""
+          onChange={() => undefined}
+          name="onboarding-usgs-detail"
+          locked
+          lockedNote="Chosen in Downloads, any time. This step is sizing the map you navigate by."
+          availableBytes={availableBytes}
+        />
+      </>
+    )
 
   const finish = (locationRequested: boolean) =>
     onComplete({ hikingDetailLevel: hikingLevel, locationRequested })
@@ -151,42 +198,19 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               Pick how much detail you want; you can change this later.
             </p>
 
-            <Tabs
-              label="Background maps"
-              tabs={SHEET_TABS}
-              activeId={openSheetId}
-              onSelect={setOpenSheetId}
-              idPrefix="onboarding-sheet"
-            >
-              {openSheetId === HIKING_SHEET.id ? (
-                <>
-                  <p className="onboarding__sheet-summary">{HIKING_SHEET.summary}</p>
-                  <DetailPicker
-                    options={hikingDetailOptions()}
-                    value={hikingLevel}
-                    onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
-                    name="onboarding-detail"
-                    availableBytes={availableBytes}
-                  />
-                </>
-              ) : (
-                <>
-                  <p className="onboarding__sheet-summary">{USGS_SHEET.summary}</p>
-                  {/* Named and priced, not configured (#277). Locked rather
-                      than absent so the newcomer can see what the optional map
-                      would cost before deciding they want it at all. */}
-                  <DetailPicker
-                    options={rasterDetailOptions()}
-                    value=""
-                    onChange={() => undefined}
-                    name="onboarding-usgs-detail"
-                    locked
-                    lockedNote="Chosen in Downloads, any time. This step is sizing the map you navigate by."
-                    availableBytes={availableBytes}
-                  />
-                </>
-              )}
-            </Tabs>
+            {SHEET_TABS.length > 1 ? (
+              <Tabs
+                label="Background maps"
+                tabs={SHEET_TABS}
+                activeId={openSheetId}
+                onSelect={setOpenSheetId}
+                idPrefix="onboarding-sheet"
+              >
+                {sheetPanel}
+              </Tabs>
+            ) : (
+              sheetPanel
+            )}
           </section>
         )}
 

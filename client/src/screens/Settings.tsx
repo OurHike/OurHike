@@ -20,6 +20,7 @@ import type {
   UserPreferences,
 } from '../lib/userPreferences'
 import { backgroundOverride } from '../lib/dataSaver'
+import { offlineBackgroundAvailable } from '../lib/packages'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
@@ -221,6 +222,11 @@ export function MapSettings({
           dataSaver,
           archiveDownloaded,
         )}
+        // Whether that control has anything to offer at all (#855). Off the
+        // catalog, from the same function the map's copy of this picker
+        // reads, so the two cannot disagree about whether a background
+        // exists - which is the whole reason both are one component.
+        offlineBackgroundAvailable={offlineBackgroundAvailable(archiveDownloaded)}
         idPrefix="settings"
       />
 

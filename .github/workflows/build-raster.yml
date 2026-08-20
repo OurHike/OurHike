@@ -1,5 +1,24 @@
 # Builds the USGS topo raster background in CI and publishes it to R2.
 #
+# SWITCHED OFF FOR v2 (#855). Every dispatch stops at the `disabled` job below
+# in a few seconds unless a maintainer ticks `run_despite_withdrawal`, and the
+# app no longer offers the sheet this produces (client/src/lib/packages.ts).
+#
+# The reason is the shape described further down rather than anything wrong
+# with the code: one render job per corridor cell - 51 of them, 150-minute
+# timeout each - then a 300-minute assemble on a single runner. Read off the
+# timeouts in this file, that is a ceiling of ~7,950 job-minutes against
+# build-basemap.yml's single 180 and build-dem.yml's single 120, which makes
+# this the most expensive workflow here by a factor no other job approaches.
+# The maintainer's call on 2026-08-20 is that the sheet it produces is not yet
+# good enough to be worth that. A judgement about the map, not a measurement
+# of it - the measurement is the fan-out.
+#
+# NOTHING BELOW THIS BLOCK WAS TOUCHED, deliberately. The shape, the ownership
+# argument, the disk reasoning - all of it is what makes the build runnable
+# again, and none of it survives being reconstructed later from a diff.
+# Deleting the `disabled` job is the whole of turning this back on.
+#
 # The other half of the map. publish-vector-data.yml handles trail lines and
 # POIs in minutes; this handles ~14 GB of source imagery and needs a fan-out to
 # do it, which is why they are separate workflows rather than one.
@@ -55,6 +74,10 @@ on:
         type: choice
         options: [ua, production, dev]
         default: ua
+      run_despite_withdrawal:
+        description: "Run anyway. This build is switched off for v2 (#855); ticking this spends the fan-out deliberately."
+        type: boolean
+        default: false
 
 concurrency:
   group: build-raster
@@ -64,7 +87,42 @@ permissions:
   contents: read
 
 jobs:
+  # The switch (#855). Seconds, on one runner, before anything expensive can
+  # start.
+  #
+  # A GATE RATHER THAN A DELETED TRIGGER, because the two fail differently and
+  # only one of them fails usefully. Stripping `workflow_dispatch` would make
+  # the button disappear, and a maintainer looking for a build that used to be
+  # there would have to read git history to find out whether it was withdrawn
+  # or broken. This says so, in the run log, with the issue number.
+  #
+  # It is `!inputs.x` rather than a comparison against a string: a
+  # `type: boolean` dispatch input arrives as a real boolean, and `== 'false'`
+  # against one is a subtle way to write a guard that never fires.
+  #
+  # The whole build hangs off this: compute-cells needs it, and everything
+  # else needs compute-cells, so one failed step here skips all 51 render
+  # jobs, the assemble and the publish.
+  disabled:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Refuse the run
+        if: ${{ !inputs.run_despite_withdrawal }}
+        run: |
+          echo "::error title=Raster build is switched off::The USGS raster sheet is withdrawn for v2 (#855) and this build does not run. It is the most expensive workflow here - 51 render jobs plus a 300-minute assemble - and the app no longer offers the sheet it produces. To run it anyway, dispatch again with 'run_despite_withdrawal' ticked."
+          exit 1
+
+      # Conditioned rather than left to run after a failed step. Both are true
+      # here - a step after a failure is skipped anyway - but a reader should
+      # not have to know that rule to see which of these two can happen.
+      - name: Say that the switch was overridden
+        if: ${{ inputs.run_despite_withdrawal }}
+        run: |
+          echo "::warning title=Running a withdrawn build::'run_despite_withdrawal' was ticked, so the fan-out below is going ahead. See #855 for why it is normally off."
+
   compute-cells:
+    needs: disabled
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:

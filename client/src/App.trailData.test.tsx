@@ -82,14 +82,16 @@ function requested() {
 }
 
 /**
- * The USGS sheet's card, behind its own tab in the download window (#298).
+ * The hiking sheet's card - the one every phone is offered.
  *
- * The sheets are tabs rather than a stack, so the card a test wants is not on
- * screen until its tab is chosen - which is exactly what a hiker does.
+ * No tab click: the USGS sheet is withdrawn (#855), so the window usually
+ * holds one card and renders no strip at all (screens/Downloads.tsx), and
+ * where a second card does appear this one is still the open tab. The canary
+ * these tests are about runs before any sheet's bytes are asked for, so which
+ * card starts it does not matter to them.
  */
-async function usgsSheetCard(user: { click: (element: Element) => Promise<void> }) {
-  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
-  return screen.findByRole('region', { name: /usgs sheet/i })
+function hikingSheetCard() {
+  return screen.findByRole('region', { name: /hiking sheet/i })
 }
 
 describe('trail data on a phone that has downloaded nothing', () => {
@@ -270,7 +272,7 @@ describe('the trail data a tapped download waits for', () => {
     await renderApp()
     await user.click(await screen.findByRole('button', { name: /legend/i }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
-    const card = await usgsSheetCard(user)
+    const card = await hikingSheetCard()
     await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     // The state the whole wait used to be invisible in.
@@ -310,7 +312,7 @@ describe('the trail data a tapped download waits for', () => {
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
-    const card = await usgsSheetCard(user)
+    const card = await hikingSheetCard()
     await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     // Waited on rather than duplicated: the tap is visibly in the canary
@@ -367,8 +369,8 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     await user.click(await screen.findByRole('button', { name: /legend/i }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
     await screen.findByRole('dialog', { name: /offline map/i })
-    const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+    const card = await hikingSheetCard()
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
 
     const notice = await screen.findByText(/none of it was saved/i)
     expect(notice).toHaveTextContent(/untouched/i)

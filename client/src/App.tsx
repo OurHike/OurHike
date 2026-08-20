@@ -99,11 +99,13 @@ import {
   HIKING_SHEET,
   offeredPackages,
   offeredSheets,
+  offlineBackgroundAvailable,
   packageArtifactKey,
   packageDownloadUrl,
   packageSizeBytes,
   sheetSizeBytes,
   USGS_SHEET,
+  withdrawnSheets,
   type BackgroundSheet,
 } from './lib/packages'
 import { combineBackgroundStatus } from './lib/backgroundStatus'
@@ -823,21 +825,28 @@ function App() {
   // kilometres.
   const units = preferences.unit_system
 
-  // The background sheets a hiker can choose between (#237), and every
-  // archive behind them (#192). One flat download store underneath - the
-  // per-sheet grouping is a fact about what a card shows, not about how
-  // bytes are held.
-  const backgroundSheets = useMemo(() => offeredSheets(), [])
+  // Every sheet this build can hold bytes for (#237), and every archive
+  // behind them (#192). One flat download store underneath - the per-sheet
+  // grouping is a fact about what a card shows, not about how bytes are held.
+  //
+  // A WITHDRAWN sheet is in here, and has to be. It is not on offer any more
+  // (lib/packages.ts, #855), but a phone that took it before the withdrawal
+  // is still holding it, and every one of those bytes is reachable only
+  // through a registered request: the status the card reads, the header
+  // `useArchiveZooms` asks for, and the delete. Registering one starts
+  // nothing on its own - `useArchiveDownloads` transfers only when something
+  // asks it to.
+  const catalogSheets = useMemo(() => [...offeredSheets(), ...withdrawnSheets()], [])
   const downloadRequests = useMemo(
     () =>
-      backgroundSheets
+      catalogSheets
         .flatMap((sheet) => offeredPackages(sheet))
         .map((pkg) => ({
           packageKey: pkg.idbKey,
           url: packageDownloadUrl(pkg, detailLevel, hikingLevel),
           artifactKey: packageArtifactKey(pkg, detailLevel, hikingLevel),
         })),
-    [backgroundSheets, detailLevel, hikingLevel],
+    [catalogSheets, detailLevel, hikingLevel],
   )
   const {
     statusFor: archiveStatusFor,
@@ -848,6 +857,46 @@ function App() {
     remove: removePackage,
     persistence: archivePersistence,
   } = useArchiveDownloads(downloadRequests)
+
+  /**
+   * The sheets that get a card in the download window - which is not the same
+   * list as the one above (#855).
+   *
+   * An offered sheet is always here. A WITHDRAWN one is here only while this
+   * phone has bytes of it, and that is the whole rule: a hiker who downloaded
+   * the USGS raster before it was withdrawn still has up to 1.2 GB of it, and
+   * the card is the only place to get that space back. A hiker who never took
+   * it is never shown a map they can no longer have.
+   *
+   * BYTES, not "finished". A transfer stopped at 90% is several hundred
+   * megabytes in IndexedDB and the card is where its Resume lives; dropping
+   * it at `downloaded` would leave those bytes with no screen that mentions
+   * them. The two states that mean this phone holds nothing are excluded, and
+   * they are opposite in kind - `not-downloaded` never started, `evicted` was
+   * reclaimed by the OS (#190) - but the answer to "is there anything here to
+   * finish or free" is no for both.
+   *
+   * The card needs no notion of withdrawal to render correctly, and is not
+   * given one: DownloadCard offers Download in `not-downloaded` and Delete in
+   * `downloaded`, so a sheet that reaches this list arrives already showing
+   * the only buttons that still make sense.
+   *
+   * Downstream of `archiveStatusFor` on purpose, which is why the catalog
+   * above is a separate memo: the requests have to be registered before there
+   * is any status to filter on.
+   */
+  const backgroundSheets = useMemo(
+    () =>
+      catalogSheets.filter(
+        (sheet) =>
+          sheet.withdrawn !== true ||
+          offeredPackages(sheet).some((pkg) => {
+            const { state } = archiveStatusFor(pkg.idbKey)
+            return state !== 'not-downloaded' && state !== 'evicted'
+          }),
+      ),
+    [catalogSheets, archiveStatusFor],
+  )
 
   // What the phone can still hold, so a level it cannot is greyed where it is
   // chosen rather than refused after the tap (#555). Re-read after a delete
@@ -892,6 +941,13 @@ function App() {
   // offline background against an archive that draws nothing - the exact state
   // effectiveBackground exists to keep a hiker out of.
   const archiveDownloaded = archiveStatus.state === 'downloaded'
+
+  // Whether "downloaded only" is still a background anyone here can choose
+  // (#855). Read from the catalog rather than worked out here, so this and
+  // Settings' copy of the same picker cannot come to different answers - and
+  // so it agrees by construction with the card `backgroundSheets` decides on
+  // above, which is the same question about the same sheet.
+  const offlineBackground = offlineBackgroundAvailable(archiveDownloaded)
 
   // Whether ANY sheet's archive is here - what words the DownloadsLink
   // ("choose" vs "change"). Distinct from archiveDownloaded since #237: the
@@ -2239,6 +2295,15 @@ function App() {
    * legend's and Settings' - are the same component, and a rule about what a
    * choice MEANS belongs to the shell that owns the download, not to the
    * control that reports the choice.
+   *
+   * THE SECOND HALF CANNOT FIRE TODAY, and is kept anyway (#855). With the
+   * USGS sheet withdrawn the picker offers "downloaded only" exactly where it
+   * can be honoured - on a phone that already holds the archive - so the
+   * branch below is unreachable from any screen: either the choice is
+   * unavailable, or it is available and `archiveDownloaded` is already true.
+   * It is the rule for when the sheet returns, and deleting it would leave
+   * whoever un-withdraws that sheet with a silent choice that answers "show
+   * me my download" by storing a preference and saying nothing.
    */
   const handleChangeBackground = useCallback(
     (background_source: BackgroundSource) => {
@@ -3058,6 +3123,10 @@ function App() {
           // explains any gap between that and what is drawn.
           backgroundChoice={preferences.background_source}
           onChangeBackground={handleChangeBackground}
+          // And whether that choice still exists to make (#855). False on a
+          // phone with no raster archive, which is every phone that did not
+          // take one before the sheet was withdrawn.
+          offlineBackgroundAvailable={offlineBackground}
           // The link at the foot of the legend, and the wording it gets. This
           // is the only way to the download from the map now that the tab is
           // gone - which is why it is carried, and not why it is given room.

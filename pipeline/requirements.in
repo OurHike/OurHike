@@ -42,6 +42,15 @@ psycopg[binary]
 # cv2.data.haarcascades holds no XMLs at all), and its replacement,
 # FaceDetectorYN, wants an ONNX model fetched from the opencv zoo. Moving to
 # 5 means deciding where that model lives first.
+#
+# #836 wanted the NUDITY check here too, and it was taken out on purpose, not
+# forgotten: every usable nudity detector means TensorFlow, PyTorch or
+# onnxruntime in these pins plus a decision about where its model lives -
+# exactly the deliberate-dependency call the pypdf note below describes, so
+# it went to the maintainer as #850 instead of arriving beside a face check.
+# Adding it back is: the runtime dependency here, the model-hosting decision,
+# and one more field in lib/photo_screen.py's screen record (see its
+# docstring - the ledger and both gates are already detector-agnostic).
 opencv-python-headless<5
 
 # check_deployment.py alone, to read .github/expected-origins.yml (#431).

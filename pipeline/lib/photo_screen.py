@@ -31,8 +31,20 @@ The shape, in three parts:
   keeps recording what exists, so clearing a photo publishes it on the next
   export with no re-crawl.
 
-The detector is OpenCV's stock Haar frontal-face cascade, chosen over a DNN
-detector for one reason: the cascade XML ships inside the
+Faces only, and that is a subtraction to be aware of: #836 asked for a
+face-AND-nudity check, and the nudity half was pulled out deliberately
+rather than built - it cannot be had without TensorFlow/PyTorch/onnxruntime
+in the pipeline pins plus a model-hosting decision, which is the
+maintainer's call (#850 - The pipeline's Commons screen checks faces but
+not nudity, because a nudity model means a new heavyweight dependency).
+Everything below is shaped so it can come back as an addition, not a
+rework: a second detector lands as another field inside the screen record,
+one more condition in `flagged()`, and nothing else - the decisions ledger
+keys on bytes, not on which detector flagged them, and the export and
+publish gates only ask `flagged()`.
+
+The face detector is OpenCV's stock Haar frontal-face cascade, chosen over
+a DNN detector for one reason: the cascade XML ships inside the
 opencv-python-headless wheel (pinned <5 - see requirements.in), so the
 check adds no model download to a pipeline that fetches nothing it does not
 pin. It is a weak detector and that is priced in: it misses profiles,

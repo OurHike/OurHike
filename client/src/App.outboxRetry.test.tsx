@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness } from './test/appHarness'
 import { OUTBOX_KEY } from './lib/outbox'
-import { sendReport } from './lib/api'
+import { sendOutboxItem } from './lib/api'
 import { BUILD_INFO } from './lib/buildInfo'
 
 // #266: "Try again" cleared the refusal and sent nothing.
@@ -32,7 +32,7 @@ vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(n
 vi.mock('./lib/api', () => ({
   API_CONFIGURED: true,
   accessToken: vi.fn(async () => 'a-real-token'),
-  sendReport: vi.fn(async () => undefined),
+  sendOutboxItem: vi.fn(async () => undefined),
   permanentFailureReason: vi.fn(() => null),
   // The map's own reads (#232). App fetches these whenever it is online with
   // a backend configured, which this file is; they are irrelevant to the
@@ -54,7 +54,7 @@ vi.mock('./lib/auth', async (importOriginal) => ({
   },
 }))
 
-const mockedSend = vi.mocked(sendReport)
+const mockedSend = vi.mocked(sendOutboxItem)
 const app = appHarness()
 const store = app.store
 
@@ -140,7 +140,7 @@ describe('Try again, on a report the server refused', () => {
     await user.click(await screen.findByRole('button', { name: /^send$/i }))
 
     await waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
-    expect(mockedSend.mock.calls[0][0].payload.type).toBe('blowdown')
+    expect(mockedSend.mock.calls[0][0].payload?.type).toBe('blowdown')
   })
 
   it('does not claim the report is waiting when the send failed again', async () => {

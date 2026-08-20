@@ -17,7 +17,7 @@
 // (backend/app/core/auth.py). The token is borrowed from there and sent here.
 
 import { getAuthClient } from './supabase'
-import type { OutboxItem } from './outbox'
+import type { OutboxItem, PhotoAction } from './outbox'
 import type { BackendReportStatus } from './reportStatus'
 import type { ClosureReason, ClosureStatus } from './closureBanner'
 import { PHOTO_CONTENT_TYPE } from './reportPhoto'
@@ -376,6 +376,77 @@ async function sendReportPhoto(reportId: string, photo: Blob): Promise<void> {
  *  precisely the case worth waiting out. */
 const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 413, 415])
 
+/**
+ * Sends one queued outbox item, whatever it carries.
+ *
+ * The outbox holds two families now: condition reports (the original
+ * cargo), and photo actions (#577/#579 - share, withdraw, report). One
+ * dispatcher, so `flushOutbox` keeps its single `send` seam and the queue
+ * stays one queue - a hiker's unsent work is one list, not two.
+ */
+export async function sendOutboxItem(item: OutboxItem): Promise<void> {
+  if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
+  return sendReport(item)
+}
+
+async function sendPhotoAction(
+  action: PhotoAction,
+  photo: Blob | undefined,
+): Promise<void> {
+  const base = `/waypoints/${encodeURIComponent(action.poiId)}/photos`
+
+  switch (action.kind) {
+    case 'poi_photo_share': {
+      try {
+        // The two-phase flush #369 established: the row first, the bytes
+        // second, either half retry-safe (the row upserts on its identity,
+        // the object overwrites at its derived key).
+        await authedFetch(base, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taken: action.taken, flagged: action.flagged }),
+        })
+      } catch (error) {
+        // 409 is "no trail name on the account yet". The sheet only offers
+        // a share when the device holds one, so this is a sync gap that
+        // heals itself - rethrown as a PLAIN error so the generic
+        // classifier's 409 entry (written for duplicate report ids) cannot
+        // mark it permanently failed with the wrong sentence.
+        if (error instanceof ApiError && error.status === 409) {
+          throw new Error('The account has no trail name yet; retried once it does.')
+        }
+        throw error
+      }
+      if (photo !== undefined) await authedFetchBytes(`${base}/mine`, photo)
+      return
+    }
+    case 'poi_photo_withdraw':
+      try {
+        await authedFetch(`${base}/mine`, { method: 'DELETE' })
+      } catch (error) {
+        // Already gone is a wish already granted.
+        if (error instanceof ApiError && error.status === 404) return
+        throw error
+      }
+      return
+    case 'poi_photo_report':
+      try {
+        await authedFetch(`${base}/${encodeURIComponent(action.photoId)}/report`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: action.reason }),
+        })
+      } catch (error) {
+        // The photo rolled out, was withdrawn, or was already taken down
+        // between the report being written and the flush reaching signal.
+        // Whatever removed it, the report's purpose is served.
+        if (error instanceof ApiError && error.status === 404) return
+        throw error
+      }
+      return
+  }
+}
+
 /** Like `authedFetch`, but sends raw bytes rather than JSON. */
 async function authedFetchBytes(path: string, body: Blob): Promise<Response> {
   const token = await accessToken()
@@ -634,4 +705,59 @@ export async function verifyClosure(closureId: string): Promise<void> {
 
 export async function dismissClosure(closureId: string): Promise<void> {
   await authedFetch(`/closures/${closureId}/dismiss`, { method: 'POST', body: '{}' })
+}
+
+/**
+ * One row of the photo half of the queue (#579): `PoiPhotoSummary`'s
+ * fields plus what a moderator's decision needs. `held` is the one state
+ * where a photo exists and no hiker can see it - a nudity flag waiting on
+ * its one human glance (#837) - and it sorts first because nothing is
+ * published while it waits.
+ */
+export interface PoiPhotoQueueEntry extends PoiPhotoSummary {
+  /** ISO 8601, UTC-designated - when the share landed. */
+  shared_at: string
+  flagged: string | null
+  held: boolean
+  reported_reason: string | null
+}
+
+export async function fetchPhotoQueue(
+  signal?: AbortSignal,
+): Promise<PoiPhotoQueueEntry[]> {
+  const response = await authedFetch('/moderation/poi-photos', { signal })
+  return (await response.json()) as PoiPhotoQueueEntry[]
+}
+
+async function photoQueueAction(
+  photoId: string,
+  verb: string,
+): Promise<PoiPhotoQueueEntry> {
+  const response = await authedFetch(
+    `/moderation/poi-photos/${encodeURIComponent(photoId)}/${verb}`,
+    { method: 'POST', body: '{}' },
+  )
+  return (await response.json()) as PoiPhotoQueueEntry
+}
+
+/** Make this one of the place's pinned three. A 409 is the cap: the place
+ *  already has three pins, and choosing which comes down is the person's
+ *  call, not recency's. */
+export async function pinPhoto(photoId: string): Promise<PoiPhotoQueueEntry> {
+  return photoQueueAction(photoId, 'pin')
+}
+
+export async function unpinPhoto(photoId: string): Promise<PoiPhotoQueueEntry> {
+  return photoQueueAction(photoId, 'unpin')
+}
+
+/** "Leave it in the twelve": one human looked, the photo is fine where it
+ *  is. Clears a hold and answers a report without acting on it. */
+export async function reviewPhoto(photoId: string): Promise<PoiPhotoQueueEntry> {
+  return photoQueueAction(photoId, 'review')
+}
+
+/** The takedown - "Refuse it" on the queue. */
+export async function dismissPhoto(photoId: string): Promise<PoiPhotoQueueEntry> {
+  return photoQueueAction(photoId, 'dismiss')
 }

@@ -21,6 +21,7 @@ import {
   chooseOwnPhoto,
   deleteOwnPhoto,
   listOwnPhotos,
+  setOwnPhotoShared,
   type OwnPhotoSource,
 } from './poiPhotos'
 
@@ -33,6 +34,15 @@ export interface OwnCardPhoto {
    *  photo is the honesty rule, and the added date always exists. */
   taken: string
   source: OwnPhotoSource
+  /** The stored bytes - what a share sends (#577). */
+  blob: Blob
+  /** The raw capture-date claim, null where the original had none -
+   *  distinct from `taken`, which falls back to the added date for
+   *  display. A share sends the claim, not the fallback. */
+  takenClaim: string | null
+  /** When the hiker shared it from this device, or undefined while
+   *  private (#577). */
+  shared?: string
 }
 
 export interface OwnPhotos {
@@ -42,6 +52,9 @@ export interface OwnPhotos {
   add(photo: { blob: Blob; taken: string | null; source: OwnPhotoSource }): Promise<void>
   choose(id: string): Promise<void>
   remove(id: string): Promise<void>
+  /** Record a share (ISO timestamp) or its withdrawal (null) - the phone's
+   *  memory of the decision; the network act queues separately (#577). */
+  setShared(id: string, at: string | null): Promise<void>
 }
 
 export function useOwnPhotos(poiId: string): OwnPhotos {
@@ -62,6 +75,9 @@ export function useOwnPhotos(poiId: string): OwnPhotos {
           url: URL.createObjectURL(photo.blob),
           taken: photo.taken ?? photo.added,
           source: photo.source,
+          blob: photo.blob,
+          takenClaim: photo.taken,
+          ...(photo.shared !== undefined ? { shared: photo.shared } : {}),
         }))
         // Replace, THEN revoke what was replaced. Revoking first - say in
         // this effect's own cleanup - would break the URLs the card is
@@ -130,5 +146,13 @@ export function useOwnPhotos(poiId: string): OwnPhotos {
     [poiId, reload],
   )
 
-  return { photos, add, choose, remove }
+  const setShared = useCallback(
+    async (id: string, at: string | null) => {
+      await setOwnPhotoShared(poiId, id, at)
+      reload()
+    },
+    [poiId, reload],
+  )
+
+  return { photos, add, choose, remove, setShared }
 }

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Moderation, ageOf } from './Moderation'
 import * as api from '../lib/api'
@@ -24,14 +31,35 @@ import * as api from '../lib/api'
 //     identical, and one of them means a moderator decided without evidence
 //     they were entitled to see.
 
-vi.mock('../lib/api', () => ({
-  fetchModerationQueue: vi.fn(),
-  fetchReportPhotoLink: vi.fn(),
-  verifyReport: vi.fn(),
-  dismissReport: vi.fn(),
-  verifyClosure: vi.fn(),
-  dismissClosure: vi.fn(),
-}))
+vi.mock('../lib/api', () => {
+  // The real class, re-declared: the component's `instanceof ApiError` has
+  // to hold for the errors these tests construct, and importing the real
+  // module for one class would drag the whole auth stack into the mock.
+  class ApiError extends Error {
+    readonly status: number
+    readonly detail: unknown
+    constructor(status: number, message: string, detail?: unknown) {
+      super(message)
+      this.name = 'ApiError'
+      this.status = status
+      this.detail = detail
+    }
+  }
+  return {
+    ApiError,
+    fetchModerationQueue: vi.fn(),
+    fetchReportPhotoLink: vi.fn(),
+    verifyReport: vi.fn(),
+    dismissReport: vi.fn(),
+    verifyClosure: vi.fn(),
+    dismissClosure: vi.fn(),
+    fetchPhotoQueue: vi.fn(),
+    pinPhoto: vi.fn(),
+    unpinPhoto: vi.fn(),
+    reviewPhoto: vi.fn(),
+    dismissPhoto: vi.fn(),
+  }
+})
 
 const mocked = vi.mocked(api)
 
@@ -87,6 +115,9 @@ const PHOTO_KEY = 'reports/report-1/1.jpg'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The photo half loads alongside the queue; empty by default so every
+  // existing case reads exactly as it did before the section existed.
+  mocked.fetchPhotoQueue.mockResolvedValue([])
   mocked.verifyReport.mockResolvedValue(undefined)
   mocked.dismissReport.mockResolvedValue(undefined)
   mocked.verifyClosure.mockResolvedValue(undefined)
@@ -296,8 +327,11 @@ describe('the photo the decision turns on', () => {
     // to read as absence when it is real.
     await shown({ reports: [aReport({ photo_url: null })] })
 
+    // Scoped to the report's own row since the photo-pin section (#579)
+    // gave the SCREEN a legitimate use of the word.
+    const row = screen.getAllByRole('listitem')[0]
     expect(screen.queryByRole('img')).toBeNull()
-    expect(screen.queryByText(/photo/i)).toBeNull()
+    expect(within(row).queryByText(/photo/i)).toBeNull()
     expect(mocked.fetchReportPhotoLink).not.toHaveBeenCalled()
   })
 

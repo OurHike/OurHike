@@ -7,7 +7,12 @@
 
 import { useEffect } from 'react'
 import { flushOutbox, type FlushResult } from './outbox'
-import { accessToken, sendReport, permanentFailureReason, API_CONFIGURED } from './api'
+import {
+  accessToken,
+  sendOutboxItem,
+  permanentFailureReason,
+  API_CONFIGURED,
+} from './api'
 
 /**
  * The in-flight flush, if one is running.
@@ -38,8 +43,10 @@ async function run(): Promise<FlushResult | null> {
 
   // The one place transport knowledge (which HTTP statuses are hopeless)
   // meets storage (what to do with a report that will never be accepted).
-  // Neither module imports the other; this introduces them.
-  return flushOutbox(sendReport, permanentFailureReason)
+  // Neither module imports the other; this introduces them. Since
+  // #577/#579 the send dispatches on what the item carries - a report or a
+  // photo action - through one seam, so the queue stays one queue.
+  return flushOutbox(sendOutboxItem, permanentFailureReason)
 }
 
 /**

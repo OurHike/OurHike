@@ -101,3 +101,32 @@
 .moderation__refused {
   color: var(--danger);
 }
+
+/* One photo waiting on a decision (#579): the photograph first, because a
+   photo is judged by looking, and a row that renders it as a text line with
+   a thumbnail bolted on has quietly decided it is a report. */
+.moderation__item--photo {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.moderation__photo-image {
+  width: 128px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  flex: 0 0 auto;
+}
+
+.moderation__photo-facts {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.moderation__note--flagged {
+  padding: 6px 10px;
+  background: var(--bg-sunken);
+  border-radius: 8px;
+}

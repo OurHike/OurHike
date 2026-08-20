@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { syncOutbox, useOutboxSync } from './outboxSync'
 import { flushOutbox } from './outbox'
-import { accessToken, sendReport, permanentFailureReason } from './api'
+import { accessToken, sendOutboxItem, permanentFailureReason } from './api'
 
 // #231's other half: the outbox had queued correctly since it was written and
 // nothing had ever emptied it.
@@ -16,7 +16,7 @@ import { accessToken, sendReport, permanentFailureReason } from './api'
 vi.mock('./outbox', () => ({ flushOutbox: vi.fn() }))
 vi.mock('./api', () => ({
   accessToken: vi.fn(),
-  sendReport: vi.fn(),
+  sendOutboxItem: vi.fn(),
   permanentFailureReason: vi.fn(),
   API_CONFIGURED: true,
 }))
@@ -40,7 +40,7 @@ describe('syncOutbox', () => {
     // never accept sitting in the queue saying "waiting to send" forever.
     await syncOutbox()
 
-    expect(mockedFlush).toHaveBeenCalledWith(sendReport, permanentFailureReason)
+    expect(mockedFlush).toHaveBeenCalledWith(sendOutboxItem, permanentFailureReason)
   })
 
   it('does not try when signed out - the queue waits for an account', async () => {
@@ -167,7 +167,7 @@ describe('a build with no backend configured', () => {
     vi.resetModules()
     vi.doMock('./api', () => ({
       accessToken: mockedToken,
-      sendReport,
+      sendOutboxItem,
       permanentFailureReason,
       API_CONFIGURED: false,
     }))

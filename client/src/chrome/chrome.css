@@ -2290,6 +2290,174 @@ a.poi-card__credit::after {
   color: var(--brand-primary);
 }
 
+/* The share verb stands apart from the manage pair: it is the one action
+   on the strip with consequences past this phone (#577). */
+.poi-card__own-share {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  box-shadow: none;
+}
+
+.poi-card__report-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.poi-card__report-options .poi-card__own-action {
+  text-align: left;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+}
+
+/* ---------- Share sheet (PoiShareSheet.tsx, #577) ---------- */
+
+/* A bottom sheet over the live map, same family as the closure sheet: no
+   scrim (no sheet in this app has one), map stays pannable above it. Widths
+   past a phone get the sheet centred rather than wall to wall. */
+.share-sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 4;
+  width: min(420px, 100%);
+  max-height: 80%;
+  overflow-y: auto;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 16%);
+}
+
+.share-sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+.share-sheet__title {
+  margin: 0;
+  font-size: 16px;
+  color: var(--fg-1);
+}
+
+.share-sheet__close {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  margin: calc(-1 * var(--space-2, 8px));
+  font-size: 18px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.share-sheet__subject {
+  display: flex;
+  gap: var(--space-3, 12px);
+  align-items: center;
+}
+
+.share-sheet__preview {
+  width: 84px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg-sunken);
+}
+
+.share-sheet__poi {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.share-sheet__meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.share-sheet__disclosures,
+.share-sheet__promises {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.share-sheet__disclosure h3,
+.share-sheet__promises h3 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+
+.share-sheet__disclosure p,
+.share-sheet__promises p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.share-sheet__promises {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.share-sheet__block {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.share-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-1, 4px);
+}
+
+.share-sheet__actions > button {
+  min-height: var(--min-touch-target, 44px);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.share-sheet__share {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.share-sheet__cancel {
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.share-sheet__footnote {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
 /* ---------- Serious warning sheet ---------- */
 
 .warning-sheet {

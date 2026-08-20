@@ -108,6 +108,35 @@ export interface OutboxFailure {
   build?: string
 }
 
+/**
+ * A photo action waiting for signal (#577/#579) - the outbox's second
+ * cargo, beside the reports it has always carried. One queue on purpose: a
+ * hiker's unsent work is one list, flushed by one loop, surviving in one
+ * IndexedDB key with the same atomicity (#288).
+ *
+ * A share carries its 640px bytes in the item's `photo` field, exactly as
+ * a report's photo does, and flushes in the same two phases (#369): the
+ * row, then the bytes. A withdrawal or a report is one idempotent request -
+ * both are safe to say twice, and the server treats "already gone" as a
+ * wish already granted.
+ */
+export type PhotoAction =
+  | {
+      kind: 'poi_photo_share'
+      poiId: string
+      /** "YYYY-MM-DD" capture-date claim, or null - lib/exifDate.ts. */
+      taken: string | null
+      /** What the on-device check found (#837), or null. */
+      flagged: 'nudity' | 'faces' | null
+    }
+  | { kind: 'poi_photo_withdraw'; poiId: string }
+  | {
+      kind: 'poi_photo_report'
+      poiId: string
+      photoId: string
+      reason: 'wrong_place' | 'person' | 'other'
+    }
+
 export interface OutboxItem {
   /**
    * Stable across retries, so a resend is recognisably the same report -
@@ -117,7 +146,13 @@ export interface OutboxItem {
    */
   id: string
   authoredAt: string
-  payload: ReportDraft
+  /** The condition report, on the items that are one. Exactly one of this
+   *  and `action` is present; optional (rather than a union type over the
+   *  whole item) so every item already sitting in a phone's IndexedDB -
+   *  all of which predate `action` - stays valid without migration. */
+  payload?: ReportDraft
+  /** The photo action, on the items that are one (#577/#579). */
+  action?: PhotoAction
   /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
@@ -205,6 +240,27 @@ export async function enqueue(
     // Spread rather than `photo` outright so an item without one has no key
     // at all. The queue is compared and rewritten in several places, and an
     // explicit `photo: undefined` is a difference that reads as one.
+    ...(photo !== undefined ? { photo } : {}),
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a photo action (#577/#579). Same queue, same properties: the
+ * authored time travels, a failed send leaves it queued, and the id makes
+ * a resend recognisably the same act.
+ */
+export async function enqueueAction(
+  action: PhotoAction,
+  photo?: Blob,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    action,
     ...(photo !== undefined ? { photo } : {}),
   }
 

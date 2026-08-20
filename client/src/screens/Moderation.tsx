@@ -37,13 +37,20 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  ApiError,
   dismissClosure,
+  dismissPhoto,
   dismissReport,
   fetchModerationQueue,
+  fetchPhotoQueue,
   fetchReportPhotoLink,
+  pinPhoto,
+  reviewPhoto,
+  unpinPhoto,
   verifyClosure,
   verifyReport,
   type ModerationQueue,
+  type PoiPhotoQueueEntry,
   type QueuedClosure,
   type QueuedReport,
 } from '../lib/api'
@@ -230,12 +237,30 @@ export function Moderation({ onClose }: ModerationProps) {
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
+  // The photo half (#579), on its own tri-state for the same reason - and
+  // its own failure flag, because "the photo queue could not be read" must
+  // not draw the whole screen as unreadable when the safety half loaded.
+  const [photos, setPhotos] = useState<PoiPhotoQueueEntry[] | null>(null)
+  const [photosFailed, setPhotosFailed] = useState(false)
+  // The pinned-three collision, shown on the row that hit it: the server
+  // refuses a fourth pin and says why, and that sentence belongs beside
+  // the button that earned it, not in a global error state.
+  const [pinRefusal, setPinRefusal] = useState<{ id: string; message: string } | null>(
+    null,
+  )
+
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
       setQueue(await fetchModerationQueue(signal))
       setFailed(false)
     } catch {
       setFailed(true)
+    }
+    try {
+      setPhotos(await fetchPhotoQueue(signal))
+      setPhotosFailed(false)
+    } catch {
+      setPhotosFailed(true)
     }
   }, [])
 
@@ -296,6 +321,114 @@ export function Moderation({ onClose }: ModerationProps) {
         >
           Dismiss
         </button>
+      </div>
+    </li>
+  )
+
+  /** A photo action, with the 409 the pin cap returns rendered beside the
+   *  row rather than as a screen-level failure. */
+  const actOnPhoto = async (id: string, action: () => Promise<unknown>) => {
+    setBusy(id)
+    setPinRefusal(null)
+    try {
+      await action()
+      await load()
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        const detail = (error.detail as { detail?: unknown } | undefined)?.detail
+        setPinRefusal({
+          id,
+          message:
+            typeof detail === 'string'
+              ? detail
+              : 'This place already has three pins. Unpin one first.',
+        })
+      } else {
+        setPhotosFailed(true)
+      }
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const REPORT_WORDS: Record<string, string> = {
+    wrong_place: 'reported: not this place',
+    person: 'reported: somebody in it did not agree to this',
+    other: 'reported: should not be public',
+  }
+
+  const photoRow = (photo: PoiPhotoQueueEntry) => (
+    <li key={photo.id} className="moderation__item moderation__item--photo">
+      {/* The signed URL carries its own authorisation, so a plain <img>
+          works here - the same reasoning as ReportPhoto's link form,
+          without the extra hop, because the queue endpoint already minted
+          the URL with the moderator's token. */}
+      <img className="moderation__photo-image" src={photo.url} alt="" />
+      <div className="moderation__photo-facts">
+        <p className="moderation__headline">
+          <span className="moderation__type">{photo.poi_id}</span>
+          <span className="moderation__meta">
+            {`taken ${photo.taken_month} · offered ${ageOf(photo.shared_at)} ago`}
+          </span>
+        </p>
+        <p className="moderation__meta">
+          {photo.attribution !== null
+            ? `by ${photo.attribution}`
+            : 'name withheld by the photographer’s request'}
+          {photo.pinned && ' · pinned'}
+        </p>
+        {photo.held && (
+          <p className="moderation__note moderation__note--flagged">
+            Flagged on the hiker’s phone · {photo.flagged}. The check is often wrong about
+            this, and it did not decide anything — it only put this in front of you first.
+            Nothing is published while it waits here.
+          </p>
+        )}
+        {!photo.held && photo.reported_reason !== null && (
+          <p className="moderation__note moderation__note--flagged">
+            {REPORT_WORDS[photo.reported_reason] ?? 'reported'}
+          </p>
+        )}
+        {pinRefusal !== null && pinRefusal.id === photo.id && (
+          <p className="moderation__note moderation__note--flagged" role="alert">
+            {pinRefusal.message} Pinning this one takes another down — pick which, or
+            leave this in the rolling twelve where it ages out on its own.
+          </p>
+        )}
+        <div className="moderation__actions">
+          {photo.pinned ? (
+            <button
+              type="button"
+              disabled={busy === photo.id}
+              onClick={() => void actOnPhoto(photo.id, () => unpinPhoto(photo.id))}
+            >
+              Unpin
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy === photo.id}
+              onClick={() => void actOnPhoto(photo.id, () => pinPhoto(photo.id))}
+            >
+              Pin it
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy === photo.id}
+            onClick={() => void actOnPhoto(photo.id, () => reviewPhoto(photo.id))}
+          >
+            Leave it in the twelve
+          </button>
+          <button
+            type="button"
+            className="moderation__dismiss"
+            disabled={busy === photo.id}
+            onClick={() => void actOnPhoto(photo.id, () => dismissPhoto(photo.id))}
+          >
+            Refuse it
+          </button>
+        </div>
       </div>
     </li>
   )
@@ -394,6 +527,32 @@ export function Moderation({ onClose }: ModerationProps) {
         ) : (
           <ul className="moderation__list">{queue.closures.map(closureRow)}</ul>
         )}
+      </section>
+
+      <section className="moderation__section">
+        <h2>Photos offered as a pin</h2>
+        <p className="moderation__preamble">
+          Newest first. Recency orders this list and never promotes anything. Only pins
+          are pre-moderated: the other twelve photos a place can hold go straight up and
+          come down when somebody reports one — pre-approving every photo on every
+          waypoint is more decisions than volunteers can work, and a queue nobody can
+          clear protects nobody.
+        </p>
+        {photosFailed ? (
+          <p role="alert" className="moderation__failed">
+            The photo queue could not be read — this is no answer, not an empty one.
+          </p>
+        ) : photos === null ? (
+          <p role="status">Reading the photos…</p>
+        ) : photos.length === 0 ? (
+          <p className="moderation__empty">Nothing waiting.</p>
+        ) : (
+          <ul className="moderation__list">{photos.map(photoRow)}</ul>
+        )}
+        <p className="moderation__preamble">
+          Nothing on this screen touches the Commons photos the pipeline fetches. Those
+          still reach a hiker&rsquo;s card with no person in the loop at all.
+        </p>
       </section>
 
       <button type="button" onClick={onClose}>

@@ -53,6 +53,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [DATA_ENVIRONMENTS.md](features/DATA_ENVIRONMENTS.md) | **v2, fifth feature — built.** Somewhere for UA to be wrong that is not what hikers download. Every published source reviewed for whether sharing it is safe, an environment made into a bucket prefix with production staying at the root, and `publish.py` refusing to run until it is told which environment it is writing to. |
 | [POI_IDENTITY.md](features/POI_IDENTITY.md) | **v2, sixth feature — platform, not a screen.** A POI's published id is minted at first sight and owned for life: upstream keys become matching evidence rather than identity, a checked-in ledger reconciles the ATC's annual refresh — by key where keys survive, by evidence where they don't, by retiring into a tombstone where the place is gone — and a human reviews the ledger's diff on the release PR, never every point. What keeps photos, comments and saved plans anchored across the years. |
 | [POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) | **v2, seventh feature — platform, not a screen.** What happens when two sources describe one place: proximity proposes and evidence decides, precedence runs per field rather than per record so a merge combines instead of discarding, the decision is written as a `superseded_by` edge in POI_IDENTITY.md's ledger rather than a second one, and the duplicate check runs at submission time where the hiker who is standing there can answer it. Measured: 48 same-type pairs sit within 25 m of each other on the corridor and 35 of them are two real places, so the radius proposes and the name decides. |
+| [ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md) | **v2, ninth feature — designed, not started.** A hiker's own content follows their account between the web and their phone: what syncs and at what grain, why the device holds the truth while it is offline, why a conflict keeps both plans rather than picking one, and why sharing a photo and syncing one must never become the same act. Measured: 23 device storage keys sorted into the hiker's and the device's, and two finished endpoints nothing has ever called. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
@@ -230,6 +231,35 @@ is real paint). What "the org" means on a jointly-owned route is
 [#780](https://github.com/OurHike/OurHike/issues/780)'s research. The licence posture is
 the project's standing one: the maintainer is talking to OPRHP and NYNJTC directly, and
 until an answer is recorded in `sources.json`, everything here is fetch-and-review only.
+
+## v2 — the same account on two devices
+
+**Scoped 2026-08-20 as v2's ninth feature, by a maintainer ask rather than a doc:
+[features/ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md), tracked as
+[#890](https://github.com/OurHike/OurHike/issues/890) — *v2: the same account on two devices
+— a hiker's plans and photos follow them between the web and their phone*.** Plan on the
+laptop, walk with the phone, and look back at the photos on a big screen — three journeys
+that today share one failure, which is that everything a hiker makes in OurHike exists on
+exactly the device that made it.
+
+[SEGMENTS.md](features/SEGMENTS.md) named this in v1 and declined it deliberately — *"'plan
+on my phone, check on my laptop' isn't included unless that tradeoff gets revisited"* —
+because it needed accounts, which did not exist yet. They shipped in v1. This is the
+revisit.
+
+Two things make it smaller than it sounds and one makes it larger. Smaller: **half the
+server side already exists and has never been called** — `GET`/`PUT /preferences/me` are
+finished, validated and tested with zero client callers, and `/hikes` is complete CRUD that
+`plannedHike.ts` deliberately left unwired pending *"which device wins"*. Larger: **there is
+no way to delete an OurHike account**, which costs nothing today because uninstalling is
+deletion, and stops being true the moment a hiker's trips and photos live on a server.
+
+The design's one load-bearing rule is that **the device holds the truth while it is
+offline**, from which the rest follows: no write waits on the network, a delete travels only
+as the hiker's own delete, and two devices that disagree about a plan keep both rather than
+letting the later write silently eat a fortnight of planning. Private photo sync is opt-in
+and never touches the store shared photos live in — sharing grants a licence that cannot be
+taken back, and syncing grants nothing.
 
 ## v2 — knowing whether any of it works
 

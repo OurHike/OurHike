@@ -34,15 +34,32 @@ and the app is confidently wrong rather than broken. Nullability is the same
 failure one step in: a field the client declares `string` and the server
 sends `null` for gets past every check the client has.
 
-WHAT IS DELIBERATELY NOT CHECKED
+WHAT IS DELIBERATELY NOT CHECKED, AND WHY IT CANNOT BE (#502)
 
-Type narrowing beyond scalars and nullability, for the reason
-`scripts/check_openapi_compat.py` gives about its own four rules: detecting
-those well means implementing JSON Schema subtyping, and detecting them badly
-means a check people learn to override. A field typed by name rather than
-inline (`reason_type: ClosureReason`) has its presence and nullability checked
-here and its VALUES checked below, which between them is what a mismatch would
-actually cost.
+Type narrowing beyond scalars and nullability - a `string` gaining a pattern, a
+number gaining a bound, an array gaining `minItems`.
+
+The reason is not the one this note used to give. It said "detecting those well
+means implementing JSON Schema subtyping", borrowing
+`scripts/check_openapi_compat.py`'s argument, and that argument is a good one in
+the file it came from. It does not apply here, because **this seam has nothing
+to compare a narrowing against.** What it holds against `app.openapi()` are the
+client's own declarations - TypeScript interfaces in `client/src/lib/api.ts` -
+and a TypeScript interface carries no `maxLength`, no `minimum`, no `pattern`.
+There is no client-side claim about a value's range for a server-side
+constraint to contradict. Implementing narrowing detection here would mean
+inventing constraints the client neither declares nor enforces, and then
+testing the server against a fiction.
+
+So this is where the decision #502 asked for is recorded: **this file stays as
+it is, permanently, and not until somebody gets round to it.** The check that
+CAN see a narrowing is `check_openapi_compat.py`, which compares two documents
+rather than a document and a type - and as of #502 it reports request
+constraints that appear or tighten, which is the subset needing no subtyping.
+
+A field typed by name rather than inline (`reason_type: ClosureReason`) still
+has its presence and nullability checked here and its VALUES checked below,
+which between them is what a mismatch would actually cost.
 """
 
 from __future__ import annotations

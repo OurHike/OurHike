@@ -40,14 +40,38 @@ not a break by itself - the server ignoring something is survivable - but
 `extra="forbid"` schemas turn it into a 422, so removals are reported for
 request schemas too rather than assumed benign.
 
-WHAT IS DELIBERATELY NOT CHECKED
+NARROWED REQUEST CONSTRAINTS, AND WHY THEY ARE HERE NOW (#502)
 
-Type narrowing beyond required/optional and enum membership - `string` to a
-pattern-constrained `string`, a widened numeric bound. Detecting those well
-means implementing JSON Schema subtyping, and detecting them badly means a
-check people learn to override. The rules below are the ones that are
-unambiguous - a count this docstring once kept ("the four rules") and let
-drift, which is its own small #650.
+This docstring used to say type narrowing was not checked at all, on the
+grounds that "detecting those well means implementing JSON Schema subtyping,
+and detecting them badly means a check people learn to override". That
+reasoning stands and is why the rules below are the ones they are - but it was
+being applied to a set that includes cases needing no subtyping whatsoever.
+
+A REQUEST constraint that appears or gets stricter refuses a value an old
+client may still send. Whether it got stricter is, for the keywords listed in
+_NARROWABLE below, a comparison of two numbers or a presence check: `maxLength`
+falling from 8000 to 500, `minimum` appearing on a field that had none. Nothing
+there is a judgment about the relationship between two schemas, which is the
+part that would need subtyping and the part that produces the false positives
+somebody eventually silences.
+
+What is still deliberately out:
+
+- **Response constraints, in either direction.** An old client READS responses
+  and holds no constraints of its own - `client/src/lib/api.ts` declares
+  TypeScript interfaces, which carry no `maxLength` and no `pattern` - so a
+  response whose values narrowed is still perfectly readable. Rules there would
+  be speculative, and speculative rules are how a real one gets overridden.
+- **Anything comparing two constraints for containment.** Whether one `pattern`
+  accepts a subset of another's language is genuinely the subtyping problem.
+  This reports that a pattern APPEARED or CHANGED, which is a fact, and leaves
+  what that means to the person reading the diff.
+- **The client seam's half.** `backend/tests/test_client_response_contract.py`
+  compares the client's declared shapes to this document and cannot detect a
+  narrowing at all, because there is nothing on that side to compare against.
+  That is a property of the seam rather than a gap in it, and it is written
+  down there rather than left as an implied to-do.
 """
 
 from __future__ import annotations
@@ -282,13 +306,116 @@ def compare(baseline: dict[str, Any], current: dict[str, Any]) -> list[Break]:
                     )
                 )
 
-        # Enum membership, per property and on the schema itself.
+        # Enum membership and request constraints, per property and on the
+        # schema itself. Both ask the same question - what does this build
+        # refuse that the last one accepted - one about a set of values and
+        # one about a bound on them.
         for prop, old_prop in old_props.items():
             new_prop = new_props.get(prop)
             if not isinstance(old_prop, dict) or not isinstance(new_prop, dict):
                 continue
             breaks.extend(_enum_breaks(f"{name}.{prop}", old_prop, new_prop, roles))
+            breaks.extend(_constraint_breaks(f"{name}.{prop}", old_prop, new_prop, roles))
         breaks.extend(_enum_breaks(name, old_schema, new_schema, roles))
+        breaks.extend(_constraint_breaks(name, old_schema, new_schema, roles))
+
+    return breaks
+
+
+# The constraint keywords a REQUEST schema can tighten, and which direction is
+# the tightening. Every one is a bound on what the server will accept, so a
+# stricter value refuses something an old client may still send.
+#
+# `None` means the keyword is not a number: its APPEARANCE or any change to it
+# is what gets reported, because comparing two of them for containment is the
+# subtyping problem this file declines (see the module docstring).
+_NARROWABLE: dict[str, str | None] = {
+    # A ceiling that falls, or arrives where there was none.
+    "maxLength": "down",
+    "maxItems": "down",
+    "maxProperties": "down",
+    "maximum": "down",
+    "exclusiveMaximum": "down",
+    # A floor that rises, or arrives where there was none.
+    "minLength": "up",
+    "minItems": "up",
+    "minProperties": "up",
+    "minimum": "up",
+    "exclusiveMinimum": "up",
+    # Not numbers: appearing or changing is the whole report.
+    "pattern": None,
+    "format": None,
+    "multipleOf": None,
+}
+
+
+def _constraint_breaks(where: str, old: dict[str, Any], new: dict[str, Any], roles: set[str]) -> list[Break]:
+    """Request constraints that appeared or got stricter (#502).
+
+    Requests only, and the module docstring says why: an old client reads
+    responses and declares no constraints of its own, so a narrowed response is
+    still readable, while a narrowed request refuses a value it may still send.
+    """
+    if REQUEST not in roles:
+        return []
+
+    breaks: list[Break] = []
+
+    for keyword, direction in _NARROWABLE.items():
+        was = old.get(keyword)
+        now = new.get(keyword)
+        if now is None or was == now:
+            continue
+
+        if was is None:
+            breaks.append(
+                Break(
+                    "request constraint added",
+                    f"{where}.{keyword}",
+                    f"{keyword}={now!r} where there was none - an old client never knew to obey it",
+                )
+            )
+            continue
+
+        if direction is None:
+            breaks.append(
+                Break(
+                    "request constraint changed",
+                    f"{where}.{keyword}",
+                    f"{keyword} went from {was!r} to {now!r}; whether that is narrower is a judgment this check does not make",
+                )
+            )
+            continue
+
+        if not isinstance(was, (int, float)) or not isinstance(now, (int, float)):
+            # A non-numeric value under a numeric keyword is a malformed
+            # document rather than a compatibility question, and guessing at
+            # it here would report a break nobody can act on.
+            continue
+
+        tightened = now < was if direction == "down" else now > was
+        if tightened:
+            breaks.append(
+                Break(
+                    "request constraint narrowed",
+                    f"{where}.{keyword}",
+                    f"{keyword} went from {was!r} to {now!r} - an old client may still send a value the server now refuses",
+                )
+            )
+
+    # `additionalProperties: false` is the same break wearing a different
+    # keyword: a client sending a field this build no longer knows about used
+    # to be ignored and is now a 422.
+    was_open = old.get("additionalProperties", True)
+    now_open = new.get("additionalProperties", True)
+    if was_open is not False and now_open is False:
+        breaks.append(
+            Break(
+                "request constraint narrowed",
+                f"{where}.additionalProperties",
+                "extra fields were ignored and are now refused",
+            )
+        )
 
     return breaks
 

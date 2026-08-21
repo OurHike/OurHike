@@ -304,9 +304,10 @@ export interface MapScreenProps {
   // GPS fix, or - while the route builder is open - the stretch being planned,
   // built by lib/planRibbon.ts and arriving with `subject: 'planned-stretch'`
   // so the accessible name stops saying "ahead". This screen draws whichever
-  // it is given and does not distinguish them; what it must NOT do is pair a
-  // plan ribbon with fix-windowed `waypoints`, which is why the shell drops
-  // the lanes rather than re-windowing them.
+  // it is given and does not distinguish them; the one thing that must hold is
+  // that `waypoints` came from the SAME window, because a hiker reads a pin as
+  // sitting under the part of the profile it belongs to. `lib/planRibbon.ts`
+  // builds both halves of the planning pair for exactly that reason.
   elevation?: ElevationRibbonProps
   /**
    * The desktop's full elevation chart (#135), swapped in for the ribbon

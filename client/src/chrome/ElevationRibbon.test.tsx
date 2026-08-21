@@ -62,6 +62,22 @@ describe('ElevationRibbon', () => {
     expect(screen.getByTestId('profile-area').getAttribute('d')).toMatch(/Z$/)
   })
 
+  it('stands for the domain it is given rather than for its own samples', () => {
+    // The lanes underneath are positioned against the WINDOW, so this is what
+    // keeps a pin under the ground it names. The samples cover 1400-1410; the
+    // window is 1400-1420, so they occupy the left half and the profile is not
+    // stretched over ten miles it has no measurements for.
+    render(<ElevationRibbon {...PROPS} domain={{ startMile: 1400, endMile: 1420 }} />)
+
+    // 1405 of 1400-1420 is a quarter along, where it was halfway without one.
+    expect(screen.getByTestId('you-are-here')).toHaveAttribute('x1', '25')
+    // And the shading stops where the samples do rather than filling out to
+    // the edge, which would be ground nobody measured.
+    expect(screen.getByTestId('profile-area').getAttribute('d')).toMatch(
+      /L50\.00,40 L0\.00,40 Z$/,
+    )
+  })
+
   it('highlights the upcoming climb', () => {
     render(<ElevationRibbon {...PROPS} />)
 

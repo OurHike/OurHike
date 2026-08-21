@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planRibbon } from './planRibbon'
+import { MAX_LANE_SPAN_MI, planLanes, planRibbon } from './planRibbon'
 import { ENVELOPE_BUCKETS } from './chartProfile'
 import type { ElevationProfile } from './elevationProfile'
 
@@ -103,5 +103,90 @@ describe('planRibbon', () => {
     const ribbon = planRibbon(longProfile(), { startMile: 40, endMile: 43 }, null)
 
     expect(ribbon!.samples).toHaveLength(301)
+  })
+})
+
+// The lanes over the same stretch. What is worth testing here is which mile a
+// pin is placed from, which window it is placed in, and the two states where
+// no lanes at all is the honest answer.
+describe('planLanes', () => {
+  const shelter = (id: string, mile?: number) => ({ id, type: 'shelter', ...{ mile } })
+
+  function laneRibbon(startMile: number, endMile: number) {
+    return planRibbon(longProfile(), { startMile, endMile }, null)
+  }
+
+  it('keeps the POIs on the stretch and leaves out the ones off it', () => {
+    const lanes = planLanes(laneRibbon(10, 30), [
+      shelter('before', 9.5),
+      shelter('start', 10),
+      shelter('middle', 20),
+      shelter('end', 30),
+      shelter('after', 30.5),
+    ])
+
+    expect(lanes?.points.map((p) => p.id)).toEqual(['start', 'middle', 'end'])
+  })
+
+  it('places a pin from the published mile, and skips a POI that has none', () => {
+    // The pipeline's mile (#753) is the axis this ribbon is drawn on. A POI
+    // from a download that predates it has no position here at all - and is
+    // left out rather than given one from the client index, which measures
+    // the same trail differently (HIKE_PLANNING.md Finding 1).
+    const lanes = planLanes(laneRibbon(10, 30), [
+      shelter('placed', 15),
+      shelter('unplaceable'),
+      { id: 'spring', type: 'water', mile: 16 },
+    ])
+
+    expect(lanes?.points).toEqual([
+      { id: 'placed', type: 'shelter', mile: 15 },
+      { id: 'spring', type: 'water', mile: 16 },
+    ])
+  })
+
+  it('windows the lanes on the ribbon’s own domain, not on its samples', () => {
+    // The samples stop up to a sample spacing short of the stretch's end, so
+    // a lane windowed on them drops the stop the route is walking TO.
+    // A destination between two samples, which is where a real one falls: the
+    // profile is sampled every 25 m and a shelter is where it is.
+    const ribbon = laneRibbon(10, 30.005)
+    const lanes = planLanes(ribbon, [shelter('destination', 30.005)])
+
+    expect(lanes?.startMile).toBe(10)
+    expect(lanes?.endMile).toBe(30.005)
+    expect(ribbon!.samples[ribbon!.samples.length - 1].mile).toBeLessThan(30.005)
+    expect(lanes?.points.map((p) => p.id)).toEqual(['destination'])
+  })
+
+  it('draws empty lanes for a stretch that genuinely holds nothing', () => {
+    // Emptiness that is a fact about the trail, not about the download - the
+    // lanes are drawn and say so by being empty.
+    const lanes = planLanes(laneRibbon(10, 30), [shelter('far', 80)])
+
+    expect(lanes?.points).toEqual([])
+  })
+
+  it('refuses when nothing in the download carries a published mile', () => {
+    // Empty lanes here would be the screen reporting "nothing along this
+    // stretch" about POIs it cannot place. A pre-#753 download gets no lanes.
+    expect(planLanes(laneRibbon(10, 30), [shelter('a'), shelter('b')])).toBeUndefined()
+  })
+
+  it('refuses without a ribbon to sit under', () => {
+    expect(planLanes(undefined, [shelter('a', 12)])).toBeUndefined()
+  })
+
+  it('drops the lanes on a stretch too long for a pin to name a place', () => {
+    // MAX_LANE_SPAN_MI is where a pill swallows the eight miles Decision 1
+    // measures between shelters. Either side of it, deliberately.
+    const wide = profileOf(
+      Array.from({ length: 1201 }, (_, i) => [i, 1000] as [number, number]),
+    )
+    const under = planRibbon(wide, { startMile: 0, endMile: MAX_LANE_SPAN_MI - 10 }, null)
+    const over = planRibbon(wide, { startMile: 0, endMile: MAX_LANE_SPAN_MI + 10 }, null)
+
+    expect(planLanes(under, [shelter('a', 12)])).toBeDefined()
+    expect(planLanes(over, [shelter('a', 12)])).toBeUndefined()
   })
 })

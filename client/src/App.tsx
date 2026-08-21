@@ -136,7 +136,7 @@ import {
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
 import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
-import { planRibbon } from './lib/planRibbon'
+import { planLanes, planRibbon } from './lib/planRibbon'
 import {
   anchoredClientMile,
   anchoredMile,
@@ -1727,11 +1727,32 @@ function App() {
       window,
       props: {
         samples,
+        // The window, said out loud rather than left to the samples' own
+        // ends: the lanes below are positioned against it, and the last
+        // sample at or before an edge is up to a sample spacing short of it.
+        // Same agreement lib/planRibbon.ts's `domain` holds for the planned
+        // stretch, and for the same reason - a pin sits under the ground it
+        // names, or it is a pin about somewhere else.
+        domain: window,
         currentMile: fix.mile,
         upcomingClimb: upcomingClimb(elevation, window, fix.mile, direction?.direction),
       },
     }
   }, [elevation, fix, direction])
+
+  /** The lanes' copy of the tier styling (#759's "highest-value surface"):
+   *  the same roll-up the pin rings read, through the same policy module. One
+   *  callback for both sets of lanes - the fix-windowed ones and the planned
+   *  stretch's - because a spring that is stale in the field is stale on a
+   *  plan, and two lookups here would be two chances to disagree about it. */
+  const laneStaleness = useCallback(
+    (poiId: string, poiType: string) =>
+      stalenessPresentation(
+        poiType,
+        stalenessTier(noteRollups.get(poiId)?.lastConfirmedAt ?? null),
+      ),
+    [noteRollups],
+  )
 
   // Built from searchablePois rather than from `pois` again, because that memo
   // has already paid for the locateOnTrail() call over every POI and the lanes
@@ -1747,15 +1768,9 @@ function App() {
       ),
       startMile: ribbon.window.startMile,
       endMile: ribbon.window.endMile,
-      // The lanes' copy of the tier styling (#759's "highest-value surface"):
-      // the same roll-up the pin rings read, through the same policy module.
-      stalenessFor: (poiId: string, poiType: string) =>
-        stalenessPresentation(
-          poiType,
-          stalenessTier(noteRollups.get(poiId)?.lastConfirmedAt ?? null),
-        ),
+      stalenessFor: laneStaleness,
     }
-  }, [ribbon, searchablePois, noteRollups])
+  }, [ribbon, searchablePois, laneStaleness])
 
   /**
    * Every POI whose position is known on BOTH mile scales (#755) - the
@@ -2297,6 +2312,25 @@ function App() {
     () => planRibbon(elevation, draftStretch, gpsPlanMile),
     [elevation, draftStretch, gpsPlanMile],
   )
+
+  /**
+   * The three lanes under that ribbon - the same WIREFRAMES.md §1.4 lanes the
+   * field ribbon carries, over the ground being planned.
+   *
+   * Built from `pois` rather than from `searchablePois`, and that is the whole
+   * reason this is a second memo instead of a re-window of `waypoints`: the
+   * fix lanes sit on the client index's mile, this ribbon is drawn on the
+   * PIPELINE's (#753), and a pin placed on the wrong one lands a few tenths
+   * off the profile it is meant to describe - HIKE_PLANNING.md Finding 1, on a
+   * surface where the two axes are visible side by side.
+   *
+   * lib/planRibbon.ts holds when the lanes are refused rather than drawn
+   * empty, and the span past which they stop naming places.
+   */
+  const planningLanes = useMemo(() => {
+    const lanes = planLanes(planningRibbon, pois)
+    return lanes === undefined ? undefined : { ...lanes, stalenessFor: laneStaleness }
+  }, [planningRibbon, pois, laneStaleness])
 
   const chartSelection = routeDraft !== null ? draftStretch : freeChartStretch
   const chartSouth =
@@ -4213,14 +4247,14 @@ function App() {
           bbox={bbox}
           // The planned stretch wins over the ten miles around the fix: a
           // hiker with the route builder open is asking about ground that is
-          // mostly not under them. The LANES go with the fix ribbon and are
-          // dropped rather than re-windowed - pins clustered against a
-          // ten-mile threshold, sitting under a profile of sixty, would be
-          // misaligned in the exact way MapScreen's own note forbids, and
-          // lib/planRibbon.ts has the arithmetic.
+          // mostly not under them. The LANES follow it rather than staying
+          // behind - a pin clustered against a ten-mile threshold, sitting
+          // under a profile of sixty, would be misaligned in the exact way
+          // MapScreen's own note forbids, so the two always come from the
+          // same window and lib/planRibbon.ts has the arithmetic for both.
           elevation={planningRibbon ?? ribbon?.props}
           chart={desktopChart}
-          waypoints={planningRibbon === undefined ? waypoints : undefined}
+          waypoints={planningRibbon === undefined ? waypoints : planningLanes}
           viewportPoints={viewportPoints}
           blazeCounts={[]}
           drawnCounts={drawnPoiCounts}

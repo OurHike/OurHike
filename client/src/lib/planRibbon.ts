@@ -18,11 +18,10 @@
 //   - An upcoming climb. `upcomingClimb()` clamps its start to the hiker's
 //     current mile because the callout is a claim about work not yet done. A
 //     planned stretch has no walker and therefore no "not yet".
-//   - Waypoint lanes. lib/waypointLanes.ts collapses pins closer than 1.5% OF
-//     THE WINDOW, a threshold ELEVATION_PROFILE.md's Decision 1 sized against
-//     ten miles. Over a 60-mile plan that is a 0.9-mile collapse and the water
-//     lane becomes a row of count pills - the degeneration that decision names
-//     as the reason the window is not longer. The lanes stay with the fix.
+//   - Nothing about WHERE the pins are: `planLanes` below is the lanes over
+//     the same stretch, and it is a separate function for one reason - it
+//     reads a different axis. The ribbon is drawn from the profile; a pin is
+//     placed from the POI's own published mile (#753), and only that one.
 //   - A time, a gain or any other figure. Those belong to RouteStopsPanel and
 //     RouteEntranceSheet, which price the walk at the hiker's own pace through
 //     lib/route.ts. A second figure derived a second way is the disagreement
@@ -31,6 +30,7 @@
 import type { ElevationSample } from '../chrome/ElevationRibbon'
 import type { ElevationProfile } from './elevationProfile'
 import { envelopeSamples, type ChartDomain } from './chartProfile'
+import { COLLAPSE_THRESHOLD_PCT, type Waypoint } from './waypointLanes'
 
 /** What `ElevationRibbon` needs to draw a planned stretch: assignable to
  *  ElevationRibbonProps, which is what MapScreen's `elevation` takes, with
@@ -42,6 +42,11 @@ export interface PlanRibbon {
   samples: ElevationSample[]
   currentMile: number | null
   subject: 'planned-stretch'
+  /** The stretch itself, which is what the ribbon's width stands for - given
+   *  explicitly rather than left to the samples' own ends, because the lanes
+   *  are positioned in the same 0-100 space and the two have to agree about
+   *  which ground that width covers. `planLanes` reads it back. */
+  domain: { startMile: number; endMile: number }
 }
 
 /** Two samples is the least that has a shape; one is a dot and none is a
@@ -87,6 +92,7 @@ export function planRibbon(
 
   return {
     samples,
+    domain: { startMile, endMile },
     // Only when the fix is genuinely on this stretch. Outside it there is no
     // rule to draw - ElevationRibbon takes the same view of a mile past its
     // own edges, and the two agreeing is deliberate rather than redundant:
@@ -96,4 +102,109 @@ export function planRibbon(
       hereMile !== null && hereMile >= startMile && hereMile <= endMile ? hereMile : null,
     subject: 'planned-stretch',
   }
+}
+
+/** What the lanes need over a planned stretch: assignable to what MapScreen's
+ *  `waypoints` takes, less the `onSelectPoi` that screen supplies itself and
+ *  the `stalenessFor` the shell adds from its note roll-up. */
+export interface PlanLanes {
+  points: Waypoint[]
+  startMile: number
+  endMile: number
+}
+
+/**
+ * A pin is placed from a POI's PUBLISHED mile and from nothing else, so this
+ * is the shape `planLanes` reads - `StoredPoi` narrowed to the three fields it
+ * uses. Optional `mile` is the load-bearing one: a download from before #753
+ * carries no published mile, and there is no second way to get one on this
+ * axis (lib/trailPosition.ts answers a different question with the same word).
+ */
+export interface PlaceablePoi {
+  id: string
+  type: string
+  mile?: number
+}
+
+/**
+ * The widest stretch the lanes still say something individual about.
+ *
+ * REASONED, from one figure this repository already stands behind: AT
+ * shelters average about eight miles apart (features/ELEVATION_PROFILE.md
+ * Decision 1, which sizes the fix window's nine-mile look-ahead on it). A pill
+ * swallows `COLLAPSE_THRESHOLD_PCT` of whatever window it is drawn in, so on a
+ * stretch of S miles it stands for 0.015 x S miles of trail. Where that
+ * reaches a lane's own spacing, that lane is all pills: it has stopped naming
+ * places and started drawing density, which is a different picture and one
+ * nothing here asked for. 8 / 0.015 is about 533 miles.
+ *
+ * Two things it is not. It is not a claim that a 500-mile stretch reads well -
+ * a pill standing for seven miles of trail is coarse, and this number only
+ * says where the lanes stop being lanes at all. And eight miles is the ONLY
+ * lane spacing this repository has a figure for: WATER, the lane a hiker
+ * planning an evening is likeliest to be reading, has no census here, and
+ * published counts (pipeline/README.md) suggest it is sparser than the
+ * shelters rather than denser - which would make a tighter bound the right
+ * one. Until somebody measures it off the published POI export
+ * (`export_poi.py`'s `attach_miles`, #753) this is deliberately the generous
+ * end: it is the number that keeps a whole-trail ribbon from wearing three
+ * rows of pills, not a number that says a 400-mile plan reads well.
+ */
+export const MAX_LANE_SPAN_MI = 8 / (COLLAPSE_THRESHOLD_PCT / 100)
+
+/**
+ * The POIs along a planned stretch, for the three lanes under the ribbon
+ * (WIREFRAMES.md §1.4) - the same lanes, over the ground being planned rather
+ * than the ground being walked.
+ *
+ * #910 asked for none of this, on the arithmetic above: over a 60-mile plan a
+ * pill swallows 0.9 mi. That is the reason the FIX window is ten miles and not
+ * forty, and it is a real cost here - but it is a cost about legibility, and
+ * the thing it was traded against turned out to be a hiker planning an evening
+ * with no idea where the water is. A pill saying "3 water" over 0.9 mi of
+ * trail is coarse and true; an empty strip under the profile says nothing at
+ * all, and a hiker reads THAT as "nothing along here".
+ *
+ * The window is the ribbon's own `domain` - the stretch, which is what its
+ * width stands for - and reading it back from there rather than recomputing it
+ * is what makes "a pin at 60% sits under the part of the profile it belongs
+ * to" (chrome/WaypointLanes.tsx) true by construction rather than nearly true.
+ * The samples' ends are NOT that window and using them was a real bug while
+ * this was being written: the profile is sampled every 25 m, the last sample
+ * at or before a stretch's end is up to that far short of it, and the stop the
+ * route is walking TO therefore dropped out of the SLEEP lane.
+ *
+ * Undefined - never empty lanes - when the pins cannot be placed honestly:
+ *
+ *   - No ribbon. There is nothing to sit under.
+ *   - A stretch past MAX_LANE_SPAN_MI, where the lanes stop naming places.
+ *   - A download that publishes no POI miles at all (pre-#753). Empty lanes
+ *     there would be this screen reporting "nothing along this stretch" about
+ *     data it simply cannot place, which is the confident wrong answer
+ *     CLAUDE.md's four-ways section rules out. A download that HAS miles and
+ *     genuinely holds nothing on this stretch draws empty lanes, because that
+ *     emptiness is a fact about the trail.
+ */
+export function planLanes(
+  ribbon: PlanRibbon | undefined,
+  pois: readonly PlaceablePoi[],
+): PlanLanes | undefined {
+  if (ribbon === undefined) return undefined
+
+  const { startMile, endMile } = ribbon.domain
+  if (endMile - startMile > MAX_LANE_SPAN_MI) return undefined
+
+  const points: Waypoint[] = []
+  let anyPlaced = false
+
+  for (const poi of pois) {
+    if (poi.mile === undefined) continue
+    anyPlaced = true
+    if (poi.mile < startMile || poi.mile > endMile) continue
+    points.push({ id: poi.id, type: poi.type, mile: poi.mile })
+  }
+
+  if (!anyPlaced) return undefined
+
+  return { points, startMile, endMile }
 }

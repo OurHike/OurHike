@@ -484,8 +484,9 @@ describe('the planning flow', () => {
 // lib/planRibbon.test.ts and ElevationRibbon.test.tsx cover between them: WHICH
 // ribbon the shell hands the map screen, and what goes with it. Two claims:
 // planning swaps the fix-anchored ribbon for the planned stretch, and the
-// waypoint lanes leave with it rather than staying behind under a profile of
-// different ground.
+// waypoint lanes go with it - re-windowed onto that stretch and placed from
+// the pipeline's published miles - rather than staying behind under a profile
+// of different ground.
 describe('the ribbon while a trip is being planned', () => {
   /** A profile over the synthetic centerline's own 40 miles, on the PIPELINE
    *  axis the plan runs on - a 1,000 ft climb between miles 15 and 17 so the
@@ -533,7 +534,7 @@ describe('the ribbon while a trip is being planned', () => {
     expect(screen.getByText(/2,000 ft/)).toBeInTheDocument()
   })
 
-  it('takes the lanes with it, and gives both back when the builder closes', async () => {
+  it('takes the lanes with it, and gives the fix window back on close', async () => {
     const user = userEvent.setup()
     app.onboard({ location_permission_requested: true })
     app.putTrailData({ pois: POIS })
@@ -555,17 +556,38 @@ describe('the ribbon while a trip is being planned', () => {
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
 
-    // The swap. The lanes cluster pins at 1.5% of a TEN-mile window
-    // (features/ELEVATION_PROFILE.md, Decision 1); left under a profile of
-    // nineteen they would sit beside ground they do not describe.
+    // The swap. The lanes are re-windowed onto the planned stretch rather
+    // than left behind under a profile of other ground - and they are
+    // re-windowed on the PIPELINE's axis, which is what the count proves.
+    // Front Shelter (3.2) to Beyond Shelter (22.2) holds all four shelters;
+    // read on the client index's own miles, the 3.0 that starts the stretch
+    // would fall outside it and only three would be drawn.
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
     expect(fixRibbon()).not.toBeInTheDocument()
-    expect(screen.queryByTestId('lane-sleep')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+      ).toHaveLength(4),
+    )
+
+    console.log(
+      'LANES',
+      within(screen.getByTestId('lane-sleep'))
+        .getAllByRole('button')
+        .map((b) => `${b.textContent} @ ${b.getAttribute('style')}`),
+    )
+    // And the first of them sits exactly at the ribbon's left edge, because
+    // the stretch starts at that shelter's published mile.
+    const pins = within(screen.getByTestId('lane-sleep')).getAllByRole('button')
+    expect(pins[0]).toHaveStyle({ left: '0%' })
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
 
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
     expect(planRibbon()).not.toBeInTheDocument()
-    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    // Back to the ten miles around the fix, which hold fewer of them.
+    expect(
+      within(screen.getByTestId('lane-sleep')).getAllByRole('button').length,
+    ).toBeLessThan(4)
   })
 })

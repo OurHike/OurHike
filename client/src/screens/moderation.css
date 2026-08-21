@@ -130,3 +130,24 @@
   background: var(--bg-sunken);
   border-radius: 8px;
 }
+
+/* The two queues #877 added. Both are text rows on the reports pattern -
+   there is nothing to look at, only something to read - so they inherit
+   `.moderation__item` and add only what they need. */
+
+/* The archive of removals, under the flagged work rather than beside it. */
+.moderation__subhead {
+  font-size: 0.95rem;
+  margin-block: 1rem 0.25rem;
+  color: var(--fg-3);
+}
+
+/* Why somebody flagged a note, in their words. Indented as a quotation
+   rather than styled as an accusation: a reason is a reader's sentence, and
+   the moderator is deciding about the note, not about the reason. */
+.moderation__reasons {
+  margin-block: 0.5rem;
+  padding-inline-start: 1.25rem;
+  color: var(--fg-3);
+  font-size: 0.9rem;
+}

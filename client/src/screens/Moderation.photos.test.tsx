@@ -41,6 +41,15 @@ vi.mock('../lib/api', () => {
     unpinPhoto: vi.fn(),
     reviewPhoto: vi.fn(),
     dismissPhoto: vi.fn(),
+    // #877's two queues. Mocked here as well because the screen loads all
+    // four resources on mount - and an unmocked one would leave this file
+    // asserting against a screen in a failure state it never meant to test.
+    fetchNoteQueue: vi.fn(),
+    hideFieldNote: vi.fn(),
+    unhideFieldNote: vi.fn(),
+    fetchHoursQueue: vi.fn(),
+    confirmVolunteerHours: vi.fn(),
+    disputeVolunteerHours: vi.fn(),
   }
 })
 
@@ -73,6 +82,10 @@ async function shown(photos: api.PoiPhotoQueueEntry[]) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // #877's queues load on the same mount; empty so this file keeps
+  // asserting about photos only.
+  mocked.fetchNoteQueue.mockResolvedValue([])
+  mocked.fetchHoursQueue.mockResolvedValue([])
   mocked.pinPhoto.mockResolvedValue(aPhoto({ pinned: true }))
   mocked.unpinPhoto.mockResolvedValue(aPhoto())
   mocked.reviewPhoto.mockResolvedValue(aPhoto())

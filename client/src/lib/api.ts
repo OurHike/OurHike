@@ -884,6 +884,62 @@ export async function unhideFieldNote(noteId: string): Promise<NoteQueueEntry> {
 }
 
 /**
+ * One row of the hours confirmation queue (#877): a record whole, plus the
+ * `user_id` that `/volunteer-hours/mine` has no reason to carry and this
+ * surface cannot work without - a club admin confirming an hour is standing
+ * behind a specific person's word, and a row that will not say whose is a
+ * row nobody can responsibly confirm.
+ *
+ * It is the only identifier here, and it is deliberately not joined to a
+ * name: the backend has no such join to offer, and inventing a display name
+ * client-side would put a person's identity on a screen the server never
+ * agreed to publish.
+ */
+export interface VolunteerHoursQueueEntry extends VolunteerHoursSummary {
+  user_id: string
+}
+
+/** Everything still waiting on a club's word, oldest work first - the
+ *  server's order, which this must not re-sort: "oldest first" is the
+ *  fairness rule (a claim filed in April is not outranked by one filed
+ *  yesterday), and a client that re-ordered would quietly replace it. */
+export async function fetchHoursQueue(
+  signal?: AbortSignal,
+): Promise<VolunteerHoursQueueEntry[]> {
+  const response = await authedFetch('/volunteer-hours/queue', {
+    method: 'GET',
+    signal,
+  })
+  return (await response.json()) as VolunteerHoursQueueEntry[]
+}
+
+/** A club stands behind the number. Set once on the server - who FIRST
+ *  granted it is what an audit needs - so a second confirm is harmless. */
+export async function confirmVolunteerHours(
+  recordId: string,
+): Promise<VolunteerHoursQueueEntry> {
+  const response = await authedFetch(
+    `/volunteer-hours/${encodeURIComponent(recordId)}/confirm`,
+    { method: 'POST', body: '{}' },
+  )
+  return (await response.json()) as VolunteerHoursQueueEntry
+}
+
+/** A club declines to. Under the 2026-08-20 decision (claimed counts until
+ *  disputed) this is the REMOVAL action - the record drops out of every
+ *  total - and the record itself stays, visible to the volunteer, because a
+ *  dispute is a disagreement to take up with the club, not an erasure. */
+export async function disputeVolunteerHours(
+  recordId: string,
+): Promise<VolunteerHoursQueueEntry> {
+  const response = await authedFetch(
+    `/volunteer-hours/${encodeURIComponent(recordId)}/dispute`,
+    { method: 'POST', body: '{}' },
+  )
+  return (await response.json()) as VolunteerHoursQueueEntry
+}
+
+/**
  * One row of the photo half of the queue (#579): `PoiPhotoSummary`'s
  * fields plus what a moderator's decision needs. `held` is the one state
  * where a photo exists and no hiker can see it - a nudity flag waiting on

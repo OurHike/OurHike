@@ -58,6 +58,15 @@ vi.mock('../lib/api', () => {
     unpinPhoto: vi.fn(),
     reviewPhoto: vi.fn(),
     dismissPhoto: vi.fn(),
+    // #877's two queues. Mocked here as well because the screen loads all
+    // four resources on mount - and an unmocked one would leave this file
+    // asserting against a screen in a failure state it never meant to test.
+    fetchNoteQueue: vi.fn(),
+    hideFieldNote: vi.fn(),
+    unhideFieldNote: vi.fn(),
+    fetchHoursQueue: vi.fn(),
+    confirmVolunteerHours: vi.fn(),
+    disputeVolunteerHours: vi.fn(),
   }
 })
 
@@ -116,8 +125,11 @@ const PHOTO_KEY = 'reports/report-1/1.jpg'
 beforeEach(() => {
   vi.clearAllMocks()
   // The photo half loads alongside the queue; empty by default so every
-  // existing case reads exactly as it did before the section existed.
+  // existing case reads exactly as it did before the section existed. The
+  // notes and hours halves (#877) are here for the same reason.
   mocked.fetchPhotoQueue.mockResolvedValue([])
+  mocked.fetchNoteQueue.mockResolvedValue([])
+  mocked.fetchHoursQueue.mockResolvedValue([])
   mocked.verifyReport.mockResolvedValue(undefined)
   mocked.dismissReport.mockResolvedValue(undefined)
   mocked.verifyClosure.mockResolvedValue(undefined)

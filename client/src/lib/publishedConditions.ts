@@ -32,6 +32,7 @@ import type { AtcUpdate } from './atcUpdates'
 import type { NoteSummary } from './fieldNotes'
 import type { WorkProjectSummary } from './workProjects'
 import { DATA_CONFIGURED, dataUrl } from './config'
+import { recallPublished, rememberPublished } from './conditionsCache'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
  *  key in that bucket is a URL deployed clients already request, and cannot be
@@ -78,7 +79,26 @@ export interface PublishedConditions<T> {
 }
 
 /**
+ * How a caller wants this read performed.
+ *
+ * `online: false` means "do not ask, but do tell me what we kept" (#447).
+ * The default is `true` so every existing caller - and every test written
+ * before the kept copy existed - behaves exactly as it did.
+ */
+export interface PublishedReadOptions {
+  online?: boolean
+}
+
+/**
  * Read one published baseline, or `null` if there isn't a usable one.
+ *
+ * **Falls back to the copy this phone kept** (#447), on every path that
+ * fails to produce a usable document: no signal, a bucket that 404s, a dead
+ * spot mid-transfer, bytes that will not parse. The kept copy carries its own
+ * `generated_at`, so it is labelled by its real age rather than by the moment
+ * it was read - a month-old closure list reads as a month old, and the
+ * alternative it replaces is "Trail conditions unavailable" on a phone that
+ * has the list.
  *
  * A document with no `generated_at` is refused rather than defaulted, and that
  * is the one strict thing here. The timestamp is what the UI turns into "as of
@@ -95,33 +115,73 @@ async function fetchPublished<T>(
   key: string,
   field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
   signal?: AbortSignal,
+  options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
   if (!DATA_CONFIGURED) return null
 
+  // Offline, nothing is asked for: vite.config.ts precaches the app shell and
+  // the glyph ranges and nothing else, so the request cannot be served from
+  // anywhere and App.trailData.test.tsx asserts it is not fired. What CAN be
+  // served is the copy this phone kept last time it had signal (#447).
+  if (options.online === false) return recalled<T>(key, field)
+
   try {
     const response = await fetch(dataUrl(key), { signal })
-    if (!response.ok) return null
+    if (!response.ok) return recalled<T>(key, field)
 
     const document = (await response.json()) as Record<string, unknown>
-    if (typeof document?.generated_at !== 'string') return null
-    const items = document[field]
-    if (!Array.isArray(items)) return null
-
-    const generatedAt = new Date(document.generated_at)
-    if (Number.isNaN(generatedAt.getTime())) return null
-
-    const reviewedAt = parseReviewedAt(document.reviewed_at)
-    const validWeek = parseValidWeek(document.valid_start, document.valid_end)
-    return {
-      generatedAt,
-      items: items as T[],
-      ...(reviewedAt ? { reviewedAt } : {}),
-      ...(validWeek ? { validWeek } : {}),
-    }
+    const parsed = parsePublished<T>(document, field)
+    // Kept only when it parsed. Storing bytes this build cannot read would
+    // give the next offline session a copy that fails the same way, with the
+    // previous good one overwritten to do it.
+    if (parsed !== null) void rememberPublished(key, document)
+    return parsed ?? (await recalled<T>(key, field))
   } catch {
     // Includes the abort case, which is not an error worth distinguishing:
-    // a cancelled read has no baseline to offer either.
-    return null
+    // a cancelled read has no baseline to offer either. It does not exclude
+    // the kept copy, though - a dead spot mid-fetch is exactly the state
+    // this whole path exists for.
+    return recalled<T>(key, field)
+  }
+}
+
+/** What this phone kept, run back through the same validation the network
+ *  bytes get. A stored document is no more trustworthy than a fetched one
+ *  and has been checked less recently - an older build may have written a
+ *  shape this one refuses, and the refusal has to be the same refusal. */
+async function recalled<T>(
+  key: string,
+  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
+): Promise<PublishedConditions<T> | null> {
+  const cached = await recallPublished(key)
+  if (cached === null) return null
+  return parsePublished<T>(cached.document, field)
+}
+
+/**
+ * One document, validated, or null.
+ *
+ * A document with no `generated_at` is refused rather than defaulted, and
+ * that is the one strict thing here - see the caller's docstring.
+ */
+function parsePublished<T>(
+  document: Record<string, unknown>,
+  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
+): PublishedConditions<T> | null {
+  if (typeof document?.generated_at !== 'string') return null
+  const items = document[field]
+  if (!Array.isArray(items)) return null
+
+  const generatedAt = new Date(document.generated_at)
+  if (Number.isNaN(generatedAt.getTime())) return null
+
+  const reviewedAt = parseReviewedAt(document.reviewed_at)
+  const validWeek = parseValidWeek(document.valid_start, document.valid_end)
+  return {
+    generatedAt,
+    items: items as T[],
+    ...(reviewedAt ? { reviewedAt } : {}),
+    ...(validWeek ? { validWeek } : {}),
   }
 }
 
@@ -162,14 +222,16 @@ function parseValidWeek(
 
 export async function fetchPublishedClosures(
   signal?: AbortSignal,
+  options?: PublishedReadOptions,
 ): Promise<PublishedConditions<ClosureSummary> | null> {
-  return fetchPublished(PUBLISHED_CLOSURES_KEY, 'closures', signal)
+  return fetchPublished(PUBLISHED_CLOSURES_KEY, 'closures', signal, options)
 }
 
 export async function fetchPublishedReports(
   signal?: AbortSignal,
+  options?: PublishedReadOptions,
 ): Promise<PublishedConditions<ReportSummary> | null> {
-  return fetchPublished(PUBLISHED_REPORTS_KEY, 'reports', signal)
+  return fetchPublished(PUBLISHED_REPORTS_KEY, 'reports', signal, options)
 }
 
 /**
@@ -182,8 +244,9 @@ export async function fetchPublishedReports(
  */
 export async function fetchPublishedFieldNotes(
   signal?: AbortSignal,
+  options?: PublishedReadOptions,
 ): Promise<PublishedConditions<NoteSummary> | null> {
-  return fetchPublished(PUBLISHED_NOTES_KEY, 'notes', signal)
+  return fetchPublished(PUBLISHED_NOTES_KEY, 'notes', signal, options)
 }
 
 /**
@@ -195,8 +258,9 @@ export async function fetchPublishedFieldNotes(
  */
 export async function fetchPublishedWorkProjects(
   signal?: AbortSignal,
+  options?: PublishedReadOptions,
 ): Promise<PublishedConditions<WorkProjectSummary> | null> {
-  return fetchPublished(PUBLISHED_WORK_PROJECTS_KEY, 'work_projects', signal)
+  return fetchPublished(PUBLISHED_WORK_PROJECTS_KEY, 'work_projects', signal, options)
 }
 
 /**
@@ -217,8 +281,9 @@ export async function fetchPublishedWorkProjects(
  */
 export async function fetchPublishedAtcUpdates(
   signal?: AbortSignal,
+  options?: PublishedReadOptions,
 ): Promise<PublishedConditions<AtcUpdate> | null> {
-  return fetchPublished(PUBLISHED_ATC_UPDATES_KEY, 'atc_updates', signal)
+  return fetchPublished(PUBLISHED_ATC_UPDATES_KEY, 'atc_updates', signal, options)
 }
 
 /** One published drought band, exactly as `pipeline/export_drought.py` writes
@@ -247,6 +312,7 @@ export interface PublishedDroughtBand {
  */
 export async function fetchPublishedDrought(
   signal?: AbortSignal,
+  options?: PublishedReadOptions,
 ): Promise<PublishedConditions<PublishedDroughtBand> | null> {
-  return fetchPublished(PUBLISHED_DROUGHT_KEY, 'drought', signal)
+  return fetchPublished(PUBLISHED_DROUGHT_KEY, 'drought', signal, options)
 }

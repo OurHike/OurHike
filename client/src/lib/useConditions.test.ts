@@ -64,16 +64,22 @@ describe('the refresh clock', () => {
     expect(drought).toHaveBeenCalledTimes(2)
   })
 
-  it('does not run the clock while offline', async () => {
+  it('does not run the clock while offline, and asks the radio for nothing', async () => {
     const drought = vi.spyOn(published, 'fetchPublishedDrought').mockResolvedValue(null)
     renderHook(() => useConditions(false))
 
     await act(async () => {
       vi.advanceTimersByTime(CONDITIONS_REFRESH_MS * 3)
     })
-    // A wake-up in a dead spot should cost nothing at all - not one failed
-    // fetch an hour, which is a radio switched on for no reason.
-    expect(drought).not.toHaveBeenCalled()
+    // Once, at mount, and not again for three hours: the clock is what this
+    // case is about, and it does not tick without signal.
+    expect(drought).toHaveBeenCalledTimes(1)
+    // And that one call is routed to the copy this phone kept (#447), never
+    // to the network - `{ online: false }` is what makes `fetchPublished`
+    // skip the request entirely. The property this case has always held is
+    // that a wake-up in a dead spot costs no radio; before #447 that meant
+    // asking for nothing at all, and now it means asking IndexedDB.
+    expect(drought).toHaveBeenLastCalledWith(undefined, { online: false })
   })
 
   it('matches the pipeline cadence rather than beating it', () => {

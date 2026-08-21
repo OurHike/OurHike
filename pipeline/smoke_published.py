@@ -28,6 +28,20 @@ package and a DEM package since the issue was written. A smoke test naming
 by went unchecked. So every artifact `latest.json` names is checked, and a new
 one is covered the day it is published.
 
+ONE CHECK HERE IS NOT ABOUT BYTES (#916)
+
+`check_reach` asks whether every published OSM water point is somewhere a
+hiker walks. That is a different question from every other check in this file,
+and it is here because of where it has to be asked: the failure it exists to
+catch was never in any run's output. #749's gate worked, the export that
+applied it was green, and the bucket went on serving the ungated layer built
+before the gate existed - 1,535 points, 1,159 of them past five miles, for
+three days. Only something reading the bucket could have said so.
+
+It is free. The four artifacts it needs are already pulled in full by the hash
+check, so their bytes are kept as they stream rather than fetched again; see
+REACH_KEYS.
+
 WHY THE HASH CHECK MATTERS MORE THAN IT LOOKS
 
 `client/src/lib/sha256.ts` and `dataManifest.ts` already hold a completed
@@ -48,6 +62,7 @@ import argparse
 import hashlib
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import requests
@@ -81,9 +96,46 @@ DEFAULT_MAX_HASH_BYTES = 25 * 1024 * 1024
 # just answering the first bytes, small enough to be free.
 RANGE_PROBE_BYTES = 64 * 1024
 
+# The four artifacts check_reach() needs, and the reason it is free (#916).
+#
+# Every one of these is already pulled in full by check_hash() above - they are
+# ~14 MB of the ~18 MB this run downloads anyway - so the water check costs the
+# bucket NOTHING BEYOND WHAT IT WAS ALREADY PAYING. That is the whole reason
+# this check lives here rather than in a job of its own: re-fetching 14 MB
+# weekly to re-ask a question of bytes already in flight would be a real charge
+# against a rate-limited subdomain, and DATA_RELEASES.md §3b is explicit that
+# this file does not download to learn what one byte already said.
+#
+# So the bytes are kept as they stream, and only when the hash matched: a file
+# whose sha256 disagrees with the manifest is not the published data, and
+# measuring it would report a geography nobody serves.
+REACH_KEYS = ("poi_water.geojson", "trails.geojson", "poi_shelter.geojson", "poi_campsite.geojson")
+
 
 def _report(check: str, key: str, state: str, detail: str) -> dict:
     return {"check": check, "key": key, "state": state, "detail": detail}
+
+
+def _water_reach_module():
+    """`check_water_reach`, or None where it cannot be imported.
+
+    IMPORTED HERE AND NOT AT MODULE SCOPE, and this is a rule rather than a
+    style choice: `verify_release.py` imports this file, and its workflow
+    installs `requests pyyaml pmtiles` and nothing else. The reach check needs
+    DuckDB and GDAL behind it, so a top-level import would stop the release
+    gate before `main()` was entered - the same total failure #514 and #845
+    both were, and what `tests/test_release_gate_imports.py` exists to catch.
+
+    None becomes SKIPPED at the call site rather than OK. The gate does not run
+    `check_all` today, so nothing real reads that path, and it is written this
+    way because "the check could not run" and "the check passed" being the same
+    value is how a green run comes to mean less than a reader assumes.
+    """
+    try:
+        import check_water_reach
+    except ImportError:
+        return None
+    return check_water_reach
 
 
 class HttpRangeSource:
@@ -344,6 +396,7 @@ def check_hash(
     size: int,
     max_bytes: int,
     session: requests.Session | None = None,
+    keep_dir: Path | None = None,
 ) -> dict:
     """The bytes behind the key, hashed and held to what `latest.json` promises.
 
@@ -356,6 +409,10 @@ def check_hash(
     to hash here is one the phone hashes on every download anyway, and the
     PMTiles read covers its structure - but calling that `ok` would let a green
     run claim more than it checked.
+
+    With `keep_dir`, a key in REACH_KEYS is also written there as it streams -
+    still not buffered - and kept only if its hash matched. See REACH_KEYS for
+    why this is where those bytes come from.
     """
     if expected is None:
         return _report("hash", key, FAILED, "latest.json names this artifact but publishes no sha256 for it")
@@ -365,14 +422,24 @@ def check_hash(
             "hash", key, SKIPPED, f"{size} bytes is over the {max_bytes}-byte budget; the phone hashes it per download"
         )
 
+    keeping = keep_dir is not None and key in REACH_KEYS
+    partial = (keep_dir / f"{key}.part") if keeping else None
+
     digest = hashlib.sha256()
     getter = (session or requests).get
     try:
         with getter(f"{base}/{key}", stream=True, timeout=HTTP_TIMEOUT) as response:
             if response.status_code != 200:
                 return _report("hash", key, FAILED, f"GET answered {response.status_code}")
-            for chunk in response.iter_content(chunk_size=1024 * 256):
-                digest.update(chunk)
+            sink = partial.open("wb") if keeping else None
+            try:
+                for chunk in response.iter_content(chunk_size=1024 * 256):
+                    digest.update(chunk)
+                    if sink is not None:
+                        sink.write(chunk)
+            finally:
+                if sink is not None:
+                    sink.close()
     except requests.RequestException as exc:
         return _report("hash", key, UNREACHABLE, f"could not read: {exc.__class__.__name__}")
 
@@ -385,7 +452,66 @@ def check_hash(
             f"published {expected.lower()[:16]}… but serves {actual[:16]}…. A phone downloading this "
             "discards it and retries forever - the bytes and the manifest disagree.",
         )
+    if keeping:
+        partial.replace(keep_dir / key)
     return _report("hash", key, OK, f"matches {actual[:16]}…")
+
+
+def check_reach(keep_dir: Path) -> dict:
+    """Is every published OSM water point somewhere a hiker walks (#916)?
+
+    THIS IS THE ONE CHECK IN THIS FILE THAT IS NOT ABOUT BYTES, and the
+    docstring's own split - `check_deployment.py` asks "can a browser REACH
+    it", this file asks "is what is there CORRECT" - is what admits it. Every
+    other check here reads "correct" as byte-correct: the hash matches, the
+    range was honoured, the archive parses. A drinking fountain in Manhattan
+    drawn as trail water passes all of that and is still not correct, and on
+    2026-08-21 the bucket was serving 1,535 of them while this file ran green
+    every Monday. check_water_reach.py holds the measurement and the gate.
+
+    Measured against the PUBLISHED trails layer, which `export_trails.py` has
+    simplified, so the tolerance it is given is that simplification's own
+    bound - `SIMPLIFIED_TRAILS_TOLERANCE_M`, which lives beside the check
+    rather than here because it is a fact about the geometry rather than a
+    decision this caller makes. Nothing else in this file needs one.
+
+    An artifact this needs but did not get (over the hash budget, unreachable,
+    a hash mismatch) makes this SKIPPED rather than OK. The check that could
+    not run has already been reported by whichever check failed to get it, and
+    a second failure naming the same outage would bury it. So does DuckDB being
+    absent - see _water_reach_module.
+    """
+    reach = _water_reach_module()
+    if reach is None:
+        return _report("reach", "poi_water.geojson", SKIPPED, "check_water_reach needs DuckDB, which is not installed here")
+
+    missing = [key for key in REACH_KEYS if not (keep_dir / key).exists()]
+    if missing:
+        return _report("reach", "poi_water.geojson", SKIPPED, f"needs {', '.join(missing)}, which this run did not read")
+
+    try:
+        result = reach.check_reach(
+            keep_dir / "poi_water.geojson",
+            [keep_dir / "trails.geojson"],
+            [keep_dir / "poi_shelter.geojson", keep_dir / "poi_campsite.geojson"],
+            tolerance_m=reach.SIMPLIFIED_TRAILS_TOLERANCE_M,
+        )
+    except Exception as exc:
+        # Same posture as everything else here: this file never raises at the
+        # caller, and a crashed check is never a pass.
+        return _report("reach", "poi_water.geojson", FAILED, f"the check crashed: {exc!r}")
+
+    radius = reach.MATCH_RADIUS_FT
+    if not result["problems"]:
+        n = result["checked"]
+        return _report("reach", "poi_water.geojson", OK, f"{n} osm_water point(s), every one inside {radius:.0f} ft")
+
+    detail = (
+        f"{len(result['past_gate'])} of {result['checked']} osm_water point(s) are further than "
+        f"{radius:.0f} ft from any trail, side trail, shelter or campsite - "
+        f"the worst {result['worst']}. A water pin says *there is water here*. " + "; ".join(result["problems"][:3])
+    )
+    return _report("reach", "poi_water.geojson", FAILED, detail)
 
 
 # What a tile's first bytes look like, per what the header says it is. Checked
@@ -480,25 +606,35 @@ def check_all(
     max_hash_bytes: int = DEFAULT_MAX_HASH_BYTES,
     session: requests.Session | None = None,
 ) -> list[dict]:
-    """Every artifact the manifest names. Never raises."""
+    """Every artifact the manifest names, then the one question that is about
+    what the artifacts SAY rather than what they weigh. Never raises.
+
+    The temporary directory is owned here rather than passed in, so the water
+    check is not something a caller can forget to ask for. It holds at most the
+    four files in REACH_KEYS and is gone before this returns.
+    """
     base = base.rstrip("/")
     reports: list[dict] = []
 
-    for key in sorted((manifest.get("artifacts") or {}).keys()):
-        entry = manifest["artifacts"][key] or {}
-        headers = check_headers(base, key, session)
-        reports.append(headers)
-        if headers["state"] != OK:
-            # Everything below needs a size and a reachable object. Reporting
-            # three more failures for one broken artifact would bury the one
-            # that explains the rest.
-            continue
+    with tempfile.TemporaryDirectory(prefix="smoke-published-") as tmp:
+        keep_dir = Path(tmp)
+        for key in sorted((manifest.get("artifacts") or {}).keys()):
+            entry = manifest["artifacts"][key] or {}
+            headers = check_headers(base, key, session)
+            reports.append(headers)
+            if headers["state"] != OK:
+                # Everything below needs a size and a reachable object. Reporting
+                # three more failures for one broken artifact would bury the one
+                # that explains the rest.
+                continue
 
-        size = headers["size"]
-        reports.append(check_range(base, key, size, session))
-        reports.append(check_hash(base, key, entry.get("sha256"), size, max_hash_bytes, session))
-        if key.endswith(".pmtiles"):
-            reports.append(check_pmtiles(base, key, session))
+            size = headers["size"]
+            reports.append(check_range(base, key, size, session))
+            reports.append(check_hash(base, key, entry.get("sha256"), size, max_hash_bytes, session, keep_dir))
+            if key.endswith(".pmtiles"):
+                reports.append(check_pmtiles(base, key, session))
+
+        reports.append(check_reach(keep_dir))
 
     return reports
 

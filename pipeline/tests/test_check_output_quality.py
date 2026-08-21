@@ -18,6 +18,7 @@ import rasterio
 from rasterio.transform import from_bounds
 
 import check_output_quality
+import check_water_reach
 from check_output_quality import Verdict
 from lib import fetch_receipts
 from tests.synthetic import write_centerline
@@ -510,6 +511,107 @@ def test_manifests_verdict_does_not_fail_a_vector_run_for_having_no_stretches(tm
     assert "not built this run" in report["detail"]
 
 
+# --- Check 6: water_reach_verdict ---------------------------------------------
+#
+# What a point being past the gate MEANS is test_check_water_reach.py's subject,
+# on its own geometry. These are about this module's contract: which verdict a
+# given state of data/processed/ produces, and that a skip is never a pass.
+
+
+def _water_tree(tmp_path, water_features, centerline=None):
+    """A data/processed water layer and the data/raw layers it is measured
+    against, in the two shapes check_water_reach.processed_paths() names."""
+    raw = tmp_path / "raw"
+    processed = tmp_path / "processed" / "poi"
+    raw.mkdir(parents=True, exist_ok=True)
+    processed.mkdir(parents=True, exist_ok=True)
+
+    write_centerline(raw / "centerline.geojson", *([centerline] if centerline is not None else []))
+    for empty in ("side_trails.geojson", "shelters.geojson", "campsites.geojson"):
+        (raw / empty).write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+
+    water_path = processed / "water.geojson"
+    water_path.write_text(json.dumps({"type": "FeatureCollection", "features": water_features}))
+    return raw, water_path
+
+
+def _osm_water(lon, lat):
+    return {
+        "type": "Feature",
+        "properties": {"id": "osm_water:1", "poi_type": "water", "source": "osm_water"},
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+    }
+
+
+def test_water_reach_verdict_passes_water_a_hiker_can_walk_to(tmp_path, monkeypatch):
+    raw, water_path = _water_tree(tmp_path, [_osm_water(-74.0, 41.0)])
+    monkeypatch.setattr(check_water_reach, "RAW_DIR", raw)
+
+    report = check_output_quality.water_reach_verdict(water_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["problems"] == []
+
+
+def test_water_reach_verdict_flags_a_point_no_hiker_could_reach(tmp_path, monkeypatch):
+    """The failure #916 exists for, in the one place that can stop it reaching
+    the bucket: this runs before publish.py."""
+    far = 41.0 + 3000.0 / 111_132.0
+    raw, water_path = _water_tree(tmp_path, [_osm_water(-74.0, far)])
+    monkeypatch.setattr(check_water_reach, "RAW_DIR", raw)
+
+    report = check_output_quality.water_reach_verdict(water_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "osm_water:1" in report["problems"][0]
+    assert "1 of 1 past the gate" in report["detail"]
+
+
+def test_water_reach_verdict_skips_when_no_water_was_exported(tmp_path, monkeypatch):
+    """publish.py supports partial publishes, and a run that exported no POIs
+    has nothing here to be wrong about."""
+    raw, _ = _water_tree(tmp_path, [])
+    monkeypatch.setattr(check_water_reach, "RAW_DIR", raw)
+
+    report = check_output_quality.water_reach_verdict(tmp_path / "processed" / "poi" / "absent.geojson")
+
+    assert report["verdict"] is Verdict.SKIPPED
+    assert report["problems"] == []
+
+
+def test_water_reach_verdict_passes_a_water_layer_with_no_osm_points(tmp_path, monkeypatch):
+    """Every release before #529 added the source. A pass and not a skip -
+    there was something to check and nothing was wrong with it."""
+    opentrail = {
+        "type": "Feature",
+        "properties": {"id": "opentrail_at:1", "poi_type": "water", "source": "opentrail_at"},
+        "geometry": {"type": "Point", "coordinates": [-74.0, 41.0]},
+    }
+    raw, water_path = _water_tree(tmp_path, [opentrail])
+    monkeypatch.setattr(check_water_reach, "RAW_DIR", raw)
+
+    report = check_output_quality.water_reach_verdict(water_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["detail"].startswith("0 osm_water")
+
+
+def test_water_reach_verdict_crashing_is_a_problem_rather_than_silence(tmp_path, monkeypatch):
+    """A gate in front of publish.py must never read as "nothing to report"
+    because it fell over - _safe_verdict is what keeps that promise here."""
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("synthetic failure")
+
+    monkeypatch.setattr(check_water_reach, "check_reach", explode)
+    _, water_path = _water_tree(tmp_path, [_osm_water(-74.0, 41.0)])
+
+    report = check_output_quality._safe_verdict("water_reach", lambda: check_output_quality.water_reach_verdict(water_path))
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "synthetic failure" in report["problems"][0]
+
+
 # --- Check 2: corridor_verdict -------------------------------------------------
 
 
@@ -970,6 +1072,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         "manifests",
         "corridor",
         "topo_quads",
+        "water_reach",
         "baseline",
         "fetches",
     }

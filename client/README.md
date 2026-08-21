@@ -108,9 +108,19 @@ pushed — the beta landing page (`site/`) at `https://ourhike.org/` and this ap
 at `/app/`, with `site/CNAME` putting the site on that domain (#733). A push to
 `main` deploys to UA instead (`ua.yml`); see
 [RELEASING.md](../RELEASING.md) §2 for why those are two different things.
-Enable Pages once under Settings → Pages → Source → **GitHub Actions**, and set
-`DATA_BASE_URL` as a repository _variable_ (not a secret — it is public either
-way, and secrets are unavailable to the build in the form Vite needs).
+Enable Pages once under Settings → Pages → Build and deployment → Source →
+**"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)` — the wording
+[LAUNCH_CHECKLIST.md](../LAUNCH_CHECKLIST.md) §3 uses. **Not "GitHub Actions",**
+which is what this line said until #273: `pages.yml` publishes by pushing to the
+`gh-pages` branch itself rather than through `actions/deploy-pages`, so that
+`pr-preview.yml` can put a preview per pull request on that same branch beside
+the production site. A native Actions deployment serves exactly one live
+deployment and could not host both. Pointed at "GitHub Actions", Pages keeps
+serving whatever the old deployment last published and every push to `gh-pages`
+sits there unused.
+
+Also set `DATA_BASE_URL` as a repository _variable_ (not a secret — it is public
+either way, and secrets are unavailable to the build in the form Vite needs).
 
 Any other static host works too; the build output is `dist/`, the build
 command is `npm run build`.

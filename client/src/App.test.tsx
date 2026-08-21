@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { get, set, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { loadMapEngine } from './map/mapEngineLoader'
 // The shared helper this file's own copy became (#331) - two other suites had
 // written the same wait by hand, and one of them had written it wrong.
 import { liveMap } from './test/liveMap'
@@ -40,10 +41,15 @@ vi.mock('./map/archiveZooms', () => ({
 
 const store = new Map<string, unknown>()
 
-beforeEach(() => {
+beforeEach(async () => {
   store.clear()
   archiveHeader.value = null
   resetMapLibreMock()
+  // The map engine arrives through `import()` in production (#722); primed
+  // here so every render below builds its map synchronously, exactly as it did
+  // before the deferral. After this file's `vi.mock('maplibre-gl', ...)`, so
+  // the engine closes over the mock rather than the real library.
+  await loadMapEngine()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)

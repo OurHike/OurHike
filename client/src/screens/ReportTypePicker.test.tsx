@@ -15,7 +15,7 @@ import { ReportTypePicker } from './ReportTypePicker'
 // type. It is deliberately NOT a sixth condition tile - it is not a trail
 // condition, and the grid stays at five.
 
-const PROPS = { onPick: vi.fn(), onCancel: vi.fn() }
+const PROPS = { onPick: vi.fn(), onReportClosure: vi.fn(), onCancel: vi.fn() }
 
 afterEach(() => {
   cleanup()
@@ -141,6 +141,24 @@ describe('ReportTypePicker', () => {
     await user.click(screen.getByRole('button', { name: /^cancel$/i }))
 
     expect(PROPS.onCancel).toHaveBeenCalled()
+    expect(PROPS.onPick).not.toHaveBeenCalled()
+  })
+
+  it('offers the closure path outside the conditions grid (#832)', async () => {
+    const user = userEvent.setup()
+    render(<ReportTypePicker {...PROPS} />)
+    const grid = screen.getByRole('group', { name: /trail conditions/i })
+
+    // Not a seventh tile: a tile in that grid promises the one-tap form its
+    // neighbours are, and this one asks for two miles. It is also not a
+    // report type at all - a closure has its own table and no
+    // `reporter_type` - which is why it has its own callback rather than
+    // travelling through `onPick`.
+    expect(within(grid).queryByRole('button', { name: /closed/i })).toBe(null)
+
+    await user.click(screen.getByRole('button', { name: /the trail is closed/i }))
+
+    expect(PROPS.onReportClosure).toHaveBeenCalled()
     expect(PROPS.onPick).not.toHaveBeenCalled()
   })
 

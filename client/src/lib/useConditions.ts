@@ -185,21 +185,25 @@ export function useConditions(online: boolean): Conditions {
   // get, and the honest state is `unavailable` - which the strip says out loud
   // instead of rendering as a clear trail.
   //
-  // Losing that case matters less than it sounds: the failure this baseline
-  // exists for is a backend that is down while the phone has signal, and that
-  // is an online phone. Keeping a baseline across a real signal loss means
-  // persisting it the way the trail lines are persisted, which is a storage
-  // decision of its own rather than a line in this effect.
+  // **That gate is now a routing decision rather than a dead end (#447).**
+  // The effect still fires no request without signal - `{ online }` travels
+  // to `fetchPublished`, which skips the fetch entirely - but it now reads
+  // the copy this phone kept the last time an artifact arrived. So the
+  // second row of that table stops being "Trail conditions unavailable" on a
+  // phone that is holding a perfectly good, perfectly datable closure list,
+  // and the fetch-that-cannot-work is still never fired.
   //
   // NOT gated on API_CONFIGURED, though - this path has nothing to do with the
   // backend, and a build with no backend configured at all is exactly the one
   // that most needs a baseline.
   useEffect(() => {
-    if (!online) return
-
     let cancelled = false
+    // Named once rather than repeated six times: every read below wants the
+    // same routing, and a read that quietly disagreed would be the one that
+    // fires a request in a dead spot.
+    const how = { online }
 
-    void fetchPublishedClosures().then((published) => {
+    void fetchPublishedClosures(undefined, how).then((published) => {
       if (cancelled || published === null) return
       // Functional update, because the live read may already have landed -
       // `withBaseline` is what refuses to overwrite it.
@@ -211,7 +215,7 @@ export function useConditions(online: boolean): Conditions {
     // Reports the same way (#436). The baseline holds only public moderated
     // rows, so a signed-in reporter's own unmoderated report still needs the
     // live read - which wins whenever it lands, exactly as with closures.
-    void fetchPublishedReports().then((published) => {
+    void fetchPublishedReports(undefined, how).then((published) => {
       if (cancelled || published === null) return
       setReportState((current) =>
         withBaseline(current, published.items, published.generatedAt),
@@ -221,7 +225,7 @@ export function useConditions(online: boolean): Conditions {
     // Field notes ride the same two-tier read as reports (FIELD_NOTES.md
     // §6): the baseline is what a hiker has when the backend is down, and
     // the live read wins whenever it lands.
-    void fetchPublishedFieldNotes().then((published) => {
+    void fetchPublishedFieldNotes(undefined, how).then((published) => {
       if (cancelled || published === null) return
       setNoteState((current) =>
         withBaseline(current, published.items, published.generatedAt),
@@ -234,7 +238,7 @@ export function useConditions(online: boolean): Conditions {
     // leaving the list empty in that case is the point - the pipeline publishes
     // nothing rather than an empty document precisely so that "we have not
     // looked" cannot render as "ATC reports nothing".
-    void fetchPublishedAtcUpdates().then((published) => {
+    void fetchPublishedAtcUpdates(undefined, how).then((published) => {
       if (cancelled || published === null) return
       setAtcUpdates(published.items)
       setAtcReviewedAt(published.reviewedAt ?? null)
@@ -243,7 +247,7 @@ export function useConditions(online: boolean): Conditions {
     // The volunteer workdays (#760). Reviewed-file data like the ATC
     // notices, so a plain set - and the generated_at travels because the
     // 48-hour opportunity ceiling is judged against it.
-    void fetchPublishedWorkProjects().then((published) => {
+    void fetchPublishedWorkProjects(undefined, how).then((published) => {
       if (cancelled || published === null) return
       setWorkProjects(published.items)
       setWorkProjectsGeneratedAt(published.generatedAt)
@@ -252,7 +256,7 @@ export function useConditions(online: boolean): Conditions {
     // The drought bands (#720). No `withBaseline` and no race, like the ATC
     // notices: there is no live endpoint behind this, so the published
     // artifact is the only tier there is.
-    void fetchPublishedDrought().then((published) => {
+    void fetchPublishedDrought(undefined, how).then((published) => {
       if (cancelled || published === null) return
       setDrought(
         published.items.map((feature) => ({

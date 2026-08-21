@@ -49,6 +49,7 @@ import {
 } from './terrain'
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
+import { WORKDAY_LAYER_ID } from './workdayLayers'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_HALO_LAYER_ID,
@@ -253,8 +254,16 @@ describe('the live topographic background', () => {
     // is never dropped whatever it competes with - but a warning drawn
     // underneath a shelter pin is as unread as one that was decluttered away.
     //
-    // Move either layer and both guarantees are silently gone, which is why
-    // this is asserted rather than left to the ordering in buildMapStyle.
+    // The workday pins (#760) join that group between the two, and the tail
+    // is asserted as three rather than two because "our own pins" is what the
+    // guarantee is about: a contour label must not suppress any of them. Where
+    // the workdays sit WITHIN the group is a smaller claim, made in
+    // map/style.ts - over the waypoints because an invisible invitation is
+    // the state that layer exists to end, under the warnings because when a
+    // hazard and an invitation want the same pixels the hazard wins.
+    //
+    // Move any of the three and both guarantees are silently gone, which is
+    // why this is asserted rather than left to the ordering in buildMapStyle.
     //
     // SYMBOL layers, not all of them, and the distinction is the whole
     // mechanism rather than a narrowing of the test. Placement only ever ranks
@@ -269,7 +278,7 @@ describe('the live topographic background', () => {
       .layers.filter((layer) => layer.type === 'symbol')
       .map((layer) => layer.id)
 
-    expect(symbols.slice(-2)).toEqual([POI_LAYER_ID, WARNING_LAYER_ID])
+    expect(symbols.slice(-3)).toEqual([POI_LAYER_ID, WORKDAY_LAYER_ID, WARNING_LAYER_ID])
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -614,6 +623,12 @@ describe('the offline-only background', () => {
       POI_DOT_LAYER_ID,
       POI_STALENESS_LAYER_ID,
       POI_LAYER_ID,
+      // The workday pins (#760), which the offline background draws for the
+      // same reason it draws the closures: a hiker with no signal is exactly
+      // the hiker who cannot look a workday up any other way. The layer is
+      // empty whenever the feed is stale - the shell passes nothing - so
+      // drawing it here costs a phone with an out-of-date feed nothing.
+      WORKDAY_LAYER_ID,
       WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a

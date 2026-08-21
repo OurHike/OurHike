@@ -12,6 +12,7 @@ way Report's `status`/`visibility` split already works.
 
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from app.models.closure import Closure, ClosureStatus, ModerationStatus
 from app.models.profile import Profile, Role
@@ -602,3 +603,81 @@ def test_a_nan_coordinate_is_refused_like_every_other_float_on_the_wire(client):
     )
 
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# The outbox contract (#832): a closure is authored at the washout, where
+# there is no signal, so it queues on a phone and flushes days later. Two
+# things follow, and both are what these tests pin.
+# ---------------------------------------------------------------------------
+
+
+def test_resending_a_closure_returns_the_stored_one_rather_than_filing_a_second(client, db_session):
+    """The one-bar failure, which for this endpoint is the ordinary case: the
+    request commits here and its response never arrives, so the outbox sends
+    it again. Reports' contract (#243), now the closure's."""
+    user_id = str(uuid.uuid4())
+    closure_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, id=closure_id)
+
+    first = client.post("/closures", json=payload, headers=auth_headers(user_id))
+    second = client.post("/closures", json=payload, headers=auth_headers(user_id))
+
+    assert first.status_code == 201
+    # 200 rather than 201: the same closure, not a new one. A client only
+    # needs to see a 2xx either way.
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"] == closure_id
+    assert db_session.query(Closure).count() == 1
+
+
+def test_a_closure_id_belonging_to_somebody_else_is_refused_not_returned(client):
+    """Handing back another person's row would turn a guessed UUID into a way
+    to read an unmoderated report about a stretch of trail."""
+    closure_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, id=closure_id)
+
+    client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 409
+
+
+def test_the_day_it_was_written_survives_the_days_it_waited_in_an_outbox(client):
+    """`reported_at` is what the closure sheet ages a closure by. A queued
+    closure that reads as filed on the day its phone found signal makes that
+    number wrong in the safe-looking direction - fresher than it is."""
+    wrote_it = datetime.now(timezone.utc) - timedelta(days=3)
+    payload = dict(_VALID_PAYLOAD, reported_at=wrote_it.isoformat())
+
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 201
+    stored = datetime.fromisoformat(response.json()["reported_at"].replace("Z", "+00:00"))
+    assert abs((stored - wrote_it).total_seconds()) < 1
+
+
+def test_a_closure_dated_in_the_future_is_refused(client):
+    """Five minutes of lead is a drifting phone clock; a day is not. The same
+    bound `ReportCreate.authored_at` keeps, and deliberately the same number."""
+    payload = dict(
+        _VALID_PAYLOAD,
+        reported_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 422
+    assert "reported_at" in response.text
+
+
+def test_a_closure_with_no_date_is_stamped_by_the_server(client):
+    """Every client that predates the form sends nothing, and a maintainer
+    with curl still files closures. Absent means now, as it always did."""
+    before = datetime.now(timezone.utc) - timedelta(seconds=5)
+
+    response = client.post("/closures", json=_VALID_PAYLOAD, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 201
+    stored = datetime.fromisoformat(response.json()["reported_at"].replace("Z", "+00:00"))
+    assert stored >= before

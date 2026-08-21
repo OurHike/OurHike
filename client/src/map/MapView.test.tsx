@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { StrictMode } from 'react'
 import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
+import { loadMapEngine, resetMapEngineForTests } from './mapEngineLoader'
 import { MapView } from './MapView'
 import {
   BACKDROP_LAYER_ID,
@@ -117,8 +118,14 @@ const CLOSURES: readonly ClosureBand[] = [
 
 const WARNINGS: readonly WarningPoint[] = [{ id: 'r1', lon: -77.2, lat: 39.4 }]
 
-beforeEach(() => {
+beforeEach(async () => {
   resetMapLibreMock()
+  // The map engine arrives through `import()` in production (#722); primed
+  // here so every render below builds its map synchronously, exactly as it did
+  // before the deferral. After the test file's `vi.mock('maplibre-gl', ...)`,
+  // so the engine closes over the mock rather than the real library.
+  await loadMapEngine()
+
   registrationOrder.length = 0
   basemapOrder.length = 0
   workerOrder.length = 0
@@ -126,6 +133,57 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+})
+
+describe('the deferred map engine (#722)', () => {
+  // The one group that does NOT want the primed engine: it is about the cold
+  // start, where `maplibre-gl` is still 860 ms of parse away and `MapView`
+  // has nothing to build with yet.
+
+  beforeEach(() => {
+    resetMapEngineForTests()
+  })
+
+  it('renders its container before the engine has arrived', () => {
+    const { container } = render(<MapView {...PROPS} />)
+
+    // The component stays synchronous - the container, its size and its place
+    // in the layout are unchanged - so nothing above it waits or reserves
+    // space. This is what makes the trade "the card over an empty backdrop"
+    // rather than "the card jumps when the map lands".
+    expect(container.querySelector('.map-view')).not.toBeNull()
+    expect(MockMap.live).toHaveLength(0)
+  })
+
+  it('builds the map once the chunk lands', async () => {
+    render(<MapView {...PROPS} />)
+
+    await waitFor(() => expect(MockMap.live).toHaveLength(1))
+  })
+
+  it('does not build a map for a component that unmounted while it waited', async () => {
+    // StrictMode's mount-unmount-remount, and a real one: a hiker who taps
+    // straight through to Settings. Building now would leak a WebGL context
+    // and, through the archive it holds open, up to 1.18 GB.
+    const { unmount } = render(<MapView {...PROPS} />)
+    unmount()
+
+    await loadMapEngine()
+    await waitFor(() => expect(MockMap.live).toHaveLength(0))
+  })
+
+  it('builds synchronously on every mount after the first', async () => {
+    const first = render(<MapView {...PROPS} />)
+    await waitFor(() => expect(MockMap.live).toHaveLength(1))
+    first.unmount()
+
+    render(<MapView {...PROPS} />)
+
+    // No await: the chunk is parsed, and making a hiker returning from the
+    // More tab wait a microtask for a map they already had would be the
+    // regression this branch exists to avoid.
+    expect(MockMap.live).toHaveLength(1)
+  })
 })
 
 describe('MapView', () => {

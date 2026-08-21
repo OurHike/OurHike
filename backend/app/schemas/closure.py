@@ -1,6 +1,7 @@
 """Pydantic request/response models for the `/closures` router."""
 
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator, model_validator
 from pydantic.networks import HttpUrl
@@ -29,16 +30,56 @@ class ClosureCreate(BaseModel):
     no field at all" pattern (see app/schemas/report.py).
     """
 
+    # The outbox's idempotency key (#832), exactly as `ReportCreate.id` is
+    # and for the same failure: a closure is authored at the washout, with no
+    # signal, and flushed whenever signal returns - so the request that
+    # commits here and loses its response on the way back is the ordinary
+    # case rather than the unlucky one. Without this, the retry that failure
+    # forces would file a second closure over the same stretch.
+    #
+    # Optional, because every client that predates the authoring form sends
+    # nothing and the server still has to accept a closure from a maintainer
+    # with curl.
+    id: uuid.UUID | None = None
+
     reason_type: ReasonType
     note: NoteText | None = None
     start_mile_marker: FiniteFloat
     end_mile_marker: FiniteFloat
 
-    # Where the two ends physically are (#674). Optional, because there is no
-    # closure authoring form in this app yet and because every client that
-    # predates one sends nothing - see app/models/closure.py for why null is
-    # the ordinary state rather than a gap. Client-supplied and derived, the
-    # same posture `ReportCreate.mile` documents.
+    # When somebody stood in front of it, not when the phone got signal
+    # (#832). `reported_at` is what the sheet ages a closure by, and the
+    # column's own comment already makes the point that a closure can arrive
+    # days old - "a closure reported four days after a storm is already four
+    # days old when it arrives". A queued closure that reads as filed on the
+    # day its phone found a bar makes that number a lie in the safe-looking
+    # direction: fresher than it is.
+    #
+    # Client claim, server fallback - `ReportCreate.authored_at`'s posture,
+    # with its skew allowance, because the same phone clocks are involved.
+    reported_at: datetime | None = None
+
+    @field_validator("reported_at")
+    @classmethod
+    def _reject_future_reporting(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+
+        # Five minutes of lead is drift; more is a clock nobody should be
+        # taking dictation from. ReportCreate's number, deliberately shared.
+        skew = timedelta(minutes=5)
+        now = datetime.now(timezone.utc)
+        compared = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+        if compared > now + skew:
+            raise ValueError("reported_at cannot be in the future")
+        return value
+
+    # Where the two ends physically are (#674). Optional, because plenty of
+    # callers send nothing - a maintainer with curl, a client older than
+    # #832's form - see app/models/closure.py for why null is the ordinary
+    # state rather than a gap. Client-supplied and derived, the same posture
+    # `ReportCreate.mile` documents.
     start_lat: FiniteFloat | None = None
     start_lon: FiniteFloat | None = None
     end_lat: FiniteFloat | None = None

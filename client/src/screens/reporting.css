@@ -240,3 +240,30 @@
   font-size: 14px;
   color: var(--fg-1);
 }
+
+/* The closure form's reason list (#832). A radio group rather than the tile
+   grid the report picker uses: the five reasons are sentences a hiker
+   recognises off a trailhead sign, not glyphs, and each carries a hint that
+   would not fit in a tile. */
+.reporting__choice {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding-block: 0.4rem;
+}
+
+.reporting__choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.reporting__choice-label {
+  font-weight: 600;
+}
+
+/* Wide enough for a mile with its tenth and no wider - the field takes one
+   number, and a full-width box invites a sentence. */
+.reporting__input--mile {
+  max-width: 10rem;
+}

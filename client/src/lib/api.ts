@@ -309,9 +309,9 @@ export interface ClosureSummary {
    * against whichever release this phone is holding.
    *
    * Null on every closure filed before the columns existed, and on every one
-   * filed until this app grows a closure form — there is no create call in
-   * this file, only fetch, verify and dismiss. A null pair means "show the
-   * mile as stored", which is what every closure does today.
+   * filed by something other than this app's own form (#832) — a maintainer
+   * with curl, a client older than it. A null pair means "show the mile as
+   * stored", which is what every closure authored before that form does.
    *
    * **Optional as well as nullable, and the two mean different things.** The
    * live `GET /closures` always sends all four keys, null or not. The
@@ -500,12 +500,33 @@ export async function sendVolunteerHours(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Files a closure somebody walked up to (#832).
+ *
+ * `reported_at` travels, and is the reason this is not a two-line inline
+ * fetch: the outbox stores when the closure was WRITTEN, and the sheet ages
+ * a closure by exactly that field. A closure queued at a washout on Monday
+ * and flushed in town on Thursday must not arrive claiming to be three days
+ * fresher than it is.
+ */
+export async function sendClosure(item: OutboxItem): Promise<void> {
+  await authedFetch('/closures', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...item.closure,
+      id: item.id,
+      reported_at: item.authoredAt,
+    }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds five families now: condition reports (the original
+ * The outbox holds six families now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
- * reports (#848), field notes (features/FIELD_NOTES.md), and volunteer
- * hours (#761). One dispatcher, so `flushOutbox` keeps its single `send`
+ * reports (#848), field notes (features/FIELD_NOTES.md), volunteer hours
+ * (#761), and closures (#832). One dispatcher, so `flushOutbox` keeps its
+ * single `send`
  * seam and the queue stays one queue - a hiker's unsent work is one list.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
@@ -513,6 +534,7 @@ export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.appFailure !== undefined) return sendAppFailure(item)
   if (item.fieldNote !== undefined) return sendFieldNote(item)
   if (item.volunteerHours !== undefined) return sendVolunteerHours(item)
+  if (item.closure !== undefined) return sendClosure(item)
   return sendReport(item)
 }
 
@@ -881,6 +903,62 @@ export async function unhideFieldNote(noteId: string): Promise<NoteQueueEntry> {
     },
   )
   return (await response.json()) as NoteQueueEntry
+}
+
+/**
+ * One row of the hours confirmation queue (#877): a record whole, plus the
+ * `user_id` that `/volunteer-hours/mine` has no reason to carry and this
+ * surface cannot work without - a club admin confirming an hour is standing
+ * behind a specific person's word, and a row that will not say whose is a
+ * row nobody can responsibly confirm.
+ *
+ * It is the only identifier here, and it is deliberately not joined to a
+ * name: the backend has no such join to offer, and inventing a display name
+ * client-side would put a person's identity on a screen the server never
+ * agreed to publish.
+ */
+export interface VolunteerHoursQueueEntry extends VolunteerHoursSummary {
+  user_id: string
+}
+
+/** Everything still waiting on a club's word, oldest work first - the
+ *  server's order, which this must not re-sort: "oldest first" is the
+ *  fairness rule (a claim filed in April is not outranked by one filed
+ *  yesterday), and a client that re-ordered would quietly replace it. */
+export async function fetchHoursQueue(
+  signal?: AbortSignal,
+): Promise<VolunteerHoursQueueEntry[]> {
+  const response = await authedFetch('/volunteer-hours/queue', {
+    method: 'GET',
+    signal,
+  })
+  return (await response.json()) as VolunteerHoursQueueEntry[]
+}
+
+/** A club stands behind the number. Set once on the server - who FIRST
+ *  granted it is what an audit needs - so a second confirm is harmless. */
+export async function confirmVolunteerHours(
+  recordId: string,
+): Promise<VolunteerHoursQueueEntry> {
+  const response = await authedFetch(
+    `/volunteer-hours/${encodeURIComponent(recordId)}/confirm`,
+    { method: 'POST', body: '{}' },
+  )
+  return (await response.json()) as VolunteerHoursQueueEntry
+}
+
+/** A club declines to. Under the 2026-08-20 decision (claimed counts until
+ *  disputed) this is the REMOVAL action - the record drops out of every
+ *  total - and the record itself stays, visible to the volunteer, because a
+ *  dispute is a disagreement to take up with the club, not an erasure. */
+export async function disputeVolunteerHours(
+  recordId: string,
+): Promise<VolunteerHoursQueueEntry> {
+  const response = await authedFetch(
+    `/volunteer-hours/${encodeURIComponent(recordId)}/dispute`,
+    { method: 'POST', body: '{}' },
+  )
+  return (await response.json()) as VolunteerHoursQueueEntry
 }
 
 /**

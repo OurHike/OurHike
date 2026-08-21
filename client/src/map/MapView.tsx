@@ -9,7 +9,7 @@
 // once per effect run, and fully undo the build on cleanup.
 
 import { useEffect, useRef, useState } from 'react'
-import { Map as MapLibreMap } from 'maplibre-gl'
+import type { Map as MapLibreMap } from 'maplibre-gl'
 // MapLibre's own stylesheet, and not optional. Everything the map puts on
 // itself - compass, locate, the scale bar, the zoom buttons - is positioned by
 // this file and by nothing else. Without it `.maplibregl-canvas` is not
@@ -23,9 +23,6 @@ import { Map as MapLibreMap } from 'maplibre-gl'
 // size set here (WIREFRAMES.md's 42px against MapLibre's 29px), which is the
 // tell that this import was forgotten rather than declined.
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { registerPMTilesProtocol } from './protocol'
-import { registerBasemapProtocol } from './basemap'
-import { registerMapWorker } from './mapWorker'
 import { readTrailsMerged } from '../lib/trailShape'
 import {
   attachMapAppearance,
@@ -34,11 +31,12 @@ import {
   buildMapStyle,
 } from './style'
 import { attachMapDetail } from './mapDetail'
-import { attachContourUnits, registerTerrain } from './contours'
 import { attachLiveSourceHealth, type SourceReport } from './liveSourceHealth'
 import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
-import { attachMapChrome, type ScaleUnits } from './mapChrome'
+import type { ScaleUnits } from './mapChrome'
+import type { MapEngine } from './engine'
+import { loadMapEngine, loadedMapEngine } from './mapEngineLoader'
 import type { ResolvedTheme } from '../lib/theme'
 import { attachPoiData, attachPoiFilter, attachPoiIcons } from './poiLayers'
 import {
@@ -55,6 +53,12 @@ import {
 } from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
+import {
+  attachWorkdayData,
+  attachWorkdayIcon,
+  attachWorkdayTaps,
+  type WorkdayPoint,
+} from './workdayLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
 import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
@@ -168,6 +172,18 @@ export interface MapViewProps {
    * header of warningLayers.ts.
    */
   warnings?: readonly WarningPoint[]
+  /**
+   * Volunteer workdays, as points (#760).
+   *
+   * The shell does the windowing AND the staleness check: past
+   * `OPPORTUNITIES_STALE_MS` it passes nothing, because a pin has no hedged
+   * form and a hedged invitation still reads as an invitation
+   * (workdayLayers.ts's header).
+   */
+  workdays?: readonly WorkdayPoint[]
+  /** Which workday a tap landed on. Must be stable across renders, like
+   *  `onSelectPoi`. */
+  onSelectWorkday?: (projectId: string) => void
   /**
    * The route being built, already in map coordinates - same division as
    * `closures`: turning miles into geometry needs the centerline index,
@@ -318,6 +334,7 @@ const NO_DROUGHT: readonly DroughtBand[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
+const NO_WORKDAYS: readonly WorkdayPoint[] = []
 
 export function MapView({
   topoArchiveUrl,
@@ -340,6 +357,8 @@ export function MapView({
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
   warnings = NO_WARNINGS,
+  workdays = NO_WORKDAYS,
+  onSelectWorkday,
   routeDrawing = null,
   onRouteTap,
   onSelectPoi,
@@ -390,88 +409,121 @@ export function MapView({
     /* v8 ignore next */
     if (container === null) return
 
-    // Before anything else: MapLibre 6 looks for its own worker next to the
-    // bundle, where no bundler ever puts it, and a map with no worker parses no
-    // tiles at all - see mapWorker.ts. Every layer below depends on this line.
-    registerMapWorker()
-
-    // The style resolves pmtiles:// URLs, so the protocol has to exist first.
-    registerPMTilesProtocol()
-
-    // And basemap:// URLs - the hiking sheet's local-first tile resolution
-    // (basemap.ts). Registered unconditionally like the pmtiles scheme, and
-    // unlike the terrain protocols below: it reaches the network only as the
-    // per-tile fallthrough of a source the chosen style actually declares,
-    // so there is no behind-the-back request to guard against.
-    registerBasemapProtocol()
-
-    // Same contract for the DEM and contour protocols, with one difference
-    // worth being deliberate about: this one reaches the network, so it is
-    // only set up when a background that uses it was actually asked for.
-    // Someone who chose the downloaded archive to stay off the network should
-    // not have a DEM protocol registered behind their back.
+    // THE ENGINE, WHICH MAY NOT BE HERE YET (#722).
     //
-    // Best-effort, and narrower than it used to claim. This comment said the
-    // branch fires when "a Web Worker and a blob URL" are unavailable; neither
-    // is true. contours.ts feature-detects Worker and falls back to the main
-    // thread rather than throwing, and the worker it constructs is the app's
-    // own emitted asset (demWorker.ts, since #187) rather than the library's
-    // blob. What actually lands here is a Content-Security-Policy whose
-    // worker-src refuses that construction - no such policy is served today,
-    // so this is a guard against a future hardening rather than a path
-    // anyone is on.
+    // `maplibre-gl` is 860 ms of parse on a throttled phone and it used to sit
+    // in front of the first paint. It is loaded through `import()` now, so on
+    // a cold start this effect has nothing to build with for a beat and the
+    // onboarding card renders over an empty backdrop instead of over a blank
+    // screen.
     //
-    // Either way the outcome is a map without contours, not no map: a failure
-    // here costs terrain and nothing else. That is now true of what gets
-    // built, too - style.ts used to drop the entire live sheet along with it.
-    let terrain: TerrainUrls | undefined
-    if (background === 'hiking_topo_live') {
-      try {
-        terrain = registerTerrain(units)
-      } catch (error) {
-        console.warn('Terrain unavailable; drawing the background without it.', error)
+    // Every mount after the first takes the synchronous branch: the loader
+    // memoises, so a hiker coming back from the More tab gets their map built
+    // in this tick exactly as before. `cancelled` covers the async branch's
+    // one new failure - StrictMode unmounting before the chunk lands - and
+    // `built` is what the cleanup tears down in either case.
+    let cancelled = false
+    let built: MapLibreMap | null = null
+
+    const build = (engine: MapEngine) => {
+      // Before anything else: MapLibre 6 looks for its own worker next to the
+      // bundle, where no bundler ever puts it, and a map with no worker parses no
+      // tiles at all - see mapWorker.ts. Every layer below depends on this line.
+      engine.registerMapWorker()
+
+      // The style resolves pmtiles:// URLs, so the protocol has to exist first.
+      engine.registerPMTilesProtocol()
+
+      // And basemap:// URLs - the hiking sheet's local-first tile resolution
+      // (basemap.ts). Registered unconditionally like the pmtiles scheme, and
+      // unlike the terrain protocols below: it reaches the network only as the
+      // per-tile fallthrough of a source the chosen style actually declares,
+      // so there is no behind-the-back request to guard against.
+      engine.registerBasemapProtocol()
+
+      // Same contract for the DEM and contour protocols, with one difference
+      // worth being deliberate about: this one reaches the network, so it is
+      // only set up when a background that uses it was actually asked for.
+      // Someone who chose the downloaded archive to stay off the network should
+      // not have a DEM protocol registered behind their back.
+      //
+      // Best-effort, and narrower than it used to claim. This comment said the
+      // branch fires when "a Web Worker and a blob URL" are unavailable; neither
+      // is true. contours.ts feature-detects Worker and falls back to the main
+      // thread rather than throwing, and the worker it constructs is the app's
+      // own emitted asset (demWorker.ts, since #187) rather than the library's
+      // blob. What actually lands here is a Content-Security-Policy whose
+      // worker-src refuses that construction - no such policy is served today,
+      // so this is a guard against a future hardening rather than a path
+      // anyone is on.
+      //
+      // Either way the outcome is a map without contours, not no map: a failure
+      // here costs terrain and nothing else. That is now true of what gets
+      // built, too - style.ts used to drop the entire live sheet along with it.
+      let terrain: TerrainUrls | undefined
+      if (background === 'hiking_topo_live') {
+        try {
+          terrain = engine.registerTerrain(units)
+        } catch (error) {
+          console.warn('Terrain unavailable; drawing the background without it.', error)
+        }
       }
+
+      const created = engine.createMap({
+        container,
+        style: buildMapStyle({
+          topoArchiveUrl,
+          trailsUrl,
+          background,
+          terrain,
+          units,
+          theme,
+          themeChoice,
+          mapStyle,
+          redLight,
+          // Read here, at creation, rather than passed as a prop: the trails
+          // source's tolerance is fixed when the style is built, and the fact
+          // deciding it is a property of the bytes in storage (recorded
+          // synchronously readable for exactly this moment - lib/trailShape.ts,
+          // #161), not of anything the shell renders from.
+          trailsMerged: readTrailsMerged(),
+        }),
+        // `bounds` wins where it is given: MapLibre works out the zoom that fits
+        // the box on this particular screen, which is the whole point of asking
+        // for a box rather than a zoom number.
+        ...(bounds === undefined
+          ? { center: center ?? DEFAULT_CENTER, zoom: zoom ?? DEFAULT_ZOOM }
+          : { bounds, fitBoundsOptions: { padding: boundsPadding } }),
+        // Attribution is rendered by the app's own chrome, positioned per
+        // WIREFRAMES.md, rather than by MapLibre's default control.
+        attributionControl: false,
+      })
+      // Recorded, not assumed: the style above was seeded with whatever this
+      // render's lines are, so the attach below has nothing to do until they
+      // change. Cleared on teardown so the next map is seeded and recorded
+      // together, and a rebuild can never inherit the previous map's answer.
+      drawnTrailsUrl.current = trailsUrl
+      built = created
+      setMap(created)
     }
 
-    const created = new MapLibreMap({
-      container,
-      style: buildMapStyle({
-        topoArchiveUrl,
-        trailsUrl,
-        background,
-        terrain,
-        units,
-        theme,
-        themeChoice,
-        mapStyle,
-        redLight,
-        // Read here, at creation, rather than passed as a prop: the trails
-        // source's tolerance is fixed when the style is built, and the fact
-        // deciding it is a property of the bytes in storage (recorded
-        // synchronously readable for exactly this moment - lib/trailShape.ts,
-        // #161), not of anything the shell renders from.
-        trailsMerged: readTrailsMerged(),
-      }),
-      // `bounds` wins where it is given: MapLibre works out the zoom that fits
-      // the box on this particular screen, which is the whole point of asking
-      // for a box rather than a zoom number.
-      ...(bounds === undefined
-        ? { center: center ?? DEFAULT_CENTER, zoom: zoom ?? DEFAULT_ZOOM }
-        : { bounds, fitBoundsOptions: { padding: boundsPadding } }),
-      // Attribution is rendered by the app's own chrome, positioned per
-      // WIREFRAMES.md, rather than by MapLibre's default control.
-      attributionControl: false,
-    })
-    // Recorded, not assumed: the style above was seeded with whatever this
-    // render's lines are, so the attach below has nothing to do until they
-    // change. Cleared on teardown so the next map is seeded and recorded
-    // together, and a rebuild can never inherit the previous map's answer.
-    drawnTrailsUrl.current = trailsUrl
-    setMap(created)
+    const ready = loadedMapEngine()
+    if (ready !== null) {
+      build(ready)
+    } else {
+      void loadMapEngine().then((engine) => {
+        // The map was unmounted while the chunk was in flight. Building one
+        // now would leak a WebGL context and an archive that can be 1.18 GB -
+        // the leak the whole effect is written around.
+        if (cancelled) return
+        build(engine)
+      })
+    }
 
     return () => {
+      cancelled = true
       drawnTrailsUrl.current = null
-      created.remove()
+      built?.remove()
       setMap(null)
     }
     // Intentionally omitting `center`/`zoom` - see the note above. Including
@@ -539,8 +591,12 @@ export function MapView({
   // controls instead of tearing down and rebuilding the entire map underneath
   // the hiker.
   useEffect(() => {
-    if (map === null) return
-    return attachMapChrome(map, { showZoomButtons, units, locationEnabled })
+    // `loadedMapEngine()` rather than an await or a piece of state: a map
+    // exists, so the chunk that built it is already here, and this effect has
+    // to stay synchronous to keep returning its detach.
+    const engine = loadedMapEngine()
+    if (map === null || engine === null) return
+    return engine.attachMapChrome(map, { showZoomButtons, units, locationEnabled })
   }, [map, showZoomButtons, units, locationEnabled])
 
   // The appearance's half of the same promise, and the widest one: it
@@ -565,7 +621,9 @@ export function MapView({
   // different tile URL, which is what this does - see contours.ts.
   useEffect(() => {
     if (map === null) return
-    return attachContourUnits(map, units)
+    const engine = loadedMapEngine()
+    if (engine === null) return
+    return engine.attachContourUnits(map, units)
   }, [map, units])
 
   // And the labels' half: the contour suffix and the peak elevation field
@@ -701,6 +759,27 @@ export function MapView({
     if (map === null) return
     return attachWarningData(map, warnings)
   }, [map, warnings])
+
+  // The workday pins (#760): the image once, the data whenever the shell's
+  // window or staleness verdict changes, and the tap. Same three-effect shape
+  // as the warnings above.
+  useEffect(() => {
+    if (map === null) return
+    return attachWorkdayIcon(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachWorkdayData(map, workdays)
+  }, [map, workdays])
+
+  useEffect(() => {
+    // Not attached during route building, for attachRouteTaps' rule: one
+    // interpreter per touch, and while a route is being drawn every tap on
+    // this map means "a point on my route".
+    if (map === null || onSelectWorkday === undefined || onRouteTap !== undefined) return
+    return attachWorkdayTaps(map, onSelectWorkday)
+  }, [map, onSelectWorkday, onRouteTap])
 
   // The route drawing, on the closure pattern: pushed onto the live map, its
   // own effect so a point dropped mid-build re-serialises a few features and

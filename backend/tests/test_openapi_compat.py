@@ -492,3 +492,94 @@ def test_an_orphaned_schema_is_not_part_of_the_contract():
     current = _document(THING)
 
     assert compare(baseline, current) == []
+
+
+# --- Narrowed request constraints (#502) ----------------------------------
+#
+# The half of type narrowing that needs no JSON Schema subtyping: a bound that
+# appears, or a bound that moves in the refusing direction. Requests only -
+# an old client reads responses and declares no constraints of its own, so a
+# narrowed response is still readable, and speculative rules there are how a
+# real one gets overridden.
+
+
+def _narrowed(old_note: dict, new_note: dict, *, role: str = "request") -> list:
+    """One schema's `note` property, before and after."""
+    baseline = _document({**THING, "properties": {**THING["properties"], "note": old_note}}, role=role)
+    current = _document({**THING, "properties": {**THING["properties"], "note": new_note}}, role=role)
+    return compare(baseline, current)
+
+
+def test_a_ceiling_that_falls_on_a_request_is_a_break():
+    """NoteText's 8000 becoming 500 is the concrete case: every old client
+    with a long note in its outbox starts 422ing on flush, at the moment it
+    finally gets signal."""
+    breaks = _narrowed({"type": "string", "maxLength": 8000}, {"type": "string", "maxLength": 500})
+
+    assert [item.rule for item in breaks] == ["request constraint narrowed"]
+    assert "8000" in breaks[0].detail and "500" in breaks[0].detail
+
+
+def test_a_ceiling_that_rises_on_a_request_is_not_a_break():
+    """The safe direction, and it has to stay silent: a check that fires on
+    every loosening is one somebody learns to override."""
+    assert _narrowed({"type": "string", "maxLength": 500}, {"type": "string", "maxLength": 8000}) == []
+
+
+def test_a_floor_that_rises_on_a_request_is_a_break():
+    breaks = _narrowed({"type": "number", "minimum": 0}, {"type": "number", "minimum": 1})
+
+    assert [item.rule for item in breaks] == ["request constraint narrowed"]
+
+
+def test_a_bound_that_appears_where_there_was_none_is_a_break():
+    """The case an old client cannot possibly have obeyed - it was written
+    against a document that stated no bound at all."""
+    breaks = _narrowed({"type": "string"}, {"type": "string", "maxLength": 500})
+
+    assert [item.rule for item in breaks] == ["request constraint added"]
+
+
+def test_a_pattern_appearing_is_reported_without_a_claim_about_what_it_means():
+    breaks = _narrowed({"type": "string"}, {"type": "string", "pattern": "^[a-z]+$"})
+
+    assert [item.rule for item in breaks] == ["request constraint added"]
+
+
+def test_a_pattern_changing_is_reported_as_a_judgment_nobody_here_makes():
+    """Whether one regex accepts a subset of another's language IS the
+    subtyping problem. Reported as a change, with the detail saying so."""
+    breaks = _narrowed({"type": "string", "pattern": "^a"}, {"type": "string", "pattern": "^b"})
+
+    assert [item.rule for item in breaks] == ["request constraint changed"]
+    assert "judgment" in breaks[0].detail
+
+
+def test_forbidding_extra_properties_on_a_request_is_a_break():
+    """The same refusal wearing a different keyword: a field an old client
+    sends was ignored and is now a 422."""
+    baseline = _document(THING, role="request")
+    current = _document({**THING, "additionalProperties": False}, role="request")
+
+    breaks = compare(baseline, current)
+
+    assert [item.rule for item in breaks] == ["request constraint narrowed"]
+    assert "additionalProperties" in breaks[0].where
+
+
+def test_a_response_that_narrows_is_not_a_break():
+    """An old client READS this. `client/src/lib/api.ts` declares TypeScript
+    interfaces, which hold no maxLength and no pattern, so there is nothing on
+    that side for a narrower response to violate."""
+    assert _narrowed({"type": "string", "maxLength": 8000}, {"type": "string", "maxLength": 500}, role="response") == []
+
+
+def test_a_malformed_numeric_bound_is_ignored_rather_than_reported():
+    """A string under `maximum` is a broken document, not a compatibility
+    question - and a break nobody can act on is one they learn to skip past."""
+    assert _narrowed({"type": "number", "maximum": 10}, {"type": "number", "maximum": "ten"}) == []
+
+
+def test_a_bound_that_disappears_entirely_is_not_a_break():
+    """Removing a ceiling accepts everything it used to and more."""
+    assert _narrowed({"type": "string", "maxLength": 500}, {"type": "string"}) == []

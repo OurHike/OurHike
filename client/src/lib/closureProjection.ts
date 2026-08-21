@@ -31,12 +31,14 @@
  *   could be drawn on the stretch beside the closed one.
  *
  * What would settle it: the distribution of `locateOnTrail(...).offTreadFeet`
- * for real closure endpoints projected across two real releases. Until a
- * closure is authored with geometry there is nothing to measure — no client
- * writes it yet — so this is deliberately left as the loose inherited gate
- * rather than tightened to a number picked in advance. `locateOnTrail` already
- * returns that offset, which is where a real threshold, or a note on the sheet
- * saying how far the stretch moved, would come from.
+ * for real closure endpoints projected across two real releases. **#832's
+ * closure form is now writing that geometry**, so the measurement has a
+ * source it did not have when this was written — but it needs closures
+ * authored on one release and read on the next, which is a wait rather than
+ * a change. Still deliberately the loose inherited gate rather than a number
+ * picked in advance. `locateOnTrail` already returns that offset, which is
+ * where a real threshold, or a note on the sheet saying how far the stretch
+ * moved, would come from.
  *
  * **Two consequences of projecting, named rather than left to be discovered.**
  * Neither is acted on here, because both need a decision this change is not

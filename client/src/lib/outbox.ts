@@ -38,6 +38,7 @@
 import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
+import type { ClosureDraft } from './closureDraft'
 import type { FieldNoteDraft } from './fieldNotes'
 import type { VolunteerHoursDraft } from './volunteerHours'
 
@@ -263,6 +264,18 @@ export interface OutboxItem {
    */
   volunteerHours?: VolunteerHoursDraft
   /**
+   * A closure somebody walked up to (#832) - the sixth cargo, and the one
+   * whose subject is the reason the queue exists: a hiker standing in front
+   * of a washout is, by definition, not standing anywhere with signal.
+   *
+   * `authoredAt` is the closure's `reported_at`, which is what the closure
+   * sheet ages it by. That is why it travels rather than being stamped on
+   * arrival: a closure filed on Monday and flushed on Thursday reads as
+   * three days fresher than it is, in the direction that makes a hiker
+   * trust it more.
+   */
+  closure?: ClosureDraft
+  /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
    * **The bytes and not a URL**, which is the whole reason this field exists
@@ -459,6 +472,26 @@ export async function enqueueVolunteerHours(
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     volunteerHours,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a closure report (#832). Same queue, same four properties - and the
+ * id matters more here than anywhere: `POST /closures` takes it as an
+ * idempotency key, so the flush that commits and loses its response costs a
+ * duplicate request rather than a second closure over the same stretch.
+ */
+export async function enqueueClosure(
+  closure: ClosureDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    closure,
   }
 
   await mutateQueue((queue) => [...queue, item])

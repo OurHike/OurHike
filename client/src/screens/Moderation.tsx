@@ -28,6 +28,35 @@
 // moderation policy, not a data-model question). This screen shows one
 // club's worth of queue to any maintainer, which is what the backend does.
 //
+// WHY THE FLAGGED NOTES AND THE CLAIMED HOURS ARE ON THIS SCREEN (#877)
+//
+// Both landed backend-first and neither had anywhere to be done, which is
+// the same shape #235 fixed for reports: endpoints a person could only
+// reach with curl. REPORT_A_PROBLEM.md's "not building a second review
+// workflow" is why they join this screen rather than getting their own -
+// one queue surface, four resources.
+//
+// They are NOT the same decision as a report, and the sections say so:
+//
+//  - A field note is public the moment it lands (FIELD_NOTES.md §5's
+//    publish-now, remove-on-flags), so this list is not "what is waiting to
+//    be allowed" - it is what somebody objected to, plus what has already
+//    been taken down. Hiding is reversible by construction and the archive
+//    is listed for exactly that reason.
+//  - An hour is somebody's own record, already real to them and already
+//    counting (the 2026-08-20 decision on #761). Confirming adds a club's
+//    name to it; disputing is the removal action. Neither is approval, and
+//    a screen that rendered them as approve/reject would have quietly
+//    re-decided that a volunteer's word counts for nothing until a club
+//    speaks.
+//
+// WHY NEITHER SECTION PRINTS A TOTAL
+//
+// VOLUNTEERING.md §5's four rules bind wherever hours are rendered, not
+// just on the volunteer's own dashboard. A per-person total in a
+// confirmation queue is a comparison waiting to happen between the rows,
+// which is the scoreboard the whole feature promises not to be.
+
 // WHY THERE IS NO SEVERITY DEFAULT
 //
 // Verify sends `severity` only when the moderator picked one (#251). An
@@ -38,22 +67,32 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
+  confirmVolunteerHours,
   dismissClosure,
   dismissPhoto,
   dismissReport,
+  disputeVolunteerHours,
+  fetchHoursQueue,
   fetchModerationQueue,
+  fetchNoteQueue,
   fetchPhotoQueue,
   fetchReportPhotoLink,
+  hideFieldNote,
   pinPhoto,
   reviewPhoto,
+  unhideFieldNote,
   unpinPhoto,
   verifyClosure,
   verifyReport,
   type ModerationQueue,
+  type NoteQueueEntry,
   type PoiPhotoQueueEntry,
   type QueuedClosure,
   type QueuedReport,
+  type VolunteerHoursQueueEntry,
 } from '../lib/api'
+import { observationLabel } from '../lib/fieldNotes'
+import { ACTIVITY_LABELS } from '../lib/volunteerHours'
 import './moderation.css'
 
 export interface ModerationProps {
@@ -79,6 +118,25 @@ function placeOf(report: QueuedReport): string {
   if (report.poi_id !== null) return `at ${report.poi_id}`
   if (report.lat === null || report.lon === null) return 'no location'
   return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}`
+}
+
+/** Where a field note was written, in the same order of preference the
+ *  card does it: the place it is about, then the fix it was written at,
+ *  then the mile. Never 0,0 - see `placeOf`. */
+function notePlaceOf(note: NoteQueueEntry['note']): string {
+  if (note.poi_id !== null) return `at ${note.poi_id}`
+  if (note.lat !== null && note.lon !== null) {
+    return `${note.lat.toFixed(4)}, ${note.lon.toFixed(4)}`
+  }
+  if (note.mile !== null) return `mi ${note.mile.toFixed(1)}`
+  return 'no location'
+}
+
+/** Hours as filed: 3 rather than 3.0, 1.5 rather than 1.50. A club admin is
+ *  reading a number somebody wrote down, and trailing zeros make a typed
+ *  figure look computed. */
+function hoursOf(hours: number): string {
+  return `${Number.parseFloat(hours.toFixed(2))}`
 }
 
 const TYPE_WORDS: Record<string, string> = {
@@ -249,6 +307,15 @@ export function Moderation({ onClose }: ModerationProps) {
     null,
   )
 
+  // The two halves #877 added, each on its own tri-state and its own
+  // failure flag for the reason the photo half has one: "the hours queue
+  // could not be read" must not draw the safety reports as unreadable, and
+  // an empty list and an unread list must never render the same.
+  const [notes, setNotes] = useState<NoteQueueEntry[] | null>(null)
+  const [notesFailed, setNotesFailed] = useState(false)
+  const [hours, setHours] = useState<VolunteerHoursQueueEntry[] | null>(null)
+  const [hoursFailed, setHoursFailed] = useState(false)
+
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
       setQueue(await fetchModerationQueue(signal))
@@ -261,6 +328,18 @@ export function Moderation({ onClose }: ModerationProps) {
       setPhotosFailed(false)
     } catch {
       setPhotosFailed(true)
+    }
+    try {
+      setNotes(await fetchNoteQueue(signal))
+      setNotesFailed(false)
+    } catch {
+      setNotesFailed(true)
+    }
+    try {
+      setHours(await fetchHoursQueue(signal))
+      setHoursFailed(false)
+    } catch {
+      setHoursFailed(true)
     }
   }, [])
 
@@ -283,6 +362,26 @@ export function Moderation({ onClose }: ModerationProps) {
       await load()
     } catch {
       setFailed(true)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** `act`'s section-scoped sibling: the same act-then-re-read, with the
+   *  failure marked on the section it came from instead of on the screen.
+   *  A hide that failed says the notes queue is unreliable; it does not get
+   *  to say there are no unreviewed safety reports. */
+  const actIn = async (
+    id: string,
+    action: () => Promise<unknown>,
+    markFailed: (failed: boolean) => void,
+  ) => {
+    setBusy(id)
+    try {
+      await action()
+      await load()
+    } catch {
+      markFailed(true)
     } finally {
       setBusy(null)
     }
@@ -462,6 +561,125 @@ export function Moderation({ onClose }: ModerationProps) {
     </li>
   )
 
+  /** One flagged or removed note.
+   *
+   *  `reporter_id` is printed here and nowhere else in this app: the queue
+   *  is the one place a pattern of abuse is legible, because a pattern is a
+   *  pattern across one account's notes rather than inside any single one.
+   *  It rides on `FieldNoteOut.for_viewer`'s moderator branch, so a note
+   *  filed by somebody who has since been forgotten shows no id rather than
+   *  an invented one. */
+  const noteRow = (entry: NoteQueueEntry) => {
+    const note = entry.note
+    return (
+      <li key={note.id} className="moderation__item">
+        <p className="moderation__headline">
+          <span className="moderation__type">
+            {note.observation !== null ? observationLabel(note.observation) : 'Note'}
+          </span>
+          <span className="moderation__meta">
+            {`${note.reporter_type} · ${notePlaceOf(note)} · ${ageOf(note.observed_at)}`}
+          </span>
+        </p>
+        {note.note !== null && <p className="moderation__note">{note.note}</p>}
+        <p className="moderation__meta">
+          {entry.flag_count === 1
+            ? '1 person flagged this'
+            : `${entry.flag_count} people flagged this`}
+          {' · '}
+          {note.reporter_id !== null
+            ? `written by ${note.reporter_id}`
+            : 'no account on this note'}
+        </p>
+        {entry.reasons.length > 0 && (
+          <ul className="moderation__reasons">
+            {entry.reasons.map((reason, index) => (
+              <li key={`${note.id}-reason-${index}`}>{reason}</li>
+            ))}
+          </ul>
+        )}
+        {entry.hidden && (
+          <p className="moderation__note moderation__note--flagged">
+            Removed. No hiker sees this, and the next bake drops it from the published
+            baseline — which takes up to a day, so a note hidden this morning may still be
+            on a phone that downloaded conditions last night.
+          </p>
+        )}
+        <div className="moderation__actions">
+          {entry.hidden ? (
+            <button
+              type="button"
+              disabled={busy === note.id}
+              onClick={() =>
+                void actIn(note.id, () => unhideFieldNote(note.id), setNotesFailed)
+              }
+            >
+              Put it back
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="moderation__dismiss"
+              disabled={busy === note.id}
+              onClick={() =>
+                void actIn(note.id, () => hideFieldNote(note.id), setNotesFailed)
+              }
+            >
+              Hide it
+            </button>
+          )}
+        </div>
+      </li>
+    )
+  }
+
+  /** One claim waiting on a club's word.
+   *
+   *  `worked_on` is printed as filed rather than through a `Date`: it is a
+   *  calendar date with no time in it, and `new Date('2026-08-20')` is
+   *  midnight UTC — which renders as the 19th everywhere west of Greenwich,
+   *  including every club on this trail. The volunteer's Thursday is not
+   *  something this screen gets to move. */
+  const hoursRow = (record: VolunteerHoursQueueEntry) => (
+    <li key={record.id} className="moderation__item">
+      <p className="moderation__headline">
+        <span className="moderation__type">
+          {`${hoursOf(record.hours)} h · ${ACTIVITY_LABELS[record.activity]}`}
+        </span>
+        <span className="moderation__meta">
+          {`worked ${record.worked_on} · ${record.club_id ?? 'no club named'} · filed ${ageOf(record.recorded_at)} ago`}
+        </span>
+      </p>
+      {record.note !== null && <p className="moderation__note">{record.note}</p>}
+      <p className="moderation__meta">
+        {`claimed by ${record.user_id}`}
+        {record.mile !== null && ` · around mi ${record.mile.toFixed(1)}`}
+        {record.work_project_id !== null && ` · workday ${record.work_project_id}`}
+      </p>
+      <div className="moderation__actions">
+        <button
+          type="button"
+          disabled={busy === record.id}
+          onClick={() =>
+            void actIn(record.id, () => confirmVolunteerHours(record.id), setHoursFailed)
+          }
+        >
+          The club stands behind this
+        </button>
+        <button
+          type="button"
+          className="moderation__dismiss"
+          disabled={busy === record.id}
+          onClick={() =>
+            void actIn(record.id, () => disputeVolunteerHours(record.id), setHoursFailed)
+          }
+        >
+          Dispute it
+        </button>
+      </div>
+    </li>
+  )
+
   if (failed) {
     return (
       <main className="moderation">
@@ -491,6 +709,8 @@ export function Moderation({ onClose }: ModerationProps) {
 
   const people = queue.reports.filter((report) => report.type === 'bad_hikers')
   const trail = queue.reports.filter((report) => report.type !== 'bad_hikers')
+  const visibleNotes = (notes ?? []).filter((entry) => !entry.hidden)
+  const hiddenNotes = (notes ?? []).filter((entry) => entry.hidden)
 
   return (
     <main className="moderation">
@@ -530,6 +750,44 @@ export function Moderation({ onClose }: ModerationProps) {
       </section>
 
       <section className="moderation__section">
+        <h2>Field notes people flagged</h2>
+        <p className="moderation__preamble">
+          A field note is public the moment it lands, so this is not a list of notes
+          waiting to be allowed — it is what somebody objected to, and underneath it, what
+          has already been taken down. Most-flagged first: three people saying so outranks
+          one. A hidden note is never deleted, so putting one back is always possible.
+        </p>
+        {notesFailed ? (
+          <p role="alert" className="moderation__failed">
+            The notes queue could not be read — this is no answer, not an empty one.
+          </p>
+        ) : notes === null ? (
+          <p role="status">Reading the notes…</p>
+        ) : notes.length === 0 ? (
+          <p className="moderation__empty">Nothing waiting.</p>
+        ) : (
+          <>
+            {/* Partitioned rather than re-sorted: the server already ordered
+                these (visible work, then removals, most-flagged within each),
+                and a stable filter keeps that order exactly while letting the
+                archive carry its own heading. Re-sorting here would put a
+                second, quietly different ordering rule in the client. */}
+            {visibleNotes.length === 0 ? (
+              <p className="moderation__empty">Nothing flagged and still showing.</p>
+            ) : (
+              <ul className="moderation__list">{visibleNotes.map(noteRow)}</ul>
+            )}
+            {hiddenNotes.length > 0 && (
+              <>
+                <h3 className="moderation__subhead">Already taken down</h3>
+                <ul className="moderation__list">{hiddenNotes.map(noteRow)}</ul>
+              </>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="moderation__section">
         <h2>Photos offered as a pin</h2>
         <p className="moderation__preamble">
           Newest first. Recency orders this list and never promotes anything. Only pins
@@ -553,6 +811,28 @@ export function Moderation({ onClose }: ModerationProps) {
           Nothing on this screen touches the Commons photos the pipeline fetches. Those
           still reach a hiker&rsquo;s card with no person in the loop at all.
         </p>
+      </section>
+
+      <section className="moderation__section">
+        <h2>Hours waiting on a club</h2>
+        <p className="moderation__preamble">
+          Oldest work first. These hours already count for the volunteer who logged them —
+          confirming does not switch them on, it puts a club&rsquo;s name behind them so
+          they can be reported upward. Disputing takes them out of every total and leaves
+          the record with its volunteer to raise with you, because a dispute is a
+          disagreement rather than an erasure.
+        </p>
+        {hoursFailed ? (
+          <p role="alert" className="moderation__failed">
+            The hours queue could not be read — this is no answer, not an empty one.
+          </p>
+        ) : hours === null ? (
+          <p role="status">Reading the hours…</p>
+        ) : hours.length === 0 ? (
+          <p className="moderation__empty">Nothing waiting.</p>
+        ) : (
+          <ul className="moderation__list">{hours.map(hoursRow)}</ul>
+        )}
       </section>
 
       <button type="button" onClick={onClose}>

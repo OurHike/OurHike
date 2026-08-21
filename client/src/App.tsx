@@ -58,6 +58,11 @@ import {
   Onboarding,
   type OnboardingResult,
 } from './screens/Onboarding'
+import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
+import { closureDraft } from './lib/closureDraft'
+import { WorkdaySheet } from './chrome/WorkdaySheet'
+import type { WorkdayPoint } from './map/workdayLayers'
+import { opportunitiesUsable, upcomingWorkProjects } from './lib/workProjects'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
@@ -209,6 +214,7 @@ import {
 } from './lib/auth'
 import {
   enqueueAppFailure,
+  enqueueClosure,
   listQueued,
   removeQueued,
   retryQueued,
@@ -514,6 +520,21 @@ function App() {
    * those.
    */
   const [reportingFailure, setReportingFailure] = useState(false)
+  /**
+   * Whether the closure form is open (#832).
+   *
+   * Its own flag rather than a step on `ReportingState`, for the reason the
+   * flag above has one: a closure is not a report type. It has its own
+   * table, two ends instead of a fix, and no `reporter_type` - so putting it
+   * on `ReportingState` would have meant widening a union that describes
+   * something else, and answering the reporter-type question for a record
+   * with nowhere to put the answer.
+   */
+  const [reportingClosure, setReportingClosure] = useState(false)
+  /** The workday pin a hiker tapped, or null (#760). Held by id rather than
+   *  by row, so a re-fetch that drops a cancelled workday closes the sheet
+   *  over it instead of leaving a stale invitation open. */
+  const [selectedWorkdayId, setSelectedWorkdayId] = useState<string | null>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
    * The route being built (#755), or null when the builder is closed. Held
@@ -729,11 +750,55 @@ function App() {
    * `closureBands` draws where it is; those two disagreeing about where a
    * closure starts is exactly the failure mode a shared source removes.
    *
-   * A no-op on every closure today — nothing writes closure geometry yet, so
-   * `projectClosures` returns the array it was given and these memos do not
-   * re-run. It is here so that the day a closure IS authored with geometry,
-   * the projection is already the path rather than a second change to make.
+   * A no-op on every closure authored before #832's form, which is still
+   * most of them: with no geometry `projectClosures` returns the array it
+   * was given and these memos do not re-run. Closures filed from this app
+   * now carry their two points, so the projection has started doing real
+   * work on real rows — and `lib/closureProjection.ts`'s `@unvalidated`
+   * tolerance, which had nothing to measure while nothing wrote geometry,
+   * now has data coming that could settle it.
    */
+  /**
+   * The workdays worth drawing (#760), and the two gates in front of them.
+   *
+   * **Staleness first, and it is absolute.** Past `OPPORTUNITIES_STALE_MS`
+   * the Volunteer tab replaces its list with an out-of-date notice rather
+   * than decorating it, because "a hedged invitation still reads as an
+   * invitation" - and a pin has no hedged form at all. So a stale feed draws
+   * no pins, and the tab is where a hiker is told why in words.
+   *
+   * **Then the fourteen-day window**, the same `upcomingWorkProjects` the
+   * tab lists, so the two surfaces cannot disagree about which workdays are
+   * on. A row the reviewed file never placed has no coordinates and simply
+   * is not drawn - a workday pinned at 0,0 would be a real place in the
+   * Atlantic, which is the failure `describeLocation` already refuses on the
+   * report form.
+   */
+  const workdayPins = useMemo<readonly WorkdayPoint[]>(() => {
+    if (workProjects === null || workProjectsGeneratedAt === null) return []
+    if (!opportunitiesUsable(workProjectsGeneratedAt, now)) return []
+
+    return upcomingWorkProjects(workProjects, now).flatMap((project) =>
+      project.lat === null || project.lon === null
+        ? []
+        : [{ id: project.id, lat: project.lat, lon: project.lon }],
+    )
+  }, [workProjects, workProjectsGeneratedAt, now])
+
+  /** The tapped workday itself, re-read from the live list every render: if a
+   *  re-fetch drops it - cancelled, or out of the window - this goes null and
+   *  the sheet closes rather than standing over a workday nobody is running. */
+  const selectedWorkday = useMemo(() => {
+    if (selectedWorkdayId === null || workProjects === null) return null
+    return (
+      workProjects.find(
+        (project) =>
+          project.id === selectedWorkdayId &&
+          workdayPins.some((pin) => pin.id === selectedWorkdayId),
+      ) ?? null
+    )
+  }, [selectedWorkdayId, workProjects, workdayPins])
+
   const placedClosures = useMemo(
     () =>
       closures === null || trailIndex === null
@@ -2880,6 +2945,41 @@ function App() {
   }, [])
 
   /**
+   * Queue a closure and send it if there is anything to send it with (#832).
+   *
+   * The geometry is captured HERE rather than in the form, because this is
+   * where the trail index lives - and it has to be captured now rather than
+   * at flush time or later. A mile is a reading against one measurement of
+   * the centerline; converting it to a point afterwards needs the release
+   * the closure was authored against, and pipeline/DATA_RELEASES.md prunes a
+   * release 90 days after it is superseded. The conversion stops being
+   * possible long before the closure stops mattering.
+   *
+   * Saved to the outbox FIRST, like every other contribution: everything
+   * after that line can fail without costing somebody the closure they just
+   * walked up to. The sign-in step follows rather than precedes for the same
+   * reason - `POST /closures` needs an account, but a hiker standing at a
+   * washout should not meet a sign-in wall before their report is safe.
+   *
+   * No reporter-type question: a closure carries no `reporter_type`, so
+   * asking would collect an answer with nowhere to put it.
+   */
+  const handleSubmitClosure = useCallback(
+    async ({ authoredAt, ...fields }: ClosureFormSubmission) => {
+      await enqueueClosure(closureDraft(fields, trailIndex), authoredAt)
+      setReportingClosure(false)
+
+      // Explicitly, for #640's reason: useOutboxSync fires on a CHANGE to
+      // `online` or the account, and filing this changes neither.
+      void syncOutbox().then((result) => {
+        if (result !== null && result.sent > 0) markSynced()
+      })
+      if (account === null) setAuthFlow({ screen: 'choose', afterReport: true })
+    },
+    [account, markSynced, trailIndex],
+  )
+
+  /**
    * Ask who is reporting, at most once a session and never twice over.
    *
    * Called from both paths that reach the step: straight after a report when
@@ -3356,6 +3456,20 @@ function App() {
     )
   }
 
+  if (reportingClosure) {
+    return (
+      <ClosureForm
+        // The snapped mile the header is already showing, or null when there
+        // is no fix or it could not be placed on the centerline. Never zero:
+        // mi 0.0 is Springer Mountain, not "we do not know".
+        hereMile={fix?.mile ?? null}
+        online={online}
+        onSubmit={(submission) => void handleSubmitClosure(submission)}
+        onCancel={() => setReportingClosure(false)}
+      />
+    )
+  }
+
   if (reporting !== null) {
     if (reporting.step === 'pick') {
       const anchor = reporting.anchor
@@ -3371,6 +3485,12 @@ function App() {
                 : { step: 'form', type, anchor },
             )
           }
+          // A closure leaves the report flow rather than continuing it: it
+          // is a different record with a different form (#832).
+          onReportClosure={() => {
+            setReporting(null)
+            setReportingClosure(true)
+          }}
           onCancel={() => setReporting(null)}
         />
       )
@@ -3849,6 +3969,21 @@ function App() {
           atcUpdates={atcBandsOnMap}
           atcUpdatePoints={atcPointsOnMap}
           onSelectAtcUpdate={setSelectedAtcBandId}
+          workdays={workdayPins}
+          onSelectWorkday={setSelectedWorkdayId}
+          workdaySheet={
+            selectedWorkday === null ? null : (
+              <WorkdaySheet
+                project={selectedWorkday}
+                // The hiker's own mile on the planner's axis, which is the
+                // one the tab's "trail mi away" already uses - two surfaces
+                // measuring the same distance two ways is a hiker reading
+                // two claims where there is one.
+                gpsMile={gpsPlanMile}
+                onClose={() => setSelectedWorkdayId(null)}
+              />
+            )
+          }
           atcUpdateSheet={
             selectedAtcUpdate === null ? null : (
               <AtcUpdateSheet

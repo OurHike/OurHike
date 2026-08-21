@@ -14,6 +14,7 @@
 // and what it holds is a promise that gets kept.
 
 import { syncAgeLabel } from '../lib/syncAge'
+import { everythingIsSafe, type SyncStatus } from '../lib/syncStatus'
 import type { PaceProfile } from '../lib/pace'
 import type {
   BackgroundSource,
@@ -56,6 +57,18 @@ export interface SettingsProps {
    * should do.
    */
   onChangeBackground?: (next: BackgroundSource) => void
+  /**
+   * What has reached the hiker's account, and whether this device is still
+   * sending (#894).
+   *
+   * Optional as a pair, and absent means the section is not rendered at all
+   * rather than rendered empty: a screen outside the shell has no sync to
+   * describe, and a "Last sent: never synced" row on a surface that never
+   * syncs would be a true sentence about nothing.
+   */
+  syncStatus?: SyncStatus
+  syncEnabled?: boolean
+  onToggleSync?: (enabled: boolean) => void
   /**
    * The hiker's own pace (#880), and its setter.
    *
@@ -199,6 +212,146 @@ export function YouSettings({
       )}
 
       <p className="settings__note">Reading the map never needs an account.</p>
+    </section>
+  )
+}
+
+// --- What has reached the account ---------------------------------------
+//
+// #894, features/ACCOUNT_SYNC.md phase D. One question, answered plainly:
+// *if I drop this phone tomorrow, what have I lost?*
+//
+// WHY IT IS HERE AND NOT BESIDE "Your data"
+//
+// That section's "Last synced" is the PUBLISHED CONDITIONS bucket, which
+// every hiker gets whether or not they have an account. This is the account
+// exchange. Two rows called "Last synced" in one app already risks being
+// read as one number; putting them in the same panel would guarantee it, and
+// a hiker whose conditions refreshed an hour ago and whose trips have not
+// been sent since Tuesday would read the reassuring one.
+//
+// So it sits under the account it depends on, next to the button that turns
+// it off and the button that signs out - which is also where somebody asking
+// "what happens to my things" is already looking.
+//
+// NEVER A PROGRESS BAR. features/HIKE_PLANNING.md's anti-gamification
+// guardrail applies here too: this reports machinery, never the hiker. There
+// is no percentage, no bar, and nothing that could be read as a score.
+
+export interface AccountSyncSettingsProps {
+  status: SyncStatus
+  enabled: boolean
+  onToggle: (enabled: boolean) => void
+  /** Injectable so the age wording is testable without a live clock, like
+   *  `DataSettings`' own. */
+  now?: Date
+}
+
+export function AccountSyncSettings({
+  status,
+  enabled,
+  onToggle,
+  now = new Date(),
+}: AccountSyncSettingsProps) {
+  const safe = everythingIsSafe(status)
+
+  return (
+    <section className="settings__group">
+      <h2 className="settings__heading">What your account has</h2>
+
+      <p className="settings__row">
+        <span className="settings__label">Last sent</span>
+        {/* A real timestamp rather than a spinner, per the issue. A device
+            whose own clock is wrong renders a wrong age here - the stamp is
+            the server's - and `syncAgeLabel` reads anything in the future as
+            "just now", which is the least wrong thing to say about a
+            disagreement this app cannot detect. */}
+        <span className="settings__value">{syncAgeLabel(status.lastSyncedAt, now)}</span>
+      </p>
+
+      {!enabled && (
+        <p className="settings__note">
+          Syncing is off on this phone, so nothing below is being sent. Everything is
+          still here.
+        </p>
+      )}
+
+      {safe ? (
+        <p className="settings__note">
+          Everything on this phone has reached your account.
+        </p>
+      ) : (
+        <>
+          {/* Named, never counted. "3 items pending" tells a hiker nothing
+              they can act on; a trip they recognise tells them whether to
+              worry. */}
+          {status.neverSent.length > 0 && (
+            <>
+              <p className="settings__note">
+                On this phone only — if you lost it today, these would go with it:
+              </p>
+              <ul className="settings__pending">
+                {status.neverSent.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {status.unsentEdits.length > 0 && (
+            <>
+              {/* A different sentence from the one above, deliberately: your
+                  account HAS these, in an older form. Adding the two lists
+                  together would lose the distinction that decides whether
+                  losing the phone costs a trip or costs an afternoon. */}
+              <p className="settings__note">
+                Your account has an older copy of these — the newest changes are still on
+                this phone:
+              </p>
+              <ul className="settings__pending">
+                {status.unsentEdits.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {status.hikeUnsent && (
+            <p className="settings__note">The hike you are on has not been sent yet.</p>
+          )}
+          {status.preferencesUnsent && (
+            <p className="settings__note">Your settings have not been sent yet.</p>
+          )}
+        </>
+      )}
+
+      {/* Photos, said as what is true rather than as a setting. The issue
+          asks for "what is off" so a hiker reads it as a state they chose -
+          but nobody chose this, because photo sync is not built (phase C,
+          #893). Calling it "off" would tell them they had made a decision
+          they have never been offered. */}
+      <p className="settings__note">
+        Photos stay on this phone. Syncing them is not built yet.
+      </p>
+
+      <button
+        type="button"
+        className="settings__action"
+        onClick={() => onToggle(!enabled)}
+      >
+        {enabled ? 'Stop syncing on this phone' : 'Start syncing on this phone'}
+      </button>
+      {/* The copy the issue is most explicit about, and the reason this
+          paragraph exists at all: stopping must never read as deleting.
+          Someone who suspects the button might discard their trips will not
+          press it, and someone who presses it expecting a delete has been
+          misled - both are failures of this sentence rather than of the
+          button. Deleting is phase E and a different button in a different
+          place. */}
+      <p className="settings__note">
+        Stopping keeps every trip and setting on this phone and on your account. It only
+        stops sending. It does not delete anything, anywhere.
+      </p>
     </section>
   )
 }

@@ -36,14 +36,20 @@ export const TRIP_SETTLE_MS = 4_000
  * @param signedIn  whether there is an account to sync with.
  * @param onAdopt   called with the merged store when the exchange changed
  *                  something. Must be stable across renders.
+ * @param onSettled called after EVERY exchange, including the ones that
+ *                  adopt nothing - see `usePreferencesSync` for why #894's
+ *                  panel needs to hear about a push as much as about a pull.
  */
 export function useTripsSync(
   trips: TripStore,
   signedIn: boolean,
   onAdopt: (store: TripStore) => void,
+  onSettled?: () => void,
 ): void {
   const adopt = useRef(onAdopt)
   adopt.current = onAdopt
+  const settled = useRef(onSettled)
+  settled.current = onSettled
 
   // Sign-in, and opening the app already signed in. The one moment the
   // account can be holding something this device has never seen.
@@ -52,7 +58,9 @@ export function useTripsSync(
     let live = true
 
     void syncTripsWithAccount().then((merged) => {
-      if (live && merged !== null) adopt.current(merged)
+      if (!live) return
+      if (merged !== null) adopt.current(merged)
+      settled.current?.()
     })
 
     return () => {
@@ -69,6 +77,7 @@ export function useTripsSync(
     const timer = setTimeout(() => {
       void syncTripsWithAccount().then((merged) => {
         if (merged !== null) adopt.current(merged)
+        settled.current?.()
       })
     }, TRIP_SETTLE_MS)
 

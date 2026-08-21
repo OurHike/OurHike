@@ -49,23 +49,35 @@ export const PUSH_SETTLE_MS = 1_500
  *                     decides they win. Not called otherwise - a push and an
  *                     idle launch both leave what is on screen alone. Must
  *                     be stable across renders.
+ * @param onSettled    called after EVERY attempt, including the ones that
+ *                     adopt nothing. #894's panel reads the sync bookkeeping
+ *                     out of IndexedDB, which no React state watches - so a
+ *                     successful push would clear "not sent yet" with
+ *                     nothing on screen noticing, and the panel would go on
+ *                     saying it until something else re-rendered. Optional,
+ *                     and must be stable across renders.
  */
 export function usePreferencesSync(
   preferences: UserPreferences,
   signedIn: boolean,
   onAdopt: (preferences: UserPreferences) => void,
+  onSettled?: () => void,
 ): void {
   // Read inside the effects rather than depended upon, so a preference
   // changing does not re-run the sign-in pull.
   const latest = useRef(preferences)
   latest.current = preferences
+  const settled = useRef(onSettled)
+  settled.current = onSettled
 
   useEffect(() => {
     if (!signedIn) return
     let live = true
 
     void syncPreferences(latest.current).then((adopted) => {
-      if (live && adopted !== null) onAdopt(adopted)
+      if (!live) return
+      if (adopted !== null) onAdopt(adopted)
+      settled.current?.()
     })
 
     return () => {
@@ -82,7 +94,7 @@ export function usePreferencesSync(
     if (!signedIn) return
 
     const timer = setTimeout(() => {
-      void pushPreferencesIfChanged(latest.current)
+      void pushPreferencesIfChanged(latest.current).then(() => settled.current?.())
     }, PUSH_SETTLE_MS)
 
     return () => clearTimeout(timer)

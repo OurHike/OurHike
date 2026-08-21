@@ -338,10 +338,29 @@ from a user agent would be a guess printed as a fact. So a copy says what is act
 pattern from `core/photos.py`, a per-hiker cap decided from a measurement rather than a
 guess, and copy that never says "backup" if what we hold is a thumbnail.
 
-**D. The seam a hiker can see.** One screen: what is synced, when it last ran, what is on
-this device only, and how to turn it off without losing anything. An offline-first app that
-syncs invisibly is an app whose hiker cannot tell whether their plan is safe — and value #4
-says the honest answer beats the polished one.
+**D. The seam a hiker can see. Built** — `AccountSyncSettings` in
+`client/src/screens/Settings.tsx`, `lib/syncStatus.ts`
+([#894](https://github.com/OurHike/OurHike/issues/894)). What has reached the account, when
+it last did, what is on this device only, and how to turn it off without losing anything.
+
+Four things the build settled:
+
+- **It is a section in the *You* tab, under the account**, not beside "Your data". That
+  section's "Last synced" is the **published conditions bucket** — closures, notes, drought
+  — which every hiker gets with or without an account. This is the account exchange. A
+  hiker whose conditions refreshed an hour ago and whose trips have not been sent since
+  Tuesday would read the reassuring number, so the two rows are kept in different panels
+  and given different words ("Last synced" against "Last sent").
+- **Never sent and not-yet-sent are different sentences.** A trip the account holds in an
+  older form is recoverable; one that has never been sent exists only on that handset. They
+  are listed separately rather than added up, because the difference is exactly what decides
+  whether losing the phone costs a trip or costs an afternoon.
+- **"Off" is not what the build says about photos.** The phase asks for what is off so a
+  hiker reads it as a state they chose — but nobody chose this, because phase C is unbuilt.
+  It says *"Photos stay on this phone. Syncing them is not built yet."*
+- **The off switch is device-local**, deliberately not a `UserPreferences` key: a hiker who
+  stops syncing their laptop has not asked their phone to stop, so a synced setting would
+  travel to exactly the devices it is meant to exclude.
 
 **E. Export and delete.** Everything of mine, in my hands or gone. Ships no later than C,
 because C is the phase that makes the current silence a broken promise.

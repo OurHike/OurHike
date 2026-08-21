@@ -76,6 +76,14 @@ import {
 } from './lib/preferences'
 import { usePreferencesSync } from './lib/usePreferencesSync'
 import { useTripsSync } from './lib/useTripsSync'
+import {
+  setSyncEnabled,
+  summariseSync,
+  syncEnabled,
+  type SyncStatus,
+} from './lib/syncStatus'
+import { tripSyncState } from './lib/tripSyncState'
+import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
 import {
   hiddenTypesFrom,
@@ -3369,7 +3377,61 @@ function App() {
     setPreferences(synced)
   }, [])
 
-  usePreferencesSync(preferences, account !== null, handleAdoptPreferences)
+  /**
+   * Whether this handset syncs at all (#894), and what it has to report.
+   *
+   * The flag is device-local on purpose - lib/syncStatus.ts has the reason:
+   * a hiker who stops syncing their laptop has not asked their phone to
+   * stop, so a synced setting would travel to exactly the devices it is
+   * meant to exclude.
+   *
+   * `syncTick` is what re-reads the two ledgers. They live in IndexedDB
+   * rather than in React state, so nothing re-renders when they change -
+   * and a "what has reached your account" panel that did not notice a sync
+   * completing would be the confidently-wrong surface this whole phase
+   * exists to replace.
+   */
+  const [syncOn, setSyncOn] = useState(true)
+  const [syncTick, setSyncTick] = useState(0)
+  const [syncSummary, setSyncSummary] = useState<SyncStatus | null>(null)
+
+  useEffect(() => {
+    void syncEnabled().then(setSyncOn, () => setSyncOn(true))
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    void Promise.all([tripSyncState(), preferencesSyncState()]).then(
+      ([trips, prefs]) => {
+        if (live) setSyncSummary(summariseSync(tripStore, trips, prefs))
+      },
+      // A ledger that cannot be read is not "everything is safe". Left null,
+      // the section does not render at all, which is honest: this screen
+      // would rather say nothing than say the reassuring thing on no
+      // evidence.
+      () => {
+        if (live) setSyncSummary(null)
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [tripStore, preferences, syncTick])
+
+  const handleToggleSync = useCallback((next: boolean) => {
+    setSyncOn(next)
+    void setSyncEnabled(next)
+  }, [])
+
+  // Bumped when a sync lands, so the panel re-reads the ledgers.
+  const noteSyncRan = useCallback(() => setSyncTick((tick) => tick + 1), [])
+
+  usePreferencesSync(
+    preferences,
+    account !== null && syncOn,
+    handleAdoptPreferences,
+    noteSyncRan,
+  )
 
   /**
    * The account's trips arriving, merged with this device's (#892).
@@ -3383,7 +3445,7 @@ function App() {
     setTripStore(merged)
   }, [])
 
-  useTripsSync(tripStore, account !== null, handleAdoptTrips)
+  useTripsSync(tripStore, account !== null && syncOn, handleAdoptTrips, noteSyncRan)
 
   // Signing in ends the sign-in flow, whichever way it completed - an email
   // form resolving in this tab, or a provider redirect landing back on a
@@ -3764,6 +3826,9 @@ function App() {
                   lastSyncedAt={lastSyncedAt}
                   onSync={notYet}
                   onExport={notYet}
+                  syncStatus={syncSummary ?? undefined}
+                  syncEnabled={syncOn}
+                  onToggleSync={handleToggleSync}
                   now={now}
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}

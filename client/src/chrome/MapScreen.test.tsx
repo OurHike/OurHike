@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, ScaleControl, resetMapLibreMock } from '../test/mocks/maplibre-gl'
+import { loadMapEngine } from '../map/mapEngineLoader'
 import { MapScreen } from './MapScreen'
 import {
   mapCredits,
@@ -78,8 +79,13 @@ const PROPS = {
   },
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   resetMapLibreMock()
+  // The map engine arrives through `import()` in production (#722); primed
+  // here so every render below builds its map synchronously, exactly as it did
+  // before the deferral. After the test file's `vi.mock('maplibre-gl', ...)`,
+  // so the engine closes over the mock rather than the real library.
+  await loadMapEngine()
 })
 
 afterEach(() => {

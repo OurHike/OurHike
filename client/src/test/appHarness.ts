@@ -22,6 +22,7 @@
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { act, cleanup, waitFor } from '@testing-library/react'
 import { del, get, set, update } from 'idb-keyval'
+import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
 import { PREFERENCES_KEY } from '../lib/preferences'
 import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
@@ -122,10 +123,26 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
   const store = new Map<string, unknown>()
   let watchSuccess: ((position: GeolocationPosition) => void) | undefined
 
-  beforeEach(() => {
+  beforeEach(async () => {
     store.clear()
     watchSuccess = undefined
     resetMapLibreMock()
+
+    // Primes the deferred map engine (#722) before anything renders.
+    //
+    // In production `maplibre-gl` arrives through `import()` a beat after the
+    // first paint, and `MapView` builds its map when it lands. A test that
+    // renders and reaches straight for `MockMap.live` would be racing that
+    // beat - so the engine is loaded HERE, in the same tick order every test
+    // already relies on, and every `MapView` mount then takes the synchronous
+    // branch exactly as it did before the deferral.
+    //
+    // It has to be here rather than in test/setup.ts: this runs after the
+    // test file's `vi.mock('maplibre-gl', ...)` is registered, so the engine
+    // closes over the MOCK. Loaded in setup it would close over the real
+    // library, which throws GPUInitializationError in jsdom - the trap
+    // recorded on #722.
+    await loadMapEngine()
 
     vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
     vi.mocked(set).mockImplementation((key, value) => {

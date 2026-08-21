@@ -10,6 +10,7 @@ import {
   wholeTrail,
   PLANNED_HIKE_KEY,
 } from './plannedHike'
+import { TRIPS_SYNC_KEY } from './tripSyncState'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
@@ -165,6 +166,21 @@ describe('storage', () => {
     await clearPlannedHike()
 
     expect(vi.mocked(del)).toHaveBeenCalledWith(PLANNED_HIKE_KEY)
-    expect(vi.mocked(set)).not.toHaveBeenCalled()
+    // Scoped to THIS key rather than "set was never called": clearing also
+    // records the change in the sync ledger (#892), which is a different key
+    // and is the point - a clear that did not travel would have the account
+    // hand the hike straight back.
+    expect(vi.mocked(set)).not.toHaveBeenCalledWith(PLANNED_HIKE_KEY, expect.anything())
+  })
+
+  it('tells the sync that clearing was a thing the hiker did', async () => {
+    // features/ACCOUNT_SYNC.md's rule at the singleton grain: a decision
+    // with a date on it, never an absence another device has to infer.
+    await clearPlannedHike()
+
+    expect(vi.mocked(set)).toHaveBeenCalledWith(
+      TRIPS_SYNC_KEY,
+      expect.objectContaining({ hikeDirty: true }),
+    )
   })
 })

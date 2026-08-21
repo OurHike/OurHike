@@ -75,6 +75,8 @@ import {
   savePreferences,
 } from './lib/preferences'
 import { usePreferencesSync } from './lib/usePreferencesSync'
+import { useTripsSync } from './lib/useTripsSync'
+import { forgetTripSync } from './lib/tripsSync'
 import {
   hiddenTypesFrom,
   onlyType,
@@ -3347,6 +3349,12 @@ function App() {
     // handset, look like a device that had already synced, and take this
     // one's settings for their account rather than the other way round.
     await forgetPreferencesSync()
+    // The trips stay - they are this device's - but `since` and `seen` are
+    // claims about an account this device no longer has. Left in place they
+    // would make the next sign-in, possibly by somebody else on a shared
+    // handset, look like a device that had already synced, and upload one
+    // person's plans into another person's account as ordinary edits (#892).
+    await forgetTripSync()
   }, [])
 
   /**
@@ -3362,6 +3370,20 @@ function App() {
   }, [])
 
   usePreferencesSync(preferences, account !== null, handleAdoptPreferences)
+
+  /**
+   * The account's trips arriving, merged with this device's (#892).
+   *
+   * Written straight to state and NOT through anything that saves: the
+   * reconciliation has already written IndexedDB through `adoptTrips`,
+   * which deliberately does not mark the store as changed here - otherwise
+   * this device would push back what it just pulled on every sync.
+   */
+  const handleAdoptTrips = useCallback((merged: TripStore) => {
+    setTripStore(merged)
+  }, [])
+
+  useTripsSync(tripStore, account !== null, handleAdoptTrips)
 
   // Signing in ends the sign-in flow, whichever way it completed - an email
   // form resolving in this tab, or a provider redirect landing back on a

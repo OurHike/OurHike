@@ -1143,3 +1143,67 @@ function pickSyncedPreferences(preferences: UserPreferences): UserPreferences {
     PREFERENCE_KEYS.map((key) => [key, preferences[key]]),
   ) as unknown as UserPreferences
 }
+
+// --- Trips and the planned hike (#892, ACCOUNT_SYNC.md phase B) ------------
+
+/** One trip as this device is offering it. `document` is null on a delete. */
+export interface TripUpload {
+  id: string
+  document: unknown | null
+  base_updated_at: string | null
+  deleted: boolean
+}
+
+/** One trip as the server holds it now. A null `document` with a
+ *  `deleted_at` is a tombstone, and it is a row to ACT on rather than
+ *  ignore: it is how the hiker's own delete reaches this device. */
+export interface SyncedTripRow {
+  id: string
+  document: unknown | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface SyncedHike {
+  start_mile: number | null
+  end_mile: number | null
+  updated_at: string
+}
+
+export interface TripSyncRequest {
+  since: string | null
+  trips: TripUpload[]
+  /** Omitted entirely when this device has nothing to say about the planned
+   *  hike. Distinct from a hike with both miles null, which is the hiker
+   *  having cleared it - the server treats the two differently on purpose. */
+  hike?: {
+    start_mile: number | null
+    end_mile: number | null
+    base_updated_at: string | null
+  }
+}
+
+export interface TripSyncResponse {
+  now: string
+  trips: SyncedTripRow[]
+  hike: SyncedHike | null
+  /** How many trips this exchange kept beside an existing one rather than
+   *  overwriting. A conflict is a thing that HAPPENED to a hiker's planning,
+   *  and #894 is the surface that will say so. */
+  conflicts: number
+}
+
+/**
+ * One exchange: here is what this device did, what did the others do.
+ *
+ * A single call rather than a read and a write, because splitting it would
+ * open a window in which the answer to the second no longer matches the
+ * first - see `backend/app/routers/synced_trips.py`.
+ */
+export async function syncTrips(payload: TripSyncRequest): Promise<TripSyncResponse> {
+  const response = await authedFetch('/trips/sync', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return (await response.json()) as TripSyncResponse
+}

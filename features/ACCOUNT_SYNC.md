@@ -306,9 +306,33 @@ and the backend forbids it*](https://github.com/OurHike/OurHike/issues/242), **c
 real `DEFAULT_PREFERENCES` so the two field lists cannot drift apart again. Phase A inherits a
 guard rather than the bug — but it is the phase that finds out whether the guard holds.
 
-**B. Trips and the planned hike.** The record grain, the tombstones, the keep-both conflict
-rule, and the watermark. This is the phase the maintainer's ask is actually about, and the
-one with a real design inside it.
+**B. Trips and the planned hike. Built** — `backend/app/core/trip_sync.py`,
+`app/routers/synced_trips.py`, `client/src/lib/tripsSync.ts`
+([#892](https://github.com/OurHike/OurHike/issues/892)). The record grain, the tombstones,
+the keep-both conflict rule, and the watermark.
+
+Four things the build decided that this document left open, each argued where it lives:
+
+- **One exchange, not CRUD.** `POST /trips/sync` carries the uploads and the delta back in
+  one call, because splitting them opens a window in which the answer to the second no
+  longer matches the first.
+- **The planned hike rides in that envelope rather than reusing `POST /hikes`.** That table
+  is a collection with ids and the planned hike is a singleton with none, so syncing it
+  through `/hikes` would mean every device remembering which row is "the" one. `/hikes`
+  stays exactly what it is: the reference the wrong-way alert reads server-side.
+- **The conflict rule is the server's**, because it is the only party that can see both
+  versions — and because two devices implementing keep-both slightly differently would
+  produce a divergence indistinguishable from the loss the rule prevents.
+- **Delete-against-edit**, which this document does not specify, resolves as *the tombstone
+  lands and the other device's edit is kept beside it*. Both acts were the hiker's; a
+  resurrected copy is visible and deletable in one tap, while an edit destroyed by somebody
+  else's delete is invisible and gone.
+
+And one thing the build could not honour as written: the doc's example names the copy
+*"Grayson Highlands (from the phone, 12 Aug)"*. **The client has no device name to give** —
+nothing in `client/src/lib/` records what kind of device it is running on, and deriving one
+from a user agent would be a guess printed as a fact. So a copy says what is actually known:
+*"Grayson Highlands (edited on another device, 2026-08-21)"*.
 
 **C. Private photo backup, opt-in.** A separate store, the 640 px rendering only, the R2
 pattern from `core/photos.py`, a per-hiker cap decided from a measurement rather than a

@@ -84,6 +84,13 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     "poi_photos",
     "profiles",
     "reports",
+    # A hiker's own trips and the hike they say they are on (#892). Private
+    # planning, published to nobody and served to nobody else - so like
+    # volunteer_hours below, the whole design is that it is private, and the
+    # trip document carries dated stops along a corridor, which is #252's
+    # route-reconstruction pair with the route spelled out.
+    "synced_planned_hikes",
+    "synced_trips",
     "user_preferences",
     # A volunteer's own logbook (#761), locations and free-text notes - the
     # resource whose whole design is that it is private.

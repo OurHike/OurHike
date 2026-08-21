@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 import pytest
 import requests
 
+import verify_release
 from verify_release import (
     FAILED,
     OK,
@@ -37,6 +39,7 @@ from verify_release import (
     advertised_sizes,
     archive_keys,
     check_all,
+    check_client_keys,
     check_cors,
     check_fetchable,
     check_full_hash,
@@ -50,6 +53,7 @@ from verify_release import (
     release_checks,
     skipped_checks,
     verdict_document,
+    withdrawn_tier_keys,
 )
 
 BASE = "https://data.example.org"
@@ -113,6 +117,73 @@ class TestTheContractIsReadNotRestated:
 
     def test_tiers_map_to_the_keys_the_bucket_holds(self):
         assert archive_keys(CONFIG_TS)["fine"] == "background_z13.pmtiles"
+
+
+PACKAGES_TS = """
+export const USGS_SHEET: BackgroundSheet = {
+  id: 'usgs-sheet',
+  title: 'USGS sheet',
+  summary: 'The official government topo, as an optional second map.',
+  packages: [CORRIDOR_BACKGROUND_PACKAGE],
+  withdrawn: true,
+}
+"""
+
+PACKAGES_TS_NOTHING_WITHDRAWN = """
+export const USGS_SHEET: BackgroundSheet = {
+  id: 'usgs-sheet',
+  packages: [CORRIDOR_BACKGROUND_PACKAGE],
+}
+"""
+
+
+class TestAWithdrawnSheetIsASkipNotAFailure:
+    """#854's part 1, in the shape its 2026-08-20 comment settled: check 2 was
+    conflating "the app will request this" with "the app can still resolve
+    this for someone who already has it". A withdrawn sheet (#855) is only the
+    second, so its absence from a release is a NAMED skip - never OK, which
+    would erase the declaration, and never the failure that made every UA run
+    un-passable."""
+
+    def test_the_withdrawn_sheets_keys_are_read_from_the_clients_own_source(self):
+        assert withdrawn_tier_keys(PACKAGES_TS, CONFIG_TS) == {
+            "background_z11.pmtiles",
+            "background.pmtiles",
+            "background_z13.pmtiles",
+        }
+
+    def test_no_withdrawal_means_no_keys(self):
+        assert withdrawn_tier_keys(PACKAGES_TS_NOTHING_WITHDRAWN, CONFIG_TS) == set()
+
+    def test_a_withdrawn_sheet_this_check_cannot_map_raises_rather_than_guessing(self):
+        withdrawn_other = PACKAGES_TS.replace("CORRIDOR_BACKGROUND_PACKAGE", "SOME_NEW_PACKAGE")
+        with pytest.raises(ValueError, match="SOME_NEW_PACKAGE"):
+            withdrawn_tier_keys(withdrawn_other, CONFIG_TS)
+
+    def test_a_missing_withdrawn_key_skips_and_names_the_declaration(self):
+        manifest = {"artifacts": {key: {"sha256": "x"} for key in ["trails.geojson", "poi_shelter.geojson", "poi_water.geojson"]}}
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS)}
+
+        assert reports["background_z13.pmtiles"]["state"] == SKIPPED
+        assert "packages.ts" in reports["background_z13.pmtiles"]["detail"]
+        assert reports["trails.geojson"]["state"] == OK
+
+    def test_a_missing_key_nobody_withdrew_still_fails_loudly(self):
+        manifest = {"artifacts": {"trails.geojson": {"sha256": "x"}}}
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS)}
+
+        assert reports["poi_shelter.geojson"]["state"] == FAILED
+
+    def test_a_published_withdrawn_key_is_still_ok(self):
+        """Publishing bytes a phone may be carrying is exactly right - the
+        withdrawal changes what absence means, not what presence means."""
+        manifest = {"artifacts": {key: {"sha256": "x"} for key in expected_client_keys(CONFIG_TS)}}
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS)}
+
+        assert reports["background_z13.pmtiles"]["state"] == OK
 
 
 class TestTheManifest:
@@ -295,6 +366,34 @@ class TestTheWholeRun:
         # the standing skips (#653), present in every run until somebody
         # builds them.
         assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19, 20, 21}
+
+    def test_a_release_without_the_background_tiers_skips_9_12_and_18_by_name(self, tmp_path, monkeypatch, requests_mock):
+        """#854's part 2, the same defect #653 fixed for checks 6 and 11 by
+        another route: the tier loop used to `continue` past a missing tier,
+        so checks 9, 12 and 18 emitted no report at all - and they exist to
+        interrogate exactly the tiers that go absent, which since #855's
+        withdrawal is every ordinary release. Nine reports silently not
+        existing is the "did not ask" that reads as "asked and was
+        satisfied", and --strict cannot escalate a report that is not there."""
+        ledger = tmp_path / "poi_identity.json"
+        ledger.write_text(json.dumps({"pois": {}}))
+        monkeypatch.setattr(verify_release, "IDENTITY_LEDGER_PATH", ledger)
+        requests_mock.head(re.compile(".*"), headers=_headers())
+        requests_mock.get(re.compile(".*"), status_code=404)
+        requests_mock.get(
+            f"{BASE}/latest.json",
+            json={"artifacts": {"trails.geojson": {"sha256": "x", "size": 1}}},
+        )
+
+        reports = check_all(BASE, hash_artifacts=False)
+
+        background = {"background_z11.pmtiles", "background.pmtiles", "background_z13.pmtiles"}
+        tier_reports = [r for r in reports if r["check"] in (9, 12, 18)]
+        assert {r["key"] for r in tier_reports} == background
+        assert {r["state"] for r in tier_reports} == {SKIPPED}
+        # Three tiers x checks 9 and 12, plus 18 for every tier the client
+        # advertises a size for - nine on the real contract.
+        assert len(tier_reports) == 9
 
 
 # ---------------------------------------------------------------------------

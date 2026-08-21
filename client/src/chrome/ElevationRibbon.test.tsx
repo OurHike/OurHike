@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { ElevationRibbon } from './ElevationRibbon'
 import { naismithTime } from '../lib/naismith'
@@ -165,5 +165,83 @@ describe('ElevationRibbon', () => {
     )
 
     expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
+  })
+
+  // The planning ribbon (#910). Same geometry, same shading, same labels -
+  // what changes is the three things that make a claim about a hiker.
+
+  it('draws no you-are-here rule when nothing knows where the hiker is', () => {
+    render(<ElevationRibbon samples={SAMPLES} currentMile={null} />)
+
+    expect(screen.queryByTestId('you-are-here')).not.toBeInTheDocument()
+  })
+
+  it('draws no rule for a fix that is not on the stretch being drawn', () => {
+    // Clamped to an edge, the rule would read as "you are at the start of
+    // this stretch" - a confident answer about somebody's position, and a
+    // wrong one. A hiker in Virginia planning the Whites is the normal case.
+    render(<ElevationRibbon samples={SAMPLES} currentMile={700} />)
+
+    expect(screen.queryByTestId('you-are-here')).not.toBeInTheDocument()
+  })
+
+  it('still draws the rule for a fix that IS on the stretch', () => {
+    render(
+      <ElevationRibbon samples={SAMPLES} currentMile={1405} subject="planned-stretch" />,
+    )
+
+    expect(screen.getByTestId('you-are-here')).toHaveAttribute('x1', '50')
+  })
+
+  it('stops calling the profile "ahead" when it is a planned stretch', () => {
+    render(
+      <ElevationRibbon samples={SAMPLES} currentMile={null} subject="planned-stretch" />,
+    )
+
+    expect(
+      screen.getByRole('img', { name: /stretch being planned/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /ahead/i })).not.toBeInTheDocument()
+  })
+
+  it('draws the framing buttons the screen hands it, and none of its own', () => {
+    const zoom = vi.fn()
+    render(
+      <ElevationRibbon
+        samples={SAMPLES}
+        currentMile={null}
+        controls={[{ label: 'Whole trail', onClick: zoom }]}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Zoom to stretch' }),
+    ).not.toBeInTheDocument()
+    screen.getByRole('button', { name: 'Whole trail' }).click()
+    expect(zoom).toHaveBeenCalledOnce()
+  })
+
+  it('costs the map no row at all when there is nothing to frame', () => {
+    // The row is real layout, not an overlay, so an empty one would take ~44px
+    // of map height to say nothing.
+    const { container } = render(<ElevationRibbon samples={SAMPLES} currentMile={null} />)
+
+    expect(container.querySelector('.elevation-ribbon-controls')).toBeNull()
+
+    cleanup()
+    const empty = render(
+      <ElevationRibbon samples={SAMPLES} currentMile={null} controls={[]} />,
+    )
+    expect(empty.container.querySelector('.elevation-ribbon-controls')).toBeNull()
+  })
+
+  it('draws the profile and the labels with no fix, exactly as with one', () => {
+    // The picture is the whole point of the planning ribbon. Losing the rule
+    // must not cost the shape or the two elevation labels with it.
+    render(<ElevationRibbon samples={SAMPLES} currentMile={null} />)
+
+    expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
+    expect(screen.getByText(/980 ft/)).toBeInTheDocument()
+    expect(screen.getByText(/2,100 ft/)).toBeInTheDocument()
   })
 })

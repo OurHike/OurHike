@@ -20,6 +20,7 @@ import { getAuthClient } from './supabase'
 import type { OutboxItem, PhotoAction } from './outbox'
 import type { BackendReportStatus } from './reportStatus'
 import type { ClosureReason, ClosureStatus } from './closureBanner'
+import type { DisputeSummary } from './disputes'
 import type { NoteSummary } from './fieldNotes'
 import type { VolunteerHoursSummary } from './volunteerHours'
 import { PHOTO_CONTENT_TYPE } from './reportPhoto'
@@ -339,6 +340,25 @@ export interface ClosureSummary {
 export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummary[]> {
   const response = await readFetch('/closures', signal)
   return (await response.json()) as ClosureSummary[]
+}
+
+/**
+ * Places the field says are not there (#876, FIELD_NOTES.md §4).
+ *
+ * Only corroborated disputes come back - one person's "it is gone" is
+ * already public as a note, in their own words, and the pin's stronger claim
+ * needs the threshold `backend/app/core/disputes.py` holds. The verdict
+ * carries a count and a date and no identities: corroboration is exactly the
+ * computation that needs `reporter_id`, which is exactly what the note
+ * serialisation withholds.
+ *
+ * Throws rather than answering an empty list, like every other conditions
+ * read: "nobody disputes this" and "we could not ask" are opposite claims
+ * about a spring.
+ */
+export async function fetchDisputes(signal?: AbortSignal): Promise<DisputeSummary[]> {
+  const response = await readFetch('/disputes', signal)
+  return (await response.json()) as DisputeSummary[]
 }
 
 /**

@@ -35,6 +35,9 @@ function note(overrides: Partial<NoteSummary>): NoteSummary {
 function context(overrides: Partial<FieldNoteContext> = {}): FieldNoteContext {
   return {
     notesFor: () => [],
+    // No dispute by default (#876), so every case written before disputes
+    // existed reads exactly as it did.
+    disputeFor: () => null,
     reporterType: 'section',
     contributeConditions: false,
     onAddNote: vi.fn(),
@@ -52,12 +55,15 @@ function renderSection(
     lat: number
     lon: number
     mile?: number
+    /** `confidence: low` upstream - changes only the dispute wording (#876). */
+    unverified: boolean
   }> = {},
 ) {
   return render(
     <FieldNoteSection
       poiId={poi.poiId ?? 'osm_water:1'}
       poiType={poi.poiType ?? 'water'}
+      unverified={poi.unverified ?? false}
       lat={poi.lat ?? 41.2}
       lon={poi.lon ?? -74.1}
       {...(poi.mile !== undefined ? { mile: poi.mile } : {})}
@@ -320,5 +326,87 @@ describe('a note’s photo', () => {
 
     expect(screen.getByText(/Spring is fine/)).toBeTruthy()
     expect(screen.queryByRole('img')).toBeNull()
+  })
+})
+
+// --- Disputes on the card (#876, FIELD_NOTES.md §4) -----------------------
+//
+// WIREFRAMES.md §11's rule: the visual channel never carries the meaning
+// alone. A dashed pin says something is unusual about a place; only these
+// sentences say which of two very different things it is.
+
+describe('a place the field says is not there', () => {
+  const disputed = {
+    poi_id: 'osm_water:1',
+    accounts: 2,
+    latest_at: new Date(NOW.getTime() - 4 * DAY_MS).toISOString(),
+    maintainer_said: false,
+  }
+
+  it('says it in words, in the doc’s own sentence', () => {
+    renderSection(context({ disputeFor: () => disputed }))
+
+    expect(screen.getByTestId('poi-card-disputed').textContent).toBe(
+      '2 hikers reported this missing, most recently 4 days ago.',
+    )
+  })
+
+  it('says the existence claim before the freshness one', () => {
+    renderSection(context({ disputeFor: () => disputed }))
+
+    // "When did somebody last say this was fine" is a question about a place
+    // that exists. Reading them the other way round tells a hiker how fresh
+    // the news is about something that may not be there.
+    const card = screen.getByTestId('poi-card-conditions')
+    const order = Array.from(card.querySelectorAll('p')).map((p) => p.className)
+    expect(order.indexOf('poi-card__disputed')).toBeLessThan(
+      order.indexOf('poi-card__last-confirmed'),
+    )
+  })
+
+  it('hedges when upstream never confirmed the place either', () => {
+    renderSection(context({ disputeFor: () => disputed }), { unverified: true })
+
+    expect(screen.getByTestId('poi-card-disputed').textContent).toMatch(
+      /never confirmed to exist/,
+    )
+  })
+
+  it('says nothing at all about a place nobody disputes', () => {
+    renderSection(context({ disputeFor: () => null }))
+
+    expect(screen.queryByTestId('poi-card-disputed')).toBeNull()
+  })
+
+  it('offers "Not here" as an answer, on every type it asks about', () => {
+    // The button this feature was waiting for: the picker withheld
+    // `not_found` until something could render, corroborate and decay it.
+    renderSection(context())
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeTruthy()
+
+    cleanup()
+    renderSection(context(), { poiType: 'shelter' })
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeTruthy()
+  })
+
+  it('offers it on an unverified place too, and lets the card do the hedging', () => {
+    // §4's carried-over open question. A hiker standing where a
+    // low-confidence spring should be cannot tell "upstream never verified
+    // this" from "it is gone", and asking them to is asking them to know our
+    // data's provenance.
+    renderSection(context(), { unverified: true })
+
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeTruthy()
+  })
+
+  it('files it as an ordinary note, not a second flow', () => {
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote }))
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-not_found'))
+
+    // "A dispute is an observation value, not a second model" - no second
+    // form, no second flow, nothing extra to moderate.
+    expect(onAddNote.mock.calls[0][0].observation).toBe('not_found')
   })
 })

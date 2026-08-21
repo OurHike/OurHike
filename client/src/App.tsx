@@ -60,6 +60,7 @@ import {
 } from './screens/Onboarding'
 import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
 import { closureDraft } from './lib/closureDraft'
+import { disputeFor } from './lib/disputes'
 import { WorkdaySheet } from './chrome/WorkdaySheet'
 import type { WorkdayPoint } from './map/workdayLayers'
 import { opportunitiesUsable, upcomingWorkProjects } from './lib/workProjects'
@@ -665,6 +666,7 @@ function App() {
     closures,
     reports,
     notes,
+    disputes,
     closureState,
     reportState,
     atcUpdates,
@@ -3148,6 +3150,11 @@ function App() {
       },
       reporterType: preferences.reporter_type,
       contributeConditions: preferences.contribute_conditions,
+      // The corroborated verdict for this place (#876). Null covers both
+      // "nobody disputes it" and "we could not ask", and the card treats
+      // them the same on purpose: neither is a claim worth printing, and
+      // only the first is a claim at all.
+      disputeFor: (poiId: string) => disputeFor(disputes, poiId),
       onAddNote: (draft: FieldNoteDraft, photo?: Blob) =>
         void handleAddFieldNote(draft, photo),
       onReportProblem: handleReportFromPoi,
@@ -3155,6 +3162,7 @@ function App() {
     }),
     [
       allNotes,
+      disputes,
       preferences.reporter_type,
       preferences.contribute_conditions,
       handleAddFieldNote,

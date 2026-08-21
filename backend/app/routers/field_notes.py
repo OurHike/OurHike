@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, get_current_user_optional, require_role
+from app.core.disputes import DisputeInput, dispute_state
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -34,9 +35,11 @@ from app.core.photos import (
 )
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
-from app.models.field_note import FieldNote, NoteFlag
+from app.models.field_note import FieldNote, NoteFlag, Observation
+from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.routers.reports import read_capped_body
+from app.schemas.dispute import DisputeOut
 from app.schemas.field_note import (
     FieldNoteCreate,
     FieldNoteOut,
@@ -241,6 +244,84 @@ def flag_field_note(
     db.add(flag)
     db.commit()
     return {"status": "flagged"}
+
+
+@router.get("/disputes", response_model=list[DisputeOut])
+def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
+    """Places the field says are not there (#876, FIELD_NOTES.md §4).
+
+    No auth, like every other browsing read: a hiker deciding whether to
+    count on a spring needs this most when they have no account and no
+    signal to make one.
+
+    **Only corroborated disputes are served.** A single uncorroborated
+    "it is gone" is already public as a NOTE - it is in the feed, on the
+    card, in the hiker's own words - and that is the right weight for one
+    person's observation. What this endpoint answers is the stronger claim
+    the pin and the headline make, and one claim must never be able to
+    make it: `core/disputes.py` is where that line sits.
+
+    The identities never leave this process. `reporter_id` is what makes
+    corroboration mean anything and is exactly what FieldNoteOut withholds
+    (§6, #252) - so the rule runs here and a verdict goes out.
+    """
+    hidden_excluded = db.query(FieldNote).filter(FieldNote.hidden_at.is_(None), FieldNote.poi_id.isnot(None))
+    notes = hidden_excluded.filter(FieldNote.observation.isnot(None)).all()
+
+    # Every current assignment, once, rather than a query per note: a
+    # maintainer's word outweighs the count and the covering test is a range
+    # check, so the whole table is cheaper than N lookups and stays correct
+    # as it grows to a few hundred rows.
+    today = utc_now().date()
+    assignments = (
+        db.query(MaintainerAssignment)
+        .filter(
+            MaintainerAssignment.effective_from <= today,
+            (MaintainerAssignment.effective_to.is_(None)) | (MaintainerAssignment.effective_to >= today),
+        )
+        .all()
+    )
+
+    def covers(reporter_id: str, mile: float | None) -> bool:
+        """Whether this reporter looks after the stretch this note is on.
+
+        A note with no mile cannot be covered by anybody: an assignment is a
+        range along the centerline, and treating "no mile" as covered would
+        hand every maintainer a veto over every unplaced note in the country.
+        """
+        if mile is None:
+            return False
+        return any(
+            assignment.maintainer_id == reporter_id and assignment.start_mile <= mile <= assignment.end_mile
+            for assignment in assignments
+        )
+
+    by_poi: dict[str, list[DisputeInput]] = {}
+    for note in notes:
+        by_poi.setdefault(note.poi_id, []).append(
+            DisputeInput(
+                reporter_id=note.reporter_id,
+                observed_at=note.observed_at,
+                disputes=note.observation is Observation.not_found,
+                maintainer=covers(note.reporter_id, note.mile),
+            )
+        )
+
+    now = utc_now()
+    out: list[DisputeOut] = []
+    for poi_id, inputs in sorted(by_poi.items()):
+        state = dispute_state(inputs, now)
+        if not state.reported_missing:
+            continue
+        out.append(
+            DisputeOut(
+                poi_id=poi_id,
+                accounts=state.accounts,
+                latest_at=state.latest,
+                maintainer_said=state.maintainer_said,
+            )
+        )
+    return out
 
 
 @router.put("/field-notes/{note_id}/photo", response_model=FieldNoteOut)

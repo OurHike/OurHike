@@ -39,6 +39,8 @@ vi.mock('./lib/api', () => ({
   fetchReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
+  // Disputes ride the same read as the notes they are computed from (#876).
+  fetchDisputes: vi.fn(async () => []),
   fetchMyProfile: vi.fn(async () => ({ id: 'p-1', role: 'hiker', display_name: null })),
 }))
 vi.mock('./lib/auth', async (importOriginal) => ({

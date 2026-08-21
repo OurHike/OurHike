@@ -3177,3 +3177,15 @@ a.poi-card__credit::after {
   border-radius: 6px;
   border: 1px solid var(--border-1, var(--bg-sunken));
 }
+
+/* A place the field says is not there (#876). Set apart from the freshness
+   line under it, because it answers a different question - whether the place
+   is there at all, rather than how recently somebody said it was fine. */
+.poi-card__disputed {
+  margin: var(--space-2, 8px) 0 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 8px;
+}

@@ -1431,6 +1431,11 @@ export function PoiCard({
           <FieldNoteSection
             poiId={shown.id}
             poiType={shown.type}
+            // The existence axis this card already renders one value of
+            // (`confidence === 'low'` below): a dispute about a place
+            // upstream never confirmed is a weaker claim, and #876's
+            // sentence says so rather than counting it the same.
+            unverified={shown.confidence === 'low'}
             lat={shown.lat}
             lon={shown.lon}
             {...(shown.mile !== undefined ? { mile: shown.mile } : {})}

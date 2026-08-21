@@ -42,6 +42,7 @@ import { signReportAs } from '../lib/reporterIdentity'
 // re-encode a shared waypoint photo gets - a note's photo is read on the same
 // card at the same size, and a second ladder would be a second answer to one
 // question.
+import { disputeSentence, type DisputeSummary } from '../lib/disputes'
 import { screenPhoto } from '../lib/photoScreen'
 import { CARD_PHOTO_EDGE } from '../lib/poiPhotos'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
@@ -68,6 +69,14 @@ export interface FieldNoteContext {
   reporterType: ReporterType | null
   /** The #759 opt-in: asked more thoroughly when already looking. */
   contributeConditions: boolean
+  /**
+   * The corroborated dispute for a place, or null (#876).
+   *
+   * A lookup rather than a list, for `notesFor`'s reason: the card is one
+   * place, and handing it the whole working set would make every card
+   * responsible for finding itself in it.
+   */
+  disputeFor: (poiId: string) => DisputeSummary | null
   /** Queue the note, with the photo's bytes when the hiker attached one
    *  (#879). The shell owns everything after saving: the flush, and the
    *  sign-in/identity steps in contributionFlow.ts's order. */
@@ -81,6 +90,13 @@ export interface FieldNoteContext {
 export interface FieldNoteSectionProps {
   poiId: string
   poiType: string
+  /**
+   * Whether upstream ever confirmed this place exists - `confidence: low` on
+   * the POI (#876). It changes only the WORDS: a dispute about a place
+   * nobody verified is a weaker claim than one about a place ATC surveyed,
+   * and the card says so rather than counting them as the same thing.
+   */
+  unverified?: boolean
   lat: number
   lon: number
   mile?: number
@@ -95,6 +111,7 @@ const NOTES_SHOWN = 3
 export function FieldNoteSection({
   poiId,
   poiType,
+  unverified = false,
   lat,
   lon,
   mile,
@@ -209,6 +226,19 @@ export function FieldNoteSection({
           never-confirmed water is the maintainer's day-one wording (#256);
           everything with a history gets the dated sentence; and a failed
           read says so rather than wearing either claim. */}
+      {/* The existence claim first, because it outranks the freshness one:
+          "when did somebody last say this was fine" is a question about a
+          place that exists (WIREFRAMES.md §11's two axes). Said in words as
+          well as in the pin, which is §11's own rule - a dashed pin says
+          something is unusual here, and only the sentence says which of two
+          very different things it is. */}
+      {disputeSentence(context.disputeFor(poiId), context.now, { unverified }) !==
+        null && (
+        <p className="poi-card__disputed" role="note" data-testid="poi-card-disputed">
+          {disputeSentence(context.disputeFor(poiId), context.now, { unverified })}
+        </p>
+      )}
+
       <p className="poi-card__last-confirmed">
         {couldNotCheck
           ? 'Recent notes unavailable — no signal.'

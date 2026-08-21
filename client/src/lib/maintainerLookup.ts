@@ -1,6 +1,17 @@
 // "Who looks after this stretch?" - the client's half of
 // features/SAYING_THANKS.md's resolution.
 //
+// STAGED, NOT SHIPPED (#657): nothing outside this module's own test imports
+// it. That is not a defect in what is here - the code is written and covered
+// - it is that the thanks form never grew the line it feeds. Said out loud
+// because a reader cannot otherwise tell built-and-wired from built-and-
+// waiting, and this file reads exactly like the former.
+//
+// Deliberately not deleted in an audit sweep: the module's own argument below
+// is that this is a nicety over a server-side answer that already works, so
+// removing it costs a small kindness and changes no behaviour - which makes
+// it somebody's call rather than a tidy-up.
+//
 // This is a nicety, not a dependency. The authoritative answer is worked out
 // server-side when the thanks is finally received, from its `mile` and its
 // authored date - which is the only place it CAN happen, because the normal

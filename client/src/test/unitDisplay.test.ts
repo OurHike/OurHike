@@ -27,6 +27,33 @@ import { join, relative, resolve } from 'node:path'
 // handed the wrong quantity. Those are ordinary bugs with ordinary tests. What
 // this catches is the one failure that has no natural test - a new screen
 // quietly deciding for itself.
+//
+// AND WHAT THE SCANNER ITSELF CANNOT SEE (#657's audit found this, and the
+// gap matters more than the individual lines it names, because a ledger
+// believed to be complete is worse than one known to be partial):
+//
+//   - **A unit with no number in front of it.** `WRITTEN_UNIT` matches a
+//     figure THEN a unit, which is what makes it precise about mile markers -
+//     and it means a bare `'m'` is invisible. `map/liveTopo.ts:1036,1058`
+//     write exactly that: the contour and peak label expressions end
+//     `units === 'imperial' ? "'" : 'm'`. **Those two are correct** - the
+//     values are already per-unit, so the suffix only says which system the
+//     number is in - but they are correct by inspection rather than because
+//     this guard checked them, and `MAY_WRITE_UNITS` below has never named
+//     them. Deliberately NOT added to that list: excusing the whole file
+//     would stop this scanner reading the rest of it, and the rest of it is
+//     ordinary code.
+//   - **Concatenation and variables.** `'ft'` assigned to a constant, or
+//     built with `+`, passes. Only the inline template form is matched.
+//   - **Anything outside `src/`**, and anything a dependency renders for
+//     itself. MapLibre's `ScaleControl` writes its own "mi"/"km" inside the
+//     library (`map/mapChrome.ts` passes it `unit: units`, so the hiker's
+//     choice IS honoured - but no string in this repository says so).
+//
+// Widening the regex to cover the first two was considered and not done: a
+// pattern loose enough to catch a bare `'m'` matches every `m` in the
+// codebase, and a guard that cries wolf is a guard people delete. The honest
+// answer is this paragraph rather than a rule nobody can keep.
 
 const ROOT = resolve(process.cwd(), 'src')
 

@@ -636,6 +636,45 @@ describe('DataSettings', () => {
     expect(screen.getByRole('button', { name: /GeoJSON/i })).toBeInTheDocument()
   })
 
+  // #657: all three of these were bound to App.tsx's `notYet = () => undefined`
+  // - live-looking controls that did nothing, in the same file that already
+  // has a standard for the opposite. A button that looks usable and is not
+  // costs more than a missing one: it gets pressed, nothing happens, and the
+  // hiker learns this app's buttons sometimes lie - on the screen whose other
+  // buttons are export and sign-out.
+  describe('a control with nothing behind it yet', () => {
+    it('says "Later" instead of offering a Sync button', () => {
+      render(<DataSettings {...PROPS} onSync={undefined} />)
+
+      expect(screen.queryByRole('button', { name: /^sync$/i })).toBe(null)
+      expect(screen.getByText(/refresh now/i)).toBeInTheDocument()
+    })
+
+    it('says "Later" instead of offering export buttons', () => {
+      render(<DataSettings {...PROPS} onExport={undefined} />)
+
+      expect(screen.queryByRole('button', { name: /GPX/i })).toBe(null)
+      expect(screen.queryByRole('button', { name: /GeoJSON/i })).toBe(null)
+      expect(screen.getByText(/export gpx or geojson/i)).toBeInTheDocument()
+    })
+
+    it('wears the same Later tag the rest of this screen uses', () => {
+      // The standard, not a new one: "Roads & walkability" two sections up
+      // has looked like this since before any of these buttons existed.
+      const { container } = render(
+        <DataSettings {...PROPS} onSync={undefined} onExport={undefined} />,
+      )
+
+      expect(container.querySelectorAll('.settings__later')).toHaveLength(2)
+    })
+
+    it('still shows when the data last synced, which is a fact either way', () => {
+      render(<DataSettings {...PROPS} onSync={undefined} onExport={undefined} />)
+
+      expect(screen.getByText('Last synced')).toBeInTheDocument()
+    })
+  })
+
   it('credits the data sources, which the licences require', () => {
     render(<DataSettings {...PROPS} />)
 

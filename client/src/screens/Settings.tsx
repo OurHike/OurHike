@@ -83,8 +83,11 @@ export interface SettingsProps {
   pace?: PaceProfile
   onChangePace?: (next: PaceProfile) => void
   lastSyncedAt: Date | null
-  onSync: () => void
-  onExport: (format: 'gpx' | 'geojson') => void
+  /** See `DataSettingsProps` - optional, and omitted is the honest state
+   *  today: a control with no handler draws "Later" rather than a button
+   *  that does nothing (#657). */
+  onSync?: () => void
+  onExport?: (format: 'gpx' | 'geojson') => void
   /** Injectable so the sync-age wording is testable without a live clock. */
   now?: Date
   /**
@@ -609,8 +612,22 @@ export function SafetyPrivacySettings({
 
 export interface DataSettingsProps {
   lastSyncedAt: Date | null
-  onSync: () => void
-  onExport: (format: 'gpx' | 'geojson') => void
+  /**
+   * Refresh the published conditions, when there is something to call.
+   *
+   * OPTIONAL, and omitted is the honest state today (#657). These three
+   * buttons were bound to `App.tsx`'s `notYet = () => undefined`: live-
+   * looking controls that did nothing, in the same file that already has a
+   * standard for the opposite - `LaterTag` beside a disabled input, which is
+   * what "Roads & walkability" wears two sections up.
+   *
+   * A control that looks usable and is not costs more than a missing one. It
+   * is pressed, nothing happens, and the hiker learns that this app's buttons
+   * sometimes lie - on the screen where the other buttons are export and
+   * sign-out.
+   */
+  onSync?: () => void
+  onExport?: (format: 'gpx' | 'geojson') => void
   /** Injectable so the sync-age wording is testable without a live clock. */
   now?: Date
 }
@@ -628,25 +645,39 @@ export function DataSettings({
         <span className="settings__label">Last synced</span>
         <span className="settings__value">{syncAgeLabel(lastSyncedAt, now)}</span>
       </p>
-      <button type="button" className="settings__action" onClick={onSync}>
-        Sync
-      </button>
-      <div className="settings__exports">
-        <button
-          type="button"
-          className="settings__action"
-          onClick={() => onExport('gpx')}
-        >
-          Export GPX
+      {onSync === undefined ? (
+        <p className="settings__row settings__row--later">
+          <span className="settings__label">Refresh now</span>
+          <LaterTag />
+        </p>
+      ) : (
+        <button type="button" className="settings__action" onClick={onSync}>
+          Sync
         </button>
-        <button
-          type="button"
-          className="settings__action"
-          onClick={() => onExport('geojson')}
-        >
-          Export GeoJSON
-        </button>
-      </div>
+      )}
+      {onExport === undefined ? (
+        <p className="settings__row settings__row--later">
+          <span className="settings__label">Export GPX or GeoJSON</span>
+          <LaterTag />
+        </p>
+      ) : (
+        <div className="settings__exports">
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => onExport('gpx')}
+          >
+            Export GPX
+          </button>
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => onExport('geojson')}
+          >
+            Export GeoJSON
+          </button>
+        </div>
+      )}
       <p className="settings__note">
         Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, OpenFreeMap ©
         OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.

@@ -39,6 +39,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
+import type { BlazeCount } from './chrome/Legend'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
@@ -335,7 +336,20 @@ const TRAIL_LOGO = TRAILS.AT.logo
 // Sign in and sign out used to be here too. They are real now - Supabase Auth
 // is a separate service from this project's backend, so signing in never
 // needed that backend to exist, only a project to sign in to.
-const notYet = () => undefined
+/**
+ * STAGED, NOT SHIPPED (#657). The Legend's blaze list is built and tested and
+ * has never rendered, because nothing computes these counts.
+ *
+ * Hardcoded `[]` said the same thing invisibly: `blazeCounts.length > 0`
+ * guards the list, so an empty array is indistinguishable in the source from
+ * "this stretch has no blazes to count". A named constant is greppable and
+ * says which it is.
+ *
+ * What would fill it: counting the blaze colours on the trail features in
+ * view, which needs the reviewed colour mapping #782 is deciding - so this
+ * waits on that rather than on anybody wiring a prop.
+ */
+const NO_BLAZE_COUNTS: BlazeCount[] = []
 
 // The whole trail, Springer to Katahdin, as the opening view. Taken from the
 // published topo archive's own header bounds, so it frames exactly the ground
@@ -3913,6 +3927,12 @@ function App() {
                   onClose={() => setPickingHike(false)}
                 />
               ) : (
+                // Neither `onSync` nor `onExport` is passed, and that is the
+                // change rather than an omission (#657): both were bound to
+                // `notYet` and rendered as live buttons that did nothing.
+                // DataSettings draws "Later" when it has no handler, which is
+                // the standard the same file already keeps for "Roads &
+                // walkability".
                 <More
                   account={account}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
@@ -3923,8 +3943,6 @@ function App() {
                   pace={pace}
                   onChangePace={handleChangePace}
                   lastSyncedAt={lastSyncedAt}
-                  onSync={notYet}
-                  onExport={notYet}
                   syncStatus={syncSummary ?? undefined}
                   syncEnabled={syncOn}
                   onToggleSync={handleToggleSync}
@@ -4450,7 +4468,7 @@ function App() {
           waypoints={ribbon?.source === 'ahead' ? waypoints : undefined}
           onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
           viewportPoints={viewportPoints}
-          blazeCounts={[]}
+          blazeCounts={NO_BLAZE_COUNTS}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
           hiddenTypes={hiddenTypes}

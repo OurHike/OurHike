@@ -540,7 +540,7 @@ describe('the ribbon while a trip is being planned', () => {
     expect(screen.getByText(/2,000 ft/)).toBeInTheDocument()
   })
 
-  it('takes the lanes with it, and gives both back when the builder closes', async () => {
+  it('takes the lanes with it, and gives the fix window back on close', async () => {
     const user = userEvent.setup()
     app.onboard({ location_permission_requested: true })
     app.putTrailData({ pois: POIS })
@@ -562,18 +562,33 @@ describe('the ribbon while a trip is being planned', () => {
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
 
-    // The swap. The lanes cluster pins at 1.5% of a TEN-mile window
-    // (features/ELEVATION_PROFILE.md, Decision 1); left under a profile of
-    // nineteen they would sit beside ground they do not describe.
+    // The swap. The lanes are re-windowed onto the planned stretch rather than
+    // dropped (#913) - and onto the PIPELINE's axis, which is what the count
+    // proves: Front Shelter (3.2) to Beyond Shelter (22.2) holds all four,
+    // where reading the client index's own miles would put the 3.0 that starts
+    // the stretch outside it and draw three.
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
     expect(fixRibbon()).not.toBeInTheDocument()
-    expect(screen.queryByTestId('lane-sleep')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+      ).toHaveLength(4),
+    )
+
+    // And the first of them sits exactly at the ribbon's left edge, because
+    // the stretch starts at that shelter's published mile.
+    expect(
+      within(screen.getByTestId('lane-sleep')).getAllByRole('button')[0],
+    ).toHaveStyle({ left: '0%' })
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
 
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
     expect(planRibbon()).not.toBeInTheDocument()
-    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    // Back to the ten miles around the fix, which hold fewer of them.
+    expect(
+      within(screen.getByTestId('lane-sleep')).getAllByRole('button').length,
+    ).toBeLessThan(4)
   })
 
   it('follows the map once the hiker pans it, and gives the fix back on request', async () => {
@@ -589,6 +604,11 @@ describe('the ribbon while a trip is being planned', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await app.reportFixAtMile(5)
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
+    // One shelter is inside the ten-mile fix window; the pan below puts four
+    // on screen, which is what makes the lane counts tell the domains apart.
+    expect(within(screen.getByTestId('lane-sleep')).getAllByRole('button')).toHaveLength(
+      1,
+    )
 
     const map = MockMap.live[0]
 
@@ -598,7 +618,7 @@ describe('the ribbon while a trip is being planned', () => {
       map.bounds = {
         west: -77.5,
         east: -76.5,
-        south: latOfMile(20),
+        south: latOfMile(0),
         north: latOfMile(30),
       }
       map.emit('moveend', {})
@@ -615,13 +635,22 @@ describe('the ribbon while a trip is being planned', () => {
     })
     expect(mapRibbon).toBeInTheDocument()
     expect(fixRibbon()).not.toBeInTheDocument()
-    // The lanes cluster against the fix's ten miles, so they leave with it.
-    expect(screen.queryByTestId('lane-sleep')).not.toBeInTheDocument()
+    // The lanes go where the ribbon goes (#913): the mapped stretch holds all
+    // four shelters, where the fix window held one.
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+      ).toHaveLength(4),
+    )
 
     await user.click(screen.getByRole('button', { name: 'Back to me' }))
 
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
-    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+      ).toHaveLength(1),
+    )
   })
 
   it("offers the chart's own framing buttons, and only the ones that would do something", async () => {

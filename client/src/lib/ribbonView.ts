@@ -47,6 +47,7 @@ import type { ElevationProfile, MileWindow } from './elevationProfile'
 import { ribbonSamples } from './elevationProfile'
 import { envelopeSamples, type ChartDomain } from './chartProfile'
 import { upcomingClimb } from './upcomingClimb'
+import { COLLAPSE_THRESHOLD_PCT, type Waypoint } from './waypointLanes'
 
 /**
  * Which of the four the ribbon settled on. Carried out so the screen can say
@@ -209,4 +210,113 @@ function stretchView(
     source,
     domain: { startMile, endMile },
   }
+}
+
+/**
+ * A POI as the lanes need it: `StoredPoi` and `SearchablePoi` both narrowed to
+ * the three fields that place a pin. Optional `mile` is the load-bearing one -
+ * a download published before #753 carries no pipeline mile, and a POI the
+ * centerline index could not place carries no client one.
+ */
+export interface LanePoi {
+  id: string
+  type: string
+  mile?: number
+}
+
+export interface RibbonLanes {
+  points: Waypoint[]
+  startMile: number
+  endMile: number
+}
+
+/**
+ * The widest domain the lanes still say something individual about.
+ *
+ * REASONED, from the one figure this repository already stands behind: AT
+ * shelters average about eight miles apart (features/ELEVATION_PROFILE.md
+ * Decision 1, which sizes the fix window's nine-mile look-ahead on it). A pill
+ * swallows `COLLAPSE_THRESHOLD_PCT` of whatever window it is drawn in, so over
+ * a span of S miles it stands for 0.015 x S miles of trail. Where that reaches
+ * a lane's own spacing, that lane is all pills: it has stopped naming places
+ * and started drawing density, which is a different picture and one nothing
+ * here asked for. 8 / 0.015 is about 533 miles.
+ *
+ * This is what keeps the WHOLE-TRAIL domain from wearing three rows of pills -
+ * 1.5% of the AT is 33 miles, and a pill standing for thirty-three miles of
+ * trail is not a waypoint, it is a histogram bar.
+ *
+ * Two things it is not. It is not a claim that a 500-mile domain reads well; a
+ * pill standing for seven miles of trail is coarse, and this only says where
+ * the lanes stop being lanes at all. And eight miles is the ONLY lane spacing
+ * this repository has a figure for: WATER, the lane a hiker planning an
+ * evening is likeliest to be reading, has no census here, and published counts
+ * (pipeline/README.md) suggest it is sparser than the shelters rather than
+ * denser - which would make a tighter bound the right one. Until somebody
+ * measures it off the published POI export (`export_poi.py`'s `attach_miles`,
+ * #753) this is deliberately the generous end.
+ */
+export const MAX_LANE_SPAN_MI = 8 / (COLLAPSE_THRESHOLD_PCT / 100)
+
+/**
+ * The POIs along whatever the ribbon settled on, for the three lanes beneath
+ * it (WIREFRAMES.md §1.4).
+ *
+ * #910 drew the lanes only under the fix window and dropped them under every
+ * other domain, on arithmetic that is not in dispute: over a 60-mile plan a
+ * pill swallows 0.9 mi. That is the reason the fix window is ten miles and not
+ * forty - but on those other domains the alternative it was weighed against
+ * does not exist. Nobody is choosing between a ten-mile lane and a sixty-mile
+ * one; the choice is between a coarse lane and AN EMPTY STRIP under the
+ * profile, which a hiker laying out an evening reads as "there is nothing
+ * along here". A pill saying "3 water" over nine tenths of a mile is coarse
+ * and true; silence about water is neither.
+ *
+ * **Which mile places a pin depends on which domain won, and that rule lives
+ * here because it is the one thing about these lanes that can silently go
+ * wrong.** `ahead` is windowed on the CLIENT index's axis (RibbonInputs says
+ * why that is still so), and its lanes have always been placed from the same
+ * index. Every other domain is a pipeline-axis span (#753), so its pins come
+ * from the POI's own published mile. Crossing them puts a pin a few tenths off
+ * the climb it is meant to sit under - HIKE_PLANNING.md Finding 1, on the one
+ * surface where both axes are drawn at once.
+ *
+ * The window is the view's own `domain` rather than its samples' ends, and
+ * that distinction is not academic: the profile is sampled every 25 m, so the
+ * last sample at or before a domain's end falls short of it, and windowing on
+ * samples dropped the stop a route was walking TO out of the SLEEP lane.
+ *
+ * Undefined - never empty lanes - when the pins cannot be placed honestly:
+ *
+ *   - No ribbon. There is nothing to sit under.
+ *   - A domain past MAX_LANE_SPAN_MI, where the lanes stop naming places.
+ *   - A POI set with no usable mile in it at all: a download published before
+ *     #753 on the pipeline side, a centerline index that placed nothing on the
+ *     client side. Empty lanes there would report "nothing along here" about
+ *     POIs the app cannot place anywhere, which is a claim. A set that HAS
+ *     miles and genuinely holds nothing in the window draws empty lanes,
+ *     because that emptiness is a fact about the trail.
+ */
+export function ribbonLanes(
+  view: RibbonView | undefined,
+  pois: { onPipelineAxis: readonly LanePoi[]; onClientAxis: readonly LanePoi[] },
+): RibbonLanes | undefined {
+  if (view === undefined) return undefined
+
+  const { startMile, endMile } = view.domain
+  if (endMile - startMile > MAX_LANE_SPAN_MI) return undefined
+
+  const onAxis = view.source === 'ahead' ? pois.onClientAxis : pois.onPipelineAxis
+
+  const points: Waypoint[] = []
+  let anyPlaced = false
+
+  for (const poi of onAxis) {
+    if (poi.mile === undefined) continue
+    anyPlaced = true
+    if (poi.mile < startMile || poi.mile > endMile) continue
+    points.push({ id: poi.id, type: poi.type, mile: poi.mile })
+  }
+
+  return anyPlaced ? { points, startMile, endMile } : undefined
 }

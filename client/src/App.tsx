@@ -153,7 +153,7 @@ import {
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
 import { ribbonWindow } from './lib/elevationProfile'
-import { ribbonView } from './lib/ribbonView'
+import { ribbonLanes, ribbonView } from './lib/ribbonView'
 import { viewportMiles } from './lib/viewportMiles'
 import {
   anchoredClientMile,
@@ -1776,29 +1776,19 @@ function App() {
     [elevation, fix, direction],
   )
 
-  // Built from searchablePois rather than from `pois` again, because that memo
-  // has already paid for the locateOnTrail() call over every POI and the lanes
-  // want exactly the mile it produced. A POI the centerline index cannot place
-  // has no position on a mile axis, so it is left out of the lanes rather than
-  // guessed onto one.
-  const waypoints = useMemo(() => {
-    if (fixWindow === null) return undefined
-
-    return {
-      points: searchablePois.flatMap((poi) =>
-        poi.mile === undefined ? [] : [{ id: poi.id, type: poi.type, mile: poi.mile }],
+  /** The lanes' copy of the tier styling (#759's "highest-value surface"):
+   *  the same roll-up the pin rings read, through the same policy module. One
+   *  callback whichever domain the ribbon settles on, because a spring that is
+   *  stale in the field is stale on a plan, and a second lookup would be a
+   *  second chance to disagree about it. */
+  const laneStaleness = useCallback(
+    (poiId: string, poiType: string) =>
+      stalenessPresentation(
+        poiType,
+        stalenessTier(noteRollups.get(poiId)?.lastConfirmedAt ?? null),
       ),
-      startMile: fixWindow.startMile,
-      endMile: fixWindow.endMile,
-      // The lanes' copy of the tier styling (#759's "highest-value surface"):
-      // the same roll-up the pin rings read, through the same policy module.
-      stalenessFor: (poiId: string, poiType: string) =>
-        stalenessPresentation(
-          poiType,
-          stalenessTier(noteRollups.get(poiId)?.lastConfirmedAt ?? null),
-        ),
-    }
-  }, [fixWindow, searchablePois, noteRollups])
+    [noteRollups],
+  )
 
   /**
    * Every POI whose position is known on BOTH mile scales (#755) - the
@@ -2368,6 +2358,26 @@ function App() {
       }),
     [elevation, draftStretch, mapStretch, fix, gpsPlanMile, fixWindow, direction],
   )
+
+  /**
+   * The three lanes under whichever ribbon won (#913) - the same
+   * WIREFRAMES.md §1.4 lanes, over the ground the ribbon is actually showing
+   * rather than only over the fix window.
+   *
+   * Both POI lists go in because the axis depends on the domain and
+   * lib/ribbonView.ts is where that rule belongs: `ahead` is windowed on the
+   * client index, so its pins come from `searchablePois`, which has already
+   * paid `locateOnTrail()` for every POI; every other domain is a
+   * pipeline-axis span, so its pins come from the published mile on `pois`
+   * (#753). Deciding that here would put the trap in the caller.
+   */
+  const waypoints = useMemo(() => {
+    const lanes = ribbonLanes(ribbon, {
+      onPipelineAxis: pois,
+      onClientAxis: searchablePois,
+    })
+    return lanes === undefined ? undefined : { ...lanes, stalenessFor: laneStaleness }
+  }, [ribbon, pois, searchablePois, laneStaleness])
 
   const chartSelection = routeDraft !== null ? draftStretch : freeChartStretch
   const chartSouth =
@@ -4416,14 +4426,14 @@ function App() {
           }}
           bbox={bbox}
           // Which of the four the ribbon is showing is lib/ribbonView.ts's
-          // decision, made above. The LANES ride only with the fix window and
-          // are dropped otherwise rather than re-windowed: they cluster pins
-          // at 1.5% of a TEN-mile window, so under a profile of sixty - or of
-          // the whole trail - they would sit beside ground they do not
-          // describe, the exact misalignment MapScreen's own note forbids.
+          // decision, made above. The LANES follow it (#913): one window for
+          // both, from that same decision, so a pin always sits under the
+          // ground it names - and dropped entirely, rather than re-windowed
+          // or emptied, on the domains where a pill would stand for more
+          // trail than a place (lib/ribbonView.ts has the arithmetic).
           elevation={ribbon}
           chart={desktopChart}
-          waypoints={ribbon?.source === 'ahead' ? waypoints : undefined}
+          waypoints={waypoints}
           onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
           viewportPoints={viewportPoints}
           blazeCounts={[]}

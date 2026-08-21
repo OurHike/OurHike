@@ -88,6 +88,25 @@ export interface ElevationRibbonProps {
    */
   subject?: RibbonSubject
   /**
+   * The stretch of trail this ribbon's full width stands for - what x=0 and
+   * x=100 mean. Defaults to the first and last sample, which is what it has
+   * always been and is right whenever the samples reach both edges.
+   *
+   * Worth being able to say otherwise, because the waypoint lanes underneath
+   * are positioned in this same 0-100 space by whoever supplies them, and the
+   * two line up only while they agree about which ground the width covers.
+   * They can disagree by a sample spacing at each end - the profile is sampled
+   * every 25 m and a domain's edge falls where it falls - which is enough to
+   * push the shelter at the end of a planned stretch off the end of its lane.
+   * With a domain given, the samples are drawn at their real fraction of it: a
+   * domain whose DEM coverage starts late draws a line that starts late,
+   * rather than one stretched to fill ground it never measured.
+   *
+   * `lib/ribbonView.ts` already carries this per domain, so MapScreen's
+   * spread of a `RibbonView` supplies it for all four.
+   */
+  domain?: { startMile: number; endMile: number }
+  /**
    * Buttons that frame this ribbon's ground on the map - the desktop chart's
    * "Zoom to stretch" and "Whole trail", which the maintainer asked for here
    * too, plus the way back to the hiker once they have panned away.
@@ -119,9 +138,10 @@ export function ElevationRibbon({
   subject = 'ahead',
   controls,
   units = 'imperial',
+  domain,
 }: ElevationRibbonProps) {
-  const startMile = samples[0]?.mile ?? 0
-  const endMile = samples[samples.length - 1]?.mile ?? 0
+  const startMile = domain?.startMile ?? samples[0]?.mile ?? 0
+  const endMile = domain?.endMile ?? samples[samples.length - 1]?.mile ?? 0
 
   const elevations = samples.map((s) => s.elevationFt)
   const minFt = Math.min(...elevations)
@@ -142,8 +162,16 @@ export function ElevationRibbon({
     .join(' ')
 
   // Closing back along the baseline is what makes this a shaded area rather
-  // than a bare line.
-  const areaPath = `${pointsPath} L${VIEW_W},${VIEW_H} L0,${VIEW_H} Z`
+  // than a bare line. It closes under the LINE's own ends rather than under
+  // the ribbon's: with no domain given those are the same two x values, and
+  // where a domain leaves the samples short of an edge, shading out to it
+  // would fill ground the DEM never covered.
+  const firstX = samples.length === 0 ? 0 : pctAlong(samples[0].mile, startMile, endMile)
+  const lastX =
+    samples.length === 0
+      ? VIEW_W
+      : pctAlong(samples[samples.length - 1].mile, startMile, endMile)
+  const areaPath = `${pointsPath} L${lastX.toFixed(2)},${VIEW_H} L${firstX.toFixed(2)},${VIEW_H} Z`
 
   // Only where the fix genuinely falls inside what is drawn. Outside it the
   // rule would be clamped to an edge by the SVG viewport and read as "you are

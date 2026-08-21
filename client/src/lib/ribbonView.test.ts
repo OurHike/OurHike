@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { ribbonView, type RibbonInputs } from './ribbonView'
+import {
+  MAX_LANE_SPAN_MI,
+  ribbonLanes,
+  ribbonView,
+  type RibbonInputs,
+} from './ribbonView'
 import { ENVELOPE_BUCKETS } from './chartProfile'
 import { ribbonWindow, type ElevationProfile } from './elevationProfile'
 
@@ -31,6 +36,12 @@ function longProfile(): ElevationProfile {
     samples.push([mile, ft])
   }
   return profileOf(samples)
+}
+
+/** The AT's own length, one sample a mile - enough profile for the spans the
+ *  lane ceiling is about, without ten thousand samples per test. */
+function atLengthProfile(): ElevationProfile {
+  return profileOf(Array.from({ length: 2191 }, (_, i) => [i, 1000 + (i % 7) * 100]))
 }
 
 /** Nothing selected, no fix, no map: the resting state. */
@@ -220,5 +231,124 @@ describe('drawing cost', () => {
     const view = ribbonView(inputs({ planStretch: { startMile: 40, endMile: 43 } }))
 
     expect(view?.samples).toHaveLength(301)
+  })
+})
+
+// The lanes under whichever ribbon won (#913). What matters is which mile
+// places a pin, which window it is placed in, and the three states where no
+// lanes at all is the honest answer.
+describe('ribbonLanes', () => {
+  const shelter = (id: string, mile?: number) => ({ id, type: 'shelter', ...{ mile } })
+  const both = (pois: ReturnType<typeof shelter>[]) => ({
+    onPipelineAxis: pois,
+    onClientAxis: pois,
+  })
+
+  it('keeps the POIs inside the domain and leaves out the ones off it', () => {
+    const view = ribbonView(inputs({ planStretch: { startMile: 10, endMile: 30 } }))
+    const lanes = ribbonLanes(
+      view,
+      both([
+        shelter('before', 9.5),
+        shelter('start', 10),
+        shelter('middle', 20),
+        shelter('end', 30),
+        shelter('after', 30.5),
+      ]),
+    )
+
+    expect(lanes?.points.map((p) => p.id)).toEqual(['start', 'middle', 'end'])
+  })
+
+  it('places a pin on the axis the winning domain is windowed on', () => {
+    // The two mile scales, reproduced: the same shelter is at 20 on the
+    // pipeline's axis and 19.8 on the client index's (HIKE_PLANNING.md
+    // Finding 1). `ahead` is a client-axis window and everything else is a
+    // pipeline-axis span, so each has to read its own list or the pin lands
+    // a couple of tenths off the climb it sits under.
+    const pois = {
+      onPipelineAxis: [shelter('s', 20)],
+      onClientAxis: [shelter('s', 19.8)],
+    }
+    const profile = longProfile()
+    const fixWindow = ribbonWindow(profile, 19.8)
+
+    const planned = ribbonLanes(
+      ribbonView(inputs({ planStretch: { startMile: 10, endMile: 30 } })),
+      pois,
+    )
+    const ahead = ribbonLanes(
+      ribbonView(inputs({ profile, fixClientMile: 19.8, fixWindow })),
+      pois,
+    )
+
+    expect(planned?.points[0].mile).toBe(20)
+    expect(ahead?.points[0].mile).toBe(19.8)
+  })
+
+  it('windows the lanes on the view’s own domain, not on its samples', () => {
+    // A destination between two samples, which is where a real one falls: the
+    // profile is sampled every 25 m and a shelter is where it is. Windowed on
+    // the samples, the stop the route walks TO drops out of the SLEEP lane.
+    const view = ribbonView(inputs({ planStretch: { startMile: 10, endMile: 30.005 } }))
+    const lanes = ribbonLanes(view, both([shelter('destination', 30.005)]))
+
+    expect(lanes?.startMile).toBe(10)
+    expect(lanes?.endMile).toBe(30.005)
+    expect(view!.samples[view!.samples.length - 1].mile).toBeLessThan(30.005)
+    expect(lanes?.points.map((p) => p.id)).toEqual(['destination'])
+  })
+
+  it('draws empty lanes for a domain that genuinely holds nothing', () => {
+    // Emptiness that is a fact about the trail rather than about the
+    // download - so the lanes are drawn, and say so by being empty.
+    const view = ribbonView(inputs({ planStretch: { startMile: 10, endMile: 30 } }))
+
+    expect(ribbonLanes(view, both([shelter('far', 80)]))?.points).toEqual([])
+  })
+
+  it('refuses when nothing in the set carries a mile on that axis', () => {
+    // Empty lanes here would report "nothing along here" about POIs the app
+    // cannot place anywhere - a pre-#753 download, or a centerline index that
+    // placed none of them.
+    const view = ribbonView(inputs({ planStretch: { startMile: 10, endMile: 30 } }))
+
+    expect(ribbonLanes(view, both([shelter('a'), shelter('b')]))).toBeUndefined()
+  })
+
+  it('refuses without a ribbon to sit under', () => {
+    expect(ribbonLanes(undefined, both([shelter('a', 12)]))).toBeUndefined()
+  })
+
+  it('drops the lanes on the whole trail, where a pill is not a place', () => {
+    // 1.5% of the AT is 33 miles. The resting domain is exactly where this
+    // guard earns itself; a 20-mile plan on the same profile keeps its lanes.
+    const whole = ribbonView(inputs({ profile: atLengthProfile() }))
+    const planned = ribbonView(
+      inputs({ profile: atLengthProfile(), planStretch: { startMile: 0, endMile: 20 } }),
+    )
+
+    expect(whole?.source).toBe('whole-trail')
+    expect(ribbonLanes(whole, both([shelter('a', 12)]))).toBeUndefined()
+    expect(ribbonLanes(planned, both([shelter('a', 12)]))).toBeDefined()
+  })
+
+  it('draws them either side of the span the arithmetic puts them at', () => {
+    const profile = atLengthProfile()
+    const under = ribbonView(
+      inputs({
+        profile,
+        planStretch: { startMile: 0, endMile: MAX_LANE_SPAN_MI - 10 },
+      }),
+    )
+    const over = ribbonView(
+      inputs({
+        profile,
+        planStretch: { startMile: 0, endMile: MAX_LANE_SPAN_MI + 10 },
+      }),
+    )
+
+    expect(ribbonLanes(under, both([shelter('a', 12)]))).toBeDefined()
+    expect(ribbonLanes(over, both([shelter('a', 12)]))).toBeUndefined()
   })
 })

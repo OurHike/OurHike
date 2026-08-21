@@ -308,9 +308,12 @@ export interface MapScreenProps {
   // the map's own viewport, the ten miles around the GPS fix, or the whole
   // trail - and lib/ribbonView.ts holds that precedence. What arrives here is
   // the winner, already drawn-out, carrying its `source` and its `domain` so
-  // this screen can offer the right framing buttons and no others. What this
-  // screen must NOT do is pair a non-fix ribbon with fix-windowed `waypoints`,
-  // which is why the shell drops the lanes rather than re-windowing them.
+  // this screen can offer the right framing buttons and no others. The one
+  // thing that must hold is that `waypoints` came from the SAME domain (#913),
+  // because a hiker reads a pin as sitting under the part of the profile it
+  // belongs to; lib/ribbonView.ts builds both halves off one decision for
+  // exactly that reason, and refuses the lanes outright where they would
+  // stand for more trail than a place.
   elevation?: RibbonView
   /** Put the map back on the hiker, clearing the shell's "they took the map"
    *  latch. Undefined without a fix to go back to, which is what hides the

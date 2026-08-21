@@ -499,6 +499,14 @@ def _serve_gzipped(mock, key, payload):
     return stored
 
 
+# The checks that are asked once per published artifact, as against `reach`,
+# which is asked once per run about four named artifacts (#916). The
+# distinction matters to the assertion below and nowhere else: "over the
+# manifest, never a hardcoded list" is a rule about COVERAGE of artifacts, and
+# a report that is not per-artifact neither satisfies nor violates it.
+PER_ARTIFACT_CHECKS = {"headers", "range", "hash", "pmtiles"}
+
+
 def test_every_artifact_the_manifest_names_is_checked(mock):
     """#94's follow-up is emphatic: over the manifest, never a hardcoded list,
     so a newly published artifact is covered the day it appears."""
@@ -507,7 +515,8 @@ def test_every_artifact_the_manifest_names_is_checked(mock):
 
     reports = check_all(BASE, MANIFEST, max_hash_bytes=1_000_000)
 
-    assert {r["key"] for r in reports} == {"trails.geojson", "background.pmtiles"}
+    per_artifact = {r["key"] for r in reports if r["check"] in PER_ARTIFACT_CHECKS}
+    assert per_artifact == {"trails.geojson", "background.pmtiles"}
     assert not [r for r in reports if r["state"] == FAILED]
 
 
@@ -531,8 +540,9 @@ def test_a_gzipped_text_artifact_is_still_hashed_and_ranged(mock):
 
     reports = check_all(BASE, manifest, max_hash_bytes=1_000_000)
 
-    assert {r["check"] for r in reports} == {"headers", "range", "hash"}
-    assert not [r for r in reports if r["state"] != OK]
+    artifact_reports = [r for r in reports if r["check"] in PER_ARTIFACT_CHECKS]
+    assert {r["check"] for r in artifact_reports} == {"headers", "range", "hash"}
+    assert not [r for r in artifact_reports if r["state"] != OK]
 
 
 def test_a_range_into_a_gzipped_object_is_measured_in_stored_bytes(mock):
@@ -611,3 +621,149 @@ def test_an_unreachable_artifact_does_not_exit_like_a_pass(mock, monkeypatch):
 
     assert smoke_published.main([]) == 1
     assert smoke_published.main(["--exit-zero"]) == 0
+
+
+# ------------------------------------------------ the water reach check (#916)
+#
+# The one check here that is not about bytes. What these assert is the wiring -
+# that the bytes reach it, that a hash mismatch keeps them away from it, and
+# that its verdict survives into the report. What it MEANS for a point to be
+# past the gate is test_check_water_reach.py's subject, on its own geometry.
+
+REACH_CENTERLINE = [(-74.0, 41.0), (-73.9, 41.0)]
+# Far enough past the 100 ft gate that EPSG:5070's distortion cannot flip it,
+# and past MEASURE_CEILING_M so the report says "further than 1 mi" the way the
+# live bucket's 1,159 worst points did.
+REACH_FAR_DEG = 3000.0 / 111_132.0
+
+
+def _fc(features):
+    return json.dumps({"type": "FeatureCollection", "features": features}).encode()
+
+
+def _reach_bucket(mock, water_lat_offset):
+    """Serve the four artifacts check_reach needs, with the one osm_water point
+    offset north of a constant-latitude centerline by `water_lat_offset`."""
+    lon, lat = REACH_CENTERLINE[0]
+    payloads = {
+        "poi_water.geojson": _fc(
+            [
+                {
+                    "type": "Feature",
+                    "properties": {"id": "osm_water:1", "poi_type": "water", "source": "osm_water"},
+                    "geometry": {"type": "Point", "coordinates": [lon + 0.05, lat + water_lat_offset]},
+                }
+            ]
+        ),
+        "trails.geojson": _fc(
+            [
+                {
+                    "type": "Feature",
+                    "properties": {"source": "centerline"},
+                    "geometry": {"type": "LineString", "coordinates": [list(c) for c in REACH_CENTERLINE]},
+                }
+            ]
+        ),
+        "poi_shelter.geojson": _fc([]),
+        "poi_campsite.geojson": _fc([]),
+    }
+    for key, payload in payloads.items():
+        _serve_bytes(mock, key, payload)
+    return {"artifacts": {key: {"sha256": hashlib.sha256(payload).hexdigest()} for key, payload in payloads.items()}}
+
+
+def _reach_report(reports):
+    return next(r for r in reports if r["check"] == "reach")
+
+
+def test_water_the_hiker_can_walk_to_passes(mock):
+    manifest = _reach_bucket(mock, 0.0)
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=1_000_000))
+
+    assert report["state"] == OK
+    assert "1 osm_water point(s)" in report["detail"]
+
+
+def test_a_fountain_thirty_miles_off_the_trail_fails(mock):
+    """The failure this whole check exists for: on 2026-08-21 the live bucket
+    served 1,535 of these, 1,159 past five miles, and every other check in this
+    file was green."""
+    manifest = _reach_bucket(mock, REACH_FAR_DEG)
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=1_000_000))
+
+    assert report["state"] == FAILED
+    assert "osm_water:1" in report["detail"]
+    assert "further than 1 mi" in report["detail"]
+
+
+def test_a_failing_water_check_exits_non_zero(mock, monkeypatch):
+    """The verdict has to reach the exit code, or the workflow reads a bucket
+    full of unreachable water as a clean run."""
+    manifest = _reach_bucket(mock, REACH_FAR_DEG)
+    mock.get(f"{BASE}/latest.json", json=manifest)
+    monkeypatch.setenv("DATA_BASE_URL", BASE)
+
+    assert smoke_published.main([]) == 1
+
+
+def test_the_bytes_come_from_the_hash_read_rather_than_a_second_download(mock):
+    """REACH_KEYS' whole claim: this costs the bucket nothing beyond what the
+    hash check was already paying. One GET per artifact, not two."""
+    manifest = _reach_bucket(mock, 0.0)
+
+    check_all(BASE, manifest, max_hash_bytes=1_000_000)
+
+    gets = [r for r in mock.request_history if r.method == "GET" and r.path.endswith("poi_water.geojson")]
+    assert len(gets) == 1
+
+
+def test_bytes_whose_hash_disagrees_are_never_measured(mock):
+    """A file that failed its hash is not the published data, and measuring it
+    would report a geography nobody serves. The check has to go SKIPPED - which
+    is not OK - rather than pass on bytes this file just called wrong."""
+    manifest = _reach_bucket(mock, 0.0)
+    manifest["artifacts"]["poi_water.geojson"]["sha256"] = hashlib.sha256(b"something else").hexdigest()
+
+    reports = check_all(BASE, manifest, max_hash_bytes=1_000_000)
+
+    assert _reach_report(reports)["state"] == SKIPPED
+    assert "poi_water.geojson" in _reach_report(reports)["detail"]
+    assert [r["state"] for r in reports if r["check"] == "hash" and r["key"] == "poi_water.geojson"] == [FAILED]
+
+
+def test_an_artifact_over_the_hash_budget_skips_the_water_check_rather_than_passing_it(mock):
+    """The budget skips the hash, so the bytes never arrive. A green reach
+    report here would be this file claiming more than it checked."""
+    manifest = _reach_bucket(mock, 0.0)
+
+    reports = check_all(BASE, manifest, max_hash_bytes=10)
+
+    assert _reach_report(reports)["state"] == SKIPPED
+
+
+def test_a_bucket_without_the_water_layer_skips_rather_than_failing(mock):
+    """Every release before #529 added the source, and any environment
+    publishing a subset. Nothing is wrong, and nothing was checked."""
+    _serve_bytes(mock, "trails.geojson", b"trail data")
+
+    reports = check_all(BASE, MANIFEST_TRAILS_ONLY, max_hash_bytes=1_000_000)
+
+    assert _reach_report(reports)["state"] == SKIPPED
+
+
+MANIFEST_TRAILS_ONLY = {"artifacts": {"trails.geojson": {"sha256": hashlib.sha256(b"trail data").hexdigest()}}}
+
+
+def test_without_duckdb_the_water_check_skips_rather_than_passing(mock, monkeypatch):
+    """The release gate imports this file with DuckDB unavailable (#845,
+    tests/test_release_gate_imports.py). A check that could not run must not
+    report the same value as one that ran and was satisfied."""
+    manifest = _reach_bucket(mock, REACH_FAR_DEG)
+    monkeypatch.setattr(smoke_published, "_water_reach_module", lambda: None)
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=1_000_000))
+
+    assert report["state"] == SKIPPED
+    assert "DuckDB" in report["detail"]

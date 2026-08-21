@@ -19,8 +19,8 @@ documented pipeline run order (see README.md).
 
     .venv/Scripts/python check_output_quality.py
 
-FIVE CHECKS, IN PRIORITY ORDER
--------------------------------
+SIX CHECKS, IN PRIORITY ORDER
+------------------------------
 1. COMPLETENESS CROSS-CHECK (trails_verdict/poi_verdict/elevation_verdict/
    spurs_verdict).
    export_trails.py and export_poi.py already gate themselves on this via
@@ -119,6 +119,24 @@ FIVE CHECKS, IN PRIORITY ORDER
    record the fetcher itself left can. Staleness is printed, not failed;
    absence and drift fail.
 
+6. OSM WATER REACHABILITY (water_reach_verdict, #916) - check 1's logic
+   applied to a claim rather than a count. The four above would all pass a
+   water layer whose every point sat thirty miles from the trail: the
+   feature count is right, the hashes match, the corridor agrees, and the
+   receipts are there. #749's gate is what stops that, and like every gate
+   this module re-derives, it runs INSIDE the process that applies it -
+   export_poi.py refuses to export without build_osm_water_reach.py's
+   verdicts, which is real, and is still only that process checking its own
+   belief about its own run.
+
+   So this reads data/processed/poi/water.geojson - the file that was
+   actually written - and re-measures every osm_water point against the raw
+   layers the gate itself read. See check_water_reach.py for what it checks
+   (the distance half of the gate, never the grade half, and why), and for
+   the measurement that made it worth writing: the live bucket was serving
+   1,535 ungated points, 1,159 of them past five miles, with every check in
+   this file green.
+
 Like check_freshness.py: pure-ish verdict functions (each does its own
 I/O, but none of them mutate anything except baseline_verdict()'s eventual
 write, which only main() triggers, and only on a fully-passing run), never
@@ -138,6 +156,7 @@ from pathlib import Path
 import duckdb
 import rasterio
 
+import check_water_reach
 from lib import fetch_receipts
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
@@ -973,6 +992,46 @@ def fetches_verdict(fetched: set[str] | None = None, root: Path | None = None) -
     return {"check": "fetches", "verdict": verdict, "detail": detail, "problems": problems, "counts": {}}
 
 
+# --- Check 6: OSM water reachability ----------------------------------------
+
+
+def water_reach_verdict(water_path: Path | None = None) -> dict:
+    """Every published `osm_water` point measured against the union #749 gates
+    on - see the module docstring's check 6 and check_water_reach.py.
+
+    A missing water layer is SKIPPED rather than a problem, and matches how
+    `as_optional` treats a never-built artifact: publish.py supports partial
+    publishes, and a run that exported no POIs at all has nothing here to be
+    wrong about. A water layer that EXISTS and carries no `osm_water` points is
+    a pass and not a skip - that is the normal state of every release before
+    #529 added the source, and of any run that did not fetch it.
+
+    No tolerance is passed. This measures against `data/raw/`, the same
+    unsimplified layers build_osm_water_reach.py read, so the two are asking
+    the identical question of the identical geometry - see check_water_reach's
+    docstring for the caller that does need one.
+    """
+    water_path_default, line_paths, site_paths = check_water_reach.processed_paths()
+    water_path = water_path_default if water_path is None else water_path
+
+    if not water_path.exists():
+        detail = f"{water_path.name} was not exported by this run"
+        return {"check": "water_reach", "verdict": Verdict.SKIPPED, "detail": detail, "problems": [], "counts": {}}
+
+    result = check_water_reach.check_reach(water_path, line_paths, site_paths)
+    problems = result["problems"]
+    if problems:
+        detail = f"{len(result['past_gate'])} of {result['checked']} past the gate, the worst {result['worst']}"
+        return {"check": "water_reach", "verdict": Verdict.PROBLEM, "detail": detail, "problems": problems, "counts": {}}
+    return {
+        "check": "water_reach",
+        "verdict": Verdict.OK,
+        "detail": f"{result['checked']} osm_water point(s) inside {check_water_reach.MATCH_RADIUS_FT:.0f} ft",
+        "problems": [],
+        "counts": {},
+    }
+
+
 def _safe_verdict(check_name: str, fn) -> dict:
     """Run one verdict-building function and never let it take check_all()
     down with it.
@@ -1040,6 +1099,11 @@ def check_all(
     manifests = verdict("manifests", manifests_verdict)
     corridor = _safe_verdict("corridor", corridor_verdict)
     topo_quads = _safe_verdict("topo_quads", topo_quads_verdict)
+    # Not routed through as_optional() and not keyed on --optional poi: its own
+    # skip condition is narrower and more accurate than "was poi meant to be
+    # built" - it skips when there is no water layer to read, and a water layer
+    # that exists has to pass whatever this run was asked to produce.
+    water_reach = _safe_verdict("water_reach", water_reach_verdict)
 
     current_counts = {**trails["counts"], **poi["counts"], **elevation["counts"], **spurs["counts"]}
     baseline = _safe_verdict("baseline", lambda: baseline_verdict(current_counts, changed_sources=changed_sources))
@@ -1050,7 +1114,7 @@ def check_all(
     # --fetched instead.
     fetches = _safe_verdict("fetches", lambda: fetches_verdict(fetched=fetched, root=RECEIPTS_ROOT))
 
-    return [trails, poi, elevation, spurs, manifests, corridor, topo_quads, baseline, fetches]
+    return [trails, poi, elevation, spurs, manifests, corridor, topo_quads, water_reach, baseline, fetches]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

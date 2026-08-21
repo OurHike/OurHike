@@ -10,6 +10,17 @@
 // arrival clock: Naismith gives no descent credit and knows nothing about
 // breaks, so an arrival time would be a promise the rule cannot keep.
 //
+// It draws two different things, and the difference is who is asking. With a
+// GPS fix it is WIREFRAMES.md's field instrument: ten miles around the hiker,
+// a "you are here" rule, the next climb called out. While the route builder is
+// open it is lib/planRibbon.ts's picture of the stretch being laid out (#910),
+// which has no "ahead" and usually no rule - the phone's answer to the desk
+// question the desktop chart (#135) already answers above the breakpoint. The
+// geometry, the shading and the min/max labels are identical either way; only
+// `currentMile`, `upcomingClimb` and the accessible name differ, because those
+// are the three things that make a claim about a hiker rather than about the
+// ground.
+//
 // The samples stay in feet and miles whatever the hiker reads in - that is
 // what the published profile carries (`elevation_ft`, `distance_mi`) and what
 // the geometry below is computed from. Only the three labels convert, through
@@ -36,8 +47,20 @@ export interface UpcomingClimb {
 
 export interface ElevationRibbonProps {
   samples: ElevationSample[]
-  currentMile: number
+  /** Where the hiker is, on the samples' own axis - or null when nothing on
+   *  screen knows. Null is not a degraded state: the planning ribbon (#910)
+   *  draws a stretch the hiker may be a thousand miles from, and a rule
+   *  pinned to the left edge of it would be a claim about their position
+   *  rather than the absence of one. */
+  currentMile: number | null
   upcomingClimb?: UpcomingClimb
+  /**
+   * What this ribbon is a picture of, which changes only its accessible name
+   * - and has to, because "ahead" is a claim. The fix-anchored ribbon shows
+   * the ground in front of a walking hiker; the planning one (#910) shows a
+   * stretch somebody is laying out, which is in front of nobody.
+   */
+  subject?: 'ahead' | 'planned-stretch'
   /** Which units the three labels read in. Defaulted rather than required, so
    *  a ribbon rendered outside the shell still says something true - and
    *  defaulted to the same value lib/userPreferences.ts does, so the default
@@ -54,6 +77,7 @@ export function ElevationRibbon({
   samples,
   currentMile,
   upcomingClimb,
+  subject = 'ahead',
   units = 'imperial',
 }: ElevationRibbonProps) {
   const startMile = samples[0]?.mile ?? 0
@@ -81,7 +105,14 @@ export function ElevationRibbon({
   // than a bare line.
   const areaPath = `${pointsPath} L${VIEW_W},${VIEW_H} L0,${VIEW_H} Z`
 
-  const herePct = pctAlong(currentMile, startMile, endMile)
+  // Only where the fix genuinely falls inside what is drawn. Outside it the
+  // rule would be clamped to an edge by the SVG viewport and read as "you are
+  // at the start of this stretch", which is the confident-looking wrong
+  // answer CLAUDE.md's four-ways section rules out.
+  const herePct =
+    currentMile === null || currentMile < startMile || currentMile > endMile
+      ? null
+      : pctAlong(currentMile, startMile, endMile)
 
   return (
     <div className="elevation-ribbon">
@@ -95,7 +126,11 @@ export function ElevationRibbon({
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label="Elevation profile ahead"
+        aria-label={
+          subject === 'ahead'
+            ? 'Elevation profile ahead'
+            : 'Elevation profile of the stretch being planned'
+        }
       >
         {upcomingClimb && (
           <rect
@@ -118,14 +153,16 @@ export function ElevationRibbon({
         />
         <path d={pointsPath} className="elevation-ribbon__line" fill="none" />
 
-        <line
-          data-testid="you-are-here"
-          x1={herePct}
-          x2={herePct}
-          y1={0}
-          y2={VIEW_H}
-          className="elevation-ribbon__here"
-        />
+        {herePct !== null && (
+          <line
+            data-testid="you-are-here"
+            x1={herePct}
+            x2={herePct}
+            y1={0}
+            y2={VIEW_H}
+            className="elevation-ribbon__here"
+          />
+        )}
       </svg>
 
       {upcomingClimb && (

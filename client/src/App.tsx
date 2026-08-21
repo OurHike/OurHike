@@ -136,6 +136,7 @@ import {
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
 import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
+import { planRibbon } from './lib/planRibbon'
 import {
   anchoredClientMile,
   anchoredMile,
@@ -2278,6 +2279,25 @@ function App() {
     return { startMile: Math.min(a, b), endMile: Math.max(a, b) }
   }, [routeDraft, entranceEnd])
 
+  /**
+   * The phone's ribbon while a route is being planned (#910), and the reason
+   * this sits next to `draftStretch` rather than next to `ribbon` above: it is
+   * the same stretch the desktop chart bands, drawn by the only elevation
+   * surface a phone has.
+   *
+   * Computed unconditionally rather than behind `isDesktop`, and the cost is
+   * worth naming rather than waving at: above the breakpoint MapScreen draws
+   * the chart and never the ribbon, so a desk pays one envelope pass over the
+   * draft's stretch and throws it away. That pass is the same decimation the
+   * chart itself makes, memoised on the same stretch, and it re-runs only when
+   * the draft's ends move. Gating it would mean subscribing the shell to
+   * `useDesktop()`'s media query for nothing else.
+   */
+  const planningRibbon = useMemo(
+    () => planRibbon(elevation, draftStretch, gpsPlanMile),
+    [elevation, draftStretch, gpsPlanMile],
+  )
+
   const chartSelection = routeDraft !== null ? draftStretch : freeChartStretch
   const chartSouth =
     routeDraft === null
@@ -4191,9 +4211,16 @@ function App() {
             setSearchOpen(false)
           }}
           bbox={bbox}
-          elevation={ribbon?.props}
+          // The planned stretch wins over the ten miles around the fix: a
+          // hiker with the route builder open is asking about ground that is
+          // mostly not under them. The LANES go with the fix ribbon and are
+          // dropped rather than re-windowed - pins clustered against a
+          // ten-mile threshold, sitting under a profile of sixty, would be
+          // misaligned in the exact way MapScreen's own note forbids, and
+          // lib/planRibbon.ts has the arithmetic.
+          elevation={planningRibbon ?? ribbon?.props}
           chart={desktopChart}
-          waypoints={waypoints}
+          waypoints={planningRibbon === undefined ? waypoints : undefined}
           viewportPoints={viewportPoints}
           blazeCounts={[]}
           drawnCounts={drawnPoiCounts}

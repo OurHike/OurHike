@@ -87,5 +87,22 @@ No highlight, no callout, and the profile still draws. Rolling ridge with nothin
 - **No personalised pace.** The callout is flat Naismith. [PERSONALIZED_PACE.md](PERSONALIZED_PACE.md) is where an observed pace would come from, and it is Post-MVP; wiring a half-built pace model into a safety-adjacent number is worse than a rule that is known to be conservative.
 - **No descent.** `naismithTime` structurally refuses a descent parameter and this does not route around it.
 - **No arrival clock.** A duration, always prefixed `≈`.
-- **Nothing when there is no fix.** Without a position there is no "ahead", so both the ribbon and the lanes are omitted rather than defaulting to mile zero. Same for a release that publishes no profile.
-- **The desktop chart (#135) is not this.** It will want its own window — probably a selectable one — and shares only `lib/elevationGain.ts`.
+- **Nothing when there is no fix.** Without a position there is no "ahead", so both the ribbon and the lanes are omitted rather than defaulting to mile zero. Same for a release that publishes no profile. **Qualified by #910** — see "The same ribbon, asked the desk's question" below.
+- **The desktop chart (#135) is not this.** It will want its own window — probably a selectable one — and shares only `lib/elevationGain.ts`. Built, and it does: `chrome/ElevationChart.tsx` over `lib/chartProfile.ts`.
+
+---
+
+## The same ribbon, asked the desk's question (#910)
+
+The line above was right about the question and wrong about the *device*. "Without a position there is no ahead" is a fact about the field question. It is not a fact about the phone, and treating it as one meant that a hiker planning a trip at their kitchen table on the phone they would carry saw no terrain at all, while the same person on a laptop got the whole chart banding the stretch they were laying out.
+
+So while the route builder is open, `lib/planRibbon.ts` builds the ribbon's props from **the draft's stretch** instead of from a fix, and the phone draws that. Everything below is what did *not* move, and each has a reason already on this page:
+
+- **No upcoming climb.** The callout is a claim about work not yet done — the whole reason Decision 2 clamps the start to the hiker's current mile. A planned stretch has no walker, so there is no "not yet" to be right or wrong about.
+- **No "you are here" rule unless the fix is genuinely inside the stretch.** Clamped to an edge by the SVG viewport, the rule would read as *you are at the start of this*. That is a claim about somebody's position, which is the one thing this surface must never guess at.
+- **No waypoint lanes.** `lib/waypointLanes.ts` collapses pins closer than 1.5% *of the window*, a threshold Decision 1 sized against ten miles precisely so springs stay individually tappable. On a 60-mile plan it is 0.9 mi and the water lane degenerates into the row of count pills that decision names as the reason the window is not longer. The lanes stay with the fix or they are not drawn.
+- **No figures.** Distance, climb and ≈time belong to `RouteStopsPanel` and `RouteEntranceSheet`, which price the walk at the hiker's own pace through `lib/route.ts`'s `legFigures`. A second time derived a second way is exactly the disagreement one source of truth exists to prevent. The ribbon contributes the shape, which is the thing that was missing.
+
+**Decimation is the chart's, not a new one.** A thru-hike stretch is ~141,000 samples; `lib/chartProfile.ts`'s min-max envelope is reused at its own 1,200-bucket default. That count is *reasoned*, not re-measured for the phone: 1,200 buckets was sized for ~1,200 device pixels, and a 390 px phone at 3× is ~1,170 of them — the same order, so a second constant here would be a number nobody checked. If a phone ribbon ever looks visibly coarse, the fix is a measurement, not a guess.
+
+**What this deliberately still does not do:** dragging the phone ribbon to re-stretch the route. The chart's selection is a 1,000-unit-wide instrument with a drag threshold, keyboard stepping and a zoom; the ribbon is 54 px of orientation. Seeing the ground is the gap that was worth closing — a second editor is not.

@@ -299,6 +299,14 @@ export interface MapScreenProps {
   // isn't there. An empty ribbon or a bare set of lanes would read as "nothing
   // ahead of you," which is a different and much worse claim than "we don't
   // have the profile for this stretch."
+  //
+  // The shell decides WHICH ribbon this is (#910): the ten miles around the
+  // GPS fix, or - while the route builder is open - the stretch being planned,
+  // built by lib/planRibbon.ts and arriving with `subject: 'planned-stretch'`
+  // so the accessible name stops saying "ahead". This screen draws whichever
+  // it is given and does not distinguish them; what it must NOT do is pair a
+  // plan ribbon with fix-windowed `waypoints`, which is why the shell drops
+  // the lanes rather than re-windowing them.
   elevation?: ElevationRibbonProps
   /**
    * The desktop's full elevation chart (#135), swapped in for the ribbon
@@ -837,7 +845,10 @@ export function MapScreen({
 
             Phone only: above the breakpoint the full chart (rendered after
             the body, across the bottom - WEBSITE.md §6) replaces this whole
-            block. The LANES go with the ribbon rather than riding the chart,
+            block - including while a route is being planned, where the chart
+            already bands the draft's stretch and the phone now draws it (#910).
+
+            The LANES go with the ribbon rather than riding the chart,
             deliberately: they position pins in the ribbon's window-percentage
             space, and pins re-anchored onto the chart's own zoomable axis is
             work #135 defers - drawing them misaligned would be worse than

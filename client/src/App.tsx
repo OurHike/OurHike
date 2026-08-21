@@ -60,6 +60,9 @@ import {
 } from './screens/Onboarding'
 import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
 import { closureDraft } from './lib/closureDraft'
+import { WorkdaySheet } from './chrome/WorkdaySheet'
+import type { WorkdayPoint } from './map/workdayLayers'
+import { opportunitiesUsable, upcomingWorkProjects } from './lib/workProjects'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
@@ -528,6 +531,10 @@ function App() {
    * with nowhere to put the answer.
    */
   const [reportingClosure, setReportingClosure] = useState(false)
+  /** The workday pin a hiker tapped, or null (#760). Held by id rather than
+   *  by row, so a re-fetch that drops a cancelled workday closes the sheet
+   *  over it instead of leaving a stale invitation open. */
+  const [selectedWorkdayId, setSelectedWorkdayId] = useState<string | null>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
    * The route being built (#755), or null when the builder is closed. Held
@@ -751,6 +758,47 @@ function App() {
    * tolerance, which had nothing to measure while nothing wrote geometry,
    * now has data coming that could settle it.
    */
+  /**
+   * The workdays worth drawing (#760), and the two gates in front of them.
+   *
+   * **Staleness first, and it is absolute.** Past `OPPORTUNITIES_STALE_MS`
+   * the Volunteer tab replaces its list with an out-of-date notice rather
+   * than decorating it, because "a hedged invitation still reads as an
+   * invitation" - and a pin has no hedged form at all. So a stale feed draws
+   * no pins, and the tab is where a hiker is told why in words.
+   *
+   * **Then the fourteen-day window**, the same `upcomingWorkProjects` the
+   * tab lists, so the two surfaces cannot disagree about which workdays are
+   * on. A row the reviewed file never placed has no coordinates and simply
+   * is not drawn - a workday pinned at 0,0 would be a real place in the
+   * Atlantic, which is the failure `describeLocation` already refuses on the
+   * report form.
+   */
+  const workdayPins = useMemo<readonly WorkdayPoint[]>(() => {
+    if (workProjects === null || workProjectsGeneratedAt === null) return []
+    if (!opportunitiesUsable(workProjectsGeneratedAt, now)) return []
+
+    return upcomingWorkProjects(workProjects, now).flatMap((project) =>
+      project.lat === null || project.lon === null
+        ? []
+        : [{ id: project.id, lat: project.lat, lon: project.lon }],
+    )
+  }, [workProjects, workProjectsGeneratedAt, now])
+
+  /** The tapped workday itself, re-read from the live list every render: if a
+   *  re-fetch drops it - cancelled, or out of the window - this goes null and
+   *  the sheet closes rather than standing over a workday nobody is running. */
+  const selectedWorkday = useMemo(() => {
+    if (selectedWorkdayId === null || workProjects === null) return null
+    return (
+      workProjects.find(
+        (project) =>
+          project.id === selectedWorkdayId &&
+          workdayPins.some((pin) => pin.id === selectedWorkdayId),
+      ) ?? null
+    )
+  }, [selectedWorkdayId, workProjects, workdayPins])
+
   const placedClosures = useMemo(
     () =>
       closures === null || trailIndex === null
@@ -3921,6 +3969,21 @@ function App() {
           atcUpdates={atcBandsOnMap}
           atcUpdatePoints={atcPointsOnMap}
           onSelectAtcUpdate={setSelectedAtcBandId}
+          workdays={workdayPins}
+          onSelectWorkday={setSelectedWorkdayId}
+          workdaySheet={
+            selectedWorkday === null ? null : (
+              <WorkdaySheet
+                project={selectedWorkday}
+                // The hiker's own mile on the planner's axis, which is the
+                // one the tab's "trail mi away" already uses - two surfaces
+                // measuring the same distance two ways is a hiker reading
+                // two claims where there is one.
+                gpsMile={gpsPlanMile}
+                onClose={() => setSelectedWorkdayId(null)}
+              />
+            )
+          }
           atcUpdateSheet={
             selectedAtcUpdate === null ? null : (
               <AtcUpdateSheet

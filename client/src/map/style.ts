@@ -85,6 +85,7 @@ import {
   POI_SOURCE_ID,
 } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
+import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
@@ -789,6 +790,7 @@ export function buildMapStyle({
       // chrome/AtcUpdateSheet.tsx renders (#461).
       [ATC_UPDATE_SOURCE_ID]: buildAtcUpdateSource(),
       [WARNING_SOURCE_ID]: buildWarningSource(),
+      [WORKDAY_SOURCE_ID]: buildWorkdaySource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement), like the three above - a source names the
       // data IT is, and map/credits.ts assembles the corner out of whichever
@@ -977,10 +979,18 @@ export function buildMapStyle({
       // reads as a rim around it rather than a wash over it.
       buildPoiStalenessLayer(),
       buildPoiLayer(),
-      // And the serious-warning pins over every waypoint. The collision engine
-      // already keeps them from being dropped (warningLayers.ts); this keeps
-      // them from being covered, which is the same guarantee by the other
-      // mechanism.
+      // Volunteer workdays (#760) OVER the waypoints and UNDER the warning
+      // pins - later in this list means drawn on top, so the order here is
+      // the claim. Over the waypoints because a pin nobody can see is the
+      // state this layer exists to end; under the warnings because when a
+      // hazard and an invitation land on the same pixels, the hazard is the
+      // one a hiker needs. Unlike the warning it submits to the collision
+      // engine rather than shoving a shelter aside (workdayLayers.ts).
+      buildWorkdayLayer(),
+      // And the serious-warning pins over every waypoint and over those. The
+      // collision engine already keeps them from being dropped
+      // (warningLayers.ts); this keeps them from being covered, which is the
+      // same guarantee by the other mechanism.
       buildWarningLayer(),
       // The ATC's own notices last of all, so nothing on this map can cover
       // one.

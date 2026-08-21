@@ -40,6 +40,7 @@ import { MapView } from '../map/MapView'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
+import type { WorkdayPoint } from '../map/workdayLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
@@ -161,6 +162,14 @@ export interface MapScreenProps {
   atcUpdates?: readonly ClosureBand[]
   /** The single-mile notices, drawn as dots rather than bands. */
   atcUpdatePoints?: readonly AtcUpdatePoint[]
+  /** Volunteer workdays as map points (#760), already windowed and already
+   *  checked against the feed's staleness ceiling by the shell. */
+  workdays?: readonly WorkdayPoint[]
+  /** Which workday a tap landed on. */
+  onSelectWorkday?: (projectId: string) => void
+  /** The tapped workday's sheet, or null - the atcUpdateSheet pattern: the
+   *  map answers which pin, the shell decides what to show. */
+  workdaySheet?: ReactNode
   /** An ATC band was tapped, by band id. */
   onSelectAtcUpdate?: (bandId: string) => void
   /** The tapped update's sheet, or null. Rendered by the shell for the same
@@ -515,6 +524,9 @@ export function MapScreen({
   atcUpdates,
   atcUpdatePoints,
   onSelectAtcUpdate,
+  workdays,
+  onSelectWorkday,
+  workdaySheet,
   atcUpdateSheet,
   onSelectLine,
   lineSheet,
@@ -860,6 +872,8 @@ export function MapScreen({
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              workdays={workdays}
+              onSelectWorkday={onSelectWorkday}
               warnings={warnings}
               routeDrawing={routeDrawing}
               onRouteTap={onRouteTap}
@@ -924,6 +938,7 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {workdaySheet}
 
             {/* The line-detail sheet (#134), in the same slot family for the
                 same reason: a trail line anchors to no single point on the

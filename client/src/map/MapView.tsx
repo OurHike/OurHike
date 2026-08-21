@@ -55,6 +55,12 @@ import {
 } from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
+import {
+  attachWorkdayData,
+  attachWorkdayIcon,
+  attachWorkdayTaps,
+  type WorkdayPoint,
+} from './workdayLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
 import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
@@ -168,6 +174,18 @@ export interface MapViewProps {
    * header of warningLayers.ts.
    */
   warnings?: readonly WarningPoint[]
+  /**
+   * Volunteer workdays, as points (#760).
+   *
+   * The shell does the windowing AND the staleness check: past
+   * `OPPORTUNITIES_STALE_MS` it passes nothing, because a pin has no hedged
+   * form and a hedged invitation still reads as an invitation
+   * (workdayLayers.ts's header).
+   */
+  workdays?: readonly WorkdayPoint[]
+  /** Which workday a tap landed on. Must be stable across renders, like
+   *  `onSelectPoi`. */
+  onSelectWorkday?: (projectId: string) => void
   /**
    * The route being built, already in map coordinates - same division as
    * `closures`: turning miles into geometry needs the centerline index,
@@ -318,6 +336,7 @@ const NO_DROUGHT: readonly DroughtBand[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
+const NO_WORKDAYS: readonly WorkdayPoint[] = []
 
 export function MapView({
   topoArchiveUrl,
@@ -340,6 +359,8 @@ export function MapView({
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
   warnings = NO_WARNINGS,
+  workdays = NO_WORKDAYS,
+  onSelectWorkday,
   routeDrawing = null,
   onRouteTap,
   onSelectPoi,
@@ -701,6 +722,27 @@ export function MapView({
     if (map === null) return
     return attachWarningData(map, warnings)
   }, [map, warnings])
+
+  // The workday pins (#760): the image once, the data whenever the shell's
+  // window or staleness verdict changes, and the tap. Same three-effect shape
+  // as the warnings above.
+  useEffect(() => {
+    if (map === null) return
+    return attachWorkdayIcon(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachWorkdayData(map, workdays)
+  }, [map, workdays])
+
+  useEffect(() => {
+    // Not attached during route building, for attachRouteTaps' rule: one
+    // interpreter per touch, and while a route is being drawn every tap on
+    // this map means "a point on my route".
+    if (map === null || onSelectWorkday === undefined || onRouteTap !== undefined) return
+    return attachWorkdayTaps(map, onSelectWorkday)
+  }, [map, onSelectWorkday, onRouteTap])
 
   // The route drawing, on the closure pattern: pushed onto the live map, its
   // own effect so a point dropped mid-build re-serialises a few features and

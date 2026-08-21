@@ -51,18 +51,30 @@ jobs:
         with:
           python-version: '3.14'
 
+      # What "already released" means for a workflow that only drafts notes is
+      # that ITS OWN PRODUCT exists - re-drafting committed notes would fork
+      # the record. It used to refuse on the TAG existing instead, with a
+      # message about moving tags, which this workflow cannot do ("this does
+      # not tag anything"). That refusal blocked the one recovery it exists
+      # for: #860's incident, a tag pushed with no notes beside it, where
+      # dispatching this workflow IS the prescribed remediation (#905).
       - name: Check the version has not already been released
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            echo "::error::$VERSION is already tagged. Releasing it again would move a tag people may be pinned to."
-            exit 1
-          fi
           case "$VERSION" in
             v*.*.*) ;;
             *) echo "::error::'$VERSION' is not vMAJOR.MINOR.PATCH - see RELEASING.md §4."; exit 1 ;;
           esac
+          shopt -s nullglob
+          notes=(releases/"$VERSION"-*.md)
+          if [ ${#notes[@]} -gt 0 ]; then
+            echo "::error::$VERSION already has its notes (${notes[0]}). Re-drafting would fork the record - edit that file instead."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::warning::$VERSION is already tagged and has no notes - the #860 recovery case. The draft will describe exactly what the tag contains; nothing here moves the tag."
+          fi
 
       - name: Generate the notes
         env:

@@ -334,6 +334,29 @@ def _data_release() -> str | None:
     return match.group(1) if match else None
 
 
+def resolve_span(version: str, previous: str | None) -> tuple[str | None, str]:
+    """The commit range the notes describe: (previous, until).
+
+    `until` is the version's own tag when that tag exists, and HEAD
+    otherwise. The ordinary order is notes first, tag second (RELEASING.md
+    §7), where HEAD is right; the other order is #860's incident - a tag
+    with no notes - and there the notes must describe exactly what the tag
+    contains, not whatever main has accumulated since it was cut (#905
+    measured six merges' worth of drift in one evening).
+
+    The `previous` default excludes the version's own tag for the same
+    reason: for an already-tagged version, "the most recent tag" IS the
+    version, and v1.0.1..HEAD is notes for a release containing none of
+    the release.
+    """
+    tags = _git("tag", "--list", "v*", "--sort=-v:refname").split()
+    until = version if version in tags else "HEAD"
+    if not previous:
+        candidates = [tag for tag in tags if tag != version]
+        previous = candidates[0] if candidates else None
+    return previous, until
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="the version being released, e.g. v1.0.0")
@@ -351,12 +374,9 @@ def main(argv: list[str] | None = None) -> int:
         print("::error::--repo or GITHUB_REPOSITORY is required.", file=sys.stderr)
         return 1
 
-    previous = args.previous
-    if not previous:
-        tags = _git("tag", "--list", "v*", "--sort=-v:refname").split()
-        previous = tags[0] if tags else None
+    previous, until = resolve_span(args.version, args.previous)
 
-    span = f"{previous}..HEAD" if previous else "HEAD"
+    span = f"{previous}..{until}" if previous else until
     log = _git("log", "--format=%H%x09%s", span)
     subjects = "\n".join(line.partition("\t")[2] for line in log.splitlines())
     numbers = pull_request_numbers(subjects)

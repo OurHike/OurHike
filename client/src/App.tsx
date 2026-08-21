@@ -63,6 +63,7 @@ import { closureDraft } from './lib/closureDraft'
 import { disputeFor } from './lib/disputes'
 import { WorkdaySheet } from './chrome/WorkdaySheet'
 import type { WorkdayPoint } from './map/workdayLayers'
+import type { DisputePoint } from './map/disputeLayers'
 import { opportunitiesUsable, upcomingWorkProjects } from './lib/workProjects'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
@@ -1680,6 +1681,25 @@ function App() {
     if (highlight === undefined) return null
     return buildHighlightDetail(highlight, elevation, units, walked, pace)
   }, [selectedHighlightId, highlights, elevation, units, walked, pace])
+
+  /**
+   * The disputed places, joined to where they are (#876).
+   *
+   * The join is the shell's because neither half can do it: the verdict comes
+   * from the server, which holds no coordinates (it has no POI table at all -
+   * `poi_id` is a soft reference into a published artifact), and the POI
+   * export knows nothing about notes. This is the one place both are in hand.
+   *
+   * A dispute whose POI this phone does not hold draws nothing rather than
+   * drawing somewhere - the same rule the rest of this file keeps about 0,0.
+   */
+  const disputedPoints: DisputePoint[] = useMemo(() => {
+    if (disputes === null || disputes.length === 0) return []
+    const disputed = new Set(disputes.map((dispute) => dispute.poi_id))
+    return pois
+      .filter((poi) => disputed.has(poi.id))
+      .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
+  }, [disputes, pois])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -3986,6 +4006,7 @@ function App() {
           onSelectAtcUpdate={setSelectedAtcBandId}
           workdays={workdayPins}
           onSelectWorkday={setSelectedWorkdayId}
+          disputes={disputedPoints}
           workdaySheet={
             selectedWorkday === null ? null : (
               <WorkdaySheet

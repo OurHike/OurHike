@@ -17,12 +17,16 @@ from lib.source_registry import (
     ARCGIS_FEATURE_LAYER,
     EXTERNAL_ARCGIS_LAYER,
     KNOWN_KINDS,
+    POI_SOURCE_KEYS,
     PUBLISHED_NOTICES,
+    UNREGISTERED_POI_SOURCES,
     arcgis_sources,
     external_arcgis_sources,
     find_source,
     is_arcgis_feature_layer,
     load_registry,
+    poi_source_entry,
+    poi_source_steward,
     source_kind,
 )
 
@@ -184,3 +188,72 @@ def test_the_registry_still_records_the_atc_licence_block():
 def test_the_registry_is_still_parseable_as_plain_json():
     """Cheap, and the thing a hand-edited entry breaks first."""
     json.loads(REAL_REGISTRY.read_text())
+
+
+# --- The POI-source join (#876) -------------------------------------------
+#
+# `POI_SOURCE_KEYS` is a hand-written table, and the drift it invites is
+# specific: `export_poi.py` mints a new id namespace, nothing here knows the
+# name, and a dispute on the new source silently routes to nobody. These two
+# tests are why that table is allowed to be hand-written.
+
+
+def _minted_poi_sources() -> set[str]:
+    """Every source name the export can stamp on a published POI id.
+
+    Read off export_poi.py's own constants rather than off a list here,
+    because a list here is the thing being guarded.
+    """
+    import export_poi
+
+    return {
+        export_poi.SHELTER_SOURCE,
+        export_poi.CAMPSITE_SOURCE,
+        export_poi.CSI_WATER_SOURCE,
+        export_poi.OPENTRAIL_SOURCE,
+        export_poi.OSM_WATER_SOURCE,
+        export_poi.NHD_CROSSING_SOURCE,
+        export_poi.NHD_STREAM_SOURCE,
+        *(source for _, _, source, _ in export_poi.DIRECT_SOURCES),
+    }
+
+
+def test_every_minted_poi_source_has_a_steward_or_is_named_as_having_none():
+    """The drift guard. A source in neither set is not "unregistered" - it is
+    unconsidered, and the difference matters because the first is a sentence
+    a report prints and the second is a dispute that goes nowhere quietly."""
+    unaccounted = _minted_poi_sources() - set(POI_SOURCE_KEYS) - UNREGISTERED_POI_SOURCES
+
+    assert unaccounted == set(), (
+        f"export_poi.py mints {sorted(unaccounted)}, which lib/source_registry.py neither "
+        "maps to a registry key nor names in UNREGISTERED_POI_SOURCES"
+    )
+
+
+def test_every_mapped_key_is_really_in_the_registry():
+    """The other half: a mapping pointing at a key sources.json does not have
+    resolves to no steward, which looks exactly like an unregistered source
+    and is a typo instead."""
+    registry = load_registry(REAL_REGISTRY)
+
+    missing = [key for key in POI_SOURCE_KEYS.values() if find_source(registry, key) is None]
+
+    assert missing == []
+
+
+def test_a_registered_poi_source_resolves_to_the_organization_to_tell():
+    """ATC's shelters are the case the feature was built for. `provider` is
+    read because the twelve ATC entries still carry only that field - see
+    poi_source_steward's docstring."""
+    registry = load_registry(REAL_REGISTRY)
+
+    assert poi_source_steward(registry, "atc_shelters") == "ATC"
+    assert poi_source_entry(registry, "atc_shelters")["title"] == "A.T. Shelters"
+
+
+def test_an_unregistered_poi_source_resolves_to_nobody_rather_than_to_a_guess():
+    """Null is the honest answer, and route_disputes.py prints it as one."""
+    registry = load_registry(REAL_REGISTRY)
+
+    assert poi_source_steward(registry, "nhd_crossing") is None
+    assert poi_source_entry(registry, "nhd_crossing") is None

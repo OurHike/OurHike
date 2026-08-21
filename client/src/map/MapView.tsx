@@ -59,6 +59,7 @@ import {
   attachWorkdayTaps,
   type WorkdayPoint,
 } from './workdayLayers'
+import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
 import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
@@ -184,6 +185,15 @@ export interface MapViewProps {
   /** Which workday a tap landed on. Must be stable across renders, like
    *  `onSelectPoi`. */
   onSelectWorkday?: (projectId: string) => void
+  /**
+   * Places the field says are not there (#876), already joined to their
+   * coordinates by the shell.
+   *
+   * No tap of its own: the mark annotates a waypoint, and tapping a waypoint
+   * already opens the card that says the sentence. A second tap target on
+   * the same pixels would be two answers to one touch.
+   */
+  disputes?: readonly DisputePoint[]
   /**
    * The route being built, already in map coordinates - same division as
    * `closures`: turning miles into geometry needs the centerline index,
@@ -335,6 +345,7 @@ const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
+const NO_DISPUTES: readonly DisputePoint[] = []
 
 export function MapView({
   topoArchiveUrl,
@@ -358,6 +369,7 @@ export function MapView({
   onSelectAtcUpdate,
   warnings = NO_WARNINGS,
   workdays = NO_WORKDAYS,
+  disputes = NO_DISPUTES,
   onSelectWorkday,
   routeDrawing = null,
   onRouteTap,
@@ -772,6 +784,18 @@ export function MapView({
     if (map === null) return
     return attachWorkdayData(map, workdays)
   }, [map, workdays])
+
+  // The dispute marks (#876): the image once, the places whenever the shell's
+  // join changes. No tap effect - see the prop.
+  useEffect(() => {
+    if (map === null) return
+    return attachDisputeIcon(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachDisputeData(map, disputes)
+  }, [map, disputes])
 
   useEffect(() => {
     // Not attached during route building, for attachRouteTaps' rule: one

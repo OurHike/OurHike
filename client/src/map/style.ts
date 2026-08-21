@@ -86,6 +86,7 @@ import {
 } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
+import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
@@ -791,6 +792,7 @@ export function buildMapStyle({
       [ATC_UPDATE_SOURCE_ID]: buildAtcUpdateSource(),
       [WARNING_SOURCE_ID]: buildWarningSource(),
       [WORKDAY_SOURCE_ID]: buildWorkdaySource(),
+      [DISPUTE_SOURCE_ID]: buildDisputeSource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement), like the three above - a source names the
       // data IT is, and map/credits.ts assembles the corner out of whichever
@@ -979,6 +981,11 @@ export function buildMapStyle({
       // reads as a rim around it rather than a wash over it.
       buildPoiStalenessLayer(),
       buildPoiLayer(),
+      // The dispute mark (#876) immediately over the pins it annotates, and
+      // under everything else: it is a footnote on a waypoint, so it has to
+      // sit on the waypoint - but a hazard or a closure is a bigger claim
+      // than "somebody says this is not here" and wins the pixels.
+      buildDisputeLayer(),
       // Volunteer workdays (#760) OVER the waypoints and UNDER the warning
       // pins - later in this list means drawn on top, so the order here is
       // the claim. Over the waypoints because a pin nobody can see is the

@@ -41,6 +41,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
@@ -167,6 +168,8 @@ export interface MapScreenProps {
   workdays?: readonly WorkdayPoint[]
   /** Which workday a tap landed on. */
   onSelectWorkday?: (projectId: string) => void
+  /** Places the field says are not there (#876), joined to coordinates. */
+  disputes?: readonly DisputePoint[]
   /** The tapped workday's sheet, or null - the atcUpdateSheet pattern: the
    *  map answers which pin, the shell decides what to show. */
   workdaySheet?: ReactNode
@@ -527,6 +530,7 @@ export function MapScreen({
   workdays,
   onSelectWorkday,
   workdaySheet,
+  disputes,
   atcUpdateSheet,
   onSelectLine,
   lineSheet,
@@ -874,6 +878,7 @@ export function MapScreen({
               onSelectAtcUpdate={onSelectAtcUpdate}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
+              disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
               onRouteTap={onRouteTap}

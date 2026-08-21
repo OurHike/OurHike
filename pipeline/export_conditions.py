@@ -14,6 +14,7 @@ Three artifacts, three predicates, and the differences are the whole risk (#436)
     conditions/reports.json    status IN ('verified', 'resolved')
                                AND visibility = 'public'
     conditions/notes.json      hidden_at IS NULL
+    conditions/disputes.json   corroborated not_found notes, as counts
 
 Notes gate on one column because their moderation model is the reverse of
 reports' (features/FIELD_NOTES.md §5): a note publishes the moment it lands
@@ -114,6 +115,7 @@ OUT_DIR = ROOT / "data" / "processed" / "conditions"
 CLOSURES_OUT_PATH = OUT_DIR / "closures.json"
 REPORTS_OUT_PATH = OUT_DIR / "reports.json"
 NOTES_OUT_PATH = OUT_DIR / "notes.json"
+DISPUTES_OUT_PATH = OUT_DIR / "disputes.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "conditions_manifest.json"
 
 URL_ENV_VAR = "CONDITIONS_DATABASE_URL"
@@ -234,12 +236,69 @@ PUBLIC_NOTES_SQL = """
      ORDER BY observed_at, id
 """
 
+# Places the field says are not there (#876, FIELD_NOTES.md §4).
+#
+# The corroboration rule lives in backend/app/core/disputes.py, and this is
+# the same rule in SQL because the two tiers must be one document from two
+# doors. Written out rather than imported: this script runs in the pipeline
+# and connects as a read-only role, and reaching into the backend package for
+# a function would tie a nightly bake to an application it deliberately does
+# not share a process with.
+#
+# **`reporter_id` is aggregated over and never published.** Corroboration
+# counts distinct ACCOUNTS - it is the whole rule - and the artifact carries
+# a count. That is the same line the live endpoint holds, for #252's reason:
+# many dated notes along a corridor from one identifier reconstruct a hike.
+#
+# Two things this deliberately does NOT do, both from §4:
+#
+#   - it never reads the POI export, so an upstream republish cannot clear a
+#     dispute (there is nothing here for a rebuild to touch); and
+#   - it has no maintainer clause. `maintainer_assignments` is not in the
+#     reader role's grant, so the bake cannot see who covers a mile - a
+#     maintainer's lone dispute therefore reaches a phone through the live
+#     read and not through the baseline. That is a real gap and it is the
+#     honest one: inventing a grant to close it would widen what a nightly
+#     job can read about people, to make a rarer case work offline.
+PUBLIC_DISPUTES_SQL = """
+    SELECT poi_id,
+           accounts,
+           latest_at,
+           maintainer_said
+      FROM (
+            SELECT poi_id,
+                   count(DISTINCT reporter_id) AS accounts,
+                   max(observed_at) AS latest_at,
+                   false AS maintainer_said
+              FROM public.field_notes
+             WHERE hidden_at IS NULL
+               AND poi_id IS NOT NULL
+               AND observation = 'not_found'
+               AND observed_at >= now() - interval '180 days'
+             GROUP BY poi_id
+           ) disputed
+     WHERE accounts >= 2
+       AND NOT EXISTS (
+             SELECT 1
+               FROM public.field_notes confirming
+              WHERE confirming.poi_id = disputed.poi_id
+                AND confirming.hidden_at IS NULL
+                AND confirming.observation IS NOT NULL
+                AND confirming.observation <> 'not_found'
+                AND confirming.observed_at > disputed.latest_at
+              GROUP BY confirming.poi_id
+             HAVING count(DISTINCT confirming.reporter_id) >= 2
+           )
+     ORDER BY poi_id
+"""
+
 # Which of the columns above are timestamps, and so need stamping on the way
 # out. Listed rather than detected, so adding a column is a decision about its
 # wire form rather than something type inference makes quietly.
 CLOSURE_TIMESTAMP_FIELDS = ("reported_at", "verified_at", "closed_since", "expected_reopen")
 REPORT_TIMESTAMP_FIELDS = ("timestamp",)
 NOTE_TIMESTAMP_FIELDS = ("observed_at",)
+DISPUTE_TIMESTAMP_FIELDS = ("latest_at",)
 
 # What each table's policy must let through - quoted back at whoever has to
 # write the missing CREATE POLICY, so the refusal carries its own fix.
@@ -387,6 +446,11 @@ def read_notes(conn) -> list[dict]:
     return rows
 
 
+def read_disputes(conn) -> list[dict]:
+    """The corroborated disputes, as counts rather than as identities."""
+    return _read_rows(conn, PUBLIC_DISPUTES_SQL, DISPUTE_TIMESTAMP_FIELDS)
+
+
 def build_document(key: str, rows: list[dict], generated_at: datetime) -> dict:
     """Wrap the rows with the one fact the rows cannot carry.
 
@@ -441,6 +505,7 @@ def main() -> dict:
         closures = read_closures(conn)
         reports = read_reports(conn)
         notes = read_notes(conn)
+        disputes = read_disputes(conn)
 
     # One clock for all three documents: they came from one read of one
     # database, and two timestamps would invite the client to reason about a
@@ -451,6 +516,7 @@ def main() -> dict:
     CLOSURES_OUT_PATH.write_text(json.dumps(build_document("closures", closures, generated_at), indent=2) + "\n")
     REPORTS_OUT_PATH.write_text(json.dumps(build_document("reports", reports, generated_at), indent=2) + "\n")
     NOTES_OUT_PATH.write_text(json.dumps(build_document("notes", notes, generated_at), indent=2) + "\n")
+    DISPUTES_OUT_PATH.write_text(json.dumps(build_document("disputes", disputes, generated_at), indent=2) + "\n")
 
     manifest = {
         "artifacts": {
@@ -472,6 +538,12 @@ def main() -> dict:
                 "count": len(notes),
                 "generated_at": _stamp_utc(generated_at),
             },
+            "disputes": {
+                "path": str(DISPUTES_OUT_PATH),
+                "sha256": sha256_file(DISPUTES_OUT_PATH),
+                "count": len(disputes),
+                "generated_at": _stamp_utc(generated_at),
+            },
         }
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -479,6 +551,7 @@ def main() -> dict:
     print(f"Wrote {len(closures)} verified closure(s) to {CLOSURES_OUT_PATH}.")
     print(f"Wrote {len(reports)} public report(s) to {REPORTS_OUT_PATH}.")
     print(f"Wrote {len(notes)} visible field note(s) to {NOTES_OUT_PATH}.")
+    print(f"Wrote {len(disputes)} corroborated dispute(s) to {DISPUTES_OUT_PATH}.")
     return manifest
 
 

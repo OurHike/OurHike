@@ -50,6 +50,7 @@ import {
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
+import { DISPUTE_LAYER_ID } from './disputeLayers'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_HALO_LAYER_ID,
@@ -278,7 +279,17 @@ describe('the live topographic background', () => {
       .layers.filter((layer) => layer.type === 'symbol')
       .map((layer) => layer.id)
 
-    expect(symbols.slice(-3)).toEqual([POI_LAYER_ID, WORKDAY_LAYER_ID, WARNING_LAYER_ID])
+    expect(symbols.slice(-4)).toEqual([
+      POI_LAYER_ID,
+      // The dispute mark (#876) sits directly on the pin it annotates, so it
+      // joins this group between the waypoints and the workdays. It never
+      // loses a collision anyway - `icon-allow-overlap`, because §4's rule is
+      // that the pin is never suppressed - but a mark drawn under a contour
+      // label would be as unread as one decluttered away.
+      DISPUTE_LAYER_ID,
+      WORKDAY_LAYER_ID,
+      WARNING_LAYER_ID,
+    ])
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -623,6 +634,11 @@ describe('the offline-only background', () => {
       POI_DOT_LAYER_ID,
       POI_STALENESS_LAYER_ID,
       POI_LAYER_ID,
+      // The dispute marks (#876), drawn offline for the reason the closures
+      // are: a hiker with no signal is exactly the hiker who cannot look a
+      // place up any other way, and "somebody says this is not here" is what
+      // they most need before they walk to it counting on water.
+      DISPUTE_LAYER_ID,
       // The workday pins (#760), which the offline background draws for the
       // same reason it draws the closures: a hiker with no signal is exactly
       // the hiker who cannot look a workday up any other way. The layer is

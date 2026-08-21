@@ -125,15 +125,21 @@ describe('FieldNoteSection', () => {
 
     fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
 
-    expect(onAddNote).toHaveBeenCalledWith({
-      poi_id: 'osm_water:1',
-      // The place's own coordinates - the card path never waits on GPS.
-      lat: 41.2,
-      lon: -74.1,
-      mile: 1382.4,
-      observation: 'dry',
-      reporter_type: 'section',
-    })
+    // The second argument is the photo, `undefined` when nobody attached one
+    // (#879) - asserted explicitly rather than left to a loose matcher, so a
+    // note that silently started carrying bytes would fail here.
+    expect(onAddNote).toHaveBeenCalledWith(
+      {
+        poi_id: 'osm_water:1',
+        // The place's own coordinates - the card path never waits on GPS.
+        lat: 41.2,
+        lon: -74.1,
+        mile: 1382.4,
+        observation: 'dry',
+        reporter_type: 'section',
+      },
+      undefined,
+    )
     expect(screen.getByText(/^Noted: dry\./)).toBeTruthy()
   })
 
@@ -228,5 +234,91 @@ describe('FieldNoteSection', () => {
     const { container } = renderSection(context({ notesFor: () => many }))
 
     expect(container.textContent).not.toMatch(/\d+ (notes|hikers|people|confirmations)/)
+  })
+})
+
+// --- The photo the opt-in promises (#879) ---------------------------------
+//
+// Maintainer decision, 2026-08-21: publish-now, screened on device. What
+// these cases hold is the part that could go wrong quietly - the tap must
+// not start waiting on a model, the screen's verdict must ride WITH the
+// note, and a screen that fails must be indistinguishable from a clean one.
+
+describe('a note’s photo', () => {
+  it('is offered only inside the opt-in, where the longer form lives', () => {
+    renderSection(context({ contributeConditions: false }))
+    expect(screen.queryByTestId('poi-card-note-photo')).toBeNull()
+
+    cleanup()
+    renderSection(context({ contributeConditions: true }))
+    expect(screen.getByTestId('poi-card-note-photo')).toBeTruthy()
+  })
+
+  it('says who sees it, before anybody attaches one', () => {
+    renderSection(context({ contributeConditions: true }))
+
+    // A note's photo publishes with its note. Somebody attaching a picture
+    // to a dry spring should know it is going to the next hiker rather than
+    // into a queue.
+    expect(screen.getByText(/the next hiker sees it with your note/i)).toBeTruthy()
+  })
+
+  it('files the note without a photo when nobody attached one', () => {
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote, contributeConditions: true }))
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
+
+    expect(onAddNote.mock.calls[0][1]).toBeUndefined()
+    expect(onAddNote.mock.calls[0][0].photo_flagged).toBeUndefined()
+  })
+
+  it('acknowledges the tap before the screen has run', () => {
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote, contributeConditions: true }))
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
+
+    // Synchronously, with no await: the one-tap answer is the contribution
+    // DATA_NUDGES.md designed, and putting a model load in front of it would
+    // spend the one interaction that has to be free.
+    expect(screen.getByText(/^Noted: dry\./)).toBeTruthy()
+  })
+
+  it('renders a photo that came back with somebody else’s note', () => {
+    renderSection(
+      context({
+        notesFor: () => [
+          note({ note: 'Ford is passable', photo_url: 'https://x/y.jpg' }),
+        ],
+      }),
+    )
+
+    const image = screen.getByRole('img')
+    expect(image.getAttribute('src')).toBe('https://x/y.jpg')
+    // Named rather than empty: the photo IS part of the claim the note
+    // makes, so a hiker on a screen reader is told it is there.
+    expect(image.getAttribute('alt')).toMatch(/photo with a note/i)
+  })
+
+  it('draws nothing, and says nothing, when a note has no photo url', () => {
+    renderSection(context({ notesFor: () => [note({ photo_url: null })] }))
+
+    // Absent covers "no photo", "still uploading", "held on a flag" and "no
+    // photo storage on this server" all at once, and the card must not
+    // distinguish them: "a photo is waiting on a moderator" tells a stranger
+    // something only the author and that moderator have any use for.
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByText(/waiting|held|moderator/i)).toBeNull()
+  })
+
+  it('reads a note baked before photos existed', () => {
+    // `photo_url` is optional as well as nullable: conditions/notes.json
+    // written before this shipped omits the key entirely.
+    const { photo_url: _omitted, ...older } = note({ note: 'Spring is fine' })
+    renderSection(context({ notesFor: () => [older as NoteSummary] }))
+
+    expect(screen.getByText(/Spring is fine/)).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
   })
 })

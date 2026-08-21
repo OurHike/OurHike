@@ -486,6 +486,19 @@ export async function sendFieldNote(item: OutboxItem): Promise<void> {
       observed_at: item.authoredAt,
     }),
   })
+
+  // Then the bytes, if there are any (#879) - the two-phase flush #369
+  // established, and the order is the point: the note carries the
+  // observation, so a photo that never uploads costs the picture and never
+  // the sentence about the spring. A throw here leaves the whole item
+  // queued, and the re-send is harmless: the note upserts on its id and the
+  // object overwrites at a key derived from that same id.
+  if (item.photo !== undefined) {
+    await authedFetchBytes(
+      `/field-notes/${encodeURIComponent(item.id)}/photo`,
+      item.photo,
+    )
+  }
 }
 
 /**
@@ -863,10 +876,29 @@ export async function dismissClosure(closureId: string): Promise<void> {
  * people flagged it, what they said, and whether it is currently hidden.
  */
 export interface NoteQueueEntry {
-  note: NoteSummary & { reporter_id: string | null }
+  note: NoteSummary & {
+    reporter_id: string | null
+    /** True when a nudity flag is holding this note's photo from every
+     *  public read (#879). Privileged-only, which is why it appears on the
+     *  queue's shape and not on the card's. */
+    photo_held?: boolean
+  }
   flag_count: number
   reasons: string[]
   hidden: boolean
+}
+
+/** The one human glance a held note photo is waiting for (#879).
+ *
+ *  Not a takedown: a photo that should come down comes down with its note,
+ *  through `hideFieldNote`, because a note whose photo was the problem is a
+ *  note somebody wrote to carry that photo. */
+export async function reviewNotePhoto(noteId: string): Promise<NoteQueueEntry['note']> {
+  const response = await authedFetch(
+    `/field-notes/${encodeURIComponent(noteId)}/photo/review`,
+    { method: 'POST', body: '{}' },
+  )
+  return (await response.json()) as NoteQueueEntry['note']
 }
 
 /**

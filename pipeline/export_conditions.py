@@ -69,6 +69,13 @@ rewritten daily, so a published signature would be broken by the time it was
 read, and a long-lived one would defeat the private bucket. The live tier
 supplies photos; the baseline supplies the warning.
 
+**The same holds for a field note's photo (#879), and for one more reason
+besides.** A note photo publishes with its note, but a nudity flag can hold
+it back until a person looks - and a baked artifact cannot honour a hold
+taken after the bake ran. So the notes artifact carries the observation and
+never the picture: a hiker reading the baseline sees what the note SAYS,
+which is the part that was never waiting on anybody.
+
 Timestamps are stamped `...Z` the way `app/core/time.py`'s `_stamp_utc`
 stamps them - a naive timestamp is read as *local* by `new Date()`, which
 would move "Closed since August 1" by the reader's offset.

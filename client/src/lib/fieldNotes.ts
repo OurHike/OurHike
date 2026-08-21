@@ -129,6 +129,17 @@ export interface FieldNoteDraft {
   observation?: NoteObservation
   note?: string
   reporter_type: 'thru' | 'section' | 'day' | 'maintainer'
+  /**
+   * What the phone's own check found before the photo left it (#879, and
+   * lib/photoScreen.ts for the check itself), or absent for "nothing found
+   * OR could not look" - one value on purpose, because a note whose screen
+   * failed must be indistinguishable from one whose screen was clean.
+   *
+   * Travels on the NOTE rather than with the bytes, because the note is what
+   * the outbox flushes first: a verdict arriving after the photo would be a
+   * hold applied to something already public.
+   */
+  photo_flagged?: 'nudity' | 'faces'
 }
 
 /**
@@ -149,4 +160,22 @@ export interface NoteSummary {
   /** ISO timestamp, `...Z`-stamped by the server and by the bake alike. */
   observed_at: string
   reporter_type: 'thru' | 'section' | 'day' | 'maintainer'
+  /**
+   * The note's photo (#879), presigned and short-lived, or null.
+   *
+   * Null covers four things at once and deliberately does not distinguish
+   * them: no photo was attached, the bytes never landed, the photo is held
+   * on a nudity flag until a person looks, or the server has no photo
+   * storage. None of them is a fact a reader of a card can act on
+   * differently, and telling them apart would tell a stranger that a held
+   * photo exists.
+   *
+   * Optional as well as nullable, and the two mean different things - the
+   * live read always sends the key, and `conditions/notes.json` baked before
+   * this shipped omits it. The baseline omits it deliberately going forward
+   * too: a presigned URL in a file that is cached for a day is a link that
+   * is dead before most readers get to it (the same asymmetry #436 records
+   * for baseline report photos).
+   */
+  photo_url?: string | null
 }

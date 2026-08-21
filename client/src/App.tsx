@@ -3072,8 +3072,8 @@ function App() {
    * what freshens their own pin immediately - see `localNotes` above.
    */
   const handleAddFieldNote = useCallback(
-    async (draft: FieldNoteDraft) => {
-      const item = await enqueueFieldNote(draft)
+    async (draft: FieldNoteDraft, photo?: Blob) => {
+      const item = await enqueueFieldNote(draft, undefined, photo)
 
       setLocalNotes((current) => [
         {
@@ -3086,6 +3086,12 @@ function App() {
           note: draft.note ?? null,
           observed_at: item.authoredAt,
           reporter_type: draft.reporter_type,
+          // The local echo carries no photo URL, and that is honest rather
+          // than a gap (#879): the bytes are still on this phone, and the
+          // only URL that exists is one the server mints after the upload
+          // lands. The card shows the note now and the picture once it has
+          // actually gone - which is the same order the queue sends them in.
+          photo_url: null,
         },
         ...current,
       ])
@@ -3142,7 +3148,8 @@ function App() {
       },
       reporterType: preferences.reporter_type,
       contributeConditions: preferences.contribute_conditions,
-      onAddNote: (draft: FieldNoteDraft) => void handleAddFieldNote(draft),
+      onAddNote: (draft: FieldNoteDraft, photo?: Blob) =>
+        void handleAddFieldNote(draft, photo),
       onReportProblem: handleReportFromPoi,
       now,
     }),

@@ -45,6 +45,7 @@ vi.mock('../lib/api', () => {
     // four resources on mount - and an unmocked one would leave this file
     // asserting against a screen in a failure state it never meant to test.
     fetchNoteQueue: vi.fn(),
+    reviewNotePhoto: vi.fn(),
     hideFieldNote: vi.fn(),
     unhideFieldNote: vi.fn(),
     fetchHoursQueue: vi.fn(),

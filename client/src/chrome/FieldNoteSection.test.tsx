@@ -35,6 +35,9 @@ function note(overrides: Partial<NoteSummary>): NoteSummary {
 function context(overrides: Partial<FieldNoteContext> = {}): FieldNoteContext {
   return {
     notesFor: () => [],
+    // No dispute by default (#876), so every case written before disputes
+    // existed reads exactly as it did.
+    disputeFor: () => null,
     reporterType: 'section',
     contributeConditions: false,
     onAddNote: vi.fn(),
@@ -52,12 +55,15 @@ function renderSection(
     lat: number
     lon: number
     mile?: number
+    /** `confidence: low` upstream - changes only the dispute wording (#876). */
+    unverified: boolean
   }> = {},
 ) {
   return render(
     <FieldNoteSection
       poiId={poi.poiId ?? 'osm_water:1'}
       poiType={poi.poiType ?? 'water'}
+      unverified={poi.unverified ?? false}
       lat={poi.lat ?? 41.2}
       lon={poi.lon ?? -74.1}
       {...(poi.mile !== undefined ? { mile: poi.mile } : {})}
@@ -125,15 +131,21 @@ describe('FieldNoteSection', () => {
 
     fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
 
-    expect(onAddNote).toHaveBeenCalledWith({
-      poi_id: 'osm_water:1',
-      // The place's own coordinates - the card path never waits on GPS.
-      lat: 41.2,
-      lon: -74.1,
-      mile: 1382.4,
-      observation: 'dry',
-      reporter_type: 'section',
-    })
+    // The second argument is the photo, `undefined` when nobody attached one
+    // (#879) - asserted explicitly rather than left to a loose matcher, so a
+    // note that silently started carrying bytes would fail here.
+    expect(onAddNote).toHaveBeenCalledWith(
+      {
+        poi_id: 'osm_water:1',
+        // The place's own coordinates - the card path never waits on GPS.
+        lat: 41.2,
+        lon: -74.1,
+        mile: 1382.4,
+        observation: 'dry',
+        reporter_type: 'section',
+      },
+      undefined,
+    )
     expect(screen.getByText(/^Noted: dry\./)).toBeTruthy()
   })
 
@@ -228,5 +240,173 @@ describe('FieldNoteSection', () => {
     const { container } = renderSection(context({ notesFor: () => many }))
 
     expect(container.textContent).not.toMatch(/\d+ (notes|hikers|people|confirmations)/)
+  })
+})
+
+// --- The photo the opt-in promises (#879) ---------------------------------
+//
+// Maintainer decision, 2026-08-21: publish-now, screened on device. What
+// these cases hold is the part that could go wrong quietly - the tap must
+// not start waiting on a model, the screen's verdict must ride WITH the
+// note, and a screen that fails must be indistinguishable from a clean one.
+
+describe('a note’s photo', () => {
+  it('is offered only inside the opt-in, where the longer form lives', () => {
+    renderSection(context({ contributeConditions: false }))
+    expect(screen.queryByTestId('poi-card-note-photo')).toBeNull()
+
+    cleanup()
+    renderSection(context({ contributeConditions: true }))
+    expect(screen.getByTestId('poi-card-note-photo')).toBeTruthy()
+  })
+
+  it('says who sees it, before anybody attaches one', () => {
+    renderSection(context({ contributeConditions: true }))
+
+    // A note's photo publishes with its note. Somebody attaching a picture
+    // to a dry spring should know it is going to the next hiker rather than
+    // into a queue.
+    expect(screen.getByText(/the next hiker sees it with your note/i)).toBeTruthy()
+  })
+
+  it('files the note without a photo when nobody attached one', () => {
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote, contributeConditions: true }))
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
+
+    expect(onAddNote.mock.calls[0][1]).toBeUndefined()
+    expect(onAddNote.mock.calls[0][0].photo_flagged).toBeUndefined()
+  })
+
+  it('acknowledges the tap before the screen has run', () => {
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote, contributeConditions: true }))
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
+
+    // Synchronously, with no await: the one-tap answer is the contribution
+    // DATA_NUDGES.md designed, and putting a model load in front of it would
+    // spend the one interaction that has to be free.
+    expect(screen.getByText(/^Noted: dry\./)).toBeTruthy()
+  })
+
+  it('renders a photo that came back with somebody else’s note', () => {
+    renderSection(
+      context({
+        notesFor: () => [
+          note({ note: 'Ford is passable', photo_url: 'https://x/y.jpg' }),
+        ],
+      }),
+    )
+
+    const image = screen.getByRole('img')
+    expect(image.getAttribute('src')).toBe('https://x/y.jpg')
+    // Named rather than empty: the photo IS part of the claim the note
+    // makes, so a hiker on a screen reader is told it is there.
+    expect(image.getAttribute('alt')).toMatch(/photo with a note/i)
+  })
+
+  it('draws nothing, and says nothing, when a note has no photo url', () => {
+    renderSection(context({ notesFor: () => [note({ photo_url: null })] }))
+
+    // Absent covers "no photo", "still uploading", "held on a flag" and "no
+    // photo storage on this server" all at once, and the card must not
+    // distinguish them: "a photo is waiting on a moderator" tells a stranger
+    // something only the author and that moderator have any use for.
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByText(/waiting|held|moderator/i)).toBeNull()
+  })
+
+  it('reads a note baked before photos existed', () => {
+    // `photo_url` is optional as well as nullable: conditions/notes.json
+    // written before this shipped omits the key entirely.
+    const { photo_url: _omitted, ...older } = note({ note: 'Spring is fine' })
+    renderSection(context({ notesFor: () => [older as NoteSummary] }))
+
+    expect(screen.getByText(/Spring is fine/)).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
+  })
+})
+
+// --- Disputes on the card (#876, FIELD_NOTES.md §4) -----------------------
+//
+// WIREFRAMES.md §11's rule: the visual channel never carries the meaning
+// alone. A dashed pin says something is unusual about a place; only these
+// sentences say which of two very different things it is.
+
+describe('a place the field says is not there', () => {
+  const disputed = {
+    poi_id: 'osm_water:1',
+    accounts: 2,
+    latest_at: new Date(NOW.getTime() - 4 * DAY_MS).toISOString(),
+    maintainer_said: false,
+  }
+
+  it('says it in words, in the doc’s own sentence', () => {
+    renderSection(context({ disputeFor: () => disputed }))
+
+    expect(screen.getByTestId('poi-card-disputed').textContent).toBe(
+      '2 hikers reported this missing, most recently 4 days ago.',
+    )
+  })
+
+  it('says the existence claim before the freshness one', () => {
+    renderSection(context({ disputeFor: () => disputed }))
+
+    // "When did somebody last say this was fine" is a question about a place
+    // that exists. Reading them the other way round tells a hiker how fresh
+    // the news is about something that may not be there.
+    const card = screen.getByTestId('poi-card-conditions')
+    const order = Array.from(card.querySelectorAll('p')).map((p) => p.className)
+    expect(order.indexOf('poi-card__disputed')).toBeLessThan(
+      order.indexOf('poi-card__last-confirmed'),
+    )
+  })
+
+  it('hedges when upstream never confirmed the place either', () => {
+    renderSection(context({ disputeFor: () => disputed }), { unverified: true })
+
+    expect(screen.getByTestId('poi-card-disputed').textContent).toMatch(
+      /never confirmed to exist/,
+    )
+  })
+
+  it('says nothing at all about a place nobody disputes', () => {
+    renderSection(context({ disputeFor: () => null }))
+
+    expect(screen.queryByTestId('poi-card-disputed')).toBeNull()
+  })
+
+  it('offers "Not here" as an answer, on every type it asks about', () => {
+    // The button this feature was waiting for: the picker withheld
+    // `not_found` until something could render, corroborate and decay it.
+    renderSection(context())
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeTruthy()
+
+    cleanup()
+    renderSection(context(), { poiType: 'shelter' })
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeTruthy()
+  })
+
+  it('offers it on an unverified place too, and lets the card do the hedging', () => {
+    // §4's carried-over open question. A hiker standing where a
+    // low-confidence spring should be cannot tell "upstream never verified
+    // this" from "it is gone", and asking them to is asking them to know our
+    // data's provenance.
+    renderSection(context(), { unverified: true })
+
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeTruthy()
+  })
+
+  it('files it as an ordinary note, not a second flow', () => {
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote }))
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-not_found'))
+
+    // "A dispute is an observation value, not a second model" - no second
+    // form, no second flow, nothing extra to moderate.
+    expect(onAddNote.mock.calls[0][0].observation).toBe('not_found')
   })
 })

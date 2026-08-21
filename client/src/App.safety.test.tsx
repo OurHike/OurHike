@@ -42,6 +42,8 @@ vi.mock('./lib/api', () => ({
   fetchReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
+  // Disputes ride the same read as the notes they are computed from (#876).
+  fetchDisputes: vi.fn(async () => []),
 }))
 
 /** A verified closure between two miles of the synthetic centerline. */

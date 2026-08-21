@@ -90,12 +90,17 @@ FAILED = "failed"
 UNREACHABLE = "unreachable"
 
 
-def _fetch_json(base: str, key: str, session=None) -> tuple[dict | None, str | None]:
+def fetch_json(base: str, key: str, session=None) -> tuple[dict | None, str | None]:
     """The object behind `key` as parsed JSON, or (None, why-not).
 
     requests decodes `Content-Encoding: gzip` before json() sees a byte,
     which matches how the client reads these artifacts (they are stored
     gzipped on purpose since #717).
+
+    Public rather than private because `route_disputes.py` reads the same
+    bucket in the same posture (#876), and the interesting part of this is
+    not the GET - it is the three ways it can fail to be a document, each
+    of which has to come back as a sentence a report can print.
     """
     getter = (session or requests).get
     try:
@@ -132,7 +137,7 @@ def published_poi_ids(base: str, manifest: dict, session=None) -> tuple[set[str]
         )
         return ids, problems
     for key in keys:
-        document, why_not = _fetch_json(base, key, session)
+        document, why_not = fetch_json(base, key, session)
         if document is None:
             problems.append({"key": key, "state": UNREACHABLE, "detail": why_not})
             continue
@@ -161,7 +166,7 @@ def retired_dispositions(base: str, manifest: dict, session=None) -> dict[str, s
     """
     if RETIRED_KEY not in (manifest.get("artifacts") or {}):
         return {}
-    document, _ = _fetch_json(base, RETIRED_KEY, session)
+    document, _ = fetch_json(base, RETIRED_KEY, session)
     if document is None:
         return {}
     return {
@@ -197,7 +202,7 @@ def check_anchors(base: str, session=None) -> dict | None:
         return None
 
     problems: list[dict] = []
-    notes_document, why_not = _fetch_json(base, NOTES_KEY, session)
+    notes_document, why_not = fetch_json(base, NOTES_KEY, session)
     if notes_document is None:
         # No notes artifact is not "no orphans" — it is "nothing could be
         # checked", reported as such so a conditions-publish outage cannot

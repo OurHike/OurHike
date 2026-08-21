@@ -156,3 +156,74 @@ def find_source(registry: dict, key: str) -> dict | None:
         if entry.get("key") == key:
             return entry
     return None
+
+
+# --- Which registered source a published POI came from (#876) -------------
+#
+# `lib/poi_schema.py` mints every POI id as `<source>:<source_feature_id>`,
+# and `<source>` is `export_poi.py`'s name for the layer - `atc_shelters` -
+# rather than the registry's key for it - `shelters`. The two spellings have
+# never had to meet, because nothing downstream of the export needed to know
+# which organization a waypoint came from.
+#
+# features/FIELD_NOTES.md §4 needs exactly that: a corroborated dispute is a
+# correction that belongs upstream, in ATC's own data, and routing it there
+# starts by asking whose data the disputed pin is. So the join gets written
+# down once, here, in the module that already reads the registry.
+#
+# Spelled out rather than derived from `export_poi.py`'s `DIRECT_SOURCES`,
+# for the reason that tuple gives for itself: a layer that turns out to
+# differ should differ in a table, not somewhere clever. The drift risk that
+# buys is real and is covered - `tests/test_lib_source_registry.py` asserts
+# every source name the export mints appears either here or in the set below.
+POI_SOURCE_KEYS = {
+    "atc_shelters": "shelters",
+    "atc_campsites": "campsites",
+    "atc_viewpoints": "viewpoints",
+    "atc_parking": "parking",
+    "atc_privies": "privies",
+    "atc_communities": "communities",
+    "osm_water": "osm_water",
+}
+
+#: POI sources no registry entry covers, named rather than omitted.
+#:
+#: A dispute on one of these has nowhere to be filed, and that is worth
+#: saying out loud each time rather than dropping the dispute quietly. Two
+#: different reasons sit in this set:
+#:
+#:   - `opentrail_at` has no entry because its redistribution terms are the
+#:     open question in #98, so it was never registered.
+#:   - `atc_csi`, `nhd_crossing` and `nhd_stream` are DERIVED points rather
+#:     than upstream features - a CSI distance turned into a place, and two
+#:     geometry derivations - so there is no upstream row to correct even
+#:     when a steward exists for the layer they were derived from. A hiker
+#:     saying "there is no water here" about a derived crossing is telling
+#:     this project its derivation is wrong, which is an issue here rather
+#:     than an ask of USGS.
+UNREGISTERED_POI_SOURCES = frozenset({"atc_csi", "opentrail_at", "nhd_crossing", "nhd_stream"})
+
+
+def poi_source_entry(registry: dict, poi_source: str) -> dict | None:
+    """The registry entry a published POI's id namespace came from.
+
+    None for a source no entry covers - which is an answer rather than a
+    failure, and the caller is expected to say so rather than skip it.
+    """
+    key = POI_SOURCE_KEYS.get(poi_source)
+    return find_source(registry, key) if key else None
+
+
+def poi_source_steward(registry: dict, poi_source: str) -> str | None:
+    """Who to tell about that source, or None when nobody is named.
+
+    Falls back to `provider` where `steward` is absent, because the twelve
+    ATC entries still carry only the older field (SOURCE_REGISTRY.md's "Do
+    this part first" is the change that ends that, and is not this one).
+    Reading both means the routing works on the registry as it is rather
+    than on the registry as that section wishes it were.
+    """
+    entry = poi_source_entry(registry, poi_source)
+    if entry is None:
+        return None
+    return entry.get("steward") or entry.get("provider") or None

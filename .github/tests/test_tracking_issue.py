@@ -1,10 +1,16 @@
-"""Tests for the tracking-issue policy the five scheduled monitors share.
+"""Tests for the tracking-issue policy the scheduled monitors share.
 
 `.github/scripts/tracking-issue.js` is what check-deployment.yml,
-check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml and
-check-pending-approvals.yml all call to open, update and close their one issue.
-Before #678 it was four copies of about ninety lines, and this file did not
-exist.
+check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml,
+check-pending-approvals.yml, check-note-anchors.yml and route-disputes.yml all
+call to open, update and close their one issue. Before #678 it was four copies
+of about ninety lines, and this file did not exist.
+
+The roster below has grown twice since and been wrong once: check-note-anchors
+(#878) called the shared module correctly and was never added here, so for two
+months the guard covered five of six callers. Adding a monitor means adding a
+line to `test_every_monitor_uses_the_shared_module`, and that is the whole
+mechanism - which is why the list is spelled out rather than globbed.
 
 **The round trip is the point.** Each copy recovered "first seen" by parsing
 the dates back out of the markdown table it had itself written, with a regex
@@ -358,7 +364,7 @@ def test_a_newline_in_upstream_text_cannot_break_the_table():
 
 
 def test_every_monitor_uses_the_shared_module():
-    """Guard against a sixth copy appearing, or one of these five quietly
+    """Guard against an eighth copy appearing, or one of these seven quietly
     growing its own again."""
     workflows = REPO_ROOT / ".github" / "workflows"
     missing = [
@@ -369,6 +375,8 @@ def test_every_monitor_uses_the_shared_module():
             "check-upstream-freshness.yml",
             "smoke-published.yml",
             "check-pending-approvals.yml",
+            "check-note-anchors.yml",
+            "route-disputes.yml",
         )
         if "scripts/tracking-issue.js" not in (workflows / name).read_text(encoding="utf-8")
     ]

@@ -29,6 +29,7 @@
 
 import type { ClosureSummary, ReportSummary } from './api'
 import type { AtcUpdate } from './atcUpdates'
+import type { DisputeSummary } from './disputes'
 import type { NoteSummary } from './fieldNotes'
 import type { WorkProjectSummary } from './workProjects'
 import { DATA_CONFIGURED, dataUrl } from './config'
@@ -42,6 +43,7 @@ export const PUBLISHED_REPORTS_KEY = 'conditions/reports.json'
 export const PUBLISHED_ATC_UPDATES_KEY = 'conditions/atc_updates.json'
 export const PUBLISHED_DROUGHT_KEY = 'conditions/drought.json'
 export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
+export const PUBLISHED_DISPUTES_KEY = 'conditions/disputes.json'
 export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
 
 export interface PublishedConditions<T> {
@@ -113,7 +115,14 @@ export interface PublishedReadOptions {
  */
 async function fetchPublished<T>(
   key: string,
-  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
+  field:
+    | 'closures'
+    | 'reports'
+    | 'atc_updates'
+    | 'drought'
+    | 'notes'
+    | 'work_projects'
+    | 'disputes',
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
@@ -151,7 +160,14 @@ async function fetchPublished<T>(
  *  shape this one refuses, and the refusal has to be the same refusal. */
 async function recalled<T>(
   key: string,
-  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
+  field:
+    | 'closures'
+    | 'reports'
+    | 'atc_updates'
+    | 'drought'
+    | 'notes'
+    | 'work_projects'
+    | 'disputes',
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -166,7 +182,14 @@ async function recalled<T>(
  */
 function parsePublished<T>(
   document: Record<string, unknown>,
-  field: 'closures' | 'reports' | 'atc_updates' | 'drought' | 'notes' | 'work_projects',
+  field:
+    | 'closures'
+    | 'reports'
+    | 'atc_updates'
+    | 'drought'
+    | 'notes'
+    | 'work_projects'
+    | 'disputes',
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]
@@ -247,6 +270,23 @@ export async function fetchPublishedFieldNotes(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<NoteSummary> | null> {
   return fetchPublished(PUBLISHED_NOTES_KEY, 'notes', signal, options)
+}
+
+/**
+ * Corroborated disputes as published bytes (#876) - the same two-tier read
+ * as the notes they are computed from: this is what a hiker has when the
+ * backend is unreachable, and the live read wins whenever it lands.
+ *
+ * The artifact carries counts and dates and no identities, exactly as the
+ * live endpoint does - `pipeline/export_conditions.py` aggregates over
+ * `reporter_id` without publishing it, which is the same line the backend
+ * holds for the same reason.
+ */
+export async function fetchPublishedDisputes(
+  signal?: AbortSignal,
+  options?: PublishedReadOptions,
+): Promise<PublishedConditions<DisputeSummary> | null> {
+  return fetchPublished(PUBLISHED_DISPUTES_KEY, 'disputes', signal, options)
 }
 
 /**

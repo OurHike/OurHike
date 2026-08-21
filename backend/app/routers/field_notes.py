@@ -16,17 +16,30 @@ for exactly this shape and wanted it built once.
 import enum
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, get_current_user_optional, require_role
+from app.core.disputes import DisputeInput, dispute_state
 from app.core.orm import commit_and_refresh, get_or_404
+from app.core.photos import (
+    ALLOWED_CONTENT_TYPE,
+    JPEG_MAGIC,
+    MAX_PHOTO_BYTES,
+    PhotoStorageUnavailable,
+    note_photo_key,
+    photo_uploads_enabled,
+    store_photo_object,
+)
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
-from app.models.field_note import FieldNote, NoteFlag
+from app.models.field_note import FieldNote, NoteFlag, Observation
+from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
+from app.routers.reports import read_capped_body
+from app.schemas.dispute import DisputeOut
 from app.schemas.field_note import (
     FieldNoteCreate,
     FieldNoteOut,
@@ -114,6 +127,10 @@ def create_field_note(
         observed_at=observed if observed is not None else now,
         posted_at=now,
         reporter_type=payload.reporter_type,
+        # The phone's own verdict, stored with the note rather than with the
+        # bytes (#879): the note flushes first, and a hold that arrived after
+        # the photo would be applied to something already public.
+        photo_flagged=payload.photo_flagged,
     )
     db.add(note)
     try:
@@ -227,6 +244,175 @@ def flag_field_note(
     db.add(flag)
     db.commit()
     return {"status": "flagged"}
+
+
+@router.get("/disputes", response_model=list[DisputeOut])
+def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
+    """Places the field says are not there (#876, FIELD_NOTES.md §4).
+
+    No auth, like every other browsing read: a hiker deciding whether to
+    count on a spring needs this most when they have no account and no
+    signal to make one.
+
+    **Only corroborated disputes are served.** A single uncorroborated
+    "it is gone" is already public as a NOTE - it is in the feed, on the
+    card, in the hiker's own words - and that is the right weight for one
+    person's observation. What this endpoint answers is the stronger claim
+    the pin and the headline make, and one claim must never be able to
+    make it: `core/disputes.py` is where that line sits.
+
+    The identities never leave this process. `reporter_id` is what makes
+    corroboration mean anything and is exactly what FieldNoteOut withholds
+    (§6, #252) - so the rule runs here and a verdict goes out.
+    """
+    hidden_excluded = db.query(FieldNote).filter(FieldNote.hidden_at.is_(None), FieldNote.poi_id.isnot(None))
+    notes = hidden_excluded.filter(FieldNote.observation.isnot(None)).all()
+
+    # Every current assignment, once, rather than a query per note: a
+    # maintainer's word outweighs the count and the covering test is a range
+    # check, so the whole table is cheaper than N lookups and stays correct
+    # as it grows to a few hundred rows.
+    today = utc_now().date()
+    assignments = (
+        db.query(MaintainerAssignment)
+        .filter(
+            MaintainerAssignment.effective_from <= today,
+            (MaintainerAssignment.effective_to.is_(None)) | (MaintainerAssignment.effective_to >= today),
+        )
+        .all()
+    )
+
+    def covers(reporter_id: str, mile: float | None) -> bool:
+        """Whether this reporter looks after the stretch this note is on.
+
+        A note with no mile cannot be covered by anybody: an assignment is a
+        range along the centerline, and treating "no mile" as covered would
+        hand every maintainer a veto over every unplaced note in the country.
+        """
+        if mile is None:
+            return False
+        return any(
+            assignment.maintainer_id == reporter_id and assignment.start_mile <= mile <= assignment.end_mile
+            for assignment in assignments
+        )
+
+    by_poi: dict[str, list[DisputeInput]] = {}
+    for note in notes:
+        by_poi.setdefault(note.poi_id, []).append(
+            DisputeInput(
+                reporter_id=note.reporter_id,
+                observed_at=note.observed_at,
+                disputes=note.observation is Observation.not_found,
+                maintainer=covers(note.reporter_id, note.mile),
+            )
+        )
+
+    now = utc_now()
+    out: list[DisputeOut] = []
+    for poi_id, inputs in sorted(by_poi.items()):
+        state = dispute_state(inputs, now)
+        if not state.reported_missing:
+            continue
+        out.append(
+            DisputeOut(
+                poi_id=poi_id,
+                accounts=state.accounts,
+                latest_at=state.latest,
+                maintainer_said=state.maintainer_said,
+            )
+        )
+    return out
+
+
+@router.put("/field-notes/{note_id}/photo", response_model=FieldNoteOut)
+async def upload_note_photo(
+    note_id: str,
+    request: Request,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FieldNoteOut:
+    """Land the bytes for a note's photo (#879).
+
+    The second half of the same two-phase flush every photo in this app uses
+    (#369): the row, then the bytes, each retry-safe on its own. The row is
+    what carries the observation, so a photo that never lands costs the
+    picture and never the sentence.
+
+    **The author only.** A note's photo is a claim about what THEY saw, and a
+    second person's bytes under it would be a fabrication with a real
+    person's reporter_type on it. Refused as 403 rather than 404: the note is
+    public, so pretending it does not exist would be a lie about a row the
+    caller can already read.
+
+    The same checks the report and waypoint uploads run, for #379's reasons:
+    the body is capped as it streams, and JPEG is decided by the bytes' own
+    magic rather than by a header the client writes.
+    """
+    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
+
+    if note.reporter_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A note's photo can only be added by whoever wrote the note.",
+        )
+
+    if not photo_uploads_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+
+    if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Note photos must be {ALLOWED_CONTENT_TYPE}.",
+        )
+
+    body = await read_capped_body(request, MAX_PHOTO_BYTES)
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No photo in the request body.")
+    if not body.startswith(JPEG_MAGIC):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Note photos must be {ALLOWED_CONTENT_TYPE}.",
+        )
+
+    try:
+        store_photo_object(note_photo_key(note.id), body)
+    except PhotoStorageUnavailable as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+
+    note.photo_uploaded_at = utc_now()
+    return FieldNoteOut.for_viewer(commit_and_refresh(db, note), current_user)
+
+
+@router.post("/field-notes/{note_id}/photo/review", response_model=FieldNoteOut)
+def review_note_photo(
+    note_id: str,
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
+    db: Session = Depends(get_db),
+) -> FieldNoteOut:
+    """One human looked, and the photo is fine where it is.
+
+    The glance a nudity hold is waiting for, and the whole reason the hold is
+    defensible: #837 decided the on-device check flags and never decides, so
+    "held" has to mean "held until somebody looks" rather than "refused by a
+    model". Same verb and same meaning as the waypoint queue's `review`.
+
+    Set once. Who FIRST cleared it is the fact an audit needs, and a second
+    call is a no-op rather than a rewrite - moderation.py's rule for every
+    grant in this codebase.
+
+    Deliberately NOT a takedown: a photo that should come down comes down
+    with its note, through `hide`, because a note whose photo was the problem
+    is a note somebody wrote to carry that photo.
+    """
+    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
+
+    if note.photo_reviewed_at is None:
+        note.photo_reviewed_at = utc_now()
+        note.photo_reviewed_by = current_user.id
+    return FieldNoteOut.for_viewer(commit_and_refresh(db, note), current_user)
 
 
 class QueueScope(str, enum.Enum):

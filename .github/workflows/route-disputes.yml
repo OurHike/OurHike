@@ -1,0 +1,225 @@
+# Asks, weekly, whether hikers have contradicted an upstream layer often
+# enough that its steward should hear about it — and files that correction
+# where the data actually lives.
+#
+# features/FIELD_NOTES.md §4 is the design and #876 the issue. The rest of
+# that feature stops at OurHike's own map: a corroborated `not_found` earns a
+# mark beside the pin and a sentence on the card, and ATC goes on publishing
+# a spring that is not there. That is a private fork of somebody else's
+# dataset — every other consumer of the layer still gets the wrong row, and
+# our own next release re-imports it. THIS is the job that makes the loop
+# close: it names the place, the mile, how many independent accounts said so,
+# and who publishes it.
+#
+# ONE TRACKING ISSUE PER SOURCE, updated in place — DATA_RELEASES.md's volume
+# rule, through .github/scripts/tracking-issue.js rather than a second
+# mechanism. A source is a steward, and a steward wants one running list of
+# "places your layer says exist and hikers say do not", not an issue per
+# spring. The script's `announce` hook is passed here for the reason
+# check-pending-approvals.yml passes it: a NEW disputed place joining an open
+# list is a discrete event somebody has to act on, not the same condition
+# entering its second week.
+#
+# OVER PUBLISHED ARTIFACTS, NOT THE DATABASE, and so IT HOLDS NO CREDENTIALS
+# — check-note-anchors.yml's posture. Everything it reads is a public HTTPS
+# GET of exactly what a phone reads. That is load-bearing twice over here:
+# export_conditions.py aggregates `reporter_id` away before the artifact
+# exists, so a job that mails corrections to third parties cannot learn who
+# reported anything even in principle (#252).
+#
+# IT DOES NOT FAIL THE RUN. check-deployment.yml records the reason: GitHub
+# emails on every scheduled failure, and a persistent fault would send an
+# identical weekly email until somebody filtered it. The issues are the
+# signal.
+#
+# WHAT IT STILL DOES NOT DO, said here rather than discovered later: it opens
+# an issue in THIS repository naming the steward. It does not email ATC, and
+# it should not until a human has read the first few — a script that mails a
+# partner organization on a cron is a way to lose a partner organization.
+# SOURCE_REGISTRY.md's `SourceContact` is where a real address would come
+# from, and it does not exist yet.
+
+name: Route disputes upstream
+
+on:
+  schedule:
+    # 09:50 UTC on Wednesdays. Weekly because a dispute takes two accounts on
+    # two days to exist at all and then stands for 180 days — nothing here
+    # moves hourly. Off Monday and Tuesday, where smoke-published.yml and
+    # check-note-anchors.yml read the same bucket and would rather report
+    # first if it is simply down.
+    - cron: "50 9 * * 3"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Bucket base to route from. Defaults to the DATA_BASE_URL variable."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: route-disputes
+  cancel-in-progress: false
+
+env:
+  ISSUE_LABEL: dispute-routing
+
+jobs:
+  route:
+    name: Corroborated disputes reach whoever publishes the data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Is there a bucket to read
+        id: can
+        env:
+          OVERRIDE: ${{ inputs.base }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          BASE="${OVERRIDE:-$CONFIGURED}"
+          if [ -z "$BASE" ]; then
+            echo "::warning::No DATA_BASE_URL is set, so there are no published disputes to route. See LAUNCH_CHECKLIST.md step 2."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        working-directory: pipeline
+        run: pip install -r requirements.txt
+
+      # BASE arrives via env rather than ${{ }} inside the script: it can come
+      # verbatim from a workflow_dispatch input, and an expression expansion is
+      # pasted into the shell as literal text before bash parses it.
+      # smoke-published.yml documents the same rule, and the same
+      # set +e / PIPESTATUS discipline (#655) — the step's status would
+      # otherwise be tee's, and both reserved exit codes would be invisible.
+      - name: Join the disputes to the layers that publish them
+        id: routed
+        if: steps.can.outputs.go == 'true'
+        working-directory: pipeline
+        env:
+          BASE: ${{ steps.can.outputs.base }}
+        run: |
+          set +e
+          python route_disputes.py \
+            --base "$BASE" \
+            --json disputes-routed.json \
+            --exit-zero | tee disputes-routed.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          case "$status" in
+            0) ;;
+            2)
+              echo "::error::Nothing is published at $BASE to route disputes from - route_disputes.py exited 2."
+              exit 2
+              ;;
+            *)
+              echo "::error::route_disputes.py exited $status, which --exit-zero reserves for a crash."
+              exit "$status"
+              ;;
+          esac
+
+      - name: Write the job summary
+        if: always() && steps.can.outputs.go == 'true'
+        working-directory: pipeline
+        run: |
+          {
+            echo "## Disputes routed upstream"
+            echo
+            if [ -f disputes-routed.txt ]; then
+              echo '```'
+              cat disputes-routed.txt
+              echo '```'
+            else
+              echo "The routing did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One call per source. The refusal below is the important part: a run
+      # that could not read every published poi file has no business telling
+      # a steward their layer is wrong, AND no business closing an issue that
+      # says so — so an unroutable run touches nothing at all rather than
+      # doing half of it.
+      - name: Open, update, or close each steward's tracking issue
+        if: steps.can.outputs.go == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
+            const verdict = JSON.parse(fs.readFileSync('pipeline/disputes-routed.json', 'utf8'))
+
+            if (!verdict.routable) {
+              const problems = [...(verdict.failed ?? []), ...(verdict.unreachable ?? [])]
+              core.warning(
+                `Routed nothing: ${problems.map(p => `${p.key} ${p.detail}`).join('; ')}. ` +
+                'No steward issue was opened, updated or closed - see route_disputes.py on why a partial read is not a verdict.'
+              )
+              return
+            }
+
+            for (const source of verdict.sources ?? []) {
+              const who = source.steward ?? 'no registered steward'
+              const title = `Reported missing: ${source.title ?? source.poi_source}`
+              const keys = source.to_file.map(record => record.poi_id)
+
+              await trackingIssue({github, context, core}, {
+                label: process.env.ISSUE_LABEL,
+                title,
+                checkedAt: verdict.checked_at,
+                keys,
+                healthy: source.healthy,
+                allClear: `Nothing in \`${source.poi_source}\` is reported missing any more, as of ${verdict.checked_at} - the disputes were cleared, decayed, or the places are gone from the release. Closing.`,
+
+                render: (firstSeen, cell) => [
+                  `**${who}** publishes \`${source.poi_source}\`. ${source.to_file.length} place(s) in it are reported missing by hikers whose reports corroborate each other.`,
+                  '',
+                  source.unregistered
+                    ? (source.expected_unregistered
+                        ? 'No organization is registered for this source, and that is expected: `lib/source_registry.py` records it as a derivation of ours rather than an upstream layer, so the correction belongs in this repository. What a hiker is reporting here is that our derivation is wrong.'
+                        : '**No organization is registered for this source and one should be.** `sources.json` has no entry that `POI_SOURCE_KEYS` maps this id namespace onto, so there is nowhere to send this - features/SOURCE_REGISTRY.md is the mechanism that closes that.')
+                    : `The correction belongs in ${who}'s own data. Filing it there is a human step - this job holds no contact details and sends no mail (see the workflow header).`,
+                  '',
+                  '| place | mile | accounts | latest report | first seen | id |',
+                  '|---|---|---|---|---|---|',
+                  ...source.to_file.map(record =>
+                    `| ${cell(record.name ?? '(unnamed)')} | ${record.mile ?? '?'} | ${record.accounts}${record.maintainer_said ? ' + maintainer' : ''} | ${cell((record.latest_at ?? '').slice(0, 10))} | ${firstSeen[record.poi_id]} | \`${cell(record.poi_id)}\` |`),
+                  '',
+                  source.already_gone.length
+                    ? `${source.already_gone.length} further disputed place(s) are no longer in the current release at all - upstream removed them, or the identity ledger retired them. Those need no ask and are listed in the run log rather than here.`
+                    : '',
+                  '',
+                  'A dispute here is never a claim that this project removed anything: FIELD_NOTES.md §4 keeps the pin drawn and says so in words, because a POI that vanishes is indistinguishable from one that never existed. What is being reported is what hikers found.',
+                  '',
+                  'One thing this list cannot see: `export_conditions.py`\'s bake has no maintainer clause - `maintainer_assignments` is not in the conditions reader role\'s grant - so a covering maintainer\'s lone report of a missing place reaches a phone through the live read and never reaches this table. That gap is real and is named rather than papered over.',
+                  '',
+                  `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+                  '',
+                  '---',
+                  '_Generated by [Claude Code](https://claude.ai/code)_',
+                ].join('\n'),
+
+                announce: (appeared, cell) =>
+                  `${appeared.length} newly corroborated report(s) of a missing place in \`${source.poi_source}\`: ` +
+                  appeared.map(id => `\`${cell(id)}\``).join(', ') + '.',
+              })
+            }

@@ -60,8 +60,10 @@ import {
 } from './screens/Onboarding'
 import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
 import { closureDraft } from './lib/closureDraft'
+import { disputeFor } from './lib/disputes'
 import { WorkdaySheet } from './chrome/WorkdaySheet'
 import type { WorkdayPoint } from './map/workdayLayers'
+import type { DisputePoint } from './map/disputeLayers'
 import { opportunitiesUsable, upcomingWorkProjects } from './lib/workProjects'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
@@ -665,6 +667,7 @@ function App() {
     closures,
     reports,
     notes,
+    disputes,
     closureState,
     reportState,
     atcUpdates,
@@ -1678,6 +1681,25 @@ function App() {
     if (highlight === undefined) return null
     return buildHighlightDetail(highlight, elevation, units, walked, pace)
   }, [selectedHighlightId, highlights, elevation, units, walked, pace])
+
+  /**
+   * The disputed places, joined to where they are (#876).
+   *
+   * The join is the shell's because neither half can do it: the verdict comes
+   * from the server, which holds no coordinates (it has no POI table at all -
+   * `poi_id` is a soft reference into a published artifact), and the POI
+   * export knows nothing about notes. This is the one place both are in hand.
+   *
+   * A dispute whose POI this phone does not hold draws nothing rather than
+   * drawing somewhere - the same rule the rest of this file keeps about 0,0.
+   */
+  const disputedPoints: DisputePoint[] = useMemo(() => {
+    if (disputes === null || disputes.length === 0) return []
+    const disputed = new Set(disputes.map((dispute) => dispute.poi_id))
+    return pois
+      .filter((poi) => disputed.has(poi.id))
+      .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
+  }, [disputes, pois])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -3072,8 +3094,8 @@ function App() {
    * what freshens their own pin immediately - see `localNotes` above.
    */
   const handleAddFieldNote = useCallback(
-    async (draft: FieldNoteDraft) => {
-      const item = await enqueueFieldNote(draft)
+    async (draft: FieldNoteDraft, photo?: Blob) => {
+      const item = await enqueueFieldNote(draft, undefined, photo)
 
       setLocalNotes((current) => [
         {
@@ -3086,6 +3108,12 @@ function App() {
           note: draft.note ?? null,
           observed_at: item.authoredAt,
           reporter_type: draft.reporter_type,
+          // The local echo carries no photo URL, and that is honest rather
+          // than a gap (#879): the bytes are still on this phone, and the
+          // only URL that exists is one the server mints after the upload
+          // lands. The card shows the note now and the picture once it has
+          // actually gone - which is the same order the queue sends them in.
+          photo_url: null,
         },
         ...current,
       ])
@@ -3142,12 +3170,19 @@ function App() {
       },
       reporterType: preferences.reporter_type,
       contributeConditions: preferences.contribute_conditions,
-      onAddNote: (draft: FieldNoteDraft) => void handleAddFieldNote(draft),
+      // The corroborated verdict for this place (#876). Null covers both
+      // "nobody disputes it" and "we could not ask", and the card treats
+      // them the same on purpose: neither is a claim worth printing, and
+      // only the first is a claim at all.
+      disputeFor: (poiId: string) => disputeFor(disputes, poiId),
+      onAddNote: (draft: FieldNoteDraft, photo?: Blob) =>
+        void handleAddFieldNote(draft, photo),
       onReportProblem: handleReportFromPoi,
       now,
     }),
     [
       allNotes,
+      disputes,
       preferences.reporter_type,
       preferences.contribute_conditions,
       handleAddFieldNote,
@@ -3971,6 +4006,7 @@ function App() {
           onSelectAtcUpdate={setSelectedAtcBandId}
           workdays={workdayPins}
           onSelectWorkday={setSelectedWorkdayId}
+          disputes={disputedPoints}
           workdaySheet={
             selectedWorkday === null ? null : (
               <WorkdaySheet

@@ -3142,3 +3142,50 @@ a.poi-card__credit::after {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* A field note's photo (#879): the control that attaches one, and the
+   picture itself on the card underneath. Sized to the note rather than to
+   the card - a note is a sentence with a picture beside it, and a photo that
+   dominated the card would make the roll-up headline the smaller claim. */
+
+.poi-card__note-photo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin-top: var(--space-2, 8px);
+  font-size: 12px;
+}
+
+.poi-card__note-photo-label {
+  color: var(--fg-2);
+}
+
+.poi-card__note-photo-status {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* Bounded, and `height: auto` so a portrait shot is not squashed into
+   evidence of something it is not. */
+.poi-card__note-photo-image {
+  display: block;
+  max-width: 100%;
+  max-height: 12rem;
+  height: auto;
+  margin-top: var(--space-1, 4px);
+  border-radius: 6px;
+  border: 1px solid var(--border-1, var(--bg-sunken));
+}
+
+/* A place the field says is not there (#876). Set apart from the freshness
+   line under it, because it answers a different question - whether the place
+   is there at all, rather than how recently somebody said it was fine. */
+.poi-card__disputed {
+  margin: var(--space-2, 8px) 0 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 8px;
+}

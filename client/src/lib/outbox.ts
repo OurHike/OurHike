@@ -448,11 +448,17 @@ export async function hasWorkThatNeedsNoAccount(): Promise<boolean> {
 export async function enqueueFieldNote(
   fieldNote: FieldNoteDraft,
   authoredAt: Date = new Date(),
+  photo?: Blob,
 ): Promise<OutboxItem> {
   const item: OutboxItem = {
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     fieldNote,
+    // The photo DATA_NUDGES.md's opted-in mode promises (#879). Spread so a
+    // note without one has no key at all - the queue is compared and
+    // rewritten in several places, and an explicit `photo: undefined` is a
+    // difference that reads as one.
+    ...(photo !== undefined ? { photo } : {}),
   }
 
   await mutateQueue((queue) => [...queue, item])

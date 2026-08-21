@@ -1,7 +1,13 @@
 // One tracking issue, opened when a monitor goes red and closed when it goes
-// green again. Five scheduled workflows share this: check-deployment.yml,
-// check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml
-// and check-pending-approvals.yml.
+// green again. Seven scheduled workflows share this: check-deployment.yml,
+// check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml,
+// check-pending-approvals.yml, check-note-anchors.yml and route-disputes.yml.
+//
+// The last of those is the only one that calls this more than once per run:
+// route-disputes.yml opens ONE ISSUE PER DATA SOURCE, because its recipient
+// is a steward rather than this repository, and each steward wants their own
+// running list. That works because the lookup is label AND title, which was
+// already true for #651's reason - see the `title` parameter below.
 //
 // WHY THIS IS ONE FILE AND NOT FOUR COPIES (#678). It was four copies of about
 // ninety lines each, and the interesting part was never the markdown - it is

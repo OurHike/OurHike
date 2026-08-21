@@ -106,11 +106,14 @@ class Closure(Base):
     #
     # **Nullable, and null is the ordinary state rather than a gap.** Every
     # closure filed before this column existed has none, and so does every
-    # closure filed until a client learns to send it - there is no closure
-    # authoring form in this app yet (`client/src/lib/api.ts` has fetch,
-    # verify and dismiss, and no create), so on the day this lands the
-    # projection is a no-op on 100% of real rows. A null pair means "project
-    # nothing, show the mile as stored", which is exactly today's behaviour.
+    # closure filed by anything other than this app's own form - a
+    # maintainer with curl, a script, an older client. The form landed with
+    # #832 (`client/src/screens/ClosureForm.tsx`, via
+    # `client/src/lib/closureDraft.ts`) and sends all four or none; before
+    # it, this was a no-op on 100% of real rows and the columns were a
+    # design waiting for a producer. A null pair means "project nothing,
+    # show the mile as stored", which stays the behaviour for every row
+    # that has one.
     # Zero is not the default for the reason report.py gives for `mile`: it
     # is a real place, off the coast of Africa.
     start_lat = Column(Float, nullable=True)

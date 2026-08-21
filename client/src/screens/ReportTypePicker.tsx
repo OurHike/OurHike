@@ -50,6 +50,17 @@ const CONDITION_TYPES: Array<{
 export interface ReportTypePickerProps {
   onPick: (type: ReportTypeId) => void
   /**
+   * The closure path (#832), which is deliberately not a `ReportTypeId`.
+   *
+   * A closure is a stretch with two ends and its own table, not an eighth
+   * report type - so it gets its own callback rather than being smuggled
+   * through `onPick`'s type. It sits under the condition tiles rather than
+   * among them for the reason the people section is separate: a tile in
+   * that grid promises the form behind it is the one-tap form its
+   * neighbours are, and this one asks for two miles.
+   */
+  onReportClosure: () => void
+  /**
    * Backing out. Required, not optional: the reporting flow replaces the whole
    * shell including the tab bar (App.tsx), so a screen here with no way out is
    * one a hiker is stuck on - and someone who opened this to look at the
@@ -59,7 +70,11 @@ export interface ReportTypePickerProps {
   onCancel: () => void
 }
 
-export function ReportTypePicker({ onPick, onCancel }: ReportTypePickerProps) {
+export function ReportTypePicker({
+  onPick,
+  onReportClosure,
+  onCancel,
+}: ReportTypePickerProps) {
   return (
     <main className="reporting">
       <h1 className="reporting__title">Report a problem</h1>
@@ -81,6 +96,17 @@ export function ReportTypePicker({ onPick, onCancel }: ReportTypePickerProps) {
             )}
           </button>
         ))}
+      </section>
+
+      <section className="reporting__people" role="group" aria-label="The trail is shut">
+        <button type="button" className="reporting__card" onClick={onReportClosure}>
+          <span className="reporting__card-title">The trail is closed</span>
+          <span className="reporting__card-body">
+            A stretch nobody can walk — a washout, a slide, a club&rsquo;s own closure
+            sign. Needs the miles it runs between, so it asks a little more than the tiles
+            above.
+          </span>
+        </button>
       </section>
 
       <section

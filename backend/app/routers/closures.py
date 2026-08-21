@@ -10,7 +10,8 @@ Closures reuse "the same permission tier" - read here as the same split
 Report a Problem establishes, not a stated decision of its own.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_role
@@ -24,9 +25,29 @@ from app.schemas.closure import ClosureCreate, ClosureOut, ClosureUpdate
 router = APIRouter(prefix="/closures", tags=["closures"])
 
 
+def _already_filed(db: Session, closure_id: str, current_user: Profile) -> Closure | None:
+    """The caller's own closure under this id, if it is already stored.
+
+    Reports' contract verbatim (#832): None means go ahead, and an id
+    belonging to somebody else raises rather than returning their row -
+    handing it back would turn a guessed UUID into a way to read another
+    person's unmoderated report.
+    """
+    existing = db.get(Closure, closure_id)
+    if existing is None:
+        return None
+    if existing.reported_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That closure id belongs to someone else.",
+        )
+    return existing
+
+
 @router.post("", response_model=ClosureOut, status_code=status.HTTP_201_CREATED)
 def create_closure(
     payload: ClosureCreate,
+    response: Response,
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Closure:
@@ -40,9 +61,32 @@ def create_closure(
     #246, and why a REPORTER never picks this field - reopening a trail, or
     confirming a reroute exists, is a maintainer's judgment (PATCH, or the
     verify call in app/routers/moderation.py).
+
+    **Idempotent on `id`, and dated by the client (#832).** Both arrived with
+    this app's closure form, and both are the offline path showing through: a
+    closure is authored at the washout with no signal, so the request that
+    commits here and loses its response on the way back is the ordinary case
+    rather than the unlucky one, and the day it was written is not the day it
+    arrives. `201` still means newly created; a resend gets `200` and the
+    stored row.
     """
+    closure_id = str(payload.id) if payload.id is not None else None
+
+    if closure_id is not None:
+        settled = _already_filed(db, closure_id, current_user)
+        if settled is not None:
+            response.status_code = status.HTTP_200_OK
+            return settled
+
     closure = Closure(
+        **({"id": closure_id} if closure_id is not None else {}),
         reported_by=current_user.id,
+        # The client's own claim when it made one, the server clock
+        # otherwise - `reports.authored_at`'s exact posture, and what keeps
+        # the sheet's age honest for a closure that waited days in an
+        # outbox. The schema has already refused anything meaningfully in
+        # the future.
+        **({"reported_at": to_naive_utc(payload.reported_at)} if payload.reported_at is not None else {}),
         reason_type=payload.reason_type,
         note=payload.note,
         start_mile_marker=payload.start_mile_marker,
@@ -59,7 +103,22 @@ def create_closure(
         end_lon=payload.end_lon,
     )
     db.add(closure)
-    return commit_and_refresh(db, closure)
+    try:
+        return commit_and_refresh(db, closure)
+    except IntegrityError:
+        # The lookup above and this insert are two statements, so two
+        # concurrent flushes of the same id both see "not filed yet" and both
+        # insert. Reports met this first (#265) and the reasoning carries: it
+        # is not a rare interleaving to shrug at, it is exactly what the
+        # retry path exists to produce, and losing the race would surface as
+        # a 500 from the one endpoint whose whole promise is that sending
+        # twice is safe.
+        db.rollback()
+        settled = _already_filed(db, closure_id, current_user) if closure_id is not None else None
+        if settled is None:
+            raise
+        response.status_code = status.HTTP_200_OK
+        return settled
 
 
 @router.get("", response_model=list[ClosureOut])

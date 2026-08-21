@@ -58,6 +58,8 @@ import {
   Onboarding,
   type OnboardingResult,
 } from './screens/Onboarding'
+import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
+import { closureDraft } from './lib/closureDraft'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
@@ -209,6 +211,7 @@ import {
 } from './lib/auth'
 import {
   enqueueAppFailure,
+  enqueueClosure,
   listQueued,
   removeQueued,
   retryQueued,
@@ -514,6 +517,17 @@ function App() {
    * those.
    */
   const [reportingFailure, setReportingFailure] = useState(false)
+  /**
+   * Whether the closure form is open (#832).
+   *
+   * Its own flag rather than a step on `ReportingState`, for the reason the
+   * flag above has one: a closure is not a report type. It has its own
+   * table, two ends instead of a fix, and no `reporter_type` - so putting it
+   * on `ReportingState` would have meant widening a union that describes
+   * something else, and answering the reporter-type question for a record
+   * with nowhere to put the answer.
+   */
+  const [reportingClosure, setReportingClosure] = useState(false)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
    * The route being built (#755), or null when the builder is closed. Held
@@ -729,10 +743,13 @@ function App() {
    * `closureBands` draws where it is; those two disagreeing about where a
    * closure starts is exactly the failure mode a shared source removes.
    *
-   * A no-op on every closure today — nothing writes closure geometry yet, so
-   * `projectClosures` returns the array it was given and these memos do not
-   * re-run. It is here so that the day a closure IS authored with geometry,
-   * the projection is already the path rather than a second change to make.
+   * A no-op on every closure authored before #832's form, which is still
+   * most of them: with no geometry `projectClosures` returns the array it
+   * was given and these memos do not re-run. Closures filed from this app
+   * now carry their two points, so the projection has started doing real
+   * work on real rows — and `lib/closureProjection.ts`'s `@unvalidated`
+   * tolerance, which had nothing to measure while nothing wrote geometry,
+   * now has data coming that could settle it.
    */
   const placedClosures = useMemo(
     () =>
@@ -2880,6 +2897,41 @@ function App() {
   }, [])
 
   /**
+   * Queue a closure and send it if there is anything to send it with (#832).
+   *
+   * The geometry is captured HERE rather than in the form, because this is
+   * where the trail index lives - and it has to be captured now rather than
+   * at flush time or later. A mile is a reading against one measurement of
+   * the centerline; converting it to a point afterwards needs the release
+   * the closure was authored against, and pipeline/DATA_RELEASES.md prunes a
+   * release 90 days after it is superseded. The conversion stops being
+   * possible long before the closure stops mattering.
+   *
+   * Saved to the outbox FIRST, like every other contribution: everything
+   * after that line can fail without costing somebody the closure they just
+   * walked up to. The sign-in step follows rather than precedes for the same
+   * reason - `POST /closures` needs an account, but a hiker standing at a
+   * washout should not meet a sign-in wall before their report is safe.
+   *
+   * No reporter-type question: a closure carries no `reporter_type`, so
+   * asking would collect an answer with nowhere to put it.
+   */
+  const handleSubmitClosure = useCallback(
+    async ({ authoredAt, ...fields }: ClosureFormSubmission) => {
+      await enqueueClosure(closureDraft(fields, trailIndex), authoredAt)
+      setReportingClosure(false)
+
+      // Explicitly, for #640's reason: useOutboxSync fires on a CHANGE to
+      // `online` or the account, and filing this changes neither.
+      void syncOutbox().then((result) => {
+        if (result !== null && result.sent > 0) markSynced()
+      })
+      if (account === null) setAuthFlow({ screen: 'choose', afterReport: true })
+    },
+    [account, markSynced, trailIndex],
+  )
+
+  /**
    * Ask who is reporting, at most once a session and never twice over.
    *
    * Called from both paths that reach the step: straight after a report when
@@ -3356,6 +3408,20 @@ function App() {
     )
   }
 
+  if (reportingClosure) {
+    return (
+      <ClosureForm
+        // The snapped mile the header is already showing, or null when there
+        // is no fix or it could not be placed on the centerline. Never zero:
+        // mi 0.0 is Springer Mountain, not "we do not know".
+        hereMile={fix?.mile ?? null}
+        online={online}
+        onSubmit={(submission) => void handleSubmitClosure(submission)}
+        onCancel={() => setReportingClosure(false)}
+      />
+    )
+  }
+
   if (reporting !== null) {
     if (reporting.step === 'pick') {
       const anchor = reporting.anchor
@@ -3371,6 +3437,12 @@ function App() {
                 : { step: 'form', type, anchor },
             )
           }
+          // A closure leaves the report flow rather than continuing it: it
+          // is a different record with a different form (#832).
+          onReportClosure={() => {
+            setReporting(null)
+            setReportingClosure(true)
+          }}
           onCancel={() => setReporting(null)}
         />
       )

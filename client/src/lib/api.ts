@@ -309,9 +309,9 @@ export interface ClosureSummary {
    * against whichever release this phone is holding.
    *
    * Null on every closure filed before the columns existed, and on every one
-   * filed until this app grows a closure form — there is no create call in
-   * this file, only fetch, verify and dismiss. A null pair means "show the
-   * mile as stored", which is what every closure does today.
+   * filed by something other than this app's own form (#832) — a maintainer
+   * with curl, a client older than it. A null pair means "show the mile as
+   * stored", which is what every closure authored before that form does.
    *
    * **Optional as well as nullable, and the two mean different things.** The
    * live `GET /closures` always sends all four keys, null or not. The
@@ -500,12 +500,33 @@ export async function sendVolunteerHours(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Files a closure somebody walked up to (#832).
+ *
+ * `reported_at` travels, and is the reason this is not a two-line inline
+ * fetch: the outbox stores when the closure was WRITTEN, and the sheet ages
+ * a closure by exactly that field. A closure queued at a washout on Monday
+ * and flushed in town on Thursday must not arrive claiming to be three days
+ * fresher than it is.
+ */
+export async function sendClosure(item: OutboxItem): Promise<void> {
+  await authedFetch('/closures', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...item.closure,
+      id: item.id,
+      reported_at: item.authoredAt,
+    }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds five families now: condition reports (the original
+ * The outbox holds six families now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
- * reports (#848), field notes (features/FIELD_NOTES.md), and volunteer
- * hours (#761). One dispatcher, so `flushOutbox` keeps its single `send`
+ * reports (#848), field notes (features/FIELD_NOTES.md), volunteer hours
+ * (#761), and closures (#832). One dispatcher, so `flushOutbox` keeps its
+ * single `send`
  * seam and the queue stays one queue - a hiker's unsent work is one list.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
@@ -513,6 +534,7 @@ export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.appFailure !== undefined) return sendAppFailure(item)
   if (item.fieldNote !== undefined) return sendFieldNote(item)
   if (item.volunteerHours !== undefined) return sendVolunteerHours(item)
+  if (item.closure !== undefined) return sendClosure(item)
   return sendReport(item)
 }
 

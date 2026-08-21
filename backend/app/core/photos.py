@@ -175,6 +175,20 @@ def poi_photo_key(poi_id: str, contributor_id: str) -> str:
     return f"poi-photos/{poi_id}/{contributor_id}.jpg"
 
 
+def note_photo_key(note_id: str) -> str:
+    """Where a field note's photo lives (#879).
+
+    Keyed by the NOTE rather than by contributor-and-place, which is the one
+    structural difference from `poi_photo_key` above and the reason a note
+    photo is not simply a community photo. That store holds one photo per
+    hiker per waypoint: a hiker who leaves a second note at the same spring
+    would replace their first note's photo, so a note reading "dry" would end
+    up illustrated by last week's photo of it flowing. A note's picture has
+    to be what that hiker saw on that day or it is worse than no picture.
+    """
+    return f"notes/{note_id}.jpg"
+
+
 def photo_storage_configured() -> bool:
     """Whether there is a bucket to talk to at all.
 

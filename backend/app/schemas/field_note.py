@@ -2,11 +2,13 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.core.photos import note_photo_key, photo_storage_configured, presigned_object_url
 from app.core.time import UtcDatetime
-from app.models.field_note import FieldNote, Observation
+from app.models.field_note import FieldNote, Observation, note_photo_held
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import ReporterType
 from app.schemas.common import FiniteFloat, NoteText
@@ -40,6 +42,17 @@ class FieldNoteCreate(BaseModel):
 
     observed_at: datetime | None = None
     reporter_type: ReporterType
+
+    # What the phone's own check found before the photo left it (#879/#837),
+    # or absent for "nothing found OR could not look" - one value on purpose,
+    # because a note whose screen failed must be indistinguishable from one
+    # whose screen was clean. It never blocks anything: only `nudity` holds
+    # the photo, and only until one person looks.
+    #
+    # Accepted on the note rather than on the upload because the note is what
+    # the outbox flushes first, and a verdict that arrived after the bytes
+    # would be a hold applied to a photo already public.
+    photo_flagged: Literal["nudity", "faces"] | None = None
 
     @model_validator(mode="after")
     def _require_something_observed(self) -> "FieldNoteCreate":
@@ -106,6 +119,14 @@ class FieldNoteOut(BaseModel):
     observed_at: UtcDatetime
     reporter_type: ReporterType
 
+    # The photo (#879), presigned and short-lived, or null. Null covers four
+    # different things on purpose - no photo was attached, the bytes never
+    # landed, the photo is held on a nudity flag, or this server has no photo
+    # storage configured - because none of them is a fact a reader of a card
+    # can act on differently, and spelling them apart would tell a stranger
+    # that a held photo exists.
+    photo_url: str | None = None
+
     # ---- Withheld from the public. Null is "not for you", not "unset". ----
 
     reporter_id: str | None = None
@@ -114,11 +135,27 @@ class FieldNoteOut(BaseModel):
     # on the same grounds.
     posted_at: UtcDatetime | None = None
 
+    # Whether a photo is on this note but waiting on a person. Privileged
+    # only, and it is what lets the moderation queue offer the glance the
+    # hold is waiting for. A public reader gets `photo_url: null` and no
+    # hint that anything is behind it - "there is a held photo here" is a
+    # sentence only the author and a moderator have any use for.
+    photo_held: bool = False
+
     @classmethod
     def for_viewer(cls, note: "FieldNote", viewer: "Profile | None") -> "FieldNoteOut":
         privileged = viewer is not None and (note.reporter_id == viewer.id or viewer.role in MODERATOR_ROLES)
+        held = note_photo_held(note)
+        # A held photo is served to the author and to moderators and to
+        # nobody else: the author because it is theirs and they should see
+        # what is waiting, a moderator because looking IS the review the hold
+        # exists for. Everyone else reads the note without it, which is the
+        # state every note was in before this shipped.
+        shows_photo = note.photo_uploaded_at is not None and (not held or privileged)
         return cls(
             id=note.id,
+            photo_url=note_photo_url(note) if shows_photo else None,
+            photo_held=held if privileged else False,
             poi_id=note.poi_id,
             lat=note.lat,
             lon=note.lon,
@@ -130,6 +167,22 @@ class FieldNoteOut(BaseModel):
             reporter_id=note.reporter_id if privileged else None,
             posted_at=note.posted_at if privileged else None,
         )
+
+
+def note_photo_url(note: "FieldNote") -> str | None:
+    """A short-lived link to this note's photo, or null.
+
+    Null rather than a raised error when storage is not configured: a
+    deployment without a photo bucket still serves notes, and a card that
+    500s because a picture is missing would cost a hiker the sentence about
+    the spring to protect a photo of it.
+    """
+    if not photo_storage_configured():
+        return None
+    try:
+        return presigned_object_url(note_photo_key(note.id))
+    except Exception:  # noqa: BLE001 - see the docstring: never fatal.
+        return None
 
 
 class NoteFlagCreate(BaseModel):

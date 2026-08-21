@@ -52,6 +52,7 @@ vi.mock('../lib/api', () => {
     reviewPhoto: vi.fn(),
     dismissPhoto: vi.fn(),
     fetchNoteQueue: vi.fn(),
+    reviewNotePhoto: vi.fn(),
     hideFieldNote: vi.fn(),
     unhideFieldNote: vi.fn(),
     fetchHoursQueue: vi.fn(),
@@ -79,6 +80,7 @@ function aNote({ note, ...rest }: NoteOverrides = {}): api.NoteQueueEntry {
       observed_at: new Date().toISOString(),
       reporter_type: 'thru',
       reporter_id: 'account-7',
+      photo_url: null,
       ...note,
     },
     flag_count: 1,
@@ -212,6 +214,35 @@ describe('the flagged-notes section', () => {
     expect(rows[0].textContent).toMatch(/5 people flagged this/)
     expect(rows[1].textContent).toMatch(/1 person flagged this/)
     expect(rows[2].textContent).toMatch(/no hiker sees this/i)
+  })
+
+  it('makes a held photo wait to be asked for, then lets it through', async () => {
+    // The hold exists because the phone thought there was nudity in it. A
+    // queue that rendered twenty of those as thumbnails would have decided
+    // that scrolling past is the same act as looking.
+    await shown([aNote({ note: { photo_url: 'https://x/held.jpg', photo_held: true } })])
+
+    const notes = await section(/field notes people flagged/i)
+    expect(within(notes).queryByRole('img')).toBeNull()
+    expect(
+      within(notes).getByText(/the note is public and its photo is not/i),
+    ).toBeTruthy()
+
+    await userEvent.click(within(notes).getByRole('button', { name: /show the photo/i }))
+    expect(within(notes).getByRole('img')).toBeTruthy()
+
+    await userEvent.click(within(notes).getByRole('button', { name: /let it through/i }))
+    await waitFor(() => expect(mocked.reviewNotePhoto).toHaveBeenCalledWith('note-1'))
+  })
+
+  it('draws a photo nobody is holding straight away', async () => {
+    await shown([aNote({ note: { photo_url: 'https://x/open.jpg', photo_held: false } })])
+
+    const notes = await section(/field notes people flagged/i)
+    // Already public on every card. Hiding it from the one person who might
+    // take it down would protect nobody.
+    expect(within(notes).getByRole('img')).toBeTruthy()
+    expect(within(notes).queryByRole('button', { name: /let it through/i })).toBeNull()
   })
 
   it('says the notes queue is unread rather than empty, and only for itself', async () => {

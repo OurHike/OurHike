@@ -236,13 +236,67 @@ def check_manifest(manifest: dict | None) -> dict:
     return _report(1, "latest.json", OK, f"{len(artifacts)} artifacts, every one with a sha256")
 
 
-def check_client_keys(manifest: dict) -> list[dict]:
-    """2. Every key the CLIENT will request exists in the release."""
+def withdrawn_tier_keys(packages_ts: str | None = None, config_ts: str | None = None) -> set[str]:
+    """The object keys behind every WITHDRAWN sheet in packages.ts.
+
+    `config.ts` still names these keys and that is correct - a hiker who
+    already downloaded the sheet still has to resolve it - so check 2 was
+    conflating two claims: *the app will request this* and *the app can still
+    resolve this for someone who already has it*. A withdrawn sheet is only
+    the second (#854, after #855 withdrew the USGS raster). Read from
+    `packages.ts` rather than kept as a list here, for the reason
+    `expected_client_keys` reads config.ts: the client's own source is the
+    one home, and a hand copy is the drift this family of checks exists to
+    catch.
+
+    The only mappable package today is the tiered background; a withdrawn
+    sheet naming any other package raises, so a future withdrawal fails this
+    loudly instead of quietly checking the wrong keys.
+    """
+    source = packages_ts if packages_ts is not None else _read("packages.ts")
+    keys: set[str] = set()
+    for sheet in re.findall(r"\{[^{}]*?withdrawn:\s*true[^{}]*?\}", source, re.DOTALL):
+        packages = re.search(r"packages:\s*\[([^\]]*)\]", sheet)
+        names = re.findall(r"\w+", packages.group(1)) if packages else []
+        for name in names:
+            if name == "CORRIDOR_BACKGROUND_PACKAGE":
+                keys.update(archive_keys(config_ts).values())
+            else:
+                raise ValueError(
+                    f"a withdrawn sheet in packages.ts names {name}, which this check cannot map "
+                    "to object keys - update withdrawn_tier_keys rather than letting it check "
+                    "the wrong ones"
+                )
+    return keys
+
+
+def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts: str | None = None) -> list[dict]:
+    """2. Every key the CLIENT will request exists in the release.
+
+    A key whose sheet is withdrawn (#855) is held to a weaker claim: no new
+    request will ever be made for it, so its absence from a release is a
+    named SKIPPED - never OK, which would erase the declaration, and never
+    FAILED, which is what made every UA run un-passable (#854). Its
+    *presence* still reports OK: publishing bytes a phone may be carrying is
+    exactly right.
+    """
     published = set((manifest.get("artifacts") or {}).keys())
+    withdrawn = withdrawn_tier_keys(packages_ts, config_ts)
     reports = []
-    for key in expected_client_keys():
+    for key in expected_client_keys(config_ts):
         if key in published:
             reports.append(_report(2, key, OK, "the client asks for this and the release has it"))
+        elif key in withdrawn:
+            reports.append(
+                _report(
+                    2,
+                    key,
+                    SKIPPED,
+                    "absent, and its sheet is marked `withdrawn` in client/src/lib/packages.ts - "
+                    "the app makes no new request for it, so only a phone already holding it "
+                    "resolves this key, and it resolves locally",
+                )
+            )
         else:
             reports.append(
                 _report(
@@ -1128,6 +1182,20 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
     zooms = {"light": 11, "standard": 12, "fine": 13}
     for tier, key in tiers.items():
         if key not in artifacts:
+            # SKIPPED, never silence (#854, the same defect #653 fixed for
+            # checks 6 and 11 by another route). This used to `continue`, so
+            # checks 9, 12 and 18 emitted no report at all for a missing
+            # tier - and they exist to interrogate the raster tiers, which
+            # go absent precisely when something is wrong, or, since #855's
+            # withdrawal, on every ordinary release. A verdict that
+            # under-reports its own coverage reads "did not ask" as "asked
+            # and was satisfied", and --strict cannot escalate a report that
+            # does not exist.
+            absent = "this tier is not in the release, so there is nothing to open"
+            reports.append(_report(9, key, SKIPPED, absent))
+            reports.append(_report(12, key, SKIPPED, absent))
+            if tier in sizes:
+                reports.append(_report(18, key, SKIPPED, absent))
             continue
         reports.append(check_pmtiles_zooms(base, key, zooms.get(tier), session))
         reports.append(check_tile_decodes(base, key, session))

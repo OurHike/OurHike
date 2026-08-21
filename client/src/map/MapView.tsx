@@ -59,6 +59,7 @@ import {
   attachWorkdayTaps,
   type WorkdayPoint,
 } from './workdayLayers'
+import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
 import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
@@ -185,6 +186,15 @@ export interface MapViewProps {
    *  `onSelectPoi`. */
   onSelectWorkday?: (projectId: string) => void
   /**
+   * Places the field says are not there (#876), already joined to their
+   * coordinates by the shell.
+   *
+   * No tap of its own: the mark annotates a waypoint, and tapping a waypoint
+   * already opens the card that says the sentence. A second tap target on
+   * the same pixels would be two answers to one touch.
+   */
+  disputes?: readonly DisputePoint[]
+  /**
    * The route being built, already in map coordinates - same division as
    * `closures`: turning miles into geometry needs the centerline index,
    * which the shell holds. Null (or absent) clears the drawing.
@@ -292,7 +302,7 @@ export interface MapViewProps {
    * across renders (useCallback) - an inline function would re-subscribe on
    * every render of the parent.
    */
-  onViewportChange?: (bbox: BoundingBox) => void
+  onViewportChange?: (bbox: BoundingBox, fromGesture: boolean) => void
   /**
    * The live map, handed over on build and `null` on teardown, so the shell
    * can move the camera imperatively. `center` cannot do that job - it seeds
@@ -335,6 +345,7 @@ const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
+const NO_DISPUTES: readonly DisputePoint[] = []
 
 export function MapView({
   topoArchiveUrl,
@@ -358,6 +369,7 @@ export function MapView({
   onSelectAtcUpdate,
   warnings = NO_WARNINGS,
   workdays = NO_WORKDAYS,
+  disputes = NO_DISPUTES,
   onSelectWorkday,
   routeDrawing = null,
   onRouteTap,
@@ -773,6 +785,18 @@ export function MapView({
     return attachWorkdayData(map, workdays)
   }, [map, workdays])
 
+  // The dispute marks (#876): the image once, the places whenever the shell's
+  // join changes. No tap effect - see the prop.
+  useEffect(() => {
+    if (map === null) return
+    return attachDisputeIcon(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachDisputeData(map, disputes)
+  }, [map, disputes])
+
   useEffect(() => {
     // Not attached during route building, for attachRouteTaps' rule: one
     // interpreter per touch, and while a route is being drawn every tap on
@@ -830,18 +854,28 @@ export function MapView({
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return
 
-    const report = () => {
+    // `fromGesture` separates a move the HIKER made from one the app made, and
+    // MapLibre already knows which: an event carries `originalEvent` only when
+    // a pointer, a wheel or a touch drove it, while jumpTo/fitBounds carry
+    // none. The elevation ribbon needs the distinction (#910) - panning to the
+    // Whites should retune the ribbon, while the shell re-framing the camera
+    // after a download should not take the ribbon off the hiker.
+    const report = (event?: { originalEvent?: unknown }) => {
       const bounds = map.getBounds()
-      onViewportChange({
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-      })
+      onViewportChange(
+        {
+          west: bounds.getWest(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          north: bounds.getNorth(),
+        },
+        event?.originalEvent != null,
+      )
     }
 
     // Reported once up front as well as on every move, so the legend is
-    // correct for the opening view rather than only after the first pan.
+    // correct for the opening view rather than only after the first pan. Not a
+    // gesture: nobody has touched anything yet.
     report()
     map.on('moveend', report)
     return () => {

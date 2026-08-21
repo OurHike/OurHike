@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   API_CONFIGURED,
   fetchClosures,
+  fetchDisputes,
   fetchFieldNotes,
   fetchReports,
   type ClosureSummary,
@@ -28,6 +29,7 @@ import {
 import {
   fetchPublishedAtcUpdates,
   fetchPublishedClosures,
+  fetchPublishedDisputes,
   fetchPublishedDrought,
   fetchPublishedFieldNotes,
   fetchPublishedReports,
@@ -35,6 +37,7 @@ import {
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
+import type { DisputeSummary } from './disputes'
 import type { NoteSummary } from './fieldNotes'
 import type { WorkProjectSummary } from './workProjects'
 
@@ -66,6 +69,12 @@ export interface Conditions {
    * unconfirmed.
    */
   notes: readonly NoteSummary[] | null
+  /**
+   * Places the field says are not there (#876), corroborated - null is "we
+   * have not managed to ask", which must never render as "nobody disputes
+   * this" (#249's distinction, again).
+   */
+  disputes: readonly DisputeSummary[] | null
   /** The states behind those lists, for the "as of" the strip prints. */
   closureState: ConditionState<ClosureSummary>
   reportState: ConditionState<ReportSummary>
@@ -127,6 +136,11 @@ export function useConditions(online: boolean): Conditions {
   const [reportState, setReportState] =
     useState<ConditionState<ReportSummary>>(UNAVAILABLE)
   const [noteState, setNoteState] = useState<ConditionState<NoteSummary>>(UNAVAILABLE)
+  // Disputes ride the same two tiers as the notes they are computed from,
+  // and get the same state machine for the same reason: a live read wins
+  // whenever it lands, and until one does the baseline is what a hiker has.
+  const [disputeState, setDisputeState] =
+    useState<ConditionState<DisputeSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
@@ -247,6 +261,13 @@ export function useConditions(online: boolean): Conditions {
     // The volunteer workdays (#760). Reviewed-file data like the ATC
     // notices, so a plain set - and the generated_at travels because the
     // 48-hour opportunity ceiling is judged against it.
+    void fetchPublishedDisputes(undefined, how).then((published) => {
+      if (cancelled || published === null) return
+      setDisputeState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
+    })
+
     void fetchPublishedWorkProjects(undefined, how).then((published) => {
       if (cancelled || published === null) return
       setWorkProjects(published.items)
@@ -318,6 +339,17 @@ export function useConditions(online: boolean): Conditions {
       stamp()
     }, leaveUnknown)
 
+    // Disputes (#876). Its own read rather than something derived from the
+    // notes above, and that is the design rather than an extra request:
+    // corroboration counts distinct ACCOUNTS, and the notes on this phone
+    // carry no `reporter_id` to count. The verdict is computed where the
+    // identities are and travels as a count.
+    void fetchDisputes().then((next) => {
+      if (cancelled) return
+      setDisputeState(withLive(next))
+      stamp()
+    }, leaveUnknown)
+
     return () => {
       cancelled = true
     }
@@ -332,6 +364,7 @@ export function useConditions(online: boolean): Conditions {
     closures: itemsOf(closureState),
     reports: itemsOf(reportState),
     notes: itemsOf(noteState),
+    disputes: itemsOf(disputeState),
     closureState,
     reportState,
     noteState,

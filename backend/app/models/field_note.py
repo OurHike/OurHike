@@ -126,6 +126,47 @@ class FieldNote(Base):
     hidden_at = Column(DateTime, nullable=True, index=True)
     hidden_by = Column(String, ForeignKey("profiles.id"), nullable=True)
 
+    # The photo DATA_NUDGES.md's opted-in mode promises (#879), and the three
+    # columns that make publishing it immediately defensible.
+    #
+    # **Publish-now, screened on device** - the maintainer's 2026-08-21
+    # decision. A note is public the moment it lands and its photo goes with
+    # it, because a photo that arrives days after the note it illustrates is
+    # not evidence of what the note says. There is deliberately NO cooling-off
+    # window here, unlike a community share: the note is the unit, and a
+    # picture appearing two hours after the sentence it belongs to would be a
+    # card that changes its story while a hiker reads it.
+    #
+    # `photo_uploaded_at` is null until the bytes land - the same two-phase
+    # flush every photo in this app uses, because the row and the bytes are
+    # two requests and the second one is the one with no signal.
+    photo_uploaded_at = Column(DateTime, nullable=True)
+
+    # What the phone's own check found (lib/photoScreen.ts), or null for
+    # "nothing found OR could not look" - one value on purpose, because the
+    # queued note must not distinguish them. It never decides anything: #837's
+    # posture is flag, never block.
+    photo_flagged = Column(String, nullable=True)
+
+    # The one human glance a nudity flag waits on, mirroring PoiPhoto's
+    # `reviewed_at` in name and meaning rather than inventing a second
+    # vocabulary. `poi_photos.py`'s `_held()` is the rule this copies: only
+    # the nudity case is held, a face flag sorts the queue and publishes.
+    photo_reviewed_at = Column(DateTime, nullable=True)
+    photo_reviewed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+
+def note_photo_held(note: "FieldNote") -> bool:
+    """Whether this note's photo is waiting on a person before anyone sees it.
+
+    The narrow hold the decided posture allows, reaching only what the phone
+    itself flagged as nudity. A face flag is not held: it orders the queue.
+    Spelled as a function rather than a column so the rule lives in one place
+    - `poi_photos.py` learned that the hard way with its three-valued-logic
+    complement.
+    """
+    return note.photo_flagged == "nudity" and note.photo_reviewed_at is None
+
 
 class NoteFlag(Base):
     """One reader saying a note needs a moderator's eyes.

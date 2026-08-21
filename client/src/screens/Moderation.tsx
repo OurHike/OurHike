@@ -79,6 +79,7 @@ import {
   fetchReportPhotoLink,
   hideFieldNote,
   pinPhoto,
+  reviewNotePhoto,
   reviewPhoto,
   unhideFieldNote,
   unpinPhoto,
@@ -284,6 +285,69 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
         setRequest((n) => n + 1)
       }}
     />
+  )
+}
+
+/** A note's photo in the queue, and the glance a held one is waiting for
+ *  (#879).
+ *
+ *  **A held photo waits to be asked for**, exactly as a `bad_hikers` report's
+ *  does above and for the same reason: the hold exists because the phone
+ *  thought there was nudity in it, and a queue that renders twenty of those
+ *  as thumbnails has decided that a moderator scrolling past is the same act
+ *  as a moderator looking. Waiting for a tap is the answer that can be undone
+ *  later; a wall of them is not.
+ *
+ *  An unheld photo draws straight away. It is already public on every card -
+ *  hiding it from the one person who might take it down would protect
+ *  nobody. */
+function NoteQueuePhoto({
+  entry,
+  busy,
+  onPublish,
+}: {
+  entry: NoteQueueEntry
+  busy: boolean
+  onPublish: () => void
+}) {
+  const [revealed, setRevealed] = useState(false)
+  const held = entry.note.photo_held === true
+  const url = entry.note.photo_url
+
+  if (url === null || url === undefined) return null
+
+  if (held && !revealed) {
+    return (
+      <div className="moderation__photo">
+        <button type="button" onClick={() => setRevealed(true)}>
+          Show the photo
+        </button>
+        <p className="moderation__attachment">
+          The phone flagged this one, so nobody has seen it yet — the note is public and
+          its photo is not. The check is often wrong about this, and it decided nothing.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="moderation__photo">
+      <img
+        className="moderation__photo-image"
+        src={url}
+        alt="Attached to this field note"
+      />
+      {held && (
+        <>
+          <p className="moderation__attachment">
+            Still held: no hiker can see this until somebody says it is fine.
+          </p>
+          <button type="button" disabled={busy} onClick={onPublish}>
+            It is fine — let it through
+          </button>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -598,6 +662,13 @@ export function Moderation({ onClose }: ModerationProps) {
             ))}
           </ul>
         )}
+        <NoteQueuePhoto
+          entry={entry}
+          busy={busy === note.id}
+          onPublish={() =>
+            void actIn(note.id, () => reviewNotePhoto(note.id), setNotesFailed)
+          }
+        />
         {entry.hidden && (
           <p className="moderation__note moderation__note--flagged">
             Removed. No hiker sees this, and the next bake drops it from the published

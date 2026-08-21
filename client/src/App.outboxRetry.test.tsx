@@ -40,6 +40,8 @@ vi.mock('./lib/api', () => ({
   fetchReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
+  // Disputes ride the same read as the notes they are computed from (#876).
+  fetchDisputes: vi.fn(async () => []),
   // The role read (#235). Same reason as the two above: App asks once per
   // sign-in, and a mock without it makes the whole screen throw on mount.
   fetchMyProfile: vi.fn(async () => ({ id: 'p-1', role: 'hiker', display_name: null })),

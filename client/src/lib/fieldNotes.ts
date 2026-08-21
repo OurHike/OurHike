@@ -31,19 +31,41 @@ export function isNoteScopedType(poiType: string): poiType is NoteScopedType {
  * this table is where the pairing actually lives, and the picker only ever
  * offers a type its place can wear.
  *
- * `not_found` - the dispute value - is deliberately NOT offered here yet.
- * FIELD_NOTES.md §4's corroboration, decay and existence-axis rendering are
- * their own build; a button that files disputes before anything renders or
- * decays them would collect claims nobody can see or retract.
+ * `not_found` - the dispute value - is offered on every scoped type as of
+ * #876, and the order it arrived in was deliberate: this comment used to say
+ * it was withheld until "corroboration, decay and existence-axis rendering"
+ * existed, because a button that files disputes before anything renders or
+ * decays them collects claims nobody can see or retract. Those exist now
+ * (lib/disputes.ts here, core/disputes.py on the server), so the button can.
+ *
+ * **It is offered on low-confidence POIs too**, which FIELD_NOTES.md §4 left
+ * open. A hiker standing where an unverified spring should be cannot tell
+ * "upstream never confirmed this" from "it is gone", and asking them to is
+ * asking them to know our data's provenance. The place that answer is
+ * weighed differently is the card's wording, not the picker.
  */
 export type WaterObservation = 'flowing' | 'trickling' | 'dry'
 export type ShelterObservation = 'fine' | 'damaged' | 'full'
 export type ResupplyObservation = 'open' | 'limited' | 'closed'
-export type NoteObservation = WaterObservation | ShelterObservation | ResupplyObservation
+/** The one value every type shares: the field contradicting upstream on
+ *  upstream's own ground (#876). */
+export type DisputeObservation = 'not_found'
+export type NoteObservation =
+  WaterObservation | ShelterObservation | ResupplyObservation | DisputeObservation
 
 export interface ObservationOption {
   id: NoteObservation
   label: string
+}
+
+const NOT_FOUND: ObservationOption = {
+  id: 'not_found',
+  // "Not here" rather than "missing" or "gone": it is what the hiker can
+  // actually see from where they are standing, and it does not ask them to
+  // claim it was ever there. Last in every list, because it is the answer to
+  // a different question from the three above it - those describe a place,
+  // this one says there is no place to describe.
+  label: 'Not here',
 }
 
 export const OBSERVATION_OPTIONS: Record<NoteScopedType, ObservationOption[]> = {
@@ -51,21 +73,25 @@ export const OBSERVATION_OPTIONS: Record<NoteScopedType, ObservationOption[]> = 
     { id: 'flowing', label: 'Flowing' },
     { id: 'trickling', label: 'Trickling' },
     { id: 'dry', label: 'Dry' },
+    NOT_FOUND,
   ],
   shelter: [
     { id: 'fine', label: 'Fine' },
     { id: 'damaged', label: 'Damaged' },
     { id: 'full', label: 'Full' },
+    NOT_FOUND,
   ],
   campsite: [
     { id: 'fine', label: 'Fine' },
     { id: 'damaged', label: 'Damaged' },
     { id: 'full', label: 'Full' },
+    NOT_FOUND,
   ],
   resupply: [
     { id: 'open', label: 'Open' },
     { id: 'limited', label: 'Limited stock' },
     { id: 'closed', label: 'Closed' },
+    NOT_FOUND,
   ],
 }
 
@@ -84,7 +110,7 @@ export function observationLabel(observation: string): string {
     open: 'Open',
     limited: 'Limited stock',
     closed: 'Closed',
-    not_found: 'Reported missing',
+    not_found: 'Not here',
   }
   return labels[observation] ?? observation
 }
@@ -129,6 +155,17 @@ export interface FieldNoteDraft {
   observation?: NoteObservation
   note?: string
   reporter_type: 'thru' | 'section' | 'day' | 'maintainer'
+  /**
+   * What the phone's own check found before the photo left it (#879, and
+   * lib/photoScreen.ts for the check itself), or absent for "nothing found
+   * OR could not look" - one value on purpose, because a note whose screen
+   * failed must be indistinguishable from one whose screen was clean.
+   *
+   * Travels on the NOTE rather than with the bytes, because the note is what
+   * the outbox flushes first: a verdict arriving after the photo would be a
+   * hold applied to something already public.
+   */
+  photo_flagged?: 'nudity' | 'faces'
 }
 
 /**
@@ -149,4 +186,22 @@ export interface NoteSummary {
   /** ISO timestamp, `...Z`-stamped by the server and by the bake alike. */
   observed_at: string
   reporter_type: 'thru' | 'section' | 'day' | 'maintainer'
+  /**
+   * The note's photo (#879), presigned and short-lived, or null.
+   *
+   * Null covers four things at once and deliberately does not distinguish
+   * them: no photo was attached, the bytes never landed, the photo is held
+   * on a nudity flag until a person looks, or the server has no photo
+   * storage. None of them is a fact a reader of a card can act on
+   * differently, and telling them apart would tell a stranger that a held
+   * photo exists.
+   *
+   * Optional as well as nullable, and the two mean different things - the
+   * live read always sends the key, and `conditions/notes.json` baked before
+   * this shipped omits it. The baseline omits it deliberately going forward
+   * too: a presigned URL in a file that is cached for a day is a link that
+   * is dead before most readers get to it (the same asymmetry #436 records
+   * for baseline report photos).
+   */
+  photo_url?: string | null
 }

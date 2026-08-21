@@ -42,6 +42,8 @@ vi.mock('./lib/api', () => ({
   permanentFailureReason: vi.fn(() => null),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
+  // Disputes ride the same read as the notes they are computed from (#876).
+  fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
 }))
 
@@ -484,9 +486,8 @@ describe('the planning flow', () => {
 // lib/planRibbon.test.ts and ElevationRibbon.test.tsx cover between them: WHICH
 // ribbon the shell hands the map screen, and what goes with it. Two claims:
 // planning swaps the fix-anchored ribbon for the planned stretch, and the
-// waypoint lanes go with it - re-windowed onto that stretch and placed from
-// the pipeline's published miles - rather than staying behind under a profile
-// of different ground.
+// waypoint lanes leave with it rather than staying behind under a profile of
+// different ground.
 describe('the ribbon while a trip is being planned', () => {
   /** A profile over the synthetic centerline's own 40 miles, on the PIPELINE
    *  axis the plan runs on - a 1,000 ft climb between miles 15 and 17 so the
@@ -504,6 +505,8 @@ describe('the ribbon while a trip is being planned', () => {
 
   const planRibbon = () => screen.queryByRole('img', { name: /stretch being planned/i })
   const fixRibbon = () => screen.queryByRole('img', { name: /elevation profile ahead/i })
+  const wholeTrailRibbon = () =>
+    screen.queryByRole('img', { name: /profile of the whole trail/i })
 
   it('draws the stretch as soon as the entrance has resolved two ends', async () => {
     const user = userEvent.setup()
@@ -513,8 +516,11 @@ describe('the ribbon while a trip is being planned', () => {
 
     await openEntrance(user)
 
-    // A start alone is not a stretch, and half a stretch has no shape.
+    // A start alone is not a stretch. With nothing selected the ribbon is the
+    // whole trail (#910 review) - the desk's resting view, on a phone - and
+    // that is not the planned stretch, which is what the name has to say.
     expect(planRibbon()).not.toBeInTheDocument()
+    expect(wholeTrailRibbon()).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
@@ -556,12 +562,11 @@ describe('the ribbon while a trip is being planned', () => {
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
 
-    // The swap. The lanes are re-windowed onto the planned stretch rather
-    // than left behind under a profile of other ground - and they are
-    // re-windowed on the PIPELINE's axis, which is what the count proves.
-    // Front Shelter (3.2) to Beyond Shelter (22.2) holds all four shelters;
-    // read on the client index's own miles, the 3.0 that starts the stretch
-    // would fall outside it and only three would be drawn.
+    // The swap. The lanes are re-windowed onto the planned stretch rather than
+    // dropped (#913) - and onto the PIPELINE's axis, which is what the count
+    // proves: Front Shelter (3.2) to Beyond Shelter (22.2) holds all four,
+    // where reading the client index's own miles would put the 3.0 that starts
+    // the stretch outside it and draw three.
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
     expect(fixRibbon()).not.toBeInTheDocument()
     await waitFor(() =>
@@ -570,16 +575,11 @@ describe('the ribbon while a trip is being planned', () => {
       ).toHaveLength(4),
     )
 
-    console.log(
-      'LANES',
-      within(screen.getByTestId('lane-sleep'))
-        .getAllByRole('button')
-        .map((b) => `${b.textContent} @ ${b.getAttribute('style')}`),
-    )
     // And the first of them sits exactly at the ribbon's left edge, because
     // the stretch starts at that shelter's published mile.
-    const pins = within(screen.getByTestId('lane-sleep')).getAllByRole('button')
-    expect(pins[0]).toHaveStyle({ left: '0%' })
+    expect(
+      within(screen.getByTestId('lane-sleep')).getAllByRole('button')[0],
+    ).toHaveStyle({ left: '0%' })
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
 
@@ -589,5 +589,105 @@ describe('the ribbon while a trip is being planned', () => {
     expect(
       within(screen.getByTestId('lane-sleep')).getAllByRole('button').length,
     ).toBeLessThan(4)
+  })
+
+  it('follows the map once the hiker pans it, and gives the fix back on request', async () => {
+    // The review's "always in sync". A pan is something the hiker just DID, so
+    // it outranks their fix - but only a real gesture does, and only until
+    // they ask for themselves back.
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData({ pois: POIS })
+    app.store.set(ELEVATION_STORE_KEY, profile())
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await app.reportFixAtMile(5)
+    await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
+    // One shelter is inside the ten-mile fix window; the pan below puts four
+    // on screen, which is what makes the lane counts tell the domains apart.
+    expect(within(screen.getByTestId('lane-sleep')).getAllByRole('button')).toHaveLength(
+      1,
+    )
+
+    const map = MockMap.live[0]
+
+    // A camera move the SHELL made carries no originalEvent, and must not take
+    // the ribbon off the hiker - otherwise every download re-frame would.
+    act(() => {
+      map.bounds = {
+        west: -77.5,
+        east: -76.5,
+        south: latOfMile(0),
+        north: latOfMile(30),
+      }
+      map.emit('moveend', {})
+    })
+    await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
+
+    // The hiker's own pan does.
+    act(() => {
+      map.emit('moveend', { originalEvent: new Event('pointerup') })
+    })
+
+    const mapRibbon = await screen.findByRole('img', {
+      name: /trail shown on the map/i,
+    })
+    expect(mapRibbon).toBeInTheDocument()
+    expect(fixRibbon()).not.toBeInTheDocument()
+    // The lanes go where the ribbon goes (#913): the mapped stretch holds all
+    // four shelters, where the fix window held one.
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+      ).toHaveLength(4),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back to me' }))
+
+    await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+      ).toHaveLength(1),
+    )
+  })
+
+  it("offers the chart's own framing buttons, and only the ones that would do something", async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(ELEVATION_STORE_KEY, profile())
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Resting on the whole trail: "Whole trail" would do nothing, and neither
+    // would framing a domain that IS the whole trail. So neither is offered.
+    await waitFor(() => expect(wholeTrailRibbon()).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Whole trail' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Zoom to stretch' }),
+    ).not.toBeInTheDocument()
+
+    // With a route being planned both are worth having, and "Zoom to stretch"
+    // frames the plan on the map.
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await screen.findByRole('dialog', { name: 'Plan a route' })
+    await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
+    await screen.findByRole('dialog', { name: 'Choose a stop' })
+    await user.type(screen.getByLabelText('Search for a stop'), 'front')
+    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await waitFor(() => expect(planRibbon()).toBeInTheDocument())
+
+    const before = MockMap.live[0].cameraMoves.length
+    await user.click(screen.getByRole('button', { name: 'Zoom to stretch' }))
+    expect(MockMap.live[0].cameraMoves.length).toBeGreaterThan(before)
+    expect(screen.getByRole('button', { name: 'Whole trail' })).toBeInTheDocument()
+
+    // And framing the map is not a gesture, so the ribbon stays on the plan
+    // rather than flipping to the viewport it just moved.
+    expect(planRibbon()).toBeInTheDocument()
   })
 })

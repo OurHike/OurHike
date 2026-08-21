@@ -65,12 +65,17 @@ const PROPS = {
   onSelectPoi: vi.fn(),
   onClosePoi: vi.fn(),
 
+  // The fix-anchored ribbon, which is what this screen's fixture has always
+  // been - now arriving with the `source` and `domain` lib/ribbonView.ts
+  // resolves (#910), because those decide which framing buttons appear.
   elevation: {
     samples: [
       { mile: 1400, elevationFt: 1200 },
       { mile: 1410, elevationFt: 1800 },
     ],
     currentMile: 1405,
+    source: 'ahead' as const,
+    domain: { startMile: 1400, endMile: 1410 },
   },
   waypoints: {
     points: [{ id: 'w1', type: 'water', mile: 1402 }],

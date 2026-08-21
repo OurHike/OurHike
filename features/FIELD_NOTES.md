@@ -155,7 +155,19 @@ question. So existence takes a third value rather than the map taking a fourth c
 | --- | --- | --- |
 | verified | upstream has it, nobody disputes it | solid pin |
 | unverified | `confidence: low` — never confirmed to exist | dashed pin |
-| **reported missing** | corroborated `not_found` notes | dashed pin, distinct marker |
+| **reported missing** | corroborated `not_found` notes | the pin it already has, plus a distinct mark beside it |
+
+*"Dashed pin, distinct marker" is what this row said until the build
+([#876](https://github.com/OurHike/OurHike/issues/876)), and the dashed half could not be
+delivered the obvious way.* The dash is driven by the feature's `confidence`, and
+`confidence` is exactly what the *"Verified?"* toggle below filters on — so rendering a
+disputed waypoint as `confidence: low` would let a hiker with that filter on lose the pin
+entirely, which is the one thing the suppression rule further down forbids. So the mark
+rides its own layer (`client/src/map/disputeLayers.ts`) and the pin keeps its own rim.
+That says **more** rather than less, and it is the distinction the card's sentences
+already make: a solid pin with the mark is a place ATC surveyed that hikers say is gone; a
+dashed pin with the mark is a place nobody ever confirmed that hikers also say is gone.
+Collapsing both into one dashed pin would have thrown that distinction away.
 
 The legend already treats confidence as something a hiker filters on (its *"Verified?"* toggle,
 `WIREFRAMES.md` §2 — it carried *"Unverified · 1"* rows until
@@ -212,6 +224,33 @@ future maintainer must reconcile forever. It becomes **ATC's field reporting cha
 which is value #2 (built by the community that built the trail) and value #6 (belongs to
 the trails, not the platform) implemented rather than asserted. The correction lands
 upstream, where every other consumer of that layer gets it too.
+
+**Built, and here is exactly how far it goes.** `pipeline/route_disputes.py`, run weekly by
+`route-disputes.yml`, joins the published `conditions/disputes.json` to the published
+`poi_*.geojson` (so a report names a place and a mile rather than a GUID) and then to
+[`sources.json`](../pipeline/sources.json) via `lib/source_registry.py`'s `POI_SOURCE_KEYS`
+— which is the join between the id namespace `export_poi.py` mints and the registry key
+SOURCE_REGISTRY.md's steward hangs off. It reads only public artifacts and holds no
+credentials, so it never learns who reported anything: `export_conditions.py` aggregates
+`reporter_id` away before the artifact it reads exists.
+
+Four limits, named here rather than left to be discovered:
+
+- **It opens an issue in this repository naming the steward; it does not email them.** A
+  script that mails a partner organization on a cron is a way to lose a partner
+  organization, and SOURCE_REGISTRY.md's `SourceContact` — where a real address would come
+  from — does not exist yet.
+- **It routes the corroborated-count half of the rule and not the maintainer half.**
+  `maintainer_assignments` is not in the conditions reader role's grant, so the nightly
+  bake cannot see who covers a mile; a covering maintainer's lone report reaches a phone
+  through the live read and never reaches the routing. Closing that means widening a grant
+  or giving the job a second door, and both are decisions rather than oversights.
+- **A disputed place already gone from the release is not filed at all.** Upstream removed
+  it, or POI_IDENTITY.md's ledger retired it; the dispute was right and is answered, and
+  asking for it again is how a routing job teaches its recipient to ignore it.
+- **A run that could not read every published POI file routes nothing and closes nothing.**
+  Telling a steward their layer is wrong on the strength of a failed GET is the
+  confidently-wrong report that gets this project's mail filtered.
 
 ## 5. Moderation: publish now, remove on flags
 
@@ -272,9 +311,14 @@ Four constraints specific to notes:
   withdrawable cannot go in one. `conditions/` is rewritten in place daily, so a hidden note
   clears within a day — the same honest cost `CONDITIONS_DELIVERY.md` §6 already accepts for
   a dismissed closure that lingers in the baseline.
-- **Photos stay backend-only**, presigned against the private bucket. Already decided for
-  reports, and for the same reason: a presigned URL expires in minutes and a baked one would
-  be broken by the time it was read.
+- **Photos stay out of the artifact**, presigned against the private bucket instead.
+  Already decided for reports, and for the same reason: a presigned URL expires in minutes
+  and a baked one would be broken by the time it was read. This is about the *baked* copy
+  only — a note photo is public with its note through the live read
+  ([#879](https://github.com/OurHike/OurHike/issues/879), §5's publish-now model). It has a
+  second reason here that reports do not have: a photo held by
+  [POI_PHOTOS.md](POI_PHOTOS.md)'s on-device screening is released or taken down after the
+  note is already visible, and a baked URL would outlive that decision by up to a day.
 - **Drop `reporter_id`**, and grant the reader role nothing on `profiles`, so the exporter
   could not resolve a person if a future edit tried to. This matters more here than for
   closures: many dated notes along a corridor from one identifier reconstruct a hike, which

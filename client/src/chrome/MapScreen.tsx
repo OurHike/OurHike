@@ -14,7 +14,7 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -22,7 +22,8 @@ import type { TabId } from './tabs'
 import { Legend, type BlazeCount } from './Legend'
 import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
-import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
+import { ElevationRibbon, type RibbonControl } from './ElevationRibbon'
+import type { RibbonView } from '../lib/ribbonView'
 import { ElevationChart, type ChartStretch } from './ElevationChart'
 import type { ChartDomain } from '../lib/chartProfile'
 import type { PaceProfile } from '../lib/pace'
@@ -41,6 +42,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
@@ -167,6 +169,8 @@ export interface MapScreenProps {
   workdays?: readonly WorkdayPoint[]
   /** Which workday a tap landed on. */
   onSelectWorkday?: (projectId: string) => void
+  /** Places the field says are not there (#876), joined to coordinates. */
+  disputes?: readonly DisputePoint[]
   /** The tapped workday's sheet, or null - the atcUpdateSheet pattern: the
    *  map answers which pin, the shell decides what to show. */
   workdaySheet?: ReactNode
@@ -300,15 +304,21 @@ export interface MapScreenProps {
   // ahead of you," which is a different and much worse claim than "we don't
   // have the profile for this stretch."
   //
-  // The shell decides WHICH ribbon this is (#910): the ten miles around the
-  // GPS fix, or - while the route builder is open - the stretch being planned,
-  // built by lib/planRibbon.ts and arriving with `subject: 'planned-stretch'`
-  // so the accessible name stops saying "ahead". This screen draws whichever
-  // it is given and does not distinguish them; the one thing that must hold is
-  // that `waypoints` came from the SAME window, because a hiker reads a pin as
-  // sitting under the part of the profile it belongs to. `lib/planRibbon.ts`
-  // builds both halves of the planning pair for exactly that reason.
-  elevation?: ElevationRibbonProps
+  // The shell decides WHICH ribbon this is (#910) - the route being planned,
+  // the map's own viewport, the ten miles around the GPS fix, or the whole
+  // trail - and lib/ribbonView.ts holds that precedence. What arrives here is
+  // the winner, already drawn-out, carrying its `source` and its `domain` so
+  // this screen can offer the right framing buttons and no others. The one
+  // thing that must hold is that `waypoints` came from the SAME domain (#913),
+  // because a hiker reads a pin as sitting under the part of the profile it
+  // belongs to; lib/ribbonView.ts builds both halves off one decision for
+  // exactly that reason, and refuses the lanes outright where they would
+  // stand for more trail than a place.
+  elevation?: RibbonView
+  /** Put the map back on the hiker, clearing the shell's "they took the map"
+   *  latch. Undefined without a fix to go back to, which is what hides the
+   *  button rather than offering one that would do nothing. */
+  onRibbonBackToMe?: () => void
   /**
    * The desktop's full elevation chart (#135), swapped in for the ribbon
    * above the breakpoint. Separate from `elevation` because the two answer
@@ -382,7 +392,7 @@ export interface MapScreenProps {
   zoom?: number
   /** Opening view as `[[west, south], [east, north]]`; wins over `center`. */
   bounds?: [[number, number], [number, number]]
-  onViewportChange?: (bbox: BoundingBox) => void
+  onViewportChange?: (bbox: BoundingBox, fromGesture: boolean) => void
   onMapReady?: (map: MapLibreMap | null) => void
   /** Why the drawn background is not the one in settings, if it isn't - see
    *  lib/dataSaver.ts. Passed down rather than computed here, so the decision
@@ -536,6 +546,7 @@ export function MapScreen({
   workdays,
   onSelectWorkday,
   workdaySheet,
+  disputes,
   atcUpdateSheet,
   onSelectLine,
   lineSheet,
@@ -577,6 +588,7 @@ export function MapScreen({
   onSelectPoi,
   onClosePoi,
   elevation,
+  onRibbonBackToMe,
   chart,
   waypoints,
   position,
@@ -748,6 +760,48 @@ export function MapScreen({
     [liveMap],
   )
 
+  /**
+   * The ribbon's framing buttons (#910 review) - the desktop chart's own, on
+   * the phone, driving the same `handleChartZoom` so the two surfaces frame
+   * ground identically.
+   *
+   * Which ones exist depends on what the ribbon is showing, and a button that
+   * would do nothing is not offered rather than offered and inert:
+   *
+   *   Zoom to stretch  Frames what the ribbon draws. Pointless when the ribbon
+   *                    IS the viewport ('map-view') or the whole trail, which
+   *                    is what "Whole trail" already does.
+   *   Whole trail      Frames the corridor. Pointless when that is already the
+   *                    domain.
+   *   Back to me       Only after the hiker has taken the map, and only when
+   *                    there is a fix to go back to - the shell decides the
+   *                    second half by withholding the callback.
+   *
+   * Framing the map is a programmatic move, so it carries no `originalEvent`
+   * and does not re-arm the shell's "they took the map" latch: tapping "Zoom
+   * to stretch" on the fix window moves the map to the hiker's ten miles and
+   * leaves the ribbon exactly where it was, which is the sync the review
+   * asked for rather than a fight between the two.
+   */
+  const ribbonControls = useMemo<RibbonControl[]>(() => {
+    if (elevation === undefined) return []
+    const source = elevation.source
+    const controls: RibbonControl[] = []
+    if (source === 'planned-stretch' || source === 'ahead') {
+      controls.push({
+        label: 'Zoom to stretch',
+        onClick: () => handleChartZoom(elevation.domain),
+      })
+    }
+    if (source !== 'whole-trail') {
+      controls.push({ label: 'Whole trail', onClick: () => handleChartZoom(null) })
+    }
+    if (source === 'map-view' && onRibbonBackToMe !== undefined) {
+      controls.push({ label: 'Back to me', onClick: onRibbonBackToMe })
+    }
+    return controls
+  }, [elevation, handleChartZoom, onRibbonBackToMe])
+
   // The same rows the legend builds, from the same arguments, so the canvas count
   // and the panel can never disagree - one arithmetic, two places it is said
   // (#528). `verifiedOnly` and `hiddenTypes` are passed for exactly that reason:
@@ -854,7 +908,14 @@ export function MapScreen({
             space, and pins re-anchored onto the chart's own zoomable axis is
             work #135 defers - drawing them misaligned would be worse than
             not drawing them (the exact trap that issue names). */}
-        {!isDesktop && elevation && <ElevationRibbon {...elevation} units={units} />}
+        {!isDesktop && elevation && (
+          <ElevationRibbon
+            {...elevation}
+            subject={elevation.source}
+            units={units}
+            controls={ribbonControls}
+          />
+        )}
         {!isDesktop && waypoints && (
           <WaypointLanes {...waypoints} onSelectPoi={onSelectPoi} />
         )}
@@ -886,6 +947,7 @@ export function MapScreen({
               onSelectAtcUpdate={onSelectAtcUpdate}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
+              disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
               onRouteTap={onRouteTap}

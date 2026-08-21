@@ -39,6 +39,11 @@ vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   set: vi.fn(),
+  // `trailData.ts` commits a release in ONE transaction since #657, so any
+  // double that reaches that path needs this call - without it the whole
+  // commit throws and the failure reads as "the download produced nothing"
+  // rather than as a missing mock.
+  setMany: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))

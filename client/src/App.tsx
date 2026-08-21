@@ -897,13 +897,37 @@ function App() {
   // The camera is deliberately NOT in this list. It is kept across the reload
   // instead (lib/cameraMemory.ts), because holding an update for as long as
   // someone is looking at a map would hold it for the whole hike.
+  //
+  // THIS LIST DRIFTED, and #657's audit caught it: every modal added since
+  // #311 forgot to join, so a pending reload could eat a half-typed trail
+  // name. The four that were missing are marked below. There is no mechanism
+  // stopping the next one from being forgotten the same way - a test cannot
+  // ask "is this every modal", because only a reader knows which pieces of
+  // state are worth a hiker's work - so the honest guard is this paragraph
+  // and the rule it states: **anything that holds something a hiker typed,
+  // or that they opened and would have to find again, belongs here.**
   const updateWouldCost =
     reporting !== null ||
     authFlow !== null ||
     downloadsOpen ||
     legendOpen ||
     searchOpen ||
-    selectedPoiId !== null
+    selectedPoiId !== null ||
+    // The trail-name prompt (#233): a half-typed name is exactly the case
+    // #311 was about, and it was the one missing.
+    collectingIdentity ||
+    // Two numbers being entered, and a screen that replaced More rather than
+    // covering it - reloading would land the hiker somewhere else entirely.
+    pickingHike ||
+    // A moderator part-way through a queue, whose place in it is state.
+    moderating ||
+    // The app-failure form (#848), which is somebody typing about the app
+    // having nearly got them lost - the last draft in this app worth losing.
+    reportingFailure ||
+    // The sheets: each is something the hiker opened and would have to find
+    // on the map again.
+    selectedAtcBandId !== null ||
+    selectedWorkdayId !== null
   useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
 
   useEffect(() => {

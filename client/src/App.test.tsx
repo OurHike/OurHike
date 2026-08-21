@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set, update } from 'idb-keyval'
+import { get, set, setMany, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { loadMapEngine } from './map/mapEngineLoader'
@@ -22,6 +22,11 @@ vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   set: vi.fn(),
+  // `trailData.ts` commits a release in ONE transaction since #657, so any
+  // double that reaches that path needs this call - without it the whole
+  // commit throws and the failure reads as "the download produced nothing"
+  // rather than as a missing mock.
+  setMany: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
@@ -53,6 +58,12 @@ beforeEach(async () => {
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
+    return Promise.resolve()
+  })
+  // Into the same store, so a test does not have to know which call wrote a
+  // key - the whole point of the one-transaction commit (#657).
+  vi.mocked(setMany).mockImplementation((entries) => {
+    for (const [key, value] of entries) store.set(key as string, value)
     return Promise.resolve()
   })
   vi.mocked(update).mockImplementation((key, updater) => {

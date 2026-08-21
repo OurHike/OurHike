@@ -88,7 +88,17 @@ export function useAppUpdate(
     // controller change means. On a first-ever visit the worker claims an
     // uncontrolled page, which is not an update and must not reload - that
     // would bounce every new visitor once for nothing.
-    const wasControlled = navigator.serviceWorker.controller !== null
+    // Mutable, and that is the fix rather than the style (#657). Captured
+    // once, this said "this page began uncontrolled" for the whole session -
+    // so a hiker on their first-ever visit, who then leaves the app open
+    // across a deploy, got the first `controllerchange` correctly ignored
+    // and every LATER one ignored too. A PWA can stay open for days, so
+    // "the rest of this session" is not a small window: that install would
+    // never take an update until it was closed and reopened.
+    //
+    // Flipped after the first change, because from then on the page IS
+    // controlled and a further change genuinely is a new deploy.
+    let wasControlled = navigator.serviceWorker.controller !== null
     let reloading = false
 
     /**
@@ -112,8 +122,11 @@ export function useAppUpdate(
     const onControllerChange = () => {
       // Not an update: on a first-ever visit the worker claims an
       // uncontrolled page, and reloading would bounce every new visitor once
-      // for nothing.
-      if (!wasControlled) return
+      // for nothing. Every change after that one is a real deploy.
+      if (!wasControlled) {
+        wasControlled = true
+        return
+      }
       pending.current = true
       reloadIfIdleNow()
     }

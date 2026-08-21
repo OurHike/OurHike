@@ -159,6 +159,35 @@ describe('crediting a delete the browser has not accounted for', () => {
     expect(await estimateAvailableBytes()).toBe(500_000)
   })
 
+  it('keeps the credit for BOTH of two deletes the browser has not caught up with', async () => {
+    // #657. `RELEASED_KEY`'s own comment promises "two deletes in a row are
+    // one lag to correct for", and overwriting delivered the opposite: a
+    // hiker who cleared a 1.1 GB sheet and then a 300 MB one, before the
+    // accounting moved for either, was credited 300 MB and refused a
+    // download that fit.
+    stubStorage({
+      estimate: () => Promise.resolve({ quota: 2_000_000, usage: 1_500_000 }),
+    })
+    recordReleased(300_000, 1_500_000)
+    recordReleased(200_000, 1_500_000)
+
+    // 500k by the browser's arithmetic, 1,000k in truth - both releases.
+    expect(await estimateAvailableBytes()).toBe(1_000_000)
+  })
+
+  it('does not double-count a release the browser HAS given back', async () => {
+    // The other half of accumulating: what carries forward is the
+    // outstanding lag, not the raw earlier figure. Usage fell by the whole
+    // first release before the second, so only the second is owed.
+    stubStorage({
+      estimate: () => Promise.resolve({ quota: 2_000_000, usage: 1_200_000 }),
+    })
+    recordReleased(300_000, 1_500_000)
+    recordReleased(200_000, 1_200_000)
+
+    expect(await estimateAvailableBytes()).toBe(1_000_000)
+  })
+
   it('cannot be inflated by usage rising for an unrelated reason', async () => {
     // Another tab filled the origin after the delete. The credit is capped at
     // what was released, so this reports less free space, never more.

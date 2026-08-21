@@ -228,7 +228,31 @@ function staleReleasedBytes(usage: number): number {
 export function recordReleased(bytes: number, usageAfter: number): void {
   if (bytes <= 0) return
   try {
-    const note: ReleaseNote = { bytes, usageAfter, at: Date.now() }
+    // ACCUMULATED, not overwritten (#657). `RELEASED_KEY`'s own comment
+    // promises this - "one key for the origin... two deletes in a row are one
+    // lag to correct for" - and overwriting delivered the opposite: deleting
+    // a 1.1 GB sheet and then a 300 MB one, before the browser's accounting
+    // had caught up with either, left a note claiming 300 MB and threw away
+    // the credit for the larger delete. A hiker who cleared space twice was
+    // then refused a download that fit.
+    //
+    // What carries forward is the part of the previous release the accounting
+    // has NOT yet given back - `staleReleasedBytes` measured against the usage
+    // reading taken just now, which is exactly the outstanding lag at this
+    // moment. Adding the raw previous `bytes` instead would double-count
+    // whatever the browser had already returned.
+    const outstanding = staleReleasedBytes(usageAfter)
+    const note: ReleaseNote = {
+      bytes: outstanding + bytes,
+      usageAfter,
+      // Reset rather than carried from the older note, which extends the
+      // earlier release's window. That is the direction RELEASE_TTL_MS's own
+      // docstring argues for: a stale credit's cost is bounded and "smaller
+      // than the cost of refusing a download that fits", and expiring the
+      // combined note on the older clock would cut short bytes released just
+      // now.
+      at: Date.now(),
+    }
     localStorage.setItem(RELEASED_KEY, JSON.stringify(note))
   } catch {
     // See the docstring.

@@ -69,7 +69,12 @@ import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
-import { loadPreferences, savePreferences } from './lib/preferences'
+import {
+  forgetPreferencesSync,
+  loadPreferences,
+  savePreferences,
+} from './lib/preferences'
+import { usePreferencesSync } from './lib/usePreferencesSync'
 import {
   hiddenTypesFrom,
   onlyType,
@@ -3335,7 +3340,28 @@ function App() {
 
   const handleSignOut = useCallback(async () => {
     await signOut()
+    // The preferences stay - they are this phone's, and a hiker who signs
+    // out should not watch their theme revert. What goes is the claim to
+    // have synced with an account this device no longer has (#891): leaving
+    // it would let the NEXT sign-in, possibly by somebody else on a shared
+    // handset, look like a device that had already synced, and take this
+    // one's settings for their account rather than the other way round.
+    await forgetPreferencesSync()
   }, [])
+
+  /**
+   * The account's preferences arriving, on a device that had none of them.
+   *
+   * Written straight to state and NOT through `updatePreferences`: that one
+   * marks the blob dirty, which would have this device push back what it
+   * just pulled on every launch for ever. `adoptPreferences` has already
+   * put these in IndexedDB with the account's own stamp.
+   */
+  const handleAdoptPreferences = useCallback((synced: UserPreferences) => {
+    setPreferences(synced)
+  }, [])
+
+  usePreferencesSync(preferences, account !== null, handleAdoptPreferences)
 
   // Signing in ends the sign-in flow, whichever way it completed - an email
   // form resolving in this tab, or a provider redirect landing back on a

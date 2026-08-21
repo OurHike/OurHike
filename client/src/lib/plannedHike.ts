@@ -11,8 +11,11 @@
 //
 // `UserPreferences` syncs to backend/app/schemas/preferences.py, which is
 // `extra="forbid"` - so a key invented on the client becomes a 422 the moment
-// somebody signs in. That is #242, already open and already filed once. A hike
-// is not a display setting anyway; it gets its own key.
+// somebody signs in. That was #242, fixed and now guarded by
+// backend/tests/test_preferences_contract.py, which round-trips the client's
+// real DEFAULT_PREFERENCES through the schema so the two field lists cannot
+// drift silently again. A hike is not a display setting anyway; it gets its
+// own key.
 //
 // WHY THE DIRECTION IS NOT STORED
 //

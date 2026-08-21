@@ -104,7 +104,26 @@ Three corollaries, and each one rules out a design that would otherwise be the o
 **Preferences — the whole blob, last write wins.** The server model is already exactly
 this: one JSON column, replaced wholesale on every `PUT`. Losing the older of two edits
 costs a toggle a hiker can flip again, and the blob is small enough that a field-level
-merge would be machinery bought with nothing. `updated_at` decides.
+merge would be machinery bought with nothing.
+
+*This paragraph used to end "`updated_at` decides", and the build
+([#891](https://github.com/OurHike/OurHike/issues/891)) found that it cannot, quite.* The
+obvious reading — stamp the local edit, compare it against the server's stamp — compares a
+phone's clock against a server's. A handset a day fast wins every conflict it ever has,
+silently; a handset a day slow loses every one; neither is detectable from the client. So
+`lib/preferencesSync.ts` compares the server's `updated_at` only against **itself** — the
+copy this device recorded at its last successful sync — which answers *"did another device
+move this"* with no second clock in the question, and pairs it with a local dirty flag
+answering *"did we"*. The one case that pair cannot separate is both, and it resolves toward
+the device in the hiker's hand, whose settings are the ones they can see being wrong.
+
+**One case is decided the other way from last-write-wins outright, deliberately: the first
+sync on a device adopts the account.** A hiker who installs OurHike on a second phone,
+clicks through onboarding and then signs in has local changes that are minutes old and an
+account blob that is weeks old — so a strict reading would push the defaults they just
+clicked through over the settings they signed in to get. What an install accumulated before
+it had an account is not a claim on that account. After that first sync the rule above
+applies normally.
 
 **Trips and the planned hike — per record, with tombstones, and both kept on a conflict.**
 The grain is the trip, not the day inside it. A trip is a `Segment` with an identity
@@ -263,10 +282,20 @@ should wait on those first two, or it will be written against a system nobody ca
 
 Five phases. Each is useful alone, and the first is genuinely small.
 
-**A. Preferences actually sync.** Wire `GET`/`PUT /preferences/me`, which already exist, to
-the local blob: pull on sign-in, push on change, last-write-wins on `updated_at`. It proves
-the whole loop — token, base URL, conflict rule, the offline no-op — against the one payload
+**A. Preferences actually sync. Built** — `lib/preferencesSync.ts` and
+`lib/usePreferencesSync.ts` ([#891](https://github.com/OurHike/OurHike/issues/891)). `GET`
+and `PUT /preferences/me` had been implemented, strictly validated and covered by two
+backend test files for months with **zero callers**; this is the calling half. Pull on
+sign-in, push on change, and the conflict rule as amended above. It proves the whole loop —
+token, base URL, conflict rule, the offline no-op, the sign-out — against the one payload
 where a wrong answer costs a toggle.
+
+Two things it deliberately does not do. There is **no visible surface**: nothing in the app
+says whether a sync ran, which is phase D's job and is why D exists. And a **422 is not
+swallowed** — every other failure here (no backend configured, signed out, no signal) is an
+ordinary condition of this app and is a silent no-op, but a 422 is the client sending a key
+the schema forbids, wholesale, for every hiker on their first sync. That is the one bug this
+endpoint has already had, and making it invisible a second time would be the worse error.
 
 The trap here is known and already guarded, which is worth stating because comments in the
 client still describe it as live: the schema is `extra="forbid"`, so a key the client invents

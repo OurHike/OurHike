@@ -24,6 +24,7 @@ import type { DisputeSummary } from './disputes'
 import type { NoteSummary } from './fieldNotes'
 import type { VolunteerHoursSummary } from './volunteerHours'
 import { PHOTO_CONTENT_TYPE } from './reportPhoto'
+import { PREFERENCE_KEYS, type UserPreferences } from './userPreferences'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -1066,4 +1067,79 @@ export async function reviewPhoto(photoId: string): Promise<PoiPhotoQueueEntry> 
 /** The takedown - "Refuse it" on the queue. */
 export async function dismissPhoto(photoId: string): Promise<PoiPhotoQueueEntry> {
   return photoQueueAction(photoId, 'dismiss')
+}
+
+// --- Preferences (#891, features/ACCOUNT_SYNC.md phase A) ------------------
+//
+// `GET`/`PUT /preferences/me` have been implemented, strictly validated and
+// covered by two backend test files since long before anything called them.
+// This is the calling half. The reconciliation - when to pull, when to push,
+// what a 404 means - is lib/preferencesSync.ts; these two functions are the
+// wire and nothing else.
+
+/** The synced blob as the server returns it: every preference, plus the one
+ *  field only the server can assign. */
+export interface SyncedPreferences extends UserPreferences {
+  updated_at: string
+}
+
+/**
+ * The account's preferences, or null when the account has none yet.
+ *
+ * **Null is not an error, and this is the one endpoint in this file where a
+ * 404 is a routine answer.** The router says so itself: *"404 until the
+ * client's first PUT establishes a row - there is nothing to sync down
+ * before that."* Every other read here throws on 404 because a missing
+ * resource means something went wrong; here it means the hiker has simply
+ * never synced.
+ *
+ * `authedFetch` rather than `readFetch`: these are one person's settings, so
+ * there is no anonymous answer to give.
+ */
+export async function fetchSyncedPreferences(
+  signal?: AbortSignal,
+): Promise<SyncedPreferences | null> {
+  try {
+    const response = await authedFetch('/preferences/me', { signal })
+    return (await response.json()) as SyncedPreferences
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
+  }
+}
+
+/**
+ * Replace the account's preferences with this device's.
+ *
+ * A full replace rather than a patch, matching the router's upsert. What is
+ * sent is exactly `PREFERENCE_KEYS` and nothing else: the schema is
+ * `extra="forbid"`, so one invented key is a 422 for this hiker's every
+ * sync, not a dropped field (#242). `pickSyncedPreferences` is what makes
+ * that true by construction rather than by remembering.
+ */
+export async function pushPreferences(
+  preferences: UserPreferences,
+): Promise<SyncedPreferences> {
+  const response = await authedFetch('/preferences/me', {
+    method: 'PUT',
+    body: JSON.stringify(pickSyncedPreferences(preferences)),
+  })
+  return (await response.json()) as SyncedPreferences
+}
+
+/**
+ * The blob reduced to the keys the schema knows.
+ *
+ * A guard against the one failure this endpoint has already had. Anything
+ * that ever hands a preferences-shaped object to `pushPreferences` - a
+ * spread with an extra property, a future local-only field - is stripped
+ * here rather than rejected wholesale by the server. `PREFERENCE_KEYS` is
+ * derived from `DEFAULT_PREFERENCES`, and the backend contract test pins
+ * that list against the schema, so this cannot quietly send too little
+ * either.
+ */
+function pickSyncedPreferences(preferences: UserPreferences): UserPreferences {
+  return Object.fromEntries(
+    PREFERENCE_KEYS.map((key) => [key, preferences[key]]),
+  ) as unknown as UserPreferences
 }

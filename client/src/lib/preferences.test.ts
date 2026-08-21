@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { get, set } from 'idb-keyval'
-import { loadPreferences, savePreferences, PREFERENCES_KEY } from './preferences'
+import {
+  adoptPreferences,
+  forgetPreferencesSync,
+  loadPreferences,
+  normalisePreferences,
+  preferencesSyncState,
+  recordPreferencesPush,
+  savePreferences,
+  PREFERENCES_KEY,
+  PREFERENCES_SYNC_KEY,
+} from './preferences'
 import { DEFAULT_PREFERENCES } from './userPreferences'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
@@ -147,6 +157,95 @@ describe('preferences', () => {
 
     expect((await loadPreferences()).reporter_type).toBe(
       DEFAULT_PREFERENCES.reporter_type,
+    )
+  })
+})
+
+// --- The sync bookkeeping (#891) -------------------------------------------
+//
+// Two writers of one blob, and the tests that matter are about telling them
+// apart. A local change must be pushable; an adopted one must not, or the
+// device pushes back what it just pulled on every launch for ever.
+
+describe('the sync bookkeeping', () => {
+  it('says a phone that has never synced has never synced', async () => {
+    // Null `syncedAt` is what makes a first sign-in adopt the account rather
+    // than overwrite it, so its absence is a fact rather than an empty value.
+    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: null })
+  })
+
+  it('marks a local change dirty', async () => {
+    await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+
+    expect((await preferencesSyncState()).dirty).toBe(true)
+  })
+
+  it('keeps the last sync stamp when a local change is made', async () => {
+    // The pair has to survive together: losing `syncedAt` on a local edit
+    // would make this device look never-synced, and a never-synced device
+    // pulls - which would throw away the very change that was just made.
+    await recordPreferencesPush('2026-08-21T10:00:00Z')
+    await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+
+    expect(await preferencesSyncState()).toEqual({
+      dirty: true,
+      syncedAt: '2026-08-21T10:00:00Z',
+    })
+  })
+
+  it('adopting the account is not a local change', async () => {
+    // The load-bearing one. `adoptPreferences` writing dirty would be an
+    // infinite push loop that nothing in the app would surface.
+    await adoptPreferences(
+      { ...DEFAULT_PREFERENCES, theme: 'dark' },
+      '2026-08-21T10:00:00Z',
+    )
+
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: '2026-08-21T10:00:00Z',
+    })
+    expect((await loadPreferences()).theme).toBe('dark')
+  })
+
+  it('signing out keeps the preferences and drops the claim to an account', async () => {
+    await adoptPreferences(
+      { ...DEFAULT_PREFERENCES, theme: 'dark' },
+      '2026-08-21T10:00:00Z',
+    )
+
+    await forgetPreferencesSync()
+
+    expect((await loadPreferences()).theme).toBe('dark')
+    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: null })
+  })
+
+  it('reads a corrupt bookkeeping entry as never-synced rather than trusting it', async () => {
+    // The safe direction: never-synced means the next sign-in pulls, which
+    // loses at most this device's unpushed edits. Reading a corrupt entry as
+    // "synced and dirty" would push those over the account instead.
+    await set(PREFERENCES_SYNC_KEY, { dirty: 'yes', syncedAt: 17 })
+
+    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: null })
+  })
+})
+
+describe('normalising a blob from somewhere else', () => {
+  it('repairs an account’s blob exactly as it repairs a stored one', async () => {
+    // The account is a second writer of this shape, and a blob that arrived
+    // over TLS is not thereby a blob this build can render.
+    const repaired = normalisePreferences({
+      theme: 'dark',
+      background_source: 'osm_styled_live' as never,
+    })
+
+    expect(repaired.theme).toBe('dark')
+    expect(repaired.background_source).toBe(DEFAULT_PREFERENCES.background_source)
+  })
+
+  it('fills in a key the account’s build did not have', async () => {
+    expect(normalisePreferences({}).wrong_way_alert_enabled).toBe(
+      DEFAULT_PREFERENCES.wrong_way_alert_enabled,
     )
   })
 })

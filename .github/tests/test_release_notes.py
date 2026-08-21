@@ -31,6 +31,7 @@ import re
 from pathlib import Path
 
 import pytest
+import release_notes
 import yaml
 from release_notes import (
     Change,
@@ -390,3 +391,68 @@ class TestTheReleaseWorkflows:
 
         assert workflow["permissions"] == {"contents": "read"}
         assert "secrets." not in _text("verify-release.yml")
+
+
+class TestResolveSpan:
+    """The commit range the notes describe (#905, from #860's incident).
+
+    The generator used to assume it always ran before the tag existed: the
+    span ended at HEAD unconditionally, and the default `previous` was the
+    newest tag - which, for an already-tagged version, is the version
+    itself. Both are the recovery case's bugs: notes for v1.0.1 drafted
+    after the tag would have described a release containing none of the
+    release."""
+
+    def _with_tags(self, monkeypatch, tags):
+        monkeypatch.setattr(release_notes, "_git", lambda *args: "\n".join(tags))
+
+    def test_the_ordinary_order_ends_at_head(self, monkeypatch):
+        self._with_tags(monkeypatch, ["v1.0.1", "v1.0.0"])
+
+        previous, until = release_notes.resolve_span("v1.1.0", None)
+
+        assert (previous, until) == ("v1.0.1", "HEAD")
+
+    def test_a_tagged_version_ends_at_its_own_tag_not_at_head(self, monkeypatch):
+        """The #860 recovery: the notes must describe exactly what the tag
+        contains, not what main has accumulated since it was cut."""
+        self._with_tags(monkeypatch, ["v1.0.1", "v1.0.0"])
+
+        previous, until = release_notes.resolve_span("v1.0.1", None)
+
+        assert until == "v1.0.1"
+
+    def test_the_default_previous_is_never_the_version_itself(self, monkeypatch):
+        """v1.0.1..HEAD for v1.0.1's own notes is the empty-release span the
+        old default produced."""
+        self._with_tags(monkeypatch, ["v1.0.1", "v1.0.0"])
+
+        previous, _ = release_notes.resolve_span("v1.0.1", None)
+
+        assert previous == "v1.0.0"
+
+    def test_an_explicit_previous_is_kept(self, monkeypatch):
+        self._with_tags(monkeypatch, ["v1.0.1", "v1.0.0"])
+
+        previous, until = release_notes.resolve_span("v1.0.1", "v1.0.0")
+
+        assert (previous, until) == ("v1.0.0", "v1.0.1")
+
+    def test_the_first_release_ever_has_no_previous_and_ends_at_head(self, monkeypatch):
+        self._with_tags(monkeypatch, [])
+
+        assert release_notes.resolve_span("v1.0.0", None) == (None, "HEAD")
+
+    def test_the_workflow_gate_refuses_existing_notes_not_existing_tags(self):
+        """The gate's old refusal blocked #860's prescribed remediation -
+        dispatching this workflow for a tag that has no notes. What must be
+        refused is re-drafting notes that exist; the tag existing alone is
+        the recovery case and gets a warning, not an exit."""
+        text = _text("release-notes.yml")
+
+        assert 'releases/"$VERSION"-*.md' in text
+        gate = text[text.index("Check the version has not already been released") :]
+        refusal = gate.index("::error::$VERSION already has its notes")
+        tag_check = gate.index('git rev-parse -q --verify "refs/tags/$VERSION"')
+        assert refusal < tag_check, "the notes-exist refusal must come first; the tag check only warns"
+        assert "::warning::$VERSION is already tagged and has no notes" in gate

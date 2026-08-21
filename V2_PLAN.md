@@ -537,7 +537,12 @@ as shipped has no page for it.
 **#438 — Document that the pooler username's prefix is the database role, not a literal `postgres`** ·
 **#478 — Upstream data freshness** ·
 **#732 — Published data smoke test** ·
-**#738 — Deployed app reachability**
+**#738 — Deployed app reachability** ·
+**#905 — Draft release notes refuses the recovery it exists for: a tag that has no notes**
+
+**#905 was filed and fixed 2026-08-21** — found executing #860's remediation, whose
+alerting half landed the same night (PR #904). It sits here because it is the release
+automation's own bug, not any suite's.
 
 **#478, #732 and #738 are not work.** They are tracking issues opened, updated and closed
 by scheduled workflows via `.github/scripts/tracking-issue.js`. They carry `v2` because

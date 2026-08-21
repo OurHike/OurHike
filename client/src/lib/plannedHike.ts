@@ -11,8 +11,11 @@
 //
 // `UserPreferences` syncs to backend/app/schemas/preferences.py, which is
 // `extra="forbid"` - so a key invented on the client becomes a 422 the moment
-// somebody signs in. That is #242, already open and already filed once. A hike
-// is not a display setting anyway; it gets its own key.
+// somebody signs in. That was #242, fixed and now guarded by
+// backend/tests/test_preferences_contract.py, which round-trips the client's
+// real DEFAULT_PREFERENCES through the schema so the two field lists cannot
+// drift silently again. A hike is not a display setting anyway; it gets its
+// own key.
 //
 // WHY THE DIRECTION IS NOT STORED
 //
@@ -23,15 +26,26 @@
 // second source of truth that could drift from the references it's derived
 // from."
 //
-// WHAT THIS IS NOT SYNCED TO
+// WHERE THIS SYNCS, AND WHAT IT STILL DOES NOT TOUCH
 //
-// `POST /hikes` exists and is complete, and nothing here calls it. Pushing a
-// hike to the server raises "which device wins" the moment there are two, and
-// an offline-first app has already answered that - the phone does - but
-// writing that down properly is its own change. #247 is the feature that needs
-// the server to know, so #247 is where it belongs.
+// It follows the account since #892: the two numbers ride in the same
+// exchange as the trips (`lib/tripsSync.ts`, features/ACCOUNT_SYNC.md phase
+// B), which is where "which device wins" finally got written down. It is the
+// one payload in that exchange that does NOT keep both on a conflict - a
+// hiker is on one hike, and offering them two would be the app asking a
+// question it invented - so it is last write wins, and being wrong costs
+// re-entering two numbers.
+//
+// `POST /hikes` is still uncalled and is still not this. That table is the
+// durable start/end reference the wrong-way alert reads SERVER-side, and it
+// is complete CRUD over a collection with ids - syncing a singleton through
+// it would mean every device remembering which row is "the" one, a second
+// identifier to keep in step for no gain. #247 is the feature that needs the
+// server to know a hike; #892 was the feature that needed two devices to
+// agree on one.
 
 import { get, set, del } from 'idb-keyval'
+import { recordHikeEdit } from './tripSyncState'
 import type { HikeDirection } from '../chrome/Header'
 
 export const PLANNED_HIKE_KEY = 'ourhike:hike'
@@ -110,8 +124,27 @@ export async function loadPlannedHike(): Promise<PlannedHike | null> {
   return plannedHike(stored.startMile as number, stored.endMile as number)
 }
 
+/**
+ * Write what the ACCOUNT says, without recording it as a local edit (#892).
+ *
+ * `savePlannedHike`'s opposite number, for `adoptTrips`' reason: adopting
+ * through the marking path would have this device push back what it just
+ * pulled on every sync.
+ */
+export async function adoptPlannedHike(hike: PlannedHike | null): Promise<void> {
+  if (hike === null) {
+    await del(PLANNED_HIKE_KEY)
+    return
+  }
+  await set(PLANNED_HIKE_KEY, hike)
+}
+
 export async function savePlannedHike(hike: PlannedHike): Promise<void> {
   await set(PLANNED_HIKE_KEY, hike)
+  // Marked at the moment the hiker sets it (#892), the same way
+  // lib/trips.ts records a trip edit and lib/preferences.ts records a
+  // preference one. See lib/tripSyncState.ts.
+  await recordHikeEdit()
 }
 
 /**
@@ -124,6 +157,9 @@ export async function savePlannedHike(hike: PlannedHike): Promise<void> {
  */
 export async function clearPlannedHike(): Promise<void> {
   await del(PLANNED_HIKE_KEY)
+  // Clearing is a decision with a date on it, not an absence - and it has
+  // to travel, or a second device hands the hike straight back (#892).
+  await recordHikeEdit()
 }
 
 /**

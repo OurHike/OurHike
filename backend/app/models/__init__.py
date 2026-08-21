@@ -26,6 +26,7 @@ from app.models.report import (
     Severity,
     Visibility,
 )
+from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursActivity, HoursState, VolunteerHoursRecord
 
 __all__ = [
@@ -52,6 +53,8 @@ __all__ = [
     "ReportType",
     "Severity",
     "Visibility",
+    "SyncedPlannedHike",
+    "SyncedTrip",
     "HoursActivity",
     "HoursState",
     "VolunteerHoursRecord",

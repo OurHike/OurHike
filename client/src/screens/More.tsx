@@ -21,6 +21,7 @@ import { useState } from 'react'
 import { Tabs, type TabItem } from './Tabs'
 import {
   YouSettings,
+  AccountSyncSettings,
   MapSettings,
   DisplaySettings,
   SafetyPrivacySettings,
@@ -235,6 +236,21 @@ export function More({
           preferences={settings.preferences}
           onChange={settings.onChange}
         />
+        {/* Under the account it depends on, and above nothing (#894). Only
+            when signed in and only when the shell actually has a sync to
+            describe - see AccountSyncSettings' header for why it is here
+            rather than beside "Your data", whose "Last synced" is a
+            different clock entirely. */}
+        {settings.account !== null &&
+          settings.syncStatus !== undefined &&
+          settings.onToggleSync !== undefined && (
+            <AccountSyncSettings
+              status={settings.syncStatus}
+              enabled={settings.syncEnabled ?? true}
+              onToggle={settings.onToggleSync}
+              now={settings.now}
+            />
+          )}
       </div>
     )
   } else if (activeTab === 'map-display') {

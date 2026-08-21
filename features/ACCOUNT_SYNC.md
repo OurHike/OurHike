@@ -104,7 +104,26 @@ Three corollaries, and each one rules out a design that would otherwise be the o
 **Preferences — the whole blob, last write wins.** The server model is already exactly
 this: one JSON column, replaced wholesale on every `PUT`. Losing the older of two edits
 costs a toggle a hiker can flip again, and the blob is small enough that a field-level
-merge would be machinery bought with nothing. `updated_at` decides.
+merge would be machinery bought with nothing.
+
+*This paragraph used to end "`updated_at` decides", and the build
+([#891](https://github.com/OurHike/OurHike/issues/891)) found that it cannot, quite.* The
+obvious reading — stamp the local edit, compare it against the server's stamp — compares a
+phone's clock against a server's. A handset a day fast wins every conflict it ever has,
+silently; a handset a day slow loses every one; neither is detectable from the client. So
+`lib/preferencesSync.ts` compares the server's `updated_at` only against **itself** — the
+copy this device recorded at its last successful sync — which answers *"did another device
+move this"* with no second clock in the question, and pairs it with a local dirty flag
+answering *"did we"*. The one case that pair cannot separate is both, and it resolves toward
+the device in the hiker's hand, whose settings are the ones they can see being wrong.
+
+**One case is decided the other way from last-write-wins outright, deliberately: the first
+sync on a device adopts the account.** A hiker who installs OurHike on a second phone,
+clicks through onboarding and then signs in has local changes that are minutes old and an
+account blob that is weeks old — so a strict reading would push the defaults they just
+clicked through over the settings they signed in to get. What an install accumulated before
+it had an account is not a claim on that account. After that first sync the rule above
+applies normally.
 
 **Trips and the planned hike — per record, with tombstones, and both kept on a conflict.**
 The grain is the trip, not the day inside it. A trip is a `Segment` with an identity
@@ -263,10 +282,20 @@ should wait on those first two, or it will be written against a system nobody ca
 
 Five phases. Each is useful alone, and the first is genuinely small.
 
-**A. Preferences actually sync.** Wire `GET`/`PUT /preferences/me`, which already exist, to
-the local blob: pull on sign-in, push on change, last-write-wins on `updated_at`. It proves
-the whole loop — token, base URL, conflict rule, the offline no-op — against the one payload
+**A. Preferences actually sync. Built** — `lib/preferencesSync.ts` and
+`lib/usePreferencesSync.ts` ([#891](https://github.com/OurHike/OurHike/issues/891)). `GET`
+and `PUT /preferences/me` had been implemented, strictly validated and covered by two
+backend test files for months with **zero callers**; this is the calling half. Pull on
+sign-in, push on change, and the conflict rule as amended above. It proves the whole loop —
+token, base URL, conflict rule, the offline no-op, the sign-out — against the one payload
 where a wrong answer costs a toggle.
+
+Two things it deliberately does not do. There is **no visible surface**: nothing in the app
+says whether a sync ran, which is phase D's job and is why D exists. And a **422 is not
+swallowed** — every other failure here (no backend configured, signed out, no signal) is an
+ordinary condition of this app and is a silent no-op, but a 422 is the client sending a key
+the schema forbids, wholesale, for every hiker on their first sync. That is the one bug this
+endpoint has already had, and making it invisible a second time would be the worse error.
 
 The trap here is known and already guarded, which is worth stating because comments in the
 client still describe it as live: the schema is `extra="forbid"`, so a key the client invents
@@ -277,18 +306,61 @@ and the backend forbids it*](https://github.com/OurHike/OurHike/issues/242), **c
 real `DEFAULT_PREFERENCES` so the two field lists cannot drift apart again. Phase A inherits a
 guard rather than the bug — but it is the phase that finds out whether the guard holds.
 
-**B. Trips and the planned hike.** The record grain, the tombstones, the keep-both conflict
-rule, and the watermark. This is the phase the maintainer's ask is actually about, and the
-one with a real design inside it.
+**B. Trips and the planned hike. Built** — `backend/app/core/trip_sync.py`,
+`app/routers/synced_trips.py`, `client/src/lib/tripsSync.ts`
+([#892](https://github.com/OurHike/OurHike/issues/892)). The record grain, the tombstones,
+the keep-both conflict rule, and the watermark.
+
+Four things the build decided that this document left open, each argued where it lives:
+
+- **One exchange, not CRUD.** `POST /trips/sync` carries the uploads and the delta back in
+  one call, because splitting them opens a window in which the answer to the second no
+  longer matches the first.
+- **The planned hike rides in that envelope rather than reusing `POST /hikes`.** That table
+  is a collection with ids and the planned hike is a singleton with none, so syncing it
+  through `/hikes` would mean every device remembering which row is "the" one. `/hikes`
+  stays exactly what it is: the reference the wrong-way alert reads server-side.
+- **The conflict rule is the server's**, because it is the only party that can see both
+  versions — and because two devices implementing keep-both slightly differently would
+  produce a divergence indistinguishable from the loss the rule prevents.
+- **Delete-against-edit**, which this document does not specify, resolves as *the tombstone
+  lands and the other device's edit is kept beside it*. Both acts were the hiker's; a
+  resurrected copy is visible and deletable in one tap, while an edit destroyed by somebody
+  else's delete is invisible and gone.
+
+And one thing the build could not honour as written: the doc's example names the copy
+*"Grayson Highlands (from the phone, 12 Aug)"*. **The client has no device name to give** —
+nothing in `client/src/lib/` records what kind of device it is running on, and deriving one
+from a user agent would be a guess printed as a fact. So a copy says what is actually known:
+*"Grayson Highlands (edited on another device, 2026-08-21)"*.
 
 **C. Private photo backup, opt-in.** A separate store, the 640 px rendering only, the R2
 pattern from `core/photos.py`, a per-hiker cap decided from a measurement rather than a
 guess, and copy that never says "backup" if what we hold is a thumbnail.
 
-**D. The seam a hiker can see.** One screen: what is synced, when it last ran, what is on
-this device only, and how to turn it off without losing anything. An offline-first app that
-syncs invisibly is an app whose hiker cannot tell whether their plan is safe — and value #4
-says the honest answer beats the polished one.
+**D. The seam a hiker can see. Built** — `AccountSyncSettings` in
+`client/src/screens/Settings.tsx`, `lib/syncStatus.ts`
+([#894](https://github.com/OurHike/OurHike/issues/894)). What has reached the account, when
+it last did, what is on this device only, and how to turn it off without losing anything.
+
+Four things the build settled:
+
+- **It is a section in the *You* tab, under the account**, not beside "Your data". That
+  section's "Last synced" is the **published conditions bucket** — closures, notes, drought
+  — which every hiker gets with or without an account. This is the account exchange. A
+  hiker whose conditions refreshed an hour ago and whose trips have not been sent since
+  Tuesday would read the reassuring number, so the two rows are kept in different panels
+  and given different words ("Last synced" against "Last sent").
+- **Never sent and not-yet-sent are different sentences.** A trip the account holds in an
+  older form is recoverable; one that has never been sent exists only on that handset. They
+  are listed separately rather than added up, because the difference is exactly what decides
+  whether losing the phone costs a trip or costs an afternoon.
+- **"Off" is not what the build says about photos.** The phase asks for what is off so a
+  hiker reads it as a state they chose — but nobody chose this, because phase C is unbuilt.
+  It says *"Photos stay on this phone. Syncing them is not built yet."*
+- **The off switch is device-local**, deliberately not a `UserPreferences` key: a hiker who
+  stops syncing their laptop has not asked their phone to stop, so a synced setting would
+  travel to exactly the devices it is meant to exclude.
 
 **E. Export and delete.** Everything of mine, in my hands or gone. Ships no later than C,
 because C is the phase that makes the current silence a broken promise.

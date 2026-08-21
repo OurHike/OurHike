@@ -287,3 +287,71 @@ describe('the download link, from the About tab', () => {
     expect(container.querySelector('.settings')?.lastElementChild).toBe(link)
   })
 })
+
+// --- Where the sync panel sits (#894) --------------------------------------
+//
+// Which tab shows which group is this file's job. The panel's own copy is
+// tested in AccountSync.test.tsx; what matters here is that it appears where
+// a hiker asking "what happens to my things" is already looking - beside the
+// account - and that it does not appear when there is nothing to say.
+
+const SYNCING = {
+  syncStatus: {
+    lastSyncedAt: new Date('2026-08-21T09:00:00Z'),
+    neverSent: ['Grayson Highlands'],
+    unsentEdits: [],
+    preferencesUnsent: false,
+    hikeUnsent: false,
+  },
+  syncEnabled: true,
+  onToggleSync: vi.fn(),
+  now: new Date('2026-08-21T12:00:00Z'),
+}
+
+describe('what the account has (#894)', () => {
+  it('sits in the You tab, under the account it depends on', () => {
+    render(<More {...PROPS} account={{ email: 'hiker@example.org' }} {...SYNCING} />)
+
+    expect(
+      screen.getByRole('heading', { name: /what your account has/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Grayson Highlands')).toBeInTheDocument()
+  })
+
+  it('says nothing at all to a hiker who is signed out', () => {
+    // There is no account for anything to have reached, and a panel reading
+    // "never synced" over a signed-out phone would describe a failure where
+    // there is only the app's ordinary premise.
+    render(<More {...PROPS} {...SYNCING} />)
+
+    expect(screen.queryByRole('heading', { name: /what your account has/i })).toBe(null)
+  })
+
+  it('says nothing when the shell could not read the sync bookkeeping', () => {
+    // Null status is "we could not ask", and this screen would rather say
+    // nothing than say the reassuring thing on no evidence.
+    render(
+      <More
+        {...PROPS}
+        account={{ email: 'hiker@example.org' }}
+        {...SYNCING}
+        syncStatus={undefined}
+      />,
+    )
+
+    expect(screen.queryByRole('heading', { name: /what your account has/i })).toBe(null)
+  })
+
+  it('keeps the conditions bucket’s own last-synced row in the About tab', async () => {
+    // Two different clocks in two different places, deliberately.
+    const user = userEvent.setup()
+    render(<More {...PROPS} account={{ email: 'hiker@example.org' }} {...SYNCING} />)
+
+    expect(screen.queryByText('Last synced')).toBe(null)
+
+    await user.click(screen.getByRole('tab', { name: /about/i }))
+
+    expect(screen.getByText('Last synced')).toBeInTheDocument()
+    expect(screen.queryByText('Last sent')).toBe(null)
+  })
+})

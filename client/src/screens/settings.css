@@ -430,3 +430,23 @@
   font-size: 12px;
   color: var(--fg-3);
 }
+
+/* The named list of things that have not reached the account (#894).
+ *
+ * A list rather than a count, because the issue is right that "3 items
+ * pending" is not something a hiker can act on. Indented under the note that
+ * introduces it and set at the same muted weight, so it reads as part of
+ * that sentence rather than as a second control.
+ *
+ * Deliberately NOT given the .settings__locked danger treatment: an unsent
+ * trip is a fact about where a copy is, not a fault, and colouring it as an
+ * alarm would make the ordinary state of an offline-first app look broken.
+ */
+.settings__pending {
+  margin: 0 0 var(--space-2, 8px) var(--space-4, 16px);
+  padding: 0;
+  list-style: disc;
+  font-size: 12px;
+  color: var(--fg-3);
+  line-height: 1.5;
+}

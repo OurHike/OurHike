@@ -33,6 +33,7 @@ import { validateHike, type Hike } from './hikes'
 import { validateTripGroup, type TripGroup } from './tripGroups'
 import { stopLabel } from './planDisplay'
 import { loadPlan, validatePlan, type HikePlan } from './plan'
+import { recordTripEdits } from './tripSyncState'
 
 export const TRIPS_KEY = 'ourhike:trips'
 
@@ -203,13 +204,44 @@ export async function loadTrips(): Promise<TripStore> {
 }
 
 export async function saveTrips(store: TripStore): Promise<void> {
+  // Read before write, so the ledger learns what the hiker just did (#892).
+  // One extra IndexedDB read per save, which buys the thing
+  // features/ACCOUNT_SYNC.md calls a rule: a delete travels only as the
+  // hiker's OWN delete. Recorded here, at the moment they perform it, it
+  // never has to be inferred from a store that came back empty - see
+  // lib/tripSyncState.ts on why that distinction is the whole design.
+  const before = (await get(TRIPS_KEY)) as TripStore | undefined
+  await set(TRIPS_KEY, store)
+  await recordTripEdits(before?.trips ?? [], store.trips)
+}
+
+/**
+ * Write what the ACCOUNT says, without recording it as a local edit (#892).
+ *
+ * `saveTrips`' opposite number, and the reason there are two functions
+ * rather than a flag. Adopting through `saveTrips` would mark every trip the
+ * server just sent as changed on this device, so the next sync would upload
+ * them all straight back - for ever, and looking from the outside exactly
+ * like a sync that works.
+ *
+ * lib/preferences.ts' `adoptPreferences` is the same split one grain up.
+ */
+export async function adoptTrips(store: TripStore): Promise<void> {
   await set(TRIPS_KEY, store)
 }
 
 /** Forget every trip. A first-class action like `clearPlan()` was, and for
- *  its reason: abandoning plans must never mean clearing the app's data. */
+ *  its reason: abandoning plans must never mean clearing the app's data.
+ *
+ *  Recorded as the hiker deleting every one of them (#892), because that is
+ *  what it is. The alternative - dropping the key and letting the next sync
+ *  work it out - is exactly the inference features/ACCOUNT_SYNC.md forbids,
+ *  and here it would run the other way: the account would hand every trip
+ *  straight back. */
 export async function clearTrips(): Promise<void> {
+  const before = (await get(TRIPS_KEY)) as TripStore | undefined
   await del(TRIPS_KEY)
+  await recordTripEdits(before?.trips ?? [], [])
 }
 
 // ---------------------------------------------------------------------------

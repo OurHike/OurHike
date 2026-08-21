@@ -34,6 +34,14 @@ import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 const VIEW_W = 100
 const VIEW_H = 40
 
+/** Written out one per line, so each has to be read as the claim it is. */
+const SUBJECT_LABELS: Record<RibbonSubject, string> = {
+  ahead: 'Elevation profile ahead',
+  'planned-stretch': 'Elevation profile of the stretch being planned',
+  'map-view': 'Elevation profile of the trail shown on the map',
+  'whole-trail': 'Elevation profile of the whole trail',
+}
+
 export interface ElevationSample {
   mile: number
   elevationFt: number
@@ -43,6 +51,21 @@ export interface UpcomingClimb {
   startMile: number
   endMile: number
   ascentFt: number
+}
+
+/**
+ * What the ribbon is drawing, which is the one thing that changes its
+ * accessible name. lib/ribbonView.ts decides which, and its `source` IS this
+ * type - one value, not a field here and a field there that can drift apart.
+ */
+export type RibbonSubject = 'ahead' | 'planned-stretch' | 'map-view' | 'whole-trail'
+
+/** One map-framing button under the ribbon (#910 review). The screen decides
+ *  WHICH exist - they depend on what the ribbon is currently showing - so this
+ *  component only draws what it is handed. */
+export interface RibbonControl {
+  label: string
+  onClick: () => void
 }
 
 export interface ElevationRibbonProps {
@@ -55,12 +78,28 @@ export interface ElevationRibbonProps {
   currentMile: number | null
   upcomingClimb?: UpcomingClimb
   /**
-   * What this ribbon is a picture of, which changes only its accessible name
-   * - and has to, because "ahead" is a claim. The fix-anchored ribbon shows
-   * the ground in front of a walking hiker; the planning one (#910) shows a
-   * stretch somebody is laying out, which is in front of nobody.
+   * What this ribbon is a picture of, which changes only its accessible name -
+   * and has to, because every one of these is a different claim and "ahead" is
+   * the strongest of them. A screen reader saying "ahead" over the whole trail
+   * has told a hiker something false about where they are going.
+   *
+   * The same union lib/ribbonView.ts resolves, rather than a second opinion
+   * about it.
    */
-  subject?: 'ahead' | 'planned-stretch'
+  subject?: RibbonSubject
+  /**
+   * Buttons that frame this ribbon's ground on the map - the desktop chart's
+   * "Zoom to stretch" and "Whole trail", which the maintainer asked for here
+   * too, plus the way back to the hiker once they have panned away.
+   *
+   * Their own row UNDER the 54px block rather than floating over the profile,
+   * and that is the trade worth naming: a row costs the map about 44px while
+   * any button exists, and overlaying instead would cost either the terrain
+   * the ribbon exists to show or the touch target a gloved hand in sunlight
+   * needs (#105). Height is something a maintainer can decide to spend
+   * differently; a mis-tap on a mountain is not.
+   */
+  controls?: readonly RibbonControl[]
   /** Which units the three labels read in. Defaulted rather than required, so
    *  a ribbon rendered outside the shell still says something true - and
    *  defaulted to the same value lib/userPreferences.ts does, so the default
@@ -78,6 +117,7 @@ export function ElevationRibbon({
   currentMile,
   upcomingClimb,
   subject = 'ahead',
+  controls,
   units = 'imperial',
 }: ElevationRibbonProps) {
   const startMile = samples[0]?.mile ?? 0
@@ -115,67 +155,80 @@ export function ElevationRibbon({
       : pctAlong(currentMile, startMile, endMile)
 
   return (
-    <div className="elevation-ribbon">
-      <div className="elevation-ribbon__labels">
-        <span className="elevation-ribbon__max">{formatElevation(maxFt, units)}</span>
-        <span className="elevation-ribbon__min">{formatElevation(minFt, units)}</span>
+    <>
+      <div className="elevation-ribbon">
+        <div className="elevation-ribbon__labels">
+          <span className="elevation-ribbon__max">{formatElevation(maxFt, units)}</span>
+          <span className="elevation-ribbon__min">{formatElevation(minFt, units)}</span>
+        </div>
+
+        <svg
+          className="elevation-ribbon__svg"
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={SUBJECT_LABELS[subject]}
+        >
+          {upcomingClimb && (
+            <rect
+              data-testid="upcoming-climb"
+              x={pctAlong(upcomingClimb.startMile, startMile, endMile)}
+              y={0}
+              width={
+                pctAlong(upcomingClimb.endMile, startMile, endMile) -
+                pctAlong(upcomingClimb.startMile, startMile, endMile)
+              }
+              height={VIEW_H}
+              className="elevation-ribbon__climb"
+            />
+          )}
+
+          <path
+            data-testid="profile-area"
+            d={areaPath}
+            className="elevation-ribbon__area"
+          />
+          <path d={pointsPath} className="elevation-ribbon__line" fill="none" />
+
+          {herePct !== null && (
+            <line
+              data-testid="you-are-here"
+              x1={herePct}
+              x2={herePct}
+              y1={0}
+              y2={VIEW_H}
+              className="elevation-ribbon__here"
+            />
+          )}
+        </svg>
+
+        {upcomingClimb && (
+          <p data-testid="climb-callout" className="elevation-ribbon__callout">
+            {`+${formatElevation(upcomingClimb.ascentFt, units)} · ${formatDistance(
+              upcomingClimb.endMile - upcomingClimb.startMile,
+              units,
+            )} · ${naismithTime({
+              distanceMi: upcomingClimb.endMile - upcomingClimb.startMile,
+              ascentFt: upcomingClimb.ascentFt,
+            })}`}
+          </p>
+        )}
       </div>
 
-      <svg
-        className="elevation-ribbon__svg"
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={
-          subject === 'ahead'
-            ? 'Elevation profile ahead'
-            : 'Elevation profile of the stretch being planned'
-        }
-      >
-        {upcomingClimb && (
-          <rect
-            data-testid="upcoming-climb"
-            x={pctAlong(upcomingClimb.startMile, startMile, endMile)}
-            y={0}
-            width={
-              pctAlong(upcomingClimb.endMile, startMile, endMile) -
-              pctAlong(upcomingClimb.startMile, startMile, endMile)
-            }
-            height={VIEW_H}
-            className="elevation-ribbon__climb"
-          />
-        )}
-
-        <path
-          data-testid="profile-area"
-          d={areaPath}
-          className="elevation-ribbon__area"
-        />
-        <path d={pointsPath} className="elevation-ribbon__line" fill="none" />
-
-        {herePct !== null && (
-          <line
-            data-testid="you-are-here"
-            x1={herePct}
-            x2={herePct}
-            y1={0}
-            y2={VIEW_H}
-            className="elevation-ribbon__here"
-          />
-        )}
-      </svg>
-
-      {upcomingClimb && (
-        <p data-testid="climb-callout" className="elevation-ribbon__callout">
-          {`+${formatElevation(upcomingClimb.ascentFt, units)} · ${formatDistance(
-            upcomingClimb.endMile - upcomingClimb.startMile,
-            units,
-          )} · ${naismithTime({
-            distanceMi: upcomingClimb.endMile - upcomingClimb.startMile,
-            ascentFt: upcomingClimb.ascentFt,
-          })}`}
-        </p>
+      {controls !== undefined && controls.length > 0 && (
+        <div className="elevation-ribbon-controls">
+          {controls.map((control) => (
+            <button
+              key={control.label}
+              type="button"
+              className="elevation-ribbon-controls__button"
+              onClick={control.onClick}
+            >
+              {control.label}
+            </button>
+          ))}
+        </div>
       )}
-    </div>
+    </>
   )
 }

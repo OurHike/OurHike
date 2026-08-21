@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { ElevationRibbon } from './ElevationRibbon'
 import { naismithTime } from '../lib/naismith'
@@ -202,6 +202,37 @@ describe('ElevationRibbon', () => {
       screen.getByRole('img', { name: /stretch being planned/i }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /ahead/i })).not.toBeInTheDocument()
+  })
+
+  it('draws the framing buttons the screen hands it, and none of its own', () => {
+    const zoom = vi.fn()
+    render(
+      <ElevationRibbon
+        samples={SAMPLES}
+        currentMile={null}
+        controls={[{ label: 'Whole trail', onClick: zoom }]}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Zoom to stretch' }),
+    ).not.toBeInTheDocument()
+    screen.getByRole('button', { name: 'Whole trail' }).click()
+    expect(zoom).toHaveBeenCalledOnce()
+  })
+
+  it('costs the map no row at all when there is nothing to frame', () => {
+    // The row is real layout, not an overlay, so an empty one would take ~44px
+    // of map height to say nothing.
+    const { container } = render(<ElevationRibbon samples={SAMPLES} currentMile={null} />)
+
+    expect(container.querySelector('.elevation-ribbon-controls')).toBeNull()
+
+    cleanup()
+    const empty = render(
+      <ElevationRibbon samples={SAMPLES} currentMile={null} controls={[]} />,
+    )
+    expect(empty.container.querySelector('.elevation-ribbon-controls')).toBeNull()
   })
 
   it('draws the profile and the labels with no fix, exactly as with one', () => {

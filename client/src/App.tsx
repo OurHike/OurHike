@@ -135,8 +135,9 @@ import {
 } from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
-import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
-import { planRibbon } from './lib/planRibbon'
+import { ribbonWindow } from './lib/elevationProfile'
+import { ribbonView } from './lib/ribbonView'
+import { viewportMiles } from './lib/viewportMiles'
 import {
   anchoredClientMile,
   anchoredMile,
@@ -195,7 +196,6 @@ import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { stopLabel } from './lib/planDisplay'
-import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
 import { useModerator } from './lib/useModerator'
@@ -509,6 +509,17 @@ function App() {
   // #530's problem, not this one's.
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
+  /**
+   * The hiker has driven the map themselves, so the elevation ribbon follows
+   * the viewport rather than their GPS fix (#910 review, "always in sync").
+   *
+   * A gesture sets it; the ribbon's own "Back to me" clears it. Deliberately
+   * NOT cleared by a new fix arriving: a hiker who panned to next week's
+   * section does not want the ribbon yanked back every few seconds by the
+   * watch, which is the whole reason this is a latch rather than a comparison
+   * of the fix against the viewport.
+   */
+  const [mapTaken, setMapTaken] = useState(false)
 
   const [reporting, setReporting] = useState<ReportingState>(null)
   /**
@@ -1714,24 +1725,19 @@ function App() {
   // that case would be a code path nothing exercises.
   //
   // features/ELEVATION_PROFILE.md has the window and the climb decisions.
-  const ribbon = useMemo(() => {
-    if (elevation === null || fix === null) return undefined
-
-    const window = ribbonWindow(elevation, fix.mile, direction?.direction)
-    const samples = ribbonSamples(elevation, window)
-    // A window that is entirely DEM coverage gap. Rare, and the honest state
-    // is the same as having no profile at all.
-    if (samples.length === 0) return undefined
-
-    return {
-      window,
-      props: {
-        samples,
-        currentMile: fix.mile,
-        upcomingClimb: upcomingClimb(elevation, window, fix.mile, direction?.direction),
-      },
-    }
-  }, [elevation, fix, direction])
+  //
+  // Only the WINDOW is settled here. What the ribbon finally draws is one of
+  // four things now (#910) and is decided in lib/ribbonView.ts, further down
+  // where the route draft and the map viewport are also in scope; this window
+  // is handed to it, and to the lanes below, so the two cannot disagree about
+  // which stretch they are showing.
+  const fixWindow = useMemo(
+    () =>
+      elevation === null || fix === null
+        ? null
+        : ribbonWindow(elevation, fix.mile, direction?.direction),
+    [elevation, fix, direction],
+  )
 
   // Built from searchablePois rather than from `pois` again, because that memo
   // has already paid for the locateOnTrail() call over every POI and the lanes
@@ -1739,14 +1745,14 @@ function App() {
   // has no position on a mile axis, so it is left out of the lanes rather than
   // guessed onto one.
   const waypoints = useMemo(() => {
-    if (ribbon === undefined) return undefined
+    if (fixWindow === null) return undefined
 
     return {
       points: searchablePois.flatMap((poi) =>
         poi.mile === undefined ? [] : [{ id: poi.id, type: poi.type, mile: poi.mile }],
       ),
-      startMile: ribbon.window.startMile,
-      endMile: ribbon.window.endMile,
+      startMile: fixWindow.startMile,
+      endMile: fixWindow.endMile,
       // The lanes' copy of the tier styling (#759's "highest-value surface"):
       // the same roll-up the pin rings read, through the same policy module.
       stalenessFor: (poiId: string, poiType: string) =>
@@ -1755,7 +1761,7 @@ function App() {
           stalenessTier(noteRollups.get(poiId)?.lastConfirmedAt ?? null),
         ),
     }
-  }, [ribbon, searchablePois, noteRollups])
+  }, [fixWindow, searchablePois, noteRollups])
 
   /**
    * Every POI whose position is known on BOTH mile scales (#755) - the
@@ -2280,22 +2286,50 @@ function App() {
   }, [routeDraft, entranceEnd])
 
   /**
-   * The phone's ribbon while a route is being planned (#910), and the reason
-   * this sits next to `draftStretch` rather than next to `ribbon` above: it is
-   * the same stretch the desktop chart bands, drawn by the only elevation
-   * surface a phone has.
+   * The trail inside the map's viewport, on the pipeline's axis - the "always
+   * in sync" half of the #910 review.
+   *
+   * Null until the hiker has taken the map themselves (`mapTaken`), which is
+   * what keeps a shell-driven camera move - the opening fit, a jump after a
+   * download - from quietly pulling the ribbon off the hiker. Null too on a
+   * pre-#753 download, where there are no anchors to carry the client index's
+   * miles onto the profile's axis, and a span measured on one scale and drawn
+   * against the other would be wrong by the drift between them.
+   */
+  const mapStretch = useMemo(() => {
+    if (!mapTaken || trailIndex === null) return null
+    const span = viewportMiles(trailIndex, bbox)
+    if (span === null) return null
+    const startMile = anchoredMile(span.startMile, mileAnchors)
+    const endMile = anchoredMile(span.endMile, mileAnchors)
+    if (startMile === null || endMile === null) return null
+    return { startMile, endMile }
+  }, [mapTaken, trailIndex, bbox, mileAnchors])
+
+  /**
+   * The one ribbon the phone draws, whichever of the four it turns out to be
+   * (lib/ribbonView.ts holds the precedence and the reasoning).
    *
    * Computed unconditionally rather than behind `isDesktop`, and the cost is
    * worth naming rather than waving at: above the breakpoint MapScreen draws
    * the chart and never the ribbon, so a desk pays one envelope pass over the
-   * draft's stretch and throws it away. That pass is the same decimation the
-   * chart itself makes, memoised on the same stretch, and it re-runs only when
-   * the draft's ends move. Gating it would mean subscribing the shell to
-   * `useDesktop()`'s media query for nothing else.
+   * domain and throws it away. That pass is the same decimation the chart
+   * itself makes, memoised on the same span, and it re-runs only when the span
+   * moves. Gating it would mean subscribing the shell to `useDesktop()`'s
+   * media query for nothing else.
    */
-  const planningRibbon = useMemo(
-    () => planRibbon(elevation, draftStretch, gpsPlanMile),
-    [elevation, draftStretch, gpsPlanMile],
+  const ribbon = useMemo(
+    () =>
+      ribbonView({
+        profile: elevation,
+        planStretch: draftStretch,
+        mapStretch,
+        fixClientMile: fix?.mile ?? null,
+        fixPlanMile: gpsPlanMile,
+        fixWindow,
+        ...(direction?.direction === undefined ? {} : { direction: direction.direction }),
+      }),
+    [elevation, draftStretch, mapStretch, fix, gpsPlanMile, fixWindow, direction],
   )
 
   const chartSelection = routeDraft !== null ? draftStretch : freeChartStretch
@@ -2871,8 +2905,13 @@ function App() {
   // re-fitting a box adds its padding again each time, so the view would creep
   // outwards with every visit to Downloads.
   const handleViewportChange = useCallback(
-    (next: BoundingBox) => {
+    (next: BoundingBox, fromGesture: boolean) => {
       setBbox(next)
+      // Only the hiker's own pan or pinch takes the ribbon off them (#910).
+      // Every camera move the SHELL makes - the opening fit, a jump to a
+      // search result, the ribbon's own framing buttons - arrives here with
+      // no originalEvent and leaves the latch alone.
+      if (fromGesture) setMapTaken(true)
       if (map === null) return
       const centre = map.getCenter()
       const settled: Camera = { center: [centre.lng, centre.lat], zoom: map.getZoom() }
@@ -2885,6 +2924,22 @@ function App() {
     },
     [map],
   )
+
+  /**
+   * Put the map back on the hiker, and the ribbon back on their ten miles
+   * (#910 review).
+   *
+   * The other half of the `mapTaken` latch: a gesture sets it, this clears it.
+   * The camera move is a `jumpTo` rather than a gesture, so it does not
+   * immediately re-arm the latch it is clearing - and the zoom is left alone,
+   * because "back to me" is a claim about where the map is centred, not about
+   * how far in the hiker wanted to be.
+   */
+  const handleBackToMe = useCallback(() => {
+    setMapTaken(false)
+    if (map === null || gps.status !== 'located') return
+    map.jumpTo({ center: [gps.at.lon, gps.at.lat] })
+  }, [map, gps])
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
@@ -4211,16 +4266,16 @@ function App() {
             setSearchOpen(false)
           }}
           bbox={bbox}
-          // The planned stretch wins over the ten miles around the fix: a
-          // hiker with the route builder open is asking about ground that is
-          // mostly not under them. The LANES go with the fix ribbon and are
-          // dropped rather than re-windowed - pins clustered against a
-          // ten-mile threshold, sitting under a profile of sixty, would be
-          // misaligned in the exact way MapScreen's own note forbids, and
-          // lib/planRibbon.ts has the arithmetic.
-          elevation={planningRibbon ?? ribbon?.props}
+          // Which of the four the ribbon is showing is lib/ribbonView.ts's
+          // decision, made above. The LANES ride only with the fix window and
+          // are dropped otherwise rather than re-windowed: they cluster pins
+          // at 1.5% of a TEN-mile window, so under a profile of sixty - or of
+          // the whole trail - they would sit beside ground they do not
+          // describe, the exact misalignment MapScreen's own note forbids.
+          elevation={ribbon}
           chart={desktopChart}
-          waypoints={planningRibbon === undefined ? waypoints : undefined}
+          waypoints={ribbon?.source === 'ahead' ? waypoints : undefined}
+          onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
           viewportPoints={viewportPoints}
           blazeCounts={[]}
           drawnCounts={drawnPoiCounts}

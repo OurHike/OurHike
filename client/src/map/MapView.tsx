@@ -292,7 +292,7 @@ export interface MapViewProps {
    * across renders (useCallback) - an inline function would re-subscribe on
    * every render of the parent.
    */
-  onViewportChange?: (bbox: BoundingBox) => void
+  onViewportChange?: (bbox: BoundingBox, fromGesture: boolean) => void
   /**
    * The live map, handed over on build and `null` on teardown, so the shell
    * can move the camera imperatively. `center` cannot do that job - it seeds
@@ -830,18 +830,28 @@ export function MapView({
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return
 
-    const report = () => {
+    // `fromGesture` separates a move the HIKER made from one the app made, and
+    // MapLibre already knows which: an event carries `originalEvent` only when
+    // a pointer, a wheel or a touch drove it, while jumpTo/fitBounds carry
+    // none. The elevation ribbon needs the distinction (#910) - panning to the
+    // Whites should retune the ribbon, while the shell re-framing the camera
+    // after a download should not take the ribbon off the hiker.
+    const report = (event?: { originalEvent?: unknown }) => {
       const bounds = map.getBounds()
-      onViewportChange({
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-      })
+      onViewportChange(
+        {
+          west: bounds.getWest(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          north: bounds.getNorth(),
+        },
+        event?.originalEvent != null,
+      )
     }
 
     // Reported once up front as well as on every move, so the legend is
-    // correct for the opening view rather than only after the first pan.
+    // correct for the opening view rather than only after the first pan. Not a
+    // gesture: nobody has touched anything yet.
     report()
     map.on('moveend', report)
     return () => {

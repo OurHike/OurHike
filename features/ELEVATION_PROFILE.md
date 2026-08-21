@@ -92,17 +92,39 @@ No highlight, no callout, and the profile still draws. Rolling ridge with nothin
 
 ---
 
-## The same ribbon, asked the desk's question (#910)
+## Four things the ribbon can be showing (#910)
 
-The line above was right about the question and wrong about the *device*. "Without a position there is no ahead" is a fact about the field question. It is not a fact about the phone, and treating it as one meant that a hiker planning a trip at their kitchen table on the phone they would carry saw no terrain at all, while the same person on a laptop got the whole chart banding the stretch they were laying out.
+The line above was right about the question and wrong about the *device*. "Without a position there is no ahead" is a fact about the field question. It is not a fact about the phone, and treating it as one meant that a hiker planning a trip at their kitchen table on the phone they would carry saw no terrain at all, while the same person on a laptop got the whole chart.
 
-So while the route builder is open, `lib/planRibbon.ts` builds the ribbon's props from **the draft's stretch** instead of from a fix, and the phone draws that. Everything below is what did *not* move, and each has a reason already on this page:
+`lib/ribbonView.ts` now resolves **one of four** domains, and exactly one is true at a time. The precedence, highest first:
 
-- **No upcoming climb.** The callout is a claim about work not yet done — the whole reason Decision 2 clamps the start to the hiker's current mile. A planned stretch has no walker, so there is no "not yet" to be right or wrong about.
-- **No "you are here" rule unless the fix is genuinely inside the stretch.** Clamped to an edge by the SVG viewport, the rule would read as *you are at the start of this*. That is a claim about somebody's position, which is the one thing this surface must never guess at.
-- **No waypoint lanes.** `lib/waypointLanes.ts` collapses pins closer than 1.5% *of the window*, a threshold Decision 1 sized against ten miles precisely so springs stay individually tappable. On a 60-mile plan it is 0.9 mi and the water lane degenerates into the row of count pills that decision names as the reason the window is not longer. The lanes stay with the fix or they are not drawn.
+| | The ribbon draws | Because |
+|---|---|---|
+| `planned-stretch` | The route being built | The hiker is laying out this ground right now; nothing else on screen is more relevant. |
+| `map-view` | The trail inside the map's viewport | The maintainer's "always in sync" — if they panned to the Whites, the ribbon is the Whites. Only after they take the map *themselves*. |
+| `ahead` | The ten-mile field window | Unchanged. Outranked by the two above because both are things the hiker just **did**, and outranking the fix is what makes the sync visible at all. |
+| `whole-trail` | The published profile, end to end | Everything else, including the ordinary case of a phone that has never had a fix. The desk's resting view, on a phone. |
+
+**Only `ahead` carries the upcoming-climb callout, and that is a definition rather than a preference.** Decision 2 finds the next ≥300 ft ascent *inside the window* and clamps its start to the hiker's current mile, because the callout is a claim about work not yet done. A planned stretch has no walker, so there is no "not yet". A map-driven or whole-trail domain may have one, but the domain is not their ground — and at whole-trail scale a 300 ft climb is under a pixel, so the callout would caption terrain nobody can see.
+
+**The source is also the accessible name**, one type rather than two: `ahead` says "Elevation profile ahead", `whole-trail` says "of the whole trail". A screen reader saying "ahead" over the whole trail has told a hiker something false about where they are going, and a separate `subject` field let exactly that happen once before the two were welded together.
+
+Three more things no domain but `ahead` gets:
+
+- **No "you are here" rule unless the fix is genuinely inside the domain.** Clamped to an edge by the SVG viewport, the rule would read as *you are at the start of this*. That is a claim about somebody's position, which is the one thing this surface must never guess at.
+- **No waypoint lanes.** `lib/waypointLanes.ts` collapses pins closer than 1.5% *of the window*, a threshold Decision 1 sized against ten miles precisely so springs stay individually tappable. On a 60-mile plan it is 0.9 mi and the water lane degenerates into the row of count pills that decision names as the reason the window is not longer. The lanes ride with the fix window — they share it by construction, computed once in the shell — or they are not drawn.
 - **No figures.** Distance, climb and ≈time belong to `RouteStopsPanel` and `RouteEntranceSheet`, which price the walk at the hiker's own pace through `lib/route.ts`'s `legFigures`. A second time derived a second way is exactly the disagreement one source of truth exists to prevent. The ribbon contributes the shape, which is the thing that was missing.
 
-**Decimation is the chart's, not a new one.** A thru-hike stretch is ~141,000 samples; `lib/chartProfile.ts`'s min-max envelope is reused at its own 1,200-bucket default. That count is *reasoned*, not re-measured for the phone: 1,200 buckets was sized for ~1,200 device pixels, and a 390 px phone at 3× is ~1,170 of them — the same order, so a second constant here would be a number nobody checked. If a phone ribbon ever looks visibly coarse, the fix is a measurement, not a guess.
+### Taking the map, and getting back
 
-**What this deliberately still does not do:** dragging the phone ribbon to re-stretch the route. The chart's selection is a 1,000-unit-wide instrument with a drag threshold, keyboard stepping and a zoom; the ribbon is 54 px of orientation. Seeing the ground is the gap that was worth closing — a second editor is not.
+`map-view` is a **latch**, not a comparison. A pan or a pinch sets it (`MapView` reports whether a `moveend` carried an `originalEvent`, which only a real gesture does); the ribbon's own **Back to me** button clears it. It is deliberately *not* cleared by a new fix arriving — a hiker who panned to next week's section does not want the ribbon yanked back every few seconds by the watch.
+
+That distinction is also what keeps the framing buttons from fighting the ribbon. **Zoom to stretch** and **Whole trail** — the desktop chart's own, which the maintainer asked for here too — move the camera programmatically, so they carry no `originalEvent` and do not arm the latch. Tapping "Zoom to stretch" on the fix window puts the map on the hiker's ten miles and leaves the ribbon exactly where it was.
+
+Buttons that would do nothing are not offered: no "Whole trail" when that is already the domain, no "Zoom to stretch" when the ribbon *is* the viewport, no "Back to me" without a fix to go back to. The row is real layout under the 54 px block rather than chips floating over the profile, which costs the map about 44 px whenever any button exists — the honest price of a touch target a gloved hand can hit in sunlight (#105), against covering the terrain the ribbon exists to show.
+
+**Decimation is the chart's, not a new one.** A thru-hike domain is ~141,000 samples; `lib/chartProfile.ts`'s min-max envelope is reused at its own 1,200-bucket default. That count is *reasoned*, not re-measured for the phone: 1,200 buckets was sized for ~1,200 device pixels, and a 390 px phone at 3× is ~1,170 of them — the same order, so a second constant here would be a number nobody checked. If a phone ribbon ever looks visibly coarse, the fix is a measurement, not a guess. The `ahead` window is exempt and undecimated: 640 samples over ten miles is already about one per pixel.
+
+**What this deliberately still does not do:** dragging the phone ribbon to re-stretch the route. The chart's selection is a 1,000-unit-wide instrument with a drag threshold, keyboard stepping and a zoom; the ribbon is 54 px of orientation. Seeing the ground — and being able to frame it — is the gap that was worth closing; a second editor is not.
+
+**One fault carried, not fixed.** The `ahead` window is still built from `fix.mile`, which is the *client index's* axis, while the profile it slices is on the *pipeline's* (HIKE_PLANNING.md Finding 1). Every other domain here is pipeline-axis throughout. The fix predates this work and correcting it would move the window under every hiker on the trail, which deserves its own issue and its own before-and-after rather than a line in a ribbon refactor.

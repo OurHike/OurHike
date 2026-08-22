@@ -21,7 +21,7 @@
 // go through `crypto.subtle.digest` rather than the vendored streaming fold the
 // archive needs - see sha256Of below, and #717 for the 10x that was costing.
 
-import { get, set, del } from 'idb-keyval'
+import { get, set, setMany, del } from 'idb-keyval'
 import {
   DATA_BASE_URL,
   dataUrl,
@@ -919,14 +919,24 @@ export async function downloadTrailData({
   // Still true of every download onto a phone that already holds a release.
   // The one exception is the block above, where there is no previous release
   // to keep whole and the invisibility is answered by a marker instead.
-  if (!committingCenterlineFirst) {
-    await set(TRAILS_BLOB_KEY, trails)
-  }
-  await set(POIS_KEY, pois)
-  await set(SPURS_STORE_KEY, spurs)
-  await set(CLUB_SECTIONS_STORE_KEY, clubSections)
-  await set(HIGHLIGHTS_STORE_KEY, highlights)
-  await set(ELEVATION_STORE_KEY, elevation)
+  //
+  // ONE TRANSACTION, not six awaited writes (#657). The sentence above was
+  // true of the FETCHES and not of the commit: six sequential `set()` calls
+  // are six transactions, so a browser that died between the third and the
+  // fourth left exactly the half-written store this paragraph promises cannot
+  // happen - new POIs and spurs beside the previous release's highlights and
+  // elevation. `setMany` puts them in one readwrite transaction, which either
+  // lands whole or does not land, and it was already a dependency.
+  await setMany([
+    ...(committingCenterlineFirst
+      ? []
+      : [[TRAILS_BLOB_KEY, trails] as [IDBValidKey, unknown]]),
+    [POIS_KEY, pois],
+    [SPURS_STORE_KEY, spurs],
+    [CLUB_SECTIONS_STORE_KEY, clubSections],
+    [HIGHLIGHTS_STORE_KEY, highlights],
+    [ELEVATION_STORE_KEY, elevation],
+  ])
   // Recorded beside the bytes it describes, and only here: whether the
   // trails just stored have the merged-chain shape decides the map's
   // `tolerance` for them on every later launch (lib/trailShape.ts, #161).

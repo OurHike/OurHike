@@ -11,7 +11,7 @@
 // Nothing here blocks on network. Submitting while offline queues the report
 // and says so, because on this trail that is the ordinary path.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReportDraft } from '../lib/outbox'
 import { PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
 import './reporting.css'
@@ -110,6 +110,22 @@ export function ReportForm({
   const [photoError, setPhotoError] = useState<string | null>(null)
 
   /**
+   * Which pick is the live one.
+   *
+   * #657: clearing the previous photo was not enough, and the comment below
+   * claimed an outcome the code did not deliver. Pick A (a slow HEIC), then
+   * pick B before it finishes: B resolves and attaches, then A resolves and
+   * `setPhoto` overwrites it - so the hiker sends the photo they replaced,
+   * silently, which is the exact thing the clearing was supposed to prevent.
+   *
+   * A token rather than `disabled={preparing}`, because disabling the input
+   * mid-prepare would make a hiker who picked the wrong photo wait for the
+   * wrong photo before they could correct it - on the screen where the whole
+   * point is reporting something quickly.
+   */
+  const livePick = useRef(0)
+
+  /**
    * Shrink and re-encode the picked file, or say why it cannot be sent.
    *
    * Clearing the previous photo before starting is deliberate: a second pick
@@ -117,23 +133,31 @@ export function ReportForm({
    * send a photo the hiker believes they replaced.
    */
   const choosePhoto = async (file: File | null) => {
+    const pick = (livePick.current += 1)
     setPhoto(null)
     setPhotoError(null)
     if (file === null) return
 
     setPreparing(true)
     try {
-      setPhoto(await prepareReportPhoto(file))
+      const prepared = await prepareReportPhoto(file)
+      if (pick === livePick.current) setPhoto(prepared)
     } catch (error) {
       // The message is written for a hiker to read (lib/reportPhoto.ts);
       // anything else that got this far is not, so it does not get shown.
+      // A superseded pick says nothing at all: an error about a photo the
+      // hiker has already replaced is a message about nothing they can act
+      // on, and it would sit beside the photo that DID attach.
+      if (pick !== livePick.current) return
       setPhotoError(
         error instanceof PhotoUnusable
           ? error.message
           : 'That photo could not be prepared. Try taking another.',
       )
     } finally {
-      setPreparing(false)
+      // "Shrinking the photo…" belongs to the newest pick, so a superseded
+      // one must not take it down while that pick is still working.
+      if (pick === livePick.current) setPreparing(false)
     }
   }
 

@@ -39,6 +39,11 @@ vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   set: vi.fn(),
+  // `trailData.ts` commits a release in ONE transaction since #657, so any
+  // double that reaches that path needs this call - without it the whole
+  // commit throws and the failure reads as "the download produced nothing"
+  // rather than as a missing mock.
+  setMany: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
@@ -808,16 +813,20 @@ describe('preferences from the More screen', () => {
   })
 })
 
-describe('the placeholder actions on More', () => {
-  // Sync and export are wired to no-ops today: the backend they need is Phase
-  // 2 (ROADMAP.md). Rendered and clickable anyway so the shape of the screen
-  // is real, and asserted here so a wiring mistake shows up as a failing test
-  // rather than as a button that throws in someone's hand.
+describe('the actions on More that are not built yet', () => {
+  // These used to be three clickable buttons wired to `notYet`, and this
+  // block asserted that tapping them did not throw - which pinned the
+  // placeholder in place rather than the promise. #657 named it: a control
+  // that looks usable and is not costs more than a missing one, because it
+  // gets pressed, nothing happens, and the hiker learns this app's buttons
+  // sometimes lie. On the screen whose other buttons are export and sign-out.
   //
-  // Sign in used to be in this list and is not a placeholder any more, which
-  // is what the sign-in tests below cover instead.
+  // So what is asserted now is the opposite: they are NOT offered as buttons,
+  // and they wear the "Later" tag the same screen already uses for "Roads &
+  // walkability". The old assertion could only ever have caught a button that
+  // threw; this one catches a button that came back.
   it.each([/^sync$/i, /export gpx/i, /export geojson/i])(
-    'does not throw when %s is tapped',
+    'does not offer %s as a button that does nothing',
     async (name) => {
       const user = userEvent.setup()
       hikerOnTrail()
@@ -825,14 +834,24 @@ describe('the placeholder actions on More', () => {
       await screen.findByRole('region', { name: /trail map/i })
       await user.click(screen.getByRole('tab', { name: 'Settings' }))
       await user.click(await screen.findByRole('tab', { name: 'About' }))
+      await screen.findByRole('heading', { name: 'Your data' })
 
-      await user.click(await screen.findByRole('button', { name }))
-
-      expect(
-        await screen.findByRole('heading', { name: 'Your data' }),
-      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name })).toBe(null)
     },
   )
+
+  it('says "Later" for both of them instead', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(await screen.findByRole('tab', { name: 'About' }))
+    await screen.findByRole('heading', { name: 'Your data' })
+
+    expect(screen.getByText(/refresh now/i)).toBeInTheDocument()
+    expect(screen.getByText(/export gpx or geojson/i)).toBeInTheDocument()
+  })
 })
 
 describe('signing in from Settings', () => {

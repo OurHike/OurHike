@@ -143,6 +143,26 @@ describe('useAppUpdate', () => {
     expect(reload).not.toHaveBeenCalled()
   })
 
+  it('adopts a LATER deploy on an install that began uncontrolled', () => {
+    // The bug #657's audit found, and the reason the first-visit guard is a
+    // latch rather than a constant. A PWA can stay open for days, so "began
+    // uncontrolled" was answering for the whole session: the install
+    // correctly ignored its own first controllerchange and then ignored
+    // every real deploy after it, for as long as the app stayed open.
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    const sw = stubServiceWorker({ controlled: false })
+
+    renderHook(() => useAppUpdate())
+    sw.fireControllerChange() // the install claiming the page - not an update
+    expect(reload).not.toHaveBeenCalled()
+
+    hide()
+    sw.fireControllerChange() // a real deploy, days later
+
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   it('reloads at most once, however many times control changes', () => {
     const reload = vi.fn()
     vi.stubGlobal('location', { reload })

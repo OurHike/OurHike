@@ -198,6 +198,40 @@ describe('ReportForm', () => {
       await screen.findByText(/photo attached/i)
     }
 
+    it('sends the photo picked LAST, however slowly the first one shrinks', async () => {
+      // #657's race. Pick A (a slow HEIC), then B before A finishes: B
+      // attaches, then A resolves and overwrites it - so the report carries
+      // the photo the hiker believes they replaced, with the form showing
+      // "Photo attached" throughout. Clearing the previous photo, which the
+      // code did, does not prevent this; only knowing which pick is live
+      // does.
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      const SLOW = new Blob(['first'], { type: 'image/jpeg' })
+      const CHOSEN = new Blob(['second'], { type: 'image/jpeg' })
+
+      let releaseSlow: (value: Blob) => void = () => {}
+      mockPrepare
+        .mockReturnValueOnce(
+          new Promise<Blob>((resolve) => {
+            releaseSlow = resolve
+          }),
+        )
+        .mockResolvedValueOnce(CHOSEN)
+
+      render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
+
+      await user.upload(screen.getByLabelText(/photo/i), A_PHOTO)
+      await attach(user, new File(['second'], 'sign.jpg', { type: 'image/jpeg' }))
+
+      // The first pick lands last, and must be ignored.
+      releaseSlow(SLOW)
+      await screen.findByText(/photo attached/i)
+
+      await user.click(screen.getByRole('button', { name: /send|save/i }))
+      expect(onSubmit.mock.calls[0][0].photo).toBe(CHOSEN)
+    })
+
     it('accepts a file, now that there is somewhere to send it', () => {
       render(<ReportForm {...PROPS} />)
 

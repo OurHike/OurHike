@@ -156,6 +156,19 @@ export interface UserPreferences {
   drought_layer_shown: boolean
   waypoint_types_shown: string[]
   layer_detail_level: LayerDetailLevel
+  /**
+   * STAGED, NOT SHIPPED (#657): stored, synced, and read by nothing.
+   *
+   * `UX_CUSTOMIZATION.md`'s auto-rotate needs a movement bearing from the
+   * trailing GPS window, and no such computation exists in this client -
+   * which is the same missing piece #308 found on the other side of it, where
+   * the wrong-way cue's reversed-bearing mode has no producer either. One
+   * computation was always meant to serve both.
+   *
+   * Kept rather than removed: it is in the backend's `extra="forbid"` schema,
+   * so dropping it is a coordinated change on both sides for a field the
+   * feature will want back.
+   */
   auto_rotate_enabled: boolean
 
   // Safety / privacy. The wrong-way alert is a NOTIFICATION preference - it

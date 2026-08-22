@@ -13,8 +13,11 @@
 // a live control (#619) - the tag is a holding position, not a destination,
 // and what it holds is a promise that gets kept.
 
+import { useState } from 'react'
+
 import { syncAgeLabel } from '../lib/syncAge'
 import { everythingIsSafe, type SyncStatus } from '../lib/syncStatus'
+import type { DeletionReceipt } from '../lib/api'
 import type { PaceProfile } from '../lib/pace'
 import type {
   BackgroundSource,
@@ -70,6 +73,25 @@ export interface SettingsProps {
   syncEnabled?: boolean
   onToggleSync?: (enabled: boolean) => void
   /**
+   * Taking the data back, and leaving (#895).
+   *
+   * Optional as a pair for the same reason the three above are, and with a
+   * sharper edge: a surface that cannot actually run the deletion must not
+   * draw a button that offers one. Absent means the section is not rendered.
+   */
+  onExportAccount?: () => Promise<void>
+  onDeleteAccount?: () => Promise<DeletionReceipt>
+  /**
+   * Whether this device has just deleted its account, which keeps the panel
+   * on screen after the sign-out that follows.
+   *
+   * Without it the receipt is unmountable by construction: deleting signs
+   * the hiker out, `account` goes null, and the section that was about to
+   * say what happened stops being rendered — so the one screen they are owed
+   * disappears in the same tick it was earned.
+   */
+  accountDeleted?: boolean
+  /**
    * The hiker's own pace (#880), and its setter.
    *
    * Its OWN pair rather than a `UserPreferences` field written through
@@ -83,8 +105,11 @@ export interface SettingsProps {
   pace?: PaceProfile
   onChangePace?: (next: PaceProfile) => void
   lastSyncedAt: Date | null
-  onSync: () => void
-  onExport: (format: 'gpx' | 'geojson') => void
+  /** See `DataSettingsProps` - optional, and omitted is the honest state
+   *  today: a control with no handler draws "Later" rather than a button
+   *  that does nothing (#657). */
+  onSync?: () => void
+  onExport?: (format: 'gpx' | 'geojson') => void
   /** Injectable so the sync-age wording is testable without a live clock. */
   now?: Date
   /**
@@ -356,6 +381,208 @@ export function AccountSyncSettings({
   )
 }
 
+// --- Taking it all back, or being rid of us (#895) ------------------------
+
+/** What deletion leaves behind, in the same words the backend's receipt uses.
+ *
+ *  Written here rather than derived from a count the server has not been
+ *  asked for yet, because the whole point is that a hiker reads this BEFORE
+ *  the button. The receipt afterwards names the real rows; this names the
+ *  rule. If the two ever disagree the receipt is right and this is the bug,
+ *  which is why `app/schemas/profile.py` keys `kept` by these same phrases. */
+const WHAT_STAYS: readonly string[] = [
+  'Closures and condition reports you filed — other hikers are routing around them.',
+  'Trail notes you posted, and notes you flagged for a moderator.',
+  'Volunteer hours a club has already confirmed.',
+]
+
+export interface AccountDataSettingsProps {
+  /** Builds the archive and hands it to the browser. Resolves when the file
+   *  has been offered; rejects only if the device half could not be read. */
+  onExport: () => Promise<void>
+  onDelete: () => Promise<DeletionReceipt>
+}
+
+type Stage =
+  | { name: 'idle' }
+  | { name: 'confirming' }
+  | { name: 'working' }
+  | { name: 'done'; receipt: DeletionReceipt }
+  | { name: 'failed'; message: string }
+
+/**
+ * Export first, delete second, and both from the same screen — which is the
+ * issue's phrasing and its reasoning: a hiker taking their data back should
+ * not have to choose between having it and being rid of us.
+ *
+ * WHY THE PLAIN STATEMENTS ARE ABOVE THE CONFIRM AND NOT IN A POLICY
+ *
+ * Two things about this deletion are genuinely surprising, and both are
+ * things a hiker would be entitled to be angry about learning afterwards:
+ * the contributions other people rely on do not go, and a photograph they
+ * shared keeps their trail name on it because that is the condition the
+ * CC BY-SA licence was granted under (#577) and no deletion can walk a
+ * licence back. #895 asks for those to be said "plainly before the button is
+ * pressed, not in a policy nobody reads", so they are rendered in the confirm
+ * step itself, where the only way past them is through.
+ *
+ * THE TWO-STEP IS NOT A DARK PATTERN AND IS NOT A `confirm()`
+ *
+ * There is no undo. The first press reveals what will happen; the second is
+ * the act. A native `window.confirm` was the shorter version and cannot
+ * carry the paragraphs above, which are the entire reason this screen is
+ * more than a button.
+ */
+export function AccountDataSettings({ onExport, onDelete }: AccountDataSettingsProps) {
+  const [stage, setStage] = useState<Stage>({ name: 'idle' })
+  const [exporting, setExporting] = useState(false)
+  const [exportFailed, setExportFailed] = useState(false)
+
+  // Caught rather than left to reject. `buildAccountArchive` already
+  // swallows the ordinary reasons the ACCOUNT half is missing and writes a
+  // sentence into the file instead - what reaches here is the device half
+  // failing, which is unreadable local storage, and a hiker whose own phone
+  // could not be read has to be told rather than watched to press a button
+  // that silently does nothing. Letting it reject would be quieter than a
+  // log while reading like the error was taken seriously.
+  const takeMyData = async () => {
+    setExporting(true)
+    setExportFailed(false)
+    try {
+      await onExport()
+    } catch {
+      setExportFailed(true)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const reallyDelete = async () => {
+    setStage({ name: 'working' })
+    try {
+      setStage({ name: 'done', receipt: await onDelete() })
+    } catch {
+      // Deliberately one sentence and deliberately not the error's own text:
+      // what a hiker needs here is that nothing happened and they can try
+      // again, and an HTTP status in the middle of that sentence buries it.
+      setStage({
+        name: 'failed',
+        message: 'Your account was not deleted — nothing was changed. Try again.',
+      })
+    }
+  }
+
+  if (stage.name === 'done') {
+    const kept = Object.entries(stage.receipt.kept)
+    return (
+      <section className="settings__group">
+        <h2 className="settings__heading">Your account is gone</h2>
+        <p className="settings__note">
+          Your trips, your planned hike and your settings have been deleted from our
+          server, and you have been signed out.
+        </p>
+        {kept.length > 0 && (
+          <>
+            <p className="settings__note">What stayed, as promised:</p>
+            <ul className="settings__pending">
+              {kept.map(([what, count]) => (
+                <li key={what}>
+                  {count} {what}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <p className="settings__note">
+          What is on this phone is still on this phone. Delete the app to be rid of that
+          too.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="settings__group">
+      <h2 className="settings__heading">Taking your data, or leaving</h2>
+
+      <button
+        type="button"
+        className="settings__action"
+        onClick={() => void takeMyData()}
+        disabled={exporting}
+      >
+        {exporting ? 'Building your file…' : 'Download everything of yours'}
+      </button>
+      <p className="settings__note">
+        One file: what is on this phone, and what your account holds, kept apart so you
+        can see which is which. The photographs themselves are not in it.
+      </p>
+      {exportFailed && (
+        <p className="settings__note">
+          This phone&rsquo;s own storage could not be read, so no file was made. Nothing
+          was lost — try again.
+        </p>
+      )}
+
+      {stage.name === 'idle' && (
+        <button
+          type="button"
+          className="settings__action"
+          onClick={() => setStage({ name: 'confirming' })}
+        >
+          Delete my account
+        </button>
+      )}
+
+      {(stage.name === 'confirming' || stage.name === 'failed') && (
+        <div className="settings__locked">
+          <p className="settings__note">
+            This cannot be undone. Download your file first if you have not.
+          </p>
+          <p className="settings__note">
+            <strong>What goes:</strong> your trips, your planned hike, your settings, any
+            trail section you maintain, and volunteer hours nobody has confirmed yet.
+          </p>
+          <p className="settings__note">
+            <strong>What stays, without your name on it:</strong>
+          </p>
+          <ul className="settings__pending">
+            {WHAT_STAYS.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="settings__note">
+            <strong>Photos you shared keep your trail name.</strong> You shared them under
+            a licence that requires the credit, and other people are using them on those
+            terms. Deleting your account cannot take that back.
+          </p>
+          <p className="settings__note">
+            What is on this phone stays on this phone. Delete the app to be rid of that
+            too.
+          </p>
+          {stage.name === 'failed' && <p className="settings__note">{stage.message}</p>}
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => void reallyDelete()}
+          >
+            Yes, delete my account
+          </button>
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => setStage({ name: 'idle' })}
+          >
+            Keep my account
+          </button>
+        </div>
+      )}
+
+      {stage.name === 'working' && <p className="settings__note">Deleting…</p>}
+    </section>
+  )
+}
+
 // --- The map -------------------------------------------------------------
 
 export interface MapSettingsProps {
@@ -609,8 +836,22 @@ export function SafetyPrivacySettings({
 
 export interface DataSettingsProps {
   lastSyncedAt: Date | null
-  onSync: () => void
-  onExport: (format: 'gpx' | 'geojson') => void
+  /**
+   * Refresh the published conditions, when there is something to call.
+   *
+   * OPTIONAL, and omitted is the honest state today (#657). These three
+   * buttons were bound to `App.tsx`'s `notYet = () => undefined`: live-
+   * looking controls that did nothing, in the same file that already has a
+   * standard for the opposite - `LaterTag` beside a disabled input, which is
+   * what "Roads & walkability" wears two sections up.
+   *
+   * A control that looks usable and is not costs more than a missing one. It
+   * is pressed, nothing happens, and the hiker learns that this app's buttons
+   * sometimes lie - on the screen where the other buttons are export and
+   * sign-out.
+   */
+  onSync?: () => void
+  onExport?: (format: 'gpx' | 'geojson') => void
   /** Injectable so the sync-age wording is testable without a live clock. */
   now?: Date
 }
@@ -628,25 +869,39 @@ export function DataSettings({
         <span className="settings__label">Last synced</span>
         <span className="settings__value">{syncAgeLabel(lastSyncedAt, now)}</span>
       </p>
-      <button type="button" className="settings__action" onClick={onSync}>
-        Sync
-      </button>
-      <div className="settings__exports">
-        <button
-          type="button"
-          className="settings__action"
-          onClick={() => onExport('gpx')}
-        >
-          Export GPX
+      {onSync === undefined ? (
+        <p className="settings__row settings__row--later">
+          <span className="settings__label">Refresh now</span>
+          <LaterTag />
+        </p>
+      ) : (
+        <button type="button" className="settings__action" onClick={onSync}>
+          Sync
         </button>
-        <button
-          type="button"
-          className="settings__action"
-          onClick={() => onExport('geojson')}
-        >
-          Export GeoJSON
-        </button>
-      </div>
+      )}
+      {onExport === undefined ? (
+        <p className="settings__row settings__row--later">
+          <span className="settings__label">Export GPX or GeoJSON</span>
+          <LaterTag />
+        </p>
+      ) : (
+        <div className="settings__exports">
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => onExport('gpx')}
+          >
+            Export GPX
+          </button>
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => onExport('geojson')}
+          >
+            Export GeoJSON
+          </button>
+        </div>
+      )}
       <p className="settings__note">
         Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, OpenFreeMap ©
         OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.

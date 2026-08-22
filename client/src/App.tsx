@@ -39,6 +39,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
+import type { BlazeCount } from './chrome/Legend'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
@@ -85,6 +86,8 @@ import {
 import { tripSyncState } from './lib/tripSyncState'
 import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
+import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
+import { deleteAccount, type DeletionReceipt } from './lib/api'
 import {
   hiddenTypesFrom,
   onlyType,
@@ -335,7 +338,20 @@ const TRAIL_LOGO = TRAILS.AT.logo
 // Sign in and sign out used to be here too. They are real now - Supabase Auth
 // is a separate service from this project's backend, so signing in never
 // needed that backend to exist, only a project to sign in to.
-const notYet = () => undefined
+/**
+ * STAGED, NOT SHIPPED (#657). The Legend's blaze list is built and tested and
+ * has never rendered, because nothing computes these counts.
+ *
+ * Hardcoded `[]` said the same thing invisibly: `blazeCounts.length > 0`
+ * guards the list, so an empty array is indistinguishable in the source from
+ * "this stretch has no blazes to count". A named constant is greppable and
+ * says which it is.
+ *
+ * What would fill it: counting the blaze colours on the trail features in
+ * view, which needs the reviewed colour mapping #782 is deciding - so this
+ * waits on that rather than on anybody wiring a prop.
+ */
+const NO_BLAZE_COUNTS: BlazeCount[] = []
 
 // The whole trail, Springer to Katahdin, as the opening view. Taken from the
 // published topo archive's own header bounds, so it frames exactly the ground
@@ -897,13 +913,37 @@ function App() {
   // The camera is deliberately NOT in this list. It is kept across the reload
   // instead (lib/cameraMemory.ts), because holding an update for as long as
   // someone is looking at a map would hold it for the whole hike.
+  //
+  // THIS LIST DRIFTED, and #657's audit caught it: every modal added since
+  // #311 forgot to join, so a pending reload could eat a half-typed trail
+  // name. The four that were missing are marked below. There is no mechanism
+  // stopping the next one from being forgotten the same way - a test cannot
+  // ask "is this every modal", because only a reader knows which pieces of
+  // state are worth a hiker's work - so the honest guard is this paragraph
+  // and the rule it states: **anything that holds something a hiker typed,
+  // or that they opened and would have to find again, belongs here.**
   const updateWouldCost =
     reporting !== null ||
     authFlow !== null ||
     downloadsOpen ||
     legendOpen ||
     searchOpen ||
-    selectedPoiId !== null
+    selectedPoiId !== null ||
+    // The trail-name prompt (#233): a half-typed name is exactly the case
+    // #311 was about, and it was the one missing.
+    collectingIdentity ||
+    // Two numbers being entered, and a screen that replaced More rather than
+    // covering it - reloading would land the hiker somewhere else entirely.
+    pickingHike ||
+    // A moderator part-way through a queue, whose place in it is state.
+    moderating ||
+    // The app-failure form (#848), which is somebody typing about the app
+    // having nearly got them lost - the last draft in this app worth losing.
+    reportingFailure ||
+    // The sheets: each is something the hiker opened and would have to find
+    // on the map again.
+    selectedAtcBandId !== null ||
+    selectedWorkdayId !== null
   useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
 
   useEffect(() => {
@@ -3433,6 +3473,61 @@ function App() {
     void signInWithProvider(provider)
   }, [])
 
+  /**
+   * Build the archive and hand it to the browser (#895).
+   *
+   * The device half is read here rather than passed down because App is the
+   * only thing that knows the stores exist; the screen owns the button and
+   * the spinner, and nothing else.
+   */
+  /**
+   * That this device has just deleted its account.
+   *
+   * Only here to keep the receipt on screen. Signing out is what makes the
+   * app's own state honest afterwards, and it takes `account` to null - which
+   * is the gate the section renders behind, so without this flag the panel
+   * unmounts in the same tick as the deletion it was about to report. Not
+   * persisted: it describes this render, not this device.
+   */
+  const [accountDeleted, setAccountDeleted] = useState(false)
+
+  const handleExportAccount = useCallback(async () => {
+    downloadArchive(await buildAccountArchive())
+  }, [])
+
+  /**
+   * Delete the account, then make this device stop acting like it has one.
+   *
+   * The order is the whole of it. `deleteAccount` first, because if it
+   * throws, nothing local should have changed and the hiker's next press is
+   * an ordinary retry. Only once the server has answered does this device
+   * forget its sync ledgers and sign out.
+   *
+   * WHAT THIS DELIBERATELY DOES NOT DO IS WIPE THE PHONE
+   *
+   * The trips, the planned hike and the preferences stay in IndexedDB, and
+   * the screen says so. They are this device's copy and always were - phase
+   * D's off switch makes the same promise in the other direction ("It does
+   * not delete anything, anywhere"), and a server-side deletion that also
+   * silently destroyed a hiker's local planning would be this app taking a
+   * decision that was never asked of it. Uninstalling is what removes those,
+   * and that is the sentence on the screen.
+   *
+   * The ledgers DO go, for the reason `handleSignOut` gives at more length:
+   * `since` and `seen` are claims about an account this device no longer
+   * has, and left in place they would make the next sign-in - possibly by
+   * somebody else on a shared handset - look like a device that had already
+   * synced, and upload one person's plans into another person's account.
+   */
+  const handleDeleteAccount = useCallback(async (): Promise<DeletionReceipt> => {
+    const receipt = await deleteAccount()
+    setAccountDeleted(true)
+    await forgetPreferencesSync()
+    await forgetTripSync()
+    await signOut()
+    return receipt
+  }, [])
+
   const handleSignOut = useCallback(async () => {
     await signOut()
     // The preferences stay - they are this phone's, and a hiker who signs
@@ -3899,6 +3994,12 @@ function App() {
                   onClose={() => setPickingHike(false)}
                 />
               ) : (
+                // Neither `onSync` nor `onExport` is passed, and that is the
+                // change rather than an omission (#657): both were bound to
+                // `notYet` and rendered as live buttons that did nothing.
+                // DataSettings draws "Later" when it has no handler, which is
+                // the standard the same file already keeps for "Roads &
+                // walkability".
                 <More
                   account={account}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
@@ -3909,11 +4010,12 @@ function App() {
                   pace={pace}
                   onChangePace={handleChangePace}
                   lastSyncedAt={lastSyncedAt}
-                  onSync={notYet}
-                  onExport={notYet}
                   syncStatus={syncSummary ?? undefined}
                   syncEnabled={syncOn}
                   onToggleSync={handleToggleSync}
+                  onExportAccount={handleExportAccount}
+                  onDeleteAccount={handleDeleteAccount}
+                  accountDeleted={accountDeleted}
                   now={now}
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}
@@ -4436,7 +4538,7 @@ function App() {
           waypoints={waypoints}
           onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
           viewportPoints={viewportPoints}
-          blazeCounts={[]}
+          blazeCounts={NO_BLAZE_COUNTS}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
           hiddenTypes={hiddenTypes}

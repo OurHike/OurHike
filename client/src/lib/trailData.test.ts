@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { get, set, del } from 'idb-keyval'
+import { get, set, setMany, del } from 'idb-keyval'
 import {
   downloadTrailData,
   haveTrailData,
@@ -37,6 +37,11 @@ import { sha256Hex } from './sha256'
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   set: vi.fn(),
+  // The commit is ONE transaction since #657, so the double has to offer the
+  // call that makes it one - a mock missing it fails every test in this file
+  // rather than the one about atomicity, which is a loud way to find out but
+  // not a useful one.
+  setMany: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
@@ -77,6 +82,14 @@ beforeEach(() => {
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
+    return Promise.resolve()
+  })
+  // Lands in the same store as `set`, so a test does not have to know which
+  // call wrote a key - which is the point of the change that introduced it
+  // (#657): the commit is one transaction, and how many calls it takes is
+  // this module's business rather than every assertion's.
+  vi.mocked(setMany).mockImplementation((entries) => {
+    for (const [key, value] of entries) store.set(key as string, value)
     return Promise.resolve()
   })
   vi.mocked(del).mockImplementation((key) => {

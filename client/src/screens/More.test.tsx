@@ -355,3 +355,57 @@ describe('what the account has (#894)', () => {
     expect(screen.queryByText('Last sent')).toBe(null)
   })
 })
+
+const ACCOUNT_DATA = {
+  onExportAccount: vi.fn().mockResolvedValue(undefined),
+  onDeleteAccount: vi.fn(),
+}
+
+describe('taking your data, or leaving (#895)', () => {
+  it('sits in the You tab, below the sync panel', () => {
+    // Export first, delete second, both from one screen - and the
+    // irreversible control furthest from the thumb that opened the tab.
+    render(
+      <More
+        {...PROPS}
+        account={{ email: 'hiker@example.org' }}
+        {...SYNCING}
+        {...ACCOUNT_DATA}
+      />,
+    )
+
+    expect(
+      screen.getByRole('heading', { name: /taking your data, or leaving/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /download everything of yours/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing at all to a hiker who is signed out', () => {
+    // There is no account to take back or to delete, and offering a button
+    // that would 401 is worse than offering none.
+    render(<More {...PROPS} {...SYNCING} {...ACCOUNT_DATA} />)
+
+    expect(screen.queryByRole('heading', { name: /taking your data/i })).toBe(null)
+  })
+
+  it('stays on screen after the deletion signs the hiker out', () => {
+    // The receipt is unmountable by construction otherwise: deleting signs
+    // them out, `account` goes null, and the one screen a hiker is owed
+    // disappears in the same tick it was earned.
+    render(<More {...PROPS} {...SYNCING} {...ACCOUNT_DATA} accountDeleted />)
+
+    expect(
+      screen.getByRole('heading', { name: /taking your data, or leaving/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing on a surface that cannot actually run the deletion', () => {
+    // The same rule the sync panel follows: a control with no handler behind
+    // it must not be drawn, because there is no honest thing for it to do.
+    render(<More {...PROPS} account={{ email: 'hiker@example.org' }} {...SYNCING} />)
+
+    expect(screen.queryByRole('heading', { name: /taking your data/i })).toBe(null)
+  })
+})

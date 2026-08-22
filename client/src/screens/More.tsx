@@ -22,6 +22,7 @@ import { Tabs, type TabItem } from './Tabs'
 import {
   YouSettings,
   AccountSyncSettings,
+  AccountDataSettings,
   MapSettings,
   DisplaySettings,
   SafetyPrivacySettings,
@@ -249,6 +250,20 @@ export function More({
               enabled={settings.syncEnabled ?? true}
               onToggle={settings.onToggleSync}
               now={settings.now}
+            />
+          )}
+        {/* Below the sync panel and last in the tab, which is the order #895
+            asks for - export first, delete second, both from one screen -
+            and the order that puts the irreversible control furthest from
+            the thumb that opened the tab. Signed-in only: there is no
+            account to take back or delete without one, and the device's own
+            half is reachable through this button anyway once there is. */}
+        {(settings.account !== null || settings.accountDeleted === true) &&
+          settings.onExportAccount !== undefined &&
+          settings.onDeleteAccount !== undefined && (
+            <AccountDataSettings
+              onExport={settings.onExportAccount}
+              onDelete={settings.onDeleteAccount}
             />
           )}
       </div>

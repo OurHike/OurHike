@@ -162,6 +162,9 @@ def get_current_user(
     `hiker`) - this is the "at least enough to identify a reporter and a
     moderator" local identity TECHNICAL_ARCHITECTURE.md's Backend section
     calls for, without duplicating Supabase's own user data.
+
+    A row carrying `deleted_at` is refused rather than returned; see the
+    comment at the check, which is the load-bearing half of #895.
     """
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -175,7 +178,24 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
 
-    return _get_or_create_profile(db, user_id)
+    profile = _get_or_create_profile(db, user_id)
+
+    # A deleted account cannot be signed back into (#895). This is not
+    # belt-and-braces: this backend has no way to delete the Supabase Auth
+    # user - that needs a service-role key app/config.py does not hold - so
+    # after a deletion the hiker's Supabase session is still valid and its
+    # token still verifies above. Without this line the very next request
+    # would sail through `_get_or_create_profile`, find the scrubbed row, and
+    # hand the account straight back, minus the trail name.
+    #
+    # 401 rather than 403, and the wording matters: this is "you are not
+    # signed in to anything", which is true, rather than "you may not do
+    # this", which would imply the account is still there. The client's
+    # `NotSignedInError` path already treats 401 as sign-out (lib/api.ts).
+    if profile.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This account has been deleted")
+
+    return profile
 
 
 def get_current_user_optional(

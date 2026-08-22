@@ -32,11 +32,13 @@ import pytest
 import export_conditions
 from export_conditions import (
     MAY_SELECT_SQL,
+    PENDING_READER_SETUP,
     POLICY_COUNT_SQL,
     PUBLIC_CLOSURES_SQL,
     PUBLIC_NOTES_SQL,
     PUBLIC_REPORTS_SQL,
     RLS_ENABLED_SQL,
+    TABLE_EXISTS_SQL,
     _stamp_utc,
     assert_reader_permissions,
     build_document,
@@ -45,6 +47,7 @@ from export_conditions import (
     read_closures,
     read_notes,
     read_reports,
+    reader_problem,
 )
 
 # Mirrors backend/app/models/closure.py closely enough to run the real query
@@ -132,7 +135,7 @@ FIELD_NOTES_DDL = """
 
 
 def test_a_missing_grant_is_refused_by_name():
-    problem = permission_problem("closures", may_select=False, rls_enabled=True, policies=1)
+    problem = permission_problem("closures", exists=True, may_select=False, rls_enabled=True, policies=1)
 
     assert problem is not None
     assert "GRANT SELECT" in problem
@@ -142,7 +145,7 @@ def test_a_missing_grant_is_refused_by_name():
 def test_rls_on_with_no_readable_policy_is_refused():
     """The case the whole script is built around: everything looks configured,
     the query succeeds, and it returns nothing."""
-    problem = permission_problem("closures", may_select=True, rls_enabled=True, policies=0)
+    problem = permission_problem("closures", exists=True, may_select=True, rls_enabled=True, policies=0)
 
     assert problem is not None
     assert "empty artifact" in problem
@@ -152,7 +155,7 @@ def test_the_reports_refusal_quotes_the_reports_predicate():
     """The fix the message carries has to be the right fix for the table it
     names - the reports policy is two columns, and pasting the closures one
     would create a policy that leaks every submitted report."""
-    problem = permission_problem("reports", may_select=True, rls_enabled=True, policies=0)
+    problem = permission_problem("reports", exists=True, may_select=True, rls_enabled=True, policies=0)
 
     assert problem is not None
     assert "reports" in problem
@@ -163,11 +166,60 @@ def test_no_policy_is_fine_when_rls_is_off():
     """Local development and CI, where the suite owns the table and never turns
     RLS on. Demanding a policy there would fail on a database that is not
     hiding anything."""
-    assert permission_problem("closures", may_select=True, rls_enabled=False, policies=0) is None
+    assert permission_problem("closures", exists=True, may_select=True, rls_enabled=False, policies=0) is None
 
 
 def test_a_grant_and_a_policy_together_pass():
-    assert permission_problem("closures", may_select=True, rls_enabled=True, policies=1) is None
+    assert permission_problem("closures", exists=True, may_select=True, rls_enabled=True, policies=1) is None
+
+
+def test_a_table_that_does_not_exist_is_named_as_a_missing_migration():
+    """The production signature of #922. `field_notes` reached this reader
+    before the migration that creates it reached the production database, and
+    the check raised UndefinedTable from inside psycopg instead of saying so -
+    a traceback where the point of this function is an actionable sentence."""
+    problem = permission_problem("field_notes", exists=False, may_select=False, rls_enabled=False, policies=0)
+
+    assert problem is not None
+    assert "does not exist" in problem
+    assert "migrate.yml" in problem
+    # Not the grant message: the fix is a migration, and telling somebody to
+    # GRANT on a table that is not there sends them to the wrong console.
+    assert "GRANT SELECT" not in problem
+
+
+def test_a_missing_table_is_reported_rather_than_raised(clean_tables):
+    """`has_table_privilege` and the `::regclass` cast both raise on a relation
+    that is not there, so the existence question has to come first and has to
+    be the one that does not. Asked against a real Postgres, because that
+    ordering is only load-bearing against a real catalog."""
+    problem = reader_problem(clean_tables, "no_such_table_here")
+
+    assert problem is not None
+    assert "does not exist" in problem
+
+
+def test_the_existence_query_answers_for_a_table_that_is_there(clean_tables):
+    with clean_tables.cursor() as cur:
+        cur.execute(TABLE_EXISTS_SQL, ("public.closures",))
+        assert cur.fetchone()[0] is True
+
+        cur.execute(TABLE_EXISTS_SQL, ("public.no_such_table_here",))
+        assert cur.fetchone()[0] is False
+
+
+def test_only_field_notes_may_be_pending_and_it_says_what_would_settle_it():
+    """The set is scaffolding for a rollout window (#922), so it has to stay
+    small and stay removable. Closures and reports must never be in it: they
+    are configured in both environments today, so their failing is a
+    regression and has to stay red."""
+    assert set(PENDING_READER_SETUP) == {"field_notes"}
+    assert "closures" not in PENDING_READER_SETUP
+    assert "reports" not in PENDING_READER_SETUP
+
+    guidance = PENDING_READER_SETUP["field_notes"]
+    assert "d7e2b9c41f68" in guidance
+    assert "CONDITIONS_DELIVERY.md" in guidance
 
 
 def test_a_naive_timestamp_leaves_stamped_as_utc():
@@ -686,6 +738,115 @@ def test_a_half_configured_database_is_refused_before_anything_is_read(clean_tab
     with pytest.raises(SystemExit) as exc:
         assert_reader_permissions(rls_subject, "reports")
     assert "public.reports" in str(exc.value)
+
+
+@pytest.fixture
+def published_to(tmp_path, monkeypatch):
+    """Point the exporter's four artifacts and its manifest at a scratch
+    directory, and hand back the directory they will land in."""
+    out_dir = tmp_path / "conditions"
+    out_dir.mkdir()
+    monkeypatch.setattr(export_conditions, "OUT_DIR", out_dir)
+    for name, filename in (
+        ("CLOSURES_OUT_PATH", "closures.json"),
+        ("REPORTS_OUT_PATH", "reports.json"),
+        ("NOTES_OUT_PATH", "notes.json"),
+        ("DISPUTES_OUT_PATH", "disputes.json"),
+    ):
+        monkeypatch.setattr(export_conditions, name, out_dir / filename)
+    monkeypatch.setattr(export_conditions, "MANIFEST_PATH", tmp_path / "conditions_manifest.json")
+    return out_dir
+
+
+@pytest.fixture
+def reading_as_the_reader(monkeypatch):
+    """`main()` connects from the environment, so this is how a test makes it
+    connect as the non-owner role RLS actually binds."""
+    host = SCRATCH_URL.split("://", 1)[1].split("@", 1)[1]
+    monkeypatch.setenv("CONDITIONS_DATABASE_URL", f"postgresql://{READER}:{READER_PASSWORD}@{host}")
+
+
+def test_an_unconfigured_notes_table_still_publishes_the_safety_baseline(
+    clean_tables, rls_subject, published_to, reading_as_the_reader
+):
+    """#922, end to end, and the whole point of the change.
+
+    From 2026-08-20 to 2026-08-22 both environments had closures and reports
+    fully configured and `field_notes` not configured at all, and the
+    all-or-nothing pre-flight turned that into no bake whatsoever - the
+    offline safety baseline ageing in the bucket for two days while the notes
+    feature nobody had finished setting up held it hostage.
+
+    So: the two configured artifacts publish, the two that would be lies are
+    omitted, and the manifest carries exactly what was written."""
+    clean_tables.execute(f"REVOKE SELECT ON public.field_notes FROM {READER}")
+    _insert(clean_tables, closure_id="c1", moderation_status="verified")
+
+    manifest = export_conditions.main()
+
+    assert (published_to / "closures.json").exists()
+    assert (published_to / "reports.json").exists()
+    # Absent, not empty. A key that 404s falls back on the client; a document
+    # holding `[]` is a claim that nobody has written a note about this trail.
+    assert not (published_to / "notes.json").exists()
+    assert not (published_to / "disputes.json").exists()
+    assert set(manifest["artifacts"]) == {"closures", "reports"}
+
+    published = json.loads((published_to / "closures.json").read_text())
+    assert [row["id"] for row in published["closures"]] == ["c1"]
+
+
+def test_a_notes_table_that_does_not_exist_yet_publishes_the_baseline_too(
+    clean_tables, rls_subject, published_to, reading_as_the_reader
+):
+    """Production's signature specifically, which is not UA's.
+
+    UA had run migration d7e2b9c41f68 and merely lacked the GRANT; production
+    had never run it, so `field_notes` was not there at all and the check
+    raised UndefinedTable out of psycopg before it could refuse politely. Both
+    have to reach the same place, or fixing the one visible in the log leaves
+    the other environment still red."""
+    clean_tables.execute("DROP TABLE public.field_notes")
+    try:
+        _insert(clean_tables, closure_id="c1", moderation_status="verified")
+
+        manifest = export_conditions.main()
+
+        assert set(manifest["artifacts"]) == {"closures", "reports"}
+        assert not (published_to / "notes.json").exists()
+    finally:
+        # Module-scoped table, so put it back for whatever runs next.
+        clean_tables.execute(FIELD_NOTES_DDL)
+        clean_tables.execute(f"GRANT SELECT ON public.field_notes TO {READER}")
+
+
+def test_an_unconfigured_notes_table_says_so_where_a_run_summary_will_show_it(
+    clean_tables, rls_subject, published_to, reading_as_the_reader, capsys
+):
+    """Omitting quietly is one of the two failure modes this replaces, so the
+    skip has to be visible without opening the step log. `::warning::` is what
+    the workflow's own missing-secret gate uses."""
+    clean_tables.execute(f"REVOKE SELECT ON public.field_notes FROM {READER}")
+
+    export_conditions.main()
+
+    said = capsys.readouterr().out
+    assert "::warning::" in said
+    assert "field_notes" in said
+    assert "d7e2b9c41f68" in said
+
+
+def test_an_unconfigured_closures_table_still_stops_everything(clean_tables, rls_subject, reading_as_the_reader):
+    """The other half, and the reason PENDING_READER_SETUP is a named set
+    rather than "carry on regardless". Closures are configured in both
+    environments today, so losing the grant is a regression - and a regression
+    that published a partial baseline while going green would be exactly the
+    quiet failure this file exists to prevent."""
+    clean_tables.execute(f"REVOKE SELECT ON public.closures FROM {READER}")
+
+    with pytest.raises(SystemExit) as exc:
+        export_conditions.main()
+    assert "public.closures" in str(exc.value)
 
 
 def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):

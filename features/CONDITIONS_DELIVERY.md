@@ -180,11 +180,37 @@ keyword):
 | `postgres.ourhike_conditions_reader` (halves swapped) | `FATAL: (ENOTFOUND) tenant/user ... not found` |
 | `ourhike_conditions_reader.<project-ref>` | Works |
 
-**`export_conditions.py` refuses to run unless both are in place**, asking the catalog
-rather than trusting the configuration, so that a genuinely empty result is trustworthy.
+**`export_conditions.py` refuses to publish a table unless the table, the grant and the
+policy are all in place**, asking the catalog rather than trusting the configuration, so
+that a genuinely empty result is trustworthy.
 `pipeline/tests/test_export_conditions.py` proves the underlying trap is real by
 reproducing it against a live Postgres — a verified closure that reads fine, then reads as
 nothing the moment RLS is on without a policy.
+
+**A table it cannot read is omitted, and only sometimes fatal** (#922). Until 2026-08-22
+any unreadable table stopped the whole bake, on the reasoning that half a baseline looks
+like a day with no reports. That reasoning is about *publishing an empty artifact*, which
+a client cannot tell from the truth; it does not carry over to *omitting* one, because
+`publishedConditions.ts` is never-fatal about a key that 404s and falls back to what it did
+before. The coupling therefore bought nothing and cost the thing it protected: `field_notes`
+landing in the exporter before anybody had granted the reader access to it stopped closures
+and reports republishing for two days, and the offline safety baseline aged in the bucket
+while every hourly run went red.
+
+So the exporter now distinguishes the two cases by name, in `PENDING_READER_SETUP`:
+
+- **Outstanding account work** — a table listed there emits a `::warning::` naming the
+  migration and the SQL, omits its own artifacts, and lets the rest of the bake publish.
+  `field_notes` is the only entry, and it comes out once both databases have run migration
+  `d7e2b9c41f68` and the `GRANT`/`CREATE POLICY` above. Left in after that, it would turn a
+  real regression into a quiet one.
+- **Everything else** — closures and reports are configured in both environments today, so
+  either of them failing the same check is a regression and still stops the run.
+
+The existence question is asked first and with `to_regclass()`, because `has_table_privilege()`
+and a `::regclass` cast both raise on a relation that is not there — which is what a
+production database looks like between an exporter landing on `main` and a human dispatching
+`migrate.yml` for it.
 
 ### 3. How the client reads it
 

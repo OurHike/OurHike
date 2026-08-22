@@ -87,3 +87,38 @@ class Profile(Base):
     display_name = Column(String, nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    # When this account was deleted at the hiker's own request, or null for
+    # a live account (#895, features/ACCOUNT_SYNC.md phase E).
+    #
+    # WHY THE ROW SURVIVES ITS OWN DELETION, WHICH LOOKS BACKWARDS
+    #
+    # `DELETE FROM profiles` is what "delete my account" sounds like, and it
+    # is the one thing this table cannot do. Five other tables hold a NOT
+    # NULL foreign key to this id on rows that are somebody else's business
+    # as much as the hiker's - a closure other hikers are routing around, a
+    # condition report, a photo under an irrevocable CC BY-SA 4.0 grant
+    # (#577), an hour a club already stood behind. Deleting the row means
+    # either taking those with it or leaving a dangling key.
+    #
+    # Nulling the links instead was tried on paper and does not survive
+    # contact with `poi_photos`: its R2 object key is DERIVED from
+    # `contributor_id` (core/photos.py `poi_photo_key`), so a null there
+    # makes the photograph we just promised to keep unreachable, and its
+    # `uq_poi_photos_poi_contributor` unique constraint means a shared
+    # "deleted hiker" sentinel row would collide the moment two deleted
+    # accounts had photographed the same shelter.
+    #
+    # So what is deleted is the PERSON, not the key. After
+    # `core/account_deletion.py` runs, this row holds an id, a creation
+    # date and this stamp: no trail name, no role, nothing that says who it
+    # was, and `core/auth.py` refuses to let anyone sign back into it. The
+    # published rows keep pointing at an account that no longer belongs to
+    # anybody. That is what "the link goes, the contribution stays,
+    # unattributed" can actually mean given the keys above.
+    #
+    # The honest limit, stated because it is invisible from here: this
+    # backend cannot delete the Supabase Auth user itself. That needs a
+    # service-role key, and app/config.py has none - only the anon key and
+    # the JWKS. See features/AUTHENTICATION.md.
+    deleted_at = Column(DateTime, nullable=True)

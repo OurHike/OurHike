@@ -1207,3 +1207,49 @@ export async function syncTrips(payload: TripSyncRequest): Promise<TripSyncRespo
   })
   return (await response.json()) as TripSyncResponse
 }
+
+// --- Taking it all back, or being rid of us (#895, ACCOUNT_SYNC.md phase E)
+
+/**
+ * Everything the account holds, as the backend's own archive shape.
+ *
+ * `unknown` rather than a typed interface on purpose, and it is the same
+ * argument the endpoint makes for having no `response_model`: the archive is
+ * generated from the table definitions so that a column added tomorrow
+ * appears in it tomorrow. A hand-maintained interface here would be a second
+ * field list to keep in step, and TypeScript would not complain when it fell
+ * behind — it would just narrow what the client is willing to see. Nothing
+ * in this app reads inside it; it is written to a file.
+ */
+export async function fetchAccountExport(signal?: AbortSignal): Promise<unknown> {
+  const response = await authedFetch('/profiles/me/export', { signal })
+  return await response.json()
+}
+
+/** What the deletion actually did, counted. Mirrors `DeletionReceipt`. */
+export interface DeletionReceipt {
+  trips_deleted: number
+  planned_hikes_deleted: number
+  hikes_deleted: number
+  preferences_deleted: number
+  assignments_released: number
+  hours_deleted: number
+  app_failure_reports_unlinked: number
+  /** What outlived the account, keyed by the words the screen used for it.
+   *  Empty when nothing of theirs stayed. */
+  kept: Record<string, number>
+}
+
+/**
+ * Delete the account. There is no undo, and this function has no retry.
+ *
+ * Every other write in this file is retried by the outbox on failure. This
+ * one is not, deliberately: a retry loop against a deletion is a loop that
+ * could delete an account somebody had changed their mind about, from a
+ * queue they cannot see. A failure comes back to the screen and the hiker
+ * presses the button again, which is the only party entitled to decide that.
+ */
+export async function deleteAccount(): Promise<DeletionReceipt> {
+  const response = await authedFetch('/profiles/me', { method: 'DELETE' })
+  return (await response.json()) as DeletionReceipt
+}

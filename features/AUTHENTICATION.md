@@ -76,6 +76,32 @@ EmailChangeRequest
   (old email stays of record, and gets a heads-up notification, until confirmed)
 ```
 
+## Deleting an account (added 2026-08-22, #895)
+
+This document was thorough about getting **in** — sign-in methods, verification, MFA — and
+said nothing about getting out. That was harmless while every private thing a hiker owned
+lived on their own handset, because uninstalling *was* deletion; it stopped being harmless
+the moment [ACCOUNT_SYNC.md](ACCOUNT_SYNC.md)'s phases A and B put preferences and trips on
+a server.
+
+`DELETE /profiles/me` is the way out, and `GET /profiles/me/export` is the file a hiker
+takes with them first. What goes, what stays, and why the line is where it is belongs to
+[ACCOUNT_SYNC.md](ACCOUNT_SYNC.md) phase E and to
+`backend/app/core/account_deletion.py`. Two consequences are this document's, because they
+are about the identity layer rather than about the data:
+
+- **A deleted account cannot be signed back into.** `core/auth.py` refuses any token whose
+  profile row carries `deleted_at`, with a 401. Not belt-and-braces: see the next point.
+- **The Supabase Auth user is NOT deleted, and this backend cannot delete it.** Deleting a
+  user through Supabase's admin API needs a service-role key, and `app/config.py` holds
+  only the anon key and the JWKS — deliberately, since a service-role key in this process
+  is a credential that can act as any user. So after an OurHike deletion, the email address,
+  password hash and linked providers sketched in the data model above are still in Supabase
+  Auth, and the hiker's existing session is still valid; the check in the previous point is
+  what makes that session useless rather than a way straight back into the account. Closing
+  it properly is ACCOUNT_SYNC.md's open decision 5, and it is a decision about blast radius
+  rather than about deletion.
+
 ## Open questions (for you, not decided here)
 
 - **Exact provider pricing at real scale.** The free-tier framing above is directionally right but worth confirming against Supabase's current pricing before this gets built, not assumed from this doc.

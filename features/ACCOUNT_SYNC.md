@@ -362,15 +362,70 @@ Four things the build settled:
   stops syncing their laptop has not asked their phone to stop, so a synced setting would
   travel to exactly the devices it is meant to exclude.
 
-**E. Export and delete.** Everything of mine, in my hands or gone. Ships no later than C,
-because C is the phase that makes the current silence a broken promise.
+**E. Export and delete. Built** — `backend/app/core/account_deletion.py`,
+`app/core/account_export.py`, `GET /profiles/me/export` and `DELETE /profiles/me`, with
+`AccountDataSettings` and `client/src/lib/accountArchive.ts` on the phone
+([#895](https://github.com/OurHike/OurHike/issues/895)). Ahead of C rather than after it,
+which is what "no later than C" was asking for.
+
+Five things the build decided that this document and the issue left open:
+
+- **The row survives its own deletion, and that is not a hedge.** `DELETE FROM profiles`
+  is what "delete my account" sounds like and is the one thing that table cannot do: five
+  other tables hold a NOT NULL key to that id on rows this deletion is keeping. Nulling
+  those links instead does not survive contact with `poi_photos`, whose **R2 object key is
+  derived from `contributor_id`** — a null there makes the photograph unreachable, which is
+  deletion by another name applied to the one artifact under an irrevocable licence — and
+  whose `uq_poi_photos_poi_contributor` constraint means a shared "deleted hiker" sentinel
+  would collide the moment two deleted accounts had photographed the same shelter. So what
+  is deleted is the **person**: the trail name goes, the role goes, `deleted_at` is stamped,
+  and `core/auth.py` refuses to let anyone sign back in. The published rows point at an
+  account that belongs to nobody.
+- **A shared photo keeps its credit**, and the deletion screen says so before the button.
+  CC BY-SA 4.0 ([#577](https://github.com/OurHike/OurHike/issues/577)) was granted on
+  condition of attribution; stripping `attribution_name` would break that condition for
+  everyone downstream who took the photo on those terms. This is the one place where
+  "unattributed" is not on offer, and it is exactly the case the issue asks to be *"said
+  plainly before the button is pressed, not in a policy nobody reads."*
+- **A volunteer hour goes if nobody acted on it and stays if somebody did.** A `claimed`
+  hour is a logbook entry (VOLUNTEERING.md §5, *"the record is theirs first"*); the moment
+  a club admin confirms or disputes it, it is a number somebody stood behind. The issue
+  named neither. `@unvalidated` — that a club's reported totals would actually move is
+  reasoned from the workflow, not measured, and one club admin could settle it.
+- **The archive has two named halves**, `this_device` and `your_account`. The account holds
+  deliberately less than the hiker has — photos never sync, walked miles and pace do not
+  sync at all, and a trip made with syncing off has never been sent — so a file carrying
+  only the server's answer would be short by exactly the things they would most miss, while
+  looking complete. When the account half cannot be fetched the file says which of the three
+  reasons it was, rather than reading as an account with nothing in it.
+- **Deleting the account does not wipe the phone**, and the screen says so. The trips and
+  preferences in IndexedDB are this device's copy and always were — phase D's off switch
+  makes the same promise in the other direction — and a server-side deletion that silently
+  destroyed a hiker's local planning would be taking a decision nobody asked for.
+  Uninstalling is what removes those. The sync **ledgers** do go, for the reason sign-out
+  clears them: `since` and `seen` are claims about an account this device no longer has.
+
+And two things the build could not do, stated rather than implied:
+
+- **It does not delete the Supabase Auth user.** That needs a service-role key
+  `app/config.py` does not hold — only the anon key and the JWKS — so the email address and
+  password Supabase stores outlive the OurHike account. What stops that leftover session
+  being a way back in is the `deleted_at` check in `core/auth.py`, which is the part that
+  would otherwise hurt somebody. The leftover row is a real gap.
+- **The photographs themselves are not in the archive.** Their bytes live in R2 and the only
+  way to hand out an R2 object is a signed URL that lives `PHOTO_URL_TTL_SECONDS` — five
+  minutes, argued in `core/photos.py` and deliberately not raised. Five minutes is shorter
+  than the time it takes to download a file and open it, so a baked-in link would be dead on
+  arrival and would read as the export being broken. Every photo is exported with its key
+  and every other column; closing this properly means bundling the bytes in a real archive
+  format, not a longer TTL.
 
 **The spike that should run before C:** encode twenty real photos at `CARD_PHOTO_EDGE` and
 publish the median, so the cap in C is measured rather than picked.
 
 ## Decisions this document does not take
 
-Four, and each is a maintainer's rather than a session's:
+Five, and each is a maintainer's rather than a session's:
 
 1. **Is sync free?** [PRICING_MODEL.md](PRICING_MODEL.md) keeps contribution and safety
    data free and gates convenience. A hiker's own plans on their own two devices reads as
@@ -379,5 +434,16 @@ Four, and each is a maintainer's rather than a session's:
 2. **A per-hiker photo cap**, once the measurement above exists.
 3. **Retention after deletion** — how long a deleted photo's object survives in R2 before
    the sweep, and whether "deleted" means the same thing to a hiker as it does to a bucket.
+   Still open after phase E, and phase E is why it is now answerable: deletion exists, so
+   the question has a moment to attach to. What E does today is touch **no** R2 object,
+   because every object belonging to this hiker belongs to a row it is keeping — sweeping
+   one would orphan a live row rather than tidy a dead one. Private photo backup (C) is the
+   phase that creates an object with no surviving row, and it should not ship before this
+   is answered.
 4. **Does pace travel?** Deferred to #881 on purpose; whoever answers it there answers it
    for `walked-miles` too.
+5. **Whether the Supabase Auth user goes with the account.** Phase E deletes everything
+   this backend holds and cannot reach Supabase Auth at all — no service-role key exists in
+   `app/config.py`. Wiring one up means giving this backend a credential that can delete any
+   user, which is a decision about blast radius rather than about deletion, and it is not a
+   session's to take. The alternative is an edge function Supabase itself hosts.

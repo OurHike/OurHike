@@ -86,6 +86,8 @@ import {
 import { tripSyncState } from './lib/tripSyncState'
 import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
+import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
+import { deleteAccount, type DeletionReceipt } from './lib/api'
 import {
   hiddenTypesFrom,
   onlyType,
@@ -3461,6 +3463,61 @@ function App() {
     void signInWithProvider(provider)
   }, [])
 
+  /**
+   * Build the archive and hand it to the browser (#895).
+   *
+   * The device half is read here rather than passed down because App is the
+   * only thing that knows the stores exist; the screen owns the button and
+   * the spinner, and nothing else.
+   */
+  /**
+   * That this device has just deleted its account.
+   *
+   * Only here to keep the receipt on screen. Signing out is what makes the
+   * app's own state honest afterwards, and it takes `account` to null - which
+   * is the gate the section renders behind, so without this flag the panel
+   * unmounts in the same tick as the deletion it was about to report. Not
+   * persisted: it describes this render, not this device.
+   */
+  const [accountDeleted, setAccountDeleted] = useState(false)
+
+  const handleExportAccount = useCallback(async () => {
+    downloadArchive(await buildAccountArchive())
+  }, [])
+
+  /**
+   * Delete the account, then make this device stop acting like it has one.
+   *
+   * The order is the whole of it. `deleteAccount` first, because if it
+   * throws, nothing local should have changed and the hiker's next press is
+   * an ordinary retry. Only once the server has answered does this device
+   * forget its sync ledgers and sign out.
+   *
+   * WHAT THIS DELIBERATELY DOES NOT DO IS WIPE THE PHONE
+   *
+   * The trips, the planned hike and the preferences stay in IndexedDB, and
+   * the screen says so. They are this device's copy and always were - phase
+   * D's off switch makes the same promise in the other direction ("It does
+   * not delete anything, anywhere"), and a server-side deletion that also
+   * silently destroyed a hiker's local planning would be this app taking a
+   * decision that was never asked of it. Uninstalling is what removes those,
+   * and that is the sentence on the screen.
+   *
+   * The ledgers DO go, for the reason `handleSignOut` gives at more length:
+   * `since` and `seen` are claims about an account this device no longer
+   * has, and left in place they would make the next sign-in - possibly by
+   * somebody else on a shared handset - look like a device that had already
+   * synced, and upload one person's plans into another person's account.
+   */
+  const handleDeleteAccount = useCallback(async (): Promise<DeletionReceipt> => {
+    const receipt = await deleteAccount()
+    setAccountDeleted(true)
+    await forgetPreferencesSync()
+    await forgetTripSync()
+    await signOut()
+    return receipt
+  }, [])
+
   const handleSignOut = useCallback(async () => {
     await signOut()
     // The preferences stay - they are this phone's, and a hiker who signs
@@ -3946,6 +4003,9 @@ function App() {
                   syncStatus={syncSummary ?? undefined}
                   syncEnabled={syncOn}
                   onToggleSync={handleToggleSync}
+                  onExportAccount={handleExportAccount}
+                  onDeleteAccount={handleDeleteAccount}
+                  accountDeleted={accountDeleted}
                   now={now}
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}

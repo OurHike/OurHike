@@ -1,0 +1,75 @@
+{
+  "_README": [
+    "Per-source blaze mapping tables (#782, features/NEARBY_TRAILS.md section 4).",
+    "",
+    "A reviewed file, the shelter_capacity.json posture: every row is somebody's",
+    "decision that a raw source value IS a particular paint on a tree, and",
+    "reviewing a diff of this reviews those decisions. That is the whole reason",
+    "it is committed rather than derived.",
+    "",
+    "THE RULE THIS FILE EXISTS TO ENFORCE",
+    "",
+    "The maintainer's decision (2026-08-18): 'the color of the trail blazes",
+    "should be the color on the map', and 'some way to stop sprawl is needed'.",
+    "The palette in client/src/lib/blaze.ts is closed and grows by review. This",
+    "is the other half: every source normalizes INTO that palette, and a value",
+    "with no row here falls to Unknown neutral with a loud warning. A color the",
+    "map has never heard of must never invent a paint.",
+    "",
+    "`mapped` names a palette member. `deferred` records a value we have SEEN",
+    "and decided not to paint yet, with the reason and what would settle it -",
+    "the distinction matters, because a deferred value is a decision and an",
+    "absent one is an oversight, and they render identically. lib/blaze.py",
+    "warns differently for each, which is what makes the difference visible.",
+    "",
+    "Counts are from the #771 spike against OPRHP's statewide layer, measured",
+    "2026-08-18. Nothing OPRHP-derived publishes until #769 records their",
+    "licence answer; this file is the machinery, not the release."
+  ],
+  "sources": {
+    "oprhp_trails": {
+      "_note": [
+        "New York State Office of Parks, Recreation and Historic Preservation,",
+        "statewide trails layer. Carries Blaze/Blaze_2/Blaze_3 plus Map_Blaze."
+      ],
+      "mapped": {
+        "Aqua": "Aqua",
+        "Teal": "Aqua",
+        "White": "White",
+        "Blue": "Blue",
+        "Yellow": "Yellow",
+        "Orange": "Orange",
+        "Red": "Red",
+        "Green": "Green",
+        "Purple": "Purple"
+      },
+      "deferred": {
+        "Light Blue": {
+          "count": 115,
+          "why": "A real distinct paint in these parks rather than a spelling of Blue, so collapsing it onto Blue would flatten two trails a hiker tells apart at a junction. Wants its own palette member.",
+          "settles_it": "An admission review: a hex that clears the bars in client/src/lib/blaze.ts next to both Blue and Aqua, which is the crowded corner of this palette."
+        },
+        "Pink": {
+          "count": 171,
+          "why": "The largest unmapped count, and no existing member is honestly near it. Not a spelling of Red or Purple.",
+          "settles_it": "An admission review. Nothing about it is ambiguous except that nobody has picked a hex."
+        },
+        "Brown": {
+          "count": 116,
+          "why": "Nearest existing members are the neutral grey and Purple, and neither is brown. Painting it as either would be confidently wrong.",
+          "settles_it": "An admission review, with attention to the day sheet - brown on tan contours is the pairing that would fail an outdoor pass (#105)."
+        },
+        "Black": {
+          "count": 50,
+          "why": "Real paint, and the one candidate the neutral fallback's own design argues against: TRAIL_BLAZE_COLORS.md says the fallback 'cannot be black, near-black, or anything close to the 8 real hues'. Admitting Black needs that sentence revisited, not just a hex.",
+          "settles_it": "A decision about whether Black-on-dark-sheet is drawable at all, ahead of a hex."
+        },
+        "Lime": {
+          "count": 35,
+          "why": "The smallest count, and the one most likely to be a spelling of Green rather than a separate paint. Mapping it onto Green without checking would merge two trails; giving it a member without checking would split one.",
+          "settles_it": "Reading a sample of Lime segments against their trails' published blaze descriptions - measurement before mapping, per the design doc."
+        }
+      }
+    }
+  }
+}

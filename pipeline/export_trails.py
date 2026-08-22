@@ -46,7 +46,7 @@ from shapely.ops import linemerge
 from shapely.ops import transform as shapely_transform
 
 from lib.arcgis import get_field_coded_domain
-from lib.blaze import normalize_blaze_color
+from lib.blaze import load_blaze_mapping, map_source_blaze, normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
@@ -102,17 +102,45 @@ def normalize_source_features(source: dict, features: list[dict]) -> list[dict]:
     key = source["key"]
     blaze_field = source.get("blaze_field")
     coded_domain = get_field_coded_domain(source["url"], blaze_field) if blaze_field else None
+    # The reviewed table for THIS source, or None. A source with no table -
+    # every A.T. source today - takes the decode-only path below exactly as it
+    # did before #782, which is what makes the palette extension A.T.-safe:
+    # nothing about the seven colours already shipping goes through the new
+    # code at all.
+    mapping = load_blaze_mapping().get(key)
 
     normalized = []
     for index, feature in enumerate(features):
         properties = feature.get("properties") or {}
         raw_value = properties.get(blaze_field) if blaze_field else None
         blaze_color, decoded = normalize_blaze_color(raw_value, coded_domain, source.get("blaze_default"))
+
+        # A reviewed mapping applies to what the DECODE produced, not to the
+        # raw value: OPRHP's layer is coded, so "Teal" is what comes out the
+        # far side of the domain lookup, and mapping the code would tie the
+        # reviewed file to an ArcGIS numbering that can change under us.
+        disposition = None
+        if mapping is not None and decoded:
+            mapped, disposition = map_source_blaze(blaze_color, mapping)
+            blaze_color = mapped
+
         if not decoded:
             feature_id = resolve_feature_id(key, feature, properties, index)
             print(
                 f"WARNING: {key} feature {feature_id!r} has an undecodable blaze value "
                 f"({raw_value!r}) - falling back to {blaze_color!r}"
+            )
+        elif disposition == "unmapped":
+            # The loud one WIREFRAMES.md section 3 requires: a colour the map
+            # has never heard of must never invent a paint, and must never
+            # pass quietly either. Distinct from "deferred", which is a
+            # decision already recorded in reference/blaze_mapping.json and
+            # would be noise repeated per feature.
+            feature_id = resolve_feature_id(key, feature, properties, index)
+            print(
+                f"WARNING: {key} feature {feature_id!r} has blaze {raw_value!r}, which no "
+                f"reviewed mapping covers - rendering neutral. Add it to "
+                f"reference/blaze_mapping.json, mapped or deferred."
             )
         normalized.append({**feature, "_blaze_color": blaze_color})
     return normalized

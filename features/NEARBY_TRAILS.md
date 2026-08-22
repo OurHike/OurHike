@@ -145,6 +145,47 @@ The mechanism, which is where sprawl stops:
 - **First admissions**: Aqua is in (the Long Path forces it). Every other candidate waits
   for the mapping-table review, with the OPRHP counts above as the docket.
 
+**Built 2026-08-22 (#782).** `client/src/lib/blaze.ts` admits **Aqua at `#0d8f96`**,
+`pipeline/lib/blaze.py` gains `map_source_blaze`, and the docket lives in
+`pipeline/reference/blaze_mapping.json`. Five things the build settled that this section
+left open:
+
+- **The admission bars are the palette's own numbers, and they are enforced rather than
+  described.** There is no standard for "two trail lines a hiker can tell apart at a
+  junction" — WCAG is about text on a background — so inventing a threshold would be a
+  number with nothing behind it. `blazeGovernance.test.ts` computes a no-regression bar
+  instead: separation ≥ **24.178** (Blue/Purple, the closest pair already shipping), day
+  contrast ≥ **2.076** (Yellow's) and night contrast ≥ **2.66** (Purple's). A future
+  admission that fails one fails CI. White is exempted by name from the day bar, because
+  white paint on white paper is 1.02 and its width and casing are what carry it.
+- **Aqua's hex is measured, not picked**: ΔE 36.6 from its nearest neighbour, 3.90 day,
+  4.80 night. Chosen over `#00a0a8`, which separates slightly better and reads worse on the
+  day sheet — the one a hiker holds in the sun. `@unvalidated` all the same: arithmetic is
+  not legibility, and **#105 — Outdoor usability pass** is what would settle it.
+- **"Deferred" is a third disposition, not a flavour of unmapped.** A value somebody looked
+  at and declined to paint renders the same neutral as one nobody has seen, and they are
+  not the same event — collapsing them is how an oversight hides inside a docket. The
+  mapping table records `why` and `settles_it` for each, and a test refuses a deferral
+  missing either. Deferred today: Light Blue (115), Pink (171), Brown (116), Black (50),
+  Lime (35).
+- **A mapping row naming a paint the client cannot draw is refused, not warned.** A warning
+  would ship every trail wearing it as neutral grey, indistinguishable from "this source
+  had no blaze data" — the silent-wrong the loud warning exists to prevent, arriving by the
+  one path the warning cannot see. It is a file a person edited, so the failure belongs at
+  the edit.
+- **The mapping applies to the DECODED value, not the raw one.** OPRHP's layer is coded, so
+  mapping the code would tie a reviewed file to an ArcGIS numbering that can change under
+  us. A source with no table takes the decode-only path unchanged, which is what makes this
+  A.T.-safe: nothing about the seven colours already shipping goes through the new code.
+
+And one thing found while building it: **#657's `NO_BLAZE_COUNTS` was not waiting on this
+issue.** Its comment said the legend's blaze rows "need the reviewed colour mapping #782 is
+deciding", and a trail feature already carries `blaze_color` on every source shipping — so
+counting what the map drew never needed the table. The rows are live now
+(`client/src/map/drawnBlazes.ts`), which is also this section's own completion condition
+demonstrated rather than asserted: nothing in that module names a colour, so Aqua counts the
+day a trail wears it.
+
 ## 5. One place, one line, many orgs
 
 Cross-org rules, recorded from the maintainer's decisions and the spike's evidence:

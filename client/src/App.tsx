@@ -39,7 +39,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
-import type { BlazeCount } from './chrome/Legend'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
@@ -340,21 +339,6 @@ const TRAIL_LOGO = TRAILS.AT.logo
 // Sign in and sign out used to be here too. They are real now - Supabase Auth
 // is a separate service from this project's backend, so signing in never
 // needed that backend to exist, only a project to sign in to.
-/**
- * STAGED, NOT SHIPPED (#657). The Legend's blaze list is built and tested and
- * has never rendered, because nothing computes these counts.
- *
- * Hardcoded `[]` said the same thing invisibly: `blazeCounts.length > 0`
- * guards the list, so an empty array is indistinguishable in the source from
- * "this stretch has no blazes to count". A named constant is greppable and
- * says which it is.
- *
- * What would fill it: counting the blaze colours on the trail features in
- * view, which needs the reviewed colour mapping #782 is deciding - so this
- * waits on that rather than on anybody wiring a prop.
- */
-const NO_BLAZE_COUNTS: BlazeCount[] = []
-
 // The whole trail, Springer to Katahdin, as the opening view. Taken from the
 // published topo archive's own header bounds, so it frames exactly the ground
 // the map actually covers rather than a hand-typed guess.
@@ -3088,7 +3072,11 @@ function App() {
   // How many of the waypoints in view the map actually drew (#528). Measured on
   // `idle` rather than derived, because the collision engine decides it and only
   // MapLibre knows what it decided - see lib/useDrawnPoiCounts.ts.
-  const { counts: drawnPoiCounts, belowPoiZoom } = useDrawnPoiCounts(map)
+  const {
+    counts: drawnPoiCounts,
+    belowPoiZoom,
+    blazes: blazeCounts,
+  } = useDrawnPoiCounts(map)
 
   // One thing open at a time. The waypoint card floats by its pin rather than
   // at the bottom where the legend sits, but the rule survives the move: two
@@ -4593,7 +4581,12 @@ function App() {
           waypoints={waypoints}
           onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
           viewportPoints={viewportPoints}
-          blazeCounts={NO_BLAZE_COUNTS}
+          // Live since #782, and NOT waiting on that issue's mapping table the
+          // way #657's placeholder claimed: a trail feature already carries
+          // `blaze_color` on every source shipping, so counting what the map
+          // drew never needed the table at all. map/drawnBlazes.ts records
+          // the correction.
+          blazeCounts={blazeCounts}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
           hiddenTypes={hiddenTypes}

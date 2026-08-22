@@ -19,6 +19,54 @@ export const NEUTRAL_BLAZE_COLOR = '#8a8271'
 
 const NEUTRAL_FALLBACK = NEUTRAL_BLAZE_COLOR
 
+/**
+ * THE PALETTE IS CLOSED, AND THIS IS WHERE SPRAWL STOPS (#782).
+ *
+ * The maintainer's decision, verbatim (features/NEARBY_TRAILS.md §4,
+ * 2026-08-18): *"we will need to bring in more colors for the blazes. Long
+ * [Path] is indeed aqua. Some way to stop sprawl is needed, but the color of
+ * the trail blazes should be the color on the map."*
+ *
+ * Both halves of that are load-bearing. The paint on the tree is what a hiker
+ * navigates by, so a map that flattens it is lying about the ground — and a
+ * palette that grows every time a new source arrives ends up with forty hues
+ * nobody can tell apart, which lies about it differently. So this object is
+ * the ENTIRE set of hues this map will ever paint, and it grows by review
+ * rather than by data arrival.
+ *
+ * **A new member needs three things, and the third is the one that gets
+ * skipped:**
+ *
+ *   1. a real trail wearing it — measured on a real source, not anticipated;
+ *   2. a hex that stays separable from its nearest palette neighbour and
+ *      readable on both the day and the night sheet, with the numbers written
+ *      down here rather than asserted;
+ *   3. no change to the red-light collapse. That one is free by construction
+ *      and worth knowing why: `map/style.ts`'s `blazeLineColor` replaces this
+ *      whole expression with `RED_LIGHT_BLAZE_COLOR` under red light, so a
+ *      member added here cannot reach that mode at all. Blaze identity moves
+ *      to the tapped trail's sheet there, honestly, rather than pretending to
+ *      survive on the line.
+ *
+ * **The bar, measured against the palette itself rather than picked** (all
+ * figures 2026-08-22, CIE76 ΔE in Lab and WCAG contrast ratio):
+ *
+ *   - **Separation ≥ 24.178.** That is Blue/Purple, the closest pair already
+ *     shipping. A new hue at least as separable as the worst pair a hiker
+ *     already reads is not a regression; a tighter one is.
+ *   - **Day contrast ≥ 2.076** against `#ffffff`, the field sheet's paper —
+ *     Yellow's, the lowest of any hue that is not White. (White itself is
+ *     1.02 and stays: the AT's centerline is white paint, and its width and
+ *     casing are what carry it.)
+ *   - **Night contrast ≥ 2.66** against `#0c1410`, night_hike's ink —
+ *     Purple's, the lowest shipping.
+ *
+ * These are arithmetic, and arithmetic is not the whole of legibility:
+ * `@unvalidated` — nothing here has been read on a real phone in real
+ * sunlight, which is **#105 — Outdoor usability pass** and the thing that
+ * would actually settle a hex. What would change a number is that pass
+ * reporting a hue that washes out, not a nicer figure in this comment.
+ */
 const BLAZE_COLORS: Record<string, string> = {
   White: '#fffdf7',
   Blue: '#1f5fa8',
@@ -27,6 +75,18 @@ const BLAZE_COLORS: Record<string, string> = {
   Red: '#b2321f',
   Green: '#2f7a44',
   Purple: '#6a4a8f',
+  // FIRST ADMISSION UNDER THE RULE ABOVE (#782), and the Long Path forces it:
+  // 107 Aqua + 28 Teal rows on OPRHP's own Long Path segments, agreeing with
+  // NYNJTC's separate layer (measured 2026-08-18, #771). Aqua is real paint on
+  // real trees, not a source's idiosyncratic spelling.
+  //
+  // Measured 2026-08-22 against the three bars above: nearest neighbour is the
+  // neutral grey at ΔE 36.6 (Green 37.3, Blue 49.9), against a 24.178 bar;
+  // day contrast 3.90 against a 2.076 bar; night contrast 4.80 against 2.66.
+  // Chosen over #00a0a8, which separates slightly better (ΔE 39.9) and reads
+  // worse where it matters more — 3.18 on the day sheet, which is the one a
+  // hiker holds in the sun.
+  Aqua: '#0d8f96',
   // All three are real values from the pipeline (see pipeline/lib/blaze.py) -
   // "None" means confirmed unblazed, "Other" is a real domain value with no
   // dedicated paint style, and "Unknown" is what its NEUTRAL_FALLBACK emits
@@ -37,6 +97,33 @@ const BLAZE_COLORS: Record<string, string> = {
   Other: NEUTRAL_FALLBACK,
   Unknown: NEUTRAL_FALLBACK,
 }
+
+/**
+ * The values that mean "no hue to draw" rather than naming one.
+ *
+ * All three are real pipeline output, not error states: "None" is a confirmed
+ * unblazed trail, "Other" is a real domain value with no dedicated paint, and
+ * "Unknown" is what `lib/blaze.py` emits by contract for every value it could
+ * not decode.
+ */
+export const NEUTRAL_BLAZE_MEMBERS = ['None', 'Other', 'Unknown'] as const
+
+/**
+ * Every hue the palette admits, in declaration order.
+ *
+ * Derived rather than listed, so that admitting a member reaches everything
+ * that enumerates the palette — the legend's rows, the style tests, and the
+ * governance check in blaze.test.ts — without anybody remembering to add it
+ * in a second place. #782 makes that a requirement rather than a nicety:
+ * *"the legend's blaze rows pick up new members automatically or this issue
+ * is not done."*
+ */
+export const BLAZE_PALETTE_MEMBERS = Object.keys(BLAZE_COLORS).filter(
+  (name) => !(NEUTRAL_BLAZE_MEMBERS as readonly string[]).includes(name),
+)
+
+/** Every blaze_color string this module answers for, hues and neutrals alike. */
+export const BLAZE_MEMBERS = Object.keys(BLAZE_COLORS)
 
 export function blazePaintColor(blazeColor: string): string {
   if (typeof blazeColor === 'string' && blazeColor in BLAZE_COLORS) {

@@ -52,6 +52,41 @@ It does **not** answer "is this spur yellow or orange" - those two are now separ
 
 [SEGMENTS.md](SEGMENTS.md) already ties every Segment's boundaries to real trail geometry (centerline mile-markers, POIs). That means a planned Hike's segments can render in their real blaze color automatically, with no new field on Segment itself - a segment that runs along the white AT renders white, one that detours to a blue-blazed shelter spur renders blue, purely by reading whatever trail-line data that segment actually spans. The two features compose without needing to talk to each other explicitly.
 
+## The palette grew, under governance (added 2026-08-22, #782)
+
+This doc's design assumed one source's coded domain and seven paints. A second network
+breaks that assumption in a way worth recording here rather than only in
+[NEARBY_TRAILS.md](NEARBY_TRAILS.md) §4, because it changes what "normalize every trail-line
+feature to one `blaze_color`" means: there are now **two** normalization steps, and they are
+different kinds of decision.
+
+- **Decoding** is mechanical — an ArcGIS coded domain says code 1 is Blue — and stays in
+  `normalize_blaze_color`, unchanged.
+- **Mapping** is judgement: that OPRHP's "Teal" is the same paint a hiker sees as aqua on
+  Long Path trees, that its "Lime" might be Green and nobody has checked. That lives in
+  `pipeline/reference/blaze_mapping.json`, a reviewed file, and applies to what the decode
+  produced rather than to the raw value.
+
+The palette is **closed**: `client/src/lib/blaze.ts`'s `BLAZE_COLORS` is the entire set of
+hues this map will ever paint, and it grows by review rather than by data arrival. Aqua is
+the first admission (`#0d8f96`), and the bars it cleared are computed from the palette
+itself and enforced in CI — see NEARBY_TRAILS.md §4 for the figures and the reasoning.
+
+**Two of this section's open questions moved as a result**, and one did not:
+
+- *"Exact neutral gray value"* — still open, and still "worth picking with an actual
+  rendered map in front of you". Nothing here touched it.
+- The accessibility argument above gains a member and does not change: the hue count is now
+  9 real colours plus neutral, and **width** remains the hue-independent channel. Aqua does
+  not make that worse — it is ΔE 36.6 from its nearest neighbour against a 24.178 bar — but
+  the section's warning that "up to 9 distinguishable line colours is a lot to tell apart"
+  is now literally true rather than a ceiling, which is worth knowing before the next
+  admission.
+- **Black is the one that reopens something.** OPRHP carries 50 Black rows, and this doc's
+  own neutral-default argument says the fallback "cannot be black, near-black, or anything
+  close to the 8 real hues". Admitting Black needs that sentence revisited rather than just
+  a hex, and the docket records it as deferred for exactly that reason.
+
 ## Open questions (for you, not decided here)
 
 - **"None" (code 0, a genuinely unblazed trail) vs. true unknown (missing/invalid data).** Recommended above as the same neutral fallback for both, since there's no way to visually distinguish "confirmed no blaze exists" from "we don't have data" without extra UI. Worth deciding if that distinction ever needs to be surfaced (e.g. in a tap-for-details popup) rather than just collapsed into one color.

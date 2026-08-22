@@ -71,6 +71,14 @@ jobs:
           #   pipeline/reference/gain_vectors.json  lib/elevationGain.test.ts
           #   site/src/ (stylesheet, install page)  test/siteLayout.test.ts
           #   .github/ISSUE_TEMPLATE/*.yml          test/issueFormPrefill.test.ts
+          #   pipeline/tests/fixtures/              lib/poiIdentity.contract.test.ts
+          #
+          # The fourth is #831's two-runtime resolver: the POI id resolver
+          # exists once in Python and once in TypeScript, because neither
+          # package can import the other, and one fixture file is the whole
+          # of what holds them to the same answers. Editing a case has to
+          # run both suites or the guard checks one implementation against
+          # cases the other never saw.
           #
           # Scoped to client/ alone, a pull request editing the shared gain
           # vectors ran only the Python half of a drift guard whose whole
@@ -83,7 +91,7 @@ jobs:
           # them with fields prefilled, and GitHub matches a prefilled dropdown
           # by its option TEXT - so rewording a label there and nowhere else
           # breaks the links silently, and this is the run that says so.
-          paths: client/ pipeline/reference/ site/ .github/ISSUE_TEMPLATE/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+          paths: client/ pipeline/reference/ pipeline/tests/fixtures/ site/ .github/ISSUE_TEMPLATE/ .github/workflows/client-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-node@v7
         if: steps.scope.outputs.run == 'true'

@@ -17,8 +17,17 @@ threshold + margin-over-runner-up on both sides + the hard ceiling + mutual-best
 them. **Step 3's pipeline half built 2026-08-19 (#673)** — `retired_poi.geojson` published from
 the ledger's retired rows, `superseded_by` written from tier 2's merge signature or a
 `merged_into` override, `lib/poi_identity.resolve` as the one implementation, and check 21
-extended to hold the tombstones to the ledger both ways; its backend and client halves are
-blocked on plumbing that does not exist, described in the build order below. Steps 4–5 remain
+extended to hold the tombstones to the ledger both ways; **its client half built
+2026-08-22 (#831)** — `client/src/lib/poiIdentity.ts` resolving against the published
+tombstones, `chrome/RemovedPoiCard.tsx` as §4's fourth existence state, `source` published on
+every tombstone so the card's sentence is derived rather than hard-coded, and the two resolvers
+held together by `pipeline/tests/fixtures/poi_resolver_cases.json`. **The backend half remains
+blocked** on plumbing that does not exist, and #831 measured why: nothing under `backend/app/`
+opens a file or a socket for data, `backend/Dockerfile` does not copy `pipeline/reference/`,
+`requirements.in` ships no HTTP client, `main.py` has no lifespan hook, and `config.py` argues
+at length against holding the published bucket's settings. Choosing between a table plus a
+`load_assignments.py`-shaped loader and a boot-time fetch is a maintainer's call, not a
+session's. Steps 4–5 remain
 (**#674 — Closures anchor on miles alone, and a re-measure moves every mile**, **#675 — Measure
 the first real ATC refresh: GlobalID survival, tier-2 volume, and where the thresholds land**).
 The umbrella is **#666 — A POI's identity is its upstream key, so one ATC annual refresh can
@@ -261,8 +270,26 @@ tier 2 ever runs — is part of the build order below.
   eligible to match again except through an explicit override.
 - **Upstream merges two places into one** (Rocky Run Shelters): one old id carries onto the
   survivor by evidence; the other retires with `superseded_by` naming it. Anything anchored to
-  the retired id re-anchors by following the pointer — a resolver, in one place, used by the
-  backend's serialisers and the client rather than implemented twice.
+  the retired id re-anchors by following the pointer — a resolver, in one place per runtime,
+  each in exactly one file, held to the others by a contract test over shared fixtures.
+
+  *That sentence used to read "in one place … rather than implemented twice", and **#831 asked
+  for the amendment rather than for the sentence to be quietly inherited**. One implementation
+  is not reachable and the repository already says why: `backend/tests/test_conditions_publisher_
+  contract.py` — "the pipeline is not importable from here (different package, its own
+  dependencies)" — and the client is a third runtime again. What is achievable is what three
+  tests in `backend/tests/` already do, so this adopts a practice rather than inventing one.
+  Built for the client 2026-08-22 (#831): `pipeline/lib/poi_identity.resolve` and
+  `client/src/lib/poiIdentity.resolvePoiId`, over the nine cases in
+  `pipeline/tests/fixtures/poi_resolver_cases.json`, with `client-tests.yml`'s scope list
+  carrying that directory so editing a case runs both suites rather than one.*
+
+  *The two resolvers see different things, which is the part a reader should not have to
+  rediscover.* The pipeline resolves against the whole ledger; a phone gets only
+  `retired_poi.geojson`, because the live half is already on it as `poi_*.geojson`. So the
+  tombstones alone cannot tell a live id from one this project has never heard of — and those
+  are different answers. The client's resolver therefore takes the live set as a predicate,
+  which is what makes it answer exactly what the Python one answers rather than approximately.
 - **Upstream splits one into two**: the id follows the best successor (name-containment beats
   nearest, [POI_SITES.md](POI_SITES.md) §2a's tie-break); the sibling is new. Content stays
   with the surviving id, which is where its history actually happened.
@@ -299,6 +326,25 @@ tier 2 ever runs — is part of the build order below.
   all `atc_csi` water points, not ATC shelters, so a card hard-coding "No longer in **ATC's**
   data" would be a false statement about every one of them. The ledger carries `source` on every
   row, and the sentence should be derived from it.
+
+  *Re-measured 2026-08-22 while building the card (#831), and it got stronger: **93 retired rows
+  now, across two sources** — `atc_csi` and `opentrail_at`. The second is not the ATC at all, so
+  the hard-coded sentence would now be false about a share of every card the app will ever draw.
+  Two things followed. `source` is published on every tombstone, a sixth property beyond the five
+  this section lists, because a phone has no other way to get it — and it is published rather
+  than **split off the id**, which is the shortcut that looks free: ids are minted
+  `{source}:{source_feature_id}`, but §5's "a source swap stops being a re-key" means the id
+  keeps its original prefix while `source` moves to the new truth. The prefix is history; the
+  column is the fact. And `chrome/removedPoiText.ts` builds the sentence through the same
+  `sourceLabel` map the live card's provenance line reads, so the two cannot describe one source
+  in two voices.*
+
+  *The card is built — `chrome/RemovedPoiCard.tsx` — and **nothing selects a retired id yet**,
+  which is stated here rather than left to be found. Every route into the client's selection
+  hands it an id that came from the live waypoints. The card is the half that has to exist
+  first: the anchors that will reach it are a hiker's private photos and `PlanStop.poiId`, whose
+  own comment says it is "kept so a later feature can follow the reference", and neither of
+  those features can be built until a followed reference has somewhere to land.*
 
 ### 5. Photos and comments, walked through
 

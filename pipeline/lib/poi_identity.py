@@ -29,12 +29,31 @@ that only the pipeline calls is a third of #673, not all of it.
 
 from __future__ import annotations
 
-# The properties a tombstone publishes, in the order the design lists them
-# (features/POI_IDENTITY.md section 4): "id, name, type, last position,
-# retired release, `superseded_by`". Position rides in the geometry rather
-# than the properties, which is what makes the artifact a FeatureCollection
-# a map can draw rather than a JSON table.
-TOMBSTONE_PROPERTIES = ("id", "name", "poi_type", "retired", "superseded_by")
+# The properties a tombstone publishes. The design lists five (section 4:
+# "id, name, type, last position, retired release, `superseded_by`");
+# `source` is the sixth and was added building the client card (#831).
+# Position rides in the geometry rather than the properties, which is what
+# makes the artifact a FeatureCollection a map can draw rather than a JSON
+# table.
+#
+# WHY `source` IS PUBLISHED RATHER THAN PARSED OFF THE ID
+#
+# The card has to name who dropped the place, and section 4 is explicit
+# that it "cannot hard-code 'no longer in ATC's data'" because not every
+# tombstone is ATC's. Measured against the ledger 2026-08-22: 93 retired
+# rows across TWO sources, `atc_csi` (water points) and `opentrail_at` -
+# so the sentence has to come from the data, and the artifact is the only
+# place a phone can get it from.
+#
+# The obvious shortcut is to split the id, since ids are minted
+# `{source}:{source_feature_id}`. It is wrong, and section 5 is where it
+# breaks: "a source swap stops being a re-key" - tier 2 carries an
+# existing `opentrail_at:...` water id onto an ATC-sourced row and
+# `source` "starts telling the new truth" while the id keeps its original
+# prefix forever. A client parsing the prefix would confidently name the
+# source that place came from years ago. The prefix is history; the column
+# is the fact.
+TOMBSTONE_PROPERTIES = ("id", "name", "poi_type", "source", "retired", "superseded_by")
 
 
 def live_rows(pois: dict) -> dict:

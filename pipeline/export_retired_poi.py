@@ -98,6 +98,12 @@ def tombstone(poi_id: str, row: dict) -> dict:
     properties = {
         "id": poi_id,
         "poi_type": row["poi_type"],
+        # Required, not optional: the card's whole sentence is built from
+        # it, and a tombstone that cannot say who dropped the place is one
+        # the client has to describe vaguely or not at all. See
+        # lib/poi_identity.TOMBSTONE_PROPERTIES for why this is published
+        # rather than split off the id.
+        "source": row["source"],
         "retired": row["retired"],
     }
     if row.get("name"):

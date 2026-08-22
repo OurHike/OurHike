@@ -3212,3 +3212,110 @@ a.poi-card__credit::after {
   background: var(--bg-sunken);
   border-radius: 8px;
 }
+
+/* ---------- The card a removed place gets (RemovedPoiCard.tsx, #831) ------- */
+
+/* Centred rather than pin-anchored, which is the one structural difference
+   from .poi-card and the reason this is a second component: a retired POI has
+   no pin on the map to ride, because `poi_*.geojson` carries live rows only.
+   A card floating over a point nothing is drawn at would be pointing at
+   nothing — worse than the card that is honestly placed nowhere in
+   particular. */
+.removed-poi {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  /* The same width .poi-card uses, and the same fallback: a hiker holding
+     both open should not be reading two different card shapes. */
+  width: min(264px, calc(100% - 16px));
+  padding: var(--space-3, 12px);
+  background: var(--bg-surface);
+  border-radius: 14px;
+  /* The same "over the map" shadow .poi-card carries, for the same reason. */
+  box-shadow:
+    0 10px 28px rgb(0 0 0 / 18%),
+    0 2px 8px rgb(0 0 0 / 10%);
+  transform: translate(-50%, -50%);
+}
+
+.removed-poi__close {
+  position: absolute;
+  top: var(--space-2, 8px);
+  right: var(--space-2, 8px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+/* The glyph and the 44px target, exactly as .poi-card__close builds them. */
+.removed-poi__close::before {
+  content: '\00d7';
+  font-size: 18px;
+  line-height: 1;
+}
+
+.removed-poi__close::after {
+  content: '';
+  position: absolute;
+  inset: calc((32px - var(--min-touch-target, 44px)) / 2);
+}
+
+.removed-poi__close:hover {
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.removed-poi__name {
+  margin: 0;
+  /* Room for the close button, which overlaps this line. */
+  padding-right: 32px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.removed-poi__what,
+.removed-poi__gone,
+.removed-poi__moved {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* Deliberately NOT the danger treatment. A place leaving the upstream data is
+   ordinary maintenance, not a hazard, and colouring it as an alarm would put
+   a shelter's retirement in the same visual language as a closure. */
+.removed-poi__where {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.removed-poi__go {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  cursor: pointer;
+}

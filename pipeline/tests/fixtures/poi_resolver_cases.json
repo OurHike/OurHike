@@ -1,0 +1,99 @@
+{
+  "_README": [
+    "Shared cases for the two POI id resolvers (#831, features/POI_IDENTITY.md section 4).",
+    "",
+    "There is one resolver per runtime and there has to be: the pipeline is not",
+    "importable from the client, and a phone gets the published tombstones rather",
+    "than the ledger. This file is what holds the two implementations to the same",
+    "answers - pipeline/tests/test_export_retired_poi.py runs them through",
+    "lib/poi_identity.resolve, and client/src/lib/poiIdentity.contract.test.ts runs",
+    "the same ones through resolvePoiId. A case added here is a case both must pass.",
+    "",
+    "`ledger` is the pipeline's view: every row, live and retired. The client's view",
+    "is derived from it in the test - tombstones are the rows carrying `retired`,",
+    "and everything else is live - because deriving it is what proves the client",
+    "sees the same world through a smaller artifact rather than a different one.",
+    "",
+    "A row is `{}` for live, or carries `retired` and optionally `superseded_by`.",
+    "Nothing else here is read: name, position and source belong to the card, not",
+    "to the resolver."
+  ],
+  "cases": [
+    {
+      "name": "a live id resolves to itself",
+      "ledger": { "atc_shelters:a": {} },
+      "query": "atc_shelters:a",
+      "expected": "atc_shelters:a"
+    },
+    {
+      "name": "a superseded tombstone resolves to its survivor",
+      "why": "The whole point of the edge: a hiker's photos follow it home.",
+      "ledger": {
+        "atc_shelters:gone": { "retired": "2027-09-14", "superseded_by": "atc_shelters:here" },
+        "atc_shelters:here": {}
+      },
+      "query": "atc_shelters:gone",
+      "expected": "atc_shelters:here"
+    },
+    {
+      "name": "a place merged twice over two refreshes still arrives somewhere",
+      "ledger": {
+        "atc_shelters:first": { "retired": "2027-09-14", "superseded_by": "atc_shelters:second" },
+        "atc_shelters:second": { "retired": "2028-09-12", "superseded_by": "atc_shelters:third" },
+        "atc_shelters:third": {}
+      },
+      "query": "atc_shelters:first",
+      "expected": "atc_shelters:third"
+    },
+    {
+      "name": "a retired id with no successor resolves to nothing",
+      "why": "The honest answer, not a failure: this place is gone and nothing took its place. Every one of the 93 real tombstones is this case today.",
+      "ledger": { "atc_csi:gone": { "retired": "2026-08-19" } },
+      "query": "atc_csi:gone",
+      "expected": null
+    },
+    {
+      "name": "an id this ledger has never held resolves to nothing",
+      "why": "A reference from somewhere this project cannot vouch for. Inventing a target would be worse than saying so.",
+      "ledger": { "atc_shelters:a": {} },
+      "query": "atc_shelters:never-published",
+      "expected": null
+    },
+    {
+      "name": "a cycle returns nothing rather than hanging",
+      "why": "reconcile_poi_identity cannot write one, but a hand-edited merged_into override can, and a frozen app is a bad way to learn that.",
+      "ledger": {
+        "atc_shelters:a": { "retired": "2027-09-14", "superseded_by": "atc_shelters:b" },
+        "atc_shelters:b": { "retired": "2027-09-14", "superseded_by": "atc_shelters:a" }
+      },
+      "query": "atc_shelters:a",
+      "expected": null
+    },
+    {
+      "name": "a chain ending in a tombstone with no successor resolves to nothing",
+      "why": "The successor was itself retired later and nothing replaced it. Following the edge to a dead end is not the same as stopping at the first hop.",
+      "ledger": {
+        "atc_shelters:first": { "retired": "2027-09-14", "superseded_by": "atc_shelters:second" },
+        "atc_shelters:second": { "retired": "2028-09-12" }
+      },
+      "query": "atc_shelters:first",
+      "expected": null
+    },
+    {
+      "name": "an edge pointing at an id neither live nor retired resolves to nothing",
+      "why": "export_retired_poi refuses to publish this, so it can only come from a hand-edited ledger - and both resolvers have to survive one.",
+      "ledger": {
+        "atc_shelters:gone": { "retired": "2027-09-14", "superseded_by": "atc_shelters:not-a-row" }
+      },
+      "query": "atc_shelters:gone",
+      "expected": null
+    },
+    {
+      "name": "a source swap keeps the id and does not change the answer",
+      "why": "features/POI_IDENTITY.md section 5: tier 2 carries an opentrail_at id onto an ATC-sourced row. The id's prefix is history; the resolver never reads it.",
+      "ledger": { "opentrail_at:9": {} },
+      "query": "opentrail_at:9",
+      "expected": "opentrail_at:9"
+    }
+  ]
+}

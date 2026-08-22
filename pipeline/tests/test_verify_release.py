@@ -868,11 +868,38 @@ class TestPoiIdentity:
     def _with_tombstones(self):
         return {"artifacts": {"poi_shelter.geojson": {"sha256": "a" * 64}, "retired_poi.geojson": {"sha256": "b" * 64}}}
 
-    def _tombstone(self, poi_id="atc_shelters:gone", superseded_by=None):
+    def _tombstone(self, poi_id="atc_shelters:gone", superseded_by=None, source="atc_shelters"):
         properties = {"id": poi_id, "poi_type": "shelter", "retired": "2027-09-14"}
+        if source is not None:
+            properties["source"] = source
         if superseded_by:
             properties["superseded_by"] = superseded_by
         return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-74.0, 41.0]}, "properties": properties}
+
+    def test_a_tombstone_with_no_source_fails(self, tmp_path, monkeypatch, requests_mock):
+        """The card's whole sentence is built from `source` (#831), and a
+        phone can rebuild it from nothing else: the ledger is not published,
+        and splitting the id names the source a place came from years ago
+        rather than the one it has now (POI_IDENTITY.md section 5's source
+        swap). A tombstone without it parses to nothing on the client - which
+        is the "renders nothing at all" this artifact exists to end."""
+        from verify_release import check_poi_identity
+
+        self._ledger(
+            tmp_path,
+            monkeypatch,
+            {
+                "atc_shelters:glob-1": self._row(),
+                "atc_shelters:gone": self._row(sfid="gone", retired="2027-09-14"),
+            },
+        )
+        self._serve(requests_mock, [self._feature()])
+        self._serve_tombstones(requests_mock, [self._tombstone(source=None)])
+
+        reports = check_poi_identity(BASE, self._with_tombstones())
+
+        assert reports[1]["state"] == FAILED
+        assert "no source" in reports[1]["detail"]
 
     def test_a_kept_tombstone_promise_passes(self, tmp_path, monkeypatch, requests_mock):
         from verify_release import check_poi_identity

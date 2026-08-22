@@ -287,6 +287,22 @@ export interface MapScreenProps {
    */
   selectedPoi: PoiDetail | null
   /**
+   * The card for a waypoint that no longer exists (#831), when the selected id
+   * is one this project has retired.
+   *
+   * A rendered element rather than a tombstone, deliberately, and it is the
+   * same call `atcUpdateSheet` and `lineSheet` above already make: what the
+   * card has to say includes where the pointer LEADS — the successor's name,
+   * and a way to open it — and only the shell holds the live waypoints to
+   * resolve that against. Passing the raw tombstone here would put a second
+   * lookup in the map screen, against data it does not have.
+   *
+   * Mutually exclusive with `selectedPoi` by construction: an id is a live
+   * waypoint or a retired one, never both — verify_release's check 21 fails a
+   * release where any id is published as each.
+   */
+  removedPoiCard?: ReactNode
+  /**
    * Every part of that waypoint's site, anchor first, for the card's chip strip
    * (#526) - resolved by the shell for the same reason `selectedPoi` is.
    *
@@ -584,6 +600,7 @@ export function MapScreen({
   onToggleDrought,
   droughtWeek = null,
   selectedPoi,
+  removedPoiCard,
   selectedSite,
   onSelectPoi,
   onClosePoi,
@@ -1006,6 +1023,13 @@ export function MapScreen({
                 onClose={onClosePoi}
               />
             )}
+
+            {/* In the same slot as the card it stands in for, because it
+                stands in for it: a tap that used to render nothing now
+                renders this. It positions itself in the canvas rather than
+                against a pin - a retired waypoint has none - so it does not
+                need the canvas-pixel reasoning above, only the same box. */}
+            {removedPoiCard}
 
             {/* Beside the card rather than placed like one. The waypoint card
                 positions itself in canvas pixels because it points at a pin;

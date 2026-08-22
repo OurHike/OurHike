@@ -110,6 +110,7 @@ jobs:
           paths: >-
             pipeline/
             features/SPUR_TRAILS.md
+            client/src/lib/blaze.ts
             client/src/lib/config.ts
             client/src/lib/hikingDetail.ts
             client/src/lib/packages.ts

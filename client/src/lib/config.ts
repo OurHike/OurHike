@@ -125,6 +125,34 @@ export const HIGHLIGHTS_KEY = 'highlights.json'
 // same way spurs.json is treated.
 export const ELEVATION_KEY = 'elevation_profile.json'
 
+// The tombstones: every POI id that has ever been retired, published by
+// pipeline/export_retired_poi.py (#673, features/POI_IDENTITY.md §4).
+//
+// This is what makes "every id ever published resolves to something" true on
+// a phone. Without it, a hiker whose photos are anchored to a water point the
+// ATC dropped last September gets a card that renders nothing at all rather
+// than one saying what happened to the place — and the anchors on a phone are
+// the ones no server-side reconciliation can ever reach.
+//
+// NOT `poi_retired.geojson`, and the difference is load-bearing rather than
+// stylistic: `poi_*.geojson` is a namespace in this repository carrying the
+// invariant *live rows of one poi_type*, `poiKey()` below builds exactly that
+// name, and verify_release's check 21 fails any feature in that glob whose id
+// is not a live ledger row. A tombstone file under that name would fail once
+// per tombstone, by construction.
+//
+// **Cheap, and measured rather than assumed.** 93 retired rows against the
+// ledger on 2026-08-22, at 249 bytes a tombstone (measured 2026-08-19 over
+// the first 21) — about 23 KB, against a first fetch already north of 5 MB
+// gzipped. #831 held it out of this list "until there is something to draw
+// with it", since the list is also the size of a hiker's first fetch. There
+// is now: `screens/RemovedPoiCard.tsx`.
+//
+// Absent from releases built before that exporter, which lib/trailData.ts
+// treats as "nothing has been retired" rather than a failed download — the
+// same way spurs.json is treated.
+export const RETIRED_POI_KEY = 'retired_poi.geojson'
+
 // 'crossing' is published but is currently an empty FeatureCollection; it is
 // listed anyway so it starts working the day the pipeline fills it, rather
 // than needing a client release to notice.

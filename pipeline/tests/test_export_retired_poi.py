@@ -9,6 +9,7 @@ rather than reinvented.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -80,7 +81,7 @@ def test_live_and_retired_partition_the_ledger():
 # --- The artifact ----------------------------------------------------------
 
 
-def test_a_tombstone_carries_the_design_s_six_fields():
+def test_a_tombstone_carries_the_design_s_fields():
     pois = {"gone": _row(name="Old Shelter", retired="2028-09-12", superseded_by="here"), "here": _row()}
 
     collection, dangling = export_retired_poi.build(pois)
@@ -92,10 +93,52 @@ def test_a_tombstone_carries_the_design_s_six_fields():
     assert feature["properties"] == {
         "id": "gone",
         "poi_type": "shelter",
+        "source": "atc_shelters",
         "retired": "2028-09-12",
         "name": "Old Shelter",
         "superseded_by": "here",
     }
+
+
+def test_every_tombstone_says_who_dropped_the_place():
+    """The card's sentence is built from this and cannot be built without it.
+
+    features/POI_IDENTITY.md section 4: the copy "cannot hard-code 'No longer
+    in ATC\'s data\'". Measured against the real ledger 2026-08-22, the 93
+    retired rows come from two sources - `atc_csi` and `opentrail_at` - so a
+    tombstone missing `source` is one the client can only describe vaguely.
+
+    Deliberately NOT optional the way `name` and `superseded_by` are: those
+    two have honest absent states, and "we do not know where this came from"
+    is not one the ledger can produce.
+    """
+    pois = {
+        "water": _row(retired="2028-09-12", poi_type="water"),
+        "spring": dict(_row(retired="2028-09-12", poi_type="water"), source="opentrail_at"),
+    }
+
+    collection, _ = export_retired_poi.build(pois)
+
+    assert {feature["properties"]["source"] for feature in collection["features"]} == {
+        "atc_shelters",
+        "opentrail_at",
+    }
+
+
+def test_the_source_published_is_the_ledgers_and_not_the_ids_prefix():
+    """A source swap keeps the id and moves the column (section 5), so the
+    prefix is history and the column is the fact.
+
+    This is the shortcut that looks free - ids are minted
+    `{source}:{source_feature_id}` - and would have the card name the source
+    a place came from years ago, confidently and wrongly.
+    """
+    swapped = dict(_row(retired="2028-09-12"), source="atc_csi")
+
+    (feature,) = export_retired_poi.build({"opentrail_at:9": swapped})[0]["features"]
+
+    assert feature["properties"]["id"].startswith("opentrail_at:")
+    assert feature["properties"]["source"] == "atc_csi"
 
 
 def test_a_tombstone_with_no_successor_omits_superseded_by_rather_than_nulling_it():
@@ -184,3 +227,37 @@ def test_the_artifact_name_stays_outside_the_live_poi_namespace():
     name cannot be changed after the first publish (lib/r2_keys.py)."""
     assert not export_retired_poi.OUT_PATH.name.startswith("poi_")
     assert export_retired_poi.OUT_PATH.name == "retired_poi.geojson"
+
+
+# --- The contract the two runtimes share ------------------------------------
+
+
+def test_the_shared_cases_run_through_this_runtimes_resolver():
+    """One resolver per runtime, held together by these cases (#831).
+
+    features/POI_IDENTITY.md section 4 asks for "a resolver, in one place,
+    used by the backend's serialisers and the client rather than implemented
+    twice". Across Python and TypeScript with no shared package the
+    achievable version is one implementation per runtime, each in one file,
+    compared against shared fixtures - the pattern three tests in
+    `backend/tests/` already use.
+
+    This is the Python half. `client/src/lib/poiIdentity.contract.test.ts` is
+    the other, over this same file, and the client workflow's scope list
+    carries `pipeline/tests/fixtures/` so editing a case runs both suites.
+
+    The cases are deliberately not restated here: a copy is the third place
+    to keep in step, and the drift between copies is the bug the whole
+    arrangement exists to catch.
+    """
+    cases = json.loads((Path(__file__).parent / "fixtures" / "poi_resolver_cases.json").read_text())["cases"]
+    assert len(cases) >= 9, "the fixture lost cases - both runtimes are now checked against less"
+
+    for case in cases:
+        # `_row` supplies the fields the resolver ignores; the fixture
+        # supplies the two it reads.
+        pois = {
+            poi_id: _row(retired=row.get("retired"), superseded_by=row.get("superseded_by"))
+            for poi_id, row in case["ledger"].items()
+        }
+        assert resolve(pois, case["query"]) == case["expected"], case["name"]

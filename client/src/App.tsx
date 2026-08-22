@@ -86,6 +86,8 @@ import {
 import { tripSyncState } from './lib/tripSyncState'
 import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
+import { RemovedPoiCard } from './chrome/RemovedPoiCard'
+import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
 import { deleteAccount, type DeletionReceipt } from './lib/api'
 import {
@@ -780,6 +782,7 @@ function App() {
     elevation,
     clubSections,
     highlights,
+    retiredPois,
     trailsUrl,
     overviewTrailsUrl,
     haveTrailLines,
@@ -1637,6 +1640,58 @@ function App() {
     if (poi === undefined) return null
     return cardDetail(poi, searchablePois)
   }, [selectedPoiId, pois, searchablePois])
+
+  /**
+   * The card for a selected waypoint that no longer exists (#831).
+   *
+   * features/POI_IDENTITY.md §4's fourth existence state, and what it replaces
+   * is not an error message — it is nothing at all. `selectedPoi` above finds
+   * no live POI for a retired id and hands the map screen null, so a hiker
+   * whose photos are anchored to a water point the ATC dropped last September
+   * taps it and the app appears to ignore them.
+   *
+   * ONLY REACHED WHEN THE LIVE LOOKUP FAILS, which is what makes this free on
+   * every ordinary tap: a pin the map drew is a live row by construction, so
+   * `selectedPoi` answers first and this memo returns null without touching
+   * the tombstones.
+   *
+   * Resolved here rather than in the card because only the shell holds the
+   * live waypoints, and the successor's NAME is what the card needs — "merged
+   * into Rocky Run Shelters" is a sentence a hiker can act on where an id is
+   * not. `resolvePoiId` is handed the live set as its predicate for the reason
+   * lib/poiIdentity.ts gives: the tombstones alone cannot tell a live id from
+   * one this project has never heard of, and those are different answers.
+   *
+   * NOTHING SELECTS A RETIRED ID YET, AND THAT IS WORTH SAYING OUT LOUD.
+   *
+   * Every route into `handleSelectPoi` today hands it an id that came from the
+   * live waypoints: a map tap (the pins are built from `poi_*.geojson`, which
+   * carries live rows by an invariant three consumers enforce), a search
+   * result, and the passed-places list (derived by mile from those same
+   * waypoints). So this memo returns null on every selection the app can
+   * currently make, and the card below has never been drawn in anger.
+   *
+   * It is here rather than deferred because it is the half that has to exist
+   * first. The anchors that will reach it are the ones #831 names — a hiker's
+   * private photos and `PlanStop.poiId`, whose own comment says it is "kept so
+   * a later feature can follow the reference" — and each of those is a
+   * feature that cannot be built until there is somewhere for a followed
+   * reference to land. Written down rather than left for a reader to
+   * discover, per CLAUDE.md, and flagged in the pull request.
+   */
+  const removedPoi = useMemo(() => {
+    if (selectedPoiId === null || selectedPoi !== null) return null
+    const tombstone = tombstoneFor(retiredPois, selectedPoiId)
+    if (tombstone === undefined) return null
+    const successorId = resolvePoiId(retiredPois, selectedPoiId, (id) =>
+      pois.some((candidate) => candidate.id === id),
+    )
+    const successor =
+      successorId === null
+        ? undefined
+        : pois.find((candidate) => candidate.id === successorId)
+    return { tombstone, successor }
+  }, [selectedPoiId, selectedPoi, retiredPois, pois])
 
   /**
    * Every part of the tapped waypoint's site, anchor first, for the card's chip
@@ -4554,6 +4609,20 @@ function App() {
           droughtWeek={droughtWeek}
           selectedPoi={selectedPoi}
           selectedSite={selectedSite}
+          removedPoiCard={
+            removedPoi === null ? undefined : (
+              <RemovedPoiCard
+                tombstone={removedPoi.tombstone}
+                successorName={removedPoi.successor?.name}
+                onOpenSuccessor={
+                  removedPoi.successor === undefined
+                    ? undefined
+                    : () => handleSelectPoi(removedPoi.successor?.id ?? null)
+                }
+                onClose={handleClosePoi}
+              />
+            )
+          }
           noteContext={noteContext}
           pinCondition={pinCondition}
           onSelectPoi={handleSelectPoi}

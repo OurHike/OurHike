@@ -135,6 +135,10 @@ def client_keys() -> dict[str, str]:
         _string_const(config, "TRAILS_OVERVIEW_KEY"): "config.ts TRAILS_OVERVIEW_KEY",
         _string_const(config, "SPURS_KEY"): "config.ts SPURS_KEY",
         _string_const(config, "ELEVATION_KEY"): "config.ts ELEVATION_KEY",
+        # #831: the client started requesting the tombstones when it got a
+        # card to draw them with. Listed here so a rename on either end is a
+        # failing test rather than a 404 on a mountain.
+        _string_const(config, "RETIRED_POI_KEY"): "config.ts RETIRED_POI_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_REPORTS_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_ATC_UPDATES_KEY"): "publishedConditions.ts",
@@ -187,6 +191,11 @@ def published(tmp_path, monkeypatch) -> set[str]:
 
     (tmp_path / "elevation_manifest.json").write_text(json.dumps(manifest_entry("elevation_profile.json")))
     (tmp_path / "spurs_manifest.json").write_text(json.dumps(manifest_entry("spurs.json")))
+    # The tombstones (#673). This fixture is "one of every artifact" and was
+    # missing this one, so the key looked unpublished the moment the client
+    # started asking for it (#831) - publish.collect_artifacts has emitted it
+    # since #673.
+    (tmp_path / "retired_poi_manifest.json").write_text(json.dumps(manifest_entry("retired_poi.geojson")))
 
     conditions_dir = tmp_path / "conditions"
     conditions_dir.mkdir()

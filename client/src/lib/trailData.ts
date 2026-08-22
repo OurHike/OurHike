@@ -30,6 +30,7 @@ import {
   CLUB_SECTIONS_KEY,
   HIGHLIGHTS_KEY,
   poiKey,
+  RETIRED_POI_KEY,
   SPURS_KEY,
   TRAILS_KEY,
   type PoiType,
@@ -41,6 +42,12 @@ import {
   type ClubSections,
 } from './clubSections'
 import { parseHighlights, storedHighlights, type Highlight } from './highlights'
+import {
+  NO_TOMBSTONES,
+  parseTombstones,
+  storedTombstones,
+  type Tombstones,
+} from './poiIdentity'
 import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
@@ -51,6 +58,7 @@ import { clearTrailsMerged, sniffMergedChains, writeTrailsMerged } from './trail
 export const TRAILS_BLOB_KEY = 'ourhike:trails'
 export const POIS_KEY = 'ourhike:pois'
 export const SPURS_STORE_KEY = 'ourhike:spurs'
+export const RETIRED_POI_STORE_KEY = 'ourhike:retired-poi'
 export const ELEVATION_STORE_KEY = 'ourhike:elevation'
 export const CLUB_SECTIONS_STORE_KEY = 'ourhike:club-sections'
 export const HIGHLIGHTS_STORE_KEY = 'ourhike:highlights'
@@ -234,6 +242,14 @@ export interface TrailData {
    *  export_highlights.py existed, which costs the corridor view its second
    *  subject and nothing else. */
   highlights: Highlight[]
+  /** Every POI id that has ever been retired, by id (#831).
+   *
+   *  Empty for a release built before export_retired_poi.py existed, AND for
+   *  a healthy bucket whose ledger has retired nothing — the two are the same
+   *  state here and neither is a failure. Empty costs a hiker the card that
+   *  says what happened to a place their photos are anchored to; they get the
+   *  nothing they already get today. */
+  retiredPois: Tombstones
 }
 
 interface PoiProperties {
@@ -741,6 +757,22 @@ async function fetchSpurs(
   return parsed as Record<string, SpurRecord>
 }
 
+/** The tombstones, or nothing when this release does not publish them.
+ *
+ *  A 404 is treated the way fetchSpurs() treats one, and here it has a second
+ *  honest meaning beyond "an older release": a bucket whose ledger has retired
+ *  nothing publishes no artifact at all, which verify_release's check 21
+ *  reports as OK rather than as a failure. Both cases are "no tombstones", and
+ *  neither is a reason to fail a download whose real payload is the trail. */
+async function fetchRetiredPois(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<Tombstones> {
+  const fetched = await fetchOptionalArtifact(RETIRED_POI_KEY, expected, signal)
+  if (fetched === null) return NO_TOMBSTONES
+  return parseTombstones(JSON.parse(decode(fetched.bytes)) as unknown)
+}
+
 /** Who maintains which stretch, or nothing when this release does not publish it.
  *
  *  A 404 is treated the way fetchSpurs() treats one, and for the same reason:
@@ -801,7 +833,31 @@ export async function downloadTrailData({
   signal,
   onCenterline,
 }: DownloadTrailDataOptions = {}): Promise<void> {
-  const total = POI_TYPES.length + 3
+  // Everything `finished()` is called for that is not one of the eight POI
+  // files, named rather than counted.
+  //
+  // **The literal this replaces was already wrong, and adding a ninth
+  // artifact is what surfaced it.** `POI_TYPES.length + 3` was 11 against
+  // thirteen real steps: `club_sections.json` (#594) and `highlights.json`
+  // (#595) each added a `finished()` call and neither bumped the count, so
+  // the last two steps reported 12/11 and 13/11. Nothing rendered that —
+  // no production caller passes `onProgress` today, `useTrailData.ts` calls
+  // `downloadTrailData` with none — so this is a latent bug rather than a
+  // number a hiker saw, and it is fixed here because the same edit that
+  // would have added a fourth to the literal is the one being made.
+  //
+  // A list rather than a bigger literal, because the literal is exactly what
+  // drifted: this cannot be short unless somebody deletes a name from it in
+  // the same breath as leaving its `finished()` call behind.
+  const OTHER_ARTIFACTS = [
+    'Trail lines',
+    'Spur destinations',
+    'Maintaining clubs',
+    'Highlights',
+    'Retired waypoints',
+    'Elevation profile',
+  ] as const
+  const total = POI_TYPES.length + OTHER_ARTIFACTS.length
   let completed = 0
 
   const report = (label: string) => onProgress?.({ label, completed, total })
@@ -872,7 +928,7 @@ export async function downloadTrailData({
   // Still all-or-nothing: `Promise.all` rejects on the first failure and
   // nothing below commits, which is the property the `set()` calls at the end
   // depend on.
-  const [poiGroups, spurs, clubSections, highlights] = await Promise.all([
+  const [poiGroups, spurs, clubSections, highlights, retiredPois] = await Promise.all([
     Promise.all(
       POI_TYPES.map(async (type) => {
         const fetched = await fetchArtifact(poiKey(type), expected, signal)
@@ -893,6 +949,13 @@ export async function downloadTrailData({
     }),
     fetchHighlights(expected, signal).then((value) => {
       finished('Highlights')
+      return value
+    }),
+    // Beside the other three small keyed artifacts rather than after them,
+    // for the reason the club sections give: nothing is waiting on it, and a
+    // serial fetch would buy a round trip of dead time for ~23 KB.
+    fetchRetiredPois(expected, signal).then((value) => {
+      finished('Retired waypoints')
       return value
     }),
   ])
@@ -935,6 +998,7 @@ export async function downloadTrailData({
     [SPURS_STORE_KEY, spurs],
     [CLUB_SECTIONS_STORE_KEY, clubSections],
     [HIGHLIGHTS_STORE_KEY, highlights],
+    [RETIRED_POI_STORE_KEY, retiredPois],
     [ELEVATION_STORE_KEY, elevation],
   ])
   // Recorded beside the bytes it describes, and only here: whether the
@@ -1008,7 +1072,12 @@ export async function loadTrailData(): Promise<TrailData | null> {
   // corridor view reads it on every camera move.
   const clubSections = storedClubSections(await get(CLUB_SECTIONS_STORE_KEY))
   const highlights = storedHighlights(await get(HIGHLIGHTS_STORE_KEY))
-  return { trails, pois, spurs, elevation, clubSections, highlights }
+  // Re-parsed shape rather than a bare cast, for the reason club sections
+  // are: what is in the store was written by whatever version of this app was
+  // installed then, and `storedTombstones` is the one place that decides what
+  // a usable tombstone is.
+  const retiredPois = storedTombstones(await get(RETIRED_POI_STORE_KEY))
+  return { trails, pois, spurs, elevation, clubSections, highlights, retiredPois }
 }
 
 /**
@@ -1029,6 +1098,7 @@ export async function deleteTrailData(): Promise<void> {
   await del(SPURS_STORE_KEY)
   await del(CLUB_SECTIONS_STORE_KEY)
   await del(HIGHLIGHTS_STORE_KEY)
+  await del(RETIRED_POI_STORE_KEY)
   await del(ELEVATION_STORE_KEY)
   // No data, no claim about how much of it is here (#863) - the same
   // reasoning as clearTrailsMerged() below.

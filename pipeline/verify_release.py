@@ -1123,6 +1123,14 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
             problems.append(f"{poi_id}: published as a tombstone against {verdict}")
         if poi_id in published_live:
             problems.append(f"{poi_id}: also published live in {published_live[poi_id]} - a place is gone or it is not")
+        # #831: the card's whole sentence is built from `source`, and it
+        # cannot be rebuilt from anything else a phone holds - the ledger is
+        # not published, and splitting the id names the source a place came
+        # from years ago rather than the one it has now (section 5's source
+        # swap). A tombstone missing it parses to nothing on the client, which
+        # is the "renders nothing at all" this artifact exists to end.
+        if not properties.get("source"):
+            problems.append(f"{poi_id}: published with no source, so no card can say who dropped it")
         successor = properties.get("superseded_by")
         if successor is not None and successor not in live:
             problems.append(f"{poi_id}: superseded_by {successor}, which is not a live ledger row")

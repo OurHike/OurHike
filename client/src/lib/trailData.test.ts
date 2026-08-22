@@ -11,6 +11,7 @@ import {
   POIS_KEY,
   CLUB_SECTIONS_STORE_KEY,
   HIGHLIGHTS_STORE_KEY,
+  RETIRED_POI_STORE_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
   TrailDataHashMismatchError,
@@ -19,6 +20,7 @@ import {
 import {
   CLUB_SECTIONS_KEY,
   HIGHLIGHTS_KEY,
+  RETIRED_POI_KEY,
   dataUrl,
   ELEVATION_KEY,
   POI_TYPES,
@@ -119,6 +121,7 @@ function serve(
   trails: string = '{"type":"FeatureCollection"}',
   clubSections: string = '{}',
   highlights: string = '{"highlights":[]}',
+  retired: string = '{"type":"FeatureCollection","features":[]}',
 ) {
   vi.stubGlobal(
     'fetch',
@@ -132,6 +135,26 @@ function serve(
             bytesOf(
               url.includes('poi_')
                 ? pois
+                : url.includes(RETIRED_POI_KEY)
+                  ? retired
+                  : url.includes(SPURS_KEY)
+                    ? spurs
+                    : url.includes(CLUB_SECTIONS_KEY)
+                      ? clubSections
+                      : url.includes(HIGHLIGHTS_KEY)
+                        ? highlights
+                        : url.includes(ELEVATION_KEY)
+                          ? elevation
+                          : trails,
+            ),
+          ),
+        blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+        text: () =>
+          Promise.resolve(
+            url.includes('poi_')
+              ? pois
+              : url.includes(RETIRED_POI_KEY)
+                ? retired
                 : url.includes(SPURS_KEY)
                   ? spurs
                   : url.includes(CLUB_SECTIONS_KEY)
@@ -140,23 +163,7 @@ function serve(
                       ? highlights
                       : url.includes(ELEVATION_KEY)
                         ? elevation
-                        : trails,
-            ),
-          ),
-        blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
-        text: () =>
-          Promise.resolve(
-            url.includes('poi_')
-              ? pois
-              : url.includes(SPURS_KEY)
-                ? spurs
-                : url.includes(CLUB_SECTIONS_KEY)
-                  ? clubSections
-                  : url.includes(HIGHLIGHTS_KEY)
-                    ? highlights
-                    : url.includes(ELEVATION_KEY)
-                      ? elevation
-                      : '{}',
+                        : '{}',
           ),
       }),
     ),
@@ -223,8 +230,8 @@ describe('trail data', () => {
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     // Every POI type, plus the trail lines, the spur detail, the maintaining
-    // clubs, the highlights, and the elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 5)
+    // clubs, the highlights, the tombstones (#831) and the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 6)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {
@@ -1137,6 +1144,104 @@ describe('spur detail', () => {
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     expect(store.get(SPURS_STORE_KEY)).toEqual({})
+  })
+
+  it('stores the tombstones, ready for a card that says what happened', async () => {
+    // #831: every id ever published has to resolve to something on a phone,
+    // and this artifact is the half that is not already there as poi_*.
+    serve(
+      poiCollection([]),
+      '{}',
+      '[]',
+      '{"type":"FeatureCollection"}',
+      '{}',
+      '{"highlights":[]}',
+      JSON.stringify({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [-77.5, 39.9] },
+            properties: {
+              id: 'atc_csi:gone',
+              poi_type: 'water',
+              source: 'atc_csi',
+              retired: '2026-08-19',
+              name: 'Water near Punchbowl Shelter',
+            },
+          },
+        ],
+      }),
+    )
+
+    await downloadTrailData()
+
+    expect(store.get(RETIRED_POI_STORE_KEY)).toEqual({
+      'atc_csi:gone': {
+        id: 'atc_csi:gone',
+        poiType: 'water',
+        source: 'atc_csi',
+        retired: '2026-08-19',
+        lon: -77.5,
+        lat: 39.9,
+        name: 'Water near Punchbowl Shelter',
+      },
+    })
+  })
+
+  it('treats a release with no retired_poi.geojson as nothing retired, not a failure', async () => {
+    // Two honest reasons for a 404 and neither is a broken download: a
+    // release built before export_retired_poi.py existed, and a healthy
+    // bucket whose ledger has retired nothing - which verify_release's
+    // check 21 reports as OK rather than as a failure.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes(RETIRED_POI_KEY)
+            ? { ok: false, status: 404, statusText: 'Not Found' }
+            : {
+                ok: true,
+                status: 200,
+                headers: new Headers(),
+                arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
+                blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+                text: () => Promise.resolve(poiCollection([])),
+              },
+        ),
+      ),
+    )
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(RETIRED_POI_STORE_KEY)).toEqual({})
+  })
+
+  it('still fails on a broken tombstone fetch that is not a 404', async () => {
+    // Same line the spurs draw: only "this release does not publish it" is
+    // excused, and a 503 is a failed download.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes(RETIRED_POI_KEY)
+            ? { ok: false, status: 503, statusText: 'Service Unavailable' }
+            : {
+                ok: true,
+                status: 200,
+                headers: new Headers(),
+                arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
+                blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+                text: () => Promise.resolve(poiCollection([])),
+              },
+        ),
+      ),
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(/retired_poi\.geojson.*503/)
+    // And nothing committed, which is the property the one transaction buys.
+    expect(store.get(RETIRED_POI_STORE_KEY)).toBeUndefined()
   })
 
   it('still fails on a broken spurs fetch that is not a 404', async () => {

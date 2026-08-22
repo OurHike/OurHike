@@ -280,6 +280,21 @@ describe('MapScreen', () => {
     expect(screen.getByRole('heading', { name: 'Rocky Run Shelter' })).toBeInTheDocument()
   })
 
+  it('renders the removed-waypoint card in the slot the waypoint card would have used', () => {
+    // #831: the card for a place that no longer exists stands in for the one
+    // that would have opened, because that is exactly what it replaces — a
+    // selection that renders NOTHING today.
+    render(
+      <MapScreen
+        {...PROPS}
+        removedPoiCard={<div role="dialog" aria-label="Removed waypoint" />}
+      />,
+    )
+
+    expect(screen.getByRole('dialog', { name: /removed waypoint/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /^waypoint$/i })).not.toBeInTheDocument()
+  })
+
   it('hands the card the live map, so it anchors to the pin it describes', () => {
     // The shell above owns the POI data and MapView owns the canvas; this is
     // the screen that has to introduce them. A card that never projected the

@@ -14,6 +14,16 @@ import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayer
 import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
 import { HEALTHY, type SourceReport } from '../map/liveSourceHealth'
 
+/** The visible safety band. No longer `role="alert"` (#315) — its text ends
+ *  in a distance App.tsx recomputes on every GPS fix, so a live role meant an
+ *  assertive interruption per jitter tick. Queried by its container now; what
+ *  gets ANNOUNCED is the stable hidden line, asserted separately below. */
+function alertBand(container: HTMLElement): HTMLElement {
+  const band = container.querySelector('.map-screen__alerts')
+  if (band === null) throw new Error('no safety band on screen')
+  return band as HTMLElement
+}
+
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
 // top of it. This covers the shell holding them together and the one thing
@@ -510,25 +520,25 @@ describe('MapScreen safety alerts', () => {
   })
 
   it('shows a closure ahead', () => {
-    render(
+    const { container } = render(
       <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
     )
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Trail closed 5.0 mi ahead')
+    expect(alertBand(container)).toHaveTextContent('Trail closed 5.0 mi ahead')
   })
 
   it('shows serious warnings on the route', () => {
-    render(<MapScreen {...PROPS} warningsAhead="2 serious warnings on your route" />)
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      '2 serious warnings on your route',
+    const { container } = render(
+      <MapScreen {...PROPS} warningsAhead="2 serious warnings on your route" />,
     )
+
+    expect(alertBand(container)).toHaveTextContent('2 serious warnings on your route')
   })
 
   it('shows both at once rather than picking one', () => {
     // A closure and a bear are different problems, and neither substitutes
     // for the other.
-    render(
+    const { container } = render(
       <MapScreen
         {...PROPS}
         closureAhead="Trail closed 5.0 mi ahead · Storm damage"
@@ -536,9 +546,49 @@ describe('MapScreen safety alerts', () => {
       />,
     )
 
-    const alert = screen.getByRole('alert')
+    const alert = alertBand(container)
     expect(alert).toHaveTextContent('Trail closed 5.0 mi ahead')
     expect(alert).toHaveTextContent('1 serious warning on your route')
+  })
+
+  it('announces what is there without the distance that jitters (#315)', () => {
+    // The whole point. The visible band ends in "5.0 mi ahead", which App.tsx
+    // recomputes on every GPS fix - so anything live wrapped around it fired
+    // again each time the tenths ticked. What is announced says only that a
+    // closure exists, which changes when one appears and not when the hiker
+    // drifts three metres.
+    const { container } = render(
+      <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
+    )
+
+    const live = container.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('Trail closure ahead.')
+    expect(live).not.toHaveTextContent('5.0')
+  })
+
+  it('does not announce the band assertively any more', () => {
+    // `role="alert"` interrupts whatever a screen reader is mid-sentence
+    // through. Fired per jitter tick, that is the cry-wolf failure arriving
+    // through the accessibility layer.
+    const { container } = render(
+      <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
+    )
+
+    expect(alertBand(container)).not.toHaveAttribute('role', 'alert')
+  })
+
+  it('names each lane that has something in it, and only those', () => {
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead"
+        warningsAhead="2 serious warnings on your route"
+      />,
+    )
+
+    const live = container.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('Trail closure ahead. Serious warning ahead.')
+    expect(live).not.toHaveTextContent(/advisory/i)
   })
 
   it('keeps the status strip above it, because the two are read together', () => {
@@ -569,7 +619,7 @@ describe('MapScreen safety alerts', () => {
       />,
     )
 
-    const alert = screen.getByRole('alert')
+    const alert = alertBand(container)
     expect(alert).toHaveTextContent('Trail closed 3.0 mi ahead')
     expect(alert).toHaveTextContent('Advisory along 398 mi of trail')
 
@@ -585,14 +635,14 @@ describe('MapScreen safety alerts', () => {
   it('shows an advisory on its own when nothing specific is ahead', () => {
     // Otherwise the fix would trade one silence for another: a hiker inside an
     // advisory on an otherwise clear stretch has to still be told.
-    render(
+    const { container } = render(
       <MapScreen
         {...PROPS}
         advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
       />,
     )
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Advisory along 398 mi of trail')
+    expect(alertBand(container)).toHaveTextContent('Advisory along 398 mi of trail')
   })
 
   it('marks the advisory as its own kind of row', () => {
@@ -811,7 +861,7 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
       />,
     )
 
-    expect(within(screen.getByRole('alert')).queryByRole('button')).toBe(null)
+    expect(within(alertBand(container)).queryByRole('button')).toBe(null)
     expect(container.querySelector('.map-screen__new-alerts')).toHaveAttribute(
       'aria-live',
       'polite',

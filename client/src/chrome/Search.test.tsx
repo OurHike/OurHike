@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Search } from './Search'
 
@@ -111,5 +111,50 @@ describe('Search', () => {
     await user.click(screen.getByRole('button', { name: /close|cancel/i }))
 
     expect(PROPS.onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('getting out of it (#315)', () => {
+  it('closes on Escape from the search box', () => {
+    // The panel covers the map opaquely and Cancel was the only way out. With
+    // nothing downloaded it is a blank page over the map, which is the state
+    // where "how do I get back" is a real question.
+    const onClose = vi.fn()
+    render(<Search open pois={[]} onSelect={vi.fn()} onClose={onClose} />)
+
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes on Escape from the results, not just the box', () => {
+    // Somebody scrolling results has moved focus off the input. Binding this
+    // to the input alone would leave Escape dead in exactly that state.
+    const onClose = vi.fn()
+    render(
+      <Search
+        open
+        pois={[{ id: 'a', name: 'Annapolis Rock', type: 'viewpoint' }]}
+        onSelect={vi.fn()}
+        onClose={onClose}
+      />,
+    )
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'annapolis' } })
+
+    fireEvent.keyDown(screen.getByRole('button', { name: /annapolis rock/i }), {
+      key: 'Escape',
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves other keys alone', () => {
+    const onClose = vi.fn()
+    render(<Search open pois={[]} onSelect={vi.fn()} onClose={onClose} />)
+
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'a' })
+
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

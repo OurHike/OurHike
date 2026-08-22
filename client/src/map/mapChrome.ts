@@ -10,6 +10,7 @@
 // it on the least necessary control is a bad trade when the user is walking.
 
 import { GeolocateControl, NavigationControl, ScaleControl } from 'maplibre-gl'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
 export type ScaleUnits = 'imperial' | 'metric'
@@ -62,12 +63,37 @@ export function attachMapChrome(
     visualizePitch: false,
   })
 
+  /** How far in one tap of the locate control may take the camera (#315).
+   *
+   *  The zoom the waypoint pins start drawing at, so "where am I" lands on the
+   *  closest view that also shows what is around them. Derived rather than
+   *  chosen, which is why it is this constant and not a number. */
+  const LOCATE_MAX_ZOOM = POI_PIN_MIN_ZOOM
+
   const locate = locationEnabled
     ? new GeolocateControl({
         // Continuous, not a single fix - the blue dot has to follow the walk.
         trackUserLocation: true,
         showAccuracyCircle: true,
         positionOptions: { enableHighAccuracy: true },
+        // WHAT ONE TAP USED TO DO (#315): MapLibre's default is to fit the
+        // accuracy circle, which for a good fix is a few metres across - so
+        // the camera flew from the corridor view straight to roughly z15,
+        // and a hiker who tapped "where am I" lost the whole picture of where
+        // they were going in exchange for the answer.
+        //
+        // LOCATE_MAX_ZOOM caps that. Not a "nice framing" number: it is the
+        // zoom the pin layer starts drawing at (map/poiLayers.ts's
+        // POI_PIN_MIN_ZOOM), so the camera lands on the closest view where
+        // the waypoints around the hiker are actually on screen - which is
+        // what somebody asking where they are wants to see. A lower cap would
+        // answer the question and show them nothing beside it.
+        //
+        // The re-centring half of that item is NOT fixed here and is reported
+        // in #315: in ACTIVE_LOCK the control recentres on every jitter until
+        // a user-initiated move, and whether lock should be the resting state
+        // at all is a design decision rather than a parameter.
+        fitBoundsOptions: { maxZoom: LOCATE_MAX_ZOOM },
       })
     : null
 

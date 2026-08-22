@@ -86,7 +86,11 @@ describe('with no project configured', () => {
     const outcome = await call()
 
     expect(outcome.ok).toBe(false)
-    expect(outcome.ok === false && outcome.message).toMatch(/no supabase project/i)
+    // #315: the old wording named Supabase, which tells a hiker the name of
+    // a vendor they have no relationship with. What replaced it says the
+    // thing they can act on - the map still works.
+    expect(outcome.ok === false && outcome.message).toMatch(/cannot sign in/i)
+    expect(outcome.ok === false && outcome.message).not.toMatch(/supabase/i)
   })
 
   it('has no account', async () => {
@@ -122,7 +126,9 @@ describe('signInWithProvider', () => {
 
     expect(await signInWithProvider('google')).toEqual({
       ok: false,
-      message: 'Invalid login credentials',
+      // Mapped at the boundary since #315 - see lib/authMessages.ts.
+      message:
+        'That email and password did not match. Check both, or use a sign-in link instead.',
     })
   })
 })
@@ -155,7 +161,7 @@ describe('sendMagicLink', () => {
 
     expect(await sendMagicLink('hiker@example.com')).toEqual({
       ok: false,
-      message: 'Email rate limit exceeded',
+      message: 'That was just sent. Give it a minute before asking again.',
     })
   })
 })
@@ -181,7 +187,9 @@ describe('signInWithEmail', () => {
 
     expect(await signInWithEmail('hiker@example.com', 'wrong')).toEqual({
       ok: false,
-      message: 'Invalid login credentials',
+      // Mapped at the boundary since #315 - see lib/authMessages.ts.
+      message:
+        'That email and password did not match. Check both, or use a sign-in link instead.',
     })
   })
 })
@@ -211,7 +219,8 @@ describe('signUpWithEmail', () => {
 
     expect(await signUpWithEmail('hiker@example.com', 'pw')).toEqual({
       ok: false,
-      message: 'User already registered',
+      message:
+        'There is already an account with that email. Sign in instead, or ask for a sign-in link.',
     })
   })
 })
@@ -229,7 +238,13 @@ describe('signOut', () => {
       }),
     )
 
-    expect(await signOut()).toEqual({ ok: false, message: 'Network request failed' })
+    // Falls through to the general case: 'Network request failed' is not
+    // one of the patterns lib/authMessages.ts recognises, and a vaguer true
+    // sentence is the intended failure mode of matching on text.
+    expect(await signOut()).toEqual({
+      ok: false,
+      message: 'Sign-in did not go through. Nothing was lost — you can try again.',
+    })
   })
 
   it('reports success', async () => {

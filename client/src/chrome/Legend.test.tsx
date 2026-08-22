@@ -575,11 +575,20 @@ describe('legend as a persistent panel', () => {
   it('is still a dismissable dialog on a phone', () => {
     render(<Legend {...PROPS} open />)
 
-    expect(screen.getByRole('dialog', { name: 'Legend' })).toHaveAttribute(
-      'aria-modal',
-      'true',
-    )
+    expect(screen.getByRole('dialog', { name: 'Legend' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /close legend/i })).toBeInTheDocument()
+  })
+
+  it('does not claim the background is inert, because nothing makes it so (#315)', () => {
+    // This assertion used to require `aria-modal="true"`, which was the
+    // defect rather than the contract: it tells assistive tech the rest of
+    // the page is unreachable while Tab walks straight into the map chrome
+    // behind. The role still says "dialog"; the unkept guarantee is gone.
+    render(<Legend {...PROPS} open />)
+
+    expect(screen.getByRole('dialog', { name: 'Legend' })).not.toHaveAttribute(
+      'aria-modal',
+    )
   })
 
   it('puts the way to the download last, under everything the panel is for', () => {

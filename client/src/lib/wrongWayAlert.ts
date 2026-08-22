@@ -81,10 +81,24 @@ export function createWrongWayMonitor(
       // Telemetry, and only for a real escalation. Deliberately not awaited
       // for its result and never allowed to throw - the alert has already
       // happened by this point and nothing here may undo it.
-      if (settings.hikeId !== null) {
+      //
+      // `at` is read defensively because the reason it is safe is not local
+      // (#315). `detectWrongWay` returns 'silent' for a trace too short to
+      // judge, and 'silent' returned above, so by here the trace has samples
+      // - which is a fact about ANOTHER function's early returns, three
+      // branches away. Reading the last sample unguarded made this line
+      // correct only for as long as nobody reorders those checks, and the
+      // cost of being wrong is a throw on the escalation path: the push has
+      // already fired, so an exception here would propagate out of `observe`
+      // to a caller that has no idea the hiker was already told.
+      //
+      // The guard is not a claim that the trace can be empty. It is a refusal
+      // to let a safety path depend on a check that is not in it.
+      const last = trace.at(-1)
+      if (settings.hikeId !== null && last !== undefined) {
         void relay({
           hikeId: settings.hikeId,
-          at: new Date(trace[trace.length - 1].timestampMs).toISOString(),
+          at: new Date(last.timestampMs).toISOString(),
         }).catch(() => {
           // No signal is the ordinary case on this trail. The backend copy is
           // a nicety; the hiker already has what matters.

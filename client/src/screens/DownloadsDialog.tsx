@@ -70,7 +70,17 @@ export function DownloadsDialog({ onClose, children }: DownloadsDialogProps) {
         ref={panel}
         className="downloads-dialog__panel"
         role="dialog"
-        aria-modal="true"
+        /* NOT `aria-modal="true"` (#315), and that is this file's own
+           reasoning followed through. The comment above already refuses a
+           focus trap - "half of one is worse than none because it looks
+           handled" - and `aria-modal` was the same mistake one layer up:
+           it TELLS assistive tech the background is inert while Tab walks
+           straight into it, so a screen-reader user is given a guarantee the
+           page does not keep. The role still says "this is a dialog"; what is
+           gone is the claim nobody was honouring.
+
+           If a trap is ever built, this attribute comes back with it, in the
+           same change. */
         aria-labelledby={TITLE_ID}
         tabIndex={-1}
       >

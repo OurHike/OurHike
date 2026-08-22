@@ -85,6 +85,22 @@ async function renderApp() {
 // Imported after the mocks above are in place.
 const { default: App } = await import('./App')
 
+/** The visible safety band. Queried by its container since #315 — it no longer
+ *  carries `role="alert"`, because its text ends in a distance the shell
+ *  recomputes on every GPS fix, so a live role meant an assertive screen-reader
+ *  interruption per jitter tick. What gets ANNOUNCED is a separate hidden line
+ *  that names the lanes without the number; chrome/MapScreen.test.tsx pins that. */
+async function safetyBand(): Promise<HTMLElement> {
+  return (await screen.findByText(/trail closed|serious warning|advisory/i)).closest(
+    '.map-screen__alerts',
+  ) as HTMLElement
+}
+
+/** Whether any safety line is on screen at all. */
+function noSafetyBand(): boolean {
+  return document.querySelector('.map-screen__alerts') === null
+}
+
 describe('a hiker who has said which way they are walking', () => {
   it('is warned about the closure ahead without walking a step', async () => {
     // The payoff. Northbound from the southern terminus, one GPS fix, no
@@ -94,7 +110,7 @@ describe('a hiker who has said which way they are walking', () => {
     await renderApp()
     await reportOneFix()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/trail closed/i)
+    expect(await safetyBand()).toHaveTextContent(/trail closed/i)
   })
 
   it('reads that warning in the units they chose in Settings (#619)', async () => {
@@ -112,7 +128,7 @@ describe('a hiker who has said which way they are walking', () => {
     await renderApp()
     await reportOneFix()
 
-    const banner = await screen.findByRole('alert')
+    const banner = await safetyBand()
     expect(banner).toHaveTextContent('4.8 km ahead')
     expect(banner).toHaveTextContent('mi 8.0 – 9.0')
   })
@@ -127,7 +143,7 @@ describe('a hiker who has said which way they are walking', () => {
     await renderApp()
     await reportOneFix()
 
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(noSafetyBand()).toBe(true)
   })
 })
 
@@ -138,7 +154,7 @@ describe('a hiker who has not', () => {
     await renderApp()
     await reportOneFix()
 
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(noSafetyBand()).toBe(true)
   })
 
   it('still has a working app, because a hike is optional', async () => {

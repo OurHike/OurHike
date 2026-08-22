@@ -22,11 +22,24 @@ function open(onClose = vi.fn()) {
 }
 
 describe('DownloadsDialog', () => {
-  it('announces itself as a modal dialog with a name', () => {
+  it('announces itself as a named dialog', () => {
     open()
 
-    const dialog = screen.getByRole('dialog', { name: /offline map/i })
-    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(screen.getByRole('dialog', { name: /offline map/i })).toBeInTheDocument()
+  })
+
+  it('does not claim to be modal, because it does not trap focus (#315)', () => {
+    // The assertion here used to require `aria-modal="true"`, pinning the
+    // defect. This file's own header refuses a focus trap - "half of one is
+    // worse than none because it looks handled" - and `aria-modal` was that
+    // same mistake one layer up, promising assistive tech an inertness
+    // nothing delivers. If a trap is ever built the attribute comes back
+    // with it, in the same change.
+    open()
+
+    expect(screen.getByRole('dialog', { name: /offline map/i })).not.toHaveAttribute(
+      'aria-modal',
+    )
   })
 
   it('shows what the shell put in it', () => {

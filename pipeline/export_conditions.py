@@ -90,11 +90,20 @@ Published unchecked, that is an empty artifact, a client that treats it as a
 valid baseline, and hikers shown no warnings - a permissions mistake wearing
 the costume of "nothing to report".
 
-`assert_reader_permissions` is what makes zero trustworthy. It asks the
-catalog whether the grant and the policy are actually in place - for each
-table, before anything is written, so a half-configured database publishes
-nothing rather than one artifact of two. After it passes, an empty result is
-a real answer about the trail.
+`reader_problem` is what makes zero trustworthy. It asks the catalog whether
+the table, the grant and the policy are actually in place - for each table,
+before anything is written - so an artifact this reader cannot really see is
+OMITTED rather than published as an empty one. After it passes, an empty
+result is a real answer about the trail.
+
+Omitted, specifically, and not "the run stops". Those were the same thing
+until #922, when `field_notes` arriving before anybody had granted the reader
+access to it stopped closures and reports republishing for two days as well.
+Omitting is safe in a way publishing empty is not: the client is never-fatal
+about a key that 404s and falls back to what it did before, while a key
+holding `[]` is a claim about the trail it cannot tell from the truth. See
+`PENDING_READER_SETUP` for which tables are allowed to be missing and which
+still stop everything.
 
     CONDITIONS_DATABASE_URL=postgresql://... python export_conditions.py
 """
@@ -312,6 +321,49 @@ POLICY_PREDICATES = {
     "field_notes": "hidden_at IS NULL",
 }
 
+# Tables whose reader setup is OUTSTANDING ACCOUNT WORK rather than a
+# regression, and what the person holding the Supabase console has to do.
+#
+# This is scaffolding for a rollout window, in the same spirit as the
+# closure-geometry fallback that stood in this file between #674 and
+# production's migration - and with the same removal trigger, written down
+# for the same reason: left in place after it stops being true, it turns a
+# loud failure into a quiet one.
+#
+# WHY IT IS NOT SIMPLY ALL-OR-NOTHING, WHICH IS WHAT IT REPLACES. The
+# pre-flight loop used to refuse everything if any one table was
+# unconfigured, and the argument was sound as far as it went: half a baseline
+# would look exactly like a day with no reports. But that argument is about
+# PUBLISHING AN EMPTY ARTIFACT, which is a lie a client cannot detect, and it
+# does not carry over to OMITTING one. client/src/lib/publishedConditions.ts
+# is never-fatal by construction - a key that 404s yields null and the caller
+# falls back to what it did before, which is exactly how a release published
+# before these artifacts existed already behaves.
+#
+# So the coupling bought nothing and cost the thing it was protecting: from
+# 2026-08-20 to 2026-08-22, `field_notes` being unconfigured stopped closures
+# and reports republishing too, and the offline safety baseline aged in the
+# bucket for two days while every run went red (#922). A table listed here
+# warns and has its artifacts omitted; a table NOT listed here still stops
+# everything, because closures and reports are configured in both
+# environments today and their failing is a regression rather than a step
+# nobody has taken yet.
+#
+# REMOVE THE field_notes ENTRY once both databases have run migration
+# d7e2b9c41f68 and the GRANT/CREATE POLICY from
+# features/CONDITIONS_DELIVERY.md section 2. After that, this warning going
+# off again would mean something broke, and it should be red.
+PENDING_READER_SETUP = {
+    "field_notes": (
+        "This is expected until somebody applies migration d7e2b9c41f68 and runs the "
+        "GRANT SELECT / CREATE POLICY for public.field_notes from "
+        "features/CONDITIONS_DELIVERY.md section 2 against this environment (#922). "
+        "conditions/notes.json and conditions/disputes.json are omitted rather than "
+        "published empty, so the client reads them as absent rather than as a trail "
+        "nobody has written a note about. Closures and reports are unaffected."
+    ),
+}
+
 
 def connection_url() -> str:
     """Read the connection string, accepting either spelling of the scheme.
@@ -342,6 +394,16 @@ def connection_url() -> str:
 # refused as.
 MAY_SELECT_SQL = "SELECT has_table_privilege(current_user, %s, 'SELECT')"
 
+# Asked FIRST, and the only one of these four that survives a table which is
+# not there. `has_table_privilege()` and the `::regclass` cast below both
+# raise `UndefinedTable` on an unknown relation - measured against Postgres 16,
+# 2026-08-22 - so asking either of them about a table a migration has not
+# created yet turns this check into the traceback it exists to replace. That
+# is not hypothetical: production ran `export_conditions.py` against a
+# database with no `field_notes` every hour from 2026-08-20 to 2026-08-22 and
+# got exactly that (#922). `to_regclass()` answers NULL instead.
+TABLE_EXISTS_SQL = "SELECT to_regclass(%s) IS NOT NULL"
+
 # `pg_policies.roles` is a name[] of the roles a policy is FOR. A policy
 # granted to PUBLIC lands as {public}, which covers this role too, so both
 # spellings count as configured.
@@ -359,15 +421,22 @@ POLICY_COUNT_SQL = """
 RLS_ENABLED_SQL = "SELECT relrowsecurity FROM pg_class WHERE oid = %s::regclass"
 
 
-def permission_problem(table: str, may_select: bool, rls_enabled: bool, policies: int) -> str | None:
+def permission_problem(table: str, exists: bool, may_select: bool, rls_enabled: bool, policies: int) -> str | None:
     """The decision, as a pure function. Returns the reason to stop, or None.
 
-    Two failures, because they fail differently and the fixes are different
-    lines of SQL: the GRANT decides whether the table is addressable at all,
-    and the POLICY decides whether RLS lets any row through. Both present as
-    an empty result set rather than an error, which is the whole reason this
-    exists - see the module docstring.
+    Three failures, because they fail differently and the fixes are different
+    pieces of work: the MIGRATION decides whether the table is there at all,
+    the GRANT decides whether it is addressable, and the POLICY decides
+    whether RLS lets any row through. The last two present as an empty result
+    set rather than an error, which is the whole reason this exists - see the
+    module docstring. The first one used to present as a traceback (#922).
     """
+    if not exists:
+        return (
+            f"public.{table} does not exist in this database, so there is nothing to publish from. "
+            "The migration that creates it has not been applied here - see backend/alembic/versions "
+            "and dispatch .github/workflows/migrate.yml for this environment."
+        )
     if not may_select:
         return (
             f"{READER_ROLE} has no SELECT on public.{table}, so this would publish nothing. "
@@ -383,13 +452,22 @@ def permission_problem(table: str, may_select: bool, rls_enabled: bool, policies
     return None
 
 
-def assert_reader_permissions(conn, table: str) -> None:
-    """Refuse to run unless the reader can actually see the table's public rows.
+def reader_problem(conn, table: str) -> str | None:
+    """Why the reader cannot see `table`'s public rows, or None if it can.
 
     Without this, a missing policy publishes an empty artifact instead of
     failing, and empty is indistinguishable from a quiet trail.
+
+    Existence is asked first and separately, because the other three questions
+    raise rather than answer when the table is not there - see
+    `TABLE_EXISTS_SQL`.
     """
     with conn.cursor() as cur:
+        cur.execute(TABLE_EXISTS_SQL, (f"public.{table}",))
+        (exists,) = cur.fetchone()
+        if not exists:
+            return permission_problem(table, exists=False, may_select=False, rls_enabled=False, policies=0)
+
         cur.execute(MAY_SELECT_SQL, (f"public.{table}",))
         (may_select,) = cur.fetchone()
         cur.execute(RLS_ENABLED_SQL, (f"public.{table}",))
@@ -397,7 +475,12 @@ def assert_reader_permissions(conn, table: str) -> None:
         cur.execute(POLICY_COUNT_SQL, (table,))
         (policies,) = cur.fetchone()
 
-    problem = permission_problem(table, bool(may_select), bool(rls_enabled), int(policies))
+    return permission_problem(table, True, bool(may_select), bool(rls_enabled), int(policies))
+
+
+def assert_reader_permissions(conn, table: str) -> None:
+    """`reader_problem`, as the refusal it is for the tables that must be there."""
+    problem = reader_problem(conn, table)
     if problem:
         raise SystemExit(problem)
 
@@ -496,16 +579,32 @@ def connect():
 
 def main() -> dict:
     with connect() as conn:
-        # Every table checked before any read, so a half-configured database -
-        # the closures policy applied, the notes one forgotten - publishes
-        # nothing rather than two artifacts of three. Half a baseline would
-        # look exactly like a day with no reports.
+        # Every table checked before any read, so a half-configured database
+        # publishes nothing from the table it cannot see rather than an empty
+        # artifact that reads as a quiet trail. What happens next depends on
+        # WHICH table: an unconfigured one listed in PENDING_READER_SETUP
+        # warns and drops its own artifacts, and any other one stops the run.
+        unconfigured = set()
         for table in ("closures", "reports", "field_notes"):
-            assert_reader_permissions(conn, table)
+            problem = reader_problem(conn, table)
+            if problem is None:
+                continue
+            pending = PENDING_READER_SETUP.get(table)
+            if pending is None:
+                raise SystemExit(problem)
+            # `::warning::` rather than a bare print, so this reaches the run
+            # summary and the annotations rather than only the step log - a
+            # gap somebody has to close should not need the log opening to be
+            # noticed. The workflow's missing-secret gate says it the same
+            # way, for the same reason.
+            print(f"::warning::{problem} {pending}")
+            unconfigured.add(table)
+
         closures = read_closures(conn)
         reports = read_reports(conn)
-        notes = read_notes(conn)
-        disputes = read_disputes(conn)
+        # Both come from `field_notes`, so both stand or fall with it.
+        notes = None if "field_notes" in unconfigured else read_notes(conn)
+        disputes = None if "field_notes" in unconfigured else read_disputes(conn)
 
     # One clock for all three documents: they came from one read of one
     # database, and two timestamps would invite the client to reason about a
@@ -513,45 +612,35 @@ def main() -> dict:
     generated_at = datetime.now(timezone.utc)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    CLOSURES_OUT_PATH.write_text(json.dumps(build_document("closures", closures, generated_at), indent=2) + "\n")
-    REPORTS_OUT_PATH.write_text(json.dumps(build_document("reports", reports, generated_at), indent=2) + "\n")
-    NOTES_OUT_PATH.write_text(json.dumps(build_document("notes", notes, generated_at), indent=2) + "\n")
-    DISPUTES_OUT_PATH.write_text(json.dumps(build_document("disputes", disputes, generated_at), indent=2) + "\n")
 
-    manifest = {
-        "artifacts": {
-            "closures": {
-                "path": str(CLOSURES_OUT_PATH),
-                "sha256": sha256_file(CLOSURES_OUT_PATH),
-                "count": len(closures),
-                "generated_at": _stamp_utc(generated_at),
-            },
-            "reports": {
-                "path": str(REPORTS_OUT_PATH),
-                "sha256": sha256_file(REPORTS_OUT_PATH),
-                "count": len(reports),
-                "generated_at": _stamp_utc(generated_at),
-            },
-            "notes": {
-                "path": str(NOTES_OUT_PATH),
-                "sha256": sha256_file(NOTES_OUT_PATH),
-                "count": len(notes),
-                "generated_at": _stamp_utc(generated_at),
-            },
-            "disputes": {
-                "path": str(DISPUTES_OUT_PATH),
-                "sha256": sha256_file(DISPUTES_OUT_PATH),
-                "count": len(disputes),
-                "generated_at": _stamp_utc(generated_at),
-            },
+    # `None` means "this table is not configured here", which is not the same
+    # fact as "this table is empty" and must not be written as though it were.
+    # An omitted key 404s and the client falls back; a key holding `[]` is a
+    # claim about the trail (see PENDING_READER_SETUP).
+    written = [
+        ("closures", CLOSURES_OUT_PATH, closures, "verified closure(s)"),
+        ("reports", REPORTS_OUT_PATH, reports, "public report(s)"),
+        ("notes", NOTES_OUT_PATH, notes, "visible field note(s)"),
+        ("disputes", DISPUTES_OUT_PATH, disputes, "corroborated dispute(s)"),
+    ]
+
+    artifacts = {}
+    for key, path, rows, described in written:
+        if rows is None:
+            print(f"Skipped {path.name}: public.field_notes is not configured for this reader yet.")
+            continue
+        path.write_text(json.dumps(build_document(key, rows, generated_at), indent=2) + "\n")
+        artifacts[key] = {
+            "path": str(path),
+            "sha256": sha256_file(path),
+            "count": len(rows),
+            "generated_at": _stamp_utc(generated_at),
         }
-    }
+        print(f"Wrote {len(rows)} {described} to {path}.")
+
+    manifest = {"artifacts": artifacts}
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
-    print(f"Wrote {len(closures)} verified closure(s) to {CLOSURES_OUT_PATH}.")
-    print(f"Wrote {len(reports)} public report(s) to {REPORTS_OUT_PATH}.")
-    print(f"Wrote {len(notes)} visible field note(s) to {NOTES_OUT_PATH}.")
-    print(f"Wrote {len(disputes)} corroborated dispute(s) to {DISPUTES_OUT_PATH}.")
     return manifest
 
 

@@ -25,6 +25,7 @@ import {
   type StoredPoi,
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
+import { EMPTY_STEWARDS, type Stewards } from './stewards'
 import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
 import { NO_TOMBSTONES, type Tombstones } from './poiIdentity'
@@ -87,6 +88,10 @@ export interface TrailData {
    *  Empty until a release that publishes it is on the phone, which costs the
    *  corridor view its subject and nothing else. */
   clubSections: ClubSections
+  /** Who the map's data belongs to (#927), for the About tab's sources
+   *  section. Empty until a download lands, and on any release built before
+   *  pipeline/export_sources.py existed. */
+  stewards: Stewards
   /** Stretches worth going to (pipeline/export_highlights.py, #595). Empty
    *  until a release that publishes them is on the phone. */
   highlights: Highlight[]
@@ -169,6 +174,7 @@ export function useTrailData(
   const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [clubSections, setClubSections] = useState<ClubSections>(EMPTY_CLUB_SECTIONS)
+  const [stewards, setStewards] = useState<Stewards>(EMPTY_STEWARDS)
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [retiredPois, setRetiredPois] = useState<Tombstones>(NO_TOMBSTONES)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
@@ -235,6 +241,7 @@ export function useTrailData(
     setSpurs(data.spurs)
     setElevation(data.elevation)
     setClubSections(data.clubSections)
+    setStewards(data.stewards)
     setHighlights(data.highlights)
     setRetiredPois(data.retiredPois)
 
@@ -462,6 +469,7 @@ export function useTrailData(
     spurs,
     elevation,
     clubSections,
+    stewards,
     highlights,
     retiredPois,
     // Never both. The real line winning is what ends the sketch, and saying so

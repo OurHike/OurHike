@@ -3,18 +3,18 @@
   "photo_licence": {
     "_comment": "The basis on which the Photo1..Photo10 images on the ATC facilities layers may be mirrored and served, recorded rather than assumed - CONTRIBUTING.md, 'A note on data and licences'. This is NOT a Creative Commons grant and must not be rendered as one: ATC holds the copyright, and what is recorded here is the permission to use them, not a licence to sublicense them onward. A club inheriting this project needs to re-confirm it in its own name rather than relying on this line.",
     "author": "Appalachian Trail Conservancy",
-    "license": "© ATC, used with permission",
+    "license": "\u00a9 ATC, used with permission",
     "basis": "Maintainer authorisation, on the basis of Appalachian Trail Conservancy affiliation",
     "recorded_date": "2026-08-08",
     "open_question": "https://github.com/OurHike/OurHike/issues/98 - ATC's redistribution and attribution terms are unresolved in general, and settling them should replace this line with the agreed terms."
   },
   "atc_licence": {
-    "_comment": "The basis on which DATA the Appalachian Trail Conservancy publishes on its own ArcGIS org and services may be reused - photo_licence's sibling, extended from the photos to the data layers by the maintainer's declaration of 2026-08-13 ('anything from the ATC is reusable', restated specifically for the FarOut-measured CSI water distances - #688). Scope, stated tightly: facts ATC itself publishes (half-mile points, the Campsite_Sustainability_Index water distances build_water_distance.py takes, whatever future ATC-org layer a change deliberately adopts). It does NOT cover documents the maintaining clubs publish (per-entry licence fields govern those, e.g. gatc_water_sources below), does NOT override editorial holdbacks that are about safety or partnership rather than licensing (CSI's user-created campsites stay unpublished - SOURCE_SURVEY.md §3b), and is not a grant to sublicense ATC's work onward.",
+    "_comment": "The basis on which DATA the Appalachian Trail Conservancy publishes on its own ArcGIS org and services may be reused - photo_licence's sibling, extended from the photos to the data layers by the maintainer's declaration of 2026-08-13 ('anything from the ATC is reusable', restated specifically for the FarOut-measured CSI water distances - #688). Scope, stated tightly: facts ATC itself publishes (half-mile points, the Campsite_Sustainability_Index water distances build_water_distance.py takes, whatever future ATC-org layer a change deliberately adopts). It does NOT cover documents the maintaining clubs publish (per-entry licence fields govern those, e.g. gatc_water_sources below), does NOT override editorial holdbacks that are about safety or partnership rather than licensing (CSI's user-created campsites stay unpublished - SOURCE_SURVEY.md \u00a73b), and is not a grant to sublicense ATC's work onward.",
     "author": "Appalachian Trail Conservancy",
-    "license": "© ATC, used with permission",
+    "license": "\u00a9 ATC, used with permission",
     "basis": "Maintainer authorisation, on the basis of Appalachian Trail Conservancy affiliation",
     "recorded_date": "2026-08-13",
-    "open_question": "ATC's own written terms remain the ideal - SOURCE_SURVEY.md §10's combined ask (capacity, Helene status, CSI, half-mile points) is now a confirmation rather than a blocker, and its answer should replace this line, the same way photo_licence's open question reads."
+    "open_question": "ATC's own written terms remain the ideal - SOURCE_SURVEY.md \u00a710's combined ask (capacity, Helene status, CSI, half-mile points) is now a confirmation rather than a blocker, and its answer should replace this line, the same way photo_licence's open question reads."
   },
   "sources": [
     {
@@ -23,7 +23,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/APPA_Trail_Club_Sections/FeatureServer/0",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "centerline",
@@ -33,7 +34,8 @@
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
       "notes": "Also given directly by user as https://arcg.is/1nqL542",
-      "blaze_default": "White"
+      "blaze_default": "White",
+      "reaches_hikers": true
     },
     {
       "key": "side_trails",
@@ -42,7 +44,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/6",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "blaze_field": "Blaze"
+      "blaze_field": "Blaze",
+      "reaches_hikers": true
     },
     {
       "key": "campsites",
@@ -50,7 +53,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/1",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "shelters",
@@ -58,7 +62,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/4",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "parking",
@@ -66,7 +71,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/2",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "viewpoints",
@@ -74,7 +80,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/5",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "communities",
@@ -82,7 +89,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/AT_Communities/FeatureServer/0",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "half_mile_points_from_springer",
@@ -90,7 +98,8 @@
       "provider": "ATC",
       "url": "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services/Half_Mile_Points040726_NoM/FeatureServer/18",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "reaches_hikers": true
     },
     {
       "key": "bridges",
@@ -99,7 +108,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/0",
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
-      "notes": "Added to registry for later - not yet fetched."
+      "notes": "Added to registry for later - not yet fetched.",
+      "reaches_hikers": false
     },
     {
       "key": "privies",
@@ -108,7 +118,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/3",
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
-      "notes": "Added to registry for later - not yet fetched."
+      "notes": "Added to registry for later - not yet fetched.",
+      "reaches_hikers": true
     },
     {
       "key": "at_treadway",
@@ -117,7 +128,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/7",
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
-      "notes": "Added to registry for later - not yet fetched. Unclear yet how this differs from the ANST_Centerline layer already in use - worth checking when fetched."
+      "notes": "Added to registry for later - not yet fetched. Unclear yet how this differs from the ANST_Centerline layer already in use - worth checking when fetched.",
+      "reaches_hikers": false
     },
     {
       "key": "atc_trail_updates",
@@ -138,7 +150,8 @@
       },
       "discovered_via": "features/ATC_TRAIL_UPDATES.md - read from ATC's public website, not from an ArcGIS service. Registered by hand because discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-12",
-      "notes": "Not fetched by fetch_all.py and has no data/raw/<key>.geojson - the build input is the reviewed file named in `reviewed_input`, which a human edits and a merged pull request releases (#460). The freshness marker is what tells that human ATC has published something since they last looked."
+      "notes": "Not fetched by fetch_all.py and has no data/raw/<key>.geojson - the build input is the reviewed file named in `reviewed_input`, which a human edits and a merged pull request releases (#460). The freshness marker is what tells that human ATC has published something since they last looked.",
+      "reaches_hikers": true
     },
     {
       "key": "gatc_water_sources",
@@ -149,11 +162,12 @@
       "trust": "authoritative",
       "steward": "Georgia Appalachian Trail Club",
       "steward_contact": "https://georgia-atclub.org/contact/",
-      "licence": "Unstated - a free public download from GATC's own site, fetched for REVIEW AND CROSS-CHECKS ONLY. Nothing from this source reaches a published artifact until GATC answers a redistribution ask (CONTRIBUTING.md, 'A note on data and licences'; the ask is the same shape as https://github.com/OurHike/OurHike/issues/98 records for opentrail.org). WATER_SOURCES.md §4 sizes this document as 'a pilot-state candidate after an email' and notes its embedded title is 'GATC Water Update July 2020.xlsx', so the 2026-03 file may re-export older data - a second reason the ask precedes any publication.",
+      "licence": "Unstated - a free public download from GATC's own site, fetched for REVIEW AND CROSS-CHECKS ONLY. Nothing from this source reaches a published artifact until GATC answers a redistribution ask (CONTRIBUTING.md, 'A note on data and licences'; the ask is the same shape as https://github.com/OurHike/OurHike/issues/98 records for opentrail.org). WATER_SOURCES.md \u00a74 sizes this document as 'a pilot-state candidate after an email' and notes its embedded title is 'GATC Water Update July 2020.xlsx', so the 2026-03 file may re-export older data - a second reason the ask precedes any publication.",
       "attribution": "Georgia Appalachian Trail Club",
-      "discovered_via": "SOURCE_SURVEY.md §5's club sweep (the 'water-sources PDF (2026-03-02)' row); fetched and parsed live 2026-08-13 (#669). Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
+      "discovered_via": "SOURCE_SURVEY.md \u00a75's club sweep (the 'water-sources PDF (2026-03-02)' row); fetched and parsed live 2026-08-13 (#669). Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
-      "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md §4's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement."
+      "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md \u00a74's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement.",
+      "reaches_hikers": false
     },
     {
       "key": "osm_water",
@@ -168,7 +182,8 @@
       "attribution": "(c) OpenStreetMap contributors",
       "discovered_via": "WATER_SOURCES.md's census for #529 (spike_osm_water_census.py) measured OSM point sources within 250 m of 26% of shelters trail-wide and 40% in the south, against 8% for the shipped supply. Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
-      "notes": "Fetched by fetch_osm_water.py to data/raw/osm_water.geojson (never by fetch_all.py): nodes tagged natural=spring, amenity=drinking_water, man_made=water_tap or man_made=water_well across the fourteen Geofabrik state extracts export_basemap.py already downloads - 7,574 nodes on the first full scan (2026-08-13). No freshness entry on purpose: Geofabrik republishes the extracts daily, so a changed-marker would always say yes (export_basemap.py's docstring holds the reasoning; the fetch is skip-if-present with --refetch). export_poi.py folds these into poi_type water at low confidence, dropping each point within 25 m of an opentrail water point as the same node arriving twice."
+      "notes": "Fetched by fetch_osm_water.py to data/raw/osm_water.geojson (never by fetch_all.py): nodes tagged natural=spring, amenity=drinking_water, man_made=water_tap or man_made=water_well across the fourteen Geofabrik state extracts export_basemap.py already downloads - 7,574 nodes on the first full scan (2026-08-13). No freshness entry on purpose: Geofabrik republishes the extracts daily, so a changed-marker would always say yes (export_basemap.py's docstring holds the reasoning; the fetch is skip-if-present with --refetch). export_poi.py folds these into poi_type water at low confidence, dropping each point within 25 m of an opentrail water point as the same node arriving twice.",
+      "reaches_hikers": true
     },
     {
       "key": "usgs_3dhp",
@@ -179,7 +194,7 @@
       "trust": "authoritative",
       "steward": "U.S. Geological Survey",
       "steward_contact": "https://www.usgs.gov/3d-hydrography-program",
-      "licence": "Public domain, as a work of the United States government — the whole USGS hydrography column (WATER_SOURCES.md §5). Attribution is courtesy rather than obligation, and the client's credits screen already names USGS for NHD.",
+      "licence": "Public domain, as a work of the United States government \u2014 the whole USGS hydrography column (WATER_SOURCES.md \u00a75). Attribution is courtesy rather than obligation, and the client's credits screen already names USGS for NHD.",
       "attribution": "U.S. Geological Survey",
       "freshness": {
         "kind": "arcgis_distinct_values",
@@ -187,9 +202,10 @@
         "recorded": "NHD",
         "notes": "The distinct `workunitid` values 3DHP's flowline layer returns for boxes on the trail. `NHD` is 3DHP saying, in its own field, that these lines are the retired dataset republished rather than anything it has surveyed - measured 2026-08-14 at five points spread along the trail from North Carolina (mile 110) to New Hampshire (mile 1,868), every one of them `NHD`. When that stops being the answer, 3DHP has resurveyed the corridor and the migration this pipeline is deliberately not doing becomes worth costing. Changing `recorded` is how a person acknowledges having looked; nothing writes it automatically."
       },
-      "discovered_via": "WATER_SOURCES.md §5, following USGS's retirement of the NHD on 2023-10-01. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this is not in it.",
+      "discovered_via": "WATER_SOURCES.md \u00a75, following USGS's retirement of the NHD on 2023-10-01. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this is not in it.",
       "discovered_date": "2026-08-14",
-      "notes": "Nothing fetches this. It is registered because the pipeline's water derivation (fetch_trail_water.py) reads a dataset USGS no longer maintains, and this is where its replacement will appear. Measured 2026-08-14: for the corridor, 3DHP IS NHD - identical geometry (1,265 flowlines in a box in central Virginia against NHD's 1,265, same vertex count, worst-case separation 0.086 mm) and identical springs (1,796 features, every one within 1 m of an NHD spring) - with the perennial/intermittent FCode collapsed away into an undifferentiated `Channel Line`. Migrating now would trade the only structured seasonality signal the pipeline has for the same geometry, so the entry holds a watch instead of a fetch."
+      "notes": "Nothing fetches this. It is registered because the pipeline's water derivation (fetch_trail_water.py) reads a dataset USGS no longer maintains, and this is where its replacement will appear. Measured 2026-08-14: for the corridor, 3DHP IS NHD - identical geometry (1,265 flowlines in a box in central Virginia against NHD's 1,265, same vertex count, worst-case separation 0.086 mm) and identical springs (1,796 features, every one within 1 m of an NHD spring) - with the perennial/intermittent FCode collapsed away into an undifferentiated `Channel Line`. Migrating now would trade the only structured seasonality signal the pipeline has for the same geometry, so the entry holds a watch instead of a fetch.",
+      "reaches_hikers": false
     },
     {
       "key": "usdm_drought",
@@ -204,7 +220,8 @@
       "attribution": "The U.S. Drought Monitor is jointly produced by the National Drought Mitigation Center at the University of Nebraska-Lincoln, the United States Department of Agriculture, the National Oceanic and Atmospheric Administration and the National Aeronautics and Space Administration. Map courtesy of NDMC.",
       "discovered_via": "WATER_CONDITIONS.md's survey for #716 measured it against the centerline: 877.1 of 2,172.0 trail miles at least abnormally dry on 2026-08-11, 205.8 of them in severe drought. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-15",
-      "notes": "Fetched by fetch_drought.py to data/raw/drought/usdm_YYYYMMDD.json, the DATED file rather than usdm_current.json: the polygons carry no date inside them, and a weekly product whose artifact cannot name its week leaves the client with only the bake's clock. A USDM week runs Tuesday to Monday and is released on the Thursday, so the fetcher walks back a week at a time - a midweek 404 is 'not published yet', not a failure. export_drought.py clips to a 10 km corridor (27.6 MB national file to about 10 KB gzipped, losslessly - WATER_CONDITIONS.md §4), un-nests the classes so each published band is disjoint, and publishes conditions/drought.json."
+      "notes": "Fetched by fetch_drought.py to data/raw/drought/usdm_YYYYMMDD.json, the DATED file rather than usdm_current.json: the polygons carry no date inside them, and a weekly product whose artifact cannot name its week leaves the client with only the bake's clock. A USDM week runs Tuesday to Monday and is released on the Thursday, so the fetcher walks back a week at a time - a midweek 404 is 'not published yet', not a failure. export_drought.py clips to a 10 km corridor (27.6 MB national file to about 10 KB gzipped, losslessly - WATER_CONDITIONS.md \u00a74), un-nests the classes so each published band is disjoint, and publishes conditions/drought.json.",
+      "reaches_hikers": true
     },
     {
       "key": "oprhp_trails",
@@ -219,7 +236,8 @@
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "The NY State Parks Explorer mobile app's per-park Web Maps on OPRHP's public AGOL org 'nysparks' (org id 1xFZPtKn1wKC6POA) - read 'Old Croton Parks App' item 36c9404f8fad4dfc9df0e0037e1fb96b's operationalLayers, then probed live 2026-08-18 (#768/#769). Registered by hand - discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-18",
-      "notes": "16,641 polyline segments statewide, measured 2026-08-18: per-segment Unit/Name/Alt_Name, up to three Blaze colours plus Map_Blaze, Surface, Status, Public_, per-use flags (Foot/Bike/Horse/XC/SS/Snowmb) and Miles. editingInfo.dataLastEditDate verified live 2026-08-18 - then reading 2026-08-17T19:43Z, edited the day before this registration, so the layer is actively maintained. This is the layer the Parks Explorer app syncs its offline data from (capabilities Query,Extract,Sync,ChangeTracking; a literal ParksApp column). What Public_ and Status gate is unmeasured - #771 measures before anything filters on them, and until then the fetch takes every row rather than guessing."
+      "notes": "16,641 polyline segments statewide, measured 2026-08-18: per-segment Unit/Name/Alt_Name, up to three Blaze colours plus Map_Blaze, Surface, Status, Public_, per-use flags (Foot/Bike/Horse/XC/SS/Snowmb) and Miles. editingInfo.dataLastEditDate verified live 2026-08-18 - then reading 2026-08-17T19:43Z, edited the day before this registration, so the layer is actively maintained. This is the layer the Parks Explorer app syncs its offline data from (capabilities Query,Extract,Sync,ChangeTracking; a literal ParksApp column). What Public_ and Status gate is unmeasured - #771 measures before anything filters on them, and until then the fetch takes every row rather than guessing.",
+      "reaches_hikers": false
     },
     {
       "key": "oprhp_trail_closures",
@@ -235,7 +253,8 @@
       "may_be_empty": true,
       "discovered_via": "Sibling of oprhp_trails on the same org, surfaced by an AGOL search for the org's trail services, probed live 2026-08-18 (#768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
-      "notes": "TEMPORARY closure polygons - 4 features on 2026-08-18, and an honest count of zero is the expected answer in a good week, which is what may_be_empty records and why this layer could never sit behind fetch_all.py's non-empty completeness gate. dataLastEditDate verified live 2026-08-18 (then 2026-06-16). A safety surface: if OPRHP data ever ships, this is the layer whose freshness matters most (CLAUDE.md's closures path)."
+      "notes": "TEMPORARY closure polygons - 4 features on 2026-08-18, and an honest count of zero is the expected answer in a good week, which is what may_be_empty records and why this layer could never sit behind fetch_all.py's non-empty completeness gate. dataLastEditDate verified live 2026-08-18 (then 2026-06-16). A safety surface: if OPRHP data ever ships, this is the layer whose freshness matters most (CLAUDE.md's closures path).",
+      "reaches_hikers": false
     },
     {
       "key": "oprhp_facilities",
@@ -250,7 +269,8 @@
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "Drawn by every per-park 'Parks App' Web Map alongside oprhp_trails (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
-      "notes": "8,823 point features statewide, measured 2026-08-18. The layer's own display name is 'NY State Parks Facilities (Internal)' although the service is public - what that naming implies about the schema's intended audience is unassessed. Whether it carries water sources is UNCHECKED (#769 names this the open question that raises the evidence bar if true - water is one of CLAUDE.md's four ways). dataLastEditDate verified live 2026-08-18 (then 2026-08-12)."
+      "notes": "8,823 point features statewide, measured 2026-08-18. The layer's own display name is 'NY State Parks Facilities (Internal)' although the service is public - what that naming implies about the schema's intended audience is unassessed. Whether it carries water sources is UNCHECKED (#769 names this the open question that raises the evidence bar if true - water is one of CLAUDE.md's four ways). dataLastEditDate verified live 2026-08-18 (then 2026-08-12).",
+      "reaches_hikers": false
     },
     {
       "key": "oprhp_park_polygons",
@@ -265,7 +285,8 @@
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "The first layer every per-park 'Parks App' Web Map draws (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
-      "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30)."
+      "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30).",
+      "reaches_hikers": false
     }
   ],
   "usdm_licence": {
@@ -284,5 +305,6 @@
     "basis": "Maintainer outreach in progress, declared 2026-08-18",
     "recorded_date": "2026-08-18",
     "open_question": "https://github.com/OurHike/OurHike/issues/769 - OPRHP's answer should replace this block's license line with the agreed terms, the way atc_licence's open question reads."
-  }
+  },
+  "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it."
 }

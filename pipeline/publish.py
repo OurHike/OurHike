@@ -447,6 +447,18 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(club_manifest.read_text())
         artifacts["club_sections.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # Who the map's data belongs to, if export_sources.py has run (#927,
+    # features/SOURCE_REGISTRY.md). Named `stewards.json` rather than
+    # `sources.json` deliberately - the exporter's own comment has why.
+    #
+    # Absent from any release exported before it existed, which the client
+    # reads as "no steward list" rather than as a failure - the same treatment
+    # club_sections.json above already gets.
+    stewards_manifest = PROCESSED_DIR / "stewards_manifest.json"
+    if stewards_manifest.exists():
+        manifest = json.loads(stewards_manifest.read_text())
+        artifacts["stewards.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The curated highlights, if export_highlights.py has run (#595,
     # features/CORRIDOR_VIEW.md). Same shape again, and the same reason a run
     # that changes nothing uploads nothing - which matters more here than for

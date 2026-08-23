@@ -95,6 +95,21 @@ export const SPURS_KEY = 'spurs.json'
 // the same way spurs.json is treated.
 export const CLUB_SECTIONS_KEY = 'club_sections.json'
 
+// Who the map's data belongs to, published by pipeline/export_sources.py
+// (#927, features/SOURCE_REGISTRY.md): one record per organization whose data
+// actually reaches a hiker, with the licence and attribution that organization
+// recorded.
+//
+// `stewards.json`, not `sources.json`, and deliberately - `pipeline/
+// sources.json` is the REGISTRY the exporter reads, and a bucket key sharing
+// its name would put two different files with one name in every conversation
+// about where a licence came from.
+//
+// Absent from releases built before that exporter existed, which
+// lib/trailData.ts treats as "no steward list" rather than a failed download -
+// the same way club_sections.json above is treated.
+export const STEWARDS_KEY = 'stewards.json'
+
 // Stretches of trail somebody says are worth going to, published by
 // pipeline/export_highlights.py (#595): a name, ordered legs, and which basis
 // the claim rests on.

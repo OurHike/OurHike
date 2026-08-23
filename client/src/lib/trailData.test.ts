@@ -230,8 +230,9 @@ describe('trail data', () => {
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     // Every POI type, plus the trail lines, the spur detail, the maintaining
-    // clubs, the highlights, the tombstones (#831) and the elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 6)
+    // clubs, the data stewards (#927), the highlights, the tombstones (#831)
+    // and the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 7)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {

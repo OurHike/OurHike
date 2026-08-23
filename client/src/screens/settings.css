@@ -450,3 +450,53 @@
   color: var(--fg-3);
   line-height: 1.5;
 }
+
+/* "Where this map comes from" (#927) - one card per organization whose data is
+   on this phone. Quieter than the settings controls above it: this is a
+   statement of terms, not something a hiker acts on, and nothing here is
+   interactive or looks it. */
+.sources__list {
+  list-style: none;
+  margin: var(--space-3, 12px) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.sources__card {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  padding: var(--space-3, 12px);
+  background: var(--surface-card);
+}
+
+.sources__name {
+  margin: 0;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.sources__meta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+/* The registry's own value, shown as recorded rather than translated into a
+   badge - "authoritative" is a tier somebody wrote down, and title-casing it
+   into AUTHORITATIVE would give it a certainty the record does not carry. */
+.sources__trust {
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+}
+
+/* Licence and attribution, verbatim. Allowed to wrap to as many lines as they
+   need: the U.S. Drought Monitor's required credit line names four agencies
+   and truncating it would break the condition it exists to satisfy. */
+.sources__terms {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}

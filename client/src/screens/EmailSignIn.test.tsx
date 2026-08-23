@@ -256,3 +256,46 @@ describe('EmailSignIn, whichever path is showing', () => {
     expect(screen.getByRole('note')).toHaveTextContent(/never needs an account/i)
   })
 })
+
+/** The default path is the magic link, which is one field and one button. */
+async function renderThrowing(thrown: unknown) {
+  const user = userEvent.setup()
+  setup({
+    onMagicLink: vi.fn(() => {
+      throw thrown
+    }),
+  })
+  await typeEmail(user)
+  await user.click(screen.getByRole('button', { name: /email me a sign-in link/i }))
+  return user
+}
+
+describe('when a sign-in call throws rather than returning (#315)', () => {
+  it('says so, instead of leaving the button "Working…" for ever', async () => {
+    // The three handlers RETURN their failures, so the try existed for
+    // nothing - right up until one of them throws, which supabase-js does
+    // for a malformed response or a client it could not build. There is no
+    // catch above this screen: the primary button stayed disabled and
+    // labelled "Working…" for the rest of the session.
+    await renderThrowing(new Error('Failed to fetch'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no signal/i)
+    expect(screen.getByRole('button', { name: /email me a sign-in link/i })).toBeEnabled()
+  })
+
+  it('reads a thrown failure the same way as a returned one', async () => {
+    // A hiker cannot tell which kind of failure they hit and should not be
+    // shown two vocabularies for one event.
+    await renderThrowing(
+      new Error('For security purposes, you can only request this after 51 seconds'),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/give it a minute/i)
+  })
+
+  it('survives something thrown that is not an Error at all', async () => {
+    await renderThrowing('a bare string, which a library is entitled to throw')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/did not go through/i)
+  })
+})

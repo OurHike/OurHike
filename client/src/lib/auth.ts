@@ -12,6 +12,7 @@
 
 import type { Session } from '@supabase/supabase-js'
 import { getAuthClient } from './supabase'
+import { NOT_CONFIGURED_MESSAGE, signInMessage } from './authMessages'
 import type { AuthProvider } from '../screens/SignInPrompt'
 
 /** What the screens show. Matches Settings' account row. */
@@ -52,10 +53,14 @@ export function redirectUrl(): string {
 
 export type AuthOutcome = { ok: true } | { ok: false; message: string }
 
-const NOT_CONFIGURED: AuthOutcome = {
-  ok: false,
-  message:
-    'This build has no Supabase project configured, so signing in is not possible.',
+// Mapped at the boundary rather than rendered raw (#315). See
+// lib/authMessages.ts for why the vendor's name and its library's exception
+// classes are not a hiker's business.
+const NOT_CONFIGURED: AuthOutcome = { ok: false, message: NOT_CONFIGURED_MESSAGE }
+
+/** One supabase-js failure as an outcome a screen can show. */
+function failed(message: string): AuthOutcome {
+  return { ok: false, message: signInMessage(message) }
 }
 
 /**
@@ -72,7 +77,7 @@ export async function signInWithProvider(
     provider,
     options: { redirectTo: redirectUrl() },
   })
-  return error === null ? { ok: true } : { ok: false, message: error.message }
+  return error === null ? { ok: true } : failed(error.message)
 }
 
 /**
@@ -98,7 +103,7 @@ export async function sendMagicLink(email: string): Promise<AuthOutcome> {
     email,
     options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
   })
-  return error === null ? { ok: true } : { ok: false, message: error.message }
+  return error === null ? { ok: true } : failed(error.message)
 }
 
 export async function signInWithEmail(
@@ -109,7 +114,7 @@ export async function signInWithEmail(
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signInWithPassword({ email, password })
-  return error === null ? { ok: true } : { ok: false, message: error.message }
+  return error === null ? { ok: true } : failed(error.message)
 }
 
 /**
@@ -129,7 +134,7 @@ export async function signUpWithEmail(
     password,
     options: { emailRedirectTo: redirectUrl() },
   })
-  return error === null ? { ok: true } : { ok: false, message: error.message }
+  return error === null ? { ok: true } : failed(error.message)
 }
 
 export async function signOut(): Promise<AuthOutcome> {
@@ -137,7 +142,7 @@ export async function signOut(): Promise<AuthOutcome> {
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signOut()
-  return error === null ? { ok: true } : { ok: false, message: error.message }
+  return error === null ? { ok: true } : failed(error.message)
 }
 
 /** The account restored from storage at startup, if any. */

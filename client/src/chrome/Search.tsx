@@ -29,7 +29,17 @@ export function Search({ open, pois, onSelect, onClose }: SearchProps) {
   const searched = query.trim() !== ''
 
   return (
-    <div className="search">
+    /* Escape closes it (#315). The panel covers the map opaquely and its only
+       other exit was the Cancel button, which on a phone means finding a
+       target with a thumb; with nothing downloaded yet the panel is a blank
+       page over the map, so "how do I get out of this" is a real question a
+       hiker can arrive at with no obvious answer.
+   
+       On the container rather than on the input, because the input is not the
+       only thing that can hold focus here - tabbing into the results list
+       used to leave Escape doing nothing, which is the state somebody
+       scrolling results is actually in. `onKeyDown` bubbles from either. */
+    <div className="search" onKeyDown={(event) => event.key === 'Escape' && onClose()}>
       <div className="search__bar">
         <input
           type="search"

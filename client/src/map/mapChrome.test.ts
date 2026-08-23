@@ -8,6 +8,7 @@ import {
 } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { attachMapChrome } from './mapChrome'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 
 // WIREFRAMES.md, map screen §5 and Interactions: compass is a
 // `NavigationControl`, locate is a `GeolocateControl` with continuous tracking,
@@ -74,6 +75,29 @@ describe('attachMapChrome', () => {
     const locate = controlsOf(m, GeolocateControl)[0].control as GeolocateControl
 
     expect(locate.options?.trackUserLocation).toBe(true)
+  })
+
+  it('caps how far one tap of locate takes the camera (#315)', () => {
+    // MapLibre's default fits the accuracy circle, which for a good fix is a
+    // few metres across - so one tap flew from the corridor view to roughly
+    // z15 and traded the whole picture of where somebody is going for the
+    // answer to where they are.
+    const m = map()
+
+    attachMapChrome(m, {
+      showZoomButtons: false,
+      units: 'imperial',
+      locationEnabled: true,
+    })
+    const locate = controlsOf(m, GeolocateControl)[0].control as GeolocateControl
+
+    // The zoom the waypoint pins start drawing at, so the camera lands on the
+    // closest view that also shows what is around them. Asserted against the
+    // constant rather than a literal, so the two cannot drift.
+    // Cast because MapLibre types the control's `fitBoundsOptions` as `{}` -
+    // the property is real at runtime and invisible to the compiler.
+    const fit = locate.options?.fitBoundsOptions as { maxZoom?: number } | undefined
+    expect(fit?.maxZoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
   it('shows zoom buttons on web, where there is no pinch gesture', () => {

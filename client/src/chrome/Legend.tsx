@@ -308,7 +308,11 @@ export function Legend({
       // A region, not a dialog, when it is simply part of the page.
       role={persistent ? 'region' : 'dialog'}
       aria-label="Legend"
-      aria-modal={persistent ? undefined : true}
+      /* No `aria-modal` on the phone panel either (#315). It claimed the
+         background was inert, nothing made it so, and Tab walked into the map
+         chrome behind - a guarantee to assistive tech that the page does not
+         keep, which is worse than not claiming it. screens/DownloadsDialog.tsx
+         carries the same correction and the argument for it. */
     >
       <div className="legend__head">
         <h2 className="legend__title">Legend</h2>

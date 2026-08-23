@@ -25,6 +25,7 @@
 
 import { useState, type FormEvent } from 'react'
 import type { AuthOutcome } from '../lib/auth'
+import { signInMessage } from '../lib/authMessages'
 import './reporting.css'
 
 export interface EmailSignInProps {
@@ -79,12 +80,32 @@ export function EmailSignIn({
     event.preventDefault()
     setStatus({ kind: 'working' })
 
-    const outcome =
-      mode === 'link'
-        ? await onMagicLink(email)
-        : mode === 'create'
-          ? await onSignUp(email, password)
-          : await onSignIn(email, password)
+    // Wrapped since #315. These three RETURN their failures rather than
+    // throwing, so the try existed for nothing — right up until one of them
+    // throws, which supabase-js does for a malformed response or a client it
+    // could not build. There is no catch above this: the button would say
+    // "Working…" for the rest of the session, disabled, with no way to try
+    // again short of leaving the screen. A stuck primary button is worse than
+    // an error, because an error is a thing a hiker can act on.
+    let outcome: AuthOutcome
+    try {
+      outcome =
+        mode === 'link'
+          ? await onMagicLink(email)
+          : mode === 'create'
+            ? await onSignUp(email, password)
+            : await onSignIn(email, password)
+    } catch (error) {
+      // Through the same mapper the RETURNED failures go through, so a thrown
+      // one and a returned one read identically to the person in front of it
+      // — and a thrown "Failed to fetch", which is what no signal looks like
+      // here, still says "no signal" rather than falling to the general case.
+      setStatus({
+        kind: 'error',
+        message: signInMessage(error instanceof Error ? error.message : String(error)),
+      })
+      return
+    }
 
     if (!outcome.ok) {
       setStatus({ kind: 'error', message: outcome.message })

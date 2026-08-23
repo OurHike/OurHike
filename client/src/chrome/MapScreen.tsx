@@ -871,11 +871,46 @@ export function MapScreen({
             read together: the age is what says whether this line is current,
             and an empty space here means "clear" only as far as that age.
 
-            role="alert" for the same reason More.tsx's stuck reports use it -
-            this is not ambient status, it is a thing that changes what
-            someone does next. */}
+            NO LIVE ROLE ON THE VISIBLE BAND (#315), which is a correction
+            rather than a downgrade. It carried `role="alert"`, and the text
+            inside it ends in a distance - "Trail closed 2.1 mi ahead" - that
+            App.tsx recomputes on every `fix.mile` change. A live region
+            re-announces on any mutation inside it, so GPS jitter meant an
+            ASSERTIVE interruption every time the tenths ticked: the one
+            treatment that cuts off whatever a screen reader was mid-sentence
+            through, fired by a number that had not meaningfully changed.
+            That is the cry-wolf failure HIKER_SAFETY.md's own asymmetry
+            argues against, arriving through the accessibility layer.
+
+            What is announced instead is the visually-hidden line below,
+            which says only WHETHER each lane has something in it. That text
+            changes when a closure appears or clears and not when the hiker
+            drifts three metres, so it announces once per event. The detail
+            stays here, on screen and reachable by navigating to it - a
+            distance is worth reading, and it is not worth being interrupted
+            for forty times an hour. */}
+        {/* One line, polite, and stable across jitter.
+   
+            `aria-live="polite"` rather than `role="status"`, which is the
+            convention this screen already keeps and the ATC banner's own
+            test spells out: StatusStrip.tsx owns `role="status"` here, and a
+            second region claiming it makes "the status region" ambiguous to a
+            screen reader and to a role query alike. Polite rather than
+            assertive because this is announced once when something appears,
+            and queueing behind whatever is being read is the right trade for
+            somebody who is walking rather than reading. */}
+        <p className="visually-hidden" aria-live="polite">
+          {[
+            closureAhead !== null ? 'Trail closure ahead.' : '',
+            warningsAhead !== null ? 'Serious warning ahead.' : '',
+            advisoryAhead !== null ? 'An advisory covers where you are.' : '',
+          ]
+            .filter((sentence) => sentence !== '')
+            .join(' ')}
+        </p>
+
         {(closureAhead !== null || advisoryAhead !== null || warningsAhead !== null) && (
-          <div className="map-screen__alerts" role="alert">
+          <div className="map-screen__alerts">
             {closureAhead !== null && (
               <p className="map-screen__alert map-screen__alert--closure">
                 {closureAhead}

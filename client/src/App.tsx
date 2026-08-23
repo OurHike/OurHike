@@ -2835,13 +2835,45 @@ function App() {
     camera !== null &&
     !archiveCoversZoom(archiveZooms, camera.zoom)
 
-  const updatePreferences = useCallback((patch: Partial<UserPreferences>) => {
-    setPreferences((current) => {
-      const next = { ...current, ...patch }
-      void savePreferences(next)
-      return next
+  /**
+   * Write preferences to the phone, and do not let the failure be silent (#315).
+   *
+   * `void savePreferences(next)` was the shape at both call sites, which is
+   * the failure mode #891 already shipped once: a rejection nobody catches is
+   * QUIETER than a log while reading like the error is taken seriously. Here
+   * it costs more than a lost toggle. `onboarding_completed` is a preference,
+   * so a phone whose IndexedDB write fails — private mode, a full quota, a
+   * store the browser has decided to evict — finishes first run, comes back,
+   * and is shown first run again. Every launch. With no explanation, and no
+   * reason for the hiker to suspect anything other than the app being broken.
+   *
+   * PARTIAL, AND WORTH SAYING SO. This makes the failure legible in a bug
+   * report (lib/bugReport.ts collects console output) rather than telling the
+   * hiker anything. The honest surface is a sentence on screen — "this phone
+   * would not save your settings" — and that is a screen this change does not
+   * add. #315 records it as still open.
+   */
+  const persistPreferences = useCallback((next: UserPreferences) => {
+    void savePreferences(next).catch((error: unknown) => {
+      console.error(
+        'Could not save preferences to this phone. Settings will not survive a ' +
+          'relaunch, and first run will be shown again because onboarding_completed ' +
+          'is one of them.',
+        error,
+      )
     })
   }, [])
+
+  const updatePreferences = useCallback(
+    (patch: Partial<UserPreferences>) => {
+      setPreferences((current) => {
+        const next = { ...current, ...patch }
+        persistPreferences(next)
+        return next
+      })
+    },
+    [persistPreferences],
+  )
 
   /**
    * Opens the download window, and clears whatever else was open over the map.
@@ -2910,10 +2942,10 @@ function App() {
     // the reason a fast double-tap cannot land two flips on one stale value.
     setPreferences((current) => {
       const next = { ...current, drought_layer_shown: !current.drought_layer_shown }
-      void savePreferences(next)
+      persistPreferences(next)
       return next
     })
-  }, [])
+  }, [persistPreferences])
 
   const handleOnboardingComplete = useCallback(
     ({ hikingDetailLevel, locationRequested }: OnboardingResult) => {
@@ -3792,6 +3824,10 @@ function App() {
       <SignInPrompt
         providers={ENABLED_PROVIDERS}
         reportSaved={authFlow.afterReport}
+        // #315: Google and Apple are a full off-origin navigation, so
+        // offline they take the hiker out of the app and away from the map
+        // rather than merely failing. The screen holds those two and says so.
+        online={online}
         onSignIn={handleChooseProvider}
         onCancel={() => setAuthFlow(null)}
       />

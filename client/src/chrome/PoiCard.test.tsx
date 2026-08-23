@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { PoiCard, type PoiDetail } from './PoiCard'
+import type { FieldNoteContext } from './FieldNoteSection'
 import { CARD_GAP_PX } from './poiCardPlacement'
 import {
   poiColor,
@@ -40,8 +41,30 @@ const SHELTER: PoiDetail = {
  * renders unpositioned but complete, which is also the honest production
  * behaviour for the instant before the shell has been handed the map.
  */
-function renderCard(poi: PoiDetail, onClose = vi.fn()) {
+function renderPeek(poi: PoiDetail, onClose = vi.fn()) {
   return render(<PoiCard poi={poi} map={null} onClose={onClose} />)
+}
+
+/**
+ * The same card, pulled open.
+ *
+ * Since #941 a tapped pin PEEKS - the name, the type, the mile, one condition
+ * line and the two answers a hiker standing there wants to give - and the
+ * record behind it arrives on one deliberate pull. Nearly every test in this
+ * file is about something in that record, so opening the card is part of
+ * arranging the test rather than part of what it checks; `renderPeek` above
+ * is for the handful that are about the peek itself, and about the anchoring,
+ * which only the peek does.
+ */
+function renderCard(poi: PoiDetail, onClose = vi.fn()) {
+  const view = renderPeek(poi, onClose)
+  fireEvent.click(screen.getByTestId('poi-card-expand'))
+  return view
+}
+
+/** Pull open a card some test rendered for itself. */
+function open() {
+  fireEvent.click(screen.getByTestId('poi-card-expand'))
 }
 
 beforeEach(() => {
@@ -575,6 +598,7 @@ describe('PoiCard photo gallery', () => {
         onClose={vi.fn()}
       />,
     )
+    open()
     fireEvent.click(screen.getByTestId('poi-card-photo-next'))
     expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('2 of 3')
 
@@ -590,6 +614,10 @@ describe('PoiCard photo gallery', () => {
         onClose={vi.fn()}
       />,
     )
+    // Opened again on purpose: a new waypoint peeks, whatever the last one was
+    // left doing (#941), so this is the second half of the same assertion -
+    // the gallery index resets with the subject and so does the height.
+    open()
 
     expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 3')
   })
@@ -633,8 +661,14 @@ describe('the parts of one site', () => {
 
   const SITE: readonly PoiDetail[] = [SHELTER, PRIVY, CAMPSITE]
 
+  /** Pulled open, for `renderCard`'s reason: the strip of parts is part of
+   *  the record rather than of the peek. A hiker who tapped a shelter pin is
+   *  answering a question about the shelter; picking a different part of the
+   *  site out of it is the next thing they do, not the first. */
   function renderSite(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
-    return render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
+    const view = render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
+    open()
+    return view
   }
 
   const chips = () => screen.getAllByTestId('poi-card-chip')
@@ -710,6 +744,7 @@ describe('the parts of one site', () => {
     render(
       <PoiCard poi={SHELTER} site={SITE} map={null} units="metric" onClose={vi.fn()} />,
     )
+    open()
 
     expect(chips()[1]).toHaveTextContent('40 m')
     expect(chips()[2]).toHaveTextContent('25 m')
@@ -731,6 +766,7 @@ describe('the parts of one site', () => {
     const { rerender } = render(
       <PoiCard poi={anchor} site={[anchor, PRIVY]} map={null} onClose={vi.fn()} />,
     )
+    open()
 
     expect(
       screen.getByText(
@@ -770,6 +806,7 @@ describe('the parts of one site', () => {
     }
 
     render(<PoiCard poi={anchor} site={[anchor, PRIVY]} map={null} onClose={vi.fn()} />)
+    open()
 
     expect(chips()[1]).toHaveTextContent('131 ft')
     expect(
@@ -798,6 +835,7 @@ describe('the parts of one site', () => {
     render(
       <PoiCard poi={SHELTER} site={[SHELTER, campsite]} map={null} onClose={vi.fn()} />,
     )
+    open()
     expect(screen.queryByText(/Nearby:/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Campsite 82 ft' }))
@@ -856,6 +894,7 @@ describe('the parts of one site', () => {
         onClose={vi.fn()}
       />,
     )
+    open()
 
     expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
   })
@@ -961,6 +1000,7 @@ describe('the parts of one site', () => {
     const { container } = render(
       <PoiCard poi={SHELTER} site={SITE} map={null} units="metric" onClose={vi.fn()} />,
     )
+    open()
 
     fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
 
@@ -1024,6 +1064,13 @@ describe('the parts of one site', () => {
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: /close waypoint details/i }),
     )
+
+    // The way back to the peek, between the close button and the strip since
+    // #941. It is a real control and therefore a real tabstop: a grabber a
+    // keyboard could not reach would leave an opened card with no way back to
+    // the peek that did not also throw the card away.
+    await user.tab()
+    expect(document.activeElement).toBe(screen.getByTestId('poi-card-collapse'))
 
     for (const chip of chips()) {
       await user.tab()
@@ -1095,6 +1142,10 @@ describe('the parts of one site', () => {
       name: 'Cloud Pond Lean-to',
     }
     rerender(<PoiCard poi={other} site={[other, PRIVY]} map={null} onClose={vi.fn()} />)
+    // The new waypoint peeks, so the strip and its region arrive together when
+    // this card is opened - which is the same journey the region has to
+    // survive, and the point of the test is that it arrives empty.
+    open()
 
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
@@ -1284,23 +1335,36 @@ describe('the parts of one site', () => {
     expect(screen.queryAllByTestId('poi-card-chip')).toHaveLength(0)
   })
 
-  it('measures the card again when the chip changes, without moving off the pin', () => {
-    // The trap the issue named. usePinAnchor reads the card's height inside a
-    // listener that only fires on a camera move, and tapping a chip is not one -
-    // so without the shown part in its dependencies the placement keeps the
-    // height of the part the hiker just left until the next pan, and a card
-    // placed below its pin by a stale height sits on top of it.
+  it('measures the card again when a part swap comes back to the pin', () => {
+    // The trap the issue named, at the place #941 moved it to. usePinAnchor
+    // reads the card's height inside a listener that only fires on a camera
+    // move, and a card whose CONTENT changed under a placement measured
+    // against the old height sits on top of the pin it is describing when it
+    // hangs below one. A privy is several lines shorter than its shelter.
     //
-    // The second assertion is the other half, and it is why `shown` is a
-    // dependency rather than the projected point: the privy has no pin since
-    // #524, so a card that followed it would hang off blank map.
+    // The chips now live in the opened card, which has let go of the pin, so
+    // the swap itself no longer needs a measurement - there is nothing to
+    // measure against. What does is the journey back: tap the privy, collapse
+    // to the peek, and the card is tethered again showing a different part at
+    // a different height. `shown` and `tethered` are both dependencies for
+    // this one sequence.
+    //
+    // The last assertion is the other half, and it is why the projection keys
+    // on the CARRIER rather than the part being read: the privy has no pin
+    // since #524, so a card that followed it would hang off blank map.
     const mock = new MockMap({})
     const map = mock as unknown as MapLibreMap
     render(<PoiCard poi={SHELTER} site={SITE} map={map} onClose={vi.fn()} />)
-    const projections = mock.projectCalls.length
+    open()
 
     fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+    const projections = mock.projectCalls.length
+    fireEvent.click(screen.getByTestId('poi-card-collapse'))
 
+    // Back on the peek, and reading the privy.
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
     expect(mock.projectCalls.length).toBeGreaterThan(projections)
     expect(mock.projectCalls.at(-1)).toEqual([SHELTER.lon, SHELTER.lat])
     expect(mock.projectCalls).not.toContainEqual([PRIVY.lon, PRIVY.lat])
@@ -1336,9 +1400,13 @@ describe('the parts of one site', () => {
     expect(mock.projectCalls).toContainEqual([PRIVY.lon, PRIVY.lat])
     expect(mock.projectCalls).not.toContainEqual([SHELTER.lon, SHELTER.lat])
 
+    // Asserted on the peek, before the strip is reachable: what this test is
+    // about is which point the card hangs off, and only the peek hangs off
+    // anything. The strip below is the same claim in the opened card.
     expect(
       screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
     ).toBeInTheDocument()
+    open()
     // No number on the pin's own chip - zero from itself was never a fact
     // anybody needed - and the other two measured from it.
     expect(screen.getByRole('button', { name: 'Privy' })).toHaveAttribute(
@@ -1347,5 +1415,188 @@ describe('the parts of one site', () => {
     )
     expect(screen.getByRole('button', { name: 'Shelter 131 ft' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Campsite 49 ft' })).toBeInTheDocument()
+  })
+})
+
+// The card's two heights (#941).
+//
+// The complaint this answers is that one tethered card was trying to be the
+// whole record: a hiker tapped a water pin and got a photograph, a paragraph
+// of provenance and a set of coordinates above the one-tap answer they were
+// standing there to give. What is asserted here is the division - what the
+// peek carries, what it declines to carry, and that nothing is LOST by being
+// behind the pull.
+describe('the peek and the pull', () => {
+  const WATER: PoiDetail = {
+    id: 'osm_water:1',
+    name: 'Unnamed spring',
+    type: 'water',
+    lat: 38.33137,
+    lon: -78.53133,
+    confidence: 'low',
+    source: 'osm_water',
+    mile: 899.9,
+    description: 'Spring. Mapped by OpenStreetMap contributors.',
+  }
+
+  const notes: FieldNoteContext = {
+    notesFor: () => [],
+    disputeFor: () => null,
+    reporterType: 'thru',
+    contributeConditions: false,
+    onAddNote: vi.fn(),
+    onReportProblem: vi.fn(),
+    now: new Date('2026-08-20T12:00:00Z'),
+  }
+
+  function renderWater(poi: PoiDetail = WATER) {
+    return render(<PoiCard poi={poi} map={null} noteContext={notes} onClose={vi.fn()} />)
+  }
+
+  it('answers "what did I tap, and how is it right now" and stops there', () => {
+    renderWater()
+
+    // What it tapped.
+    expect(screen.getByRole('heading', { name: 'Unnamed spring' })).toBeInTheDocument()
+    expect(screen.getByText('Water')).toBeInTheDocument()
+    expect(screen.getByText('mi 899.9')).toBeInTheDocument()
+    // How it is right now, and the way to say.
+    expect(screen.getByTestId('poi-card-peek-line')).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-observe-flowing')).toBeInTheDocument()
+  })
+
+  it('keeps the coordinates, the provenance and the description off the peek', () => {
+    // #941's second defect, stated as a test: these are facts about where the
+    // pin came from, and they were above the answer the hiker came for.
+    renderWater()
+
+    expect(screen.queryByText(/38\.33137/)).toBeNull()
+    expect(screen.queryByText(/osm_water/)).toBeNull()
+    expect(screen.queryByText(/Mapped by OpenStreetMap/)).toBeNull()
+    expect(screen.queryByTestId('poi-card-take-photo')).toBeNull()
+  })
+
+  it('gives every one of them back on one pull', () => {
+    // Behind the pull, not gone - which is the whole claim the peek rests on.
+    renderWater()
+
+    fireEvent.click(screen.getByTestId('poi-card-expand'))
+
+    expect(screen.getByText(/38\.33137, -78\.53133/)).toBeInTheDocument()
+    expect(screen.getByText(/osm_water/)).toBeInTheDocument()
+    expect(
+      screen.getByText('Spring. Mapped by OpenStreetMap contributors.'),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-take-photo')).toBeInTheDocument()
+    // And the answers the peek held back, on the same surface as the two it
+    // carried: the peek is a shortcut, never a filter.
+    expect(screen.getByTestId('poi-card-observe-trickling')).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-observe-not_found')).toBeInTheDocument()
+  })
+
+  it('files the coordinates and the source under a heading that says what they are', () => {
+    renderWater()
+    fireEvent.click(screen.getByTestId('poi-card-expand'))
+
+    expect(screen.getByRole('heading', { name: 'About this place' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Conditions' })).toBeInTheDocument()
+  })
+
+  it('goes back to the peek, and lets go of nothing on the way', () => {
+    renderWater()
+    fireEvent.click(screen.getByTestId('poi-card-expand'))
+    fireEvent.click(screen.getByTestId('poi-card-collapse'))
+
+    expect(screen.getByTestId('poi-card-peek')).toBeInTheDocument()
+    expect(screen.queryByText(/38\.33137/)).toBeNull()
+    // Still the same waypoint, still answerable.
+    expect(screen.getByRole('heading', { name: 'Unnamed spring' })).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-observe-flowing')).toBeInTheDocument()
+  })
+
+  it('peeks at the next waypoint however the last one was left', () => {
+    // MapScreen renders this card without a React key, so an opened card
+    // survives a change of pin unless something resets it - and an opened card
+    // is a sheet over most of the map, arriving before its hiker asked.
+    const { rerender } = renderWater()
+    fireEvent.click(screen.getByTestId('poi-card-expand'))
+    expect(screen.getByTestId('poi-card-scroll')).toBeInTheDocument()
+
+    rerender(
+      <PoiCard
+        poi={{ ...WATER, id: 'osm_water:2', name: 'Spring below the gap' }}
+        map={null}
+        noteContext={notes}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('poi-card-peek')).toBeInTheDocument()
+    expect(screen.queryByTestId('poi-card-scroll')).toBeNull()
+  })
+
+  it('says nobody has confirmed the place exists on the peek, not behind the pull', () => {
+    // The one line that must never be a pull away. A hiker cannot act on
+    // "nobody has confirmed this spring exists" if they have to go looking for
+    // it, and OurHikeValues.md #4 is the whole argument for printing it.
+    renderWater()
+
+    expect(screen.getByText(/nobody has confirmed/i)).toBeInTheDocument()
+  })
+
+  it('shows the category’s silhouette on the peek and never a photograph', () => {
+    // A photo's credit is the licence's price for showing it (CC BY / BY-SA),
+    // and the peek has no line to spend on an attribution string. So the
+    // photograph and its credit arrive together, on the pull, or not at all.
+    renderWater({ ...WATER, photoUrl: 'blob:one', photoAuthor: 'A. Photographer' })
+
+    expect(screen.getByTestId('poi-card-thumb')).toBeInTheDocument()
+    expect(screen.queryByTestId('poi-card-photo')).toBeNull()
+    expect(screen.queryByText(/A\. Photographer/)).toBeNull()
+
+    fireEvent.click(screen.getByTestId('poi-card-expand'))
+
+    expect(screen.getByTestId('poi-card-photo')).toBeInTheDocument()
+    expect(screen.getByText(/A\. Photographer/)).toBeInTheDocument()
+  })
+
+  it('does not promise notes on a card that carries none', () => {
+    // A viewpoint has no conditions section, so a control labelled "Notes &
+    // details" would be teaching a hiker not to trust this card's labels.
+    render(
+      <PoiCard
+        poi={{ ...WATER, type: 'viewpoint', confidence: 'high' }}
+        map={null}
+        noteContext={notes}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('poi-card-expand')).toHaveTextContent('Details')
+    expect(screen.getByTestId('poi-card-expand')).not.toHaveTextContent('Notes')
+  })
+
+  it('hangs off its pin while it peeks and lets go once it is open', () => {
+    // The tether is what makes the peek answer "which of these three pins did
+    // I tap" with position rather than with a name. An opened card is a sheet
+    // against the canvas's edge - it points at nothing, so it claims nothing.
+    const mock = new MockMap({})
+    const { container } = render(
+      <PoiCard
+        poi={WATER}
+        map={mock as unknown as MapLibreMap}
+        noteContext={notes}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const card = container.querySelector('.poi-card') as HTMLElement
+    expect(card.className).toContain('poi-card--peek')
+    expect(card.style.transform).toMatch(/^translate\(/)
+
+    fireEvent.click(screen.getByTestId('poi-card-expand'))
+
+    expect(card.className).toContain('poi-card--open')
+    expect(card.style.transform).toBe('')
   })
 })

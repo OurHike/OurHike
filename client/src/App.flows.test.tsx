@@ -344,6 +344,10 @@ describe('tapping a pin on the map', () => {
 
     await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
     const card = await screen.findByRole('dialog', { name: /waypoint/i })
+    // The card peeks (#941); the strip of parts is in the record behind the
+    // pull, so reaching the privy now starts with opening the card. That the
+    // gesture exists at all is still what this test is about.
+    await user.click(within(card).getByTestId('poi-card-expand'))
 
     // Both parts of the place, named as the site they belong to.
     const strip = within(card).getByRole('group', {
@@ -400,6 +404,7 @@ describe('tapping a pin on the map', () => {
 
     await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
     const card = await screen.findByRole('dialog', { name: /waypoint/i })
+    await userEvent.setup().click(within(card).getByTestId('poi-card-expand'))
 
     expect(within(card).getByRole('button', { name: 'Privy 40 m' })).toBeInTheDocument()
     expect(
@@ -422,6 +427,7 @@ describe('tapping a pin on the map', () => {
   })
 
   it('says which source listed it', async () => {
+    const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
@@ -429,6 +435,10 @@ describe('tapping a pin on the map', () => {
     await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
 
     const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    // Under "About this place" since #941, which is the demotion the issue
+    // asked for: where the pin came from is a fact about the pin, and it no
+    // longer outranks the answer the hiker tapped it for.
+    await user.click(within(sheet).getByTestId('poi-card-expand'))
     expect(within(sheet).getByText(/Appalachian Trail Conservancy/)).toBeInTheDocument()
   })
 

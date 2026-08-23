@@ -536,6 +536,32 @@
     box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
   }
 
+  /* ---------- The opened waypoint card: a column, not a sheet ---------- */
+
+  /* A pulled-open card on a phone is a sheet against the bottom edge, because
+     that is where the thumb is and because a phone has no room to put a
+     column beside anything. A 1440px browser has both, and a sheet across the
+     foot of it would be a 1400px-wide band holding a 264px card's worth of
+     text.
+
+     320px, and docked right, is what #941's design pass drew - the same edge
+     the legend does NOT use (it is the left rail here), so the two can be
+     open at once without either one covering the other.
+
+     `bottom: auto` with a max-height rather than a full-height column: this
+     card describes one pin, and a full-height panel beside a short card's
+     worth of content is a lot of empty paper claiming to be a screen. It
+     grows to what it holds and scrolls past that. */
+  .poi-card--open {
+    top: var(--space-2, 8px);
+    right: var(--space-2, 8px);
+    bottom: auto;
+    left: auto;
+    width: 20rem;
+    max-height: calc(100% - var(--space-4, 16px));
+    border-radius: 14px;
+  }
+
   /* ---------- First run: a card on the map, not a band across it ---------- */
 
   /* On a phone the entry card is anchored to the bottom edge, where the thumb

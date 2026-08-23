@@ -1908,10 +1908,251 @@
   will-change: transform;
 }
 
+/* ---------- The card's two heights (#941) ---------- */
+
+/* PEEKING. Everything above is the peek's geometry already - it is the card
+   this file has always described, tethered to its pin and narrow enough that
+   a phone holds it plus both edge margins. The modifier exists so the opened
+   state has something to override rather than to add anything here. */
+
+/* OPENED. It has let go of the pin, and that is the whole reason it can stop
+   being 264px wide: nothing about its position claims to point at anything
+   any more, so the sheet may take the canvas's full width and its bottom
+   edge.
+
+   Against the CANVAS, not the viewport. The card is rendered inside the map's
+   own box (MapScreen.tsx keeps it there so canvas-pixel placement means what
+   it says), and `position: fixed` would take it out of that box and over the
+   header and the tab bar - which are the two things a hiker uses to get out
+   of a card that has covered the map.
+
+   The height is capped rather than full, and the cap is a judgement rather
+   than a measurement: enough of the map has to stay visible for the sheet to
+   read as over the map instead of as a new screen. @unvalidated - the design
+   pass drew two stops at 60% and full, and this is one stop between them
+   because a two-stop drag is a gesture nobody has field-tested here (#105).
+   What would settle it is watching somebody use it one-handed. */
+.poi-card--open {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  max-height: min(72%, 34rem);
+  border-radius: var(--radius-l, 14px) var(--radius-l, 14px) 0 0;
+}
+
+/* What actually scrolls. The header above it stays put, so a hiker who has
+   scrolled into the notes can still see which place they are reading and
+   still reach the way out.
+
+   `overscroll-behavior: contain` because the thing behind this sheet is a
+   live map: without it, a flick that reaches the end of the notes keeps going
+   and pans the trail out from under the pin the card is describing. */
+.poi-card__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The opened card's header: what the peek said, held still above the scroll. */
+.poi-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  /* Room on the right for the close button, which is absolute against the
+     card and would otherwise sit on top of a long name. */
+  padding: var(--space-2, 8px) calc(32px + var(--space-3, 12px)) var(--space-3, 12px)
+    var(--space-3, 12px);
+  border-bottom: 1px solid var(--border-1);
+}
+
+/* The handle, and a real control rather than a painted one: it is the way
+   back to the peek. A sheet that draws a grabber and does nothing when it is
+   used teaches a hiker that this app's affordances are decoration.
+
+   Not a drag. Dragging a sheet between stops is the gesture the design pass
+   drew and it is not built here - see .poi-card--open's note - so this is a
+   tap, and it is labelled as one for anyone who cannot see the shape. */
+.poi-card__grabber {
+  position: relative;
+  align-self: center;
+  width: 40px;
+  height: 5px;
+  padding: 0;
+  background: var(--border-2, var(--bg-sunken));
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+/* The touch target the bar itself is far too small to be - same trick, and
+   the same 44px minimum, as .poi-card__close below. */
+.poi-card__grabber::after {
+  content: '';
+  position: absolute;
+  inset: calc((5px - var(--min-touch-target, 44px)) / 2)
+    calc((40px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* ---------- The peek ---------- */
+
+.poi-card__peek {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+}
+
+.poi-card__peek-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  /* Clears the close button, which is absolute against the card's corner. */
+  padding-right: calc(32px - var(--space-1, 4px));
+}
+
+/* The category's silhouette on its own accent - never a photograph, and
+   PoiCard.tsx carries the reason: a photo's credit is the licence's price for
+   showing it, and the peek has no line to spend on an attribution string. */
+.poi-card__thumb {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: color-mix(in srgb, var(--poi-accent) 22%, var(--bg-surface));
+  border-radius: var(--radius-m, 8px);
+}
+
+.poi-card__thumb .poi-card__glyph {
+  width: 22px;
+  height: 22px;
+}
+
+/* `min-width: 0` so a long name wraps inside the column instead of pushing
+   the row wider than the card. */
+.poi-card__peek-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The existence sentence on the peek is a sentence, not a panel. It keeps
+   the sunken box in the opened card, where it is one band among several and
+   needs an edge to be a band at all; here it would be a second filled box
+   stacked on the conditions panel below it, and two panels in a 264px card
+   read as chrome rather than as two different claims. */
+.poi-card__peek > .poi-card__unverified {
+  margin: 0;
+  padding: 0;
+  background: none;
+}
+
+/* The one condition line and the two ends of the scale, in the same quiet
+   panel the opened card's history uses - it is the same kind of claim, so it
+   reads the same way. */
+.poi-card__peek-conditions {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* The question, asked out loud. An eyebrow rather than a sentence: it is a
+   label on the buttons under it, and at sentence weight it would compete with
+   the condition line above for the same glance. */
+.poi-card__ask {
+  margin: var(--space-2, 8px) 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* One deliberate pull, and the widest target on the peek. Full width because
+   what it opens is the rest of the record and nothing else on this card
+   competes with it for the tap. */
+.poi-card__expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-raised, var(--bg-0));
+  border: 1px solid var(--border-2, var(--bg-sunken));
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.poi-card__expand:hover {
+  background: var(--bg-sunken);
+}
+
+.poi-card__expand-caret {
+  font-size: 9px;
+  color: var(--fg-3);
+}
+
+/* ---------- Bands inside the opened card ---------- */
+
+/* Conditions, then About: the order #941 asks for, which is the answer the
+   hiker tapped the pin for before the provenance of the pin. */
+.poi-card__section {
+  margin-top: var(--space-3, 12px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
+}
+
+/* Named bands rather than a run of paragraphs. An eyebrow, matching the
+   peek's ask, so "Conditions" and "How is it right now?" read as the same
+   kind of label on two surfaces.
+
+   `h3` and `h4` share this: "Say something back" is a subsection of
+   Conditions in the document outline - answering is part of conditions - and
+   a hiker looking at the card sees two bands of equal weight. Both are true
+   at once, which is what the split of tag and style is for. */
+.poi-card__section-title {
+  margin: 0 0 var(--space-2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* Where the answering happens. Ruled off from the history above it because
+   the two are different acts - reading what the field said, and saying
+   something back - and #941's third defect was that the composer had nowhere
+   of its own to be. */
+.poi-card__say {
+  margin-top: var(--space-3, 12px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
+}
+
+/* Rounds itself now that it is not at the card's top edge (#941). The card's
+   `overflow: hidden` used to clip the photo's top corners into the card's
+   own; the opened card leads with its heading and the photograph sits below
+   it, inside the body's padding, so the radius has to be its own. */
 .poi-card__media {
   position: relative;
   aspect-ratio: 16 / 10;
+  overflow: hidden;
   background: var(--bg-sunken);
+  border-radius: var(--radius-m, 8px);
 }
 
 .poi-card__photo {
@@ -2315,13 +2556,16 @@ a.poi-card__credit::after {
 }
 
 /* The conditions section (FieldNoteSection.tsx): what the field has said,
-   and the one-tap way to answer. Same quiet register as the unverified
-   sentence above it - a fact panel, not a call to action. */
+   and the one-tap way to answer.
+
+   No panel of its own any more (#941). It used to be a sunken box because it
+   was one more thing in a run of paragraphs and needed an edge to be a
+   section at all; it now sits inside `.poi-card__section`, under a heading
+   that names it, and a box inside a named band is two answers to one
+   question. The peek keeps the panel, where there is no heading to do the
+   job - see `.poi-card__peek-conditions` above. */
 .poi-card__conditions {
-  margin: var(--space-1, 4px) 0;
-  padding: var(--space-2, 8px) var(--space-3, 12px);
-  background: var(--bg-sunken);
-  border-radius: 10px;
+  margin: 0;
 }
 
 .poi-card__last-confirmed {
@@ -2347,15 +2591,51 @@ a.poi-card__credit::after {
   margin: 0;
 }
 
+/* One dated observation. Ruled off from the one above it because these are
+   separate claims by separate people, and a run of unseparated quotes reads
+   as one hiker talking (#941). */
 .poi-card__note {
-  margin: var(--space-1, 4px) 0 0;
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
   font-size: 12px;
   color: var(--fg-2);
+  border-top: 1px solid var(--border-1);
 }
 
+/* What it says, then when and who said it. */
+.poi-card__note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+  margin: 0;
+}
+
+/* The answer as a chip rather than as bold prose: it is one of a fixed set of
+   values, and it reads as the same kind of thing as the button that files it. */
 .poi-card__note-tag {
+  padding: 2px var(--space-2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
   font-weight: 600;
-  margin-right: var(--space-1, 4px);
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.poi-card__note-when {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* A paragraph of its own since #941, rather than a span beside the tag: a
+   note long enough to be worth reading wrapped under the tag and lost its
+   own left edge. */
+.poi-card__note-text {
+  display: block;
+  margin: var(--space-1, 4px) 0 0;
 }
 
 .poi-card__note-input {
@@ -2371,22 +2651,43 @@ a.poi-card__credit::after {
   resize: vertical;
 }
 
+/* The one-tap answers.
+
+   WRAPS RATHER THAN SQUEEZES, which is #941's first defect. Four answers on
+   one row inside a 264px card left each of them about 50px, and "Not here"
+   broke across two lines mid-row - so the row read as four ragged runs of
+   body text rather than as four buttons. Two per row, each a real target,
+   and a label that fits on its line.
+
+   The peek's row is two answers, so it is one row at this same basis and
+   needs no modifier of its own beyond the name the markup carries. */
 .poi-card__observations {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2, 8px);
   margin-top: var(--space-2, 8px);
 }
 
+/* `calc(50% - …)` rather than `1` so a wrapped row keeps two equal columns
+   instead of stretching whichever answer landed on it alone. */
 .poi-card__observation {
-  flex: 1;
+  flex: 1 1 calc(50% - var(--space-2, 8px));
+  min-width: 0;
   min-height: var(--min-touch-target, 44px);
-  padding: 0 var(--space-1, 4px);
-  font-size: 12px;
-  color: var(--fg-2);
-  background: none;
-  border: 1px solid var(--bg-sunken);
+  padding: 0 var(--space-2, 8px);
+  /* Reads as a control: a surface of its own against the panel behind it, a
+     border with contrast rather than the panel's own colour, and the weight
+     of a label instead of the weight of prose. */
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2, var(--bg-sunken));
   border-radius: var(--radius-pill, 999px);
   cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .poi-card__observation:hover {
@@ -2418,9 +2719,15 @@ a.poi-card__credit::after {
   cursor: pointer;
 }
 
+/* Now a span on the coordinates' own line rather than a paragraph under it
+   (#941): they are one fact - this point, and who listed it - and two lines
+   was the card spending two of them on the least urgent thing it knows.
+
+   Body face, against the mono the coordinates inherit: a source name is a
+   name, and setting it in the figures' typeface would invite it to be read as
+   part of the number. */
 .poi-card__source {
-  margin: 0;
-  font-size: 11px;
+  font-family: var(--font-body);
   color: var(--fg-3);
 }
 

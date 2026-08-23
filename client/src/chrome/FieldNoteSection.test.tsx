@@ -57,6 +57,9 @@ function renderSection(
     mile?: number
     /** `confidence: low` upstream - changes only the dispute wording (#876). */
     unverified: boolean
+    /** Which of the card's two heights (#941). Defaults to the opened card,
+     *  which is what every test written before the peek existed asserts. */
+    variant: 'peek' | 'open'
   }> = {},
 ) {
   return render(
@@ -67,6 +70,7 @@ function renderSection(
       lat={poi.lat ?? 41.2}
       lon={poi.lon ?? -74.1}
       {...(poi.mile !== undefined ? { mile: poi.mile } : {})}
+      {...(poi.variant !== undefined ? { variant: poi.variant } : {})}
       context={ctx}
     />,
   )
@@ -408,5 +412,184 @@ describe('a place the field says is not there', () => {
     // "A dispute is an observation value, not a second model" - no second
     // form, no second flow, nothing extra to moderate.
     expect(onAddNote.mock.calls[0][0].observation).toBe('not_found')
+  })
+})
+
+// The peek (#941): the height a tapped pin opens at, before anybody asks for
+// the record. What is asserted here is what it CARRIES - one condition line
+// and the answer a hiker standing at a dry spring wants to give - and, just
+// as load-bearing, what it declines to carry.
+describe('FieldNoteSection, the list of notes', () => {
+  it('says when each note was made and who made it', () => {
+    // #941: the list carried the tag and the quote alone, which asks a hiker
+    // to weigh "Dry" without saying whether it was said this morning or in
+    // June, or by a maintainer or by somebody walking past. Both facts are on
+    // every note the wire and the bake carry.
+    renderSection(
+      context({
+        notesFor: () => [
+          note({
+            observation: 'dry',
+            note: 'Nothing here in the heat.',
+            reporter_type: 'maintainer',
+            observed_at: new Date(NOW.getTime() - 6 * DAY_MS).toISOString(),
+          }),
+        ],
+      }),
+    )
+
+    expect(screen.getByText('6 days ago · maintainer')).toBeInTheDocument()
+    expect(screen.getByText('“Nothing here in the heat.”')).toBeInTheDocument()
+  })
+
+  it('dates a note through the same arithmetic the roll-up above it uses', () => {
+    // One note, so the headline and the list are describing the same
+    // observation - and a card that said "yesterday" in one and "2 days ago"
+    // in the other about one note is the quiet contradiction #4 is about.
+    renderSection(
+      context({
+        notesFor: () => [
+          note({
+            observation: 'flowing',
+            reporter_type: 'thru',
+            observed_at: new Date(NOW.getTime() - DAY_MS).toISOString(),
+          }),
+        ],
+      }),
+    )
+
+    expect(screen.getByText('Flowing — yesterday, thru-hiker')).toBeInTheDocument()
+    expect(screen.getByText('yesterday · thru-hiker')).toBeInTheDocument()
+  })
+})
+
+describe('FieldNoteSection, peeking', () => {
+  it('carries the two ends of the scale, and files from either of them', () => {
+    // Flowing and Dry for water, which is the pair the design pass drew.
+    const onAddNote = vi.fn()
+    renderSection(context({ onAddNote }), { variant: 'peek' })
+
+    expect(screen.getByTestId('poi-card-observe-flowing')).toBeTruthy()
+    expect(screen.getByTestId('poi-card-observe-dry')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
+
+    // The same tap, not a lighter version of it: DATA_NUDGES.md's one-tap
+    // contribution is the whole reason the peek carries buttons at all, and a
+    // peek that only opened the card would have spent its two lines on
+    // nothing.
+    expect(onAddNote.mock.calls[0][0].observation).toBe('dry')
+  })
+
+  it('withholds the middle answers and the dispute, rather than crowding them in', () => {
+    // Not a filter - every one of these is one tap away in the opened card.
+    // `not_found` in particular: a dispute filed by a mis-hit on a crowded
+    // peek is the claim #876 built corroboration to keep out.
+    renderSection(context(), { variant: 'peek' })
+
+    expect(screen.queryByTestId('poi-card-observe-trickling')).toBeNull()
+    expect(screen.queryByTestId('poi-card-observe-not_found')).toBeNull()
+  })
+
+  it('asks its question in words, not only to a screen reader', () => {
+    renderSection(context(), { variant: 'peek' })
+
+    // Visible, and the group's accessible name at the same time - one
+    // question, said once.
+    expect(screen.getByText('How is it right now?')).toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: 'How is it right now?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('prints the newest dated observation as its one line', () => {
+    renderSection(
+      context({
+        notesFor: () => [
+          note({
+            observation: 'flowing',
+            reporter_type: 'maintainer',
+            observed_at: new Date(NOW.getTime() - 2 * DAY_MS).toISOString(),
+          }),
+        ],
+      }),
+      { variant: 'peek' },
+    )
+
+    expect(screen.getByTestId('poi-card-peek-line')).toHaveTextContent(
+      'Flowing — 2 days ago, maintainer',
+    )
+  })
+
+  it('says two people disagree rather than picking the newer one', () => {
+    // FIELD_NOTES.md §3, at the height with room for one line. Printing the
+    // newer note and dropping the other is the one thing this line must not
+    // do: for a spring that is the difference between carrying water and not.
+    renderSection(
+      context({
+        notesFor: () => [
+          note({ observation: 'flowing', observed_at: NOW.toISOString() }),
+          note({
+            observation: 'dry',
+            observed_at: new Date(NOW.getTime() - DAY_MS).toISOString(),
+          }),
+        ],
+      }),
+      { variant: 'peek' },
+    )
+
+    expect(screen.getByTestId('poi-card-peek-line')).toHaveTextContent(
+      'Recent notes disagree',
+    )
+    expect(screen.getByTestId('poi-card-peek-line')).not.toHaveTextContent('Flowing —')
+  })
+
+  it('falls back to the freshness sentence where nobody has said anything', () => {
+    // The maintainer's day-one wording for water (#256), unchanged by the
+    // height it is printed at.
+    renderSection(context({ notesFor: () => [] }), { variant: 'peek' })
+
+    expect(screen.getByTestId('poi-card-peek-line')).toHaveTextContent('No recent word')
+  })
+
+  it('leaves the history, the composer and the report entry to the opened card', () => {
+    renderSection(
+      context({
+        contributeConditions: true,
+        notesFor: () => [note({ observation: 'dry', note: 'Nothing here in the heat.' })],
+      }),
+      { variant: 'peek' },
+    )
+
+    expect(screen.queryByText(/Nothing here in the heat/)).toBeNull()
+    expect(screen.queryByTestId('poi-card-note-input')).toBeNull()
+    expect(screen.queryByTestId('poi-card-report-here')).toBeNull()
+  })
+
+  it('acknowledges the tap and offers the escalation, exactly as the opened card does', () => {
+    // The half of the interaction that must NOT be traded away for room: a
+    // hiker who taps Dry on the peek has filed a problem-shaped note, and
+    // FIELD_NOTES.md §5's hand-off is what turns it into a report.
+    const onReportProblem = vi.fn()
+    renderSection(context({ onReportProblem }), { variant: 'peek' })
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Noted: dry')
+    fireEvent.click(screen.getByTestId('poi-card-escalate'))
+    expect(onReportProblem).toHaveBeenCalledWith(
+      expect.objectContaining({ poiId: 'osm_water:1' }),
+      undefined,
+    )
+  })
+
+  it('says nothing at all about a type the app does not ask about', () => {
+    // A viewpoint has no condition to be stale about, at either height.
+    const { container } = renderSection(context(), {
+      poiType: 'viewpoint',
+      variant: 'peek',
+    })
+
+    expect(container).toBeEmptyDOMElement()
   })
 })

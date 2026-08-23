@@ -8,6 +8,28 @@
 // anchoring maths lives in poiCardPlacement.ts, pure and tested; this file
 // wires it to the live map.
 //
+// TWO HEIGHTS, AND ONLY THE FIRST ONE IS TETHERED (#941). What is written
+// above is the PEEK, which is what a tap opens: the name, the category, the
+// mile, the existence sentence where it is true, one condition line, and the
+// two ends of that type's scale as buttons. It is small enough to leave the
+// map around it readable, which is what makes hanging off a pin worth doing.
+//
+// The card used to be that AND the whole record - the photograph, the history,
+// the composer, the description, the coordinates, the provenance - in one
+// column with no fold, so a hiker who tapped a spring got a 16:10 photo box
+// and a paragraph about OpenStreetMap above the one-tap answer they had
+// stopped to give. That is now one deliberate pull away, in place: a sheet
+// against the canvas's bottom edge on a phone, a column docked to the map's
+// right on a desktop. The opened card is NOT tethered - it points at nothing,
+// so it claims nothing - and `usePinAnchor` is told so rather than left
+// measuring a sheet against a pin every frame of a pan.
+//
+// One continuous scroll rather than lanes, which was a choice between two
+// drawn options: conditions, then the composer, then the quiet stuff. Lanes
+// would have filed the unverified sentence under an "About" tab, and an
+// existence claim about a water source is not a thing to make a hiker go
+// looking for.
+//
 // Only what the app actually holds, and no more. Every line here is a fact
 // the download carried; there is no "last confirmed" line, because no
 // published artifact carries a confirmation date yet - and a "Last confirmed:
@@ -26,6 +48,13 @@
 // own honesty-about-uncertainty rule (OurHikeValues.md #4) applied to
 // somebody else's camera.
 //
+// WHICH IS WHY THE PEEK NEVER SHOWS A PHOTOGRAPH. The credit is the price of
+// showing the photo at all, and the peek has no line to spend on an
+// institutional attribution string. So the peek shows the silhouette for
+// every waypoint, photo or not, and the photograph and its credit arrive
+// together on the pull - or not at all. A thumbnail with the credit "one tap
+// away" would be the licence breach with extra steps.
+//
 // The one line that is not a bare fact is the unverified sentence, and it is
 // the reason this card is worth having. The pin already says it with a broken
 // rim (map/poiIcons.ts), which is a channel someone has to have learned to
@@ -36,10 +65,17 @@
 // ONE CARD FOR A PLACE WITH PARTS. A shelter, its privy and its campsite are
 // one site drawing one pin (#524, map/poiSites.ts), so since that landed the
 // members have had no pin to tap and no gesture anywhere in the app reached
-// them. The strip of chips under the name is that gesture (#526,
-// features/POI_SITES.md §5): every part of the site, each carrying the icon the
-// map draws for it, and tapping one swaps the card to that part's own detail -
-// its photo and gallery, its description, its coordinates, its unverified line.
+// them. The strip of chips is that gesture (#526, features/POI_SITES.md §5):
+// every part of the site, each carrying the icon the map draws for it, and
+// tapping one swaps the card to that part's own detail - its photo and
+// gallery, its description, its coordinates, its unverified line.
+//
+// The strip lives in the OPENED card since #941, not on the peek. A hiker who
+// tapped a shelter pin is answering a question about the shelter; picking a
+// different part of the site out of it is the next thing they do, and the peek
+// has two lines and cannot be both. Every part is still one pull and one tap
+// away, which is the same number of taps it was before the peek existed - the
+// pull replaced the scroll that used to be in front of the strip.
 //
 // The part you are on is a chip too, first in the row and marked as current.
 // The issue's own sketch listed only the members, on the reasoning that the
@@ -47,8 +83,10 @@
 // complete picture of the place rather than a list with one part missing from
 // it, and - since tapping a chip replaces the body - it is also the way back.
 //
-// Not a modal. The map behind it stays live and pannable - panning is how the
-// card is USED, it rides along with its pin - and claiming `aria-modal` would
+// Not a modal, at either height. The map behind it stays live and pannable -
+// panning is how the PEEK is used, it rides along with its pin, and the opened
+// card leaves the map above it visible on a phone and beside it on a desktop
+// on purpose - and claiming `aria-modal` would
 // tell a screen-reader user the rest of the screen is inert when it is not.
 // Same call ClosureSheet makes.
 
@@ -63,6 +101,7 @@ import {
 } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { typeLabel } from './legendLabels'
+import { isNoteScopedType } from '../lib/fieldNotes'
 import { sourceLabel } from './poiSources'
 import { placePoiCard, type CardPlacement } from './poiCardPlacement'
 import { poiColor, poiGlyphPath } from '../map/poiIcons'
@@ -464,11 +503,15 @@ function usePinAnchor(
   anchor: PoiDetail,
   shown: PoiDetail,
   card: RefObject<HTMLDivElement | null>,
+  /** Whether the card is still hanging off its pin. False once it has been
+   *  pulled open (#941), which is a sheet or a docked column and is placed by
+   *  the stylesheet - there is no pin-relative answer to give. */
+  tethered: boolean,
 ): CardPlacement | null {
   const [placement, setPlacement] = useState<CardPlacement | null>(null)
 
   useLayoutEffect(() => {
-    if (map === null) return
+    if (map === null || !tethered) return
 
     const update = () => {
       // Unreachable, and kept for the type checker: the ref is attached to
@@ -512,7 +555,7 @@ function usePinAnchor(
     // shorter than its shelter (no capacity, usually no description, often no
     // photo credit), and a card placed BELOW its pin is positioned by its own
     // height, so a stale one sits over the pin it is describing.
-  }, [map, anchor, shown, card])
+  }, [map, anchor, shown, card, tethered])
 
   return placement
 }
@@ -563,6 +606,18 @@ export function PoiCard({
   const [shownId, setShownId] = useState(poi.id)
   useEffect(() => setShownId(poi.id), [poi.id])
 
+  // THE CARD OPENS SHUT (#941). A tap on a pin asks "what did I tap, and how
+  // is it right now", and the peek is the whole answer to that; the record -
+  // the history, the composer, the photograph, the coordinates, the
+  // provenance - is one deliberate pull away.
+  //
+  // Reset on the waypoint for `shownId`'s reason, and it matters more here:
+  // MapScreen renders this card without a React key, so a card left open on
+  // one shelter would have the next pin's card open before its hiker asked
+  // for it - and an opened card is a sheet, which is most of the map.
+  const [open, setOpen] = useState(false)
+  useEffect(() => setOpen(false), [poi.id])
+
   // The `?? poi` is load-bearing rather than defensive. On the render between a
   // new waypoint arriving and that reset effect firing, `shownId` still names
   // the previous site's privy - and falling back to the waypoint the shell asked
@@ -571,8 +626,16 @@ export function PoiCard({
   // only until something selects a member (see above).
   const shown = site.find((part) => part.id === shownId) ?? poi
 
-  const placement = usePinAnchor(map, poi, shown, cardRef)
+  // Tethered only while it peeks: an opened card has let go of its pin, so
+  // there is nothing for the geometry to answer and re-measuring it on every
+  // frame of a pan would re-render a sheet to move it nowhere.
+  const placement = usePinAnchor(map, poi, shown, cardRef, !open)
   const source = sourceLabel(shown.source)
+  // Whether the conditions surface will render anything - the same question
+  // FieldNoteSection answers for itself by returning null, asked here because
+  // the section heading, the peek's expand label and the opened card's
+  // Conditions band all have to agree with it.
+  const notesShown = noteContext !== undefined && isNoteScopedType(shown.type)
   // `shown`, not `poi`: tapping a chip swaps this card to that part's own
   // detail, and a part that anchors a site of its own - a campsite with a privy
   // beside it - has parts of its own to name. Read off whichever waypoint the
@@ -869,512 +932,36 @@ export function PoiCard({
   // reading, which is a control that answers a question nobody asked.
   const parts = site.length > 1 ? site : []
 
-  return (
-    <div
-      ref={cardRef}
-      className="poi-card"
-      role="dialog"
-      aria-label="Waypoint"
-      style={{
-        // A transform rather than left/top, so following a pan is a
-        // composite step per frame instead of a relayout per frame.
-        transform:
-          placement === null
-            ? undefined
-            : `translate(${placement.left}px, ${placement.top}px)`,
-        // The category accent, for the placeholder's wash and glyph. Inline
-        // because only this file knows the type; the stylesheet cannot.
-        ['--poi-accent' as string]: accent,
-      }}
-    >
-      {/* Identified rather than anonymous, because the chips below claim to
-          control it - see `aria-controls` there. */}
-      <div className="poi-card__media" id={mediaId}>
-        {/* A just-picked photo under review covers the media box: the
-            preview IS the prepared rendering a Keep would store, so what
-            the hiker approves is what they get, byte for byte. Nothing has
-            been written yet - Discard drops it from memory. */}
-        {review !== null ? (
-          <img
-            className="poi-card__photo"
-            data-testid="poi-card-review-photo"
-            src={review.url}
-            alt="Photo you just picked, not yet kept"
-          />
-        ) : showPhoto ? (
-          <img
-            className="poi-card__photo"
-            data-testid="poi-card-photo"
-            src={current.url}
-            // Empty on purpose: the app knows nothing about the photo beyond
-            // which waypoint it belongs to, and the name is the next line
-            // down. Announcing "photo of {name}" would say the name twice.
-            alt=""
-            onError={() => setPhotoFailed(true)}
-          />
-        ) : (
-          <div className="poi-card__placeholder" data-testid="poi-card-placeholder">
-            <svg
-              className="poi-card__glyph"
-              viewBox="0 0 1 1"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path d={poiGlyphPath(shown.type)} fillRule="evenodd" />
-            </svg>
-          </div>
-        )}
+  /* One line, up to four facts, separate elements: the mile stays mono like
+     every other mile on this screen, and the dots between them are
+     punctuation for eyes only.
 
-        {/* The credit rides the photo, never the placeholder: it is a fact
-            about a photo on screen, and the licence's price for it being
-            there. A link when the file page is known - full terms live
-            there - and plain text when it is not, because a credit is owed
-            either way. */}
-        {review === null &&
-          showPhoto &&
-          credit !== null &&
-          (current.page !== undefined ? (
-            <a
-              className="poi-card__credit"
-              href={current.page}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {credit}
-            </a>
-          ) : (
-            <span className="poi-card__credit">{credit}</span>
-          ))}
+     THIS LINE IS WHERE THE CHIP'S WORDS WENT. The strip is pins alone, so the
+     category and the distance of the part being read are said once, here, and
+     the heading beside it already carries that part's name.
 
-        {/* Only when there is more than one photo. The count is the honest
-            part: "2 of 7" says how much more there is without making anyone
-            tap to find out, and it is what tells a hiker on a ridge whether
-            the gallery is worth the data.
-
-            This used to require `showPhoto` too, on the reasoning that paging
-            a placeholder leads nowhere (#481). That is true when EVERY photo
-            has failed, and the gate fired when the CURRENT one had - which for
-            a freshly opened card is always the first. So a shelter whose photo
-            1 was missing from the cache showed a placeholder with no controls,
-            and its other six photographs were unreachable. Offline-first makes
-            that routine rather than rare: a URL the cache no longer holds is
-            the ordinary condition here, not an error.
-
-            Gated on the list instead, so the arrows over a placeholder are the
-            way out of a bad image rather than chrome over a blank. */}
-        {review === null && hasGallery && (
-          <div className="poi-card__gallery">
-            <button
-              type="button"
-              className="poi-card__gallery-step"
-              data-testid="poi-card-photo-prev"
-              onClick={() => step(-1)}
-            >
-              <span className="visually-hidden">Previous photo</span>
-              <span aria-hidden="true">‹</span>
-            </button>
-            <span className="poi-card__gallery-count" data-testid="poi-card-photo-count">
-              {Math.min(photoIndex, photos.length - 1) + 1} of {photos.length}
-            </span>
-            <button
-              type="button"
-              className="poi-card__gallery-step"
-              data-testid="poi-card-photo-next"
-              onClick={() => step(1)}
-            >
-              <span className="visually-hidden">Next photo</span>
-              <span aria-hidden="true">›</span>
-            </button>
-          </div>
-        )}
-
-        {/* Keep or throw away, over the preview where the decision is being
-            made. Two full-height targets rather than small chrome: this is
-            the control #571 wants reachable with a gloved thumb in sunlight
-            (#105), and mis-hitting Discard costs a re-take, not a photo -
-            nothing is written until Keep. */}
-        {review !== null && (
-          <div className="poi-card__review-bar">
-            <button
-              type="button"
-              className="poi-card__review-keep"
-              data-testid="poi-card-keep"
-              onClick={() => void keep()}
-            >
-              Keep
-            </button>
-            <button
-              type="button"
-              className="poi-card__review-discard"
-              data-testid="poi-card-discard"
-              onClick={discardReview}
-            >
-              Discard
-            </button>
-          </div>
-        )}
-
-        <button type="button" className="poi-card__close" onClick={onClose}>
-          <span className="visually-hidden">Close waypoint details</span>
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
-
-      <div className="poi-card__body" id={bodyId}>
-        {/* The strip under the hiker's own photo: the honesty sentence #573
-            puts here deliberately - "in the photo strip rather than a
-            settings page nobody opens" - and the two verbs #575 adds. "Show
-            on card" only where it changes anything: the first photo is
-            already the card photo. Remove takes a second tap to mean it,
-            because the stored copy of a camera capture may be the only copy
-            there is, and a gloved mis-hit must not be what deletes it. */}
-        {ownShown !== undefined && (
-          <div className="poi-card__own" data-testid="poi-card-own-strip">
-            <p className="poi-card__own-note">{ownPhotoDisclosure(ownShown.source)}</p>
-            <div className="poi-card__own-actions">
-              {current !== photos[0] && (
-                <button
-                  type="button"
-                  className="poi-card__own-action"
-                  data-testid="poi-card-choose"
-                  // Index first, choose second: choose() reorders the list
-                  // synchronously, so both land in this handler's batch and
-                  // the card repaints once, already showing the chosen
-                  // photo at the front. Waiting for the store round-trip
-                  // before moving the index would flash the old first
-                  // photo in between.
-                  onClick={() => {
-                    setPhotoIndex(0)
-                    void own.choose(ownShown.id)
-                  }}
-                >
-                  Show on card
-                </button>
-              )}
-              <button
-                type="button"
-                className="poi-card__own-action"
-                data-testid="poi-card-remove"
-                onClick={() =>
-                  removeArmed ? void removeOwn(ownShown.id) : setRemoveArmed(true)
-                }
-              >
-                {removeArmed ? 'Tap again to remove' : 'Remove'}
-              </button>
-            </div>
-
-            {/* The share verb (#577), and after a share, the truth about
-                which phase it is in. Inside the cooling-off window taking
-                it back is a complete undo - nobody ever had it - and the
-                strip stops making that claim at the earliest moment it
-                could be stale (lib/photoShare.ts). */}
-            {ownShown.shared === undefined ? (
-              <button
-                type="button"
-                className="poi-card__own-action poi-card__own-share"
-                data-testid="poi-card-share"
-                onClick={() => setSharing(true)}
-              >
-                Share this photo
-              </button>
-            ) : (
-              (() => {
-                const phase = sharePhase(ownShown.shared)
-                return phase.phase === 'cooling' ? (
-                  <>
-                    <p className="poi-card__own-note" data-testid="poi-card-share-state">
-                      {`Shared — goes live in about ${remainingLabel(phase.remainingMinutes)}. Until then, taking it back is a complete undo.`}
-                    </p>
-                    <button
-                      type="button"
-                      className="poi-card__own-action"
-                      data-testid="poi-card-unshare"
-                      onClick={() => void withdrawOwn(ownShown, true)}
-                    >
-                      Take it back
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="poi-card__own-note" data-testid="poi-card-share-state">
-                      Shared with every hiker, under CC BY-SA 4.0.
-                    </p>
-                    <button
-                      type="button"
-                      className="poi-card__own-action"
-                      data-testid="poi-card-unshare"
-                      onClick={() => void withdrawOwn(ownShown, false)}
-                    >
-                      Stop sharing
-                    </button>
-                  </>
-                )
-              })()
-            )}
-          </div>
-        )}
-
-        {/* Somebody else's photo, on rung 2: the one thing a hiker can do
-            about it is put it in front of the maintaining club (#579). The
-            chooser's three reasons are the report sheet's, and the honesty
-            line renders in the note after queueing. */}
-        {review === null && current?.community !== undefined && (
-          <div className="poi-card__own" data-testid="poi-card-community-strip">
-            {reportChooser ? (
-              <>
-                <p className="poi-card__own-note">What is wrong with it?</p>
-                <div className="poi-card__report-options">
-                  <button
-                    type="button"
-                    className="poi-card__own-action"
-                    data-testid="poi-card-report-wrong-place"
-                    onClick={() =>
-                      void reportCommunity(current.community!, 'wrong_place')
-                    }
-                  >
-                    It is not this place
-                  </button>
-                  <button
-                    type="button"
-                    className="poi-card__own-action"
-                    data-testid="poi-card-report-person"
-                    onClick={() => void reportCommunity(current.community!, 'person')}
-                  >
-                    Somebody in it did not agree to this
-                  </button>
-                  <button
-                    type="button"
-                    className="poi-card__own-action"
-                    data-testid="poi-card-report-other"
-                    onClick={() => void reportCommunity(current.community!, 'other')}
-                  >
-                    It should not be public
-                  </button>
-                  <button
-                    type="button"
-                    className="poi-card__own-action"
-                    onClick={() => setReportChooser(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="poi-card__own-action"
-                data-testid="poi-card-report"
-                onClick={() => setReportChooser(true)}
-              >
-                Report this photo
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* The part on screen, not the site. features/POI_SITES.md's open
-            question 5 asked whether the card names the place once at the top or
-            re-names it per member, and the lines underneath decide it: the
-            coordinates, the unverified sentence and the provenance below this
-            heading all belong to the part being shown, and a privy's
-            coordinates under a shelter's name is precisely the kind of false
-            statement this card exists not to make. The site is still named
-            once - on the strip below, where it costs no height. */}
-        <h2 className="poi-card__name">{shown.name}</h2>
-
-        {/* Every part of this place, the one you are on included.
-
-            NOT a `role="tablist"`, and the reason is structural rather than a
-            preference. The photo, the gallery and the credit are as
-            member-specific as the text is, and they are ABOVE this strip in the
-            card - so a `tabpanel` here could only contain the text, while the
-            image it claimed to control changed silently over the hiker's head.
-            The alternatives are worse: reordering the card to put the photo
-            inside a panel moves the media box off the card's top edge and
-            re-parents the close button out of the corner it is drawn for. So:
-            plain buttons and `aria-current` on the one you are reading.
-
-            What screens/Tabs.tsx's pattern is reused for is the part that
-            matters, which is its rule: ONE panel rendered, not three hidden with
-            CSS. There is one media box and one body here, both driven from
-            `shown`, so a part nobody is looking at has no gallery buttons in the
-            tab order and nothing for a screen reader to announce.
-
-            The rest of that pattern's contract is what the two things after the
-            strip put back: `aria-controls` naming both regions a chip drives -
-            the objection above is to a tabpanel WRAPPER, and does not reach an
-            attribute that takes an ID-reference LIST - and a live region that
-            actually produces the announcement, since `aria-current` changing is
-            not one. */}
-        {parts.length > 0 && (
-          <div
-            className="poi-card__chips"
-            role="group"
-            // The anchor's own name, which is what the pipeline publishes as
-            // `site_name` (features/POI_SITES.md §3). Taken from the anchor
-            // itself - the same point the first chip stands for - so the two
-            // cannot disagree about what this place is called.
-            aria-label={`Parts of ${anchor.name}`}
-          >
-            {parts.map((part) => {
-              // "This is the part you are on", which since the words came off
-              // every chip is read in one place only - `aria-current`, and the
-              // inset ring chrome.css hangs off it. It was two readings while the
-              // selected chip also spelt itself out, and they could drift: a chip
-              // wearing the current ring with its label hidden is a pin with a
-              // circle round it and nothing saying what it is. Now the ring is the
-              // whole of the marking, and the words for that part are on the meta
-              // line below rather than in the strip.
-              const isShown = part.id === shown.id
-
-              return (
-                <button
-                  key={part.id}
-                  type="button"
-                  className="poi-card__chip"
-                  data-testid="poi-card-chip"
-                  // `aria-current`, the "one of a set of related items you are on"
-                  // attribute, rather than `aria-pressed`: these are not toggles,
-                  // and exactly one of them is true at a time.
-                  aria-current={isShown}
-                  // Both boxes, because a chip really does swap both, and a list
-                  // is what the attribute is for. It is the programmatic link
-                  // between the control and what it changes that the plain-button
-                  // markup would otherwise be missing.
-                  aria-controls={`${mediaId} ${bodyId}`}
-                  onClick={() => {
-                    setShownId(part.id)
-                    setAnnounced(`Showing ${part.name}`)
-                  }}
-                >
-                  <MapIcon
-                    className="poi-card__chip-icon"
-                    type={part.type}
-                    // The rim, unlike the legend's (Legend.tsx passes none, on the
-                    // grounds that a key says what a category's symbol IS and a
-                    // symbol that changed as you panned would not be a key). A
-                    // chip is not a key: it stands for one privy, so the broken
-                    // rim is a fact about that privy, the same fact its own panel
-                    // spells out in words once you tap it.
-                    confidence={part.confidence}
-                  />
-                  {/* EVERY CHIP IS ITS PIN, THE ONE YOU ARE READING INCLUDED.
-
-                      #711 took the words off the UNSELECTED chips and left the
-                      selected one spelling itself out, and its own table named what
-                      that left behind: `Campsite · 181 ft` was 172 px of the 364 a
-                      five-part strip still wanted out of 240. Finishing the job has
-                      two consequences worth stating.
-
-                      The strip goes back to FIXED GEOMETRY, which #711 knowingly
-                      spent. The current-chip marker is an inset ring (chrome.css)
-                      precisely so that marking a chip does not resize it; a chip
-                      that grew when selected undid that, and the row shifted
-                      sideways under the thumb that had just tapped it.
-
-                      And the whole strip fits at every site size the trail has.
-                      Measured in Chromium 1194 at the card's real width against this
-                      file's own fixtures plus the four-fact case the meta line needs
-                      below (2026-08-16), as chip boxes plus gaps rather than
-                      scrollWidth - which floors at the container and hides the
-                      headroom, so #711's "240" for a fitting case and its "240" for
-                      the container are the same number by accident:
-
-                        3 parts, as it opens        180 -> 140   fits (was: fits)
-                        3 parts, campsite open      244 -> 140   fits
-                        5 parts, as it opens        276 -> 236   fits
-                        5 parts, campsite open      348 -> 236   fits
-
-                      Five 44 px chips and four 4 px gaps is 236 of 240, so five
-                      parts - the largest site on the trail (features/POI_SITES.md
-                      §5) - is the last size that fits, with 4 px to spare. SIX would
-                      ask 284 and scroll, and nothing here changes what happens then:
-                      `overflow-x: auto` with no scrollbar is reachable and not
-                      discoverable, which is #711's bug returning at a site size that
-                      does not exist yet. That is the number to re-run this against
-                      if #529's water gap closes and sites grow.
-
-                      HIDING THE SELECTED CHIP'S WORDS COSTS NOTHING, which is why
-                      this is small rather than a trade. Its category was already on
-                      the meta line below and its name in the heading above; the one
-                      fact that lived nowhere else is its distance, and that moves
-                      down to the meta line rather than going away.
-
-                      `visually-hidden` rather than `display: none`, unchanged from
-                      #711: the words stay in the accessibility tree, so the button's
-                      name is still "Privy 131 ft" and nothing a screen reader does
-                      here changes at all. What a sighted hiker gives up is unchanged
-                      too, and still real - a chip is a symbol they have to recognise
-                      until they tap it. @unvalidated, and inherited rather than
-                      introduced: that a 44 px pin is legible and hittable with a
-                      gloved thumb in sun is the field test HIKER_SAFETY.md §5
-                      declines to guess at, which #711 flagged for the chips it had
-                      already made pins and this extends to one more per card. */}
-                  <span className="poi-card__chip-label visually-hidden">
-                    {typeLabel(part.type)}
-                    {part.id !== poi.id && (
-                      <>
-                        {/* The middot is punctuation for eyes only, as it is on
-                            the meta line - but a button's accessible name is its
-                            contents CONCATENATED, and with the separator hidden
-                            there is nothing left between the two facts: this
-                            announced "Privy40 m" until the spaces were made real
-                            text nodes of their own. They cost nothing visually,
-                            because a flex container drops a whitespace-only run
-                            instead of making an item of it, and the gap is what
-                            does the spacing - which is why the span wrapping them
-                            is a flex container of its own and not a plain
-                            inline. */}{' '}
-                        <span aria-hidden="true">·</span>{' '}
-                        <span className="poi-card__chip-distance">
-                          {partDistance(poi, part, units)}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* The announcement itself, empty until a chip is tapped. Rendered
-            whenever there is a strip rather than conditionally on there being
-            something to say: a live region has to be in the DOM BEFORE its text
-            changes, or the change is the region appearing and nothing is read.
-            Visually hidden because the swap is not news to anyone who can see
-            the card - they watched it happen. */}
-        {parts.length > 0 && (
-          <p className="visually-hidden" role="status">
-            {announced}
-          </p>
-        )}
-
-        {/* One line, up to four facts, separate elements: the mile stays
-            mono like every other mile on this screen, and the dots between
-            them are punctuation for eyes only.
-
-            THIS LINE IS WHERE THE CHIP'S WORDS WENT. The strip above is pins
-            alone, so the category and the distance of the part being read are
-            said once, here, under the row rather than inside it - and the
-            heading above already carries that part's name. */}
-        <p className="poi-card__meta">
-          <span>{typeLabel(shown.type)}</span>
-          {shown.mile !== undefined && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="poi-card__mile">{`mi ${mile(shown.mile)}`}</span>
-            </>
-          )}
-          {shown.capacity !== undefined && (
-            <>
-              <span aria-hidden="true">·</span>
-              {/* "Sleeps 8", not "8": the bare number beside a mile reads as
+     Hoisted out of the markup because BOTH heights print it (#941) - it is the
+     second line of the peek and the second line of the opened card's header -
+     and two copies of a four-fact line is two places for a fifth fact to be
+     added to only one of. */
+  const metaLine = (
+    <p className="poi-card__meta">
+      <span>{typeLabel(shown.type)}</span>
+      {shown.mile !== undefined && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className="poi-card__mile">{`mi ${mile(shown.mile)}`}</span>
+        </>
+      )}
+      {shown.capacity !== undefined && (
+        <>
+          <span aria-hidden="true">·</span>
+          {/* "Sleeps 8", not "8": the bare number beside a mile reads as
                   another distance. */}
-              <span>{`Sleeps ${shown.capacity}`}</span>
-            </>
-          )}
-          {/* How far the part being read is from the pin - the same
+          <span>{`Sleeps ${shown.capacity}`}</span>
+        </>
+      )}
+      {/* How far the part being read is from the pin - the same
               `partDistance` the chips used, measured from the same point, so
               nothing about the number changed when it moved down here. Absent on
               the pin's own part, exactly as it was absent from the pin's own
@@ -1391,165 +978,798 @@ export function PoiCard({
               ambiguity is inherited, not introduced, and it is the one thing on
               this line worth revisiting if somebody reports reading it as
               distance-to-walk. */}
-          {shown.id !== poi.id && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="poi-card__part-distance">
-                {`${partDistance(poi, shown, units)} away`}
-              </span>
-            </>
-          )}
-        </p>
+      {shown.id !== poi.id && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className="poi-card__part-distance">
+            {`${partDistance(poi, shown, units)} away`}
+          </span>
+        </>
+      )}
+    </p>
+  )
 
-        {shown.description !== undefined && (
-          <p className="poi-card__description">{shown.description}</p>
-        )}
+  /* The existence claim, and the reason this card is worth having (see the
+     header of this file). Hoisted for `metaLine`'s reason, and placed by the
+     same rule in both heights: as high as the card goes.
 
-        {/* What is around this one, as its own paragraph rather than appended
-            to the description above (#625).
+     It is never behind the expand. A hiker cannot act on "nobody has confirmed
+     this spring exists" if they have to pull the card open to find it, and
+     OurHikeValues.md #4 is the whole argument for printing it at all. */
+  const unverifiedLine =
+    shown.confidence === 'low' ? (
+      <p className="poi-card__unverified" role="note">
+        Unverified — nobody has confirmed this one is really there.
+      </p>
+    ) : null
 
-            The pipeline spliced it onto the end of that sentence while it
-            composed the words; now that the phone composes them, keeping it
-            there would mean concatenating two strings from two places to make
-            one paragraph - and a description that failed to compose (a shelter
-            ATC states nothing about) would take the privy down with it. Two
-            paragraphs render identically when both are present, and each stands
-            up when the other is missing. */}
-        {nearby !== null && <p className="poi-card__nearby">{nearby}</p>}
+  /* The conditions section (FIELD_NOTES.md, #759's card surface) - what the
+     field has said about this place and the one-tap way to answer back.
+     `shown`, not `poi`: a chip swap is a different place with its own notes,
+     exactly as the description is.
 
-        {shown.confidence === 'low' && (
-          <p className="poi-card__unverified" role="note">
-            Unverified — nobody has confirmed this one is really there.
-          </p>
-        )}
+     A function of the height rather than two call sites, so the peek and the
+     opened card cannot come to disagree about which place they are filing a
+     note against. */
+  const conditions = (variant: 'peek' | 'open') =>
+    noteContext === undefined ? null : (
+      <FieldNoteSection
+        poiId={shown.id}
+        poiType={shown.type}
+        // The existence axis this card already renders one value of
+        // (`unverifiedLine` above): a dispute about a place upstream never
+        // confirmed is a weaker claim, and #876's sentence says so rather
+        // than counting it the same.
+        unverified={shown.confidence === 'low'}
+        lat={shown.lat}
+        lon={shown.lon}
+        {...(shown.mile !== undefined ? { mile: shown.mile } : {})}
+        variant={variant}
+        context={noteContext}
+      />
+    )
 
-        {/* The conditions section (FIELD_NOTES.md, #759's card surface) -
-            what the field has said about this place and the one-tap way to
-            answer back. `shown`, not `poi`: a chip swap is a different
-            place with its own notes, exactly as the description above. */}
-        {noteContext !== undefined && (
-          <FieldNoteSection
-            poiId={shown.id}
-            poiType={shown.type}
-            // The existence axis this card already renders one value of
-            // (`confidence === 'low'` below): a dispute about a place
-            // upstream never confirmed is a weaker claim, and #876's
-            // sentence says so rather than counting it the same.
-            unverified={shown.confidence === 'low'}
-            lat={shown.lat}
-            lon={shown.lon}
-            {...(shown.mile !== undefined ? { mile: shown.mile } : {})}
-            context={noteContext}
-          />
-        )}
+  return (
+    <div
+      ref={cardRef}
+      className={`poi-card ${open ? 'poi-card--open' : 'poi-card--peek'}`}
+      role="dialog"
+      aria-label="Waypoint"
+      style={{
+        // A transform rather than left/top, so following a pan is a
+        // composite step per frame instead of a relayout per frame.
+        //
+        // Only while it peeks. The opened card has let go of its pin - it is
+        // a sheet against the canvas's bottom edge on a phone and a column
+        // docked to its right on a desktop - and a transform here would fight
+        // the position chrome.css gives it.
+        transform:
+          open || placement === null
+            ? undefined
+            : `translate(${placement.left}px, ${placement.top}px)`,
+        // The category accent, for the placeholder's wash and glyph. Inline
+        // because only this file knows the type; the stylesheet cannot.
+        ['--poi-accent' as string]: accent,
+      }}
+    >
+      {/* At the card's level rather than inside the media box, which is where
+          it used to live and no longer can: the opened card leads with its
+          heading and puts the photograph below, so the corner the close
+          button is drawn for is not the photo's any more. One button, one
+          corner, both heights. */}
+      <button type="button" className="poi-card__close" onClick={onClose}>
+        <span className="visually-hidden">Close waypoint details</span>
+        <span aria-hidden="true">×</span>
+      </button>
 
-        <p className="poi-card__coords">
-          <span className="visually-hidden">Latitude, longitude: </span>
-          {coordinates(shown.lat, shown.lon)}
-        </p>
-
-        {source !== null && <p className="poi-card__source">{`From ${source}.`}</p>}
-
-        {/* "The affordance sits on the card and waits" - two quiet buttons,
-            no prompt, no streak, no count (features/DATA_NUDGES.md under
-            value #1). Two rather than one because the paths differ in the
-            one fact #573's honesty line turns on: a library pick has its
-            original in the library, a camera capture may exist nowhere
-            else. The inputs are real file inputs so the OS brings its own
-            camera and picker; `capture` is a hint desktop browsers ignore,
-            which degrades to the picker - the conservative wording, not a
-            broken control. */}
-        {review === null && (
-          <div className="poi-card__add-photo">
+      {open ? (
+        <>
+          <div className="poi-card__header">
+            {/* The grabber is the control, not a decoration painted to look
+                like one. A sheet that shows a handle and does nothing when it
+                is used is worse than a sheet with no handle, and this is the
+                way back to the peek. */}
             <button
               type="button"
-              className="poi-card__add-button"
-              data-testid="poi-card-take-photo"
-              onClick={() => cameraInput.current?.click()}
+              className="poi-card__grabber"
+              data-testid="poi-card-collapse"
+              aria-expanded={true}
+              onClick={() => setOpen(false)}
             >
-              Take a photo
+              <span className="visually-hidden">Show less</span>
             </button>
-            <button
-              type="button"
-              className="poi-card__add-button"
-              data-testid="poi-card-add-photo"
-              onClick={() => libraryInput.current?.click()}
-            >
-              Add from your photos
-            </button>
+            <h2 className="poi-card__name">{shown.name}</h2>
+            {metaLine}
           </div>
-        )}
-        <input
-          ref={cameraInput}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic"
-          capture="environment"
-          hidden
-          data-testid="poi-card-camera-input"
-          onChange={(event) => {
-            const file = event.target.files?.[0] ?? null
-            // Cleared so picking the same file twice fires change twice - a
-            // hiker who discards and changes their mind picks it again.
-            event.target.value = ''
-            void pick(file, 'camera')
-          }}
-        />
-        <input
-          ref={libraryInput}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic"
-          hidden
-          data-testid="poi-card-library-input"
-          onChange={(event) => {
-            const file = event.target.files?.[0] ?? null
-            event.target.value = ''
-            void pick(file, 'library')
-          }}
-        />
 
-        {preparing && (
-          <p className="poi-card__photo-note" role="status">
-            Shrinking the photo…
-          </p>
-        )}
-        {photoNote !== null && (
-          <p className="poi-card__photo-note" role="alert">
-            {photoNote}
-          </p>
-        )}
+          {/* Everything the peek held back, in one scroll rather than behind
+              lanes: conditions, then the composer, then the quiet stuff. A
+              hiker looking for a fact should not have to work out which tab
+              somebody filed it under. */}
+          <div className="poi-card__scroll" data-testid="poi-card-scroll">
+            <div className="poi-card__body" id={bodyId}>
+              {/* Every part of this place, the one you are on included.
 
-        {/* What a Keep would do, said before it is done: the size is the
-            measured size of the exact bytes on screen, and the capture date
-            is shown where one was found so a wrong guess is caught at the
-            cheapest moment. GPS never made it into this copy - the re-encode
-            is the mechanism, reportPhoto.ts. */}
-        {review !== null && (
-          <p className="poi-card__photo-note" role="status">
-            {`Keep stores this ${Math.max(1, Math.round(review.blob.size / 1024))} KB copy on this phone${
-              reviewMonth === null ? '' : `, dated ${reviewMonth}`
-            }. Location details are not in it.`}
-          </p>
-        )}
+                  NOT a `role="tablist"`, and the argument for that has CHANGED
+                  SHAPE under #941 - which is worth saying rather than leaving a
+                  comment that reads as settled when it is not.
 
-        {/* #573's web half: a photo taken through the app's camera exists
-            nowhere else, so the full-resolution original is offered HERE,
-            while it is still in hand. A browser cannot write to the photo
-            library; a download is what the platform allows, and the strip's
-            wording stays conditional either way. Library picks get no offer -
-            their original is already where it belongs. */}
-        {review !== null && review.originalUrl !== null && (
-          <p className="poi-card__photo-note">
-            <a
-              href={review.originalUrl}
-              download={review.originalName}
-              data-testid="poi-card-save-original"
-            >
-              Save the original to this phone
-            </a>
-            {' — OurHike keeps only the small copy.'}
-          </p>
-        )}
-      </div>
+                  It used to be structural and airtight: the photo, the gallery and
+                  the credit are as member-specific as the text is, and they were
+                  ABOVE this strip, so a `tabpanel` could only have contained the
+                  text while the image it claimed to control changed silently over
+                  the hiker's head. The alternative named here was "reorder the card
+                  to put the photo inside a panel", rejected because it moves the
+                  media box off the card's top edge and re-parents the close button
+                  out of the corner it is drawn for.
+
+                  That reorder has now happened for a different reason. The opened
+                  card leads with its heading, the strip is above the photograph,
+                  and the close button has moved to the card's own corner - so a
+                  wrapper round the media and the body IS available, and the
+                  geometry no longer decides this.
+
+                  It stays plain buttons and `aria-current` on the one you are
+                  reading, and the reason is now a choice rather than a constraint:
+                  the strip is one of two navigations on this card (the other is the
+                  pull that opened it), and a `tablist`'s arrow-key contract is a
+                  second keyboard model to learn on a surface that already has one.
+                  @unvalidated - nobody has watched a screen-reader user work this
+                  card, and if #105/#106's field testing reaches assistive tech,
+                  this is the decision to bring back.
+
+                  What screens/Tabs.tsx's pattern is reused for is the part that
+                  matters either way, which is its rule: ONE panel rendered, not
+                  three hidden with CSS. There is one media box and one body here,
+                  both driven from `shown`, so a part nobody is looking at has no
+                  gallery buttons in the tab order and nothing for a screen reader
+                  to announce.
+
+                  The rest of that pattern's contract is what the two things after the
+                  strip put back: `aria-controls` naming both regions a chip drives -
+                  the objection above is to a tabpanel WRAPPER, and does not reach an
+                  attribute that takes an ID-reference LIST - and a live region that
+                  actually produces the announcement, since `aria-current` changing is
+                  not one. */}
+              {parts.length > 0 && (
+                <div
+                  className="poi-card__chips"
+                  role="group"
+                  // The anchor's own name, which is what the pipeline publishes as
+                  // `site_name` (features/POI_SITES.md §3). Taken from the anchor
+                  // itself - the same point the first chip stands for - so the two
+                  // cannot disagree about what this place is called.
+                  aria-label={`Parts of ${anchor.name}`}
+                >
+                  {parts.map((part) => {
+                    // "This is the part you are on", which since the words came off
+                    // every chip is read in one place only - `aria-current`, and the
+                    // inset ring chrome.css hangs off it. It was two readings while the
+                    // selected chip also spelt itself out, and they could drift: a chip
+                    // wearing the current ring with its label hidden is a pin with a
+                    // circle round it and nothing saying what it is. Now the ring is the
+                    // whole of the marking, and the words for that part are on the meta
+                    // line below rather than in the strip.
+                    const isShown = part.id === shown.id
+
+                    return (
+                      <button
+                        key={part.id}
+                        type="button"
+                        className="poi-card__chip"
+                        data-testid="poi-card-chip"
+                        // `aria-current`, the "one of a set of related items you are on"
+                        // attribute, rather than `aria-pressed`: these are not toggles,
+                        // and exactly one of them is true at a time.
+                        aria-current={isShown}
+                        // Both boxes, because a chip really does swap both, and a list
+                        // is what the attribute is for. It is the programmatic link
+                        // between the control and what it changes that the plain-button
+                        // markup would otherwise be missing.
+                        aria-controls={`${mediaId} ${bodyId}`}
+                        onClick={() => {
+                          setShownId(part.id)
+                          setAnnounced(`Showing ${part.name}`)
+                        }}
+                      >
+                        <MapIcon
+                          className="poi-card__chip-icon"
+                          type={part.type}
+                          // The rim, unlike the legend's (Legend.tsx passes none, on the
+                          // grounds that a key says what a category's symbol IS and a
+                          // symbol that changed as you panned would not be a key). A
+                          // chip is not a key: it stands for one privy, so the broken
+                          // rim is a fact about that privy, the same fact its own panel
+                          // spells out in words once you tap it.
+                          confidence={part.confidence}
+                        />
+                        {/* EVERY CHIP IS ITS PIN, THE ONE YOU ARE READING INCLUDED.
+
+                            #711 took the words off the UNSELECTED chips and left the
+                            selected one spelling itself out, and its own table named what
+                            that left behind: `Campsite · 181 ft` was 172 px of the 364 a
+                            five-part strip still wanted out of 240. Finishing the job has
+                            two consequences worth stating.
+
+                            The strip goes back to FIXED GEOMETRY, which #711 knowingly
+                            spent. The current-chip marker is an inset ring (chrome.css)
+                            precisely so that marking a chip does not resize it; a chip
+                            that grew when selected undid that, and the row shifted
+                            sideways under the thumb that had just tapped it.
+
+                            And the whole strip fits at every site size the trail has.
+                            Measured in Chromium 1194 at the card's real width against this
+                            file's own fixtures plus the four-fact case the meta line needs
+                            below (2026-08-16), as chip boxes plus gaps rather than
+                            scrollWidth - which floors at the container and hides the
+                            headroom, so #711's "240" for a fitting case and its "240" for
+                            the container are the same number by accident:
+
+                              3 parts, as it opens        180 -> 140   fits (was: fits)
+                              3 parts, campsite open      244 -> 140   fits
+                              5 parts, as it opens        276 -> 236   fits
+                              5 parts, campsite open      348 -> 236   fits
+
+                            Five 44 px chips and four 4 px gaps is 236 of 240, so five
+                            parts - the largest site on the trail (features/POI_SITES.md
+                            §5) - is the last size that fits, with 4 px to spare. SIX would
+                            ask 284 and scroll, and nothing here changes what happens then:
+                            `overflow-x: auto` with no scrollbar is reachable and not
+                            discoverable, which is #711's bug returning at a site size that
+                            does not exist yet. That is the number to re-run this against
+                            if #529's water gap closes and sites grow.
+
+                            HIDING THE SELECTED CHIP'S WORDS COSTS NOTHING, which is why
+                            this is small rather than a trade. Its category was already on
+                            the meta line below and its name in the heading above; the one
+                            fact that lived nowhere else is its distance, and that moves
+                            down to the meta line rather than going away.
+
+                            `visually-hidden` rather than `display: none`, unchanged from
+                            #711: the words stay in the accessibility tree, so the button's
+                            name is still "Privy 131 ft" and nothing a screen reader does
+                            here changes at all. What a sighted hiker gives up is unchanged
+                            too, and still real - a chip is a symbol they have to recognise
+                            until they tap it. @unvalidated, and inherited rather than
+                            introduced: that a 44 px pin is legible and hittable with a
+                            gloved thumb in sun is the field test HIKER_SAFETY.md §5
+                            declines to guess at, which #711 flagged for the chips it had
+                            already made pins and this extends to one more per card. */}
+                        <span className="poi-card__chip-label visually-hidden">
+                          {typeLabel(part.type)}
+                          {part.id !== poi.id && (
+                            <>
+                              {/* The middot is punctuation for eyes only, as it is on
+                                  the meta line - but a button's accessible name is its
+                                  contents CONCATENATED, and with the separator hidden
+                                  there is nothing left between the two facts: this
+                                  announced "Privy40 m" until the spaces were made real
+                                  text nodes of their own. They cost nothing visually,
+                                  because a flex container drops a whitespace-only run
+                                  instead of making an item of it, and the gap is what
+                                  does the spacing - which is why the span wrapping them
+                                  is a flex container of its own and not a plain
+                                  inline. */}{' '}
+                              <span aria-hidden="true">·</span>{' '}
+                              <span className="poi-card__chip-distance">
+                                {partDistance(poi, part, units)}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* The announcement itself, empty until a chip is tapped. Rendered
+                  whenever there is a strip rather than conditionally on there being
+                  something to say: a live region has to be in the DOM BEFORE its text
+                  changes, or the change is the region appearing and nothing is read.
+                  Visually hidden because the swap is not news to anyone who can see
+                  the card - they watched it happen. */}
+              {parts.length > 0 && (
+                <p className="visually-hidden" role="status">
+                  {announced}
+                </p>
+              )}
+
+              <div className="poi-card__media" id={mediaId}>
+                {/* A just-picked photo under review covers the media box: the
+                  preview IS the prepared rendering a Keep would store, so what
+                  the hiker approves is what they get, byte for byte. Nothing has
+                  been written yet - Discard drops it from memory. */}
+                {review !== null ? (
+                  <img
+                    className="poi-card__photo"
+                    data-testid="poi-card-review-photo"
+                    src={review.url}
+                    alt="Photo you just picked, not yet kept"
+                  />
+                ) : showPhoto ? (
+                  <img
+                    className="poi-card__photo"
+                    data-testid="poi-card-photo"
+                    src={current.url}
+                    // Empty on purpose: the app knows nothing about the photo beyond
+                    // which waypoint it belongs to, and the name is the next line
+                    // down. Announcing "photo of {name}" would say the name twice.
+                    alt=""
+                    onError={() => setPhotoFailed(true)}
+                  />
+                ) : (
+                  <div
+                    className="poi-card__placeholder"
+                    data-testid="poi-card-placeholder"
+                  >
+                    <svg
+                      className="poi-card__glyph"
+                      viewBox="0 0 1 1"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path d={poiGlyphPath(shown.type)} fillRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+
+                {/* The credit rides the photo, never the placeholder: it is a fact
+                  about a photo on screen, and the licence's price for it being
+                  there. A link when the file page is known - full terms live
+                  there - and plain text when it is not, because a credit is owed
+                  either way. */}
+                {review === null &&
+                  showPhoto &&
+                  credit !== null &&
+                  (current.page !== undefined ? (
+                    <a
+                      className="poi-card__credit"
+                      href={current.page}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {credit}
+                    </a>
+                  ) : (
+                    <span className="poi-card__credit">{credit}</span>
+                  ))}
+
+                {/* Only when there is more than one photo. The count is the honest
+                  part: "2 of 7" says how much more there is without making anyone
+                  tap to find out, and it is what tells a hiker on a ridge whether
+                  the gallery is worth the data.
+
+                  This used to require `showPhoto` too, on the reasoning that paging
+                  a placeholder leads nowhere (#481). That is true when EVERY photo
+                  has failed, and the gate fired when the CURRENT one had - which for
+                  a freshly opened card is always the first. So a shelter whose photo
+                  1 was missing from the cache showed a placeholder with no controls,
+                  and its other six photographs were unreachable. Offline-first makes
+                  that routine rather than rare: a URL the cache no longer holds is
+                  the ordinary condition here, not an error.
+
+                  Gated on the list instead, so the arrows over a placeholder are the
+                  way out of a bad image rather than chrome over a blank. */}
+                {review === null && hasGallery && (
+                  <div className="poi-card__gallery">
+                    <button
+                      type="button"
+                      className="poi-card__gallery-step"
+                      data-testid="poi-card-photo-prev"
+                      onClick={() => step(-1)}
+                    >
+                      <span className="visually-hidden">Previous photo</span>
+                      <span aria-hidden="true">‹</span>
+                    </button>
+                    <span
+                      className="poi-card__gallery-count"
+                      data-testid="poi-card-photo-count"
+                    >
+                      {Math.min(photoIndex, photos.length - 1) + 1} of {photos.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="poi-card__gallery-step"
+                      data-testid="poi-card-photo-next"
+                      onClick={() => step(1)}
+                    >
+                      <span className="visually-hidden">Next photo</span>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Keep or throw away, over the preview where the decision is being
+                  made. Two full-height targets rather than small chrome: this is
+                  the control #571 wants reachable with a gloved thumb in sunlight
+                  (#105), and mis-hitting Discard costs a re-take, not a photo -
+                  nothing is written until Keep. */}
+                {review !== null && (
+                  <div className="poi-card__review-bar">
+                    <button
+                      type="button"
+                      className="poi-card__review-keep"
+                      data-testid="poi-card-keep"
+                      onClick={() => void keep()}
+                    >
+                      Keep
+                    </button>
+                    <button
+                      type="button"
+                      className="poi-card__review-discard"
+                      data-testid="poi-card-discard"
+                      onClick={discardReview}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* The strip under the hiker's own photo: the honesty sentence #573
+                  puts here deliberately - "in the photo strip rather than a
+                  settings page nobody opens" - and the two verbs #575 adds. "Show
+                  on card" only where it changes anything: the first photo is
+                  already the card photo. Remove takes a second tap to mean it,
+                  because the stored copy of a camera capture may be the only copy
+                  there is, and a gloved mis-hit must not be what deletes it. */}
+              {ownShown !== undefined && (
+                <div className="poi-card__own" data-testid="poi-card-own-strip">
+                  <p className="poi-card__own-note">
+                    {ownPhotoDisclosure(ownShown.source)}
+                  </p>
+                  <div className="poi-card__own-actions">
+                    {current !== photos[0] && (
+                      <button
+                        type="button"
+                        className="poi-card__own-action"
+                        data-testid="poi-card-choose"
+                        // Index first, choose second: choose() reorders the list
+                        // synchronously, so both land in this handler's batch and
+                        // the card repaints once, already showing the chosen
+                        // photo at the front. Waiting for the store round-trip
+                        // before moving the index would flash the old first
+                        // photo in between.
+                        onClick={() => {
+                          setPhotoIndex(0)
+                          void own.choose(ownShown.id)
+                        }}
+                      >
+                        Show on card
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="poi-card__own-action"
+                      data-testid="poi-card-remove"
+                      onClick={() =>
+                        removeArmed ? void removeOwn(ownShown.id) : setRemoveArmed(true)
+                      }
+                    >
+                      {removeArmed ? 'Tap again to remove' : 'Remove'}
+                    </button>
+                  </div>
+
+                  {/* The share verb (#577), and after a share, the truth about
+                      which phase it is in. Inside the cooling-off window taking
+                      it back is a complete undo - nobody ever had it - and the
+                      strip stops making that claim at the earliest moment it
+                      could be stale (lib/photoShare.ts). */}
+                  {ownShown.shared === undefined ? (
+                    <button
+                      type="button"
+                      className="poi-card__own-action poi-card__own-share"
+                      data-testid="poi-card-share"
+                      onClick={() => setSharing(true)}
+                    >
+                      Share this photo
+                    </button>
+                  ) : (
+                    (() => {
+                      const phase = sharePhase(ownShown.shared)
+                      return phase.phase === 'cooling' ? (
+                        <>
+                          <p
+                            className="poi-card__own-note"
+                            data-testid="poi-card-share-state"
+                          >
+                            {`Shared — goes live in about ${remainingLabel(phase.remainingMinutes)}. Until then, taking it back is a complete undo.`}
+                          </p>
+                          <button
+                            type="button"
+                            className="poi-card__own-action"
+                            data-testid="poi-card-unshare"
+                            onClick={() => void withdrawOwn(ownShown, true)}
+                          >
+                            Take it back
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p
+                            className="poi-card__own-note"
+                            data-testid="poi-card-share-state"
+                          >
+                            Shared with every hiker, under CC BY-SA 4.0.
+                          </p>
+                          <button
+                            type="button"
+                            className="poi-card__own-action"
+                            data-testid="poi-card-unshare"
+                            onClick={() => void withdrawOwn(ownShown, false)}
+                          >
+                            Stop sharing
+                          </button>
+                        </>
+                      )
+                    })()
+                  )}
+                </div>
+              )}
+
+              {/* Somebody else's photo, on rung 2: the one thing a hiker can do
+                  about it is put it in front of the maintaining club (#579). The
+                  chooser's three reasons are the report sheet's, and the honesty
+                  line renders in the note after queueing. */}
+              {review === null && current?.community !== undefined && (
+                <div className="poi-card__own" data-testid="poi-card-community-strip">
+                  {reportChooser ? (
+                    <>
+                      <p className="poi-card__own-note">What is wrong with it?</p>
+                      <div className="poi-card__report-options">
+                        <button
+                          type="button"
+                          className="poi-card__own-action"
+                          data-testid="poi-card-report-wrong-place"
+                          onClick={() =>
+                            void reportCommunity(current.community!, 'wrong_place')
+                          }
+                        >
+                          It is not this place
+                        </button>
+                        <button
+                          type="button"
+                          className="poi-card__own-action"
+                          data-testid="poi-card-report-person"
+                          onClick={() =>
+                            void reportCommunity(current.community!, 'person')
+                          }
+                        >
+                          Somebody in it did not agree to this
+                        </button>
+                        <button
+                          type="button"
+                          className="poi-card__own-action"
+                          data-testid="poi-card-report-other"
+                          onClick={() =>
+                            void reportCommunity(current.community!, 'other')
+                          }
+                        >
+                          It should not be public
+                        </button>
+                        <button
+                          type="button"
+                          className="poi-card__own-action"
+                          onClick={() => setReportChooser(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="poi-card__own-action"
+                      data-testid="poi-card-report"
+                      onClick={() => setReportChooser(true)}
+                    >
+                      Report this photo
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* "The affordance sits on the card and waits" - two quiet buttons,
+                  no prompt, no streak, no count (features/DATA_NUDGES.md under
+                  value #1). Two rather than one because the paths differ in the
+                  one fact #573's honesty line turns on: a library pick has its
+                  original in the library, a camera capture may exist nowhere
+                  else. The inputs are real file inputs so the OS brings its own
+                  camera and picker; `capture` is a hint desktop browsers ignore,
+                  which degrades to the picker - the conservative wording, not a
+                  broken control. */}
+              {review === null && (
+                <div className="poi-card__add-photo">
+                  <button
+                    type="button"
+                    className="poi-card__add-button"
+                    data-testid="poi-card-take-photo"
+                    onClick={() => cameraInput.current?.click()}
+                  >
+                    Take a photo
+                  </button>
+                  <button
+                    type="button"
+                    className="poi-card__add-button"
+                    data-testid="poi-card-add-photo"
+                    onClick={() => libraryInput.current?.click()}
+                  >
+                    Add from your photos
+                  </button>
+                </div>
+              )}
+              <input
+                ref={cameraInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic"
+                capture="environment"
+                hidden
+                data-testid="poi-card-camera-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null
+                  // Cleared so picking the same file twice fires change twice - a
+                  // hiker who discards and changes their mind picks it again.
+                  event.target.value = ''
+                  void pick(file, 'camera')
+                }}
+              />
+              <input
+                ref={libraryInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic"
+                hidden
+                data-testid="poi-card-library-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null
+                  event.target.value = ''
+                  void pick(file, 'library')
+                }}
+              />
+
+              {preparing && (
+                <p className="poi-card__photo-note" role="status">
+                  Shrinking the photo…
+                </p>
+              )}
+              {photoNote !== null && (
+                <p className="poi-card__photo-note" role="alert">
+                  {photoNote}
+                </p>
+              )}
+
+              {/* What a Keep would do, said before it is done: the size is the
+                  measured size of the exact bytes on screen, and the capture date
+                  is shown where one was found so a wrong guess is caught at the
+                  cheapest moment. GPS never made it into this copy - the re-encode
+                  is the mechanism, reportPhoto.ts. */}
+              {review !== null && (
+                <p className="poi-card__photo-note" role="status">
+                  {`Keep stores this ${Math.max(1, Math.round(review.blob.size / 1024))} KB copy on this phone${
+                    reviewMonth === null ? '' : `, dated ${reviewMonth}`
+                  }. Location details are not in it.`}
+                </p>
+              )}
+
+              {/* #573's web half: a photo taken through the app's camera exists
+                  nowhere else, so the full-resolution original is offered HERE,
+                  while it is still in hand. A browser cannot write to the photo
+                  library; a download is what the platform allows, and the strip's
+                  wording stays conditional either way. Library picks get no offer -
+                  their original is already where it belongs. */}
+              {review !== null && review.originalUrl !== null && (
+                <p className="poi-card__photo-note">
+                  <a
+                    href={review.originalUrl}
+                    download={review.originalName}
+                    data-testid="poi-card-save-original"
+                  >
+                    Save the original to this phone
+                  </a>
+                  {' — OurHike keeps only the small copy.'}
+                </p>
+              )}
+
+              {/* The unverified sentence leads whether or not there is a
+                  conditions section under it - a viewpoint nobody confirmed
+                  gets the band with no heading, because "Conditions" is a
+                  promise about water, shelter, campsites and resupply and
+                  this file must not make it about anything else. */}
+              {(notesShown || unverifiedLine !== null) && (
+                <section className="poi-card__section">
+                  {notesShown && <h3 className="poi-card__section-title">Conditions</h3>}
+                  {unverifiedLine}
+                  {conditions('open')}
+                </section>
+              )}
+
+              {/* Where the coordinates and the provenance went. They are
+                  facts about where the pin CAME FROM, and #941's complaint
+                  was that they outranked the answer the hiker tapped the pin
+                  for - so they are last, under a heading that says what they
+                  are, rather than gone. */}
+              <section className="poi-card__section">
+                <h3 className="poi-card__section-title">About this place</h3>
+                {shown.description !== undefined && (
+                  <p className="poi-card__description">{shown.description}</p>
+                )}
+
+                {/* What is around this one, as its own paragraph rather than appended
+                    to the description above (#625).
+
+                    The pipeline spliced it onto the end of that sentence while it
+                    composed the words; now that the phone composes them, keeping it
+                    there would mean concatenating two strings from two places to make
+                    one paragraph - and a description that failed to compose (a shelter
+                    ATC states nothing about) would take the privy down with it. Two
+                    paragraphs render identically when both are present, and each stands
+                    up when the other is missing. */}
+                {nearby !== null && <p className="poi-card__nearby">{nearby}</p>}
+
+                {/* One line, because they are one fact: this point, and who
+                    listed it. Two paragraphs was the card spending two lines
+                    on the least urgent thing it knows. */}
+                <p className="poi-card__coords">
+                  <span className="visually-hidden">Latitude, longitude: </span>
+                  {coordinates(shown.lat, shown.lon)}
+                  {source !== null && (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      <span className="poi-card__source">{`from ${source}`}</span>
+                    </>
+                  )}
+                </p>
+              </section>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="poi-card__peek" data-testid="poi-card-peek">
+          <div className="poi-card__peek-head">
+            {/* THE CATEGORY'S OWN SILHOUETTE, NEVER A PHOTOGRAPH, and the
+                reason is the credit rather than the layout. A CC BY / BY-SA
+                photo is OurHike's to show only while the credit shows with
+                it, and there is no line of the peek to spend on an
+                institutional attribution string. The photograph and its
+                credit are one pull away, together, which is the only way
+                either of them is allowed on screen. */}
+            <div className="poi-card__thumb" data-testid="poi-card-thumb">
+              <svg
+                className="poi-card__glyph"
+                viewBox="0 0 1 1"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d={poiGlyphPath(shown.type)} fillRule="evenodd" />
+              </svg>
+            </div>
+            <div className="poi-card__peek-text">
+              <h2 className="poi-card__name">{shown.name}</h2>
+              {metaLine}
+            </div>
+          </div>
+
+          {unverifiedLine}
+          {conditions('peek')}
+
+          {/* One deliberate pull, named for what is behind it. "Notes &
+              details" only where there are notes: a viewpoint carries no
+              conditions section, and promising one is how a control teaches
+              a hiker not to trust its labels. */}
+          <button
+            type="button"
+            className="poi-card__expand"
+            data-testid="poi-card-expand"
+            aria-expanded={false}
+            onClick={() => setOpen(true)}
+          >
+            {notesShown ? 'Notes & details' : 'Details'}
+            <span className="poi-card__expand-caret" aria-hidden="true">
+              ▲
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* The share sheet (#577), over the live map through a portal - see
           PoiShareSheet.tsx for why the card cannot host it in place. */}

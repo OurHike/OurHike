@@ -94,10 +94,17 @@ const SHELTER: PoiDetail = {
 
 const PREPARED = new Blob([new Uint8Array(38 * 1024)], { type: 'image/jpeg' })
 
-/** Render and flush the own-photos load, so no state lands after a test
- *  has moved on. */
+/** Render, pull the card open, and flush the own-photos load, so no state
+ *  lands after a test has moved on.
+ *
+ *  Opened because that is where the photographs are since #941: the peek
+ *  carries the category's silhouette and never a photograph, since a credit
+ *  is the licence's price for showing one and there is no line of the peek to
+ *  spend on an attribution string. Every test in this file is about a photo,
+ *  its credit, or the strip of verbs under it. */
 async function renderCard(poi: PoiDetail = SHELTER) {
   const view = render(<PoiCard poi={poi} map={null} onClose={vi.fn()} />)
+  fireEvent.click(screen.getByTestId('poi-card-expand'))
   await act(async () => {})
   return view
 }

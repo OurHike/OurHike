@@ -65,6 +65,24 @@ const REPORTER_WORDS: Record<NoteSummary['reporter_type'], string> = {
   maintainer: 'maintainer',
 }
 
+/**
+ * When one note was made and by whom, for the card's list of them (#941).
+ *
+ * The same two facts `headlineOf` puts after the em dash, through the same
+ * `age` and the same `REPORTER_WORDS` - which is the whole reason it lives
+ * here rather than in the component that prints it. A card listing
+ * "6 days ago" over a roll-up saying "5 days ago" about the same note is the
+ * quiet contradiction OurHikeValues.md #4 is about, and two copies of this
+ * arithmetic is how that happens.
+ *
+ * A middot rather than the headline's comma: this rides beside a tag rather
+ * than after a sentence, and the card sets middots between facts of one kind
+ * everywhere else it does this.
+ */
+export function noteAttribution(note: NoteSummary, now: Date): string {
+  return `${age(new Date(note.observed_at), now)} · ${REPORTER_WORDS[note.reporter_type]}`
+}
+
 function headlineOf(note: NoteSummary, now: Date): NoteHeadline {
   const observed = new Date(note.observed_at)
   const what = note.observation !== null ? observationLabel(note.observation) : 'Noted'

@@ -95,6 +95,41 @@ export const OBSERVATION_OPTIONS: Record<NoteScopedType, ObservationOption[]> = 
   ],
 }
 
+/**
+ * The two answers a peeking card carries, for a type the app asks about.
+ *
+ * The ends of the scale: the first option, and the last one before
+ * `not_found`. For water that is Flowing and Dry, which is the pair #941's
+ * design pass drew on the peek - this rule is the generalisation of that
+ * drawing rather than a second decision, and it hands every other scoped
+ * type the same two ends: Fine and Full for a shelter or a campsite, Open
+ * and Closed for a resupply.
+ *
+ * REASONED, and worth saying which parts are not measured. Nobody has
+ * watched a hiker choose between these standing at a spring, and the
+ * ordering the ends are read off is {@link OBSERVATION_OPTIONS}' own -
+ * a maintainer's ordering, not an observed frequency. What keeps the cost
+ * of a wrong pair low is that the peek is a shortcut and never a filter:
+ * every option, `not_found` included, is one tap away in the opened card,
+ * so a hiker at a trickling spring is delayed rather than silenced. If
+ * field use (#105, #106) says the middle answer is the common one for some
+ * type, this function is the one place to change.
+ *
+ * `not_found` is never offered here. It answers a different question from
+ * the three above it - see NOT_FOUND - and a dispute filed by a mis-hit on
+ * a crowded peek is the claim #876 built corroboration to keep out.
+ */
+export function peekObservations(poiType: NoteScopedType): readonly ObservationOption[] {
+  const scale = OBSERVATION_OPTIONS[poiType].filter((option) => option.id !== 'not_found')
+  const first = scale[0]
+  const last = scale[scale.length - 1]
+  // Both guards are for a table this file owns and could shrink: a type
+  // whose scale is one option long has one end, not two, and would
+  // otherwise render the same button twice.
+  if (first === undefined || last === undefined || first === last) return scale
+  return [first, last]
+}
+
 /** What the observation words mean on a card or in a lane, for reading
  *  rather than tapping. Includes `not_found` because BAKED notes may carry
  *  it once disputes ship, and a word this build cannot read must render as

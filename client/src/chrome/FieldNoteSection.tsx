@@ -21,18 +21,34 @@
 // NO COUNTS ANYWHERE. Not how many notes, not how many hikers passed
 // without answering - the anti-gamification rule those docs state four
 // times. Notes render as what they are: dated observations, newest first.
+//
+// TWO FORMS, ONE MODULE (#941). The card peeks before it opens, and the
+// peek's whole job is the answer a hiker standing at a dry spring wants to
+// give without reading anything first: one condition line and the two ends
+// of the scale (lib/fieldNotes.ts's `peekObservations`). Everything else -
+// the history, the composer, the middle answers, `not_found`, the report
+// hand-off - is the opened form.
+//
+// They are one component rather than two because the tap has to behave
+// identically in both, and it is the same tap: `file()` below enqueues the
+// note, sets the acknowledgement, and offers the escalation without caring
+// which form was on screen. A second component would have been a second
+// copy of that, and the copy that drifted would be the one on the surface
+// most hikers actually use.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   OBSERVATION_OPTIONS,
   escalationFor,
   isNoteScopedType,
   observationLabel,
+  peekObservations,
   type FieldNoteDraft,
   type NoteObservation,
   type NoteSummary,
+  type ObservationOption,
 } from '../lib/fieldNotes'
-import { rollUpNotes } from '../lib/noteRollup'
+import { noteAttribution, rollUpNotes } from '../lib/noteRollup'
 import { stalenessTier } from '../lib/staleness'
 import { lastConfirmedText, stalenessPresentation } from '../lib/stalenessDisplay'
 import type { ReporterType } from '../lib/userPreferences'
@@ -100,6 +116,15 @@ export interface FieldNoteSectionProps {
   lat: number
   lon: number
   mile?: number
+  /**
+   * Which of the card's two heights this is rendering into (#941).
+   *
+   * `'peek'` is the tethered card: the condition line and the two ends of
+   * the scale, and nothing that needs scrolling. `'open'` is the pulled-open
+   * card, and is the default because it is the complete form - a caller that
+   * forgets to say gets everything rather than silently getting less.
+   */
+  variant?: 'peek' | 'open'
   context: FieldNoteContext
 }
 
@@ -115,6 +140,7 @@ export function FieldNoteSection({
   lat,
   lon,
   mile,
+  variant = 'open',
   context,
 }: FieldNoteSectionProps) {
   const [text, setText] = useState('')
@@ -128,6 +154,10 @@ export function FieldNoteSection({
   // The observation just filed, so the section can acknowledge it and offer
   // the escalation. Reset when the card swaps to another part.
   const [filed, setFiled] = useState<NoteObservation | null>(null)
+  // The peek asks its question in visible words rather than only in the
+  // group's `aria-label`, so the id has to be real - and unique, because
+  // nothing here can promise there is one card on screen.
+  const askId = useId()
   useEffect(() => {
     setFiled(null)
     setText('')
@@ -158,6 +188,16 @@ export function FieldNoteSection({
   // ask below stays, because WRITING a note is the one thing that works
   // everywhere (the outbox is the whole design).
   const couldNotCheck = notes === null
+
+  // The freshness sentence, hoisted out of the markup because both heights
+  // print it: it is the peek's whole condition line, and the opened card's
+  // first one. One expression so the two cannot come to disagree about what
+  // this place's silence means.
+  const confirmedLine = couldNotCheck
+    ? 'Recent notes unavailable — no signal.'
+    : tier === 'never'
+      ? (presentation?.words ?? 'Never confirmed')
+      : lastConfirmedText(rollup.lastConfirmedAt, context.now)
 
   const file = async (observation: NoteObservation) => {
     const trimmed = text.trim()
@@ -219,6 +259,99 @@ export function FieldNoteSection({
     }
   }
 
+  /** One answer button. Built here rather than written out twice so the
+   *  peek's Dry and the opened card's Dry are the same control - same class,
+   *  same test id, same call into `file` - and cannot drift apart. */
+  const answer = (option: ObservationOption) => (
+    <button
+      key={option.id}
+      type="button"
+      className="poi-card__observation"
+      data-testid={`poi-card-observe-${option.id}`}
+      onClick={() => void file(option.id)}
+    >
+      {option.label}
+    </button>
+  )
+
+  /** What replaces the buttons once an answer is in: an acknowledgement and,
+   *  where the answer is problem-shaped, the hand-off into the real report
+   *  queue (FIELD_NOTES.md §5). No thanks-count, no streak - and shared by
+   *  both heights, because a tap on the peek has to end in the same place a
+   *  tap in the opened card does. */
+  const noted =
+    filed === null ? null : (
+      <div className="poi-card__noted" role="status">
+        <p>{`Noted: ${observationLabel(filed).toLowerCase()}. It sends when there’s signal.`}</p>
+        {escalation !== null && (
+          <button
+            type="button"
+            className="poi-card__escalate"
+            data-testid="poi-card-escalate"
+            onClick={() =>
+              context.onReportProblem(
+                anchor,
+                escalation.kind === 'form' ? escalation.type : undefined,
+              )
+            }
+          >
+            Report a problem here too
+          </button>
+        )}
+      </div>
+    )
+
+  // THE PEEK (#941). One condition line and the two ends of the scale, and
+  // deliberately nothing else: no history, no composer, no coordinates. The
+  // peek is what a hiker sees while still holding the phone at arm's length
+  // in front of the thing it describes, and the one interaction it owes them
+  // is the one DATA_NUDGES.md designed - one tap, standing there.
+  if (variant === 'peek') {
+    return (
+      <div className="poi-card__peek-conditions" data-testid="poi-card-peek-conditions">
+        {/* A live disagreement is never resolved down to one side to fit
+            (FIELD_NOTES.md §3: labelled, never averaged). The peek has room
+            for one line, so where two recent notes disagree it says THAT and
+            points at where both are, rather than printing the newer one and
+            quietly losing the other - which for a spring is the difference
+            between carrying water and not.
+
+            Otherwise the newest dated observation, which is the sentence the
+            design pass drew here ("Flowing — 2 days ago, maintainer"), and
+            the freshness line when there is no observation to date. */}
+        <p className="poi-card__last-confirmed" data-testid="poi-card-peek-line">
+          {rollup.contested !== null
+            ? 'Recent notes disagree — open for both.'
+            : (rollup.headline?.text ?? confirmedLine)}
+        </p>
+
+        {filed === null ? (
+          <>
+            {/* Asked out loud here, where the opened card asks it with a
+                section heading instead. `aria-labelledby` rather than a
+                second `aria-label`, so the question is announced once. */}
+            <p className="poi-card__ask" id={askId}>
+              How is it right now?
+            </p>
+            <div
+              className="poi-card__observations poi-card__observations--peek"
+              role="group"
+              aria-labelledby={askId}
+            >
+              {peekObservations(poiType).map(answer)}
+            </div>
+          </>
+        ) : (
+          noted
+        )}
+      </div>
+    )
+  }
+
+  // THE OPENED CARD. Everything above plus the history, every answer, and
+  // the composer. The `<section>` around this and its "Conditions" heading
+  // are PoiCard's, not this file's: the unverified sentence belongs at the
+  // top of the same section and PoiCard is what knows whether to say it.
   return (
     <div className="poi-card__conditions" data-testid="poi-card-conditions">
       {/* The words, always - WIREFRAMES.md §11's rule that the visual
@@ -239,13 +372,7 @@ export function FieldNoteSection({
         </p>
       )}
 
-      <p className="poi-card__last-confirmed">
-        {couldNotCheck
-          ? 'Recent notes unavailable — no signal.'
-          : tier === 'never'
-            ? (presentation?.words ?? 'Never confirmed')
-            : lastConfirmedText(rollup.lastConfirmedAt, context.now)}
-      </p>
+      <p className="poi-card__last-confirmed">{confirmedLine}</p>
 
       {/* Both sides of a live disagreement, labelled, never averaged
           (FIELD_NOTES.md §3): a hiker who knows two people disagree about a
@@ -264,16 +391,23 @@ export function FieldNoteSection({
 
       {(notes ?? []).slice(0, NOTES_SHOWN).map((note) => (
         <div key={note.id} className="poi-card__note">
-          <p>
+          {/* WHAT, THEN WHEN AND WHO, THEN THE WORDS (#941). The list used to
+              carry the tag and the quote alone, which asks a hiker to weigh
+              "Dry" without telling them whether it was said this morning or
+              in June, or by a maintainer or by somebody walking past. Both
+              facts are on every note the wire and the bake carry - the card
+              simply was not printing them. */}
+          <p className="poi-card__note-head">
             {note.observation !== null && (
               <span className="poi-card__note-tag">
                 {observationLabel(note.observation)}
               </span>
             )}
-            {note.note !== null && (
-              <span className="poi-card__note-text">“{note.note}”</span>
-            )}
+            <span className="poi-card__note-when">
+              {noteAttribution(note, context.now)}
+            </span>
           </p>
+          {note.note !== null && <p className="poi-card__note-text">“{note.note}”</p>}
           {/* Absent covers "no photo", "still uploading", "held on a flag"
               and "this server has no photo storage" all at once, and the
               card must not distinguish them - saying "a photo is waiting on
@@ -297,113 +431,101 @@ export function FieldNoteSection({
         </div>
       ))}
 
-      {filed === null ? (
-        <>
-          {/* The longer version, for the hiker who asked for it: the words
-              travel WITH the tap, in one note, rather than as a second
-              interaction (#759's opt-in delta). Skippable, never required. */}
-          {context.contributeConditions && (
-            <>
-              <textarea
-                className="poi-card__note-input"
-                data-testid="poi-card-note-input"
-                placeholder="Anything the next hiker should know? (optional)"
-                value={text}
-                rows={2}
-                onChange={(event) => setText(event.target.value)}
-              />
-              {/* The photo DATA_NUDGES.md's opted-in mode has promised since
-                  July: "a photo becomes the default, not the escalation"
-                  (#879). Offered only inside the opt-in, and optional
-                  inside it - the one-tap answer is the contribution, and
-                  everything else is a hiker choosing to give more.
+      {/* Where the answering happens, under its own heading (#941). The
+          design pass drew this as a band of its own rather than more of the
+          history above it, and the reason is the one the heading states:
+          everything above is what the field said, everything below is the
+          hiker saying something back.
 
-                  A note's photo publishes with its note. That is why the
-                  label says who sees it: somebody attaching a picture to a
-                  dry spring should know it is going to the next hiker
-                  rather than into a queue. */}
-              <label className="poi-card__note-photo">
-                <span className="poi-card__note-photo-label">
-                  Add a photo — the next hiker sees it with your note
-                </span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic"
-                  data-testid="poi-card-note-photo"
-                  onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
+          An `h4` under PoiCard's "Conditions" `h3`, which is what it is -
+          answering is part of conditions, not a topic beside it - and styled
+          to match, because the two read as siblings on screen. */}
+      <div className="poi-card__say">
+        <h4 className="poi-card__section-title">Say something back</h4>
+
+        {filed === null ? (
+          <>
+            {/* The longer version, for the hiker who asked for it: the words
+                travel WITH the tap, in one note, rather than as a second
+                interaction (#759's opt-in delta). Skippable, never required. */}
+            {context.contributeConditions && (
+              <>
+                <textarea
+                  className="poi-card__note-input"
+                  data-testid="poi-card-note-input"
+                  placeholder="Anything the next hiker should know? (optional)"
+                  value={text}
+                  rows={2}
+                  onChange={(event) => setText(event.target.value)}
                 />
-              </label>
-              {preparing && (
-                <p className="poi-card__note-photo-status" role="status">
-                  Shrinking the photo…
-                </p>
-              )}
-              {photoError !== null && (
-                <p className="poi-card__note-photo-status" role="alert">
-                  {photoError}
-                </p>
-              )}
-              {photo !== null && !preparing && (
-                <p className="poi-card__note-photo-status">
-                  {`Photo attached — ${Math.round(photo.size / 1024)} KB. Location and camera details are not included.`}
-                </p>
-              )}
-            </>
-          )}
-          <div
-            className="poi-card__observations"
-            role="group"
-            aria-label={`How is it right now?`}
-          >
-            {options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className="poi-card__observation"
-                data-testid={`poi-card-observe-${option.id}`}
-                onClick={() => void file(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <div className="poi-card__noted" role="status">
-          {/* No thanks-count, no streak - an acknowledgement and, where the
-              answer is problem-shaped, the hand-off into the real report
-              queue (FIELD_NOTES.md §5). */}
-          <p>{`Noted: ${observationLabel(filed).toLowerCase()}. It sends when there’s signal.`}</p>
-          {escalation !== null && (
-            <button
-              type="button"
-              className="poi-card__escalate"
-              data-testid="poi-card-escalate"
-              onClick={() =>
-                context.onReportProblem(
-                  anchor,
-                  escalation.kind === 'form' ? escalation.type : undefined,
-                )
-              }
-            >
-              Report a problem here too
-            </button>
-          )}
-        </div>
-      )}
+                {/* The photo DATA_NUDGES.md's opted-in mode has promised since
+                    July: "a photo becomes the default, not the escalation"
+                    (#879). Offered only inside the opt-in, and optional
+                    inside it - the one-tap answer is the contribution, and
+                    everything else is a hiker choosing to give more.
 
-      {/* The quiet, always-there entry: a report started from a place card
-          carries the place (FIELD_NOTES.md step 1). */}
-      {filed === null && (
-        <button
-          type="button"
-          className="poi-card__report-here"
-          data-testid="poi-card-report-here"
-          onClick={() => context.onReportProblem(anchor)}
-        >
-          Report a problem here
-        </button>
-      )}
+                    A note's photo publishes with its note. That is why the
+                    label says who sees it: somebody attaching a picture to a
+                    dry spring should know it is going to the next hiker
+                    rather than into a queue. */}
+                <label className="poi-card__note-photo">
+                  <span className="poi-card__note-photo-label">
+                    Add a photo — the next hiker sees it with your note
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic"
+                    data-testid="poi-card-note-photo"
+                    onChange={(event) =>
+                      void choosePhoto(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+                {preparing && (
+                  <p className="poi-card__note-photo-status" role="status">
+                    Shrinking the photo…
+                  </p>
+                )}
+                {photoError !== null && (
+                  <p className="poi-card__note-photo-status" role="alert">
+                    {photoError}
+                  </p>
+                )}
+                {photo !== null && !preparing && (
+                  <p className="poi-card__note-photo-status">
+                    {`Photo attached — ${Math.round(photo.size / 1024)} KB. Location and camera details are not included.`}
+                  </p>
+                )}
+              </>
+            )}
+            {/* Every answer, including the two the peek carried and the
+                `not_found` it withholds - this is the surface where a
+                dispute is a considered tap rather than a mis-hit. */}
+            <div
+              className="poi-card__observations"
+              role="group"
+              aria-label="How is it right now?"
+            >
+              {options.map(answer)}
+            </div>
+          </>
+        ) : (
+          noted
+        )}
+
+        {/* The quiet, always-there entry: a report started from a place card
+            carries the place (FIELD_NOTES.md step 1). */}
+        {filed === null && (
+          <button
+            type="button"
+            className="poi-card__report-here"
+            data-testid="poi-card-report-here"
+            onClick={() => context.onReportProblem(anchor)}
+          >
+            Report a problem here
+          </button>
+        )}
+      </div>
     </div>
   )
 }

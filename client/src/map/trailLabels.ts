@@ -8,7 +8,7 @@
 // peak labels and the OSM basemap's own name layers, none of which read the
 // trails source. This is the missing layer.
 //
-// WHY THE A.T.-ONLY MAP NEVER NEEDED IT
+// WHY THE A.T.-ONLY MAP NEVER NEEDED IT, AND WHY THAT IS NOW A RULE HERE
 //
 // One line worth naming, and the header already names it (`Appalachian Trail ·
 // NY`), so a label on the line would have been the same fact twice. That stops
@@ -16,6 +16,11 @@
 // export shows `A.T.`, `Long Path` and `Kakiat Tr.` beside their lines, because
 // in a forty-line park a hiker at a junction cannot otherwise tell which line
 // is which without tapping each one in turn.
+//
+// The side trails are the ones that need naming TODAY - nothing else on the
+// screen says which blue-blazed line leads to the shelter. So this layer draws
+// them and leaves the through-route alone; TRAIL_LABEL_FILTER carries that
+// decision, the measurement behind it, and what would reverse it.
 //
 // THE TRAP THIS MODULE EXISTS TO GET RIGHT, AND IT IS INVERTED FROM THE LINES
 //
@@ -66,6 +71,55 @@ export const TRAIL_LABEL_SORT_KEY_EXPRESSION = [
 ]
 
 /**
+ * Sources drawn at the through-route width - map/style.ts's
+ * PRIMARY_TRAIL_SOURCES, restated for the reason nearbyTrails.ts restates its
+ * own list: `style.ts` imports THIS module, so importing it back would be a
+ * cycle. trailLabels.test.ts imports both and fails if they drift.
+ */
+export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
+
+/**
+ * Which lines get a name, and the one that deliberately does not.
+ *
+ * Two conditions, and the second is a decision rather than a mechanism:
+ *
+ * 1. A trail with no name draws no label. Absent, never "Unnamed" - the
+ *    restraint lib/lineDetail.ts applies to a spur with no resolved
+ *    destination.
+ * 2. **The through-route draws no label either.** The header already says
+ *    `Appalachian Trail · NY`, and lib/lineDetail.ts refuses to repeat ATC's
+ *    formal name under a heading that already carries it - "the same fact
+ *    twice". Printing it along the line is that same repetition, at every
+ *    `symbol-spacing` interval down the whole corridor.
+ *
+ * WHAT MADE THIS CONCRETE, measured against the live bucket 2026-08-23: the
+ * published `trails.geojson` names every one of its 4,221 features, and all
+ * 3,025 centerline segments carry the same string - "Appalachian National
+ * Scenic Trail", thirty-three characters, repeating every 250 px along the one
+ * line the screen is already about. The 1,196 side trails are the labels worth
+ * having ("Campbell Shelter Side Trail", "McAfee Knob Fire Rd Side Trail"),
+ * because nothing else on the screen names those.
+ *
+ * THE REVISIT TRIGGER, NAMED. This is right for a map with ONE through-route
+ * and stops being obviously right with two: the v2 wireframe export's frame
+ * `1f` draws the A.T. labelled `A.T.` among Harriman's other lines, where the
+ * through-route is one line in a thicket rather than the whole subject. When
+ * nearby networks ship (#768), this suppression is the first thing to
+ * re-argue - and the honest form of the frame's answer is a SHORT display
+ * name, which the client cannot invent for itself: rewording a steward's own
+ * value is what features/NEARBY_TRAILS.md §6 forbids, so a short name has to
+ * arrive as data, from the org record features/SOURCE_REGISTRY.md defines.
+ */
+export const TRAIL_LABEL_FILTER: unknown[] = [
+  'all',
+  ['!=', ['to-string', ['get', 'name']], ''],
+  [
+    '!',
+    ['in', ['to-string', ['get', 'source']], ['literal', [...THROUGH_ROUTE_SOURCES]]],
+  ],
+]
+
+/**
  * The zoom trail names start drawing at.
  *
  * Set to the zoom waypoint pins start at, which is the same threshold
@@ -87,11 +141,9 @@ export { POI_PIN_MIN_ZOOM as TRAIL_LABEL_MIN_ZOOM } from './poiLayers'
 /**
  * The label layer for the trails source.
  *
- * A NAME IS OMITTED, NEVER PLACEHOLDERED. The filter drops features whose
- * `name` is absent or empty, so an unnamed trail draws its line and no label -
- * the same restraint lib/lineDetail.ts applies to a spur with no resolved
- * destination. A label reading "Unnamed trail" would be this map inventing a
- * fact about somebody else's data.
+ * What it labels and what it deliberately does not is TRAIL_LABEL_FILTER's,
+ * argued there: an unnamed trail draws no label, and neither does the
+ * through-route the header already names.
  *
  * A NAME THAT WILL NOT FIT IS DROPPED, and that is MapLibre's own behaviour
  * for `symbol-placement: line` rather than something configured here: a label
@@ -112,7 +164,7 @@ export function buildTrailLabelLayer(
     type: 'symbol',
     source: sourceId,
     minzoom,
-    filter: ['!=', ['to-string', ['get', 'name']], ''] as never,
+    filter: TRAIL_LABEL_FILTER as never,
     layout: {
       'text-field': ['get', 'name'] as never,
       'text-font': FONT,

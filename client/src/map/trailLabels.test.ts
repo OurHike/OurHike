@@ -3,6 +3,8 @@ import {
   buildTrailLabelLayer,
   CHOSEN_LABEL_SORT_KEY,
   NEARBY_LABEL_SORT_KEY,
+  THROUGH_ROUTE_SOURCES,
+  TRAIL_LABEL_FILTER,
   TRAIL_LABEL_LAYER_ID,
   TRAIL_LABEL_SORT_KEY_EXPRESSION,
 } from './trailLabels'
@@ -10,6 +12,7 @@ import { nearbyTrailOpacityExpression, CHOSEN_SYSTEM_SOURCES } from './nearbyTra
 import {
   BLAZE_LAYER_ID,
   PRIMARY_TRAIL_SORT_KEY,
+  PRIMARY_TRAIL_SOURCES,
   SIDE_TRAIL_SORT_KEY,
   TRAILS_SOURCE_ID,
   buildMapStyle,
@@ -57,14 +60,8 @@ describe('the trail-name label layer', () => {
     expect(layout(LABEL)['symbol-placement']).toBe('line')
   })
 
-  it('omits an unnamed trail rather than labelling it "Unnamed"', () => {
-    // The restraint lib/lineDetail.ts applies to a spur with no resolved
-    // destination. A label this map invented is a fact about somebody else's
-    // data that nobody stands behind.
-    const filter = (LABEL as { filter?: unknown }).filter as unknown[]
-    expect(filter[0]).toBe('!=')
-    expect(filter[1]).toEqual(['to-string', ['get', 'name']])
-    expect(filter[2]).toBe('')
+  it('carries the filter that decides what gets a name', () => {
+    expect((LABEL as { filter?: unknown }).filter).toEqual(TRAIL_LABEL_FILTER)
   })
 
   it('lets a name that will not fit be dropped, rather than placing it off its trail', () => {
@@ -73,6 +70,59 @@ describe('the trail-name label layer', () => {
     // false statement at a junction this layer exists to prevent.
     expect(layout(LABEL)['text-allow-overlap']).toBeUndefined()
     expect(layout(LABEL)['text-ignore-placement']).toBeUndefined()
+  })
+})
+
+describe('what gets a name, and what deliberately does not', () => {
+  /** MapLibre semantics for the three operators the filter uses: `to-string`
+   *  renders a missing property as "", `all` is a conjunction, `in` is set
+   *  membership. Interpreted rather than shape-asserted, for the reason
+   *  nearbyTrails.test.ts gives - a structural check agrees with a bug. */
+  function labelled(name: string | null, source: string | null): boolean {
+    const [op, hasName, notThroughRoute] = TRAIL_LABEL_FILTER
+    expect(op).toBe('all')
+
+    const [neq, , empty] = hasName as unknown[]
+    expect(neq).toBe('!=')
+    const named = (name ?? '') !== (empty as string)
+
+    const [not, inExpr] = notThroughRoute as unknown[]
+    expect(not).toBe('!')
+    const members = ((inExpr as unknown[])[2] as ['literal', string[]])[1]
+    return named && !members.includes(source ?? '')
+  }
+
+  it('labels a named side trail, which nothing else on the screen names', () => {
+    expect(labelled('Campbell Shelter Side Trail', 'side_trails')).toBe(true)
+  })
+
+  it('does NOT label the through-route, because the header already names it', () => {
+    // Measured 2026-08-23 against the live bucket: all 3,025 centerline
+    // segments carry "Appalachian National Scenic Trail", which at
+    // symbol-spacing 250 would repeat down the whole corridor - the same fact
+    // the header states, over and over, on the one line the screen is about.
+    // lib/lineDetail.ts already refuses this repetition in the sheet.
+    expect(labelled('Appalachian National Scenic Trail', 'centerline')).toBe(false)
+  })
+
+  it('omits an unnamed trail rather than labelling it "Unnamed"', () => {
+    // The restraint lib/lineDetail.ts applies to a spur with no resolved
+    // destination. A label this map invented is a fact about somebody else's
+    // data that nobody stands behind.
+    expect(labelled(null, 'side_trails')).toBe(false)
+    expect(labelled('', 'side_trails')).toBe(false)
+  })
+
+  it('labels a named line from a source it has never heard of', () => {
+    // A nearby network's trail is exactly what this layer is for, and an
+    // unrecognised source is not a through-route - so it gets its name.
+    expect(labelled('Suffern–Bear Mountain Trail', 'oprhp_trails')).toBe(true)
+  })
+
+  it('keeps its through-route list pinned to the map style’s', () => {
+    // Restated rather than imported, because style.ts imports THIS module and
+    // the reverse would be a cycle. Only safe while the two cannot drift.
+    expect(THROUGH_ROUTE_SOURCES).toEqual(PRIMARY_TRAIL_SOURCES)
   })
 })
 

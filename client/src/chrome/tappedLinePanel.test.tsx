@@ -73,6 +73,13 @@ const TAP: TappedLine = {
   source: 'centerline',
   name: 'Appalachian Trail',
   blazeColor: 'White',
+  // Null on all three, because this fixture is the corridor's own centerline
+  // and the A.T. publishes none of them - #783's nearby-trail facts arrived
+  // on `main` while this branch was open, and lib/lineDetail.ts's
+  // TappedLineFacts is where the reason each is independently absent lives.
+  lengthMiles: null,
+  park: null,
+  trailStatus: null,
   at: [-77, 39 + 2 * MILE_LAT],
 }
 

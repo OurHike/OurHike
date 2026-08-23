@@ -266,6 +266,21 @@ throws the result away. No checkout, no working tree, no index, no branch
 moved. It is exact — the same merge machinery, the same answer — and it takes
 about a millisecond per branch.
 
+**It answers "does it conflict?", which is not the same question as "is the
+merge safe".** A clean auto-merge can still produce a tree that does not
+compile, and a refactor branch is where that is likeliest: this file's own
+branch merged `main` clean forty-five minutes after opening, and the merged
+tree failed `npm run typecheck` — [#783](https://github.com/OurHike/OurHike/issues/783)
+had widened `TappedLine` with three new required fields on `main` while a
+fixture for that type was being written on the branch. Neither side touched
+the other's lines, so there was nothing for git to flag. **GitHub's merge
+button would have produced exactly that tree and landed a red `main`.**
+
+So `CONFLICTS` is a reason to act and `clean` is not a clearance. When a
+branch has moved a type, a signature, or a file, and `main` has since touched
+anything it imports, merge into a scratch worktree and run the checks before
+trusting the word.
+
 ## 2. Slice by conflict surface, not by subject
 
 Two branches collide because they edit the same lines, not because they are

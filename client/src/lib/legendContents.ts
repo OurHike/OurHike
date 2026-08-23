@@ -254,3 +254,23 @@ export function legendDropSummary(
   const drawn = measured.reduce((total, row) => total + (row.drawnCount ?? 0), 0)
   return present > 0 && drawn < present ? { present, drawn } : null
 }
+
+/**
+ * The one sentence the legend gains when the map is drawing more than one
+ * system's trails (#783, features/NEARBY_TRAILS.md §1).
+ *
+ * A SENTENCE OF STATE, AND DELIBERATELY NOT A CONTROL. The doc's reasoning,
+ * kept because it is the whole decision: "nothing here is hideable: nearby
+ * trails are context, and context that can be switched off is a mode nobody
+ * remembers being in." The second clause is what stops a hiker hunting the
+ * legend for the toggle the first clause implies - a legend that explains a
+ * dimming without saying it is permanent reads as a control that has gone
+ * missing.
+ *
+ * Shown only while a ghosted trail is actually on screen (map/drawnBlazes.ts's
+ * drawsNearbyTrails). On an A.T.-only download nothing is dimmed, and a
+ * sentence explaining a distinction the map is not drawing is a sentence about
+ * nothing.
+ */
+export const GHOSTED_TRAILS_NOTE =
+  'Other trails are dimmed; the trail you chose is full-strength. Nothing here turns them off.'

@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildLineDetail,
+  CHOSEN_SYSTEM_SOURCES,
   THROUGH_ROUTE_SOURCES,
   type TappedLineFacts,
+  type TrailSourceTable,
 } from './lineDetail'
 import { PRIMARY_TRAIL_SOURCES } from '../map/style'
+import { CHOSEN_SYSTEM_SOURCES as MAP_CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
 import type { SpurRecord } from './spurDestination'
 import type { StoredPoi } from './trailData'
 
@@ -186,5 +189,136 @@ describe('every other line', () => {
     // Restated rather than imported so lib/ stays free of the map layer -
     // which only holds if the two lists cannot drift apart silently.
     expect(THROUGH_ROUTE_SOURCES).toEqual(PRIMARY_TRAIL_SOURCES)
+  })
+
+  it('keeps its chosen-system list pinned to the map’s', () => {
+    expect(CHOSEN_SYSTEM_SOURCES).toEqual(MAP_CHOSEN_SYSTEM_SOURCES)
+  })
+})
+
+// features/NEARBY_TRAILS.md §§2, 3 and 6 - what a line belonging to somebody
+// else's network says, and what it refuses to offer (#783).
+
+/** A nearby trail as the network artifact publishes it. */
+const NEARBY_LINE: TappedLineFacts = {
+  id: 'oprhp_trails:8812',
+  source: 'oprhp_trails',
+  name: 'Suffern–Bear Mountain Trail',
+  blazeColor: 'Yellow',
+  lengthMiles: 24,
+  park: 'Harriman State Park',
+  trailStatus: 'Open',
+}
+
+/** The published attribution for that source, verbatim from
+ *  pipeline/sources.json's `oprhp_trails` record. */
+const SOURCES: TrailSourceTable = {
+  oprhp_trails: {
+    attribution: 'New York State Office of Parks, Recreation and Historic Preservation',
+    edited: '2026-08-04T12:00:00Z',
+  },
+}
+
+describe('a nearby trail’s sheet', () => {
+  it('names its length and its park on one line', () => {
+    const detail = buildLineDetail(NEARBY_LINE, {}, [], 'imperial', 'Appalachian Trail')
+    expect(detail.extentLine).toBe('24.0 mi · Harriman State Park')
+  })
+
+  it('keeps whichever half it has when the other is missing', () => {
+    // OPRHP publishes Miles on every segment and a Unit on most, so a trail
+    // with a length and no park is ordinary rather than an error - and
+    // "24.0 mi · " with nothing after it would read as one.
+    const noPark = buildLineDetail({ ...NEARBY_LINE, park: null }, {}, [])
+    expect(noPark.extentLine).toBe('24.0 mi')
+
+    const noLength = buildLineDetail({ ...NEARBY_LINE, lengthMiles: null }, {}, [])
+    expect(noLength.extentLine).toBe('Harriman State Park')
+
+    const neither = buildLineDetail(
+      { ...NEARBY_LINE, lengthMiles: null, park: null },
+      {},
+      [],
+    )
+    expect(neither.extentLine).toBeNull()
+  })
+
+  it('takes its provenance from the published attribution, never from a table in this file', () => {
+    // §6's prohibition. The wording is a licence condition, so it ships from
+    // the steward's own record and this client only renders it.
+    const detail = buildLineDetail(
+      NEARBY_LINE,
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      SOURCES,
+    )
+    expect(detail.sourceLine).toBe(
+      'From New York State Office of Parks, Recreation and Historic Preservation.',
+    )
+  })
+
+  it('falls back to the raw source id when nothing published an attribution', () => {
+    const detail = buildLineDetail(NEARBY_LINE, {}, [])
+    expect(detail.sourceLine).toBe('From oprhp_trails.')
+  })
+
+  it('says a trail is not the chosen one, and where switching lives', () => {
+    const detail = buildLineDetail(NEARBY_LINE, {}, [])
+    expect(detail.switchNote).toBe(
+      'Not the trail you chose. Switching happens in the picker.',
+    )
+  })
+
+  it('says nothing about switching on the chosen trail’s own lines', () => {
+    for (const source of CHOSEN_SYSTEM_SOURCES) {
+      const detail = buildLineDetail(
+        { id: 'x', source, name: null, blazeColor: 'White' },
+        {},
+        [],
+      )
+      expect(detail.switchNote).toBeNull()
+    }
+  })
+})
+
+describe('a long-term closed trail', () => {
+  it('names the steward who closed it and the layer’s own edit date', () => {
+    const detail = buildLineDetail(
+      { ...NEARBY_LINE, trailStatus: 'Closed' },
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      SOURCES,
+    )
+    expect(detail.closureLine).toBe(
+      'Closed by New York State Office of Parks, Recreation and Historic Preservation · layer edited 4 Aug 2026',
+    )
+  })
+
+  it('drops the "by" clause rather than inventing an authority for the claim', () => {
+    const detail = buildLineDetail({ ...NEARBY_LINE, trailStatus: 'Closed' }, {}, [])
+    expect(detail.closureLine).toBe('Closed')
+  })
+
+  it('says nothing for a status that is not "closed"', () => {
+    // §3 is explicit that Proposed and blank/Unknown never ship at all, so a
+    // value arriving here that is neither is a fact the sheet has nothing to
+    // say about - not one it should paraphrase.
+    for (const status of ['Open', 'Proposed', 'Unknown', '', null, undefined]) {
+      const detail = buildLineDetail({ ...NEARBY_LINE, trailStatus: status }, {}, [])
+      expect(detail.closureLine).toBeNull()
+    }
+  })
+
+  it('reads the status case-insensitively, because a steward’s casing is not a decision', () => {
+    for (const status of ['closed', 'CLOSED', ' Closed ']) {
+      const detail = buildLineDetail({ ...NEARBY_LINE, trailStatus: status }, {}, [])
+      expect(detail.closureLine).toBe('Closed')
+    }
   })
 })

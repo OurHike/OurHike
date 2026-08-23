@@ -57,7 +57,12 @@ import {
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
-import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import {
+  CLOSURE_CASING_LAYER_ID,
+  CLOSURE_LAYER_ID,
+  LONG_TERM_CLOSURE_CASING_LAYER_ID,
+  LONG_TERM_CLOSURE_LAYER_ID,
+} from '../lib/closureStyle'
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -628,6 +633,13 @@ describe('the offline-only background', () => {
       ROUTE_POINT_LAYER_ID,
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
+      // The long-term closures a steward marks on the trail line itself
+      // (#783, features/NEARBY_TRAILS.md §3). Same treatment as the two
+      // above, different feed - and it belongs in this list for the reason
+      // the comment at the top gives: it is a safety layer, so a hiker on the
+      // offline background is exactly who must keep it.
+      LONG_TERM_CLOSURE_CASING_LAYER_ID,
+      LONG_TERM_CLOSURE_LAYER_ID,
       // All three waypoint ranks (#597, and the staleness rings with #759),
       // dots under rings under pins - a waypoint that wins its collision
       // hides its own dot, and one that loses still leaves it.

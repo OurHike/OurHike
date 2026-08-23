@@ -32,6 +32,7 @@
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { BLAZE_LAYER_ID } from './style'
+import { isNearbyTrail } from './nearbyTrails'
 
 /** The real MapLibre map — see map/drawnPois.ts for why not a structural
  *  stand-in. */
@@ -39,6 +40,10 @@ export type DrawnBlazeMap = MapLibreMap
 
 /** The property `lib/blaze.py` normalizes every trail-line source into. */
 export const BLAZE_COLOR_PROPERTY = 'blaze_color'
+
+/** The pipeline's own source key, published on every trail feature by
+ *  export_trails.py - what width, sort order and ghosting all key off. */
+export const TRAIL_SOURCE_PROPERTY = 'source'
 
 /**
  * How many distinct trails of each blaze the map is drawing right now.
@@ -82,4 +87,31 @@ export function drawnBlazeCounts(map: DrawnBlazeMap): Map<string, number> {
   }
 
   return counts
+}
+
+/**
+ * Whether the map is currently drawing any trail that is not the chosen
+ * system's (#783, features/NEARBY_TRAILS.md §1).
+ *
+ * The legend's ghosting sentence is the only caller, and it is why this
+ * returns a boolean rather than a count: the sentence explains a state
+ * ("other trails are dimmed"), it does not report a quantity, and a number
+ * nobody renders is a number that goes wrong unnoticed.
+ *
+ * Asked of the same rendered frame the blaze counts come from, with the same
+ * two traps handled the same way - see this module's header. It does NOT
+ * de-duplicate by feature id, because it stops at the first nearby trail it
+ * finds: one is as true as forty for the sentence this answers.
+ *
+ * False where the layer is not in the style yet, which is the honest answer on
+ * a cold start: the legend says nothing about ghosting rather than explaining
+ * a state the map has not drawn.
+ */
+export function drawsNearbyTrails(map: DrawnBlazeMap): boolean {
+  if (map.getLayer(BLAZE_LAYER_ID) === undefined) return false
+
+  const features = map.queryRenderedFeatures(undefined, { layers: [BLAZE_LAYER_ID] })
+  return features.some((feature) =>
+    isNearbyTrail((feature.properties ?? {})[TRAIL_SOURCE_PROPERTY] as string | null),
+  )
 }

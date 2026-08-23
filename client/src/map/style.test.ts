@@ -43,7 +43,15 @@ import {
 import { POI_LAYER_ID, POI_SOURCE_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
-import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import {
+  CLOSURE_BAR_RHYTHM,
+  CLOSURE_CASING_LAYER_ID,
+  CLOSURE_COLOR,
+  CLOSURE_LAYER_ID,
+  LONG_TERM_CLOSED_FILTER,
+  LONG_TERM_CLOSURE_CASING_LAYER_ID,
+  LONG_TERM_CLOSURE_LAYER_ID,
+} from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
@@ -117,11 +125,28 @@ function sortKeyFor(layerId: string, source: string): number {
   return compiled.value.evaluate({ zoom: 14 }, { properties: { source } } as never)
 }
 
+/**
+ * The closure treatment drawn over the trails source (#783,
+ * features/NEARBY_TRAILS.md §3). Bound to that source because a long-term
+ * closure's geometry IS the trail line, but it is a BARRIER rather than a
+ * trail line - so the two invariants below, which are about how trail lines
+ * are drawn, do not reach it. Its own rules are lib/closureStyle.ts's and are
+ * tested there.
+ */
+const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [
+  LONG_TERM_CLOSURE_LAYER_ID,
+  LONG_TERM_CLOSURE_CASING_LAYER_ID,
+]
+
 /** Every trail layer bound to the trail source - casing and blaze alike. */
 function trailLayerIds(): string[] {
   return style()
     .layers.filter(
-      (l) => l.type === 'line' && 'source' in l && l.source === TRAILS_SOURCE_ID,
+      (l) =>
+        l.type === 'line' &&
+        'source' in l &&
+        l.source === TRAILS_SOURCE_ID &&
+        !CLOSURE_OVERLAY_LAYER_IDS.includes(l.id),
     )
     .map((l) => l.id)
 }
@@ -146,13 +171,48 @@ describe('buildMapStyle', () => {
     // near-white, the casing is the part that reads. Asserted across every
     // line layer bound to the trail source rather than on the blaze layer
     // alone, since a casing drawn dashed would leave exactly the same gaps.
-    for (const l of style().layers) {
-      if (l.type !== 'line' || !('source' in l) || l.source !== TRAILS_SOURCE_ID) continue
-
+    //
+    // The closure overlay is excluded and is the ONE exception WIREFRAMES.md
+    // §3 states: the barred band is the map's only permitted dashed rhythm,
+    // specced in §7. It is a barrier drawn over the trail, not the trail - and
+    // the test below pins it dashed, so admitting the exception here cannot
+    // quietly become "closures went solid too".
+    for (const id of trailLayerIds()) {
       expect(
-        (l.paint as Record<string, unknown> | undefined)?.['line-dasharray'],
+        (layer(id).paint as Record<string, unknown> | undefined)?.['line-dasharray'],
       ).toBeUndefined()
     }
+  })
+
+  it('keeps the long-term closure a BARRED band, which is the exception the rule above allows', () => {
+    // The other half of the exception. A long-term closure that lost its bars
+    // would be a wide red line over a trail - which reads as a route, and is
+    // the confident false statement lib/closureStyle.ts exists to prevent.
+    const band = layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>
+
+    expect(band['line-dasharray']).toEqual(CLOSURE_BAR_RHYTHM)
+    expect(band['line-color']).toBe(CLOSURE_COLOR)
+  })
+
+  it('draws the long-term closure with exactly the temporary closure’s treatment', () => {
+    // §3's "one vocabulary for 'do not walk this'". Asserted as byte equality
+    // of the paint rather than as matching constants, so a change to either
+    // feed's appearance that forgets the other fails here - the two kinds of
+    // closed are told apart by the SHEET, never by the line.
+    expect(layer(LONG_TERM_CLOSURE_LAYER_ID).paint).toEqual(layer(CLOSURE_LAYER_ID).paint)
+    expect(layer(LONG_TERM_CLOSURE_CASING_LAYER_ID).paint).toEqual(
+      layer(CLOSURE_CASING_LAYER_ID).paint,
+    )
+  })
+
+  it('draws the barrier only on lines their steward marks closed, and reads the status case-insensitively', () => {
+    const filter = (layer(LONG_TERM_CLOSURE_LAYER_ID) as { filter?: unknown })
+      .filter as unknown[]
+
+    expect(filter).toEqual(LONG_TERM_CLOSED_FILTER)
+    // `downcase` over the raw value, so a layer that starts publishing
+    // `CLOSED` keeps drawing its barrier rather than silently dropping it.
+    expect(JSON.stringify(filter)).toContain('downcase')
   })
 
   it('drives line-width from the source attribute, as a second data-driven channel', () => {

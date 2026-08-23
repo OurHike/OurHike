@@ -35,6 +35,7 @@
 
 import {
   computeLegendContents,
+  GHOSTED_TRAILS_NOTE,
   legendDropSummary,
   withEveryType,
   type BoundingBox,
@@ -76,6 +77,9 @@ export interface LegendProps {
   bbox: BoundingBox
   points: MapPoint[]
   blazeCounts: BlazeCount[]
+  /** Whether a trail from outside the chosen system is on screen (#783), which
+   *  is the only condition under which the ghosting sentence means anything. */
+  ghostedTrailsDrawn?: boolean
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /**
@@ -228,6 +232,7 @@ export function Legend({
   bbox,
   points,
   blazeCounts,
+  ghostedTrailsDrawn = false,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -374,6 +379,13 @@ export function Legend({
           the rest.
         </p>
       )}
+
+      {/* features/NEARBY_TRAILS.md §1's sentence of state - above the blaze
+          rows, because it is about the lines those rows count, and a hiker
+          reading down should know the rows are describing two strengths of
+          line before they read the first one. No control accompanies it, and
+          that is the decision rather than an omission. */}
+      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
 
       {blazeCounts.length > 0 && (
         <ul className="legend__blazes">

@@ -51,6 +51,12 @@ export interface TappedLine {
   source: string | null
   name: string | null
   blazeColor: string | null
+  /** A nearby trail's own facts (#783). Null on every A.T. line, which
+   *  publishes none of them - see lib/lineDetail.ts's TappedLineFacts for why
+   *  each is independently absent. */
+  lengthMiles: number | null
+  park: string | null
+  trailStatus: string | null
   /**
    * A point ON the tapped line, nearest the touch - not the touch itself.
    *
@@ -83,6 +89,18 @@ function stringProp(
 ): string | null {
   const value = properties?.[key]
   return typeof value === 'string' && value !== '' ? value : null
+}
+
+/** A published numeric property, or null for anything that is not a finite
+ *  number. A string that happens to parse is NOT accepted: a length arriving
+ *  as text means the export changed shape, and coercing it here would hide
+ *  that behind a plausible figure on a sheet. */
+function numberProp(
+  properties: Record<string, unknown> | null | undefined,
+  key: string,
+): number | null {
+  const value = properties?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 /** Every coordinate of a LineString or MultiLineString, flat. Both shapes are
@@ -141,6 +159,14 @@ function asTappedLine(
     source: stringProp(feature.properties, 'source'),
     name: stringProp(feature.properties, 'name'),
     blazeColor: stringProp(feature.properties, 'blaze_color'),
+    // The property names are the pipeline's normalized ones, not any one
+    // steward's field names - OPRHP's own columns are `Miles`, `Unit` and
+    // `Status`, and features/SOURCE_REGISTRY.md's field map is what renames
+    // them on the way in. Reading a steward's raw column here would put a
+    // second, undeclared field map in the client.
+    lengthMiles: numberProp(feature.properties, 'length_miles'),
+    park: stringProp(feature.properties, 'park'),
+    trailStatus: stringProp(feature.properties, 'trail_status'),
     at: nearestVertex(feature.geometry, near),
   }
 }

@@ -853,6 +853,17 @@
   pointer-events: none;
 }
 
+/* features/NEARBY_TRAILS.md §1's sentence of state, above the blaze rows it
+   describes (#783). Quiet like the drop summary, and for the same reason: it
+   explains the rows rather than competing with them. No control, so nothing
+   here is interactive or looks it. */
+.legend__note {
+  margin: var(--space-3, 12px) 0 0;
+  color: var(--fg-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 /* The header summary. Deliberately quieter than the rows it summarises. */
 .legend__dropped {
   margin: var(--space-3, 12px) 0 0;

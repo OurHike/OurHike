@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend } from './Legend'
+import { GHOSTED_TRAILS_NOTE } from '../lib/legendContents'
 import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
@@ -65,6 +66,46 @@ function rowFor(name: string) {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+})
+
+describe('the ghosting sentence (#783)', () => {
+  // features/NEARBY_TRAILS.md §1: the legend gains one sentence of state and
+  // NO new control, because "context that can be switched off is a mode
+  // nobody remembers being in".
+
+  it('explains the dimming when another network’s trails are on screen', () => {
+    render(<Legend {...PROPS} ghostedTrailsDrawn />)
+
+    expect(screen.getByText(GHOSTED_TRAILS_NOTE)).toBeInTheDocument()
+  })
+
+  it('says nothing at all on an A.T.-only map', () => {
+    // A sentence explaining a distinction the map is not drawing is a
+    // sentence about nothing - and it would send a hiker looking for the
+    // dimmed lines it describes.
+    render(<Legend {...PROPS} />)
+
+    expect(screen.queryByText(GHOSTED_TRAILS_NOTE)).not.toBeInTheDocument()
+  })
+
+  it('says the dimming cannot be turned off, in the sentence itself', () => {
+    // The clause that stops a hiker hunting the legend for a toggle the rest
+    // of the sentence implies.
+    expect(GHOSTED_TRAILS_NOTE).toMatch(/nothing here turns them off/i)
+  })
+
+  it('adds no control alongside it', () => {
+    // The count is the assertion: whatever controls the legend already has,
+    // the ghosting sentence must not add one.
+    const withoutNote = render(<Legend {...PROPS} />)
+    const before = withoutNote.container.querySelectorAll('button, input, select').length
+    cleanup()
+
+    const withNote = render(<Legend {...PROPS} ghostedTrailsDrawn />)
+    const after = withNote.container.querySelectorAll('button, input, select').length
+
+    expect(after).toBe(before)
+  })
 })
 
 describe('Legend', () => {

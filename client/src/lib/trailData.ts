@@ -28,6 +28,7 @@ import {
   ELEVATION_KEY,
   POI_TYPES,
   CLUB_SECTIONS_KEY,
+  STEWARDS_KEY,
   HIGHLIGHTS_KEY,
   poiKey,
   RETIRED_POI_KEY,
@@ -41,6 +42,7 @@ import {
   storedClubSections,
   type ClubSections,
 } from './clubSections'
+import { EMPTY_STEWARDS, parseStewards, storedStewards, type Stewards } from './stewards'
 import { parseHighlights, storedHighlights, type Highlight } from './highlights'
 import {
   NO_TOMBSTONES,
@@ -61,6 +63,7 @@ export const SPURS_STORE_KEY = 'ourhike:spurs'
 export const RETIRED_POI_STORE_KEY = 'ourhike:retired-poi'
 export const ELEVATION_STORE_KEY = 'ourhike:elevation'
 export const CLUB_SECTIONS_STORE_KEY = 'ourhike:club-sections'
+export const STEWARDS_STORE_KEY = 'ourhike:stewards'
 export const HIGHLIGHTS_STORE_KEY = 'ourhike:highlights'
 
 export interface StoredPoi {
@@ -238,6 +241,10 @@ export interface TrailData {
    *  export_club_sections.py existed, which costs the corridor view its
    *  subject and nothing else - the trail still draws, in its blaze. */
   clubSections: ClubSections
+  /** Who the map's data belongs to (#927). Empty on a release built before
+   *  pipeline/export_sources.py existed, which the sources section reads as
+   *  "nothing to say" rather than as a failure. */
+  stewards: Stewards
   /** Stretches worth going to. Empty for a release built before
    *  export_highlights.py existed, which costs the corridor view its second
    *  subject and nothing else. */
@@ -780,6 +787,15 @@ async function fetchRetiredPois(
  *  and a phone pointed at an older release should still get its trails and
  *  POIs. The corridor view then has no subject below the seam, which is
  *  exactly the screen this app shipped with. */
+async function fetchStewards(
+  expected: PublishedHashLookup,
+  signal: AbortSignal | undefined,
+): Promise<Stewards> {
+  const fetched = await fetchOptionalArtifact(STEWARDS_KEY, expected, signal)
+  if (fetched === null) return EMPTY_STEWARDS
+  return parseStewards(JSON.parse(decode(fetched.bytes)) as unknown)
+}
+
 async function fetchClubSections(
   expected: PublishedHashLookup,
   signal?: AbortSignal,
@@ -853,6 +869,7 @@ export async function downloadTrailData({
     'Trail lines',
     'Spur destinations',
     'Maintaining clubs',
+    'Data stewards',
     'Highlights',
     'Retired waypoints',
     'Elevation profile',
@@ -928,37 +945,46 @@ export async function downloadTrailData({
   // Still all-or-nothing: `Promise.all` rejects on the first failure and
   // nothing below commits, which is the property the `set()` calls at the end
   // depend on.
-  const [poiGroups, spurs, clubSections, highlights, retiredPois] = await Promise.all([
-    Promise.all(
-      POI_TYPES.map(async (type) => {
-        const fetched = await fetchArtifact(poiKey(type), expected, signal)
-        finished(type)
-        return readPois(decode(fetched.bytes), type)
+  const [poiGroups, spurs, clubSections, stewards, highlights, retiredPois] =
+    await Promise.all([
+      Promise.all(
+        POI_TYPES.map(async (type) => {
+          const fetched = await fetchArtifact(poiKey(type), expected, signal)
+          finished(type)
+          return readPois(decode(fetched.bytes), type)
+        }),
+      ),
+      fetchSpurs(expected, signal).then((value) => {
+        finished('Spur destinations')
+        return value
       }),
-    ),
-    fetchSpurs(expected, signal).then((value) => {
-      finished('Spur destinations')
-      return value
-    }),
-    // Beside the spurs rather than after them: another small keyed artifact
-    // that nothing else is waiting on, and a serial fetch here would buy a
-    // round trip of dead time for 30 clubs' worth of JSON.
-    fetchClubSections(expected, signal).then((value) => {
-      finished('Maintaining clubs')
-      return value
-    }),
-    fetchHighlights(expected, signal).then((value) => {
-      finished('Highlights')
-      return value
-    }),
-    // Beside the other three small keyed artifacts rather than after them,
-    // for the reason the club sections give: nothing is waiting on it, and a
-    // serial fetch would buy a round trip of dead time for ~23 KB.
-    fetchRetiredPois(expected, signal).then((value) => {
-      finished('Retired waypoints')
-      return value
-    }),
-  ])
+      // Beside the spurs rather than after them: another small keyed artifact
+      // that nothing else is waiting on, and a serial fetch here would buy a
+      // round trip of dead time for 30 clubs' worth of JSON.
+      fetchClubSections(expected, signal).then((value) => {
+        finished('Maintaining clubs')
+        return value
+      }),
+      // Beside the clubs for the same reason they sit beside the spurs: another
+      // small keyed artifact nothing else waits on. 1.5 KB against
+      // trails.geojson's 12 MB, so a serial fetch here would be a round trip of
+      // dead time for three organizations' worth of JSON.
+      fetchStewards(expected, signal).then((value) => {
+        finished('Data stewards')
+        return value
+      }),
+      fetchHighlights(expected, signal).then((value) => {
+        finished('Highlights')
+        return value
+      }),
+      // Beside the other three small keyed artifacts rather than after them,
+      // for the reason the club sections give: nothing is waiting on it, and a
+      // serial fetch would buy a round trip of dead time for ~23 KB.
+      fetchRetiredPois(expected, signal).then((value) => {
+        finished('Retired waypoints')
+        return value
+      }),
+    ])
   // Flattened in POI_TYPES order rather than in completion order, so what is
   // stored does not depend on which request happened to finish first.
   const pois: StoredPoi[] = poiGroups.flat()
@@ -997,6 +1023,7 @@ export async function downloadTrailData({
     [POIS_KEY, pois],
     [SPURS_STORE_KEY, spurs],
     [CLUB_SECTIONS_STORE_KEY, clubSections],
+    [STEWARDS_STORE_KEY, stewards],
     [HIGHLIGHTS_STORE_KEY, highlights],
     [RETIRED_POI_STORE_KEY, retiredPois],
     [ELEVATION_STORE_KEY, elevation],
@@ -1071,13 +1098,23 @@ export async function loadTrailData(): Promise<TrailData | null> {
   // was written by whatever version of this app was installed then, and the
   // corridor view reads it on every camera move.
   const clubSections = storedClubSections(await get(CLUB_SECTIONS_STORE_KEY))
+  const stewards = storedStewards(await get(STEWARDS_STORE_KEY))
   const highlights = storedHighlights(await get(HIGHLIGHTS_STORE_KEY))
   // Re-parsed shape rather than a bare cast, for the reason club sections
   // are: what is in the store was written by whatever version of this app was
   // installed then, and `storedTombstones` is the one place that decides what
   // a usable tombstone is.
   const retiredPois = storedTombstones(await get(RETIRED_POI_STORE_KEY))
-  return { trails, pois, spurs, elevation, clubSections, highlights, retiredPois }
+  return {
+    trails,
+    pois,
+    spurs,
+    elevation,
+    clubSections,
+    stewards,
+    highlights,
+    retiredPois,
+  }
 }
 
 /**
@@ -1097,6 +1134,7 @@ export async function deleteTrailData(): Promise<void> {
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
   await del(CLUB_SECTIONS_STORE_KEY)
+  await del(STEWARDS_STORE_KEY)
   await del(HIGHLIGHTS_STORE_KEY)
   await del(RETIRED_POI_STORE_KEY)
   await del(ELEVATION_STORE_KEY)

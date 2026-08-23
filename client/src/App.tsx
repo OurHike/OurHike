@@ -701,6 +701,7 @@ function App() {
     spurs,
     elevation,
     clubSections,
+    stewards,
     highlights,
     retiredPois,
     trailsUrl,
@@ -3867,6 +3868,7 @@ function App() {
                 // the standard the same file already keeps for "Roads &
                 // walkability".
                 <More
+                  stewards={stewards}
                   account={account}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
                   onSignOut={() => void handleSignOut()}

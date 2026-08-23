@@ -536,6 +536,19 @@ jobs:
       - name: Export club sections
         run: python export_club_sections.py
 
+      # Who the map's data belongs to (#927). Reads sources.json in this
+      # checkout and nothing else - no raw snapshot, no network - so it could
+      # sit anywhere in this leg. Placed beside the club sections because the
+      # two answer the same shape of question about the same trail: who looks
+      # after this stretch, and whose data is this.
+      #
+      # It FAILS the publish if a registered source carries no `reaches_hikers`
+      # flag, which is deliberate and is the only way a newly registered source
+      # can block a release. The alternative is a steward appearing on hikers'
+      # screens - with a licence beside their name - because a field defaulted.
+      - name: Export data stewards
+        run: python export_sources.py
+
       # The tombstones (#673). Reads ONLY reference/poi_identity.json - the
       # reviewed ledger in this checkout, no raw snapshot and no network -
       # so it could sit almost anywhere after the reconcile gate above.

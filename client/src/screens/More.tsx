@@ -31,6 +31,8 @@ import {
 } from './Settings'
 import { PaceSettings } from './PaceSettings'
 import { AboutBuild } from './AboutBuild'
+import { SourcesSection } from '../chrome/SourcesSection'
+import type { Stewards } from '../lib/stewards'
 import { ReportBug } from './ReportBug'
 import { DownloadsLink } from '../chrome/DownloadsLink'
 import type { DownloadActivity } from '../lib/downloadActivity'
@@ -92,6 +94,11 @@ export interface MoreProps extends SettingsProps {
    *  reason `now` is - see screens/AboutBuild.tsx. Omitted, the real one is
    *  shown. */
   build?: BuildInfo
+  /** Who the map's data belongs to (#927). Defaults to none, which is what a
+   *  phone with nothing downloaded holds and what a release built before
+   *  pipeline/export_sources.py existed publishes - the section renders
+   *  nothing for either. */
+  stewards?: Stewards
 }
 
 const TABS: readonly TabItem[] = [
@@ -116,6 +123,7 @@ export function More({
   onOpenDownloads,
   onReportFailure,
   build,
+  stewards = [],
   ...settings
 }: MoreProps) {
   const [activeTab, setActiveTab] = useState<MoreTabId>('you')
@@ -311,6 +319,11 @@ export function More({
           onExport={settings.onExport}
           now={settings.now}
         />
+
+        {/* Directly after "Your data" and before the build, which is the
+            order frame `1h` draws and the order a hiker reads in: what is on
+            this phone, then whose it is, then which build is showing it. */}
+        <SourcesSection stewards={stewards} />
 
         {/* Below the group above, and above the download link rather than
             below it - see screens/AboutBuild.tsx for the rest of why. */}

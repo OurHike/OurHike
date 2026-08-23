@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { MockMap } from '../test/mocks/maplibre-gl'
-import { drawnBlazeCounts, BLAZE_COLOR_PROPERTY } from './drawnBlazes'
+import {
+  drawnBlazeCounts,
+  drawsNearbyTrails,
+  BLAZE_COLOR_PROPERTY,
+  TRAIL_SOURCE_PROPERTY,
+} from './drawnBlazes'
 import { BLAZE_LAYER_ID } from './style'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
@@ -78,5 +83,47 @@ describe('drawnBlazeCounts', () => {
     const map = mapWith([line(1, 'White')], [{ id: 'something-else' }])
 
     expect(drawnBlazeCounts(map)).toEqual(new Map())
+  })
+})
+
+describe('drawsNearbyTrails', () => {
+  // The legend's ghosting sentence asks exactly one question (#783): is any
+  // line on screen not the chosen system's? A boolean, not a count - the
+  // sentence explains a state rather than reporting a quantity.
+
+  function sourced(id: number, source: string) {
+    return {
+      id,
+      properties: { [BLAZE_COLOR_PROPERTY]: 'Blue', [TRAIL_SOURCE_PROPERTY]: source },
+    }
+  }
+
+  it('is false on an A.T.-only map, however many side trails are drawn', () => {
+    const map = mapWith([sourced(1, 'centerline'), sourced(2, 'side_trails')])
+
+    expect(drawsNearbyTrails(map)).toBe(false)
+  })
+
+  it('is true as soon as one trail from another network is drawn', () => {
+    const map = mapWith([sourced(1, 'centerline'), sourced(2, 'oprhp_trails')])
+
+    expect(drawsNearbyTrails(map)).toBe(true)
+  })
+
+  it('is false before the style holds the blaze layer, rather than explaining an undrawn state', () => {
+    // The cold-start answer, and it matches drawnBlazeCounts's empty map: on a
+    // first frame the legend should say nothing about ghosting.
+    const map = mapWith([sourced(1, 'oprhp_trails')], [])
+
+    expect(drawsNearbyTrails(map)).toBe(false)
+  })
+
+  it('does not treat a feature missing its source as a nearby trail', () => {
+    // Same asymmetry map/nearbyTrails.ts argues: a pipeline fault is not a
+    // second network, and a legend sentence conjured by one would explain a
+    // dimming that is not on screen.
+    const map = mapWith([{ id: 1, properties: { [BLAZE_COLOR_PROPERTY]: 'White' } }])
+
+    expect(drawsNearbyTrails(map)).toBe(false)
   })
 })

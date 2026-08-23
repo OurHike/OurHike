@@ -60,10 +60,71 @@ describe('tapping a line', () => {
       source: 'side_trails',
       name: 'Rocky Run Spur Trail',
       blazeColor: 'Blue',
+      lengthMiles: null,
+      park: null,
+      trailStatus: null,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
       at: [120, 240],
     })
+  })
+
+  it('carries a nearby trail’s length, park and status through to the sheet', () => {
+    // The data path #783 needs end to end: the network artifact publishes
+    // these three, and a sheet that cannot see them says nothing about a
+    // trail's extent or its closure. Named with the pipeline's normalized
+    // keys, not OPRHP's own Miles/Unit/Status columns.
+    const map = buildMap()
+    const onSelect = vi.fn()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: {
+          id: 'oprhp_trails:8812',
+          source: 'oprhp_trails',
+          name: 'Suffern–Bear Mountain Trail',
+          blaze_color: 'Yellow',
+          length_miles: 24,
+          park: 'Harriman State Park',
+          trail_status: 'Closed',
+        },
+        geometry: { type: 'LineString', coordinates: [] },
+      },
+    ])
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(10, 10))
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'oprhp_trails',
+        lengthMiles: 24,
+        park: 'Harriman State Park',
+        trailStatus: 'Closed',
+      }),
+    )
+  })
+
+  it('refuses a length that arrives as text rather than coercing it', () => {
+    // A figure arriving as a string means the export changed shape. Coercing
+    // it would hide that behind a plausible number on a sheet a hiker reads
+    // to decide whether to walk somewhere.
+    const map = buildMap()
+    const onSelect = vi.fn()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: {
+          id: 'oprhp_trails:8813',
+          source: 'oprhp_trails',
+          name: null,
+          blaze_color: 'Red',
+          length_miles: '24',
+        },
+        geometry: { type: 'LineString', coordinates: [] },
+      },
+    ])
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(10, 10))
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ lengthMiles: null }))
   })
 
   it('reports a touch on bare map as null, which is how the sheet is dismissed', () => {
@@ -140,6 +201,11 @@ describe('tapping a line', () => {
       source: 'centerline',
       name: null,
       blazeColor: 'White',
+      // An A.T. line publishes none of the nearby-trail facts (#783), and
+      // reads them as absent rather than as zero or "Unknown".
+      lengthMiles: null,
+      park: null,
+      trailStatus: null,
       at: [10, 10],
     })
   })

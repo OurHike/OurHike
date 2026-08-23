@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { drawnPoiCounts, type DrawnPoiMap } from '../map/drawnPois'
-import { drawnBlazeCounts } from '../map/drawnBlazes'
+import { drawnBlazeCounts, drawsNearbyTrails } from '../map/drawnBlazes'
 import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 import type { BlazeCount } from '../chrome/Legend'
 
@@ -47,6 +47,15 @@ export interface DrawnPois {
    * re-sorting on every render would do it per paint.
    */
   blazes: BlazeCount[]
+  /**
+   * Whether any line on screen belongs to a network other than the chosen
+   * trail's (#783), which is what the legend's ghosting sentence explains.
+   *
+   * Measured on the same settled frame as the two above, for the same reason:
+   * a sentence saying other trails are dimmed, beside blaze rows counted from
+   * a different camera, would be two answers about two moments.
+   */
+  ghostedTrailsDrawn: boolean
 }
 
 export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
@@ -54,13 +63,19 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
     counts: undefined,
     belowPoiZoom: false,
     blazes: [],
+    ghostedTrailsDrawn: false,
   })
 
   useEffect(() => {
     if (map === null) {
       // Back to unmeasured, not to zero. A map being torn down is not a map
       // drawing nothing.
-      setDrawn({ counts: undefined, belowPoiZoom: false, blazes: [] })
+      setDrawn({
+        counts: undefined,
+        belowPoiZoom: false,
+        blazes: [],
+        ghostedTrailsDrawn: false,
+      })
       return
     }
 
@@ -74,6 +89,7 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
           // frames — a legend whose rows reshuffle while a hiker reads them
           // is worse than one that is merely unsorted.
           .sort((a, b) => b.count - a.count || a.blaze.localeCompare(b.blaze)),
+        ghostedTrailsDrawn: drawsNearbyTrails(map),
       })
 
     // Once up front: the map may already be idle by the time this runs, and

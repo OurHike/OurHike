@@ -2944,6 +2944,7 @@ function App() {
     counts: drawnPoiCounts,
     belowPoiZoom,
     blazes: blazeCounts,
+    ghostedTrailsDrawn,
   } = useDrawnPoiCounts(map)
 
   // One thing open at a time. The waypoint card floats by its pin rather than
@@ -4344,6 +4345,7 @@ function App() {
           // drew never needed the table at all. map/drawnBlazes.ts records
           // the correction.
           blazeCounts={blazeCounts}
+          ghostedTrailsDrawn={ghostedTrailsDrawn}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
           {...filters.mapScreen}

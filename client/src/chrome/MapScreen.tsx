@@ -257,6 +257,9 @@ export interface MapScreenProps {
    */
   viewportPoints: MapPoint[]
   blazeCounts: BlazeCount[]
+  /** Passed straight through to the Legend (#783) - MapScreen decides nothing
+   *  about it, the same as blazeCounts above. */
+  ghostedTrailsDrawn?: boolean
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -588,6 +591,7 @@ export function MapScreen({
   bbox,
   viewportPoints,
   blazeCounts,
+  ghostedTrailsDrawn,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -1105,6 +1109,7 @@ export function MapScreen({
             bbox={bbox}
             points={viewportPoints}
             blazeCounts={blazeCounts}
+            ghostedTrailsDrawn={ghostedTrailsDrawn}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}

@@ -65,7 +65,12 @@
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
-import { buildClosureLayers } from '../lib/closureStyle'
+import {
+  buildClosureLayers,
+  LONG_TERM_CLOSED_FILTER,
+  LONG_TERM_CLOSURE_CASING_LAYER_ID,
+  LONG_TERM_CLOSURE_LAYER_ID,
+} from '../lib/closureStyle'
 import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
@@ -87,6 +92,7 @@ import {
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
 import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
+import { nearbyTrailOpacityExpression } from './nearbyTrails'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
@@ -884,6 +890,11 @@ export function buildMapStyle({
           // appearance to keep in step, and the swap is not a colour change.
           'line-color': blazeLineColor(appearance) as unknown as string,
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
+          // Ghosted here too, for the reason the two lines above are shared:
+          // the sketch is the same appearance arriving early, so a nearby
+          // trail that fades when the real line loads would read as the map
+          // changing its mind about which trail it is about.
+          'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
         },
       },
       {
@@ -910,7 +921,14 @@ export function buildMapStyle({
         paint: {
           'line-color': trailCasingColor(appearance),
           'line-width': TRAIL_CASING_WIDTH_EXPRESSION as unknown as number,
-          'line-opacity': 0.7,
+          // The casing's own 0.7, MULTIPLIED by the line's ghosting rather
+          // than replaced by it. Both facts are true at once and they compose:
+          // a casing is always slightly softer than the blaze it carries, and
+          // a nearby trail's whole stack - blaze and casing together - sits
+          // back from the chosen trail's. Replacing the 0.7 would give a
+          // ghosted line a FIRMER edge than the chosen trail's, which is the
+          // opposite of what this channel is for.
+          'line-opacity': ['*', 0.7, nearbyTrailOpacityExpression()] as unknown as number,
         },
       },
       {
@@ -936,6 +954,11 @@ export function buildMapStyle({
           // same reason `appearance` seeds the backdrop above.
           'line-color': blazeLineColor(appearance) as unknown as string,
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
+          // The third channel (#783). Hue still says which blaze and width
+          // still says which line the map is about; opacity says which SYSTEM,
+          // which is the distinction an A.T.-only map never had to draw. See
+          // map/nearbyTrails.ts for why it is opacity and not a halo or a hue.
+          'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
         },
       },
       // The corridor view's attribution, over the blaze and under everything
@@ -962,7 +985,23 @@ export function buildMapStyle({
       // drawn straight through - which is a picture of an open trail. See
       // lib/closureStyle.ts for why the band differs from a blaze in width,
       // rhythm and casing weight rather than only in colour.
+      // The long-term closures a steward marks on the trail line itself
+      // (features/NEARBY_TRAILS.md §3) - 125 of them statewide in OPRHP's
+      // layer, a different FEED from the live temporary closures above but
+      // deliberately the SAME treatment, because a hiker learns one mark for
+      // "do not walk this". Which kind it is lives in the sheet, never in the
+      // line. Drawn from the trails source, since the geometry IS the trail.
+      //
+      // Immediately after the temporary closures so the two are one band in
+      // the stack: where a temporary closure sits on a trail already marked
+      // closed long-term, whichever draws last wins pixels that look
+      // identical either way.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
+      ...buildClosureLayers(TRAILS_SOURCE_ID, {
+        bandId: LONG_TERM_CLOSURE_LAYER_ID,
+        casingId: LONG_TERM_CLOSURE_CASING_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }),
       // Then the waypoints, in their two ranks (#597). The dots go down first
       // so every pin that wins its collision sits on top of its own dot and
       // hides it, and every waypoint that loses one still leaves a dot behind.

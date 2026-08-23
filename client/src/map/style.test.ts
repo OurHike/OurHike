@@ -35,6 +35,7 @@ import {
   trailCasingColor,
 } from './style'
 import {
+  BUNDLED_GLYPHS,
   LIVE_TOPO_LAYER_IDS,
   TOPO_PALETTE,
   TOPO_PALETTE_DARK,
@@ -542,18 +543,41 @@ describe('POI pins', () => {
     expect(CAMERA_ZOOM_TILE_OFFSET).toBe(Math.log2(512 / 256))
   })
 
-  it('declares no glyphs URL, and so must never ask for text', () => {
-    // Fonts are fetched. There is no network on a mountain, so the style
-    // cannot have a glyphs URL - which means a `text-field` anywhere in it
-    // fails in the field and nowhere else. Asserted on the whole style rather
-    // than on the pin layer, since the rule binds every layer.
-    expect(style()).not.toHaveProperty('glyphs')
+  it('asks for text only from the bundled glyph endpoint, never from a network host', () => {
+    // THIS USED TO ASSERT THE OPPOSITE, and the change is deliberate (#930).
+    //
+    // It read "declares no glyphs URL, and so must never ask for text",
+    // reasoning that "fonts are fetched, there is no network on a mountain".
+    // The rule that protects is right and still holds; the proxy it used to
+    // enforce it - no text anywhere on the offline sheet - stopped being the
+    // only way to get there, and #930's trail-name labels need text on both
+    // sheets.
+    //
+    // What actually makes text safe here is that the endpoint is the app's own
+    // origin and its 256 ranges are PRECACHED: vite.config.ts puts
+    // `glyphs/**/*.pbf` in globPatterns for exactly this failure ("labels
+    // render in town and vanish in airplane mode"), and
+    // scripts/check-build-output.mjs fails the build if a range is missing
+    // from the generated manifest. So the assertion is now the real invariant
+    // rather than its proxy: text may exist, and every glyph it needs must
+    // come from somewhere a service worker can hold.
+    expect(style().glyphs).toBe(BUNDLED_GLYPHS)
+    expect(BUNDLED_GLYPHS).not.toMatch(/^[a-z]+:\/\//i)
+  })
 
-    for (const l of style().layers) {
-      expect(
-        (l.layout as Record<string, unknown> | undefined)?.['text-field'],
-      ).toBeUndefined()
-    }
+  it('never leaves a text-field in a style with no glyph endpoint to render it', () => {
+    // The other half, and the one that survives unchanged in spirit: a
+    // `text-field` in a style with no `glyphs` is a per-glyph load failure in
+    // the field and nowhere else. Written as an implication rather than a
+    // prohibition so it keeps biting if the endpoint is ever made conditional
+    // again.
+    const drawn = style()
+    const usesText = drawn.layers.some(
+      (l) =>
+        (l.layout as Record<string, unknown> | undefined)?.['text-field'] !== undefined,
+    )
+
+    if (usesText) expect(drawn.glyphs).toBeDefined()
   })
 })
 

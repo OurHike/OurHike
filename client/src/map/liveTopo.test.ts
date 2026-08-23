@@ -576,10 +576,17 @@ describe('the offline-only background', () => {
     expect(Object.keys(style.sources)).not.toContain(CONTOUR_SOURCE_ID)
   })
 
-  it('declares no glyph endpoint either, having no symbol layer to feed', () => {
-    // The endpoint is app-origin now (#188), so this is no longer about a
-    // needless host - just that a style declares what its layers actually use.
-    expect(offline().glyphs).toBeUndefined()
+  it('declares the glyph endpoint too, now that it has a symbol layer to feed', () => {
+    // FLIPPED DELIBERATELY (#930). This read "declares no glyph endpoint
+    // either, having no symbol layer to feed" — true while every symbol layer
+    // came off the OSM source, which only the live sheet has. Trail-name
+    // labels are bound to the TRAILS source, and the trails draw on both
+    // sheets, so the offline style has a symbol layer now.
+    //
+    // Left as it was, the offline sheet would have shipped labels with no font
+    // to render them in. The endpoint is app-origin and precached, so
+    // declaring it costs no network — see style.test.ts for that argument.
+    expect(offline().glyphs).toBe(BUNDLED_GLYPHS)
   })
 
   it('credits only what it actually draws', () => {
@@ -612,6 +619,12 @@ describe('the offline-only background', () => {
       'trail-overview-line',
       'trail-casing',
       'trail-blaze',
+      // Trail names (#930) directly over the lines they name, and — the half
+      // that matters — EARLY, so every pin below is placed first and wins the
+      // collision. Placement runs top-down (see the pins-last case above), so
+      // a label put at the end of this list would suppress a water source to
+      // print a trail name.
+      'trail-label',
       // The corridor view's attribution, over the blaze it covers and under
       // everything a hiker acts on (#598). It survives the subtraction for
       // the plainest reason of all: club_sections.json is ON THE PHONE, so

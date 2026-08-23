@@ -61,10 +61,8 @@ import {
 import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
 import { closureDraft } from './lib/closureDraft'
 import { disputeFor } from './lib/disputes'
-import { WorkdaySheet } from './chrome/WorkdaySheet'
-import type { WorkdayPoint } from './map/workdayLayers'
+import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
-import { opportunitiesUsable, upcomingWorkProjects } from './lib/workProjects'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
@@ -89,12 +87,6 @@ import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
 import { deleteAccount, type DeletionReceipt } from './lib/api'
-import {
-  hiddenTypesFrom,
-  onlyType,
-  showAllTypes,
-  toggleType,
-} from './lib/waypointVisibility'
 import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
@@ -268,27 +260,14 @@ import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteer
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
+import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
+import { useAtcNoticesPanel } from './chrome/atcNoticesPanel'
 import {
-  atcBandCandidates,
-  atcPointNotices,
-  atcUpdateBanner,
-  atcUpdateForBandId,
-  atcUpdateLanes,
-  type RankedAtcUpdate,
-} from './lib/atcUpdates'
-import { atcUpdatePoints } from './map/atcUpdateLayers'
-import {
-  atcAlertsSince,
-  readAtcAlertSilence,
-  writeAtcAlertSilence,
-} from './lib/atcAlertsBanner'
-import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
+  useWaypointFiltersPanel,
+  type UpdatePreferences,
+} from './chrome/waypointFiltersPanel'
 import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
-import { ClubSheet } from './chrome/ClubSheet'
-import { LineSheet } from './chrome/LineSheet'
-import { buildClubDetail, type ClubDetail } from './lib/clubDetail'
-import { HighlightSheet } from './chrome/HighlightSheet'
-import { buildHighlightDetail, type HighlightDetail } from './lib/highlightDetail'
+import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import { readStoredPace, writeStoredPace, type PaceProfile } from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
@@ -298,9 +277,6 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
-import { buildLineDetail, type LineDetail } from './lib/lineDetail'
-import type { TappedLine } from './map/lineTaps'
-import { AtcNoticeList } from './chrome/AtcNoticeList'
 import { HikePicker } from './screens/HikePicker'
 import {
   clearPlannedHike,
@@ -512,21 +488,6 @@ function App() {
   // or closes itself, instead of the card going on showing a copy of data the
   // app no longer holds.
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
-  // Derived from the STORED preference rather than held in a `useState` (#530).
-  // `waypoint_types_shown` had been declared in the preferences model, in the
-  // backend schema and in IDENTITY_AND_PRIVACY.md's canonical model since long
-  // before this control, and was read by nothing - so hiding privies lasted
-  // until the next reload and never reached an account.
-  const hiddenTypes = useMemo(
-    () => hiddenTypesFrom(preferences.waypoint_types_shown),
-    [preferences.waypoint_types_shown],
-  )
-  // The legend's "Verified?" filter. Off by default: an unconfirmed spring is
-  // still the best information anyone has about that spring, and a first run
-  // that quietly withheld it would be the app deciding for a hiker what they
-  // are allowed to know about. Ephemeral, exactly like hiddenTypes - both are
-  // #530's problem, not this one's.
-  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
   /**
    * The hiker has driven the map themselves, so the elevation ribbon follows
@@ -562,10 +523,6 @@ function App() {
    * with nowhere to put the answer.
    */
   const [reportingClosure, setReportingClosure] = useState(false)
-  /** The workday pin a hiker tapped, or null (#760). Held by id rather than
-   *  by row, so a re-fetch that drops a cancelled workday closes the sheet
-   *  over it instead of leaving a stale invitation open. */
-  const [selectedWorkdayId, setSelectedWorkdayId] = useState<string | null>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
    * The route being built (#755), or null when the builder is closed. Held
@@ -637,27 +594,6 @@ function App() {
   const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
   const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
-  const [selectedAtcBandId, setSelectedAtcBandId] = useState<string | null>(null)
-  /** The tapped trail line's published facts, or null (#134). The map
-   *  reports them (map/lineTaps.ts); what they mean - the spur record, the
-   *  destination's name - is resolved here, where the data is. */
-  const [selectedLine, setSelectedLine] = useState<TappedLine | null>(null)
-  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null)
-  /**
-   * Whether the full list of ATC notices is open.
-   *
-   * Separate from `selectedAtcBandId` rather than a third state of it. The two
-   * answer different questions - "which one did they tap" and "did they ask to
-   * read all of them" - and a hiker who opens the list, taps a band behind it
-   * and closes that sheet should find the list still where they left it.
-   */
-  const [atcNoticesOpen, setAtcNoticesOpen] = useState(false)
-  /** The newest ATC edit the hiker has already silenced on this phone, or
-   *  null - lib/atcAlertsBanner.ts's watermark, read once at mount and
-   *  written back every time silencing happens. */
-  const [atcAlertSilence, setAtcAlertSilence] = useState<Date | null>(() =>
-    readAtcAlertSilence(),
-  )
 
   // What the hiker SAID they are doing, as against what the GPS works out
   // below. Null is the ordinary state rather than an incomplete setup (#335).
@@ -791,47 +727,6 @@ function App() {
    * tolerance, which had nothing to measure while nothing wrote geometry,
    * now has data coming that could settle it.
    */
-  /**
-   * The workdays worth drawing (#760), and the two gates in front of them.
-   *
-   * **Staleness first, and it is absolute.** Past `OPPORTUNITIES_STALE_MS`
-   * the Volunteer tab replaces its list with an out-of-date notice rather
-   * than decorating it, because "a hedged invitation still reads as an
-   * invitation" - and a pin has no hedged form at all. So a stale feed draws
-   * no pins, and the tab is where a hiker is told why in words.
-   *
-   * **Then the fourteen-day window**, the same `upcomingWorkProjects` the
-   * tab lists, so the two surfaces cannot disagree about which workdays are
-   * on. A row the reviewed file never placed has no coordinates and simply
-   * is not drawn - a workday pinned at 0,0 would be a real place in the
-   * Atlantic, which is the failure `describeLocation` already refuses on the
-   * report form.
-   */
-  const workdayPins = useMemo<readonly WorkdayPoint[]>(() => {
-    if (workProjects === null || workProjectsGeneratedAt === null) return []
-    if (!opportunitiesUsable(workProjectsGeneratedAt, now)) return []
-
-    return upcomingWorkProjects(workProjects, now).flatMap((project) =>
-      project.lat === null || project.lon === null
-        ? []
-        : [{ id: project.id, lat: project.lat, lon: project.lon }],
-    )
-  }, [workProjects, workProjectsGeneratedAt, now])
-
-  /** The tapped workday itself, re-read from the live list every render: if a
-   *  re-fetch drops it - cancelled, or out of the window - this goes null and
-   *  the sheet closes rather than standing over a workday nobody is running. */
-  const selectedWorkday = useMemo(() => {
-    if (selectedWorkdayId === null || workProjects === null) return null
-    return (
-      workProjects.find(
-        (project) =>
-          project.id === selectedWorkdayId &&
-          workdayPins.some((pin) => pin.id === selectedWorkdayId),
-      ) ?? null
-    )
-  }, [selectedWorkdayId, workProjects, workdayPins])
-
   const placedClosures = useMemo(
     () =>
       closures === null || trailIndex === null
@@ -892,47 +787,6 @@ function App() {
   // machine is one that goes up a mountain. See handleOnboardingComplete.
   const isDesktop = useDesktop()
   const install = useInstallPrompt()
-  // What a reload would destroy right now (#311). Every one of these is React
-  // state that no storage carries: a report being written, a window or sheet
-  // the hiker opened, a sign-in half done. The update waits for all of them to
-  // be put away AND for the page to be hidden - see lib/useAppUpdate.ts.
-  //
-  // The camera is deliberately NOT in this list. It is kept across the reload
-  // instead (lib/cameraMemory.ts), because holding an update for as long as
-  // someone is looking at a map would hold it for the whole hike.
-  //
-  // THIS LIST DRIFTED, and #657's audit caught it: every modal added since
-  // #311 forgot to join, so a pending reload could eat a half-typed trail
-  // name. The four that were missing are marked below. There is no mechanism
-  // stopping the next one from being forgotten the same way - a test cannot
-  // ask "is this every modal", because only a reader knows which pieces of
-  // state are worth a hiker's work - so the honest guard is this paragraph
-  // and the rule it states: **anything that holds something a hiker typed,
-  // or that they opened and would have to find again, belongs here.**
-  const updateWouldCost =
-    reporting !== null ||
-    authFlow !== null ||
-    downloadsOpen ||
-    legendOpen ||
-    searchOpen ||
-    selectedPoiId !== null ||
-    // The trail-name prompt (#233): a half-typed name is exactly the case
-    // #311 was about, and it was the one missing.
-    collectingIdentity ||
-    // Two numbers being entered, and a screen that replaced More rather than
-    // covering it - reloading would land the hiker somewhere else entirely.
-    pickingHike ||
-    // A moderator part-way through a queue, whose place in it is state.
-    moderating ||
-    // The app-failure form (#848), which is somebody typing about the app
-    // having nearly got them lost - the last draft in this app worth losing.
-    reportingFailure ||
-    // The sheets: each is something the hiker opened and would have to find
-    // on the map again.
-    selectedAtcBandId !== null ||
-    selectedWorkdayId !== null
-  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
-
   useEffect(() => {
     void loadPreferences().then(
       (stored) => {
@@ -1485,91 +1339,20 @@ function App() {
   }, [clubSections, highlights, trailIndex])
 
   /**
-   * The ATC's notices as bands, through exactly the same geometry.
+   * The ATC's notices: bands, dots, the tapped sheet, the full list and the
+   * "new alerts" banner - chrome/atcNoticesPanel.tsx owns all of it (#327).
    *
-   * `atcBandCandidates` adapts each update into the shared `Closure` shape and
-   * `closureBands` does the rest, so an ATC update inherits `trailSlice`'s
-   * centerline placement and `isBroadAdvisory`'s length ceiling without either
-   * being reimplemented - which is what #461 means by the geometry path
-   * needing no new code, and what keeps ATC's 398-mile Helene advisory from
-   * painting a fifth of the trail (#462).
-   *
-   * The candidate filter is where the two differ: only ATC categories that
-   * mean the trail itself is obstructed become a band, because a barred band
-   * says "go around" and a notice about a closed car park does not. The rest
-   * keep the banner, exactly as an over-long advisory does.
+   * What is left here is the header's one line, which is a different
+   * question: `atcUpdateLanes` below ranks an ATC notice against a closure
+   * for the single sentence a walking hiker gets, and that comparison is the
+   * shell's precisely because neither feature can make it alone.
    */
-  const atcBandsOnMap = useMemo(() => {
-    if (trailIndex === null) return []
-    return closureBands(atcBandCandidates(atcUpdates), trailIndex)
-  }, [atcUpdates, trailIndex])
-
-  /**
-   * The same notices that name one mile rather than a stretch, as dots.
-   *
-   * Not filtered by `obstructsTheTrail`, unlike the bands. A dot makes no
-   * claim about passability - it says the ATC has posted something here - so a
-   * bear warning and a closed shelter both belong on the map, and neither is
-   * the barrier a band would have made them.
-   */
-  const atcPointsOnMap = useMemo(() => {
-    if (trailIndex === null) return []
-    return atcUpdatePoints(atcPointNotices(atcUpdates), trailIndex)
-  }, [atcUpdates, trailIndex])
-
-  /** The tapped update, resolved from the band id the map reported. */
-  const selectedAtcUpdate = useMemo(() => {
-    if (selectedAtcBandId === null) return null
-    return atcUpdateForBandId(atcUpdates, selectedAtcBandId)
-  }, [atcUpdates, selectedAtcBandId])
-
-  /**
-   * Which notices the canvas is ACTUALLY drawing, by band id.
-   *
-   * Read off the two collections above rather than re-derived from the
-   * updates, and that is the whole point of computing it here. The filters
-   * (`atcBandCandidates`, `atcPointNotices`) say what this build INTENDS to
-   * draw; `closureBands` and `atcUpdatePoints` then drop anything whose mile
-   * falls outside this build's centerline, which no predicate over an
-   * `AtcUpdate` can know. AtcNoticeList tells a hiker which notices have no
-   * mark to look for, and it can only be honest about that from the truth.
-   */
-  const atcDrawnIds = useMemo(
-    () =>
-      new Set<string>([
-        ...atcBandsOnMap.map((band) => band.id),
-        ...atcPointsOnMap.map((point) => point.id),
-      ]),
-    [atcBandsOnMap, atcPointsOnMap],
-  )
-
-  /**
-   * What the bottom "new alerts" banner has to say, or null (#687).
-   *
-   * Independent of every filter above - `atcBandCandidates`, `atcPointNotices`
-   * and the lane functions all decide what belongs on the MAP or in the
-   * header's one line, and none of that is "has ATC posted something
-   * recently". An update the map cannot place and the header will never
-   * mention (behind the hiker, over the band ceiling) is still new, and
-   * still worth this banner - `chrome/AtcNoticeList.tsx` is the same
-   * argument for the full list.
-   */
-  const newAtcAlerts = useMemo(
-    () => atcAlertsSince(atcUpdates, now, atcAlertSilence),
-    [atcUpdates, now, atcAlertSilence],
-  )
-
-  /**
-   * Marks every currently-new edit as seen. Wired to both the bottom
-   * banner's own dismiss and to opening the full list (onOpenAtcNotices
-   * below) - whichever way a hiker actually looked, the banner has done its
-   * job and should not return until ATC posts something after this mark.
-   */
-  const silenceAtcAlerts = useCallback(() => {
-    if (newAtcAlerts === null) return
-    writeAtcAlertSilence(newAtcAlerts.newestAt)
-    setAtcAlertSilence(newAtcAlerts.newestAt)
-  }, [newAtcAlerts])
+  const atc = useAtcNoticesPanel({
+    updates: atcUpdates,
+    reviewedAt: atcReviewedAt,
+    trailIndex,
+    now,
+  })
 
   /**
    * Serious warnings as points, straight from the report's own lat/lon.
@@ -1694,16 +1477,6 @@ function App() {
   }, [selectedPoiId, pois, searchablePois])
 
   /**
-   * The tapped line's sheet content (#134), resolved here for the reason
-   * `selectedPoi` is: the map reports what was drawn, and the shell is what
-   * holds the spur records, the POI a spur leads to, and the hiker's units.
-   */
-  const selectedLineDetail: LineDetail | null = useMemo(() => {
-    if (selectedLine === null) return null
-    return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME, pace)
-  }, [selectedLine, spurs, pois, units, pace])
-
-  /**
    * The corridor read end to end, in mile order.
    *
    * Memoised because it is rebuilt from the published artifact and read on
@@ -1725,19 +1498,6 @@ function App() {
    * CORRIDOR_BOUNDS, which lands near z4.9 on a phone.
    */
   const belowSeam = camera === null || camera.zoom < POI_PIN_MIN_ZOOM
-
-  const selectedClubDetail: ClubDetail | null = useMemo(() => {
-    if (!belowSeam || selectedLine === null || trailIndex === null) return null
-    // The tapped point is already snapped to the line (map/lineTaps.ts), so
-    // this is asking "which mile is that vertex" rather than "is the thumb
-    // near the trail" - which at this zoom it need not be.
-    const mile = mileOnTrail(trailIndex, {
-      lon: selectedLine.at[0],
-      lat: selectedLine.at[1],
-    })
-    if (mile === null) return null
-    return buildClubDetail(clubSections, clubRuns, mile, units, walked)
-  }, [belowSeam, selectedLine, trailIndex, clubSections, clubRuns, units, walked])
 
   /**
    * Who maintains the trail the hiker is looking at, for the legend (#598).
@@ -1773,20 +1533,37 @@ function App() {
       : `Maintained by the ${run.club.name}.`
   }, [belowSeam, camera, trailIndex, clubRuns])
 
+  /** Closes the legend. A named callback rather than an inline arrow because
+   *  the tapped-line feature holds it too - any tap that opens a sheet puts
+   *  the legend away - and a new function each render would have re-made that
+   *  feature's handlers on every one. */
+  const closeLegend = useCallback(() => setLegendOpen(false), [])
+
   /**
-   * The tapped highlight's sheet content (#858).
+   * A tap on the trail, on a maintaining club's stretch, or on a highlight
+   * mark, and the one sheet that answers it - chrome/tappedLinePanel.tsx owns
+   * all three (#327).
    *
-   * Resolved here for the reason the club sheet is: the map reports which
-   * mark was touched, and the shell is what holds the records, the elevation
-   * profile the numbers are derived from, the hiker's units and what they
-   * have walked.
+   * `belowSeam` and `clubRuns` are passed in rather than derived there
+   * because `maintainerLine` above reads the same two answers, and two
+   * derivations of one question is the disagreement this file's own comments
+   * keep refusing elsewhere.
    */
-  const selectedHighlightDetail: HighlightDetail | null = useMemo(() => {
-    if (selectedHighlightId === null) return null
-    const highlight = highlights.find((entry) => entry.id === selectedHighlightId)
-    if (highlight === undefined) return null
-    return buildHighlightDetail(highlight, elevation, units, walked, pace)
-  }, [selectedHighlightId, highlights, elevation, units, walked, pace])
+  const line = useTappedLinePanel({
+    spurs,
+    pois,
+    units,
+    trailName: TRAIL_NAME,
+    pace,
+    walked,
+    trailIndex,
+    belowSeam,
+    clubSections,
+    clubRuns,
+    highlights,
+    elevation,
+    onCloseLegend: closeLegend,
+  })
 
   /**
    * The disputed places, joined to where they are (#876).
@@ -1913,6 +1690,61 @@ function App() {
     if (fix === null) return null
     return anchoredMile(fix.mile, mileAnchors)
   }, [fix, mileAnchors])
+
+  /** The volunteer workdays on the map and the sheet over a tapped one -
+   *  chrome/workdayPanel.tsx owns both (#327). Placed here rather than beside
+   *  the other map features because the sheet quotes `gpsPlanMile`, which is
+   *  what the Volunteer tab's own "trail mi away" measures. */
+  const workday = useWorkdayPanel({
+    projects: workProjects,
+    generatedAt: workProjectsGeneratedAt,
+    now,
+    gpsPlanMile,
+  })
+
+  // What a reload would destroy right now (#311). Every one of these is React
+  // state that no storage carries: a report being written, a window or sheet
+  // the hiker opened, a sign-in half done. The update waits for all of them to
+  // be put away AND for the page to be hidden - see lib/useAppUpdate.ts.
+  //
+  // The camera is deliberately NOT in this list. It is kept across the reload
+  // instead (lib/cameraMemory.ts), because holding an update for as long as
+  // someone is looking at a map would hold it for the whole hike.
+  //
+  // THIS LIST DRIFTED, and #657's audit caught it: every modal added since
+  // #311 forgot to join, so a pending reload could eat a half-typed trail
+  // name. The four that were missing are marked below. There is no mechanism
+  // stopping the next one from being forgotten the same way - a test cannot
+  // ask "is this every modal", because only a reader knows which pieces of
+  // state are worth a hiker's work - so the honest guard is this paragraph
+  // and the rule it states: **anything that holds something a hiker typed,
+  // or that they opened and would have to find again, belongs here.**
+  const updateWouldCost =
+    reporting !== null ||
+    authFlow !== null ||
+    downloadsOpen ||
+    legendOpen ||
+    searchOpen ||
+    selectedPoiId !== null ||
+    // The trail-name prompt (#233): a half-typed name is exactly the case
+    // #311 was about, and it was the one missing.
+    collectingIdentity ||
+    // Two numbers being entered, and a screen that replaced More rather than
+    // covering it - reloading would land the hiker somewhere else entirely.
+    pickingHike ||
+    // A moderator part-way through a queue, whose place in it is state.
+    moderating ||
+    // The app-failure form (#848), which is somebody typing about the app
+    // having nearly got them lost - the last draft in this app worth losing.
+    reportingFailure ||
+    // The sheets: each is something the hiker opened and would have to find
+    // on the map again. Each feature answers for its own now (#327) - which
+    // is why this list sits below the panel hooks rather than up among the
+    // `useState`s, and why a feature that grows a second sheet widens its own
+    // `sheetOpen` instead of this line.
+    atc.sheetOpen ||
+    workday.sheetOpen
+  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
 
   /**
    * The trip the Plan tab is showing, and its plan (#787). Everything below
@@ -2864,16 +2696,41 @@ function App() {
     })
   }, [])
 
-  const updatePreferences = useCallback(
-    (patch: Partial<UserPreferences>) => {
+  /**
+   * Writes a preference and persists it.
+   *
+   * Accepts a function as well as a patch, and the function form is what a
+   * TOGGLE needs: it reads the current value inside the update rather than
+   * closing over this render's copy, so a fast double-tap cannot land two
+   * flips on one stale value. The drought toggle used to reach past this
+   * helper to `setPreferences` for exactly that reason, which left two ways
+   * to write a preference and only one of them going through here.
+   */
+  const updatePreferences: UpdatePreferences = useCallback(
+    (patch) => {
       setPreferences((current) => {
-        const next = { ...current, ...patch }
+        const next = {
+          ...current,
+          ...(typeof patch === 'function' ? patch(current) : patch),
+        }
         persistPreferences(next)
         return next
       })
     },
     [persistPreferences],
   )
+
+  /**
+   * The legend's three filters - which categories are drawn, whether
+   * unconfirmed places are, and the drought tint - owned by
+   * chrome/waypointFiltersPanel.tsx (#327).
+   */
+  const filters = useWaypointFiltersPanel({
+    preferences,
+    updatePreferences,
+    drought,
+    droughtWeek,
+  })
 
   /**
    * Opens the download window, and clears whatever else was open over the map.
@@ -2925,27 +2782,6 @@ function App() {
     },
     [updatePreferences, archiveDownloaded, openDownloads],
   )
-
-  /**
-   * The drought wash on or off (#720).
-   *
-   * A stored preference rather than a `useState`, and that is the whole
-   * point: `hiddenTypes` learned this lesson the hard way (#530) - the
-   * legend's category toggles wrote to a state that died on reload, so
-   * hiding privies lasted until the next launch and never reached an
-   * account. A background tint somebody turned off should stay off.
-   */
-  const handleToggleDrought = useCallback(() => {
-    // Reads the current value inside the functional update rather than
-    // closing over `preferences`, so the callback has no dependency on the
-    // thing it toggles - the same shape `updatePreferences` already uses, and
-    // the reason a fast double-tap cannot land two flips on one stale value.
-    setPreferences((current) => {
-      const next = { ...current, drought_layer_shown: !current.drought_layer_shown }
-      persistPreferences(next)
-      return next
-    })
-  }, [persistPreferences])
 
   const handleOnboardingComplete = useCallback(
     ({ hikingDetailLevel, locationRequested }: OnboardingResult) => {
@@ -3125,62 +2961,12 @@ function App() {
     if (id !== null) setLegendOpen(false)
   }, [])
 
-  // The line taps report on every click, nulls included, exactly as the POI
-  // taps do - the null is the tap-elsewhere dismissal, and it also fires
-  // when a tap lands on a pin or an ATC notice (map/lineTaps.ts yields to
-  // both), which is what keeps this sheet from stacking under theirs.
-  // A tapped mark closes the legend the way a tapped line does, and clears
-  // the line selection so the two sheets can never both be open.
-  const handleSelectHighlight = useCallback((id: string | null) => {
-    setSelectedHighlightId(id)
-    if (id !== null) {
-      setLegendOpen(false)
-      setSelectedLine(null)
-    }
-  }, [])
-
-  const handleSelectLine = useCallback((line: TappedLine | null) => {
-    setSelectedLine(line)
-    if (line !== null) setLegendOpen(false)
-  }, [])
-
   const handleOpenLegend = useCallback(() => {
     setLegendOpen(true)
     setSelectedPoiId(null)
   }, [])
 
   const handleClosePoi = useCallback(() => setSelectedPoiId(null), [])
-
-  // Through the same `updatePreferences` path every other map preference uses,
-  // so this one persists and syncs like the rest of them rather than being the
-  // one control that forgets (#530).
-  const handleToggleType = useCallback(
-    (type: string) => {
-      updatePreferences({
-        waypoint_types_shown: toggleType(preferences.waypoint_types_shown, type),
-      })
-    },
-    [preferences.waypoint_types_shown, updatePreferences],
-  )
-
-  /** One tap to show a single category - the control this issue is worth
-   *  building for. At a crowded zoom it is the difference between four water
-   *  pins drawn and forty, and it answers "where is the next water" in two taps
-   *  rather than by zooming in and panning along the trail. */
-  const handleOnlyType = useCallback(
-    (type: string) => updatePreferences({ waypoint_types_shown: onlyType(type) }),
-    [updatePreferences],
-  )
-
-  /** The way out, which is what makes persisting the filter honest. */
-  const handleShowAllTypes = useCallback(
-    () => updatePreferences({ waypoint_types_shown: showAllTypes() }),
-    [updatePreferences],
-  )
-
-  const handleToggleVerifiedOnly = useCallback(() => {
-    setVerifiedOnly((current) => !current)
-  }, [])
 
   /**
    * Queue a closure and send it if there is anything to send it with (#832).
@@ -4379,81 +4165,16 @@ function App() {
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
           corridor={corridorOnMap}
-          onSelectHighlight={handleSelectHighlight}
           maintainerLine={maintainerLine}
-          atcUpdates={atcBandsOnMap}
-          atcUpdatePoints={atcPointsOnMap}
-          onSelectAtcUpdate={setSelectedAtcBandId}
-          workdays={workdayPins}
-          onSelectWorkday={setSelectedWorkdayId}
           disputes={disputedPoints}
-          workdaySheet={
-            selectedWorkday === null ? null : (
-              <WorkdaySheet
-                project={selectedWorkday}
-                // The hiker's own mile on the planner's axis, which is the
-                // one the tab's "trail mi away" already uses - two surfaces
-                // measuring the same distance two ways is a hiker reading
-                // two claims where there is one.
-                gpsMile={gpsPlanMile}
-                onClose={() => setSelectedWorkdayId(null)}
-              />
-            )
-          }
-          atcUpdateSheet={
-            selectedAtcUpdate === null ? null : (
-              <AtcUpdateSheet
-                update={selectedAtcUpdate}
-                reviewedAt={atcReviewedAt}
-                onClose={() => setSelectedAtcBandId(null)}
-              />
-            )
-          }
-          onSelectLine={handleSelectLine}
-          lineSheet={
-            // A tapped highlight wins over both: it is a small, aimed-at mark
-            // sitting ON the corridor, the same rule map/lineTaps.ts applies
-            // when a pin beats the line under it.
-            selectedHighlightDetail !== null ? (
-              <HighlightSheet
-                detail={selectedHighlightDetail}
-                onClose={() => setSelectedHighlightId(null)}
-              />
-            ) : // The club sheet wins below the seam, and the two never stack:
-            // one tap asks one question, and which question it is depends on
-            // what the map is showing.
-            selectedClubDetail !== null ? (
-              <ClubSheet
-                detail={selectedClubDetail}
-                onClose={() => setSelectedLine(null)}
-              />
-            ) : selectedLineDetail === null ? null : (
-              <LineSheet
-                detail={selectedLineDetail}
-                onClose={() => setSelectedLine(null)}
-              />
-            )
-          }
-          atcNoticeCount={atcUpdates.length}
-          onOpenAtcNotices={() => {
-            setAtcNoticesOpen(true)
-            // Opening the full list is a hiker having looked, exactly as
-            // much as tapping the bottom banner's own dismiss is - see
-            // silenceAtcAlerts above.
-            silenceAtcAlerts()
-          }}
-          newAtcAlertCount={newAtcAlerts?.count ?? 0}
-          onSilenceNewAtcAlerts={silenceAtcAlerts}
-          atcNoticeList={
-            atcNoticesOpen ? (
-              <AtcNoticeList
-                updates={atcUpdates}
-                drawnIds={atcDrawnIds}
-                reviewedAt={atcReviewedAt}
-                onClose={() => setAtcNoticesOpen(false)}
-              />
-            ) : null
-          }
+          // Three features, three files, three lines (#327). Each spread is
+          // exactly the `MapScreenProps` fields that feature owns - a
+          // `Pick<>` on the screen's own type, so the compiler refuses a
+          // second owner for any of them and a change to one of these
+          // features never reaches this file at all.
+          {...atc.mapScreen}
+          {...line.mapScreen}
+          {...workday.mapScreen}
           routeDrawing={routeDrawing}
           // Defined for the whole builder session so a stray tap can never
           // fall through to a waypoint card underneath - but the handler
@@ -4567,7 +4288,7 @@ function App() {
           onOpenLegend={handleOpenLegend}
           onOpenSearch={() => setSearchOpen(true)}
           legendOpen={legendOpen}
-          onCloseLegend={() => setLegendOpen(false)}
+          onCloseLegend={closeLegend}
           searchOpen={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}
           searchablePois={searchablePois}
@@ -4627,17 +4348,7 @@ function App() {
           ghostedTrailsDrawn={ghostedTrailsDrawn}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
-          hiddenTypes={hiddenTypes}
-          onToggleType={handleToggleType}
-          onOnlyType={handleOnlyType}
-          onShowAllTypes={handleShowAllTypes}
-          typesShown={preferences.waypoint_types_shown}
-          verifiedOnly={verifiedOnly}
-          onToggleVerifiedOnly={handleToggleVerifiedOnly}
-          drought={drought}
-          droughtShown={preferences.drought_layer_shown}
-          onToggleDrought={handleToggleDrought}
-          droughtWeek={droughtWeek}
+          {...filters.mapScreen}
           selectedPoi={selectedPoi}
           selectedSite={selectedSite}
           removedPoiCard={

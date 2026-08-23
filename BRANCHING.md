@@ -266,38 +266,72 @@ throws the result away. No checkout, no working tree, no index, no branch
 moved. It is exact — the same merge machinery, the same answer — and it takes
 about a millisecond per branch.
 
+**It answers "does it conflict?", which is not the same question as "is the
+merge safe".** A clean auto-merge can still produce a tree that does not
+compile, and a refactor branch is where that is likeliest: this file's own
+branch merged `main` clean forty-five minutes after opening, and the merged
+tree failed `npm run typecheck` — [#783](https://github.com/OurHike/OurHike/issues/783)
+had widened `TappedLine` with three new required fields on `main` while a
+fixture for that type was being written on the branch. Neither side touched
+the other's lines, so there was nothing for git to flag. **GitHub's merge
+button would have produced exactly that tree and landed a red `main`.**
+
+So `CONFLICTS` is a reason to act and `clean` is not a clearance. When a
+branch has moved a type, a signature, or a file, and `main` has since touched
+anything it imports, merge into a scratch worktree and run the checks before
+trusting the word.
+
 ## 2. Slice by conflict surface, not by subject
 
 Two branches collide because they edit the same lines, not because they are
-about related things. Of the 27 real conflicts, **12 were `client/src/App.tsx`**
-— more than the next six files combined.
+about related things. Re-measured over the last 300 commits at `ce3083f`
+(2026-08-23): **23 merges resolved a real conflict, and 12 of them were
+`client/src/App.tsx`** — still more than the next five files combined.
 
 | File | Conflicts |
 |---|---|
 | `client/src/App.tsx` | 12 |
-| `WIREFRAMES.md` | 7 |
-| `LAUNCH_CHECKLIST.md` | 4 |
-| `client/src/chrome/MapScreen.tsx` | 3 |
-| `client/src/map/MapView.tsx` | 3 |
-| `client/src/screens/Onboarding.tsx` | 3 |
+| `client/src/chrome/MapScreen.tsx` | 7 |
+| `V2_PLAN.md` | 6 |
+| `client/src/map/MapView.tsx` | 5 |
+| `client/src/chrome/chrome.css` | 5 |
+| `pipeline/publish.py` | 4 |
 
-`App.tsx` is 2,080 lines, holds 28 `useState` calls and imports about ninety
-modules (measured 2026-08-17 - it was 1,507/25/~60 when this was first
-written, which is the direction the argument predicts). It is where every feature is wired in, so every feature branch edits
-it, so every pair of feature branches conflicts there. The subjects are
-unrelated — a background picker and a download flow — and it makes no
-difference.
+The table has moved since it was first written, and in one way that matters:
+`MapScreen.tsx` has gone from third at 3 to second at 7. **Thirteen of the 23
+conflicting merges touched one or both of those two files**, which is the pair
+to check before opening a second client branch, not `App.tsx` alone.
+
+`App.tsx` is 4,417 lines, holds 45 `useState` calls and imports 130 modules
+(measured 2026-08-23, after #327's first cut) — it was 1,507/25/~60 when this
+section was first written and 2,080/28/~90 on 2026-08-17, which is the
+direction the argument predicts. It is where every feature is wired in, so
+every feature branch edits it, so every pair of feature branches conflicts
+there. The subjects are unrelated — a background picker and a download flow —
+and it makes no difference.
 
 **Before starting a second branch in the client, ask which of these files it
-will touch.** If the answer is `App.tsx` and something in flight already has it
-open, either sequence the two or accept the conflict knowingly. Do not discover
-it a day later.
+will touch.** If the answer is `App.tsx` or `MapScreen.tsx` and something in
+flight already has it open, either sequence the two or accept the conflict
+knowingly. Do not discover it a day later.
 
 The structural fix is to decompose `App.tsx` so features wire themselves in
 without a shared edit point. That is
-[#327](https://github.com/OurHike/OurHike/issues/327) — a
-refactor with its own risk, not something to fold into whatever else is in
-flight.
+[#327](https://github.com/OurHike/OurHike/issues/327) — a refactor with its own
+risk, not something to fold into whatever else is in flight.
+
+**#327's first cut is in place, and the pattern it sets is the one to follow.**
+Four map features now live one per file in `client/src/chrome/`, camelCased
+so they read as modules rather than as the components beside them:
+`atcNoticesPanel.tsx` (the ATC's notices), `waypointFiltersPanel.ts` (the
+legend's three filters), `tappedLinePanel.tsx` (one tap on the trail) and
+`workdayPanel.tsx` (the volunteer workdays). Each exports a hook returning a
+`Pick<MapScreenProps, …>` of exactly the props that feature owns, which the
+shell spreads into `<MapScreen>` as a single line. A change to one of those
+four features does not reach `App.tsx` at all. **The file is still the
+chokepoint** — this moved 289 lines and 26 of `MapScreen`'s props, out of
+4,706 and 104 — so the guidance above stands unchanged. What it buys is a
+place for the next feature to go.
 
 ## 3. One branch per issue, unless the work is stacked
 

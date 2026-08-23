@@ -93,6 +93,11 @@ import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warn
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
 import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
 import { nearbyTrailOpacityExpression } from './nearbyTrails'
+import {
+  buildTrailLabelLayer,
+  TRAIL_LABEL_LAYER_ID,
+  TRAIL_LABEL_MIN_ZOOM,
+} from './trailLabels'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
@@ -359,6 +364,24 @@ export function attachMapAppearance(
           BLAZE_LAYER_ID,
           'line-color',
           blazeLineColor(appearance) as never,
+        )
+      }
+
+      // The trail labels' two colours (#930). Repainted here rather than left
+      // to a rebuild for the same reason the three above are: a theme switch
+      // repaints in place, so a label layer omitted from this list would keep
+      // the previous theme's ink and halo — dark text with a dark halo after
+      // switching to the dark sheet, which is a name nobody can read.
+      if (map.getLayer(TRAIL_LABEL_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          TRAIL_LABEL_LAYER_ID,
+          'text-color',
+          trailCasingColor(appearance) as never,
+        )
+        map.setPaintProperty(
+          TRAIL_LABEL_LAYER_ID,
+          'text-halo-color',
+          mapBackdrop(appearance) as never,
         )
       }
     },
@@ -668,19 +691,24 @@ export function buildMapStyle({
 
   return {
     version: 8,
-    // Only set when something needs glyphs. The endpoint is the app's own
-    // origin now (#188), so this stopped being about a needless host
-    // dependency - what survives is the plainer rule that a style declares
-    // the endpoints its layers use, and the raster background has no symbol
-    // layer to use this one.
+    // Set unconditionally. The endpoint is the app's own origin (#188), so
+    // this was never about a host dependency - the rule it encodes is that a
+    // style declares the endpoints its layers use.
     //
-    // Keyed on `live` alone, deliberately, now that terrain is no longer part
-    // of it: the surviving symbol layers - summits, water names, place names -
-    // are all OSM-sourced and outlive a missing DEM. Tying this to terrain
-    // instead would leave a style whose labels have no font to render in,
-    // which MapLibre reports as a per-glyph load failure rather than anything
-    // a reader would connect back to the elevation model.
-    ...(live ? { glyphs: BUNDLED_GLYPHS } : {}),
+    // IT USED TO BE KEYED ON `live`, and the reason given was exact: "the
+    // raster background has no symbol layer to use this one". That was true
+    // while every symbol layer - summits, water names, place names - came off
+    // the OSM source, which only the live sheet has. #930's trail-name labels
+    // are the first symbol layer bound to the TRAILS source, and the trails
+    // draw on both sheets, so the offline style now has a symbol layer too.
+    //
+    // Left keyed on `live`, the offline sheet would have shipped labels with
+    // no font to render them in - which MapLibre reports as a per-glyph load
+    // failure, exactly the kind of error the old comment warned would be
+    // impossible to connect back to its cause. The glyph ranges are bundled
+    // under `public/glyphs/` and precached by vite.config.ts's globPatterns,
+    // so the offline sheet has them on disk; only the declaration was missing.
+    glyphs: BUNDLED_GLYPHS,
     sources: {
       [TOPO_SOURCE_ID]: {
         type: 'raster',
@@ -961,6 +989,33 @@ export function buildMapStyle({
           'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
         },
       },
+      // Trail names (#930), directly over the lines they name and UNDER every
+      // pin on this map. Both halves of that are deliberate.
+      //
+      // PLACEMENT, which is the half that matters and is the opposite way
+      // round from what it looks like: MapLibre declutters symbols across the
+      // whole style, and `PauseablePlacement` starts at `order.length - 1` and
+      // decrements — so placement runs TOP-DOWN and the LAST symbol layer has
+      // priority. That is liveTopo.test.ts's finding, checked rather than
+      // assumed, and it is why our own pins sit at the end of this list.
+      //
+      // A trail's name is the lowest-priority symbol on the map: a waypoint, a
+      // workday, a serious warning and an ATC notice each say something a
+      // hiker acts on, and a name only says which line is which. So it goes
+      // EARLY — before every one of them — and loses the collision it should
+      // lose. Put last, it would have suppressed a water source to print
+      // "Kakiat Tr.", which is the exact failure liveTopo.test.ts's
+      // pins-last case exists to catch, and did catch when this layer was
+      // first written into the wrong end of the stack.
+      //
+      // DRAW ORDER follows from the same ranking: under the pins, so a pin
+      // covers a name rather than a name covering a pin.
+      buildTrailLabelLayer(
+        TRAILS_SOURCE_ID,
+        trailCasingColor(appearance),
+        mapBackdrop(appearance),
+        TRAIL_LABEL_MIN_ZOOM,
+      ),
       // The corridor view's attribution, over the blaze and under everything
       // else (#598). Over, because the grey on an unattributed run has to
       // COVER the white blaze rather than sit beside it; under the route and

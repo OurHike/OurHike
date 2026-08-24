@@ -29,6 +29,7 @@ stretch of trail that is open.
 
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from urllib.parse import urlparse
 
 # The trail's own extent, from ATC's half-mile marker layer: 4,395 points,
@@ -101,7 +102,16 @@ REQUIRED_FIELDS = (
     "source_url",
 )
 
-PUBLISHED_FIELDS = REQUIRED_FIELDS
+#: Provenance, carried into the artifact so a display cannot outrun its
+#: source (CLAUDE.md). `reviewed` means a person read ATC's page and typed the
+#: row; `unreviewed` means this build parsed it off their site an hour ago and
+#: nobody has checked it. Those are different claims and the app has to be
+#: able to tell a hiker which one it is holding.
+REVIEWED = "reviewed"
+UNREVIEWED = "unreviewed"
+REVIEW_STATES = frozenset({REVIEWED, UNREVIEWED})
+
+PUBLISHED_FIELDS = (*REQUIRED_FIELDS, "review_state")
 
 
 def _mile_problem(row: dict, field: str) -> str | None:
@@ -254,4 +264,168 @@ def published_rows(document: dict) -> list[dict]:
     working - cannot reach the bucket by accident. What ships is the field
     list this module names and nothing else.
     """
-    return [{field: row[field] for field in PUBLISHED_FIELDS} for row in document["updates"]]
+    return [
+        {field: (REVIEWED if field == "review_state" else row[field]) for field in PUBLISHED_FIELDS}
+        for row in document["updates"]
+    ]
+
+
+# Words that mean ATC's latest edit is announcing the END of the thing it
+# warned about. An auto-published row must never be built out of one of these:
+# "NC/TN: Iron Mtn Gap Reopened" is an update whose whole content is that the
+# trail is open again, and an ingest that only ever adds notices would draw a
+# pin on it. Measured against the 89 updates live 2026-08-24, this caught nine
+# pages, of which three were genuine all-clears; the other six mention a
+# reopening date or a completed phase inside a notice that is still live, and
+# refusing those too is the conservative direction to be wrong in.
+RESOLUTION_MARKERS = (
+    "reopen",
+    "is complete",
+    "now complete",
+    "has been completed",
+    "has been lifted",
+    "been lifted",
+    "is now open",
+    "are now open",
+    "back open",
+    "no longer closed",
+    "no longer in effect",
+    "rescind",
+)
+
+
+def _modified_after(date_modified: str, reviewed_at: str) -> bool:
+    """Whether ATC edited this after the day a person last read their page."""
+    try:
+        edited = datetime.fromisoformat(date_modified)
+    except ValueError:
+        return False
+    if edited.tzinfo is not None:
+        edited = edited.astimezone(timezone.utc)
+    try:
+        looked = date.fromisoformat(reviewed_at[:10])
+    except ValueError:
+        return False
+    return edited.date() > looked
+
+
+def auto_publish_refusal(parsed, reviewed_ids: frozenset[str] | set[str], reviewed_at: str) -> str | None:
+    """Why this parsed update may NOT be published without a person, or None.
+
+    THE GATE #963 IS BUILT AROUND, and it is deliberately narrow. Everything
+    it lets through has exactly one reading; everything with two readings is
+    somebody's judgement and waits for one.
+
+    THE RECENCY RULE IS THE LOAD-BEARING ONE, and it was not in #963's
+    original description - it is there because the gate was run against ATC's
+    real 89 updates before any of this shipped, and without it the gate
+    published almost exactly the set a person had just decided to leave out.
+
+    That is structural rather than bad luck. After a review, everything still
+    unreviewed IS the reviewer's reject pile: they read all 89 and kept 35, so
+    "publish what is not reviewed and parses cleanly" is a rule that publishes
+    rejects. Measured 2026-08-24, without this rule the gate let through 22
+    rows - twelve bear incidents from 2024 and 2025, a hunting season its own
+    text ends on 2025-12-31, four vehicle break-ins, and a duplicate of a
+    closure already carried.
+
+    So an update auto-publishes only when ATC edited it AFTER the day a person
+    last read their page. Then the only thing it can ever add is something
+    nobody has had the chance to judge - which is the actual gap #963 exists
+    to close - and it can never overturn a reviewer's decision, because every
+    decision they made is about a page older than their own review date.
+
+    Strictly after, not on-or-after: an edit landing the same day a reviewer
+    worked may or may not have been seen, and the cost of waiting a day is a
+    notice arriving late, against the cost of the other direction, which is
+    silently republishing something a person removed on purpose.
+
+    Returns the reason rather than a bool so the job can say what it skipped
+    and why - a silent cap reads as "covered everything" when it did not.
+    """
+    if parsed.slug in reviewed_ids:
+        # A person's row always wins. They may have given it a band, a
+        # corrected mile, or decided it should not be here at all, and none of
+        # those survives being overwritten by a parse.
+        return "already reviewed by a person"
+
+    if not parsed.date_modified:
+        return "no dateModified on the page"
+    if not _modified_after(parsed.date_modified, reviewed_at):
+        return f"last edited {parsed.date_modified[:10]}, not since the review on {reviewed_at}"
+    if not parsed.title or not parsed.title.strip():
+        return "no title"
+    if parsed.category not in CATEGORIES:
+        # A word this build does not know means ATC changed the shape of their
+        # page, which is a thing to look at rather than to pass through.
+        return f"category {parsed.category!r} is not one this build knows"
+    if not parsed.states:
+        return "no states on the page"
+
+    if len(parsed.miles) != 1:
+        # NOT "the first one wins". Iron Mtn Gap states five ranges
+        # accumulated over months of edits and the current one is not
+        # mechanically distinguishable from its own history (#463). Zero is
+        # the region-wide advisory that has no place on a map at all.
+        return f"{len(parsed.miles)} mile references, and only one is unambiguous"
+
+    reference = parsed.miles[0]
+    ends = [reference.start] + ([reference.end] if reference.end is not None else [])
+    if any(end is None or not TRAIL_MILE_MIN <= end <= TRAIL_MILE_MAX for end in ends):
+        # The thousands-separator failure, caught rather than published: a
+        # mile off the end of the trail is a mistake with a decimal point in
+        # it, not a place.
+        return f"{reference.raw!r} is outside the trail's own extent"
+    if reference.end is not None and reference.end < reference.start:
+        return f"{reference.raw!r} runs backwards"
+
+    lowered = parsed.text.lower()
+    for marker in RESOLUTION_MARKERS:
+        if marker in lowered:
+            return f"says {marker!r}, which may be an all-clear rather than a notice"
+
+    return None
+
+
+def _as_utc_stamp(iso: str) -> str:
+    """ATC's `dateModified` in the `...Z` form every reviewed row already uses.
+
+    Their JSON-LD carries a local offset (`2026-08-19T16:22:50-04:00`). A
+    reviewed row carries UTC, because a person converted it by hand. Two
+    spellings of the same instant in one artifact would make `updated_at`
+    sortable only by accident, so the parse converts rather than passing the
+    offset through.
+    """
+    try:
+        stamped = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    if stamped.tzinfo is None:
+        stamped = stamped.replace(tzinfo=timezone.utc)
+    return stamped.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def auto_row(parsed) -> dict:
+    """One parsed update as a publishable row, with the rails bolted on.
+
+    `obstructs_trail` IS FORCED FALSE AND IS NOT READ FROM ANYTHING. It is the
+    one field that decides whether a band is drawn across the treadway, and
+    `lib/atc_updates.py`'s own measurements say ATC's category cannot answer
+    it - their only `Closure` on 2026-08-12 was a shelter with open trail past
+    it, while the Harpers Ferry footbridge, which genuinely stops a hiker, is
+    filed `Detour`. So an unreviewed row gets a dot and a banner and can never
+    get a barrier. Upgrading it to one is what review is for.
+    """
+    reference = parsed.miles[0]
+    return {
+        "atc_id": parsed.slug,
+        "title": parsed.title.strip(),
+        "category": parsed.category,
+        "states": list(parsed.states),
+        "start_mile_marker": reference.start,
+        "end_mile_marker": reference.end if reference.end is not None else reference.start,
+        "obstructs_trail": False,
+        "updated_at": _as_utc_stamp(parsed.date_modified),
+        "source_url": parsed.source_url,
+        "review_state": UNREVIEWED,
+    }

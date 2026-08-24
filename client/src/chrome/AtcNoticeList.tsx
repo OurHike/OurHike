@@ -31,7 +31,7 @@
 // does not hold everything are the same requirement, not competing ones.
 
 import { atcUpdatedAt, isSafeLink, longDate, mileRange } from '../lib/atcNoticeText'
-import { atcBandId, type AtcUpdate } from '../lib/atcUpdates'
+import { atcBandId, isReviewedByAPerson, type AtcUpdate } from '../lib/atcUpdates'
 
 export interface AtcNoticeListProps {
   /** Every update the app holds, in whatever order it read them. */
@@ -134,9 +134,11 @@ export function AtcNoticeList({
                     thing a hiker wants to have been told, not the absence of
                     a warning. */}
                 <p className="atc-notices__passability">
-                  {update.obstructs_trail
-                    ? 'The ATC says this stops a hiker walking through.'
-                    : 'The ATC did not report the trail itself blocked here.'}
+                  {!isReviewedByAPerson(update)
+                    ? 'OurHike has not checked this one yet — read the ATC’s page.'
+                    : update.obstructs_trail
+                      ? 'The ATC says this stops a hiker walking through.'
+                      : 'The ATC did not report the trail itself blocked here.'}
                 </p>
 
                 <p className="closure-sheet__meta">

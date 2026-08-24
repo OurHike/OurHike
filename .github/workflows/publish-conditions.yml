@@ -186,6 +186,51 @@ jobs:
       # that would have to know when the file last changed, and a wrong skip
       # here means ATC's notices silently stop republishing. Cheap and
       # obviously correct beats clever on the leg that carries closures.
+      #
+      # SINCE #963 THE SENTENCE ABOVE IS ONLY HALF TRUE, and the half that
+      # changed is the point of the step below. The reviewed file still moves
+      # only when a pull request lands, but the bake no longer publishes only
+      # that file: anything ATC has posted SINCE the review, and that reads
+      # unambiguously, now rides out on this same hourly clock. What used to
+      # be twenty-four identical artifacts is now twenty-four chances to carry
+      # a notice nobody has typed yet.
+
+      # Reads ATC's own site into data/raw/, which export_atc_updates.py then
+      # gates. Deliberately allowed to fail without failing the job: if ATC is
+      # unreachable or has re-themed, the previous cache stays put and the
+      # export below still publishes every reviewed row. The reviewed rows are
+      # what a person stood behind; losing the automatic ones for an hour is a
+      # bad hour, and losing a hiker's whole ATC layer to somebody else's
+      # outage would be the larger failure. A red step says it happened.
+      # WITHOUT THIS THE POLITENESS DESIGN DOES NOT EXIST. A runner is
+      # ephemeral and pipeline/data/ is gitignored, so an uncached hourly job
+      # starts empty every time and asks ATC for all ten listing pages AND all
+      # 89 updates - 99 requests an hour, 2,376 a day, for data that moves a
+      # few times a month. The cache is what turns that into ten requests an
+      # hour plus one refresh per update per day. Same reasoning, and the same
+      # shape, as the drought inputs further down this file.
+      - name: Restore ATC's trail updates
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/data/raw/atc_updates.json
+          key: atc-updates-${{ github.run_id }}
+          restore-keys: atc-updates-
+
+      - name: Fetch ATC's trail updates
+        continue-on-error: true
+        run: python fetch_atc_updates.py
+
+      # `always()`, so an hour when ATC was unreachable still carries the
+      # previous cache forward. Saving only on success would throw the cache
+      # away exactly when it is doing the most good - the run that could not
+      # refetch is the run that most needs the copy it already had.
+      - name: Save ATC's trail updates
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/data/raw/atc_updates.json
+          key: atc-updates-${{ github.run_id }}
+
       - name: Export the ATC's reviewed trail updates
         run: python export_atc_updates.py
 

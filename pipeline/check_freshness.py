@@ -264,17 +264,32 @@ def upstream_atc_updates_marker(url: str | None = None) -> str | None:
     """The ETag on ATC's trail-updates feed, or None if it cannot be had.
 
     HEAD, and the feed rather than the listing page, for two measured
-    reasons. The feed answers a HEAD with the same strong ETag it puts on a
-    GET, so the change signal costs no body at all. The listing page answers
-    a scripted request with 403 (measured 2026-08-12), so asking it would
-    report UNKNOWN forever - which is the honest verdict for "could not ask",
-    and exactly why it is not the thing to ask.
+    reasons. The feed answers a HEAD with the same ETag it puts on a GET, so
+    the change signal costs no body at all. The listing page carries no
+    validator to compare: measured 2026-08-24, a HEAD on it returns neither
+    an ETag nor a Last-Modified, so a marker read from it would be UNKNOWN
+    forever.
+
+    That second reason REPLACES the one this docstring gave until 2026-08-24,
+    which was that the listing answers a scripted request with 403 (measured
+    2026-08-12). It no longer does - it answers 200, to a bare `curl` with no
+    User-Agent set. The conclusion is unchanged and the evidence for it is
+    not, so it is restated rather than left to look still-measured.
+
+    The ETag is WEAK (`W/"..."`, measured 2026-08-24) where this said "strong"
+    on 2026-08-12. Nothing here depends on the difference - this compares the
+    header verbatim against the one stored at review and asks only whether it
+    moved - but a weak validator is the upstream's licence to change the byte
+    stream without changing the tag, so a missed edit is possible in a way
+    the old wording implied it was not.
 
     Using the feed here is not the mistake features/ATC_TRAIL_UPDATES.md
     warns about. That warning is about *content*: the feed held 3 items while
-    the page showed 9, so building the artifact from it would silently drop
-    the closures that matter most. As a "did anything move?" signal it is
-    fine, and the design names it as exactly that.
+    the listing held 89 across ten pages (measured 2026-08-24; it was "3
+    against 9" on 2026-08-09, which was itself page one mistaken for the
+    whole list - #945). Building the artifact from the feed would silently
+    drop the closures that matter most. As a "did anything move?" signal it
+    is fine, and the design names it as exactly that.
     """
     url = url or atc_updates_feed_url()
     if not url:

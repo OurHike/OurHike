@@ -201,6 +201,8 @@ Four filters, each printing what it dropped (measured 2026-08-24 on a live fetch
 | Status | maintainer, 2026-08-18 | 8 OPRHP segments with a blank or `Unknown` status (`Closed` **ships**, drawn barred) |
 | The route owner's line wins | [features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §5 | OPRHP's copy of the A.T. (66) and of the Long Path (124) |
 
+It also derives the **closed areas** onto those lines ([#964](https://github.com/OurHike/OurHike/issues/964)). NYS Parks publishes closures as polygons over ground with the reason as prose and no dates, which the app's other two closure feeds cannot represent — both are start/end mile markers on the A.T. centerline, and measured 2026-08-24 two of the four closures never touch the A.T. So `apply_area_closures()` intersects the polygons with the trail records instead: **99 sections closed from 4 areas, 64 wholly and 35 split at the boundary**. A partly-covered trail is split rather than closed whole, because closing whole would mark the Ramapo-Dunderberg shut on 16.7% of its length. The client needs no change — the barred band over this source already reads `trail_status`.
+
 Two of those want reading before they are trusted. The ring is a **survey proposal with two edges the maintainer has not closed**, and applying it decides one of them by default — see `RING_BBOX`'s comment for what Long Island and the northern cut each cost. And the route-owner rule matches a source's own `Name` and nothing else: matching OPRHP's `Alt_Name` too would have looked like the obvious generalisation and deleted 26 real trails the A.T. merely runs along, the 1777 East Trail and the Ramapo-Dunderberg among them.
 
 ## POI descriptions

@@ -129,6 +129,8 @@ band over its casing, the map's one permitted dashed rhythm (WIREFRAMES.md §3's
 exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
 won: a hiker learns one mark.
 
+**Built 2026-08-24 ([#964](https://github.com/OurHike/OurHike/issues/964)), and it turned out to be two feeds rather than one.** OPRHP's long-term `Closed` status ships on the line as this section describes. Their *temporary* closures do not work that way at all: they are polygons over ground, with the reason as prose and no dates, and two of the four do not touch the A.T. — so they are derived onto the trail lines by intersection, split at the boundary, and carry `closure_kind: "area"` against the status feed's `"long_term"`. That property exists because this paragraph asks the sheet to say different things about the two, and `trail_status` cannot tell them apart. **The sheet itself is still not built.**
+
 What keeps the two kinds of closed apart is the **sheet, not the line**: a long-term closed
 trail's sheet says "Closed by NYS OPRHP" with the layer's own edit date; a temporary
 closure's says its reason and reporting date as today (ClosureSheet). `Proposed` (19) and

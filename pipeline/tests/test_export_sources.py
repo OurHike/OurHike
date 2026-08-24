@@ -220,18 +220,29 @@ class TestAgainstTheRealRegistry:
         assert any("New York-New Jersey" in n for n in named)
 
     def test_still_omits_the_oprhp_layers_nothing_exports(self):
-        """The distinction the flip had to keep: three sources ship, three do
-        not, and the three that do not are held back because nothing is wired
-        to them - not because of a licence. The screen names STEWARDS, so
-        OPRHP appears via oprhp_trails regardless; what this pins is that the
-        registry still tells the two reasons apart."""
-        registry = json.loads((ROOT / "sources.json").read_text())
-        by_key = {s["key"]: s for s in registry["sources"]}
+        """The distinction the licence flip had to keep, and it is not about
+        licensing: a source is held back either because its terms are
+        unresolved OR because nothing is wired to it, and `reaches_hikers`
+        carries both meanings (see reaches_hikers_comment).
 
-        assert by_key["oprhp_trails"]["reaches_hikers"] is True
-        for key in ("oprhp_trail_closures", "oprhp_facilities", "oprhp_park_polygons"):
-            assert by_key[key]["reaches_hikers"] is False
-            assert "nothing exports this layer" in by_key[key]["licence"]
+        The membership moves as exporters get written - `oprhp_trail_closures`
+        left this group under #964, when export_nearby_trails.py started
+        deriving its areas onto the trail lines - so what is asserted is the
+        DISTINCTION rather than a fixed list. Every held-back oprhp_* layer
+        says in its own licence field that the reason is a missing exporter,
+        because the alternative reading (a licence problem) is the one that
+        would stop somebody wiring it up.
+        """
+        registry = json.loads((ROOT / "sources.json").read_text())
+        oprhp = {s["key"]: s for s in registry["sources"] if s["key"].startswith("oprhp")}
+
+        shipped = {k for k, s in oprhp.items() if s["reaches_hikers"]}
+        held = {k for k, s in oprhp.items() if not s["reaches_hikers"]}
+
+        assert shipped == {"oprhp_trails", "oprhp_trail_closures"}
+        assert held == {"oprhp_facilities", "oprhp_park_polygons"}
+        for key in held:
+            assert "nothing exports this layer" in oprhp[key]["licence"]
 
     def test_names_the_atc_with_its_recorded_licence(self):
         atc = next(s for s in self.real()["stewards"] if s["provider"] == "ATC")

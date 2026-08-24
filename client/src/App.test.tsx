@@ -624,6 +624,13 @@ describe('App shell', () => {
     // asserts which part the card landed on rather than merely that a card
     // exists, which the shelter would also satisfy.
     const card = await screen.findByRole('dialog')
+    // The strip lives in the opened card (#941), so the assertion opens it -
+    // what is being checked is which part the card LANDED on, and the peek
+    // says that with its heading rather than with a chip.
+    expect(
+      within(card).getByRole('heading', { name: 'Mt. Algo Shelter Privy' }),
+    ).toBeInTheDocument()
+    await user.click(within(card).getByTestId('poi-card-expand'))
     expect(
       within(card).getByRole('button', { name: /privy/i, current: true }),
     ).toBeInTheDocument()

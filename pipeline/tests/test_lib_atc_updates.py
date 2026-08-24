@@ -99,6 +99,26 @@ def test_a_category_atc_does_not_publish_is_refused():
 
 
 @pytest.mark.parametrize(
+    "category",
+    ["Water", "Relocation", "Permits", "Construction", "Fire", "Conservation"],
+)
+def test_the_categories_only_page_ten_ever_showed_are_accepted(category):
+    """The six words the page-one reviews never saw (#945).
+
+    Read off ATC's live listing on 2026-08-24, all ten pages: every one of
+    these appears on at least one of the 89 updates that were up that day.
+    They are pinned here because the reason they were missing is the reason
+    worth not repeating - not that the list was too short, but that nobody
+    had read past the first page of nine.
+
+    `Water` and `Fire` are the two that matter most: a closed well and a burn
+    ban are the water and fire paths CLAUDE.md names, and a category refusal
+    on either would have stopped the whole file baking.
+    """
+    assert not row_problems(row(category=category))
+
+
+@pytest.mark.parametrize(
     "field",
     ["atc_id", "title", "category", "states", "start_mile_marker", "end_mile_marker", "updated_at", "source_url"],
 )

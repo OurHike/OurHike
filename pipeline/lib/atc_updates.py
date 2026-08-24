@@ -52,7 +52,39 @@ TRAIL_MILE_MAX = 2197.5
 # failing - the reviewer met a refusal, looked, and added a word ATC had
 # started using. It is the cheap version of the cost
 # features/ATC_TRAIL_UPDATES.md names as "their HTML is not an API".
-CATEGORIES = frozenset({"Detour", "Alert", "Closure", "Parking", "Hiking Safety", "Animal"})
+#
+# THE SECOND ROW BELOW IS THE SAME LESSON AT SIX TIMES THE SIZE. Reviewing
+# all ten pages of ATC's listing on 2026-08-24 (#945) read a category off
+# every one of the 89 updates live that day, and six words appeared that the
+# six above do not cover. Counts are of those 89:
+#
+#     Water         4    closed wells, a shelter's spigot off
+#     Relocation    1    a side trail moved
+#     Permits       1    the Smokies' backcountry permit system
+#     Construction  1    the Bear Mtn Bridge deck replacement
+#     Fire          1    Roan Mountain's burn ban, renewed to 2030
+#     Conservation  1    a camping restriction in a Special Biological Area
+#
+# None of these is exotic and two of them - `Water` and `Fire` - sit directly
+# on the paths features/../CLAUDE.md calls the ways this app can hurt
+# somebody. They were invisible for as long as the review only read page one,
+# which is the actual finding of #945 rather than the count of updates.
+CATEGORIES = frozenset(
+    {
+        "Detour",
+        "Alert",
+        "Closure",
+        "Parking",
+        "Hiking Safety",
+        "Animal",
+        "Water",
+        "Relocation",
+        "Permits",
+        "Construction",
+        "Fire",
+        "Conservation",
+    }
+)
 
 # Every field a published row carries. Facts and a link - deliberately not
 # ATC's body text, which is theirs (features/ATC_TRAIL_UPDATES.md, and the

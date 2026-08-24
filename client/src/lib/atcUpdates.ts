@@ -77,6 +77,25 @@ export type AtcCategory =
   /** Bear warnings and the like. Not among the five measured on 2026-08-09;
    *  ATC was using it for two live notices on 2026-08-12. */
   | 'Animal'
+  // The six below were invisible while the review only ever read page one of
+  // ATC's listing (#945). Reading all ten on 2026-08-24 found every one of
+  // them in use across the 89 updates live that day. Counts, that day:
+  //
+  //   Water 4 · Relocation 1 · Permits 1 · Construction 1 · Fire 1 ·
+  //   Conservation 1
+  //
+  // Nothing here validates a category at runtime - `parsePublished` checks
+  // `generated_at` and that the payload is an array, and the rows are cast -
+  // so an unlisted word would have rendered rather than thrown. That makes
+  // this union a claim about the artifact rather than a guard on it, and a
+  // stale claim is the kind of thing the next reader trusts. It is kept
+  // truthful for that reason, not because a build would have broken.
+  | 'Water'
+  | 'Relocation'
+  | 'Permits'
+  | 'Construction'
+  | 'Fire'
+  | 'Conservation'
 
 /**
  * Whether this update gets a band, rather than only a banner.

@@ -256,13 +256,16 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` is false here for a different reason than it used to be: nothing exports this layer yet. Registered and not wired to anything, per reaches_hikers_comment.",
+      "licence": "See oprhp_licence below. OPRHP states terms and they permit this: reuse allowed, attribution to OPRHP REQUIRED (map/credits.ts carries it), non-commercial purposes - which the maintainer determined on 2026-08-24 that OurHike satisfies. Exported since #964: export_nearby_trails.py intersects these closed AREAS with the trail lines and ships the sections inside them as closed.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "closure_areas": true,
+      "reason_field": "Name",
+      "place_field": "Descript",
       "may_be_empty": true,
       "discovered_via": "Sibling of oprhp_trails on the same org, surfaced by an AGOL search for the org's trail services, probed live 2026-08-18 (#768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
       "notes": "TEMPORARY closure polygons - 4 features on 2026-08-18, and an honest count of zero is the expected answer in a good week, which is what may_be_empty records and why this layer could never sit behind fetch_all.py's non-empty completeness gate. dataLastEditDate verified live 2026-08-18 (then 2026-06-16). A safety surface: if OPRHP data ever ships, this is the layer whose freshness matters most (CLAUDE.md's closures path).",
-      "reaches_hikers": false
+      "reaches_hikers": true
     },
     {
       "key": "oprhp_facilities",

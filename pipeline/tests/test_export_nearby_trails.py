@@ -557,3 +557,202 @@ def test_the_manifest_carries_each_sources_steward_and_whether_it_ships(tmp_path
     assert manifest["feature_count"] == 1
     assert manifest["ring_bbox"] == list(ex.RING_BBOX)
     assert len(manifest["sha256"]) == 64
+
+
+# --------------------------------------------------------------------------
+# Closed AREAS (#964). NYS Parks closes ground, not trail segments, so the
+# closure a hiker sees on a line is DERIVED - and the two ways a derivation
+# can lie are the two things pinned here: a band across a trail that is open,
+# and no band across one that is closed.
+# --------------------------------------------------------------------------
+
+# A square covering the eastern half of the trails below.
+CLOSED_SQUARE = [[(-74.10, 41.20), (-74.00, 41.20), (-74.00, 41.30), (-74.10, 41.30), (-74.10, 41.20)]]
+
+
+def _closure_source(**overrides):
+    source = {
+        "key": "oprhp_trail_closures",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/closures",
+        "closure_areas": True,
+        "reason_field": "Name",
+        "place_field": "Descript",
+        "may_be_empty": True,
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
+
+
+def _area(rings, name="Area Closed - No Entry due to extreme rainfall event in 2023"):
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [[[x, y] for x, y in ring] for ring in rings]},
+        "properties": {"Name": name, "Descript": "Bear Mtn./Harriman"},
+    }
+
+
+def test_a_trail_wholly_inside_a_closed_area_ships_closed(tmp_path, monkeypatch):
+    # The plain case: the barred band the client already draws over the
+    # nearby-trails source keys off `trail_status`, so this is the whole
+    # mechanism - no new artifact, no new layer.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [_feature([(-74.06, 41.25), (-74.04, 41.26)], _oprhp_properties())],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = body["features"]
+    assert feature["properties"]["trail_status"] == "closed"
+    assert feature["properties"]["closure_kind"] == "area"
+    assert "extreme rainfall" in feature["properties"]["closure_reason"]
+
+
+def test_a_trail_only_partly_inside_is_split_rather_than_closed_whole(tmp_path, monkeypatch):
+    """THE EXPENSIVE FAILURE THIS FILTER COULD CAUSE, and the reason the split
+    exists at all.
+
+    Measured 2026-08-24 on the live layers: of 99 exported features touching a
+    closed area, 33 are only partly inside. Closing them whole would mark the
+    Ramapo-Dunderberg shut on 16.7% of its length. A barred band across open
+    trail is the cry-wolf failure, on a mark a hiker is meant to obey without
+    going to check.
+    """
+    # Runs west to east, crossing the closure's -74.10 edge: half out, half in.
+    crossing = [(-74.20, 41.25), (-74.05, 41.25)]
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [_feature(crossing, _oprhp_properties(Name="Ramapo-Dunderberg"))],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    by_status = {f["properties"]["trail_status"]: f for f in body["features"]}
+    assert set(by_status) == {"open", "closed"}, "one feature in, one feature out"
+
+    # And the split is at the boundary, not somewhere convenient: the closed
+    # part starts where the polygon does.
+    closed = shape(by_status["closed"]["geometry"])
+    open_part = shape(by_status["open"]["geometry"])
+    assert closed.bounds[0] == pytest.approx(-74.10, abs=1e-9)
+    assert open_part.bounds[0] == pytest.approx(-74.20, abs=1e-9)
+    assert manifest["closures"]["split"] == 1
+    assert manifest["closures"]["wholly_closed"] == 0
+
+
+def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
+    """The Suffern-Bear Mountain case, measured at 0.0% inside on the live
+    layers: the trail meets the closure at a corner and goes nowhere into it.
+
+    `intersects` is true here and `intersection` returns a POINT, which is why
+    the split is written against what the intersection actually contains
+    rather than against the boolean. A point is not a walkable section, so
+    there is nothing to close.
+
+    NOT the same as a trail running ALONG the boundary, which shapely counts
+    as inside the polygon because a polygon contains its own edge - and which
+    this deliberately leaves closed. A trail coincident with the edge of a
+    closed area is on the line the steward drew, and erring open there would
+    be guessing in the direction that gets somebody hurt.
+    """
+    touches_the_corner = [(-74.15, 41.15), (-74.10, 41.20)]
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [_feature(touches_the_corner, _oprhp_properties(Name="Suffern Bear Mountain"))],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = body["features"]
+    assert feature["properties"]["trail_status"] == "open"
+    assert "closure_kind" not in feature["properties"]
+    assert manifest["closures"]["closed"] == 0
+
+
+def test_an_empty_closures_layer_is_a_good_week_not_a_failure(tmp_path, monkeypatch):
+    # `may_be_empty: true` is on this source for exactly this. Zero closures is
+    # a fact about the parks; a run that failed on it would make the honest
+    # state indistinguishable from a broken fetch.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [_feature(IN_RING, _oprhp_properties())],
+            "oprhp_trail_closures": [],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    assert body["features"][0]["properties"]["trail_status"] == "open"
+    assert manifest["closures"] == {"areas": 0, "closed": 0, "split": 0, "wholly_closed": 0}
+
+
+def test_the_stewards_own_long_term_status_is_a_different_kind_of_closed(tmp_path, monkeypatch):
+    """features/NEARBY_TRAILS.md §3: the sheet has to tell a long-term closed
+    trail from a temporarily closed area, and `trail_status` cannot - both are
+    "closed". So the kind is carried as data rather than left to be inferred
+    from the absence of a reason."""
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Status="Closed"))]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = body["features"]
+    assert feature["properties"]["trail_status"] == "closed"
+    assert feature["properties"]["closure_kind"] == "long_term"
+    # No reason: OPRHP's status column gives none, and inventing one would be
+    # the display outrunning its source.
+    assert "closure_reason" not in feature["properties"]
+
+
+def test_a_closed_section_never_shares_an_id_with_its_open_half(tmp_path, monkeypatch):
+    # Two features from one source feature. An id that repeats is an id that
+    # cannot identify anything, and map/lineTaps.ts hands it to a sheet.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [_feature([(-74.20, 41.25), (-74.05, 41.25)], _oprhp_properties())],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    ids = [f["properties"]["id"] for f in body["features"]]
+    assert len(ids) == len(set(ids))
+    assert sorted(ids) == ["oprhp_trails:1:closed", "oprhp_trails:1:open"]
+
+
+def test_a_closure_layer_that_was_never_fetched_leaves_every_trail_open(tmp_path, monkeypatch):
+    # The registry names the layer, the directory has no file. A missing
+    # closure is invisible either way; failing the whole export over it would
+    # take the trails down with it.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    assert body["features"][0]["properties"]["trail_status"] == "open"
+    assert manifest["closures"]["areas"] == 0

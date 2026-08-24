@@ -172,13 +172,34 @@ Change-aware per entry (conditional GET against its own manifest, plus a body-ha
 
 ## Fetching external-organization layers (review-only)
 
-`fetch_external_layers.py` downloads the ArcGIS feature layers other organizations host on their own orgs, as `sources.json` registers them (`kind: "external_arcgis_layer"` — [#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app](https://github.com/OurHike/OurHike/issues/769)). First registrants: **NYS OPRHP's four Parks Explorer layers** — 16,641 trail segments statewide with names, up to three blaze colours, surfaces, per-use permissions and mileage, plus the temporary-closure polygons, facilities points and park-unit boundaries the State's own app draws (all counts measured 2026-08-18).
+`fetch_external_layers.py` downloads the ArcGIS feature layers other organizations host on their own orgs, as `sources.json` registers them (`kind: "external_arcgis_layer"` — [#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app](https://github.com/OurHike/OurHike/issues/769)). Registered so far: **NYS OPRHP's four Parks Explorer layers** — 16,641 trail segments statewide with names, up to three blaze colours, surfaces, per-use permissions and mileage, plus the temporary-closure polygons, facilities points and park-unit boundaries the State's own app draws (all counts measured 2026-08-18) — and **NYNJTC's two public extracts**, the Long Path (43 sections) and the Highlands Trail (12), added under [#950](https://github.com/OurHike/OurHike/issues/950) on the verdict [NYC_SOURCE_SURVEY.md](NYC_SOURCE_SURVEY.md) §4 recorded and nothing had acted on (counts re-measured live 2026-08-24). NYNJTC's FULL network is not here and is not coming this way: SOURCE_SURVEY.md §5's verdict — *an agreement, not a scrape* — stands.
 
 ```
 .venv/Scripts/python fetch_external_layers.py
 ```
 
-Change-aware exactly the way `fetch_all.py` is (each layer's `editingInfo.dataLastEditDate` against its own manifest in `data/raw/external/`, verified live on all four layers 2026-08-18), and deliberately **not** part of `fetch_all.py`: that script's completeness gate is the A.T. release's, so folding these in would couple an A.T. data release to another organization's uptime — and OPRHP's closure layer honestly holds zero polygons in a good week, which a non-empty gate can only read as broken. Entries may declare `may_be_empty: true` for exactly that case; everything else still fails on empty. **Review-only by construction: no export reads `data/raw/external/`**, and the `oprhp_licence` block in `sources.json` records why — OPRHP's terms are unstated and the maintainer's outreach is in progress, so nothing from this directory reaches a published artifact until that block records their answer. The [#771](https://github.com/OurHike/OurHike/issues/771) spike is this data's first consumer.
+Change-aware exactly the way `fetch_all.py` is (each layer's `editingInfo.dataLastEditDate` against its own manifest in `data/raw/external/`, verified live on all four layers 2026-08-18), and deliberately **not** part of `fetch_all.py`: that script's completeness gate is the A.T. release's, so folding these in would couple an A.T. data release to another organization's uptime — and OPRHP's closure layer honestly holds zero polygons in a good week, which a non-empty gate can only read as broken. Entries may declare `may_be_empty: true` for exactly that case; everything else still fails on empty. **Review-only, and since [#950](https://github.com/OurHike/OurHike/issues/950) that is enforced at publish rather than by nothing reading the directory.** It used to be true that no export read `data/raw/external/` at all; `export_nearby_trails.py` (below) now does, because a map nobody can look at cannot be reviewed. What has not changed is what reaches a hiker: the `oprhp_licence` and `nynjtc_licence` blocks in `sources.json` record both stewards' terms as unstated with outreach in progress, every entry carries `reaches_hikers: false`, and `publish.py` refuses to upload the artifact while any source in it is held back. The [#771](https://github.com/OurHike/OurHike/issues/771) spike was this data's first consumer and the export is its second.
+
+## Exporting the trails other organizations maintain (#950)
+
+`export_nearby_trails.py` turns what `fetch_external_layers.py` downloaded into the lines the map draws behind the chosen trail — [features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md)'s map, given data to draw. It is a second export rather than a branch inside `export_trails.py` because the two differ in all three things that matter: where the raw file is (`data/raw/external/` against `data/raw/`), what it is clipped to (the NYC ring against the 30-mile A.T. corridor), and whether it may be published at all.
+
+```
+.venv/Scripts/python export_nearby_trails.py
+```
+
+Writes `data/processed/nearby_trails.geojson` and its manifest. Every feature carries the five properties the client already reads off a trail line — `source`, `blaze_color`, `name`, `trail_status`, `id` — so these draw through the same expressions the A.T. does and **ghost automatically**, because `client/src/map/nearbyTrails.ts` dims every source outside the chosen system.
+
+Four filters, each printing what it dropped (measured 2026-08-24 on a live fetch, **3,663 features out of 16,696 read**, 5.08 MB raw / 1.72 MB gzipped):
+
+| filter | basis | what it dropped |
+|---|---|---|
+| Hiking only | maintainer, 2026-08-18 (*"It's OurHike, not OurBike"*) | 53 OPRHP segments with `Foot: N` |
+| The ring | [NYC_SOURCE_SURVEY.md](NYC_SOURCE_SURVEY.md) §1's **proposal** | 10,714 OPRHP segments outside it, 2,058 on Long Island, and 10 of NYNJTC's 43 Long Path sections north of the cut |
+| Status | maintainer, 2026-08-18 | 8 OPRHP segments with a blank or `Unknown` status (`Closed` **ships**, drawn barred) |
+| The route owner's line wins | [features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §5 | OPRHP's copy of the A.T. (66) and of the Long Path (124) |
+
+Two of those want reading before they are trusted. The ring is a **survey proposal with two edges the maintainer has not closed**, and applying it decides one of them by default — see `RING_BBOX`'s comment for what Long Island and the northern cut each cost. And the route-owner rule matches a source's own `Name` and nothing else: matching OPRHP's `Alt_Name` too would have looked like the obvious generalisation and deleted 26 real trails the A.T. merely runs along, the 1777 East Trail and the Ramapo-Dunderberg among them.
 
 ## POI descriptions
 

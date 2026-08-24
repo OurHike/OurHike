@@ -67,6 +67,24 @@ export const TRAILS_KEY = 'trails.geojson'
  */
 export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
 
+/**
+ * The trail lines other organizations maintain - NYS OPRHP's and NYNJTC's
+ * (#950, pipeline/export_nearby_trails.py, features/NEARBY_TRAILS.md).
+ *
+ * ITS OWN ARTIFACT BECAUSE OF A LICENCE, not because of its size. Neither
+ * steward has stated reuse terms, so pipeline/publish.py will not upload this
+ * file while any source inside it carries `reaches_hikers: false`. Keeping
+ * these lines out of `trails.geojson` is what lets the A.T. publish on ATC's
+ * recorded permission without republishing anybody else's data alongside it.
+ *
+ * So a 404 is the expected answer against the live bucket today, and
+ * lib/nearbyTrailData.ts reads it as "no nearby trails" rather than as a
+ * failure - the same reading spurs.json and trails_overview.geojson get.
+ * When a licence answer is recorded in pipeline/sources.json, the same export
+ * and the same publish put this key in the bucket with nothing here changed.
+ */
+export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

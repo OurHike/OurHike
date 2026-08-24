@@ -150,6 +150,18 @@ the shelf is broader):
 conversation concludes), and treat the fire-detour layer as the first candidate for a
 non-ATC conditions source.
 
+**Acted on 2026-08-24** ([#950](https://github.com/OurHike/OurHike/issues/950)): both are in
+`sources.json` as `nynjtc_long_path` and `nynjtc_highlands_trail`, review-only
+(`reaches_hikers: false`) behind a new `nynjtc_licence` block. Re-probing them that day
+found the shelf exactly as this section left it on 2026-08-18 — 43 sections and 12, the
+same field lists, `dataLastEditDate` still 2026-08-04 and 2025-12-04 — so nothing here
+needed correcting, which is worth recording because a snapshot that is never re-read is a
+snapshot nobody knows the age of. Two things the survey did not say, found on the re-probe
+and now carried in the entries themselves: the Long Path's `Blaze` is a **plain string with
+no coded domain** (all 43 rows read the lowercase `aqua`), and the Highlands Trail layer
+**publishes no blaze field at all**, which is registered as the neutral rather than as the
+teal it wears on the ground. The fire-detour layer is still unregistered.
+
 ## 5. New Jersey — two real layers, and the first stated terms in this survey
 
 - **NJDEP "NJ State Park Service Trails"** (`mapsdep.nj.gov/…/Features/Land/MapServer/63`,

@@ -51,6 +51,7 @@ from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
+from lib.source_registry import is_external_arcgis_layer
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -70,15 +71,37 @@ _TO_GEOGRAPHIC = Transformer.from_crs(PROJECTED_CRS, GEOGRAPHIC_CRS, always_xy=T
 
 
 def load_line_sources(sources_path: Path | None = None) -> list[dict]:
-    """Every sources.json entry carrying blaze metadata (`blaze_field` or
-    `blaze_default`) - the line-geometry trail sources this export
-    processes (today: centerline, side_trails). Reads SOURCES_PATH at call
+    """The A.T. build's line-geometry trail sources: every sources.json entry
+    carrying blaze metadata (`blaze_field` or `blaze_default`) that is part of
+    the A.T. fetch (today: centerline, side_trails). Reads SOURCES_PATH at call
     time when no path is given - not as the parameter's default value,
     which would bind once at function-definition time and silently ignore a
-    test's `monkeypatch.setattr(export_trails, "SOURCES_PATH", ...)`."""
+    test's `monkeypatch.setattr(export_trails, "SOURCES_PATH", ...)`.
+
+    WHY THE SECOND CLAUSE EXISTS (#950). Blaze metadata alone used to be the
+    whole test, and the module docstring above still promises that a future
+    trail-line source "picks up this export automatically just by carrying one
+    of those two keys". That promise was written for a source inside the A.T.
+    fetch and is not true of an external organization's layer, which differs in
+    both of the things this function feeds:
+
+      - WHERE THE RAW FILE IS. fetch_all.py writes `data/raw/<key>.geojson`;
+        fetch_external_layers.py writes `data/raw/external/<key>.geojson`. main()
+        below reads the first, so an external key here is a missing file.
+      - WHAT IT IS CLIPPED TO. Everything this export writes is clipped to the
+        30-mile A.T. corridor. NYS OPRHP's layer is a different subject with a
+        different extent, and passing it through this clip would silently keep
+        the fraction that happens to run near the A.T. and drop the rest as
+        though it had never been fetched.
+
+    So `external_arcgis_layer` entries are excluded here and exported by
+    export_nearby_trails.py instead, which reads the other directory and clips
+    to the NYC ring. The blaze keys still mean "this is a trail-line source" for
+    both - one marker, two exports, and lib/source_registry.py's `kind` is what
+    says which."""
     path = sources_path if sources_path is not None else SOURCES_PATH
     data = json.loads(path.read_text(encoding="utf-8"))
-    return [s for s in data["sources"] if "blaze_field" in s or "blaze_default" in s]
+    return [s for s in data["sources"] if ("blaze_field" in s or "blaze_default" in s) and not is_external_arcgis_layer(s)]
 
 
 def load_features(path: Path) -> list[dict]:

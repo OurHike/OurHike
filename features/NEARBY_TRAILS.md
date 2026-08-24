@@ -14,6 +14,18 @@ program. Every measurement cited below is the
 [#771](https://github.com/OurHike/OurHike/issues/771) spike's
 (`pipeline/spike_nyc_trails.py`, 2026-08-18) unless dated otherwise.
 
+**Status, 2026-08-24:** built, and drawing nothing yet. The map
+([#783](https://github.com/OurHike/OurHike/issues/783)), the labels
+([#930](https://github.com/OurHike/OurHike/issues/930)), the palette
+([#782](https://github.com/OurHike/OurHike/issues/782)) and now the data behind them
+([#950](https://github.com/OurHike/OurHike/issues/950), `pipeline/export_nearby_trails.py`)
+all exist, and 3,663 trail lines from NYS OPRHP and NYNJTC export cleanly. **None of them
+reaches a hiker**, because neither steward has stated reuse terms and `publish.py` holds the
+artifact back while that is true — see `sources.json`'s `oprhp_licence` and `nynjtc_licence`.
+What stands between this doc and a hiker seeing it is two conversations, not more code. §6
+and §9 are the two sections describing things that genuinely are not built, and both say so
+in place.
+
 ---
 
 ## The ground this designs for, measured
@@ -211,6 +223,14 @@ Cross-org rules, recorded from the maintainer's decisions and the spike's eviden
 
 ## 6. Provenance in the display voice
 
+**Not built** as of 2026-08-24: the network ships with no per-steward provenance line, and
+the pipeline records each source's steward and attribution in its manifest so that the
+screen which grows one has a single place to read them from. What is missing is on the
+client side and is not a rendering detail — the sources screen
+([#927](https://github.com/OurHike/OurHike/issues/927)) deliberately names only stewards
+whose data reaches hikers, and every source here is held back, so a nearby-trail sheet has
+nowhere to read a licence from today.
+
 Every nearby-trail sheet carries a source line — "Trail data: NYS OPRHP" — and OPRHP's own
 licence text disclaims accuracy, so the line's job is honesty, not decoration. The wording
 ships from the pipeline's per-source attribution fields (sources.json), never hardcoded;
@@ -252,6 +272,16 @@ trail and every safety POI inside its boundary**, not just the chosen trail's. T
 safety-always rule is a promise about the screen, and a unit cut trail-shaped would break
 it exactly where trails cross. (The spike's scale numbers make this cheap: the two parks'
 full trail geometry is 0.7 MB gzipped.)
+
+**Not met by what shipped, and this is the gap to know about.**
+[#950](https://github.com/OurHike/OurHike/issues/950) drew this map from a network artifact
+`client/src/lib/nearbyTrailData.ts` fetches and does **not** store, so a phone with no
+signal draws no nearby trails at all. That was a deliberate hold rather than an oversight —
+what a download contains is #552's decision, and building a second store beside
+`lib/trailData.ts`'s in advance of it would be a shape to unpick later — but the paragraph
+above is a requirement this build does not satisfy, and it should be read as outstanding
+rather than as described-and-done. The whole exported network is 1.72 MB gzipped
+(measured 2026-08-24), which is the number that decision has to weigh.
 
 ## 10. POI density, honestly
 

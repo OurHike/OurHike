@@ -14,6 +14,10 @@ import {
   TRAIL_CASING_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   TRAIL_OVERVIEW_SOURCE_ID,
+  NEARBY_TRAILS_SOURCE_ID,
+  NEARBY_BLAZE_LAYER_ID,
+  NEARBY_TRAIL_CASING_LAYER_ID,
+  NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
   CENTERLINE_SOURCE,
@@ -54,6 +58,7 @@ import {
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
+import { NEARBY_TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_LAYER_ID } from './trailLabels'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
 // load-bearing rather than decorative:
@@ -1079,5 +1084,89 @@ describe('a blaze never changes colour where a hiker is navigating by it (#598)'
     // And it is still a choice rather than a zoom - covered by the cases
     // above, which run this appearance through both.
     expect(redLightActive(redLight)).toBe(true)
+  })
+})
+
+describe('the trails other organizations maintain (#950)', () => {
+  const ids = () => style().layers.map((l) => l.id)
+
+  it('declares its own source, because the two artifacts are separately licensed', () => {
+    // One MapLibre GeoJSON source takes one `data`. These lines ship as their
+    // own artifact because publish.py holds them back while NYS OPRHP's and
+    // NYNJTC's reuse terms are unstated, so two artifacts is two sources -
+    // see NEARBY_TRAILS_SOURCE_ID for the whole argument.
+    expect(style().sources[NEARBY_TRAILS_SOURCE_ID]).toBeDefined()
+  })
+
+  it('opens empty, so a bucket with no network is one shape of style', () => {
+    // The ordinary state today. An absent source would mean the style
+    // depended on what the bucket happened to hold.
+    expect(style().sources[NEARBY_TRAILS_SOURCE_ID]).toMatchObject({
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    })
+  })
+
+  it('draws the network under the chosen trail, both lines and casings', () => {
+    // Opacity says which SYSTEM a line belongs to; ORDER is what keeps the
+    // chosen trail's pixels. Half the A.T.'s length in Harriman runs within
+    // 150 m of another marked trail (#771), so where the two are coincident
+    // the last-drawn line wins whatever its opacity - and it must not be the
+    // nearby one.
+    const order = ids()
+    expect(order.indexOf(NEARBY_BLAZE_LAYER_ID)).toBeLessThan(
+      order.indexOf(TRAIL_CASING_LAYER_ID),
+    )
+    expect(order.indexOf(NEARBY_TRAIL_CASING_LAYER_ID)).toBeLessThan(
+      order.indexOf(NEARBY_BLAZE_LAYER_ID),
+    )
+  })
+
+  it('paints a nearby trail with the same expressions the chosen trail is painted with', () => {
+    // THE TEST THE SECOND SOURCE EXISTS TO NEED. Two instances of one
+    // treatment, not two treatments that currently agree: a channel added to
+    // one and not the other is a nearby trail that stops looking like a
+    // trail, and nothing else in the build would catch it.
+    expect(layer(NEARBY_BLAZE_LAYER_ID)).toEqual({
+      ...layer(BLAZE_LAYER_ID),
+      id: NEARBY_BLAZE_LAYER_ID,
+      source: NEARBY_TRAILS_SOURCE_ID,
+    })
+    expect(layer(NEARBY_TRAIL_CASING_LAYER_ID)).toEqual({
+      ...layer(TRAIL_CASING_LAYER_ID),
+      id: NEARBY_TRAIL_CASING_LAYER_ID,
+      source: NEARBY_TRAILS_SOURCE_ID,
+    })
+  })
+
+  it('gives a long-term closed nearby trail the same barred band', () => {
+    // features/NEARBY_TRAILS.md §3: one mark for "do not walk this",
+    // whoever's trail it is. OPRHP publishes the status
+    // (export_nearby_trails.py's `trail_status`) and lib/closureStyle.ts's
+    // filter is what reads it.
+    expect(layer(NEARBY_LONG_TERM_CLOSURE_LAYER_ID)).toEqual({
+      ...layer(LONG_TERM_CLOSURE_LAYER_ID),
+      id: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+      source: NEARBY_TRAILS_SOURCE_ID,
+    })
+  })
+
+  it('labels the network, and lets the chosen trail win a contested name', () => {
+    // Placement runs top-down, so the LATER symbol layer has priority
+    // (liveTopo.test.ts's finding). Where both names cannot be placed, the
+    // one the map is about survives.
+    const order = ids()
+    expect(order.indexOf(NEARBY_TRAIL_LABEL_LAYER_ID)).toBeGreaterThan(-1)
+    expect(order.indexOf(NEARBY_TRAIL_LABEL_LAYER_ID)).toBeLessThan(
+      order.indexOf(TRAIL_LABEL_LAYER_ID),
+    )
+  })
+
+  it('dims a nearby label with its own line, by the shared opacity rule', () => {
+    // features/NEARBY_TRAILS.md §1: "labels dim with their lines". Not a copy
+    // of the rule - the same expression object.
+    expect(layer(NEARBY_TRAIL_LABEL_LAYER_ID).paint).toEqual(
+      layer(TRAIL_LABEL_LAYER_ID).paint,
+    )
   })
 })

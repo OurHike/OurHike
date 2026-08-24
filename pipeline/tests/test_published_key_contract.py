@@ -139,6 +139,12 @@ def client_keys() -> dict[str, str]:
         # card to draw them with. Listed here so a rename on either end is a
         # failing test rather than a 404 on a mountain.
         _string_const(config, "RETIRED_POI_KEY"): "config.ts RETIRED_POI_KEY",
+        # The trails other organizations maintain (#950). Listed here even
+        # though publish.py holds this artifact back TODAY - see the fixture
+        # below for why that is not an exemption. The contract is about the
+        # name, and the day the licence gate opens is a bad day to discover
+        # the two ends spelled it differently.
+        _string_const(config, "NEARBY_TRAILS_KEY"): "config.ts NEARBY_TRAILS_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_REPORTS_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_ATC_UPDATES_KEY"): "publishedConditions.ts",
@@ -196,6 +202,23 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # started asking for it (#831) - publish.collect_artifacts has emitted it
     # since #673.
     (tmp_path / "retired_poi_manifest.json").write_text(json.dumps(manifest_entry("retired_poi.geojson")))
+    # The nearby-trail network (#950), and the ONE artifact in this fixture
+    # whose manifest has to say something beyond a path and a hash: publish.py
+    # refuses to upload it while any source in it carries
+    # `reaches_hikers: false`, which every source in the real registry does
+    # today. So this fixture states the post-licence world deliberately.
+    #
+    # That is not the fixture dodging the gate - the gate has its own tests in
+    # test_publish.py, both directions. It is this file answering the question
+    # it exists to answer, which is whether the two ends agree on the NAME. A
+    # fixture that left the sources held back would make this key look
+    # unpublished for a reason that has nothing to do with spelling, and the
+    # file's own docstring names that as the failure mode ("a run that
+    # happened to skip an export would answer 'that key is not published' for
+    # a reason that has nothing to do with whether the two ends agree").
+    nearby = manifest_entry("nearby_trails.geojson")
+    nearby["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
+    (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(nearby))
 
     conditions_dir = tmp_path / "conditions"
     conditions_dir.mkdir()

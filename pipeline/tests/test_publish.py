@@ -910,6 +910,81 @@ def test_the_manifest_is_never_cached(s3_client, local_artifacts):
     assert "ContentEncoding" not in stored
 
 
+def _write_nearby_manifest(tmp_path, sources):
+    artifact = tmp_path / "nearby_trails.geojson"
+    artifact.write_text('{"type":"FeatureCollection","features":[]}')
+    (tmp_path / "nearby_trails_manifest.json").write_text(
+        json.dumps({"path": str(artifact), "sha256": "n34rby", "feature_count": 3663, "sources": sources})
+    )
+
+
+def test_collect_holds_back_the_network_while_any_steward_has_not_stated_terms(tmp_path, monkeypatch, capsys):
+    """The licence gate (#950), and the one artifact that has one.
+
+    NYS OPRHP and NYNJTC have both been asked and neither has answered, so
+    every source in this manifest carries `reaches_hikers: false` today. A
+    publish that uploaded it anyway would republish two organizations' data
+    on no stated basis - CONTRIBUTING.md's "establish its licence first".
+    """
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(
+        tmp_path,
+        {
+            "oprhp_trails": {"reaches_hikers": False, "kept": 3618},
+            "nynjtc_long_path": {"reaches_hikers": False, "kept": 33},
+        },
+    )
+
+    artifacts = publish.collect_artifacts()
+
+    assert publish.NEARBY_TRAILS_KEY not in artifacts
+    # Loud, not silent: an absent upload has to be distinguishable from an
+    # export that never ran.
+    out = capsys.readouterr().out
+    assert "HELD BACK" in out and "oprhp_trails" in out and "nynjtc_long_path" in out
+
+
+def test_collect_holds_back_the_network_when_only_one_steward_is_outstanding(tmp_path, monkeypatch):
+    """All-or-nothing: one artifact holds every source's lines, so a partial
+    publish would mean re-cutting the file rather than skipping a key."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(
+        tmp_path,
+        {
+            "oprhp_trails": {"reaches_hikers": True},
+            "nynjtc_long_path": {"reaches_hikers": False},
+        },
+    )
+
+    assert publish.NEARBY_TRAILS_KEY not in publish.collect_artifacts()
+
+
+def test_collect_publishes_the_network_once_every_steward_has_answered(tmp_path, monkeypatch):
+    """What flipping `reaches_hikers` in sources.json and re-running the
+    export is supposed to do, with nothing in publish.py edited."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(
+        tmp_path,
+        {
+            "oprhp_trails": {"reaches_hikers": True},
+            "nynjtc_long_path": {"reaches_hikers": True},
+            "nynjtc_highlands_trail": {"reaches_hikers": True},
+        },
+    )
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts[publish.NEARBY_TRAILS_KEY]["sha256"] == "n34rby"
+
+
+def test_collect_treats_an_unexported_network_as_an_absence(tmp_path, monkeypatch):
+    """A checkout that has never run export_nearby_trails.py - the normal case
+    for anyone working on the A.T. build."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+
+    assert publish.NEARBY_TRAILS_KEY not in publish.collect_artifacts()
+
+
 def test_collect_gathers_the_drought_bands(tmp_path, monkeypatch):
     """#720's artifact, and the one this file did not cover when it shipped.
 

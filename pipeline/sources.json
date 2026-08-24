@@ -35,6 +35,9 @@
       "discovered_date": "2026-07-24",
       "notes": "Also given directly by user as https://arcg.is/1nqL542",
       "blaze_default": "White",
+      "owns_route_names": [
+        "Appalachian Trail"
+      ],
       "reaches_hikers": true
     },
     {
@@ -234,6 +237,11 @@
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
       "licence": "See oprhp_licence below - unstated by OPRHP (their item's licenseInfo is a no-warranty disclaimer and accessInformation is empty, both read 2026-08-18), maintainer outreach in progress. Fetched for REVIEW AND THE #771 SPIKE ONLY; nothing from this source reaches a published artifact until that block records OPRHP's answer.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "blaze_field": "Blaze",
+      "name_field": "Name",
+      "foot_field": "Foot",
+      "status_field": "Status",
+      "unit_field": "Unit",
       "discovered_via": "The NY State Parks Explorer mobile app's per-park Web Maps on OPRHP's public AGOL org 'nysparks' (org id 1xFZPtKn1wKC6POA) - read 'Old Croton Parks App' item 36c9404f8fad4dfc9df0e0037e1fb96b's operationalLayers, then probed live 2026-08-18 (#768/#769). Registered by hand - discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-18",
       "notes": "16,641 polyline segments statewide, measured 2026-08-18: per-segment Unit/Name/Alt_Name, up to three Blaze colours plus Map_Blaze, Surface, Status, Public_, per-use flags (Foot/Bike/Horse/XC/SS/Snowmb) and Miles. editingInfo.dataLastEditDate verified live 2026-08-18 - then reading 2026-08-17T19:43Z, edited the day before this registration, so the layer is actively maintained. This is the layer the Parks Explorer app syncs its offline data from (capabilities Query,Extract,Sync,ChangeTracking; a literal ParksApp column). What Public_ and Status gate is unmeasured - #771 measures before anything filters on them, and until then the fetch takes every row rather than guessing.",
@@ -287,6 +295,45 @@
       "discovered_date": "2026-08-18",
       "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30).",
       "reaches_hikers": false
+    },
+    {
+      "key": "nynjtc_long_path",
+      "title": "NYNJTC Long Path",
+      "provider": "NYNJTC",
+      "kind": "external_arcgis_layer",
+      "url": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Long_Path_2023/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York-New Jersey Trail Conference",
+      "steward_contact": "https://secure.nynjtc.org/contact-us",
+      "licence": "See nynjtc_licence below - unstated by NYNJTC (this layer's copyrightText is empty and its description carries no terms, both read 2026-08-24), maintainer outreach in progress. Fetched for REVIEW ONLY; nothing from this source reaches a published artifact until that block records NYNJTC's answer.",
+      "attribution": "New York-New Jersey Trail Conference",
+      "blaze_field": "Blaze",
+      "name_field": "Trail_Name",
+      "owns_route_names": [
+        "Long Path"
+      ],
+      "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a74's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
+      "discovered_date": "2026-08-24",
+      "notes": "43 polyline segments, measured live 2026-08-24 - the same count and the same field list NYC_SOURCE_SURVEY.md \u00a74 read on 2026-08-18, so the shelf has not moved under the survey. Fields Trail_Name/Blaze/Maintainer/Mileage/Source/Comments/LP_Section/GuideURL; all 43 rows read Trail_Name 'Long Path', Maintainer 'NYNJTC' and Source 'NYNJTC'. THE BLAZE FIELD IS A PLAIN STRING WITH NO CODED DOMAIN, and reads the lowercase 'aqua' on all 43 rows (measured 2026-08-24) - unlike side_trails' and oprhp_trails' coded fields, which is why export_nearby_trails.py sends it straight to reference/blaze_mapping.json's reviewed table instead of decoding a domain first. NYNJTC updates the same service in place each season - the layer inside is named Long_Path_2025Sep - which is the property a registry URL wants. dataLastEditDate verified live 2026-08-24, then reading 2026-08-04T17:36:44Z. capabilities are Query only, with no Extract or Sync, unlike OPRHP's. The trail runs north past the Catskills toward Albany, which is the open northern cut NYC_SOURCE_SURVEY.md \u00a71 leaves to the maintainer rather than deciding.",
+      "reaches_hikers": false
+    },
+    {
+      "key": "nynjtc_highlands_trail",
+      "title": "NYNJTC Highlands Trail (NY and NJ sections)",
+      "provider": "NYNJTC",
+      "kind": "external_arcgis_layer",
+      "url": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/NYNJTC_HighlandsTrail2021sections/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York-New Jersey Trail Conference",
+      "steward_contact": "https://secure.nynjtc.org/contact-us",
+      "licence": "See nynjtc_licence below - unstated by NYNJTC (this layer's copyrightText is empty and its description carries no terms, both read 2026-08-24), maintainer outreach in progress. Fetched for REVIEW ONLY; nothing from this source reaches a published artifact until that block records NYNJTC's answer.",
+      "attribution": "New York-New Jersey Trail Conference",
+      "blaze_default": "Unknown",
+      "name_field": "Trail_Name",
+      "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a74's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
+      "discovered_date": "2026-08-24",
+      "notes": "12 section features, measured live 2026-08-24 - again matching NYC_SOURCE_SURVEY.md \u00a74's 2026-08-18 reading. Fields Trail_Name/Section_Name/Source/MapOrder; all 12 rows read Trail_Name 'Highlands' and Source 'NYNJTC', and Section_Name is a per-section label ('NJ 2'..'NJ 9' among the sampled twelve). dataLastEditDate verified live 2026-08-24, then reading 2025-12-04T21:03:02Z - eight months older than the Long Path's, which is what the survey meant by 'thinner'. THIS LAYER PUBLISHES NO BLAZE AT ALL: there is no blaze field, so blaze_default 'Unknown' states that absence rather than asserting a paint. That is deliberate and is the omit-rather-than-guess rule applied to a colour - the Highlands Trail does wear a blaze on the ground, and this pipeline has read it from no source it registered, so painting one here would be a display outrunning its source. What would settle it: the same NYNJTC conversation the licence waits on, or a blaze field appearing in one of the seasonal republishes this service does in place.",
+      "reaches_hikers": false
     }
   ],
   "usdm_licence": {
@@ -305,6 +352,14 @@
     "basis": "Maintainer outreach in progress, declared 2026-08-18",
     "recorded_date": "2026-08-18",
     "open_question": "https://github.com/OurHike/OurHike/issues/769 - OPRHP's answer should replace this block's license line with the agreed terms, the way atc_licence's open question reads."
+  },
+  "nynjtc_licence": {
+    "_comment": "The basis on which the two nynjtc_* layers above may be fetched, and the bar their data has to clear before any of it is republished to hikers. NYNJTC's own terms are UNSTATED: both services return an empty copyrightText and an empty description, and both items carry empty licenseInfo and accessInformation - read 2026-08-24, and read the same way by NYC_SOURCE_SURVEY.md \u00a74 on 2026-08-18. Public and queryable is not a reuse grant (SOURCE_SURVEY.md's rule 3, 'licensed beats good'). The sharper point is one registration cannot blur: these two are NYNJTC's PUBLIC EXTRACTS, and SOURCE_SURVEY.md \u00a75's verdict on the wider network stands unchanged - the full NYNJTC trail network is deliberately withheld and is 'an agreement, not a scrape'. Registering the extracts is not a step toward taking the rest. The maintainer's NYNJTC conversation (in motion, declared 2026-08-18 on issue #768) covers the extracts and the network both; until its answer is recorded here every nynjtc_* entry is fetch-and-review only, the same footing as oprhp_licence and gatc_water_sources.",
+    "author": "New York-New Jersey Trail Conference",
+    "license": "Unstated - pending NYNJTC's answer to the maintainer's ask",
+    "basis": "Maintainer outreach in progress, declared 2026-08-18",
+    "recorded_date": "2026-08-24",
+    "open_question": "https://github.com/OurHike/OurHike/issues/768 - NYNJTC's answer should replace this block's license line with the agreed terms, the way atc_licence's open question reads."
   },
   "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it."
 }

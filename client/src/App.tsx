@@ -706,6 +706,7 @@ function App() {
     retiredPois,
     trailsUrl,
     overviewTrailsUrl,
+    nearbyTrailsUrl,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
@@ -4086,6 +4087,7 @@ function App() {
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
           overviewTrailsUrl={overviewTrailsUrl}
+          nearbyTrailsUrl={nearbyTrailsUrl}
           background={effectiveBackground(
             preferences.background_source,
             saveData,

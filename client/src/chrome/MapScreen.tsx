@@ -85,6 +85,9 @@ export interface MapScreenProps {
    *  lib/useTrailData.ts, and a screen that second-guessed it could put both
    *  on at once. */
   overviewTrailsUrl?: string | null
+  /** The trails other organizations maintain (#950), forwarded to MapView -
+   *  see its own prop for what null means and why it is the usual answer. */
+  nearbyTrailsUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -541,6 +544,7 @@ export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
   overviewTrailsUrl = null,
+  nearbyTrailsUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -988,6 +992,7 @@ export function MapScreen({
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              nearbyTrailsUrl={nearbyTrailsUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}

@@ -1127,16 +1127,35 @@ describe('the trails other organizations maintain (#950)', () => {
     // treatment, not two treatments that currently agree: a channel added to
     // one and not the other is a nearby trail that stops looking like a
     // trail, and nothing else in the build would catch it.
+    //
+    // `minzoom` is the ONE permitted difference and is asserted on its own
+    // below, so that admitting it here cannot quietly admit a second.
     expect(layer(NEARBY_BLAZE_LAYER_ID)).toEqual({
       ...layer(BLAZE_LAYER_ID),
       id: NEARBY_BLAZE_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
+      minzoom: POI_PIN_MIN_ZOOM,
     })
     expect(layer(NEARBY_TRAIL_CASING_LAYER_ID)).toEqual({
       ...layer(TRAIL_CASING_LAYER_ID),
       id: NEARBY_TRAIL_CASING_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
+      minzoom: POI_PIN_MIN_ZOOM,
     })
+  })
+
+  it('draws the network only above the seam, so the corridor view keeps its subject', () => {
+    // features/NEARBY_TRAILS.md §8: "Forty short trails are not a below-seam
+    // subject - at z7 Harriman is one green shape." 3,663 lines drawn across
+    // the corridor view would be a smear over the thirty club sections that
+    // view exists to show.
+    //
+    // The chosen trail carries no minzoom and must not gain one from this:
+    // the A.T. IS the corridor view's line.
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(NEARBY_TRAIL_CASING_LAYER_ID).minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(BLAZE_LAYER_ID).minzoom).toBeUndefined()
+    expect(layer(TRAIL_CASING_LAYER_ID).minzoom).toBeUndefined()
   })
 
   it('gives a long-term closed nearby trail the same barred band', () => {

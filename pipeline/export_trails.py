@@ -361,10 +361,44 @@ def simplify_records(records: list[dict], tolerance_m: float = DEFAULT_SIMPLIFY_
     return simplified
 
 
+def _drawable_part(part) -> bool:
+    """Whether one LineString would actually put pixels on a map.
+
+    DISTINCT coordinates, not coordinates - and the difference is a real bug
+    rather than pedantry. Douglas-Peucker on a line shorter than its own
+    tolerance returns the two endpoints, and when those endpoints are less
+    than a tolerance apart they can round to the SAME point: a LineString of
+    two identical coordinates, which has `len(coords) == 2`, is not empty, and
+    renders as nothing at all.
+
+    Counting coordinates let that through, which is the exact failure the
+    caller's comment says it is guarding against.
+
+    WHERE IT HAS BEEN MEASURED, and where it has not. On NYS OPRHP's layer,
+    2026-08-24: five of the 3,663 exported features came out with zero-length
+    geometry - two of them whole trails, "Blueberry Run" (1.2 m end to end)
+    and "Goat Trail" (0.2 m), and one part each of three MultiLineStrings.
+    All five would have disappeared from the map with the run reporting
+    success. Re-exported after this fix: zero.
+
+    Whether it has ever done this to the A.T. is UNMEASURED. The reason to
+    expect not is that ATC surveys the centerline in ~1.2 km segments against
+    a 1 m tolerance, and #161 merges those into longer chains still - but that
+    is an argument, not a count, and neither the raw ATC layers nor the
+    published artifact was available to check it against here. What would
+    settle it: running this predicate over a published trails.geojson.
+    """
+    return len(set(part.coords)) >= 2
+
+
 def _has_drawable_geometry(geom) -> bool:
     if geom.geom_type == "LineString":
-        return len(geom.coords) >= 2
-    return bool(geom.geoms) and all(len(part.coords) >= 2 for part in geom.geoms)
+        return _drawable_part(geom)
+    # ALL rather than ANY, so a MultiLineString with one collapsed part falls
+    # back whole. Keeping the good parts and dropping the collapsed one would
+    # be a trail with a gap in it, which is a worse thing to publish than a
+    # trail carrying a few more vertices than it needed.
+    return bool(geom.geoms) and all(_drawable_part(part) for part in geom.geoms)
 
 
 """Centerline chain merging (#161).

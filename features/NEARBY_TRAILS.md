@@ -261,6 +261,17 @@ extension, not a fork: **below the seam, the network ground's subject is the par
 unit polygons already registered (`oprhp_park_polygons`, 858 statewide) with the marquee
 routes (AT, Long Path) still drawn through them, exactly as club sections tile the AT.
 Tapping a park below the seam says who runs it and what the big routes through it are.
+
+**Half built (2026-08-24, #950).** The half that shipped is the negative one: the
+network draws only at z≥9, so 3,663 lines cannot smear across a corridor view whose
+subject is the thirty club sections. The half that did not is everything positive this
+section describes — park polygons are fetched but not exported, nothing distinguishes a
+marquee route from a short park trail, and there is no below-seam park tap. The
+consequence to know about is that **the Long Path is absent below z9 rather than drawn
+through its parks**, which is not what the paragraph above asks for. Drawn at the wrong
+prominence was judged worse than absent; a reviewer may disagree, and
+[#557 — Draw the map from several coverage units, and say plainly where they end](https://github.com/OurHike/OurHike/issues/557)
+is where the positive half belongs.
 The stretch model (CORRIDOR_VIEW's `named` basis) carries over unchanged — "Breakneck
 Ridge loop" is a stretch with a citation like "Franconia Ridge" is.
 

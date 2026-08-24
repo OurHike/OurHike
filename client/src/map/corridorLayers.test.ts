@@ -4,6 +4,7 @@ import { buildTrailIndex } from '../lib/trailPosition'
 import { NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { parseClubSections, type ClubSections } from '../lib/clubSections'
 import { parseHighlights } from '../lib/highlights'
+import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import {
   BOUNDARY_KIND,
   CORRIDOR_BOUNDARY_LAYER_ID,
@@ -260,10 +261,21 @@ describe('the corridor in the built style', () => {
   it('leaves closures and the route above it', () => {
     // A barrier across the trail, or the line a hiker is building, both matter
     // more than who maintains the ground under them.
+    //
+    // NAMED LAYERS RATHER THAN A SUBSTRING MATCH ON 'closure'. This read
+    // `ids.findIndex((id) => id.includes('closure'))`, which asked "is the
+    // first layer with 'closure' in its name above the corridor" - a question
+    // about whatever happens to sort first, not about the chosen trail's
+    // barriers. #950 added a closure band over the NEARBY-trail source, which
+    // sits UNDER the chosen trail's whole stack by design and so appears
+    // earlier, and the loose match read that correct ordering as this
+    // property being broken. The property itself never changed.
     const ids = buildMapStyle(STYLE_OPTIONS).layers.map((l) => l.id)
     const corridor = ids.indexOf(CORRIDOR_BOUNDARY_LAYER_ID)
-    const closures = ids.findIndex((id) => id.includes('closure'))
-    expect(closures).toBeGreaterThan(corridor)
+
+    for (const id of [CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID]) {
+      expect(ids.indexOf(id), id).toBeGreaterThan(corridor)
+    }
   })
 })
 

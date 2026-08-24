@@ -512,6 +512,7 @@ function buildTrailLineLayers(
   casingId: string,
   blazeId: string,
   appearance: SheetAppearance,
+  minzoom?: number,
 ): LayerSpecification[] {
   return [
     {
@@ -524,6 +525,7 @@ function buildTrailLineLayers(
       id: casingId,
       type: 'line',
       source: sourceId,
+      ...(minzoom === undefined ? {} : { minzoom }),
       layout: {
         'line-cap': 'round',
         'line-join': 'round',
@@ -552,6 +554,7 @@ function buildTrailLineLayers(
       id: blazeId,
       type: 'line',
       source: sourceId,
+      ...(minzoom === undefined ? {} : { minzoom }),
       // Round, matching the casing beneath it. Butt caps were what the dash
       // rhythm needed to keep its measured on/off lengths honest; on a solid
       // line they only leave a nick at every joint between two segments of
@@ -1107,6 +1110,21 @@ export function buildMapStyle({
         NEARBY_TRAIL_CASING_LAYER_ID,
         NEARBY_BLAZE_LAYER_ID,
         appearance,
+        // ABOVE THE SEAM ONLY (features/NEARBY_TRAILS.md §8). "Forty short
+        // trails are not a below-seam subject - at z7 Harriman is one green
+        // shape", and 3,663 lines drawn across the corridor view would be a
+        // smear over the thing that view is actually about, which is the
+        // thirty club sections tiling the A.T.
+        //
+        // HALF OF §8, and the missing half is named rather than hidden: it
+        // also says the marquee routes - the A.T., the Long Path - should
+        // still be drawn through the parks below the seam, with the PARK as
+        // the subject there. That needs the park polygons exported and a way
+        // to tell a marquee route from a short park trail, neither of which
+        // exists. Until it does, the Long Path is absent below z9 rather than
+        // drawn at the wrong prominence. Cutting the smear is the half worth
+        // having first; the other half is #557's ground.
+        POI_PIN_MIN_ZOOM,
       ),
       // A nearby trail marked closed long-term gets the same barred band the
       // A.T.'s closures get (features/NEARBY_TRAILS.md §3: a hiker learns ONE

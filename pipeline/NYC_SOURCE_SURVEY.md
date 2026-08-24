@@ -240,10 +240,10 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 
 | source | terms | state |
 |---|---|---|
-| NYS OPRHP (4 layers) | Unstated; no-warranty disclaimer on the item | **Ask in motion** — maintainer outreach declared 2026-08-18, recorded in `oprhp_licence` (#769) |
+| NYS OPRHP (4 layers) | **Stated** — reuse permitted, attribution to OPRHP required, *non-commercial purposes*. **Corrected 2026-08-24 (#950):** this row read "Unstated; no-warranty disclaimer" because the item's `licenseInfo` was read through a 200-character truncation that cut off exactly where the disclaimer ends and the terms begin. Full text (1,095 chars) is quoted in `oprhp_licence`. | **Ask still open, on a narrower question** — not "what are the terms" but "is OurHike non-commercial within them", given features/PRICING_MODEL.md's paid passes (#769) |
 | NYS DEC (`dil` layers) | Unstated; no copyright text on service | **NEEDS REVIEW** — bundle with the OPRHP ask; Open-NY listing is precedent |
 | data.ny.gov copies | No licence field on either listing | Not a source: DEC copy last updated **2013**, OPRHP copy **2014-12-24** — proof the State publishes these openly, and proof the AGOL/on-prem services are the copies of record |
-| NYNJTC public extracts | Unstated (`licenseInfo` empty on both items, read 2026-08-18) | Covered by the maintainer's NYNJTC conversation (#768) |
+| NYNJTC public extracts | Unstated — `licenseInfo` AND `accessInformation` both empty on both items, re-verified whole 2026-08-24 against the registered service URLs | Covered by the maintainer's NYNJTC conversation (#768). An absent licence is more restrictive than OPRHP's stated one, not less |
 | NYNJTC full network | Withheld | **An agreement, not a scrape** (SOURCE_SURVEY.md §10, reaffirmed) |
 | NJDEP layers + NJ compilation | **NJDEP Data Distribution Agreement — stated** | **NEEDS REVIEW** — read in full; possibly no ask needed |
 | ATC / NPS | See `atc_licence` in sources.json | In hand |

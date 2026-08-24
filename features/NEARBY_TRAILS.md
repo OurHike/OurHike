@@ -14,17 +14,25 @@ program. Every measurement cited below is the
 [#771](https://github.com/OurHike/OurHike/issues/771) spike's
 (`pipeline/spike_nyc_trails.py`, 2026-08-18) unless dated otherwise.
 
-**Status, 2026-08-24:** built, and drawing nothing yet. The map
+**Status, 2026-08-24: shipping.** The map
 ([#783](https://github.com/OurHike/OurHike/issues/783)), the labels
 ([#930](https://github.com/OurHike/OurHike/issues/930)), the palette
-([#782](https://github.com/OurHike/OurHike/issues/782)) and now the data behind them
+([#782](https://github.com/OurHike/OurHike/issues/782)) and the data behind them
 ([#950](https://github.com/OurHike/OurHike/issues/950), `pipeline/export_nearby_trails.py`)
-all exist, and 3,663 trail lines from NYS OPRHP and NYNJTC export cleanly. **None of them
-reaches a hiker**, because neither steward has stated reuse terms and `publish.py` holds the
-artifact back while that is true — see `sources.json`'s `oprhp_licence` and `nynjtc_licence`.
-What stands between this doc and a hiker seeing it is two conversations, not more code. §6
-and §9 are the two sections describing things that genuinely are not built, and both say so
-in place.
+all exist, and 3,663 trail lines from NYS OPRHP and NYNJTC now reach hikers.
+
+The licence hold that stood between this doc and a phone came off on 2026-08-24, and how it
+came off is worth recording rather than smoothing over. OPRHP's terms had been logged as
+*unstated* on the strength of a truncated read; read whole they **permit reuse, require
+attribution, and say "non-commercial purposes"**. The maintainer determined that OurHike
+satisfies the non-commercial condition — the trail line sits in the tier PRICING_MODEL.md
+keeps free for everyone — and separately authorised NYNJTC's public extracts, which state
+nothing at all. Both determinations and the argument against the first are in
+`sources.json`. OPRHP's attribution is now a rendered condition, not a note: `map/credits.ts`
+puts it in the corner whenever their lines are drawn.
+
+§9 is the section to read next: its offline requirement is the one this build still does not
+meet.
 
 ---
 
@@ -223,13 +231,18 @@ Cross-org rules, recorded from the maintainer's decisions and the spike's eviden
 
 ## 6. Provenance in the display voice
 
-**Not built** as of 2026-08-24: the network ships with no per-steward provenance line, and
-the pipeline records each source's steward and attribution in its manifest so that the
-screen which grows one has a single place to read them from. What is missing is on the
-client side and is not a rendering detail — the sources screen
-([#927](https://github.com/OurHike/OurHike/issues/927)) deliberately names only stewards
-whose data reaches hikers, and every source here is held back, so a nearby-trail sheet has
-nowhere to read a licence from today.
+**Half built as of 2026-08-24, and the half that exists is the half a licence requires.**
+OPRHP's terms make attribution a condition of using their data, so `map/credits.ts` carries
+it as an atom and the map corner names both stewards whenever their lines are drawn — the
+same mechanism, and the same "credit only what is actually on screen" rule, that governs
+OpenStreetMap's. The sources screen ([#927](https://github.com/OurHike/OurHike/issues/927))
+names them too, now that `reaches_hikers` is true for the three shipped sources.
+
+**Still missing: the per-trail line in the tap sheet.** Tapping a nearby trail does not yet
+say "Trail data: NYS OPRHP" beside that particular trail, in the voice this section
+specifies. The corner satisfies the licence; the sheet is what satisfies the hiker asking
+whose line they are looking at. The pipeline already records each source's steward and
+attribution in the export manifest, so whoever builds it has one place to read from.
 
 Every nearby-trail sheet carries a source line — "Trail data: NYS OPRHP" — and OPRHP's own
 licence text disclaims accuracy, so the line's job is honesty, not decoration. The wording

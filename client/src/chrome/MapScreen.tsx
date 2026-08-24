@@ -465,6 +465,9 @@ export interface MapScreenProps {
    * are actually drawing, not the fact that some download happened.
    */
   hasRasterArchive?: boolean
+  /** Whether the other organizations' trail lines are drawn (#950) - it is
+   *  what puts OPRHP's required attribution in the corner. */
+  hasNearbyTrails?: boolean
   /**
    * Why the background is not on screen, or null when it is
    * (lib/backgroundHealth.ts).
@@ -638,6 +641,7 @@ export function MapScreen({
   hasDownload = false,
   downloadActivity = null,
   hasRasterArchive = false,
+  hasNearbyTrails = false,
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
@@ -1049,7 +1053,7 @@ export function MapScreen({
                 on one line - the same `isDesktop` the legend uses, so the two
                 cannot disagree about how much room this layout has. */}
             <MapAttribution
-              credits={mapCredits({ background, hasRasterArchive })}
+              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
               inline={isDesktop}
             />
 

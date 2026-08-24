@@ -68,24 +68,36 @@ statewide/ring difference the ring clip explains.
    for why the match is on the source's own NAME field only and never on an
    alternate name.
 
-WHAT THIS ARTIFACT MAY NOT DO YET
+WHAT THIS ARTIFACT SHIPS ON, AND THE ONE THING IT DOES NOT
 
-Nothing here reaches a hiker. Every source it reads carries
-`reaches_hikers: false`, because neither OPRHP nor NYNJTC has stated terms -
-sources.json's `oprhp_licence` and `nynjtc_licence` blocks record both asks as
-open. So this export writes its file unconditionally and publish.py refuses to
-upload it while any source in it is held back. The gate is in the publish step
-rather than here on purpose: the day a licence answer lands, flipping one
-registry field is the whole change, and nobody has to remember that a second
-script also needs editing.
+It reaches hikers as of 2026-08-24, and the basis is worth reading before
+changing anything here, because it was corrected once already.
 
-Writing unconditionally is what lets the map be REVIEWED before anybody
-decides whether it may ship, and that needs one more thing to be true than it
-sounds: since #197 the client refuses to draw an artifact it cannot check
-against a published hash, and publish.py writes that manifest into the bucket
-rather than into data/processed/. So serve_processed.py synthesizes one from
-the files on disk - without it, the map this export exists to produce is the
-one map nobody can look at.
+OPRHP STATES TERMS. They permit reuse, REQUIRE attribution, and say
+"informational and non-commercial purposes". They were recorded as *unstated*
+for six days on the strength of a 200-character truncated read that stopped
+exactly where the no-warranty disclaimer ends and the terms begin; the full
+1,095 characters are quoted verbatim in sources.json's `oprhp_licence` so no
+future reader has to re-fetch to check. The maintainer determined on
+2026-08-24 that OurHike is a non-commercial use within them, with the
+counter-reading recorded beside it.
+
+NYNJTC STATE NOTHING - empty licenseInfo on both items - so their two public
+extracts ship on the maintainer's authorisation, the same footing atc_licence
+and photo_licence already use. SOURCE_SURVEY.md §5's verdict on the full
+NYNJTC network is untouched by that: still an agreement, not a scrape.
+
+THE ATTRIBUTION IS NOT OPTIONAL, and it is not this file's to render. OPRHP's
+condition is met by client/src/map/credits.ts, which puts their name in the
+map corner whenever their lines are drawn. If a future change ships these
+lines somewhere that credit does not follow, the condition is broken - so the
+export records each source's `steward` and `attribution` in its manifest, and
+export_sources.py names them on the sources screen.
+
+WHAT STILL DOES NOT SHIP: the three other oprhp_* layers. Closures, facilities
+and park polygons keep `reaches_hikers: false` for a reason that is now
+nothing to do with licensing - nothing exports them. That is the field's other
+meaning (see reaches_hikers_comment) and the two should not be blurred.
 
 The provenance line features/NEARBY_TRAILS.md §6 specifies - "Trail data: NYS
 OPRHP", in a voice that does not outrun a steward who disclaims accuracy - is

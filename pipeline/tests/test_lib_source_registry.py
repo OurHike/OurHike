@@ -153,15 +153,43 @@ def test_only_the_closures_layer_may_be_empty():
 
 
 def test_the_registry_records_the_oprhp_licence_block():
-    """The gate #769 exists to hold: OPRHP's terms are unstated and the
-    maintainer's outreach is in progress, so the block must say the licence
-    is pending rather than assert one nobody granted - and it must survive
-    discovery runs the way photo_licence now does."""
-    registry = load_registry(REAL_REGISTRY)
+    """The gate #769 exists to hold - but NOT for the reason this test used to
+    give (#950, corrected 2026-08-24).
 
-    assert registry["oprhp_licence"]["basis"].startswith("Maintainer outreach in progress")
-    assert registry["oprhp_licence"]["recorded_date"] == "2026-08-18"
-    assert "pending" in registry["oprhp_licence"]["license"].lower()
+    It read "OPRHP's terms are unstated", which was wrong: the item's
+    licenseInfo had been read through a 200-character truncation that cut off
+    exactly where the no-warranty disclaimer ends and the actual terms begin.
+    OPRHP states terms - reuse permitted, attribution required, non-commercial
+    purposes - and the block now quotes all 1,095 characters verbatim so no
+    future reader has to re-fetch to check.
+
+    What the block must still do is hold the gate, on the narrower question
+    that survived the correction: whether OurHike's paid tiers make this a
+    commercial use. So the assertions below are about the terms being RECORDED
+    and the open question being about commerciality, not about the licence
+    being pending."""
+    registry = load_registry(REAL_REGISTRY)
+    block = registry["oprhp_licence"]
+
+    # The verbatim text, so a truncated re-read can never quietly replace it.
+    assert "non-commercial" in block["terms_verbatim"]
+    assert "credit and attribution" in block["terms_verbatim"]
+    assert len(block["terms_verbatim"]) > 1000
+    # And the attribution OPRHP requires, named where an exporter can read it.
+    assert "OPRHP" in block["attribution_required"]
+    assert block["recorded_date"] == "2026-08-24"
+
+    # The maintainer's determination on the one condition that needed a human,
+    # and BOTH readings of it. A determination recorded without the argument
+    # against it is an assertion wearing a date - CLAUDE.md's standard applied
+    # to a licence rather than to a constant.
+    assert "maintainer's determination" in block["basis"]
+    assert "THE COUNTER-READING" in block["basis"]
+    assert "non-commercial" in block["license"]
+
+    # And it is still an open question with OPRHP, because they have not been
+    # asked this specific thing. Recording our own answer is not their answer.
+    assert "769" in block["open_question"]
 
 
 def test_the_registry_still_records_the_photo_licence_block():

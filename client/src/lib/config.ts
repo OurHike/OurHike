@@ -71,17 +71,19 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
  * The trail lines other organizations maintain - NYS OPRHP's and NYNJTC's
  * (#950, pipeline/export_nearby_trails.py, features/NEARBY_TRAILS.md).
  *
- * ITS OWN ARTIFACT BECAUSE OF A LICENCE, not because of its size. Neither
- * steward has stated reuse terms, so pipeline/publish.py will not upload this
- * file while any source inside it carries `reaches_hikers: false`. Keeping
- * these lines out of `trails.geojson` is what lets the A.T. publish on ATC's
- * recorded permission without republishing anybody else's data alongside it.
+ * ITS OWN ARTIFACT BECAUSE OF A LICENCE, not because of its size. Three
+ * stewards, three different bases: ATC's centerline ships on recorded
+ * permission, NYS OPRHP's on their own published terms (reuse permitted,
+ * attribution REQUIRED - see map/credits.ts), NYNJTC's on the maintainer's
+ * authorisation, since they state none. Keeping these lines out of
+ * `trails.geojson` is what lets any one of those be held without touching the
+ * others, which is what `reaches_hikers` exists to make possible per source.
  *
- * So a 404 is the expected answer against the live bucket today, and
- * lib/nearbyTrailData.ts reads it as "no nearby trails" rather than as a
- * failure - the same reading spurs.json and trails_overview.geojson get.
- * When a licence answer is recorded in pipeline/sources.json, the same export
- * and the same publish put this key in the bucket with nothing here changed.
+ * Both outstanding licences resolved on 2026-08-24 and this key publishes. A
+ * 404 is still an ordinary answer rather than a failure - a release exported
+ * before the artifact existed, or a bucket a publish has not reached yet - and
+ * lib/nearbyTrailData.ts reads it as "no nearby trails", the same reading
+ * spurs.json and trails_overview.geojson get.
  */
 export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
 

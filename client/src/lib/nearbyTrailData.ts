@@ -13,19 +13,22 @@
 //
 // A SEPARATE ARTIFACT FROM trails.geojson, AND THE REASON IS A LICENCE
 //
-// Not a size decision, and not tidiness. Neither OPRHP nor NYNJTC has stated
-// terms for reuse, so pipeline/publish.py refuses to upload this file at all
-// while any source inside it carries `reaches_hikers: false` (sources.json).
-// Folding these lines into trails.geojson would have made "publish the A.T."
-// and "republish two organizations' data on no stated basis" the same action.
-// So: two files, one of which is currently published and one of which is not.
+// Not a size decision, and not tidiness. These lines are SEPARATELY
+// LICENSED from the A.T.'s: NYS OPRHP permits reuse with required attribution,
+// NYNJTC state no terms and ship on the maintainer's authorisation, and ATC's
+// own centerline sits on a third basis again (sources.json). Folding them into
+// trails.geojson would have made "publish the A.T." and "publish two other
+// organizations' data" one action that no field could separate again - which
+// is exactly what `reaches_hikers` exists to keep separable, per steward, per
+// source. Two files, and either can be held without touching the other.
 //
-// WHICH MEANS THIS USUALLY FETCHES NOTHING, TODAY
+// A 404 IS STILL AN ORDINARY ANSWER, EVEN NOW THAT IT SHIPS
 //
-// A 404 is the expected answer against the live bucket right now, and it is
-// not a failure - it is the gate working. Everything below is written for the
-// day that changes, and to let a reviewer point the app at a local
-// `serve_processed.py` and look at the map this produces.
+// The licences resolved on 2026-08-24 and the artifact publishes, but a 404
+// stays the expected answer in two states that are not failures: a phone whose
+// release predates the artifact, and any bucket a publish has not reached yet.
+// It also lets a reviewer point the app at a local `serve_processed.py`. All
+// three end the same way - no nearby trails, chosen trail unaffected.
 //
 // IT IS HELD TO ITS PUBLISHED HASH (#197)
 //
@@ -74,9 +77,8 @@ export async function fetchNearbyTrails(signal?: AbortSignal): Promise<string | 
 
   try {
     const response = await fetch(dataUrl(NEARBY_TRAILS_KEY), { signal })
-    // The expected answer today: publish.py holds this artifact back while
-    // either steward's terms are unstated. Also what a release exported
-    // before this artifact existed returns. Neither is a failure.
+    // A release exported before this artifact existed, or a bucket a publish
+    // has not reached. Not a failure - see the header.
     if (!response.ok) return null
 
     const bytes = new Uint8Array(await response.arrayBuffer())

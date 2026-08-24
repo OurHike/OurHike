@@ -111,7 +111,7 @@ import {
   sheetVariant,
   type SheetAppearance,
 } from './liveTopo'
-import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
+import { NYNJTC_CREDIT, OPRHP_CREDIT, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import { whenStyleReady } from './styleReady'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
@@ -592,7 +592,7 @@ function buildTrailLineLayers(
  * centerline lands. These lines are not a stand-in for anything. Once they
  * are on the map they stay, so `null` here means "there are none" - a bucket
  * that holds no such artifact, which is what publish.py produces while either
- * steward's licence is unstated - rather than "they are finished".
+ * steward's terms are unresolved - rather than "they are finished".
  */
 export function attachNearbyTrails(
   map: MapLibreMap,
@@ -942,22 +942,24 @@ export function buildMapStyle({
       // The other organizations' trails (#950), empty until
       // lib/nearbyTrailData.ts has an artifact to hand over - which today it
       // usually does not, because publish.py holds that artifact back while
-      // either steward's licence is unstated. An empty source rather than an
+      // either steward's terms are unresolved. An empty source rather than an
       // absent one so there is one shape of style whatever the bucket holds,
       // which is the same reason the overview above is declared empty.
       //
-      // ATTRIBUTED LIKE THE TRAILS, and that is a placeholder rather than an
-      // answer. The basemap credit below is honest about the BASEMAP; what
-      // features/NEARBY_TRAILS.md §6 asks for is a per-steward line ("Trail
-      // data: NYS OPRHP") in a voice that does not outrun a steward who
-      // disclaims accuracy, read from the pipeline's own attribution fields.
-      // That needs the sources screen to learn about held-back sources
-      // (#927's screen, #932's registry question) and is not built. Nothing
-      // ships uncredited in the meantime, because nothing ships.
+      // ATTRIBUTED TO ITS OWN STEWARDS, which is a licence condition and not
+      // a courtesy: OPRHP's terms require credit on "any maps... created using
+      // OPRHP data" (pipeline/sources.json's `oprhp_licence` quotes them in
+      // full). It carried OSM_CREDIT while nothing shipped, which was a
+      // placeholder that would have become a breach the moment it did.
+      //
+      // The corner strip is assembled by map/credits.ts's mapCredits() rather
+      // than from these declarations, so this is the second half of the same
+      // fact rather than the mechanism - see that module for why one source
+      // cannot be credited in one file and go uncredited in another.
       [NEARBY_TRAILS_SOURCE_ID]: {
         type: 'geojson',
         data: emptyTrailOverview(),
-        attribution: OSM_CREDIT,
+        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT}`,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and

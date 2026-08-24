@@ -520,6 +520,35 @@ jobs:
       - name: Export POIs
         run: python export_poi.py
 
+      # The trails other organizations maintain (#950). TWO steps, because
+      # this export reads a directory the A.T. fetch above never fills:
+      # fetch_external_layers.py writes data/raw/external/, deliberately apart
+      # from fetch_all.py so another org's uptime cannot fail an A.T. release.
+      #
+      # WHY THIS IS HERE AT ALL, given it was deliberately left out when the
+      # export landed: it was left out while both stewards were review-only,
+      # because a scheduled fetch of 16,641 features to build an artifact
+      # publish.py would then refuse to upload is a cost to somebody else's
+      # server for no delivered bytes. On 2026-08-24 the maintainer resolved
+      # both licences (sources.json's `oprhp_licence` and `nynjtc_licence`),
+      # `reaches_hikers` went true for the three exported sources, and the
+      # calculus inverted: without these steps the artifact reaches no phone
+      # at all, which is exactly the shape of #947.
+      #
+      # `continue-on-error` on the FETCH only, and only that step. These are
+      # two other organizations' servers on their own uptime; an outage there
+      # must not fail an A.T. publish. The export below then runs against
+      # whatever the restore left on disk - and if there is nothing, it exits
+      # non-zero and this publish fails, which is correct: a silently absent
+      # network is the failure this whole file's sibling steps are shaped to
+      # avoid.
+      - name: Fetch external-organization layers
+        continue-on-error: true
+        run: python fetch_external_layers.py
+
+      - name: Export the trails other organizations maintain
+        run: python export_nearby_trails.py
+
       # AFTER the POIs, and that ordering is load-bearing rather than tidy.
       # export_spurs.py publishes the id of the POI each spur leads to, and
       # that id has to be the one the client already holds - so it resolves

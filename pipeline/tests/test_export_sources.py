@@ -197,12 +197,41 @@ class TestAgainstTheRealRegistry:
     def test_names_no_steward_that_is_fetch_and_review_only(self):
         # Measured 2026-08-23: GATC's own licence field says "Nothing from this
         # source reaches a published artifact until GATC answers a
-        # redistribution ask", and all four oprhp_* entries say "Fetched for
-        # REVIEW AND THE #771 SPIKE ONLY".
+        # redistribution ask".
         named = {s["name"] for s in self.real()["stewards"]}
 
         assert not any("Georgia" in n for n in named)
-        assert not any("Parks" in n or "OPRHP" in n for n in named)
+
+    def test_names_the_two_trail_stewards_now_that_their_lines_ship(self):
+        """OPRHP and NYNJTC moved from held-back to shipped on 2026-08-24
+        (#950), and this case is the inverse of the one above rather than an
+        exception to it.
+
+        It used to assert that neither was named. That was right while both
+        were review-only, and became wrong the moment `reaches_hikers` flipped
+        - at which point NOT naming them would have been the failure, because
+        OPRHP's own terms require attribution on any map built from their data.
+        So the assertion turns over rather than being deleted: a steward whose
+        data is on a hiker's phone is named, and one whose data is not is not.
+        """
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert any("Parks" in n for n in named), "OPRHP's attribution is a licence condition"
+        assert any("New York-New Jersey" in n for n in named)
+
+    def test_still_omits_the_oprhp_layers_nothing_exports(self):
+        """The distinction the flip had to keep: three sources ship, three do
+        not, and the three that do not are held back because nothing is wired
+        to them - not because of a licence. The screen names STEWARDS, so
+        OPRHP appears via oprhp_trails regardless; what this pins is that the
+        registry still tells the two reasons apart."""
+        registry = json.loads((ROOT / "sources.json").read_text())
+        by_key = {s["key"]: s for s in registry["sources"]}
+
+        assert by_key["oprhp_trails"]["reaches_hikers"] is True
+        for key in ("oprhp_trail_closures", "oprhp_facilities", "oprhp_park_polygons"):
+            assert by_key[key]["reaches_hikers"] is False
+            assert "nothing exports this layer" in by_key[key]["licence"]
 
     def test_names_the_atc_with_its_recorded_licence(self):
         atc = next(s for s in self.real()["stewards"] if s["provider"] == "ATC")

@@ -85,6 +85,9 @@ export interface MapScreenProps {
    *  lib/useTrailData.ts, and a screen that second-guessed it could put both
    *  on at once. */
   overviewTrailsUrl?: string | null
+  /** The trails other organizations maintain (#950), forwarded to MapView -
+   *  see its own prop for what null means and why it is the usual answer. */
+  nearbyTrailsUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -462,6 +465,9 @@ export interface MapScreenProps {
    * are actually drawing, not the fact that some download happened.
    */
   hasRasterArchive?: boolean
+  /** Whether the other organizations' trail lines are drawn (#950) - it is
+   *  what puts OPRHP's required attribution in the corner. */
+  hasNearbyTrails?: boolean
   /**
    * Why the background is not on screen, or null when it is
    * (lib/backgroundHealth.ts).
@@ -541,6 +547,7 @@ export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
   overviewTrailsUrl = null,
+  nearbyTrailsUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -634,6 +641,7 @@ export function MapScreen({
   hasDownload = false,
   downloadActivity = null,
   hasRasterArchive = false,
+  hasNearbyTrails = false,
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
@@ -988,6 +996,7 @@ export function MapScreen({
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              nearbyTrailsUrl={nearbyTrailsUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}
@@ -1044,7 +1053,7 @@ export function MapScreen({
                 on one line - the same `isDesktop` the legend uses, so the two
                 cannot disagree about how much room this layout has. */}
             <MapAttribution
-              credits={mapCredits({ background, hasRasterArchive })}
+              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
               inline={isDesktop}
             />
 

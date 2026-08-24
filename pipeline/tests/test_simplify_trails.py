@@ -27,6 +27,7 @@ from shapely.geometry import LineString, MultiLineString, shape
 
 from export_trails import (
     DEFAULT_SIMPLIFY_TOLERANCE_M,
+    _has_drawable_geometry,
     simplify_records,
 )
 
@@ -122,6 +123,56 @@ def test_simplify_never_degenerates_a_line_below_two_points():
     [out] = simplify_records(records, tolerance_m=1000)
 
     assert _coord_count(out) >= 2
+
+
+def test_a_zero_length_line_is_not_drawable():
+    """The bug the "below two points" case above was written to catch and did
+    not (#950).
+
+    That guard was implemented as a COORDINATE count, and the collapse it has
+    to catch does not reduce the count. Douglas-Peucker never drops an
+    endpoint, so a simplified line always has at least two coordinates - but
+    simplify_records projects to EPSG:5070 and back, and on a line whose whole
+    length is around a metre the two endpoints can round to the SAME
+    coordinate on the return trip. The result is a two-coordinate LineString
+    of zero length: it passes a coordinate count, it is not empty, and it
+    renders as nothing at all.
+
+    Found the day another organization's layer went through the same
+    function: measured 2026-08-24 on NYS OPRHP's 16,641-segment layer, five
+    exported features came out with zero-length geometry - two of them whole
+    trails, "Blueberry Run" at 1.2 m end to end and "Goat Trail" at 0.2 m.
+    Both would have vanished from the map with the run reporting success,
+    which is exactly the failure this file's header calls "the worst outcome,
+    since it looks like clean output". Re-exported after this fix: zero.
+
+    Whether it ever did this to the A.T. is unmeasured - see
+    export_trails._drawable_part for why that is an open question rather than
+    a settled no.
+
+    Tested against the predicate rather than through simplify_records,
+    deliberately. Reproducing the collapse end to end needs a geometry whose
+    endpoints happen to round together on a particular platform's float maths,
+    which is a test that would pass for reasons nobody could read. The
+    predicate is what was wrong and is what this pins.
+    """
+    point = (-74.0, 41.0)
+
+    assert not _has_drawable_geometry(LineString([point, point]))
+    assert _has_drawable_geometry(LineString([point, (-74.0, 41.000009)]))
+
+
+def test_a_multilinestring_falls_back_whole_when_any_part_is_zero_length():
+    """ALL parts, not any - so a MultiLineString with one collapsed part keeps
+    its original geometry entirely rather than being published with a gap in
+    it. Three of the five real collapses found on OPRHP's layer were this
+    shape."""
+    point = (-74.0, 41.0)
+    real = LineString([point, (-74.0, 41.000009)])
+    collapsed = LineString([point, point])
+
+    assert _has_drawable_geometry(MultiLineString([real, real]))
+    assert not _has_drawable_geometry(MultiLineString([real, collapsed]))
 
 
 def test_simplify_preserves_both_endpoints_exactly():

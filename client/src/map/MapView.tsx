@@ -27,6 +27,7 @@ import { readTrailsMerged } from '../lib/trailShape'
 import {
   attachMapAppearance,
   attachTrailData,
+  attachNearbyTrails,
   attachTrailOverview,
   buildMapStyle,
 } from './style'
@@ -94,6 +95,17 @@ export interface MapViewProps {
    * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
    */
   overviewTrailsUrl?: string | null
+  /**
+   * The trail lines other organizations maintain, as an object URL (#950,
+   * features/NEARBY_TRAILS.md).
+   *
+   * Drawn ghosted and under the chosen trail, by the same expressions that
+   * draw the chosen trail - see map/style.ts's buildTrailLineLayers. Null is
+   * the ordinary state today, because publish.py holds that artifact back
+   * while NYS OPRHP's and NYNJTC's reuse terms are unstated, and it renders
+   * as the A.T.-only map this app has always drawn.
+   */
+  nearbyTrailsUrl?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -352,6 +364,7 @@ export function MapView({
   trailsUrl,
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
+  nearbyTrailsUrl = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -667,6 +680,14 @@ export function MapView({
     if (map === null) return
     return attachTrailOverview(map, overviewTrailsUrl)
   }, [map, overviewTrailsUrl])
+
+  // Its own effect rather than a branch inside the one above, because the two
+  // move on different clocks: the overview is set once early and cleared once,
+  // and this arrives whenever the network answers and then stays.
+  useEffect(() => {
+    if (map === null) return
+    return attachNearbyTrails(map, nearbyTrailsUrl)
+  }, [map, nearbyTrailsUrl])
 
   // Three separate effects rather than one, because they change on different
   // clocks: the pin images are built once and never again, while the source and

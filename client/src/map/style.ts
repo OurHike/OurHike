@@ -62,7 +62,10 @@
 // the neutral-grey defensive fallback and logs a warning. Giving it a real
 // treatment needs a design decision and at least one real feature to look at.
 
-import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
+import type {
+  LayerSpecification,
+  StyleSpecification,
+} from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
@@ -95,6 +98,7 @@ import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disp
 import { nearbyTrailOpacityExpression } from './nearbyTrails'
 import {
   buildTrailLabelLayer,
+  NEARBY_TRAIL_LABEL_LAYER_ID,
   TRAIL_LABEL_LAYER_ID,
   TRAIL_LABEL_MIN_ZOOM,
 } from './trailLabels'
@@ -107,7 +111,7 @@ import {
   sheetVariant,
   type SheetAppearance,
 } from './liveTopo'
-import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
+import { NYNJTC_CREDIT, OPRHP_CREDIT, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import { whenStyleReady } from './styleReady'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
@@ -117,11 +121,39 @@ export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
 export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
 
+/**
+ * The trail lines other organizations maintain (#950,
+ * features/NEARBY_TRAILS.md, pipeline/export_nearby_trails.py).
+ *
+ * ITS OWN SOURCE, AND NOT BECAUSE THE MAP WANTED ONE. These lines belong in
+ * the same source as the A.T.'s - they are drawn by the same expressions off
+ * the same properties, and a single source would have meant a single set of
+ * layers. They are separated because they are separately LICENSED: neither
+ * NYS OPRHP nor NYNJTC has stated reuse terms, so the pipeline publishes them
+ * as their own artifact and publish.py holds that artifact back entirely
+ * while either steward is outstanding (lib/config.ts's NEARBY_TRAILS_KEY).
+ * One MapLibre GeoJSON source takes one `data`, so two artifacts is two
+ * sources.
+ *
+ * WHAT THAT COSTS, stated so nobody rediscovers it: the layers below are a
+ * second instance of the trail line's casing, blaze, closure band and label.
+ * Every expression in them is imported from where the first instance gets it
+ * rather than copied, so the two cannot drift in appearance - but a new
+ * channel added to one is a channel somebody has to remember to add to the
+ * other, and nothing mechanical catches that. style.test.ts holds the two
+ * paint objects against each other for exactly this reason.
+ */
+export const NEARBY_TRAILS_SOURCE_ID = 'nearby-trails'
+
 export const BACKDROP_LAYER_ID = 'backdrop'
 export const TOPO_LAYER_ID = 'topo'
 export const TRAIL_CASING_LAYER_ID = 'trail-casing'
 export const BLAZE_LAYER_ID = 'trail-blaze'
 export const TRAIL_OVERVIEW_LAYER_ID = 'trail-overview-line'
+export const NEARBY_TRAIL_CASING_LAYER_ID = 'nearby-trail-casing'
+export const NEARBY_BLAZE_LAYER_ID = 'nearby-trail-blaze'
+export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
+export const NEARBY_LONG_TERM_CLOSURE_CASING_LAYER_ID = 'nearby-long-term-closure-casing'
 
 /**
  * What the map paints wherever it has no topo ink to paint.
@@ -458,6 +490,127 @@ export function attachTrailOverview(
   )
 }
 
+/**
+ * The casing-and-blaze pair that draws one source's trail lines.
+ *
+ * ONE TREATMENT, NOT TWO THAT CURRENTLY AGREE - lib/closureStyle.ts's
+ * buildClosureLayers has the same shape for the same reason, and this was
+ * extracted (#950) at the moment a second trail source appeared. Before that
+ * there was one caller and the layers were written inline; the risk this
+ * removes is not hypothetical, because the alternative on the table was
+ * copying forty lines of paint expressions and hoping the next person who
+ * adds a channel remembers there are two of them.
+ *
+ * Every argument below is an id or a source. Nothing about how a trail LOOKS
+ * is a parameter, which is the property that makes the ghosting honest: a
+ * nearby trail is the same line drawn dimmer, and the dimming comes from
+ * nearbyTrailOpacityExpression reading the feature's own `source`, not from
+ * this function being called differently.
+ */
+function buildTrailLineLayers(
+  sourceId: string,
+  casingId: string,
+  blazeId: string,
+  appearance: SheetAppearance,
+  minzoom?: number,
+): LayerSpecification[] {
+  return [
+    {
+      // Hairline dark casing, drawn under every blaze so the trail stays
+      // readable over busy topo contours. It is doing more work than it used
+      // to: with the line solid, the casing is the ONLY thing giving the
+      // near-white centerline an edge against near-white paper, so it is
+      // carried at a firmer opacity than when a gap in the line let it
+      // through every few pixels.
+      id: casingId,
+      type: 'line',
+      source: sourceId,
+      ...(minzoom === undefined ? {} : { minzoom }),
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        // Sorted like the blaze layer above it, though nothing visible
+        // depends on it while every casing is the same colour. It is here so
+        // that the day one is not - a heavier casing for a through-route, the
+        // "drawn by absence" treatment WIREFRAMES.md reserves for Black - the
+        // ordering rule is already in place rather than being a second bug
+        // with the same shape as the first.
+        'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+      },
+      paint: {
+        'line-color': trailCasingColor(appearance),
+        'line-width': TRAIL_CASING_WIDTH_EXPRESSION as unknown as number,
+        // The casing's own 0.7, MULTIPLIED by the line's ghosting rather
+        // than replaced by it. Both facts are true at once and they compose:
+        // a casing is always slightly softer than the blaze it carries, and
+        // a nearby trail's whole stack - blaze and casing together - sits
+        // back from the chosen trail's. Replacing the 0.7 would give a
+        // ghosted line a FIRMER edge than the chosen trail's, which is the
+        // opposite of what this channel is for.
+        'line-opacity': ['*', 0.7, nearbyTrailOpacityExpression()] as unknown as number,
+      },
+    },
+    {
+      id: blazeId,
+      type: 'line',
+      source: sourceId,
+      ...(minzoom === undefined ? {} : { minzoom }),
+      // Round, matching the casing beneath it. Butt caps were what the dash
+      // rhythm needed to keep its measured on/off lengths honest; on a solid
+      // line they only leave a nick at every joint between two segments of
+      // the same trail.
+      //
+      // The sort key is what keeps a side trail off the through-route it
+      // branches from, where the two share geometry - see
+      // TRAIL_SORT_KEY_EXPRESSION.
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+      },
+      paint: {
+        // Through blazeLineColor rather than the match expression directly,
+        // so a cold start under red light is red in its first frame - the
+        // same reason `appearance` seeds the backdrop above.
+        'line-color': blazeLineColor(appearance) as unknown as string,
+        'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
+        // The third channel (#783). Hue still says which blaze and width
+        // still says which line the map is about; opacity says which SYSTEM,
+        // which is the distinction an A.T.-only map never had to draw. See
+        // map/nearbyTrails.ts for why it is opacity and not a halo or a hue.
+        'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
+      },
+    },
+  ]
+}
+
+/**
+ * The other organizations' trail lines, or nothing (#950).
+ *
+ * attachTrailOverview's shape, and one difference that matters: the overview
+ * is pushed and then CLEARED, because it exists only until the real
+ * centerline lands. These lines are not a stand-in for anything. Once they
+ * are on the map they stay, so `null` here means "there are none" - a bucket
+ * that holds no such artifact, which is what publish.py produces while either
+ * steward's terms are unresolved - rather than "they are finished".
+ */
+export function attachNearbyTrails(
+  map: MapLibreMap,
+  nearbyTrailsUrl: string | null,
+): () => void {
+  return whenStyleReady(
+    map,
+    () => map.getSource(NEARBY_TRAILS_SOURCE_ID) !== undefined,
+    () => {
+      const source = map.getSource<GeoJSONSource>(NEARBY_TRAILS_SOURCE_ID)
+      if (source === undefined || typeof source.setData !== 'function') return
+
+      source.setData((nearbyTrailsUrl ?? emptyTrailOverview()) as never)
+    },
+    'Nearby trails',
+  )
+}
+
 /** What the overview source holds before there is one and after it is done.
  *  A function rather than a shared constant: MapLibre's typings want a
  *  mutable feature list, and one object handed to both the style and every
@@ -786,6 +939,28 @@ export function buildMapStyle({
         data: emptyTrailOverview(),
         attribution: OSM_CREDIT,
       },
+      // The other organizations' trails (#950), empty until
+      // lib/nearbyTrailData.ts has an artifact to hand over - which today it
+      // usually does not, because publish.py holds that artifact back while
+      // either steward's terms are unresolved. An empty source rather than an
+      // absent one so there is one shape of style whatever the bucket holds,
+      // which is the same reason the overview above is declared empty.
+      //
+      // ATTRIBUTED TO ITS OWN STEWARDS, which is a licence condition and not
+      // a courtesy: OPRHP's terms require credit on "any maps... created using
+      // OPRHP data" (pipeline/sources.json's `oprhp_licence` quotes them in
+      // full). It carried OSM_CREDIT while nothing shipped, which was a
+      // placeholder that would have become a breach the moment it did.
+      //
+      // The corner strip is assembled by map/credits.ts's mapCredits() rather
+      // than from these declarations, so this is the second half of the same
+      // fact rather than the mechanism - see that module for why one source
+      // cannot be credited in one file and go uncredited in another.
+      [NEARBY_TRAILS_SOURCE_ID]: {
+        type: 'geojson',
+        data: emptyTrailOverview(),
+        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT}`,
+      },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and
       // OpenStreetMap-derived, only one of those two has a settled credit to
@@ -925,70 +1100,51 @@ export function buildMapStyle({
           'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
         },
       },
-      {
-        // Hairline dark casing, drawn under every blaze so the trail stays
-        // readable over busy topo contours. It is doing more work than it used
-        // to: with the line solid, the casing is the ONLY thing giving the
-        // near-white centerline an edge against near-white paper, so it is
-        // carried at a firmer opacity than when a gap in the line let it
-        // through every few pixels.
-        id: TRAIL_CASING_LAYER_ID,
-        type: 'line',
-        source: TRAILS_SOURCE_ID,
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          // Sorted like the blaze layer above it, though nothing visible
-          // depends on it while every casing is the same colour. It is here so
-          // that the day one is not - a heavier casing for a through-route, the
-          // "drawn by absence" treatment WIREFRAMES.md reserves for Black - the
-          // ordering rule is already in place rather than being a second bug
-          // with the same shape as the first.
-          'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
-        },
-        paint: {
-          'line-color': trailCasingColor(appearance),
-          'line-width': TRAIL_CASING_WIDTH_EXPRESSION as unknown as number,
-          // The casing's own 0.7, MULTIPLIED by the line's ghosting rather
-          // than replaced by it. Both facts are true at once and they compose:
-          // a casing is always slightly softer than the blaze it carries, and
-          // a nearby trail's whole stack - blaze and casing together - sits
-          // back from the chosen trail's. Replacing the 0.7 would give a
-          // ghosted line a FIRMER edge than the chosen trail's, which is the
-          // opposite of what this channel is for.
-          'line-opacity': ['*', 0.7, nearbyTrailOpacityExpression()] as unknown as number,
-        },
-      },
-      {
-        id: BLAZE_LAYER_ID,
-        type: 'line',
-        source: TRAILS_SOURCE_ID,
-        // Round, matching the casing beneath it. Butt caps were what the dash
-        // rhythm needed to keep its measured on/off lengths honest; on a solid
-        // line they only leave a nick at every joint between two segments of
-        // the same trail.
+      // The other organizations' trails (#950), UNDER the chosen trail's own
+      // pair below. Order is the half of this that opacity cannot do: ghosting
+      // says which system a line belongs to, but where a nearby trail runs
+      // coincident with the chosen one - and in Harriman half the A.T.'s
+      // length is within 150 m of another marked trail (#771) - the one drawn
+      // last still owns the pixels. Drawn first, a nearby trail can never
+      // cover the trail the map is about, whatever its opacity.
+      ...buildTrailLineLayers(
+        NEARBY_TRAILS_SOURCE_ID,
+        NEARBY_TRAIL_CASING_LAYER_ID,
+        NEARBY_BLAZE_LAYER_ID,
+        appearance,
+        // ABOVE THE SEAM ONLY (features/NEARBY_TRAILS.md §8). "Forty short
+        // trails are not a below-seam subject - at z7 Harriman is one green
+        // shape", and 3,663 lines drawn across the corridor view would be a
+        // smear over the thing that view is actually about, which is the
+        // thirty club sections tiling the A.T.
         //
-        // The sort key is what keeps a side trail off the through-route it
-        // branches from, where the two share geometry - see
-        // TRAIL_SORT_KEY_EXPRESSION.
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
-        },
-        paint: {
-          // Through blazeLineColor rather than the match expression directly,
-          // so a cold start under red light is red in its first frame - the
-          // same reason `appearance` seeds the backdrop above.
-          'line-color': blazeLineColor(appearance) as unknown as string,
-          'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
-          // The third channel (#783). Hue still says which blaze and width
-          // still says which line the map is about; opacity says which SYSTEM,
-          // which is the distinction an A.T.-only map never had to draw. See
-          // map/nearbyTrails.ts for why it is opacity and not a halo or a hue.
-          'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
-        },
-      },
+        // HALF OF §8, and the missing half is named rather than hidden: it
+        // also says the marquee routes - the A.T., the Long Path - should
+        // still be drawn through the parks below the seam, with the PARK as
+        // the subject there. That needs the park polygons exported and a way
+        // to tell a marquee route from a short park trail, neither of which
+        // exists. Until it does, the Long Path is absent below z9 rather than
+        // drawn at the wrong prominence. Cutting the smear is the half worth
+        // having first; the other half is #557's ground.
+        POI_PIN_MIN_ZOOM,
+      ),
+      // A nearby trail marked closed long-term gets the same barred band the
+      // A.T.'s closures get (features/NEARBY_TRAILS.md §3: a hiker learns ONE
+      // mark for "do not walk this"). Over its own blaze for the reason the
+      // chosen trail's band is over its own - a barrier under the line is a
+      // picture of an open trail - and still under everything about the
+      // chosen trail, per the ordering argument above.
+      ...buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
+        bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+        casingId: NEARBY_LONG_TERM_CLOSURE_CASING_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }),
+      ...buildTrailLineLayers(
+        TRAILS_SOURCE_ID,
+        TRAIL_CASING_LAYER_ID,
+        BLAZE_LAYER_ID,
+        appearance,
+      ),
       // Trail names (#930), directly over the lines they name and UNDER every
       // pin on this map. Both halves of that are deliberate.
       //
@@ -1010,6 +1166,19 @@ export function buildMapStyle({
       //
       // DRAW ORDER follows from the same ranking: under the pins, so a pin
       // covers a name rather than a name covering a pin.
+      // The nearby network's names, BEFORE the chosen trail's below.
+      // Placement runs top-down (see above), so the later layer wins a
+      // contested label - and where a nearby trail's name and the chosen
+      // trail's name cannot both be placed, the one the map is about is the
+      // one that should survive. Same layer, same expressions, same opacity
+      // rule; only the id and the source differ.
+      buildTrailLabelLayer(
+        NEARBY_TRAILS_SOURCE_ID,
+        trailCasingColor(appearance),
+        mapBackdrop(appearance),
+        TRAIL_LABEL_MIN_ZOOM,
+        NEARBY_TRAIL_LABEL_LAYER_ID,
+      ),
       buildTrailLabelLayer(
         TRAILS_SOURCE_ID,
         trailCasingColor(appearance),

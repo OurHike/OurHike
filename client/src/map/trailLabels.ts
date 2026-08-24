@@ -43,6 +43,18 @@ import { nearbyTrailOpacityExpression, CHOSEN_SYSTEM_SOURCES } from './nearbyTra
 
 export const TRAIL_LABEL_LAYER_ID = 'trail-label'
 
+/**
+ * The same layer over the nearby-trail source (#950).
+ *
+ * A second instance rather than a second implementation: MapLibre needs one
+ * layer per source and ids must be unique, and that is the ONLY difference
+ * between the two. Everything that decides how a name looks - the font, the
+ * placement along the line, the sort key, and above all the opacity
+ * expression §1 requires them to share - is built once in
+ * buildTrailLabelLayer below and handed to both.
+ */
+export const NEARBY_TRAIL_LABEL_LAYER_ID = 'nearby-trail-label'
+
 /** The bundled face every symbol layer in this app renders in (map/liveTopo.ts
  *  ships the ranges under `public/glyphs/`, precached by vite.config.ts so the
  *  offline sheet has them too). Restated rather than imported to keep this
@@ -158,9 +170,10 @@ export function buildTrailLabelLayer(
   color: string,
   haloColor: string,
   minzoom: number,
+  layerId: string = TRAIL_LABEL_LAYER_ID,
 ): LayerSpecification {
   return {
-    id: TRAIL_LABEL_LAYER_ID,
+    id: layerId,
     type: 'symbol',
     source: sourceId,
     minzoom,

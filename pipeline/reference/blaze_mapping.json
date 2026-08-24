@@ -30,7 +30,13 @@
     "oprhp_trails": {
       "_note": [
         "New York State Office of Parks, Recreation and Historic Preservation,",
-        "statewide trails layer. Carries Blaze/Blaze_2/Blaze_3 plus Map_Blaze."
+        "statewide trails layer. Carries Blaze/Blaze_2/Blaze_3 plus Map_Blaze.",
+        "Counts are statewide over all 16,641 rows. The first five deferred rows",
+        "were counted by the #771 spike on 2026-08-18; the six added under #950",
+        "were counted on 2026-08-24 from the same layer re-fetched, and the twenty",
+        "distinct non-null values below are the complete set as of that date - so",
+        "an unmapped warning now means OPRHP has published a value it had not",
+        "published before, rather than that this table was never finished."
       ],
       "mapped": {
         "Aqua": "Aqua",
@@ -68,7 +74,53 @@
           "count": 35,
           "why": "The smallest count, and the one most likely to be a spelling of Green rather than a separate paint. Mapping it onto Green without checking would merge two trails; giving it a member without checking would split one.",
           "settles_it": "Reading a sample of Lime segments against their trails' published blaze descriptions - measurement before mapping, per the design doc."
+        },
+        "Gray": {
+          "count": 28,
+          "why": "A real paint, and the one value in this docket that the palette actively cannot hold: the neutral an unmapped or unstated blaze already falls back to renders GREY. Admitting Gray as a member would make a segment OPRHP confirmed is grey-blazed pixel-identical to one nobody has a blaze for, which is the map saying 'grey blaze' and 'no idea' in the same voice.",
+          "settles_it": "An admission review that also decides what the neutral looks like - these two cannot be picked independently. Until then a grey-blazed trail renders as the neutral, which is at least not a claim."
+        },
+        "Light Purple": {
+          "count": 26,
+          "why": "Light Blue's argument one hue over: a distinct paint rather than a spelling of Purple, so collapsing it would flatten two trails a hiker tells apart at a junction.",
+          "settles_it": "An admission review, in the same sitting as Light Blue - the two are the same question and a palette that admits one without the other is arbitrary."
+        },
+        "Tan": {
+          "count": 14,
+          "why": "Its nearest neighbour is Brown, which is itself deferred in this file, so Tan cannot be decided before Brown is. Painting it Brown today would be deciding Brown by the back door.",
+          "settles_it": "Brown's admission review, which Tan rides along with: one decision about whether this corner of the palette exists at all, not two."
+        },
+        "Maroon": {
+          "count": 13,
+          "why": "The only unmapped value whose nearest member is genuinely close - Red. Whether OPRHP's Maroon is a distinct paint on a tree or its word for a dark red is a question about the trails, not about the palette, and nobody here has looked at one.",
+          "settles_it": "Somebody who has seen these trails saying which it is. Field testing (#106) reaches this corner of the network, or NYNJTC and OPRHP answer it directly in the conversations #768 already has open."
+        },
+        "Light Pink": {
+          "count": 7,
+          "why": "Rides with Pink, deferred above and eleven times as common. Seven segments is not enough to argue a palette member from, and admitting Light Pink while Pink waits would be backwards.",
+          "settles_it": "Pink's admission review."
+        },
+        "Dark Green": {
+          "count": 2,
+          "why": "Two segments statewide, nearest member Green. The same distinct-paint-or-a-spelling question as Maroon, on a count too small to be worth a reviewer's time before the larger ones are settled.",
+          "settles_it": "Maroon's review, taken together - both are 'is this a shade or a paint', and answering one answers the shape of the other."
         }
+      }
+    },
+    "nynjtc_long_path": {
+      "_note": [
+        "New York-New Jersey Trail Conference, Long Path public extract.",
+        "One value on all 43 sections, measured 2026-08-24: the lowercase",
+        "'aqua'. The field is a PLAIN STRING with no ArcGIS coded domain, so",
+        "this table is the only thing standing between NYNJTC's spelling and",
+        "the palette's - there is no domain decode in front of it the way",
+        "there is for oprhp_trails and side_trails.",
+        "This is the source #782 admitted Aqua to the palette FOR: 'the Long",
+        "Path's aqua is real paint'. The row below is that admission being",
+        "used, not a second decision."
+      ],
+      "mapped": {
+        "aqua": "Aqua"
       }
     }
   }

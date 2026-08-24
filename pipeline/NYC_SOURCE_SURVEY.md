@@ -150,6 +150,18 @@ the shelf is broader):
 conversation concludes), and treat the fire-detour layer as the first candidate for a
 non-ATC conditions source.
 
+**Acted on 2026-08-24** ([#950](https://github.com/OurHike/OurHike/issues/950)): both are in
+`sources.json` as `nynjtc_long_path` and `nynjtc_highlands_trail`, review-only
+(`reaches_hikers: false`) behind a new `nynjtc_licence` block. Re-probing them that day
+found the shelf exactly as this section left it on 2026-08-18 — 43 sections and 12, the
+same field lists, `dataLastEditDate` still 2026-08-04 and 2025-12-04 — so nothing here
+needed correcting, which is worth recording because a snapshot that is never re-read is a
+snapshot nobody knows the age of. Two things the survey did not say, found on the re-probe
+and now carried in the entries themselves: the Long Path's `Blaze` is a **plain string with
+no coded domain** (all 43 rows read the lowercase `aqua`), and the Highlands Trail layer
+**publishes no blaze field at all**, which is registered as the neutral rather than as the
+teal it wears on the ground. The fire-detour layer is still unregistered.
+
 ## 5. New Jersey — two real layers, and the first stated terms in this survey
 
 - **NJDEP "NJ State Park Service Trails"** (`mapsdep.nj.gov/…/Features/Land/MapServer/63`,
@@ -228,10 +240,10 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 
 | source | terms | state |
 |---|---|---|
-| NYS OPRHP (4 layers) | Unstated; no-warranty disclaimer on the item | **Ask in motion** — maintainer outreach declared 2026-08-18, recorded in `oprhp_licence` (#769) |
+| NYS OPRHP (4 layers) | **Stated** — reuse permitted, attribution to OPRHP required, *non-commercial purposes*. **Corrected 2026-08-24 (#950):** this row read "Unstated; no-warranty disclaimer" because the item's `licenseInfo` was read through a 200-character truncation that cut off exactly where the disclaimer ends and the terms begin. Full text (1,095 chars) is quoted in `oprhp_licence`. | **Ask still open, on a narrower question** — not "what are the terms" but "is OurHike non-commercial within them", given features/PRICING_MODEL.md's paid passes (#769) |
 | NYS DEC (`dil` layers) | Unstated; no copyright text on service | **NEEDS REVIEW** — bundle with the OPRHP ask; Open-NY listing is precedent |
 | data.ny.gov copies | No licence field on either listing | Not a source: DEC copy last updated **2013**, OPRHP copy **2014-12-24** — proof the State publishes these openly, and proof the AGOL/on-prem services are the copies of record |
-| NYNJTC public extracts | Unstated (`licenseInfo` empty on both items, read 2026-08-18) | Covered by the maintainer's NYNJTC conversation (#768) |
+| NYNJTC public extracts | Unstated — `licenseInfo` AND `accessInformation` both empty on both items, re-verified whole 2026-08-24 against the registered service URLs | Covered by the maintainer's NYNJTC conversation (#768). An absent licence is more restrictive than OPRHP's stated one, not less |
 | NYNJTC full network | Withheld | **An agreement, not a scrape** (SOURCE_SURVEY.md §10, reaffirmed) |
 | NJDEP layers + NJ compilation | **NJDEP Data Distribution Agreement — stated** | **NEEDS REVIEW** — read in full; possibly no ask needed |
 | ATC / NPS | See `atc_licence` in sources.json | In hand |

@@ -14,6 +14,26 @@ program. Every measurement cited below is the
 [#771](https://github.com/OurHike/OurHike/issues/771) spike's
 (`pipeline/spike_nyc_trails.py`, 2026-08-18) unless dated otherwise.
 
+**Status, 2026-08-24: shipping.** The map
+([#783](https://github.com/OurHike/OurHike/issues/783)), the labels
+([#930](https://github.com/OurHike/OurHike/issues/930)), the palette
+([#782](https://github.com/OurHike/OurHike/issues/782)) and the data behind them
+([#950](https://github.com/OurHike/OurHike/issues/950), `pipeline/export_nearby_trails.py`)
+all exist, and 3,663 trail lines from NYS OPRHP and NYNJTC now reach hikers.
+
+The licence hold that stood between this doc and a phone came off on 2026-08-24, and how it
+came off is worth recording rather than smoothing over. OPRHP's terms had been logged as
+*unstated* on the strength of a truncated read; read whole they **permit reuse, require
+attribution, and say "non-commercial purposes"**. The maintainer determined that OurHike
+satisfies the non-commercial condition — the trail line sits in the tier PRICING_MODEL.md
+keeps free for everyone — and separately authorised NYNJTC's public extracts, which state
+nothing at all. Both determinations and the argument against the first are in
+`sources.json`. OPRHP's attribution is now a rendered condition, not a note: `map/credits.ts`
+puts it in the corner whenever their lines are drawn.
+
+§9 is the section to read next: its offline requirement is the one this build still does not
+meet.
+
 ---
 
 ## The ground this designs for, measured
@@ -211,6 +231,19 @@ Cross-org rules, recorded from the maintainer's decisions and the spike's eviden
 
 ## 6. Provenance in the display voice
 
+**Half built as of 2026-08-24, and the half that exists is the half a licence requires.**
+OPRHP's terms make attribution a condition of using their data, so `map/credits.ts` carries
+it as an atom and the map corner names both stewards whenever their lines are drawn — the
+same mechanism, and the same "credit only what is actually on screen" rule, that governs
+OpenStreetMap's. The sources screen ([#927](https://github.com/OurHike/OurHike/issues/927))
+names them too, now that `reaches_hikers` is true for the three shipped sources.
+
+**Still missing: the per-trail line in the tap sheet.** Tapping a nearby trail does not yet
+say "Trail data: NYS OPRHP" beside that particular trail, in the voice this section
+specifies. The corner satisfies the licence; the sheet is what satisfies the hiker asking
+whose line they are looking at. The pipeline already records each source's steward and
+attribution in the export manifest, so whoever builds it has one place to read from.
+
 Every nearby-trail sheet carries a source line — "Trail data: NYS OPRHP" — and OPRHP's own
 licence text disclaims accuracy, so the line's job is honesty, not decoration. The wording
 ships from the pipeline's per-source attribution fields (sources.json), never hardcoded;
@@ -241,6 +274,17 @@ extension, not a fork: **below the seam, the network ground's subject is the par
 unit polygons already registered (`oprhp_park_polygons`, 858 statewide) with the marquee
 routes (AT, Long Path) still drawn through them, exactly as club sections tile the AT.
 Tapping a park below the seam says who runs it and what the big routes through it are.
+
+**Half built (2026-08-24, #950).** The half that shipped is the negative one: the
+network draws only at z≥9, so 3,663 lines cannot smear across a corridor view whose
+subject is the thirty club sections. The half that did not is everything positive this
+section describes — park polygons are fetched but not exported, nothing distinguishes a
+marquee route from a short park trail, and there is no below-seam park tap. The
+consequence to know about is that **the Long Path is absent below z9 rather than drawn
+through its parks**, which is not what the paragraph above asks for. Drawn at the wrong
+prominence was judged worse than absent; a reviewer may disagree, and
+[#557 — Draw the map from several coverage units, and say plainly where they end](https://github.com/OurHike/OurHike/issues/557)
+is where the positive half belongs.
 The stretch model (CORRIDOR_VIEW's `named` basis) carries over unchanged — "Breakneck
 Ridge loop" is a stretch with a citation like "Franconia Ridge" is.
 
@@ -252,6 +296,16 @@ trail and every safety POI inside its boundary**, not just the chosen trail's. T
 safety-always rule is a promise about the screen, and a unit cut trail-shaped would break
 it exactly where trails cross. (The spike's scale numbers make this cheap: the two parks'
 full trail geometry is 0.7 MB gzipped.)
+
+**Not met by what shipped, and this is the gap to know about.**
+[#950](https://github.com/OurHike/OurHike/issues/950) drew this map from a network artifact
+`client/src/lib/nearbyTrailData.ts` fetches and does **not** store, so a phone with no
+signal draws no nearby trails at all. That was a deliberate hold rather than an oversight —
+what a download contains is #552's decision, and building a second store beside
+`lib/trailData.ts`'s in advance of it would be a shape to unpick later — but the paragraph
+above is a requirement this build does not satisfy, and it should be read as outstanding
+rather than as described-and-done. The whole exported network is 1.72 MB gzipped
+(measured 2026-08-24), which is the number that decision has to weigh.
 
 ## 10. POI density, honestly
 

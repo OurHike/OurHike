@@ -706,6 +706,7 @@ function App() {
     retiredPois,
     trailsUrl,
     overviewTrailsUrl,
+    nearbyTrailsUrl,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
@@ -4086,6 +4087,7 @@ function App() {
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
           overviewTrailsUrl={overviewTrailsUrl}
+          nearbyTrailsUrl={nearbyTrailsUrl}
           background={effectiveBackground(
             preferences.background_source,
             saveData,
@@ -4121,6 +4123,7 @@ function App() {
           // the USGS survey only while there are USGS tiles on the phone to
           // draw, and a hiking-sheet-only download has none.
           hasRasterArchive={archiveDownloaded}
+          hasNearbyTrails={nearbyTrailsUrl !== null}
           // Decided here rather than on the screen (#334): the same failing
           // source has to reach the downloads window, which opens over the
           // More tab where the map screen is not rendered at all. What the

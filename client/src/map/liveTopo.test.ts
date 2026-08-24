@@ -617,6 +617,26 @@ describe('the offline-only background', () => {
       // keeping one stack rather than two is what stops the offline style
       // being a second thing to keep in step.
       'trail-overview-line',
+      // The trails other organizations maintain (#950), and they survive the
+      // subtraction for the same duller reason the sketch above does: the
+      // source is empty unless the shell has a network artifact to put in it,
+      // and today it never does - publish.py holds that artifact back while
+      // NYS OPRHP's and NYNJTC's reuse terms are unstated. A layer drawing
+      // nothing costs nothing, and one stack rather than two is what stops
+      // the offline style being a second thing to keep in step.
+      //
+      // UNDER the chosen trail's own pair below, which is the half of this
+      // that matters: ghosting says which system a line belongs to, but where
+      // two lines are coincident the last-drawn one owns the pixels whatever
+      // its opacity, and it must not be the nearby one.
+      'nearby-trail-casing',
+      'nearby-trail-blaze',
+      // A nearby trail closed long-term gets the same barred band the A.T.'s
+      // closures get (features/NEARBY_TRAILS.md §3: one mark for "do not walk
+      // this", whoever's trail it is) - over its own blaze, still under
+      // everything about the chosen trail.
+      'nearby-long-term-closure-casing',
+      'nearby-long-term-closure-band',
       'trail-casing',
       'trail-blaze',
       // Trail names (#930) directly over the lines they name, and — the half
@@ -624,6 +644,9 @@ describe('the offline-only background', () => {
       // collision. Placement runs top-down (see the pins-last case above), so
       // a label put at the end of this list would suppress a water source to
       // print a trail name.
+      // The nearby network's names, before the chosen trail's - so where both
+      // cannot be placed, the name of the trail the map is about survives.
+      'nearby-trail-label',
       'trail-label',
       // The corridor view's attribution, over the blaze it covers and under
       // everything a hiker acts on (#598). It survives the subtraction for

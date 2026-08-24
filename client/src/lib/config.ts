@@ -67,6 +67,26 @@ export const TRAILS_KEY = 'trails.geojson'
  */
 export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
 
+/**
+ * The trail lines other organizations maintain - NYS OPRHP's and NYNJTC's
+ * (#950, pipeline/export_nearby_trails.py, features/NEARBY_TRAILS.md).
+ *
+ * ITS OWN ARTIFACT BECAUSE OF A LICENCE, not because of its size. Three
+ * stewards, three different bases: ATC's centerline ships on recorded
+ * permission, NYS OPRHP's on their own published terms (reuse permitted,
+ * attribution REQUIRED - see map/credits.ts), NYNJTC's on the maintainer's
+ * authorisation, since they state none. Keeping these lines out of
+ * `trails.geojson` is what lets any one of those be held without touching the
+ * others, which is what `reaches_hikers` exists to make possible per source.
+ *
+ * Both outstanding licences resolved on 2026-08-24 and this key publishes. A
+ * 404 is still an ordinary answer rather than a failure - a release exported
+ * before the artifact existed, or a bucket a publish has not reached yet - and
+ * lib/nearbyTrailData.ts reads it as "no nearby trails", the same reading
+ * spurs.json and trails_overview.geojson get.
+ */
+export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

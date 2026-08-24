@@ -536,6 +536,35 @@ jobs:
       - name: Export club sections
         run: python export_club_sections.py
 
+      # The curated stretches (#595, #947, features/CORRIDOR_VIEW.md). Until
+      # #947 nothing ran this exporter at all: the script was written, its
+      # editorial input reviewed and committed, publish.py's collect_artifacts
+      # already looked for `highlights_manifest.json` - and no workflow ever
+      # produced one, so `highlights.json` was 404 in every environment from
+      # the day it was built. That is #659's failure exactly one exporter over,
+      # and #729's before that: a publish leg that never ran, degrading
+      # politely, with nothing reporting the gap.
+      #
+      # AFTER "Export POIs", and that ordering is load-bearing for the reason
+      # export_spurs.py's is - the script's own docstring: "the ids have to be
+      # the ones already on the device, and the miles have to be the ones the
+      # client already agrees with". Resolving against the raw ATC points would
+      # publish ranges calibrated differently from every other mile in the app.
+      #
+      # AFTER "Export club sections" for a weaker reason, which is why it sits
+      # here rather than immediately below the POIs: each highlight records the
+      # club whose section it starts in, so "about thirty, one per maintaining
+      # club" becomes a fact this script CHECKS rather than a claim the
+      # reference file makes about itself. Missing club sections cost that
+      # report and nothing else.
+      #
+      # No `if:` guard and no network. reference/highlights.json is checked in,
+      # and the script raises SystemExit rather than publishing an empty list
+      # if it ever goes missing - "an empty highlights.json looks exactly like
+      # a trail with nothing on it worth going to".
+      - name: Export curated highlights
+        run: python export_highlights.py
+
       # Who the map's data belongs to (#927). Reads sources.json in this
       # checkout and nothing else - no raw snapshot, no network - so it could
       # sit anywhere in this leg. Placed beside the club sections because the
@@ -758,6 +787,7 @@ jobs:
       # failure #671 built the ledger to make impossible - so the two inputs are
       # mutually exclusive here rather than merely discouraged in the form.
       - name: Publish to R2
+        id: publish
         if: ${{ inputs.publish && !inputs.regenerate_identity_ledger }}
         env:
           # The gate publish.py checks. Set only on this step, so every other
@@ -775,6 +805,31 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python publish.py
 
+      # REPORTS THE OUTCOME, NOT THE INTENT (#948). Every branch here used to
+      # read `inputs` alone, so a run that asked to publish and never got there
+      # still signed off "Published to production". Measured on run
+      # 32672955042: it died at the identity gate, sixteen steps in, skipped
+      # `Publish to R2` with everything else after it, uploaded nothing - and
+      # printed that line as its last word.
+      #
+      # The first two branches below are safe to leave reading inputs, and do:
+      # a ledger-regeneration run and a dry run upload nothing whether they
+      # succeed or fail, so both sentences stay true on a failed run. Only the
+      # three "Published to ..." branches could ever lie, so only they are
+      # gated - on the step's own `outcome`, which separates `skipped` (the run
+      # never reached it) from `failure` (the upload itself broke) from
+      # `success`.
+      #
+      # Naming which of the two it was matters more than it looks: they send a
+      # reader to completely different places. `skipped` means the failure is
+      # upstream and the log above holds it; `failure` means publish.py itself
+      # is the thing to read. "Nothing was uploaded" alone would leave both
+      # searches open.
+      #
+      # The job's own conclusion already goes red in these cases, so this is
+      # not a silent-failure fix - it is the sentence a person actually reads
+      # for "did this publish?", which is the question #940 and #729 both
+      # record somebody getting the wrong answer to.
       - name: Say what happened
         if: always()
         run: |
@@ -785,6 +840,15 @@ jobs:
             echo "'regenerate_identity_ledger' to publish against the reviewed ledger."
           elif [ "${{ inputs.publish }}" != "true" ]; then
             echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
+          elif [ "${{ steps.publish.outcome }}" = "skipped" ]; then
+            echo "NOTHING WAS UPLOADED - this run never reached the publish step."
+            echo "'publish' was ticked and an earlier step failed, so no key in"
+            echo "${{ inputs.data_environment }} was written. The failure is above this line."
+          elif [ "${{ steps.publish.outcome }}" != "success" ]; then
+            echo "NOTHING WAS UPLOADED, or only part of it was - publish.py did not succeed"
+            echo "(outcome: ${{ steps.publish.outcome }}). Read its step above; publish.py"
+            echo "orders photos before artifacts and writes latest.json last, so a run that"
+            echo "died mid-upload has not moved the manifest hikers read."
           elif [ "${{ inputs.data_environment }}" = "production" ]; then
             echo "Published to production. The client needs DATA_BASE_URL set and a Pages redeploy to see it."
           elif [ "${{ inputs.data_environment }}" = "ua" ]; then

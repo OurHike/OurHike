@@ -60,14 +60,14 @@ def bake(tmp_path, monkeypatch):
     fails in CI, or the other way round, for a reason nothing in the test says.
     """
 
-    def run(document: dict, cache: dict | None = None):
+    def run(document: dict, cache: dict | None = None, cache_text: str | None = None):
         reviewed = tmp_path / "atc_updates.json"
         reviewed.write_text(json.dumps(document))
         out_dir = tmp_path / "processed" / "conditions"
         cache_path = tmp_path / "raw" / "atc_updates.json"
-        if cache is not None:
+        if cache is not None or cache_text is not None:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(json.dumps(cache))
+            cache_path.write_text(cache_text if cache_text is not None else json.dumps(cache))
         monkeypatch.setattr(export_atc_updates, "REVIEWED_PATH", reviewed)
         monkeypatch.setattr(export_atc_updates, "OUT_DIR", out_dir)
         monkeypatch.setattr(export_atc_updates, "OUT_PATH", out_dir / "atc_updates.json")
@@ -219,11 +219,11 @@ def test_the_reviewed_rows_survive_a_cache_that_cannot_be_read(bake):
     first would be a hiker's map going blank because a scrape failed, and
     export_conditions.py's stance is that a missing closure is invisible.
     """
-    cache_path = export_atc_updates.CACHE_PATH
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text("{ this is not json")
-
-    bake({"reviewed_at": "2026-08-12", "updates": [row()]})
+    # Through the fixture, NOT by touching export_atc_updates.CACHE_PATH here:
+    # that attribute is the real data/raw path until `bake` runs the
+    # monkeypatch, so writing to it from the test body corrupts the developer's
+    # actual cache. It did, once.
+    bake({"reviewed_at": "2026-08-12", "updates": [row()]}, cache_text="{ this is not json")
 
     document = json.loads(export_atc_updates.OUT_PATH.read_text())
     assert [u["atc_id"] for u in document["atc_updates"]] == ["va-creeper-trail-closure-detour"]

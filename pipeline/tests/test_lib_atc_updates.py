@@ -352,7 +352,7 @@ def test_a_reviewed_slug_is_never_overwritten_by_a_parse():
     assert refusal is not None and "already reviewed" in refusal
 
 
-def test_several_mile_references_are_refused_rather_than_guessed_between():
+def test_mile_references_that_disagree_are_refused_rather_than_guessed_between():
     """Iron Mtn Gap states five ranges accumulated over months of edits, and
     the current one is not mechanically distinguishable from its own history
     (#463). Taking the first would be a coin toss with a hiker's location."""
@@ -367,7 +367,7 @@ def test_several_mile_references_are_refused_rather_than_guessed_between():
         "2026-08-12",
     )
 
-    assert refusal is not None and "mile references" in refusal
+    assert refusal is not None and "do not agree" in refusal
 
 
 def test_the_gate_refuses_a_mile_off_the_end_of_the_trail():
@@ -391,12 +391,37 @@ def test_the_gate_refuses_a_mile_off_the_end_of_the_trail():
         "The burn ban has been lifted for the season.",
     ],
 )
-def test_wording_that_might_be_an_all_clear_is_refused(wording):
-    """An update whose content is *the trail is open again* must never become
-    a pin. "NC/TN: Iron Mtn Gap Reopened" is the live example."""
-    refusal = auto_publish_refusal(parsed(text=wording), set(), "2026-08-12")
+def test_an_all_clear_publishes_rather_than_being_refused(wording):
+    """The refusal this replaced was wrong about live notices more often than
+    it was right about dead ones.
 
-    assert refusal is not None and "all-clear" in refusal
+    Measured against the 22 updates ATC had edited in the previous 90 days it
+    caught two, and BOTH were current: Andy Layne's "is complete" sits above a
+    live road-walk, and Max Patch's "has been completed" is inside a camping
+    closure running to 2029. The VA Creeper - nine miles of A.T. shut until
+    2027 - says "will reopen" and would have gone too.
+
+    Dropping it is safe because an automatic row carries ATC's own headline
+    verbatim, so an all-clear publishes as one, and `auto_row` forces
+    `obstructs_trail` false whatever the words say.
+    """
+    assert auto_publish_refusal(parsed(text=wording), set(), "2026-08-12") is None
+
+
+def test_the_same_mile_stated_twice_is_not_a_disagreement():
+    """ATC restates a location as they edit, and the rule this replaced could
+    not tell repetition from ambiguity: the Harpers Ferry footbridge closure
+    carries `NOBO mile 1,026.7` in both its 2026 and 2025 sections, and was
+    held back as though the two pointed somewhere different."""
+    twice = parsed(
+        miles=[
+            MileReference("NOBO", 1026.7, None, "NOBO mile 1,026.7"),
+            MileReference("NOBO", 1026.7, None, "NOBO mile 1,026.7"),
+        ]
+    )
+
+    assert auto_publish_refusal(twice, set(), "2026-08-12") is None
+    assert auto_row(twice)["start_mile_marker"] == 1026.7
 
 
 def test_a_category_this_build_does_not_know_is_refused():

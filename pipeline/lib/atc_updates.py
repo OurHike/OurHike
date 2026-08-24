@@ -270,28 +270,28 @@ def published_rows(document: dict) -> list[dict]:
     ]
 
 
-# Words that mean ATC's latest edit is announcing the END of the thing it
-# warned about. An auto-published row must never be built out of one of these:
-# "NC/TN: Iron Mtn Gap Reopened" is an update whose whole content is that the
-# trail is open again, and an ingest that only ever adds notices would draw a
-# pin on it. Measured against the 89 updates live 2026-08-24, this caught nine
-# pages, of which three were genuine all-clears; the other six mention a
-# reopening date or a completed phase inside a notice that is still live, and
-# refusing those too is the conservative direction to be wrong in.
-RESOLUTION_MARKERS = (
-    "reopen",
-    "is complete",
-    "now complete",
-    "has been completed",
-    "has been lifted",
-    "been lifted",
-    "is now open",
-    "are now open",
-    "back open",
-    "no longer closed",
-    "no longer in effect",
-    "rescind",
-)
+# WHY THERE IS NO ALL-CLEAR REFUSAL HERE ANY MORE.
+#
+# There was one: a list of words - "reopened", "is complete", "has been
+# lifted" - that refused any update whose latest edit might be announcing the
+# END of the thing it warned about. #463's worry, and a fair one: an ingest
+# that only ever adds notices accumulates barriers across trail people have
+# been walking.
+#
+# It was removed on 2026-08-24 because it was wrong about live notices more
+# often than it was right about dead ones. Measured against the 22 updates ATC
+# had edited in the previous 90 days, it refused two, and BOTH were current:
+# the Andy Layne relocation, whose "is complete" sits above a live road-walk
+# on a road ATC says has "little to no shoulder", and Max Patch, whose "has
+# been completed" is about restoration work inside a camping closure that runs
+# to June 2029. Meanwhile the VA Creeper closure - nine miles of A.T. shut
+# until March 2027 - says "will reopen", and would have been refused for it.
+#
+# What makes that safe to drop is that the two things #463 feared cannot
+# happen here. An automatic row carries ATC's own headline verbatim, so an
+# all-clear publishes AS an all-clear - "NC/TN: Iron Mtn Gap Reopened" reads
+# as exactly what it is - and `auto_row` forces `obstructs_trail` false, so
+# none of them can draw a barrier whatever the words say.
 
 
 def _modified_after(date_modified: str, reviewed_at: str) -> bool:
@@ -362,14 +362,13 @@ def auto_publish_refusal(parsed, reviewed_ids: frozenset[str] | set[str], review
     if not parsed.states:
         return "no states on the page"
 
-    if len(parsed.miles) != 1:
+    reference = agreed_mile(parsed.miles)
+    if reference is None:
         # NOT "the first one wins". Iron Mtn Gap states five ranges
         # accumulated over months of edits and the current one is not
         # mechanically distinguishable from its own history (#463). Zero is
         # the region-wide advisory that has no place on a map at all.
-        return f"{len(parsed.miles)} mile references, and only one is unambiguous"
-
-    reference = parsed.miles[0]
+        return f"{len(parsed.miles)} mile references that do not agree on one place"
     ends = [reference.start] + ([reference.end] if reference.end is not None else [])
     if any(end is None or not TRAIL_MILE_MIN <= end <= TRAIL_MILE_MAX for end in ends):
         # The thousands-separator failure, caught rather than published: a
@@ -379,12 +378,27 @@ def auto_publish_refusal(parsed, reviewed_ids: frozenset[str] | set[str], review
     if reference.end is not None and reference.end < reference.start:
         return f"{reference.raw!r} runs backwards"
 
-    lowered = parsed.text.lower()
-    for marker in RESOLUTION_MARKERS:
-        if marker in lowered:
-            return f"says {marker!r}, which may be an all-clear rather than a notice"
-
     return None
+
+
+def agreed_mile(miles: list):
+    """The one span every mile reference on the page agrees on, or None.
+
+    REPEATING A MILE IS NOT AMBIGUITY, and the rule this replaced could not
+    tell the difference. ATC restates a location as they edit a notice, so
+    "exactly one reference" refused pages that name the same spot twice: the
+    Harpers Ferry footbridge closure carries `NOBO mile 1,026.7` in both its
+    2026 and 2025 sections and was held back as though the two disagreed.
+
+    Genuine disagreement still refuses. When a notice names several DIFFERENT
+    places - Iron Mtn Gap's five ranges, accumulated over months of edits -
+    there is no way to tell the current one from its own history, and picking
+    is a coin toss with a hiker's location.
+    """
+    if not miles:
+        return None
+    spans = {(m.start, m.end) for m in miles}
+    return miles[0] if len(spans) == 1 else None
 
 
 def _as_utc_stamp(iso: str) -> str:
@@ -416,7 +430,7 @@ def auto_row(parsed) -> dict:
     filed `Detour`. So an unreviewed row gets a dot and a banner and can never
     get a barrier. Upgrading it to one is what review is for.
     """
-    reference = parsed.miles[0]
+    reference = agreed_mile(parsed.miles)
     return {
         "atc_id": parsed.slug,
         "title": parsed.title.strip(),

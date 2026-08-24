@@ -73,11 +73,19 @@ WHAT THIS ARTIFACT MAY NOT DO YET
 Nothing here reaches a hiker. Every source it reads carries
 `reaches_hikers: false`, because neither OPRHP nor NYNJTC has stated terms -
 sources.json's `oprhp_licence` and `nynjtc_licence` blocks record both asks as
-open. So this export writes its file unconditionally (a reviewer needs to see
-the map to review it) and publish.py refuses to upload it while any source in
-it is held back. The gate is in the publish step rather than here on purpose:
-the day a licence answer lands, flipping one registry field is the whole
-change, and nobody has to remember that a second script also needs editing.
+open. So this export writes its file unconditionally and publish.py refuses to
+upload it while any source in it is held back. The gate is in the publish step
+rather than here on purpose: the day a licence answer lands, flipping one
+registry field is the whole change, and nobody has to remember that a second
+script also needs editing.
+
+Writing unconditionally is what lets the map be REVIEWED before anybody
+decides whether it may ship, and that needs one more thing to be true than it
+sounds: since #197 the client refuses to draw an artifact it cannot check
+against a published hash, and publish.py writes that manifest into the bucket
+rather than into data/processed/. So serve_processed.py synthesizes one from
+the files on disk - without it, the map this export exists to produce is the
+one map nobody can look at.
 
 The provenance line features/NEARBY_TRAILS.md §6 specifies - "Trail data: NYS
 OPRHP", in a voice that does not outrun a steward who disclaims accuracy - is
@@ -118,12 +126,15 @@ MANIFEST_NAME = "nearby_trails_manifest.json"
 #   (a) LONG ISLAND. The survey's county list does not include Nassau or
 #       Suffolk - "NYNJTC does not cover LI and the scope call did not name
 #       it" - but the bbox above reaches to −73.4° and takes in the western
-#       half of the island anyway. Measured 2026-08-24: 1,951 of the 5,759
-#       OPRHP segments that pass every other filter are `Unit: Long Island`,
-#       so a bbox-only ring would be 34% ground the scope call never asked
-#       for. EXCLUDED_UNITS below resolves that toward the county list, which
-#       is the closest thing to a decision that exists; main() prints what it
-#       drops so the other answer is one constant away.
+#       half of the island anyway. Measured 2026-08-24, and the two numbers
+#       are worth keeping apart because keep_reason() tests the unit BEFORE
+#       the foot and status filters: main() reports 2,058 segments dropped as
+#       Long Island, of which 1,951 would have passed every other filter too.
+#       That 1,951 against the 5,759 that otherwise survive is the number the
+#       decision turns on - a bbox-only ring would be 34% ground the scope
+#       call never asked for. EXCLUDED_UNITS below resolves that toward the
+#       county list, which is the closest thing to a decision that exists;
+#       main() prints what it drops so the other answer is one constant away.
 #   (b) THE NORTHERN CUT. The Long Path continues past the Catskills toward
 #       Albany, reaching 43.23°, and this box cuts it: measured 2026-08-24,
 #       10 of NYNJTC's 43 sections lie entirely north of 42.55° and are

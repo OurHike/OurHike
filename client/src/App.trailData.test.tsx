@@ -86,6 +86,30 @@ function requested() {
 }
 
 /**
+ * Whether one request was for `trails.geojson` itself.
+ *
+ * A whole path segment, and it has now been narrowed TWICE for the same
+ * reason - a key that is not the only key with "trails" in it:
+ *
+ *   1. `url.includes('trails')` also matched `trails_overview.geojson`, a
+ *      different question with a different answer (#869). Narrowed to
+ *      `endsWith(TRAILS_KEY)`.
+ *   2. `endsWith(TRAILS_KEY)` also matches `nearby_trails.geojson` (#950),
+ *      because that name ENDS with "trails.geojson". Two of the counting
+ *      cases below started reading 2 where they mean 1.
+ *
+ * The leading slash is what makes it a segment rather than a suffix, so the
+ * next artifact whose name happens to end this way does not reopen it.
+ *
+ * Test-only. No production code matches keys this way - lib/config.ts's keys
+ * are compared whole - so #950's collision was a precision problem here and
+ * never a wrong fetch on a phone.
+ */
+function isTrailsRequest(url: string): boolean {
+  return url.endsWith(`/${TRAILS_KEY}`)
+}
+
+/**
  * The hiking sheet's card - the one every phone is offered.
  *
  * No tab click: the USGS sheet is withdrawn (#855), so the window usually
@@ -107,7 +131,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
     await renderApp()
 
     await waitFor(() => {
-      expect(requested().some((url) => url.includes('trails'))).toBe(true)
+      expect(requested().some(isTrailsRequest)).toBe(true)
     })
   })
 
@@ -166,7 +190,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
-        String(url).includes(TRAILS_KEY)
+        isTrailsRequest(String(url))
           ? new Promise(() => {})
           : Promise.resolve({
               ok: true,
@@ -237,7 +261,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
     await renderApp()
 
     await waitFor(() => {
-      expect(requested().some((url) => url.includes('trails'))).toBe(true)
+      expect(requested().some(isTrailsRequest)).toBe(true)
     })
     expect(requested().some((url) => url.includes('.pmtiles'))).toBe(false)
   })
@@ -249,9 +273,10 @@ describe('trail data on a phone that has downloaded nothing', () => {
     await renderApp()
 
     await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
-    // The KEY, not the substring: `trails_overview.geojson` contains "trails"
-    // too, and it is a different question with a different answer (#869).
-    expect(requested().some((url) => url.endsWith(TRAILS_KEY))).toBe(false)
+    // The KEY as a whole path segment, not a substring and not a suffix -
+    // see isTrailsRequest for the two artifacts that made each of those
+    // wrong.
+    expect(requested().some(isTrailsRequest)).toBe(false)
   })
 
   it('still reads the stored lines with no signal, which is the whole point of storing them', async () => {
@@ -375,7 +400,10 @@ describe('the trail data a tapped download waits for', () => {
       }) as unknown as Response
 
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      if (String(input).includes('trails')) await held
+      // isTrailsRequest, not `includes('trails')`: this holds THE trail
+      // lines, and catching trails_overview.geojson or nearby_trails.geojson
+      // in the same net would stall requests this test says nothing about.
+      if (isTrailsRequest(String(input))) await held
       return answer()
     })
     return () => release()
@@ -423,9 +451,7 @@ describe('the trail data a tapped download waits for', () => {
 
     await renderApp()
     // The launch fetch is in flight and cannot finish yet.
-    await waitFor(() =>
-      expect(requested().filter((url) => url.endsWith(TRAILS_KEY))).toHaveLength(1),
-    )
+    await waitFor(() => expect(requested().filter(isTrailsRequest)).toHaveLength(1))
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
@@ -435,14 +461,14 @@ describe('the trail data a tapped download waits for', () => {
     // Waited on rather than duplicated: the tap is visibly in the canary
     // step, and the request count has not moved.
     expect(await within(card).findByText(/getting the trail/i)).toBeVisible()
-    expect(requested().filter((url) => url.endsWith(TRAILS_KEY))).toHaveLength(1)
+    expect(requested().filter(isTrailsRequest)).toHaveLength(1)
 
     // Waited out rather than merely released - see the test above.
     release()
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
     // Still one fetch once it lands: the tap was sharing it, not queued
     // behind it waiting to start its own.
-    expect(requested().filter((url) => url.endsWith(TRAILS_KEY))).toHaveLength(1)
+    expect(requested().filter(isTrailsRequest)).toHaveLength(1)
   })
 })
 

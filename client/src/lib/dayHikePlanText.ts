@@ -31,9 +31,18 @@
 // deliberate gap (#935) is the part of a day most likely to lose somebody
 // and the part a searcher most needs to hear about, so the miles the app
 // has evidence for and the miles it does not are two lines rather than one
-// total. The route line cannot say where the gap falls - the legs arrive
-// flat across segments, with no seam in them - so it does not pretend to;
-// the gap gets its own sentence instead.
+// total.
+//
+// The route line keeps the same rule, which is what `PlanTextLegs` exists
+// for: AN ARROW ONLY EVER JOINS TWO TRAILS THE APP KNOWS ARE CONTINUOUS.
+// The live resolution groups its legs by segment, so the seam is known and
+// printed as one; the stored cache flattens them (`DayHikeFigures.legs` has
+// no seam in it), so a multi-stretch walk falling back to the cache says the
+// names in walk order and says outright that it cannot place the gap among
+// them. The earlier version of this file joined the flat list with arrows
+// either way, which printed a bushwhack as a junction - and, where the same
+// trail lay on both sides of it, collapsed the repeat and erased the gap
+// from the line altogether.
 //
 // A FIELD LEFT EMPTY IS OMITTED, never filled with a placeholder: "Car:
 // unknown" on a card handed to a worried friend reads as information and is
@@ -68,8 +77,9 @@ export interface LeaveWordFields {
 export interface PlanTextFigures {
   /** Walked-trail miles, excluding any gap between segments. */
   miles: number
-  /** The trails in walk order, from the same derivation as `miles`. */
-  legs: readonly { name: string | null }[]
+  /** The trails in walk order, from the same derivation as `miles`, carrying
+   *  whether this phone can place the gaps among them. */
+  legs: PlanTextLegs
   /** True when both came from the stored cache rather than a live
    *  re-derivation, which the text then says in words. */
   fromCache: boolean
@@ -89,23 +99,60 @@ function cardDate(isoDate: string): string {
   return `${dayLongDateLabel(isoDate)} ${isoDate.slice(0, 4)}`
 }
 
+/** One trail as the card names it. */
+interface PlanTextLeg {
+  name: string | null
+}
+
 /**
- * The route as one line: the trails in walk order, joined by arrows, with
- * the loop said in words.
+ * The trails in walk order, and whether the app can say where the walk
+ * leaves them.
+ *
+ * `placed` carries one array per stretch, so the seams between stretches are
+ * exactly the gaps; `unplaced` is the flat list the stored cache keeps, which
+ * has lost them. The distinction is a union rather than a nullable field
+ * because the two cannot be told apart by inspection - a flat list of three
+ * trails and a single stretch of three trails are the same array - and
+ * printing one as the other is the failure this type exists to stop.
  */
-export function routeLine(
-  legs: readonly { name: string | null }[],
-  looped: boolean,
-): string | null {
-  const names = legs.map((leg) => leg.name ?? 'an unnamed trail')
-  if (names.length === 0) return null
-  // A trail walked out and back appears twice in the legs; the reader wants
-  // the shape, not the bookkeeping, so consecutive repeats collapse.
+export type PlanTextLegs =
+  | { readonly kind: 'placed'; readonly byStretch: readonly (readonly PlanTextLeg[])[] }
+  | { readonly kind: 'unplaced'; readonly flat: readonly PlanTextLeg[] }
+
+/** A trail walked out and back appears twice in the legs; the reader wants
+ *  the shape, not the bookkeeping, so consecutive repeats collapse. Applied
+ *  WITHIN a stretch only: the same trail either side of a gap is a hiker
+ *  leaving it and rejoining it, which is the one repeat that means
+ *  something. */
+function collapsed(legs: readonly PlanTextLeg[]): string[] {
   const walked: string[] = []
-  for (const name of names) {
+  for (const leg of legs) {
+    const name = leg.name ?? 'an unnamed trail'
     if (walked[walked.length - 1] !== name) walked.push(name)
   }
-  const line = walked.join(' → ')
+  return walked
+}
+
+/**
+ * The route as one line: the trails in walk order, with the loop said in
+ * words and any gap named rather than bridged.
+ */
+export function routeLine(legs: PlanTextLegs, looped: boolean): string | null {
+  if (legs.kind === 'unplaced') {
+    const walked = collapsed(legs.flat)
+    if (walked.length === 0) return null
+    // Commas, never arrows: this list reached here from the cache, which
+    // dropped the seams, so the app does not know which of these joins is a
+    // junction and which is open ground. Reaching this branch at all means
+    // the walk has more than one stretch - a single-stretch cache is handed
+    // in as `placed`, because there its flat list IS the stretch.
+    return `${walked.join(', ')} — in walk order, though this phone can’t place the off-trail stretch among them`
+  }
+  const stretches = legs.byStretch
+    .map((stretch) => collapsed(stretch).join(' → '))
+    .filter((stretch) => stretch !== '')
+  if (stretches.length === 0) return null
+  const line = stretches.join(' — off trail — ')
   return looped ? `${line} → back to the start` : line
 }
 

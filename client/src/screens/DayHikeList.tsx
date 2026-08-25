@@ -144,22 +144,23 @@ export function DayHikeList({
           </section>
         )}
 
-        {/* "Signed in" is not a hedge to be trimmed: day hikes ride the
-          account exchange only while somebody has an account and sync is on
-          (lib/useDayHikesSync.ts), and the app's default state is signed
-          out. A flat "they follow your account" reads as backed up to the
-          hiker most likely to lose them. */}
+        {/* BOTH CONDITIONS, because the exchange needs both: day hikes ride
+          it only while `account !== null && syncOn` (App.tsx, feeding
+          lib/useDayHikesSync.ts), and the app's default state is signed out.
+          An earlier version of this line said "signed in" alone - which is
+          exactly wrong for the hiker who has an account and turned sync off
+          for data, and who would have read a flat promise as backed up. */}
         {dayHikes.length === 0 && (
           <p className="day-hike-list__empty">
-            Nothing saved yet. A day hike you build is kept on this phone — and, signed
-            in, follows your account to the next one.
+            Nothing saved yet. A day hike you build is kept on this phone — and, with an
+            account and sync switched on, follows you to the next one.
           </p>
         )}
 
         {dayHikes.length > 0 && (
           <p className="day-hike-list__note">
-            All of these are on this phone. Signed in, they follow your account to the
-            next one.
+            All of these are on this phone. With an account and sync switched on, they
+            follow you to the next one.
           </p>
         )}
 

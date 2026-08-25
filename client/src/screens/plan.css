@@ -1763,11 +1763,22 @@
    `bottom: 0` below the fold. Here the container is exactly the pane and the
    long thing inside it scrolls.
 
+   `box-sizing` IS LOAD-BEARING, not tidiness. This app sets no universal
+   border-box reset - the only `box-sizing` in src/ is one rule scoped to
+   volunteer.css - so `height: 100%` sizes the CONTENT box, and `.plan`'s own
+   `padding: 16px` + `padding-bottom: 32px` are added outside it. The border
+   box came out 48px taller than the pane, and since `bottom: 0` resolves
+   against the padding box, the docked card hung 48px below the fold with
+   "Leave this with someone" and "Delete this day hike" on the wrong side of
+   it. That is the same defect this class was added to fix, reduced from a
+   screenful to 48px rather than removed.
+
    NO `overflow` ON THIS ELEMENT. Bounding the height is the whole job; a
    clip here would also clip the mode band, which reaches the screen edges
    through .plan's padding with negative margins. The scrolling is one level
    in, around the rows only. */
 .plan--bounded {
+  box-sizing: border-box;
   height: 100%;
 }
 
@@ -1870,14 +1881,21 @@
   right: 0;
   bottom: 0;
   z-index: 2;
-  /* Capped and scrolling, like every sibling sheet in this slot
-     (.day-hike-bar 60%, .plan-target and .day-hike-card 85%). The candidate
-     list has no ceiling - it is every planned hike inside the radius - and a
-     sheet that grows from the bottom edge pushes its own head, and the × on
-     it, off the top of the canvas: unreadable and unclosable at once. In
-     landscape two nearby hikes were enough. */
+  /* Capped, like every sibling sheet in this slot (.day-hike-bar 60%,
+     .plan-target and .day-hike-card 85%). The candidate list has no ceiling
+     - it is every planned hike inside the radius - and a sheet that grows
+     from the bottom edge pushes its own head, and the × on it, off the top
+     of the canvas: unreadable and unclosable at once. In landscape two
+     nearby hikes were enough.
+
+     NO `overflow` HERE. The scrolling is one level in, around the rows only
+     (.hikes-here__rows), for two reasons this element cannot serve: the head
+     with the × on it and the straight-line qualification under it have to
+     stay put while the rows move, and `.hikes-here--closed` shares this rule
+     - a scroll container on the collapsed pill clipped its own drop shadow,
+     the only thing lifting it off pale terrain, and cut 6px off the right of
+     the dismiss button's 44px hit area. */
   max-height: 60%;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
@@ -1896,20 +1914,40 @@
    bottom:12px lay across the scale bar and half the compass and won the hit
    test against both, so a hiker reaching for north got the door instead.
 
-   110px is derived rather than picked: mapChrome.ts stacks compass over
-   locate bottom-right, each a 42px button (chrome.css --map-control-size) in
-   a MapLibre control group carrying its own 10px bottom margin, so the stack
-   reaches 10 + 42 + 10 + 42 = 104px above the canvas floor. The scale bar
-   bottom-left is one short control well inside that.
+   THE ARITHMETIC, re-measured in Chromium against the real maplibre-gl.css
+   and chrome.css (2026-08-25), because the first version of it was wrong
+   twice over and the pill was clearing the controls by luck rather than by
+   this number:
+
+   - `bottom` here resolves against `.map-screen__canvas`, which is a flex
+     column of `.map-view` AND the attribution strip below it, while the
+     MapLibre controls are absolute inside `.map-view` alone. So the strip -
+     measured 15px - sits between the two origins and has to be added. The
+     earlier 104px derivation left it out.
+   - mapChrome.ts stacks a NavigationControl over the GeolocateControl
+     bottom-right, each group carrying maplibre's own 10px bottom margin.
+     With a coarse pointer the nav group is the compass alone: 10 + 42 + 10 +
+     42 = 104px, so the stack reaches 104 + 15 = 119px above the canvas
+     floor. The old 110px sat 9px INSIDE that band; only the pill's own width
+     kept the two apart, since it is centred and its longest label ("12 day
+     hikes start here") runs nowhere near the right-hand controls.
+   - `showZoomButtons` is `finePointer`, which is `matchMedia('(pointer:
+     fine)')` - the same condition the media query below tests, so the two
+     cannot drift. It adds zoom-in and zoom-out to that group: 10 + 126 + 10
+     + 42 = 188, reaching 203px above the canvas floor.
+
+   7px of gap on top of each, so the clearance is visible rather than exact.
 
    The cost, stated rather than discovered: on a landscape phone the canvas
-   is short enough that 110px sits above the lower third WIREFRAMES.md §1
-   reserves for what gets tapped. Landing on the compass is the worse of the
-   two, and this door is pressed standing at a car rather than mid-stride. */
+   is short enough that this sits at the top edge of the lower third
+   WIREFRAMES.md §1 reserves for what gets tapped (measured at 844x390: the
+   lower third begins 130px up, and the pill's foot is at 126). Landing on
+   the compass is the worse of the two, and this door is pressed standing at
+   a car rather than mid-stride. */
 .hikes-here--closed {
   left: 50%;
   right: auto;
-  bottom: 110px;
+  bottom: calc(15px + 104px + 7px);
   transform: translateX(-50%);
   max-width: calc(100% - var(--space-6, 24px));
   flex-direction: row;
@@ -1922,6 +1960,15 @@
   border-radius: 0;
 }
 
+/* The same condition `showZoomButtons` is passed under (lib/useFinePointer.ts
+   is this exact query), so the pill rises by exactly the two buttons that
+   appear with it: 188px of stack plus the 15px strip. */
+@media (pointer: fine) {
+  .hikes-here--closed {
+    bottom: calc(15px + 188px + 7px);
+  }
+}
+
 .hikes-here__head {
   display: flex;
   justify-content: space-between;
@@ -1932,6 +1979,17 @@
 .hikes-here__title {
   font-size: 15px;
   font-weight: 600;
+}
+
+/* The one scrolling part of the sheet. `min-height: 0` because a flex item's
+   default `min-height: auto` refuses to shrink below its content, which would
+   push the sheet past its own 60% cap rather than scroll inside it. */
+.hikes-here__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .hikes-here__row {

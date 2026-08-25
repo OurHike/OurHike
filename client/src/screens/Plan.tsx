@@ -454,6 +454,13 @@ export function PlanScreen({
                 have offered "Back to your route" into the day-hike builder
                 from a screen headed by a hike's own name. Each room offers a
                 way back only to its own draft. */}
+            {/* And the same cost note TripsHome carries, because this button
+                reaches the same sweep. */}
+            {draftKind === 'day' && (
+              <p className="plan-home__refused" role="note">
+                There&rsquo;s an unfinished day hike on the map. Starting a trip drops it.
+              </p>
+            )}
             <button
               type="button"
               className="plan__primary"

@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DayHike } from './dayHikes'
-import { dayHikePlanText, routeLine, type PlanTextFigures } from './dayHikePlanText'
+import {
+  dayHikePlanText,
+  routeLine,
+  type PlanTextFigures,
+  type PlanTextLegs,
+} from './dayHikePlanText'
 
 function hike(overrides: Partial<DayHike> = {}): DayHike {
   return {
@@ -41,11 +46,16 @@ function hike(overrides: Partial<DayHike> = {}): DayHike {
 function figures(overrides: Partial<PlanTextFigures> = {}): PlanTextFigures {
   return {
     miles: 6.2,
-    legs: [
-      { name: 'Reeves Meadow Trail' },
-      { name: 'Pine Meadow Trail' },
-      { name: 'Seven Hills Trail' },
-    ],
+    legs: {
+      kind: 'placed',
+      byStretch: [
+        [
+          { name: 'Reeves Meadow Trail' },
+          { name: 'Pine Meadow Trail' },
+          { name: 'Seven Hills Trail' },
+        ],
+      ],
+    },
     fromCache: false,
     gapMiles: 0,
     stretches: 1,
@@ -192,21 +202,81 @@ describe('what the figures are allowed to claim', () => {
 })
 
 describe('routeLine', () => {
+  function placed(...byStretch: { name: string | null }[][]): PlanTextLegs {
+    return { kind: 'placed', byStretch }
+  }
+
+  /** The single-stretch case, which is every walk with no gap in it. */
+  function placedLine(legs: { name: string | null }[]): string | null {
+    return routeLine(placed(legs), false)
+  }
+
   it('collapses an out-and-back to the shape, not the bookkeeping', () => {
     expect(
-      routeLine([{ name: 'Pine Meadow Trail' }, { name: 'Pine Meadow Trail' }], false),
+      placedLine([{ name: 'Pine Meadow Trail' }, { name: 'Pine Meadow Trail' }]),
     ).toBe('Pine Meadow Trail')
   })
 
   it('names an unnamed leg honestly and answers null with no legs at all', () => {
-    expect(routeLine([{ name: null }], false)).toBe('an unnamed trail')
-    expect(routeLine([], false)).toBeNull()
+    expect(placedLine([{ name: null }])).toBe('an unnamed trail')
+    expect(placedLine([])).toBeNull()
   })
 
   it('takes the legs it is handed, so the caller can pass the live ones', () => {
     // The defect this shape prevents: naming the trails a republished graph
     // no longer routes through, beside a mileage from the route that
     // replaced them - two graphs' answers printed as one walk.
-    expect(routeLine([{ name: 'Kakiat Trail' }], false)).toBe('Kakiat Trail')
+    expect(placedLine([{ name: 'Kakiat Trail' }])).toBe('Kakiat Trail')
+  })
+
+  // The rest of this block is one defect: a deliberate gap (#935) printed as
+  // though it were a junction. An arrow on this card says "walk from the one
+  // to the other"; open ground is the stretch a searcher most needs named,
+  // and it is exactly the stretch nobody walks by following a blaze.
+  it('names the gap between stretches instead of bridging it with an arrow', () => {
+    const line = routeLine(
+      placed([{ name: 'Kakiat Trail' }], [{ name: 'Pine Meadow Trail' }]),
+      false,
+    )
+    expect(line).toBe('Kakiat Trail — off trail — Pine Meadow Trail')
+    expect(line).not.toContain('Kakiat Trail → Pine Meadow Trail')
+  })
+
+  it('keeps the same trail either side of a gap, which is the repeat that means something', () => {
+    // The collapse is per stretch. Flattened and collapsed globally, this
+    // walk printed as one continuous "Pine Meadow Trail" - a hiker leaving
+    // the trail and rejoining it further along, rendered as never leaving.
+    expect(
+      routeLine(
+        placed([{ name: 'Pine Meadow Trail' }], [{ name: 'Pine Meadow Trail' }]),
+        false,
+      ),
+    ).toBe('Pine Meadow Trail — off trail — Pine Meadow Trail')
+  })
+
+  it('refuses to place a gap it cannot see, and says so rather than guessing', () => {
+    // The cache flattens the seams away (DayHikeFigures.legs), so a
+    // multi-stretch walk falling back to it knows there IS open ground and
+    // not where. Commas, and a sentence - never an arrow.
+    const line = routeLine(
+      {
+        kind: 'unplaced',
+        flat: [{ name: 'Kakiat Trail' }, { name: 'Pine Meadow Trail' }],
+      },
+      false,
+    )
+    expect(line).toBe(
+      'Kakiat Trail, Pine Meadow Trail — in walk order, though this phone can’t place the off-trail stretch among them',
+    )
+    expect(line).not.toContain('→')
+  })
+
+  it('closes a loop after the last stretch, not into the gap', () => {
+    expect(
+      routeLine(
+        placed([{ name: 'Kakiat Trail' }], [{ name: 'Pine Meadow Trail' }]),
+        true,
+      ),
+    ).toBe('Kakiat Trail — off trail — Pine Meadow Trail → back to the start')
   })
 })

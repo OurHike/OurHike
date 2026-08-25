@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event'
 
 import { LeaveWithSomeone } from './LeaveWithSomeone'
 import type { DayHike } from '../lib/dayHikes'
+import type { PlanTextFigures } from '../lib/dayHikePlanText'
 
 const HIKE: DayHike = {
   id: 'hike-1',
@@ -30,10 +31,11 @@ const HIKE: DayHike = {
   recorded: 'planned',
 }
 
-/** The live derivation, which is what the card gets in the normal case. */
-const FIGURES = {
+/** The live derivation, which is what the card gets in the normal case: one
+ *  stretch, so the app knows there is no gap to place among these legs. */
+const FIGURES: PlanTextFigures = {
   miles: 6.2,
-  legs: [{ name: 'Pine Meadow Trail' }],
+  legs: { kind: 'placed', byStretch: [[{ name: 'Pine Meadow Trail' }]] },
   fromCache: false,
   gapMiles: 0,
   stretches: 1,

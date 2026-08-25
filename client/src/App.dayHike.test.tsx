@@ -613,14 +613,16 @@ describe('the day-hike builder, end to end', () => {
     render(<App />)
     // No door before a fix: the map cannot know where anybody parked.
     expect(
-      screen.queryByRole('button', { name: /Your hikes here/ }),
+      screen.queryByRole('button', { name: /day hikes? starts? here/ }),
     ).not.toBeInTheDocument()
 
     await app.reportFixAtMile(5)
 
     // Closed first - one pill, never a sheet that opens itself over the map -
     // and only the hike whose start is actually here.
-    await user.click(await screen.findByRole('button', { name: 'Your hikes here · 1' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'A day hike starts here' }),
+    )
     expect(await screen.findByText('Reeves Meadow loop')).toBeInTheDocument()
     expect(screen.queryByText('Claudius Smith Den')).not.toBeInTheDocument()
 
@@ -629,7 +631,7 @@ describe('the day-hike builder, end to end', () => {
     await user.click(screen.getByRole('button', { name: 'Put this away' }))
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: /Your hikes here/ }),
+        screen.queryByRole('button', { name: /day hikes? starts? here/ }),
       ).not.toBeInTheDocument()
     })
 
@@ -637,7 +639,9 @@ describe('the day-hike builder, end to end', () => {
     // no to still gets to ask. A plain dismissed-boolean would stay silent
     // here, which is the defect this shape exists to prevent.
     await app.reportFixAtMile(20)
-    await user.click(await screen.findByRole('button', { name: 'Your hikes here · 1' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'A day hike starts here' }),
+    )
     expect(await screen.findByText('Claudius Smith Den')).toBeInTheDocument()
   })
 
@@ -684,7 +688,7 @@ describe('the day-hike builder, end to end', () => {
     render(<App />)
     await app.reportFixAtMile(5)
     expect(
-      await screen.findByRole('button', { name: 'Your hikes here · 1' }),
+      await screen.findByRole('button', { name: 'A day hike starts here' }),
     ).toBeInTheDocument()
 
     // Tap the pin: the card is what was asked for, so the door stands down.
@@ -699,7 +703,7 @@ describe('the day-hike builder, end to end', () => {
     })
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: 'Your hikes here · 1' }),
+        screen.queryByRole('button', { name: 'A day hike starts here' }),
       ).not.toBeInTheDocument()
     })
   })

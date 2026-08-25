@@ -223,11 +223,12 @@ function DayHikesHome({
       )}
 
       {dayHikes.length === 0 && (
-        // "Signed in" carries the sentence: the exchange runs only with an
-        // account and sync on, and signed out is the app's default.
+        // Both conditions carry the sentence: the exchange runs only with an
+        // account AND sync on, and signed out is the app's default. See the
+        // longer note in DayHikeList.tsx, which prints the same promise.
         <p className="plan-home__quiet-note">
-          No day hikes saved yet. One you build is kept on this phone — and, signed in,
-          follows your account to the next one.
+          No day hikes saved yet. One you build is kept on this phone — and, with an
+          account and sync switched on, follows you to the next one.
         </p>
       )}
 
@@ -240,9 +241,22 @@ function DayHikesHome({
           Back to your route
         </button>
       ) : onNewDayHike !== null ? (
-        <button type="button" className="plan__primary" onClick={onNewDayHike}>
-          Plan a day hike
-        </button>
+        <>
+          {/* The cost, said before it is paid. This room's primary reaches
+              `sweepForBuilder`, which discards a half-built route outright -
+              the right behaviour for a door somebody deliberately opened
+              (#997 settled that), and a bad thing to learn afterwards from
+              an empty builder. Reaching this at all takes a chip tap across
+              rooms: a live route puts the Plan tab in the trips room. */}
+          {draftKind === 'trip' && (
+            <p className="plan-home__refused" role="note">
+              There&rsquo;s an unfinished route on the map. Starting a day hike drops it.
+            </p>
+          )}
+          <button type="button" className="plan__primary" onClick={onNewDayHike}>
+            Plan a day hike
+          </button>
+        </>
       ) : (
         // PlanKindSheet's sentence, verbatim - the same claim about the same
         // missing artifact, and a test pins the two copies together so one
@@ -405,6 +419,13 @@ function TripsHome({
         </p>
       )}
 
+      {/* The mirror of the day room's, and the same cost: `openDayHike`
+          closes the route builder, which cancels the draft in it. */}
+      {draftKind === 'day' && (
+        <p className="plan-home__refused" role="note">
+          There&rsquo;s an unfinished day hike on the map. Starting a trip drops it.
+        </p>
+      )}
       <button
         type="button"
         className="plan__primary"

@@ -25,6 +25,7 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { ROUTE_SOURCE_ID, ROUTE_POINT_LABEL_PROPERTY } from './map/routeLayers'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
 import { MIN_FLAT_PACE_MPH } from './lib/pace'
+import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { PLAN_KEY } from './lib/plan'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
 import { hikeFigures } from './lib/hikes'
@@ -190,6 +191,79 @@ describe('the planning flow', () => {
     // the generator's own boundary is not.
     expect(stored.days[0].pinned).toBe(true)
     expect(stored.days[1].pinned).toBe(false)
+  })
+
+  it('lands the laid-out trip in the trips room, not on a day-hike list left open', async () => {
+    // #1008. `dayListOpen` was lifted into the shell so the map's trailhead
+    // door could reach the list from another tab; the cost is that it now
+    // OUTLIVES the tab switch that used to reset it, and Plan.tsx tests it
+    // BEFORE it tests the mode. So a list opened before a walk on the map
+    // won the trips room outright: the trip the hiker just laid out never
+    // appeared, and what greeted them was the day-hike list wearing the day
+    // band. `enterTripsRoom` is the fix and this is its regression.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        {
+          id: 'saved-1',
+          name: 'A walk from an earlier session',
+          date: null,
+          segments: [
+            [
+              { coord: [-74.095, 41.25], poiId: null },
+              { coord: [-74.085, 41.25], poiId: null },
+            ],
+          ],
+          figures: { miles: 4.2, legs: [] },
+          looped: false,
+          recorded: 'planned',
+        },
+      ],
+      openId: null,
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    // One saved day hike and no trips opens the day room by itself. Start a
+    // route from the trips room, so there is a live draft to come back to.
+    await user.click(await screen.findByRole('button', { name: /^Trips/ }))
+    await user.click(await screen.findByRole('button', { name: 'Plan a new trip' }))
+    await user.click(await screen.findByRole('button', { name: /Shelter, town, or/ }))
+    await user.type(await screen.findByLabelText('Search for a stop'), 'front')
+    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
+
+    // Detour into the day room's list, mid-route. This is the state that used
+    // to survive the trip being laid out.
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: /^Day hikes/ }))
+    await user.click(await screen.findByRole('button', { name: 'All 1 ›' }))
+    expect(await screen.findByText('Ready to walk')).toBeInTheDocument()
+
+    // Back to the half-built route, and finish it.
+    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+    fireEvent.change(await screen.findByLabelText('Miles per day'), {
+      target: { value: '8' },
+    })
+    await user.click(screen.getByRole('button', { name: /^Lay out \d+ days?$/ }))
+
+    // The trips room, showing the trip that was just made. (The trips HOME
+    // rather than its timeline: #805 opens the tab on the home whenever
+    // there is something to choose between, and a saved day hike is
+    // something - that part is not this test's business.) What matters is
+    // that the day-hike list is gone.
+    expect(
+      (await screen.findAllByText(/Front Shelter → Beyond Shelter/)).length,
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText('Ready to walk')).toBeNull()
+    expect(screen.queryByText('A walk from an earlier session')).toBeNull()
+
+    const store = app.store.get(TRIPS_KEY) as TripStore
+    expect(store.trips).toHaveLength(1)
   })
 
   it('records a stretch already walked, and the hike roll-up counts it', async () => {

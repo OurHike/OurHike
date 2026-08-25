@@ -537,8 +537,48 @@ function App() {
    * is rebuilt on every tab switch - state local to it is always false on
    * arrival, so that control would have landed one screen short of what it
    * named.
+   *
+   * Lifting it bought that door its destination and took on the cost every
+   * lifted flag has: it now OUTLIVES the tab switch that used to clear it,
+   * and `Plan.tsx` reads it before it reads the mode. `enterTripsRoom` below
+   * is what pays that cost back.
    */
   const [dayListOpen, setDayListOpen] = useState(false)
+  /**
+   * Landing in the trips room, from every door that puts a hiker there.
+   *
+   * ONE FUNCTION RATHER THAN A MIRROR LINE IN EACH DOOR, for the reason
+   * `sweepForBuilder` gives about its own: a rule copied into four openers is
+   * the same fix today and the same bug at the fifth. Three things have to be
+   * true to actually arrive, and each of them was a separate defect when the
+   * doors said only the first:
+   *
+   * - `planMode` is 'trips'. The mode is sticky by design - it is the hiker's
+   *   own pick - so a door that makes a TRIP the subject has to say so, or a
+   *   hiker who once tapped the chip lands on a room their new trip is not in.
+   * - The day-hike list is closed. `Plan.tsx` tests `dayListOpen` BEFORE the
+   *   mode, so a list left open from an earlier visit wins over the trips room
+   *   outright: the trip that was just laid out never appears, and the screen
+   *   that greets the hiker is the day-hike list wearing the day band.
+   * - Any open day-hike card is put away. It docks over up to 85% of the
+   *   screen, and a day-hike surface floating over the trips room is the exact
+   *   "which mode am I in" confusion this split exists to end.
+   *
+   * The close is a read-modify-write that marks the sync ledger, so it is
+   * guarded on there being something to close - inside, against the loaded
+   * store, which is what keeps this callback stable and lets the doors below
+   * list it as a dependency.
+   */
+  const enterTripsRoom = useCallback(() => {
+    setPlanMode('trips')
+    setDayListOpen(false)
+    void loadDayHikes().then((store) => {
+      if (store.openId === null) return
+      const next = { ...store, openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
   /**
    * The trailhead door (frame D8), put away - by the hikes it was offering
    * rather than outright.
@@ -1839,14 +1879,11 @@ function App() {
     (stops: readonly ViaStopLike[]) => {
       const plan = recordedPlan(stops.map((stop) => ({ ...stop, resupply: false })))
       applyTripStore((store) => addTrip(store, plan, undefined, true))
-      // The trips room, because a trip is what just happened (#1008). The
-      // mode is sticky by design - it is the hiker's own pick - so every
-      // door that makes a TRIP the subject has to say so, or a hiker who
-      // once tapped the chip lands on a room their new trip is not in.
-      setPlanMode('trips')
+      // The trips room, because a trip is what just happened (#1008).
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore],
+    [applyTripStore, enterTripsRoom],
   )
 
   /**
@@ -1889,6 +1926,13 @@ function App() {
     setDayHikeReview(null)
     setDayHike(null)
     setDayHikeDraftDate(null)
+    // A route being built IS the trip room's subject, so the Plan tab is set
+    // to it now rather than when the route becomes a trip. Without this the
+    // mode a hiker last picked outlives the thing they are actually doing:
+    // build a route after a visit to the day room and the Plan tab still
+    // opens on Day hikes, where the one primary button is "Plan a day hike"
+    // - and that button reaches this same sweep, discarding the route.
+    setPlanMode('trips')
   }, [])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
@@ -1987,6 +2031,9 @@ function App() {
     // and a card reviewing a snapshot of a draft being edited would lie.
     setDayHikeReview(null)
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
+    // The mirror of `sweepForBuilder`'s last line, and for the same reason:
+    // the draft a hiker is building is what the Plan tab is about.
+    setPlanMode('day')
   }, [routeBuilder])
 
   const handleDayHikeCancel = useCallback(() => {
@@ -2215,24 +2262,20 @@ function App() {
           : 'trips')
 
   /**
-   * The switch chip, and the one thing it has to do besides switch.
-   *
-   * A day hike's card is a sheet over the Plan tab, so leaving it open while
-   * the room behind it becomes Trips would put a day-hike surface in the
-   * trips room - the exact "which mode am I in" confusion this split exists
-   * to end. Switching rooms is navigation, so it closes the card, which is
-   * the one-thing-open rule every sheet in this shell already keeps.
-   *
-   * Guarded on there being a card, because the close is a read-modify-write
-   * that marks the sync ledger: firing it on every chip tap would upload the
-   * whole store each time somebody looked at the other room.
+   * The switch chip. Crossing into the trips room is the same arrival as any
+   * other door's, so it lands the same way - see `enterTripsRoom`. Switching
+   * back to the day room needs none of that: the list and the card it would
+   * close are that room's own furniture.
    */
   const handleSwitchPlanMode = useCallback(
     (mode: PlanMode) => {
+      if (mode === 'trips') {
+        enterTripsRoom()
+        return
+      }
       setPlanMode(mode)
-      if (mode === 'trips' && dayHikeStore.openId !== null) handleDayHikeCardClose()
     },
-    [dayHikeStore.openId, handleDayHikeCardClose],
+    [enterTripsRoom],
   )
 
   /** The trailhead door's candidates (frame D8): saved starts near the fix,
@@ -2563,10 +2606,10 @@ function App() {
       setTargetRequest(null)
       closeRouteBuilder()
       // Laid-out days are a trip: land in the room that shows them.
-      setPlanMode('trips')
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [targetRequest, applyTripStore, closeRouteBuilder],
+    [targetRequest, applyTripStore, closeRouteBuilder, enterTripsRoom],
   )
 
   // Every timeline edit runs through here, against whichever trip is open.
@@ -2607,10 +2650,10 @@ function App() {
     (id: string) => {
       applyTripStore((store) => openTrip(store, id))
       setTripsOpen(false)
-      setPlanMode('trips')
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore],
+    [applyTripStore, enterTripsRoom],
   )
 
   const handleRenameTrip = useCallback(

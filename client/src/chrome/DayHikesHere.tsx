@@ -56,13 +56,24 @@ export function DayHikesHere({
   if (!open) {
     return (
       <div className="hikes-here hikes-here--closed">
-        {/* The storyboard's own compact wording for the closed state, and
-            the reason to prefer it is physical: the sentence version ran
-            ~300px on a 360px phone, which is most of the width the map's
-            own controls leave. The panel's head carries the full sentence,
-            where there is room for it. */}
+        {/* "DAY HIKES", NEVER "HIKES", AND "START", NEVER "HERE" ALONE. Both
+            words are taken in this app: a `hike` is a section hike -
+            tripStore.hikes, its own shelf in the trips room, its own zoom -
+            so "your hikes here" names the wrong object to anybody who has
+            one. And the candidates are starts only (`dayHikesNearHere`
+            measures to segments[0][0]), while the radius is generous enough
+            to linger mid-walk, so a bare "here" invites "passing through".
+            The pill is the only state a hiker sees before deciding whether
+            it is worth a tap, so it carries the whole claim.
+
+            Kept short against the storyboard's compact frame for a physical
+            reason: the long form ("One of your day hikes starts here", 33
+            characters) ran ~300px on a 360px phone, most of the width the
+            map's own controls leave. This is 22 at its longest. */}
         <button type="button" className="hikes-here__pill" onClick={() => setOpen(true)}>
-          Your hikes here · {near.length}
+          {near.length === 1
+            ? 'A day hike starts here'
+            : `${near.length} day hikes start here`}
         </button>
         <button type="button" className="hikes-here__dismiss" onClick={onDismiss}>
           <span className="visually-hidden">Put this away</span>
@@ -86,36 +97,50 @@ export function DayHikesHere({
         </button>
       </div>
 
-      {near.map(({ hike, miles }) => (
-        <button
-          type="button"
-          className="hikes-here__row"
-          key={hike.id}
-          onClick={() => onOpen(hike.id)}
-        >
-          <span className="hikes-here__row-top">
-            <span className="hikes-here__row-name">{hike.name}</span>
-            {/* Straight-line to the start, and said so - not trail walked. */}
-            <span className="hikes-here__row-away">
-              {formatDistance(miles, units, 'fine')} away
-            </span>
-          </span>
-          <span className="hikes-here__row-meta">
-            {formatDistance(hike.figures.miles, units)}
-            {hike.date !== null &&
-              ` · planned ${dayLongDateLabel(hike.date)}${
-                hike.date === today ? '. That’s today.' : ''
-              }`}
-          </span>
-        </button>
-      ))}
+      {/* lib/dayHikeShelf.ts's contract, kept - and scoped to the ONE figure
+          it is true of. Each row prints two distances: "away" is straight
+          line to the start, and at this radius straight-line and walked can
+          differ by a multiple (a start 0.3 mi across an arm of a reservoir
+          is a mile and a half of walking); the other is the hike's own
+          walked-trail length from its cached figures. An earlier version of
+          this line claimed "the figures above" without distinguishing them,
+          which understated the walk.
 
-      {/* lib/dayHikeShelf.ts's contract, kept: the figures above are
-          straight-line to each start, and at this radius straight-line and
-          walked can differ by a multiple - a start 0.3 mi across an arm of
-          a reservoir is a mile and a half of walking. Said once, under the
-          rows, rather than lengthening every one of them. */}
-      <p className="hikes-here__note">Straight line to each start, not trail walked.</p>
+          ABOVE THE ROWS, and outside the scroller, because the sheet is
+          capped at 60% - said underneath, this qualification scrolled below
+          the fold on five nearby starts while the figures it qualifies
+          stayed in view. */}
+      <p className="hikes-here__note">
+        “Away” is a straight line to the start, not trail walked.
+      </p>
+
+      <div className="hikes-here__rows">
+        {near.map(({ hike, miles }) => (
+          <button
+            type="button"
+            className="hikes-here__row"
+            key={hike.id}
+            onClick={() => onOpen(hike.id)}
+          >
+            <span className="hikes-here__row-top">
+              <span className="hikes-here__row-name">{hike.name}</span>
+              <span className="hikes-here__row-away">
+                {formatDistance(miles, units, 'fine')} away
+              </span>
+            </span>
+            <span className="hikes-here__row-meta">
+              {/* "to walk" earns its two words: beside a straight-line
+                  figure on the same row, a bare "4.2 mi" reads as more of
+                  the same kind of distance. */}
+              {formatDistance(hike.figures.miles, units)} to walk
+              {hike.date !== null &&
+                ` · planned ${dayLongDateLabel(hike.date)}${
+                  hike.date === today ? '. That’s today.' : ''
+                }`}
+            </span>
+          </button>
+        ))}
+      </div>
 
       <button type="button" className="hikes-here__all" onClick={onAll}>
         All your day hikes ›

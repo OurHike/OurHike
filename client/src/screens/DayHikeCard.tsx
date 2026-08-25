@@ -25,6 +25,7 @@ import { useState } from 'react'
 
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
+import type { PlanTextLegs } from '../lib/dayHikePlanText'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
@@ -80,6 +81,19 @@ export function DayHikeCard({
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
   const gaps = dayHikeGaps(hike)
+  // Grouped by stretch where the app can see the seams, flat where it
+  // cannot. The live resolution routes each segment separately and keeps
+  // them apart; the cache holds one flat list, so it can only be handed over
+  // as a stretch when there is exactly one stretch for it to be.
+  const planTextLegs: PlanTextLegs =
+    resolved !== null
+      ? {
+          kind: 'placed',
+          byStretch: resolved.segments.map((segment) => segment.route.legs),
+        }
+      : hike.segments.length === 1
+        ? { kind: 'placed', byStretch: [hike.figures.legs] }
+        : { kind: 'unplaced', flat: hike.figures.legs }
 
   if (leaving) {
     return (
@@ -94,7 +108,7 @@ export function DayHikeCard({
           // somebody decides to worry from.
           figures={{
             miles,
-            legs,
+            legs: planTextLegs,
             fromCache: resolved === null,
             gapMiles: gaps.reduce((total, gap) => total + gap.miles, 0),
             stretches: hike.segments.length,

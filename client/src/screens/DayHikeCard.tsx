@@ -109,18 +109,17 @@ export function DayHikeCard({
       {legs.length > 0 && (
         <section className="day-hike-card__section">
           <h3 className="day-hike-card__heading">Legs</h3>
-          {/* Name and steward only - deliberately NO per-leg miles, though
-              the frame draws them and RouteLeg carries a number. That number
-              comes from legsFromEdges over whole edges, so a leg entered or
-              left mid-edge (every tapped walk) overstates its ends, and an
-              out-and-back undercounts re-walked ground - the route TOTAL is
-              summed per tapped pair and is right, which is exactly why the
-              two must not print side by side. The column returns when the
-              legs are priced pair-wise too. */}
+          {/* Per-leg miles print again since #1002: legs are priced at the
+              metres actually walked - ends scaled to the taps, re-walked
+              ground counted per pass - so a leg and the total above finally
+              agree about the same ground. */}
           {legs.map((leg, at) => (
             <div className="day-hike-card__row" key={`${leg.name ?? 'leg'}-${at}`}>
               <span className="day-hike-card__row-name">
                 {leg.name ?? 'Unnamed trail'}
+              </span>
+              <span className="day-hike-card__row-figures">
+                {formatDistance(leg.miles, units)}
               </span>
               <span className="day-hike-card__row-org">{orgLabel(leg.source)}</span>
             </div>

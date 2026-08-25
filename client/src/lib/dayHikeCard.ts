@@ -28,6 +28,7 @@
 import type { DayHike } from './dayHikes'
 import {
   enteredNodes,
+  walkedMetresPerEdge,
   nearestPointOnGraph,
   metresToMiles,
   routeBetween,
@@ -150,20 +151,13 @@ export function dayHikeBailOuts(
 
       const edges = leg.edgeIndices
       const entered = enteredNodes(graph, edges, from, to)
+      // The pair's per-edge walked metres, from the same helper that prices
+      // the route's legs (#1002) - one arithmetic, two consumers, no drift.
+      const walkedPerEdge = walkedMetresPerEdge(graph, edges, from, to)
 
       let walked = walkedMetresBefore
       for (let i = 0; i < edges.length; i += 1) {
-        const edge = graph.edges[edges[i]]
-        const forward = entered[i] === edge.from
-        if (edges.length === 1) {
-          walked += Math.abs(to.fraction - from.fraction) * edge.length_m
-        } else if (i === 0) {
-          walked += (forward ? 1 - from.fraction : from.fraction) * edge.length_m
-        } else if (i === edges.length - 1) {
-          walked += (forward ? to.fraction : 1 - to.fraction) * edge.length_m
-        } else {
-          walked += edge.length_m
-        }
+        walked += walkedPerEdge[i]
 
         // The junction between this edge and the next, reached at `walked`
         // metres... minus the last edge's partial, which ends at the tap, not

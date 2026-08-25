@@ -117,6 +117,9 @@ describe('the sourced blocks', () => {
     expect(screen.getByText('LOOP')).toBeInTheDocument()
     expect(screen.getByText('sat 29 aug')).toBeInTheDocument()
     expect(screen.getByText('Seven Hills Trail')).toBeInTheDocument()
+    // Per-leg miles, back since #1002 priced them at the walked metres.
+    expect(screen.getByText('2.1 mi')).toBeInTheDocument()
+    expect(screen.getByText('4.3 mi')).toBeInTheDocument()
     // The steward join's names, never the export's raw keys.
     expect(screen.getByText('NYS Parks')).toBeInTheDocument()
     expect(screen.queryByText(/oprhp_trails/)).not.toBeInTheDocument()

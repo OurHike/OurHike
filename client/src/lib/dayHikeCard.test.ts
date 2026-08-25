@@ -97,6 +97,9 @@ describe('resolveDayHike', () => {
     // Half of each 836 m edge: 836 m, not the cache's planted 99 miles.
     expect(resolved?.miles).toBeCloseTo(0.52, 2)
     expect(resolved?.legs.map((leg) => leg.name)).toEqual(['Pine Meadow Trail'])
+    // The leg agrees with the total (#1002): priced at the walked metres,
+    // never the two edges billed whole.
+    expect(resolved?.legs[0].miles).toBeCloseTo(0.52, 2)
     expect(resolved?.looped).toBe(false)
   })
 

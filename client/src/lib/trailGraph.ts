@@ -379,8 +379,47 @@ function tallyBySource(legs: RouteLeg[]): Array<{ source: string | null; legs: n
   return [...counts].map(([source, count]) => ({ source, legs: count }))
 }
 
-function assemble(graph: TrailGraph, edgeIndices: number[], metres: number): GraphRoute {
-  const legs = legsFromEdges(graph, edgeIndices)
+/**
+ * legsFromEdges' merge, pricing each edge at the metres actually walked on it
+ * rather than its whole length (#1002): a walk enters its first edge and
+ * leaves its last mid-way, and a leg billing those edges whole overstates the
+ * ends - 0.5 mi of trail wearing a 1.0 mi leg, side by side on one card.
+ */
+function legsFromWalk(
+  graph: TrailGraph,
+  edgeIndices: number[],
+  walkedMetres: number[],
+): RouteLeg[] {
+  const legs: RouteLeg[] = []
+  edgeIndices.forEach((edgeIndex, at) => {
+    const edge = graph.edges[edgeIndex]
+    const last = legs[legs.length - 1]
+    if (
+      last !== undefined &&
+      last.trail_id === edge.trail_id &&
+      last.name === edge.name
+    ) {
+      last.miles += metresToMiles(walkedMetres[at])
+      return
+    }
+    legs.push({
+      name: edge.name,
+      source: edge.source,
+      blaze_color: edge.blaze_color,
+      trail_id: edge.trail_id,
+      miles: metresToMiles(walkedMetres[at]),
+    })
+  })
+  return legs
+}
+
+function assemble(
+  graph: TrailGraph,
+  edgeIndices: number[],
+  metres: number,
+  walkedMetres: number[],
+): GraphRoute {
+  const legs = legsFromWalk(graph, edgeIndices, walkedMetres)
   return {
     legs,
     miles: metresToMiles(metres),
@@ -412,7 +451,7 @@ export function routeBetween(
     // nothing to search.
     const edge = graph.edges[from.edgeIndex]
     const metres = Math.abs(to.fraction - from.fraction) * edge.length_m
-    return assemble(graph, [from.edgeIndex], metres)
+    return assemble(graph, [from.edgeIndex], metres, [metres])
   }
 
   const fromEdge = graph.edges[from.edgeIndex]
@@ -433,7 +472,12 @@ export function routeBetween(
   // The partial first and last edges bookend the whole edges between them.
   const middle = walkBack(found.reached, found.node)
   const edgeIndices = [from.edgeIndex, ...middle, to.edgeIndex]
-  return assemble(graph, edgeIndices, found.total)
+  return assemble(
+    graph,
+    edgeIndices,
+    found.total,
+    walkedMetresPerEdge(graph, edgeIndices, from, to),
+  )
 }
 
 /**
@@ -450,6 +494,7 @@ export function routeThrough(
   if (points.length < 2) return null
 
   const edgeIndices: number[] = []
+  const legs: RouteLeg[] = []
   let metres = 0
   for (let step = 0; step + 1 < points.length; step += 1) {
     const section = routeBetween(index, points[step], points[step + 1])
@@ -461,8 +506,30 @@ export function routeThrough(
       if (edgeIndices[edgeIndices.length - 1] === edgeIndex) continue
       edgeIndices.push(edgeIndex)
     }
+    // Each section's own priced legs, merged across the join. The shared edge
+    // was deduplicated above for DRAWING, but both sections' walked spans of
+    // it are real distance, so their legs ADD - the out-and-back half of
+    // #1002, where a leg priced off the deduplicated list undercounted every
+    // re-walked stretch.
+    for (const leg of section.legs) {
+      const last = legs[legs.length - 1]
+      if (
+        last !== undefined &&
+        last.trail_id === leg.trail_id &&
+        last.name === leg.name
+      ) {
+        last.miles += leg.miles
+        continue
+      }
+      legs.push({ ...leg })
+    }
   }
-  return assemble(index.graph, edgeIndices, metres)
+  return {
+    legs,
+    miles: metresToMiles(metres),
+    edgeIndices,
+    legsBySource: tallyBySource(legs),
+  }
 }
 
 /**
@@ -507,6 +574,34 @@ export function enteredNodes(
     }
   }
   return entered
+}
+
+/**
+ * How many metres of each edge one tapped pair actually walks: the first and
+ * last scaled by the tap fractions, everything between whole. The arithmetic
+ * #1002 exists about - shared by leg pricing (routeBetween) and the
+ * finished-hike card's bail-out miles (lib/dayHikeCard.ts), so the two
+ * cannot drift apart.
+ */
+export function walkedMetresPerEdge(
+  graph: TrailGraph,
+  edgeIndices: number[],
+  from: GraphPoint,
+  to: GraphPoint,
+): number[] {
+  const entered = enteredNodes(graph, edgeIndices, from, to)
+  return edgeIndices.map((edgeIndex, at) => {
+    const edge = graph.edges[edgeIndex]
+    if (edgeIndices.length === 1) {
+      return Math.abs(to.fraction - from.fraction) * edge.length_m
+    }
+    const forward = entered[at] === edge.from
+    if (at === 0) return (forward ? 1 - from.fraction : from.fraction) * edge.length_m
+    if (at === edgeIndices.length - 1) {
+      return (forward ? to.fraction : 1 - to.fraction) * edge.length_m
+    }
+    return edge.length_m
+  })
 }
 
 /**

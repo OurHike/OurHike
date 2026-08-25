@@ -154,6 +154,20 @@ diff, and a release build never depends on the network to know who anyone is. On
 }
 ```
 
+**It doubled on 2026-08-25, and "reviewable line in a diff" is the part under strain**
+([#1026](https://github.com/OurHike/OurHike/issues/1026)). The ledger went from 4,267 lines to
+**8,579** — 8,563 rows — in one publish run, because the app started publishing for the whole
+of New York state rather than a ring around New York City
+([#1019](https://github.com/OurHike/OurHike/issues/1019)) and water started being measured
+against every trail it draws rather than the A.T. alone
+([#1016](https://github.com/OurHike/OurHike/issues/1016)). 4,312 of those rows are new, and
+4,311 of them sit on a network trail with no A.T. mile at all. The maintainer raised
+`test_no_committed_data.py`'s reference ceiling to 12,000 rather than split the ledger, with
+the reasoning dated in that constant — and nobody reads 8,563 rows, which is why the thing
+actually reviewed is `data/identity_review/summary.txt`: new, retired, carried by key, matched
+by evidence, with the evidence for each match. The next registered source is expected to break
+that ceiling again, and the answer then is probably the split rather than a third number.
+
 Three rules, and they are the contract:
 
 - **Never re-mint** an id for a place that persists, whatever happened to its upstream key,

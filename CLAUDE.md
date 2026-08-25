@@ -161,8 +161,9 @@ repository. The exception is narrow and it is deliberate: a screenshot is
 evidence about *this* repository's own code rather than somebody else's data, so
 none of the licence, safety or personal-data arguments apply — but the byte cost
 does. One phone screenshot is 79,290 bytes measured (2026-08-25) against a
-14.3 MiB repository, so it is **one image**, in `.github/pr-screenshots/`, and an
-honest "no visual" line rather than a second one that shows nothing new.
+14.3 MiB repository, so it is **one image** — or a before-and-after pair where
+the difference is the point — in `.github/pr-screenshots/`, and an honest "no
+visual" line rather than a third that shows nothing new.
 
 ## Claim the issue before you branch
 

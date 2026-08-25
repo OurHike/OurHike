@@ -44,11 +44,15 @@ describe('the defaults', () => {
   })
 
   it('writes where a screenshot can be committed without running a suite', () => {
-    // `.github/` is in no suite's scope (scripts/suite_scopes.py), which is
-    // the point - committing a PNG should not run the client tests.
+    // `.github/` is in no suite's scope while every path under `client/` is in
+    // the client suite's (scripts/suite_scopes.py), so a screenshot committed
+    // under the client tree would run the whole client suite to prove a PNG
+    // still parses. Asserting the client tree specifically, rather than that
+    // the string contains '.github', is what would actually catch a default
+    // moved back inside client/.
     expect(parseArgs(['whatever']).outDir).toBe(DEFAULT_OUT_DIR)
-    expect(DEFAULT_OUT_DIR).toContain('.github')
-    expect(DEFAULT_OUT_DIR).not.toContain(`${resolve('.')}/src`)
+    expect(DEFAULT_OUT_DIR.startsWith(`${resolve('.')}/`)).toBe(false)
+    expect(DEFAULT_OUT_DIR).toBe(resolve('..', '.github', 'pr-screenshots'))
   })
 
   it('takes a laptop viewport for the marketing site', () => {

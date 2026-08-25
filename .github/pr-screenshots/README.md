@@ -1,7 +1,8 @@
 # Pull request screenshots
 
-One image per pull request, committed as evidence of what that pull request
-changed. A pull request body cannot hold image bytes — GitHub's own upload
+One image per pull request — or a before-and-after pair where the difference is
+the point — committed as evidence of what that pull request changed. A pull
+request body cannot hold image bytes — GitHub's own upload
 endpoint is part of the web UI rather than the REST API, and a `data:` URI is
 both stripped by the markdown sanitiser and larger than the 65,536-character
 body limit — so the picture is committed here and the body links into the
@@ -15,4 +16,5 @@ byte budget, and the four things that must never appear in a screenshot are in
 CONTRIBUTING.md's "Data does not go in commits". The exception is narrow: a
 screenshot is evidence about this repository's own code, so the licence, safety
 and personal-data arguments do not apply — but the bytes are still permanent, so
-it is one image per pull request and re-runs reuse the file name.
+the count stays at one (or a pair) and re-runs reuse the file name rather than
+adding a shot per push.

@@ -51,7 +51,7 @@ psycopg[binary]
 # Adding it back is: the runtime dependency here, the model-hosting decision,
 # and one more field in lib/photo_screen.py's screen record (see its
 # docstring - the ledger and both gates are already detector-agnostic).
-opencv-python-headless<5
+opencv-python-headless<6
 
 # check_deployment.py alone, to read .github/expected-origins.yml (#431).
 # YAML rather than JSON for that file specifically because the reasoning

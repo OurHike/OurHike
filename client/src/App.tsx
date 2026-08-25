@@ -1964,7 +1964,7 @@ function App() {
         clientMile: anchoredClientMile(clamped, mileAnchors),
       } satisfies RouteDraftStop,
     }
-  }, [routeDraft, elevation, pois, routeStopChoices, mileAnchors])
+  }, [routeDraft, elevation, pois, routeStopChoices, mileAnchors, pace])
 
   /**
    * A door's answer lands in the slot being filled. The one resolver every
@@ -2334,7 +2334,7 @@ function App() {
           }
         : legFigures(elevation, from.mile, to.mile, pace),
     )
-  }, [routeDraft, elevation])
+  }, [routeDraft, elevation, pace])
 
   // Opening the builder is a map act: it lands on the trail tab with
   // everything else closed - the same one-thing-open-at-a-time rule the

@@ -87,6 +87,23 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
  */
 export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
 
+/**
+ * The junction graph a day hike is routed over (#974, #975).
+ *
+ * Derived from NEARBY_TRAILS_KEY's own lines by
+ * pipeline/build_trail_graph.py, which is why the two cannot disagree about
+ * which trails exist: one is the map's copy of the network and this is its
+ * topology. Nodes and edges only - no geometry a map would draw, because the
+ * map already has it.
+ *
+ * A 404 is an ordinary answer, the same reading nearby_trails.geojson gets: a
+ * release exported before this artifact existed, or a bucket a publish has not
+ * reached. lib/trailGraphData.ts reads it as "no day hikes on this phone",
+ * which chrome/PlanKindSheet.tsx says in a sentence rather than by offering a
+ * control that does not work.
+ */
+export const TRAIL_GRAPH_KEY = 'trail_graph.json'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

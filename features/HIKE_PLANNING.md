@@ -254,6 +254,41 @@ The manual half, which the generator does not replace: a hiker drops points and 
 
 **A limitation to state in the UI, not just here: only the AT centerline is routable.** `buildTrailIndex()` includes `source === 'centerline'` and nothing else, so blue-blazed side trails, alternates and road walks into town cannot currently carry a route. That is right for v1's "which mile am I at" question and wrong for planning, where the walk into Damascus is part of the day. It is the largest single gap between this design and a plan a thru-hiker would actually keep.
 
+## The day hike on a network — what a tap means, and what a drawn line snaps to
+
+Everything above assumes one trail's mile axis. `mi 470.8 → mi 486.2 → mi 503.3` is the right model for Damascus → Atkins and the only model the A.T. ever needed. A Harriman day hike is four trails and three junctions, and "mile 2.1" is not a thing a hiker can name there — so on that ground the builder above does not degrade, it has **nothing to ask for**. That gap is [#928](https://github.com/OurHike/OurHike/issues/928) — *A day hike built by touching lines, because a park has no single mile axis to drop stops on*.
+
+Two decisions had to land before it could be built, and both were taken by the maintainer on **2026-08-23** — on [#934](https://github.com/OurHike/OurHike/issues/934) — *Decide what a tap between two junctions means — split the segment, or snap to the nearer junction — and write it down* — and [#935](https://github.com/OurHike/OurHike/issues/935) — *Decide the snap tolerance for a drawn route, and what happens to the parts with no trail under them*. Each was filed as a decision in its own right, on the pattern of **#552 — Decide the unit of offline coverage, and write it down**. This section records them and does not relitigate them.
+
+**A tap splits the segment (#934).** Verbatim:
+
+> I think this should split the segment.
+>
+> If a user drops too points, the route should be exactly between those points.  We shouldn't do any guessing about what POI the user meant.  I would imaging most users would start/stop at POI's but not always
+
+So the route runs **exactly between the two tapped points**, and the junction graph gains a temporary node where the finger went. The rejected alternative — snap to the nearer junction — is rejected on ground that is measured rather than argued: Harriman–Bear Mountain has **263 junctions across 316 trail-miles, one every 1.2 miles** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured by **#771 — Spike: Harriman's crossing trails next to the AT — find what a trail network breaks that a linear trail never could**), so snapping would have moved a start by roughly 0.6 mi on average, which is a material piece of a six-mile day and an arbitrary one.
+
+Note what the rule is stated about: **POIs, not pixels.** The app may not decide a hiker meant the trailhead because they tapped 400 m past it. That is the refusal `locateOnTrail()` already makes on the A.T. when a tap is off-corridor — it declines rather than inventing a plausible mile — carried onto a network.
+
+**Left open, and not ruled on:** frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. But it is also not what was decided, and it wants settling before the turn list is built rather than during.
+
+**A drawn line snaps only to a marked path, and a day hike may be more than one segment (#935).** Verbatim:
+
+> The snap too should always be to a marked path.  There should be no guessing as to whether something is walkable or not.
+> The whole point of OurHike is to give trustworthy maps.  Snapping to fuzzy areas would go against that.
+>
+> Users should be able to have multiple segments to a day hike (>1 start/stop) taht could handle some scenarios where they want to bushwack.
+
+Two things, and the second changes the model.
+
+**The snap target is a maintained trail line and nothing else** — no walkability inference over roads, woods roads, herd paths or open ground. This is [NEARBY_TRAILS.md](NEARBY_TRAILS.md) §3's omit-rather-than-guess rule, the one keeping `Proposed` and `Unknown` segments out of the published artifact entirely, applied to geometry instead of status.
+
+**A day hike is an ordered list of routed segments, not one route.** This dissolves the threshold question #935 was filed asking — *when does dropping a piece stop being a footnote and become a refusal* — because there is never a bridge to size. A stretch with no trail under it **ends a segment**; the next segment begins where trail resumes; the gap between them is drawn as a gap and belongs to the hiker, who may well be planning to bushwhack it. The app never routes anyone across ground it has no evidence for, and never refuses a hike it can honestly describe most of.
+
+It also gives [#931](https://github.com/OurHike/OurHike/issues/931) — *Roads and connectors: a loop that only closes along a shoulder, drawn honestly or not at all* — a shape it did not have. A loop that only closes along a road shoulder is expressible as two segments with a gap where the road is, without OurHike drawing a route onto a road no steward maintains. That does not build #931 or close it — a hiker still cannot **see** that the road is there, which is the whole point of its `LATER` row — but it does mean the builder is not blocked on it.
+
+**Still undecided: the tolerance itself — and the decision above changes what kind of number it is.** Nobody has measured one, and "always snap to a marked path" removes the walkable/unwalkable ambiguity without touching the one that bites in a park: *which marked path*. Along the A.T. through Harriman–Bear Mountain, **48% of sampled points sit within 150 m of a different marked trail** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured from the #771 spike). A tolerance generous enough to catch a line drawn with a thumb on a moving bus is therefore, across roughly half that corridor, generous enough to reach two trails at once. So this is a **disambiguation** problem rather than a reach problem, and a single number will not settle it. Whatever lands carries `@unvalidated` and what would settle it until somebody has drawn on it outdoors; #935 stays open for that half.
+
 ## Where a plan lives
 
 On the phone, in the same IndexedDB the map already uses — SEGMENTS.md's answer, and nothing here changes it.
@@ -286,6 +321,7 @@ That work also fixed a real defect in the zero question this document leaves ope
 - **Whether "absorb" is allowed to change where a resupply happens.** Re-balancing days is safe; silently moving which town someone buys food in is not obviously safe, and the pin mechanism may need resupply stops pinned by default.
 - **Whether generated days should be visibly marked as generated.** The `generated` flag is in the model above so the option exists; whether the timeline shows it is a UX call about how much the app should admit it guessed.
 - **How side trails become routable**, which is the real blocker on this being a plan someone keeps rather than a sketch. Related to [SPUR_TRAILS.md](SPUR_TRAILS.md)'s spur-destination work and to [MAP_OPTIONS.md](MAP_OPTIONS.md)'s snap-to-segment.
+- **How a first leg that starts mid-segment is described**, now that a tap splits the segment rather than snapping to a junction (#934). The turn list's vocabulary is junction-relative and has no phrase for it; see "The day hike on a network" above for the option that looks right and was not decided.
 
 ## Suggested build order
 

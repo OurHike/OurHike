@@ -270,6 +270,16 @@ So the route runs **exactly between the two tapped points**, and the junction gr
 
 Note what the rule is stated about: **POIs, not pixels.** The app may not decide a hiker meant the trailhead because they tapped 400 m past it. That is the refusal `locateOnTrail()` already makes on the A.T. when a tap is off-corridor — it declines rather than inventing a plausible mile — carried onto a network.
 
+**An end is wherever the hiker put it; a lot is an annotation, never a precondition (2026-08-25).** The same decision read forward into storage and into the card, taken by the maintainer on [#981](https://github.com/OurHike/OurHike/issues/981) — *A day hike starts at a parking lot, and nothing in the pipeline knows where the lots are*:
+
+> A dayhike should be able to start anywhere - not just the parking lot. Can you make sure the issues and features are built to allow the user to choose their start/end points
+
+The merged builder already obeys it and this records why it must keep doing so. `tapAt` accepts any point the junction graph can claim, and `lib/dayHikes.ts`'s `DayHikeEnd` stores that end as the **coordinate** it landed on, with `poiId` an optional annotation — null on every hike the builder has made. No code path asks for a trailhead. #981's body asserted the opposite — that ends are "stored as POI references rather than coordinates" — and that was corrected rather than implemented: a POI reference as an end's identity would turn a start the app cannot *name* into a start the hiker cannot *take*, which is the failure this whole section exists to prevent.
+
+So frame `1l`'s parking block is an annotation on a start that happens to be near a lot, and its absence is not a degraded card: a hike starting halfway up a trail nobody parks at is a first-class hike with no lot to name. #981 is worth building for the hiker who *did* drive — it just does not get to be the way a day hike begins.
+
+**The one real limit, stated rather than implied:** an end must sit on a trail one of the three organizations maintains — the #935 rule below, not a parking rule. A tap on open ground, a road shoulder or a herd path is refused in words, and widening *that* is [#931](https://github.com/OurHike/OurHike/issues/931)'s to do.
+
 **Left open, and not ruled on:** frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. But it is also not what was decided, and it wants settling before the turn list is built rather than during.
 
 **A drawn line snaps only to a marked path, and a day hike may be more than one segment (#935).** Verbatim:

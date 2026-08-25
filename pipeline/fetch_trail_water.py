@@ -10,12 +10,20 @@ water" - so this file answers those two, and nothing else.
 
 ## What it produces
 
-**Crossings** - exact geometric intersections of ATC's centerline with the
+**Crossings** - exact geometric intersections of the walking routes with the
 stream lines of both hydrographies. Not a proximity guess: the two lines
 cross, so a hiker walking the trail walks through the water. **1,125 of them
 over the corridor, 571 seen by both databases**, filling the `crossing`
 poi_type that lib/poi_schema.py declared and nothing has ever populated
 (#97's investigation measured the same thing against NHD alone first: 841).
+
+Those counts are ATC's centerline ALONE and predate #1016, which added the
+trails other organizations maintain to the same intersection (see
+build_routes). Nobody has re-measured against the wider set - this was written
+where no fetched layers exist - and the run prints the new figure per source,
+so the real number lands in the log rather than here. Each crossing records
+which trail it sits on, because a pin that did not say would be claiming to be
+on the A.T., and export_poi.py withholds the A.T. mile from one that is not.
 
 **Site water** - for each shelter and campsite, the nearest point on a
 stream, published as a water POI only when a hiker could actually reach it:
@@ -130,6 +138,8 @@ import requests
 from build_water_distance import fetch_atc_features
 from export_basemap import AT_STATES, OSM_RAW_DIR
 from lib import fetch_receipts
+from lib.corridor import count_features
+from lib.source_registry import load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -141,6 +151,12 @@ NHD_TMP_DIR = RAW_DIR / "nhd_tmp"
 # is disposable.
 ELEVATION_CACHE_PATH = RAW_DIR / "epqs_elevations.json"
 CENTERLINE_PATH = RAW_DIR / "centerline.geojson"
+
+# export_nearby_trails.py's artifact - the other organizations' lines, which
+# crossings are computed against too since #1016. Under data/processed/ because
+# it is derived output rather than a fetch, and absent on any run whose network
+# export was skipped or held back. See build_routes.
+NETWORK_LINES_PATH = ROOT / "data" / "processed" / "nearby_trails.geojson"
 
 # What counts as a stream a hiker could fill a bottle from. `waterway=ditch`,
 # `drain` and `canal` are deliberately absent - all three are water and none
@@ -450,6 +466,53 @@ def nhd_stream_table(con: duckdb.DuckDBPyConnection, gpkg: Path) -> int:
     return con.execute("SELECT count(*) FROM streams").fetchone()[0]
 
 
+def shipped_network_keys() -> set[str]:
+    """The organizations whose lines crossings may be computed against - those
+    whose data reaches hikers."""
+    from export_nearby_trails import SOURCES_PATH, shipped_line_source_keys
+
+    return shipped_line_source_keys(load_registry(SOURCES_PATH))
+
+
+def build_routes(con: duckdb.DuckDBPyConnection, network_path: Path | None = None) -> int:
+    """The `routes` table every crossing is measured against: ATC's centerline,
+    plus the other organizations' published lines when there are any (#1016).
+    Returns how many network lines joined it.
+
+    ONE TABLE RATHER THAN TWO QUERIES, because the alternative is two code
+    paths that have to be kept saying the same thing about what a crossing is,
+    and the flag the union carries is exactly what the rows downstream need
+    anyway. `on_network` is false for every centerline row, so an A.T.-only run
+    produces the rows it always produced with two columns added.
+
+    A missing artifact is the ordinary state on a publish whose network export
+    was skipped or held back, and costs exactly what it did before this
+    existed: crossings on the A.T. and nowhere else. The caller says so out
+    loud rather than leaving a reader to infer it from a count.
+    """
+    path = NETWORK_LINES_PATH if network_path is None else network_path
+    con.execute(f"""
+        CREATE OR REPLACE TABLE routes AS
+        SELECT geom, false AS on_network, NULL::VARCHAR AS src, NULL::VARCHAR AS trail_name
+        FROM ST_Read('{CENTERLINE_PATH.as_posix()}')
+    """)
+    if not count_features(con, path):
+        return 0
+    # Only the organizations whose data reaches hikers: the artifact holds every
+    # exported source so a reviewer can look at the map before a licence answer
+    # arrives, and a crossing derived from a review-only organization's line
+    # would be that organization's data reaching a hiker. See
+    # export_nearby_trails.shipped_line_source_keys.
+    keys = shipped_network_keys()
+    quoted = ", ".join("'" + key.replace("'", "''") + "'" for key in sorted(keys)) or "NULL"
+    con.execute(f"""
+        INSERT INTO routes
+        SELECT geom, true, "source", "name" FROM ST_Read('{path.as_posix()}')
+        WHERE "source" IN ({quoted})
+    """)
+    return con.execute("SELECT count(*) FROM routes WHERE on_network").fetchone()[0]
+
+
 def state_crossings(con: duckdb.DuckDBPyConnection) -> list[dict]:
     """Where the loaded state's streams cross the trail.
 
@@ -469,10 +532,14 @@ def state_crossings(con: duckdb.DuckDBPyConnection) -> list[dict]:
                    streams.name AS name,
                    streams.flow AS flow,
                    streams.osm_from_nhd AS osm_from_nhd,
-                   UNNEST(ST_Dump(ST_Intersection(centerline.geom, streams.geom))).geom AS point
-            FROM streams JOIN centerline ON ST_Intersects(centerline.geom, streams.geom)
+                   routes.on_network AS on_network,
+                   routes.src AS network_source,
+                   routes.trail_name AS trail_name,
+                   UNNEST(ST_Dump(ST_Intersection(routes.geom, streams.geom))).geom AS point
+            FROM streams JOIN routes ON ST_Intersects(routes.geom, streams.geom)
         )
-        SELECT source, stream_id, name, flow, osm_from_nhd, ST_X(point) AS lon, ST_Y(point) AS lat
+        SELECT source, stream_id, name, flow, osm_from_nhd, on_network, network_source, trail_name,
+               ST_X(point) AS lon, ST_Y(point) AS lat
         FROM hits WHERE ST_GeometryType(point) = 'POINT'
     """).fetchall()
     return [
@@ -485,10 +552,19 @@ def state_crossings(con: duckdb.DuckDBPyConnection) -> list[dict]:
             # row rather than False - absent means "not an OSM claim at all",
             # which is a different thing from "an independent OSM claim".
             "osm_from_nhd": bool(osm_from_nhd) if source == "osm" else None,
+            # WHICH trail the stream crosses (#1016). Until the network lines
+            # entered this query there was only one answer and it went without
+            # saying; with four organizations' trails in it, a crossing that
+            # did not say would be a pin claiming to be on the A.T. Carried
+            # through to export_poi.py, which withholds the A.T. mile from a
+            # crossing that is not on the A.T.
+            "on_network": bool(on_network),
+            "network_source": network_source or None,
+            "trail_name": trail_name or None,
             "lat": lat,
             "lon": lon,
         }
-        for source, stream_id, name, flow, osm_from_nhd, lon, lat in rows
+        for source, stream_id, name, flow, osm_from_nhd, on_network, network_source, trail_name, lon, lat in rows
         if lat is not None and lon is not None
     ]
 
@@ -536,7 +612,9 @@ def collect_streams(sites: list[dict]) -> tuple[list[dict], dict[str, list[dict]
     """
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE OR REPLACE TABLE centerline AS SELECT * FROM ST_Read('{CENTERLINE_PATH.as_posix()}')")
+    network_lines = build_routes(con)
+    joined = f"+ {network_lines} network trail lines" if network_lines else "alone - no network artifact"
+    print(f"  routes: ATC's centerline {joined}", flush=True)
     con.execute("CREATE OR REPLACE TABLE sites (global_id VARCHAR, geom GEOMETRY)")
     con.executemany(
         "INSERT INTO sites VALUES (?, ST_Point(?, ?))",
@@ -628,11 +706,31 @@ def merge_stream_facts(kept: dict, other: dict) -> dict:
     `osm_from_nhd` rides along for a narrower reason (#710): two sources in
     `sources` is not two opinions where OSM's line was imported from NHD's,
     and a merge is exactly where that stops being visible.
+
+    WHICH TRAIL A MERGED CROSSING IS ON (#1016), and why the direction is not
+    arbitrary. Through Harriman the Long Path runs beside the A.T., so the two
+    cross the same brook within CROSSING_DEDUPE_M and arrive here as a pair.
+    Taking the kept record's answer would decide it by which HYDROGRAPHY saw
+    the water first - the sort above puts USGS first for id stability, which
+    has nothing to say about trails - and half the time that answer would be
+    "a network trail" for a stream the A.T. genuinely crosses. The pin would
+    then lose its A.T. mile and drop out of a day plan's water, which is the
+    expensive failure in the direction this whole file cares about.
+
+    So a crossing is on a network trail only if EVERY record folded into it
+    was: any A.T. crossing in the pile makes the merged pin an A.T. crossing,
+    because the A.T. really does cross there. The network attribution is kept
+    either way rather than blanked - combine, never drop the loser - so the
+    record still says whose trail also crosses, even when the mile is the
+    A.T.'s.
     """
     merged = dict(kept)
     merged["sources"] = sorted(set(kept.get("sources", [])) | set(other.get("sources", [])))
     merged["name"] = kept.get("name") or other.get("name")
     merged["osm_from_nhd"] = merge_osm_lineage(kept.get("osm_from_nhd"), other.get("osm_from_nhd"))
+    merged["on_network"] = bool(kept.get("on_network")) and bool(other.get("on_network"))
+    merged["network_source"] = kept.get("network_source") or other.get("network_source")
+    merged["trail_name"] = kept.get("trail_name") or other.get("trail_name")
     if not kept.get("flow") and other.get("flow"):
         merged["flow"] = other["flow"]
         merged["flow_source"] = other.get("flow_source") or (other.get("sources") or [None])[0]
@@ -912,10 +1010,15 @@ README = [
     "GENERATED by fetch_trail_water.py - re-run that script rather than",
     "editing rows here, and review the diff it produces.",
     "",
-    "`crossings` are exact geometric intersections of ATC's centerline with",
+    "`crossings` are exact geometric intersections of the walking routes with",
     "USGS and OSM stream lines: the two lines cross, so a hiker walking the trail",
     "walks through the water. export_poi.py publishes them as the `crossing`",
     "poi_type, which has been declared and empty since it was declared.",
+    "",
+    "The routes are ATC's centerline and, since #1016, the trails other",
+    "organizations maintain. Each crossing says which it sits on: `on_network`",
+    "with the organization's key, or false for the A.T. A crossing both trails",
+    "make is an A.T. crossing - see merge_stream_facts for why that direction.",
     "",
     "`sites` carries one record per shelter and campsite. A record publishes",
     # Interpolated rather than written out, because this said "35%" for as

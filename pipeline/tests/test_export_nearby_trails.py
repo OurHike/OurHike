@@ -756,3 +756,28 @@ def test_a_closure_layer_that_was_never_fetched_leaves_every_trail_open(tmp_path
 
     assert body["features"][0]["properties"]["trail_status"] == "open"
     assert manifest["closures"]["areas"] == 0
+
+
+# --- which organizations the water build may measure against (#1016) --------
+
+
+def test_only_the_sources_that_reach_hikers_are_shipped_keys():
+    """The artifact deliberately holds every exported source so a reviewer can
+    see the map before a licence answer lands; the water build needs the
+    narrower set. One field decides both."""
+    registry = {
+        "sources": [
+            _oprhp_source(key="ships", reaches_hikers=True),
+            _oprhp_source(key="review_only", reaches_hikers=False),
+        ]
+    }
+
+    assert ex.shipped_line_source_keys(registry) == {"ships"}
+
+
+def test_a_source_with_no_blaze_marker_is_not_a_line_source():
+    """Facilities points and park polygons are registered and external and are
+    not trails - nothing should measure water against a park boundary."""
+    polygons = {k: v for k, v in _oprhp_source(key="polygons", reaches_hikers=True).items() if k != "blaze_field"}
+
+    assert ex.shipped_line_source_keys({"sources": [polygons]}) == set()

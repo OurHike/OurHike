@@ -358,6 +358,50 @@ jobs:
         continue-on-error: true
         run: python fetch_poi_images.py
 
+      # BEFORE THE THREE WATER STEPS, and that ordering is load-bearing
+      # rather than tidy (#1016). All three read this export's artifact:
+      # build_osm_water_reach.py measures OSM water against these lines,
+      # fetch_trail_water.py intersects streams with them, and export_poi.py
+      # widens its corridor around them. Below the water steps - where these
+      # two sat until #1016 - every one of those reads an absent file and
+      # gates exactly the A.T., which is the defect rather than a degraded
+      # mode of it: it is what shipped four organizations' trails with no
+      # water source of either hydrography.
+      #
+      # It stays continue-on-error, so this is not a new way for another
+      # org's outage to fail an A.T. publish - it is the same graceful
+      # degradation one step earlier. Each water step says out loud which
+      # world it gated.
+
+      # The trails other organizations maintain (#950). TWO steps, because
+      # this export reads a directory the A.T. fetch above never fills:
+      # fetch_external_layers.py writes data/raw/external/, deliberately apart
+      # from fetch_all.py so another org's uptime cannot fail an A.T. release.
+      #
+      # WHY THIS IS HERE AT ALL, given it was deliberately left out when the
+      # export landed: it was left out while both stewards were review-only,
+      # because a scheduled fetch of 16,641 features to build an artifact
+      # publish.py would then refuse to upload is a cost to somebody else's
+      # server for no delivered bytes. On 2026-08-24 the maintainer resolved
+      # both licences (sources.json's `oprhp_licence` and `nynjtc_licence`),
+      # `reaches_hikers` went true for the three exported sources, and the
+      # calculus inverted: without these steps the artifact reaches no phone
+      # at all, which is exactly the shape of #947.
+      #
+      # `continue-on-error` on the FETCH only, and only that step. These are
+      # two other organizations' servers on their own uptime; an outage there
+      # must not fail an A.T. publish. The export below then runs against
+      # whatever the restore left on disk - and if there is nothing, it exits
+      # non-zero and this publish fails, which is correct: a silently absent
+      # network is the failure this whole file's sibling steps are shaped to
+      # avoid.
+      - name: Fetch external-organization layers
+        continue-on-error: true
+        run: python fetch_external_layers.py
+
+      - name: Export the trails other organizations maintain
+        run: python export_nearby_trails.py
+
       # OSM water points (#529): the fourteen Geofabrik state extracts, the
       # same files the basemap build downloads, scanned for the four
       # point-source tags. The extracts are NOT in FETCH_OUTPUTS - caching
@@ -520,34 +564,6 @@ jobs:
       - name: Export POIs
         run: python export_poi.py
 
-      # The trails other organizations maintain (#950). TWO steps, because
-      # this export reads a directory the A.T. fetch above never fills:
-      # fetch_external_layers.py writes data/raw/external/, deliberately apart
-      # from fetch_all.py so another org's uptime cannot fail an A.T. release.
-      #
-      # WHY THIS IS HERE AT ALL, given it was deliberately left out when the
-      # export landed: it was left out while both stewards were review-only,
-      # because a scheduled fetch of 16,641 features to build an artifact
-      # publish.py would then refuse to upload is a cost to somebody else's
-      # server for no delivered bytes. On 2026-08-24 the maintainer resolved
-      # both licences (sources.json's `oprhp_licence` and `nynjtc_licence`),
-      # `reaches_hikers` went true for the three exported sources, and the
-      # calculus inverted: without these steps the artifact reaches no phone
-      # at all, which is exactly the shape of #947.
-      #
-      # `continue-on-error` on the FETCH only, and only that step. These are
-      # two other organizations' servers on their own uptime; an outage there
-      # must not fail an A.T. publish. The export below then runs against
-      # whatever the restore left on disk - and if there is nothing, it exits
-      # non-zero and this publish fails, which is correct: a silently absent
-      # network is the failure this whole file's sibling steps are shaped to
-      # avoid.
-      - name: Fetch external-organization layers
-        continue-on-error: true
-        run: python fetch_external_layers.py
-
-      - name: Export the trails other organizations maintain
-        run: python export_nearby_trails.py
 
       # AFTER the network export, because the graph is that artifact's own
       # topology (build_trail_graph.py reads nearby_trails.geojson), and after

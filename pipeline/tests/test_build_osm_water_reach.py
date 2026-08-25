@@ -52,13 +52,42 @@ def _raw_dir(tmp_path, water_features):
     return raw
 
 
-def _measure(tmp_path, monkeypatch, water_features):
+def _measure(tmp_path, monkeypatch, water_features, network_features=None, shipped=None):
+    """Measure against a synthetic RAW_DIR, and against network lines only when
+    a test asks for them.
+
+    NETWORK_LINES_PATH is redirected in every case, including the default one
+    (#1016). It is a real path under data/processed/ and would otherwise be
+    whatever the machine happens to have on disk - so a developer with a
+    fetched tree would be measuring 3,663 real lines against a synthetic
+    corridor, and these tests would say different things on different machines.
+    Pointing it at a file that does not exist is the A.T.-only case stated
+    rather than assumed.
+    """
     monkeypatch.setattr(reach, "RAW_DIR", _raw_dir(tmp_path, water_features))
+    # Which organizations count is the registry's answer in production, and a
+    # test's own here - otherwise these read the real sources.json and would
+    # start or stop passing when somebody's licence answer lands.
+    if shipped is None:
+        shipped = {feature["properties"]["source"] for feature in network_features or []}
+    monkeypatch.setattr(reach, "shipped_network_keys", lambda: shipped)
+    network_path = tmp_path / "nearby_trails.geojson"
+    if network_features is not None:
+        _write_fc(network_path, network_features)
+    monkeypatch.setattr(reach, "NETWORK_LINES_PATH", network_path)
     con = spatial_connection()
     try:
         return {r["osm_id"]: r for r in reach.measure_distances(con, quiet=True)}
     finally:
         con.close()
+
+
+def _network_line(coords, source="oprhp_trails", name="Appalachian Approach"):
+    return {
+        "type": "Feature",
+        "properties": {"source": source, "name": name, "blaze_color": "blue"},
+        "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
+    }
 
 
 # --- the distance gate ------------------------------------------------------
@@ -101,7 +130,7 @@ def test_a_point_with_nothing_within_the_ceiling_says_so(tmp_path, monkeypatch):
     assert records["1"]["passes_distance"] is False
     assert records["1"]["nearest"] is None
     assert records["1"]["nearest_m"] is None
-    assert "no trail, side trail, shelter or campsite" in records["1"]["reason"]
+    assert "no trail, side trail, network trail, shelter or campsite" in records["1"]["reason"]
 
 
 def test_a_side_trail_can_win_the_union(tmp_path, monkeypatch):
@@ -456,3 +485,186 @@ def test_the_floor_is_written_into_the_receipt(tmp_path, monkeypatch):
     reach.write(_reachable_records(reach.MIN_REACHABLE), guard=False)
 
     assert json.loads(out.read_text())["min_grade_run_ft"] == reach.MIN_GRADE_RUN_FT
+
+
+# --- the network trails in the union (#1016) --------------------------------
+#
+# The defect these are about: an OSM spring beside a Harriman trail was fetched,
+# clipped into the corridor and then refused for being far from the A.T.,
+# because the union it was measured against held only ATC's four layers. Four
+# organizations' trails shipped to hikers that way.
+
+
+# A line well clear of the synthetic centerline - far enough that no A.T.
+# feature can be what a point beside it passes on, so a pass here can only be
+# the network line.
+NETWORK_COORDS = [(lon + 0.20, lat + 0.20) for lon, lat in CENTERLINE_COORDS]
+
+
+def test_a_spring_beside_a_network_trail_is_reachable(tmp_path, monkeypatch):
+    """#1016 in one case. Before this the same point read 'no trail, side
+    trail, shelter or campsite within 5 miles'."""
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(
+        tmp_path,
+        monkeypatch,
+        [_water(1, lon, lat + JUST_INSIDE_DEG)],
+        network_features=[_network_line(NETWORK_COORDS)],
+    )
+
+    assert records["1"]["passes_distance"] is True
+    assert records["1"]["nearest"] == reach.NETWORK_LINE_TABLE
+
+
+def test_it_records_whose_trail_the_spring_is_beside(tmp_path, monkeypatch):
+    """Reported, never gated on - and read by export_poi.py for a different
+    question: a point whose only walk is off the A.T. may not carry an A.T.
+    mile, because dayPlanner.ts would offer it as a stop along one."""
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(
+        tmp_path,
+        monkeypatch,
+        [_water(1, lon, lat + JUST_INSIDE_DEG)],
+        network_features=[_network_line(NETWORK_COORDS, source="mohonk_trails")],
+    )
+
+    assert records["1"]["nearest_source"] == "mohonk_trails"
+
+
+def test_a_point_beside_the_at_carries_no_network_source(tmp_path, monkeypatch):
+    """The other direction, and the one that keeps the mile: a point that
+    passed on ATC's own centerline is on the A.T. and says nothing about any
+    organization's trail."""
+    lon, lat = CENTERLINE_COORDS[0]
+    records = _measure(
+        tmp_path,
+        monkeypatch,
+        [_water(1, lon, lat)],
+        network_features=[_network_line(NETWORK_COORDS)],
+    )
+
+    assert records["1"]["nearest"] == "centerline"
+    assert "nearest_source" not in records["1"]
+
+
+def test_the_gate_still_binds_on_a_network_trail(tmp_path, monkeypatch):
+    """The radius did not move, only what it is measured from. A fountain 60 m
+    from somebody else's trail is as unreachable as one 60 m from the A.T."""
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(
+        tmp_path,
+        monkeypatch,
+        [_water(1, lon, lat + WELL_OUTSIDE_DEG)],
+        network_features=[_network_line(NETWORK_COORDS)],
+    )
+
+    assert records["1"]["passes_distance"] is False
+    assert "network trail" in records["1"]["reason"]
+
+
+def test_no_network_artifact_measures_the_at_alone(tmp_path, monkeypatch):
+    """The ordinary state on a publish whose network export was skipped or
+    whose licences are held back - it costs what it always cost and must not
+    be an error."""
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(tmp_path, monkeypatch, [_water(1, lon, lat + JUST_INSIDE_DEG)])
+
+    assert records["1"]["passes_distance"] is False
+
+
+def test_an_empty_network_artifact_is_not_a_network(tmp_path, monkeypatch):
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(tmp_path, monkeypatch, [_water(1, lon, lat + JUST_INSIDE_DEG)], network_features=[])
+
+    assert records["1"]["passes_distance"] is False
+
+
+# --- resuming across the change (#1016) -------------------------------------
+
+
+def _verdict_file(tmp_path, **payload):
+    path = tmp_path / "osm_water_reach.json"
+    path.write_text(json.dumps({"points": [], **payload}))
+    return path
+
+
+def test_verdicts_taken_without_the_network_are_remeasured(tmp_path):
+    """The trap this exists to spring. The publish workflow restores the last
+    run's verdicts and RESUMES rather than rebuilding, so without this the run
+    that finally has the network lines would resume A.T.-only verdicts and
+    publish them - the defect surviving its own fix.
+    """
+    network = tmp_path / "nearby_trails.geojson"
+    network.write_text("{}")
+    on_disk = _verdict_file(tmp_path, measured_against_network=False)
+
+    assert reach.network_union_changed(on_disk, network) is True
+
+
+def test_a_file_predating_the_stamp_is_remeasured_once(tmp_path):
+    """No key at all is every verdict file written before #1016 - the migration
+    case, and the reason absence is read as false rather than as unknown."""
+    network = tmp_path / "nearby_trails.geojson"
+    network.write_text("{}")
+
+    assert reach.network_union_changed(_verdict_file(tmp_path), network) is True
+
+
+def test_verdicts_already_taken_against_the_network_are_kept(tmp_path):
+    network = tmp_path / "nearby_trails.geojson"
+    network.write_text("{}")
+    on_disk = _verdict_file(tmp_path, measured_against_network=True)
+
+    assert reach.network_union_changed(on_disk, network) is False
+
+
+def test_a_vanished_network_artifact_does_not_discard_good_verdicts(tmp_path):
+    """One direction only, deliberately: re-measuring here would throw away
+    verdicts taken against a wider union to replace them with a narrower set.
+    Those points fail the export's own gate if their lines stop publishing,
+    which is the safe direction and how a held-back licence already behaves."""
+    on_disk = _verdict_file(tmp_path, measured_against_network=True)
+
+    assert reach.network_union_changed(on_disk, tmp_path / "gone.geojson") is False
+
+
+def test_a_review_only_organizations_lines_are_not_measured_against(tmp_path, monkeypatch):
+    """The state every organization is registered in - `reaches_hikers: false`
+    until somebody answers about terms - and the one that would otherwise be a
+    new defect rather than an old one.
+
+    The artifact holds every EXPORTED source so a reviewer can look at the map
+    before the answer arrives. Measuring against a held-back one would derive a
+    PUBLISHED water pin from lines nobody may publish, and draw it over ground
+    where the app shows no trail at all, because publish.py holds the whole
+    artifact back when any source in it is held back.
+    """
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(
+        tmp_path,
+        monkeypatch,
+        [_water(1, lon, lat + JUST_INSIDE_DEG)],
+        network_features=[_network_line(NETWORK_COORDS, source="dec_catskills_trails")],
+        shipped=set(),
+    )
+
+    assert records["1"]["passes_distance"] is False
+
+
+def test_a_shipping_organization_beside_a_held_back_one_still_counts(tmp_path, monkeypatch):
+    """Per source, not all-or-nothing: one steward waiting on terms must not
+    take another steward's water off the map."""
+    lon, lat = NETWORK_COORDS[0]
+    records = _measure(
+        tmp_path,
+        monkeypatch,
+        [_water(1, lon, lat + JUST_INSIDE_DEG)],
+        network_features=[
+            _network_line(NETWORK_COORDS, source="dec_catskills_trails"),
+            _network_line(NETWORK_COORDS, source="oprhp_trails"),
+        ],
+        shipped={"oprhp_trails"},
+    )
+
+    assert records["1"]["passes_distance"] is True
+    assert records["1"]["nearest_source"] == "oprhp_trails"

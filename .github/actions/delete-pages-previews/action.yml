@@ -26,7 +26,7 @@ description: Delete every Cloudflare Pages deployment for one pull request's pre
 
 inputs:
   api-token:
-    description: Cloudflare API token with "Cloudflare Pages: Edit".
+    description: 'Cloudflare API token with "Cloudflare Pages: Edit" permission.'
     required: true
   account-id:
     description: Cloudflare account the project belongs to.

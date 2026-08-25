@@ -728,17 +728,16 @@
   font-size: 13px;
 }
 
-.legend__blazes,
 .legend__pins {
   margin: var(--space-3, 12px) 0 0;
   padding: 0;
   list-style: none;
 }
 
-/* Pin types read as a 2-column grid; blaze rows stay full width so a blaze
-   name has room to sit on one line beside its swatch. The swatch is a solid
-   bar, which is now literally how the map draws the line (map/style.ts) - it
-   used to be a solid bar standing in for a dashed one. */
+/* Pin types read as a 2-column grid. The blaze rows that used to sit above
+   them full-width, each behind a solid bar painted the colour the map draws
+   that line, went on 2026-08-25 - chrome/Legend.tsx's header has why, and
+   `.legend__swatch` went with them since nothing else painted one. */
 /* Two columns where two fit, ONE WHERE THEY DO NOT, and a 16px gutter either
    way (#528).
 
@@ -772,13 +771,6 @@
   gap: var(--space-2, 8px);
   min-height: var(--min-touch-target);
   font-size: 13px;
-}
-
-.legend__swatch {
-  width: 22px;
-  height: 4px;
-  border-radius: 2px;
-  border: 1px solid var(--border-2);
 }
 
 /* The label is the only part of a row that may give up width, and `min-width: 0`

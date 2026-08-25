@@ -69,6 +69,9 @@ it does not relitigate them.
 | Uses | **Hiking only** — bike/horse/XC/snowmobile stay unshipped |
 | Blazes | **The paint's real color renders**, palette extended under governance |
 
+*Water, one of the three safety kinds in that row, is not delivered for any trail but the
+A.T. — see §11. The decision stands; the data does not exist behind it yet.*
+
 ## 1. The chosen trail and the others — ghosting, specified
 
 WIREFRAMES.md §3 already gives this map two channels: **hue says which blaze, width says
@@ -89,10 +92,13 @@ real blaze hue — and add the one new value this feature introduces:
   beat the halo option (a new device whose meaning red light would have erased) and the
   house-rule option (which left the chosen trail leading by width alone in a forty-line
   park).
-- **What the legend says**: the blaze rows (WIREFRAMES.md §2) gain one sentence of state —
-  "Other trails are dimmed; the trail you chose is full-strength" — rather than a new
-  control. Nothing here is hideable: nearby trails are context, and context that can be
-  switched off is a mode nobody remembers being in.
+- **What the legend says**: one sentence of state — "Other trails are dimmed; the trail
+  you chose is full-strength" — rather than a new control. Nothing here is hideable:
+  nearby trails are context, and context that can be switched off is a mode nobody
+  remembers being in. *(Amended 2026-08-25: this used to read "the blaze rows
+  (WIREFRAMES.md §2) gain one sentence of state". Those rows were removed as clutter at
+  the maintainer's request, and the sentence outlived them — it now sits directly above
+  the pin grid, and is the only thing the legend still says about the trail lines.)*
 - **Not a contradiction of §3, an extension.** Every line stays solid; the no-dash rule
   holds; the through-route is still the widest and last-drawn. Ghosting adds a third
   channel (opacity) for a distinction the AT-only map never had to draw.
@@ -208,6 +214,15 @@ counting what the map drew never needed the table. The rows are live now
 demonstrated rather than asserted: nothing in that module names a colour, so Aqua counts the
 day a trail wears it.
 
+**Amended 2026-08-25 — the rows are gone, and so is `drawnBlazeCounts`.** The legend's blaze
+rows were removed as clutter at the maintainer's request (WIREFRAMES.md §2 has the decision
+and what it costs), so the measurement that fed them came out rather than staying as a
+number nothing reads. The completion condition it demonstrated is therefore no longer
+demonstrated by anything, which is the honest statement of where this leaves §4: the closed
+palette and its admission bar are untouched and still govern what the MAP paints, but no
+panel now names those colours for a hiker. `drawsNearbyTrails` is what remains in
+`client/src/map/drawnBlazes.ts`, feeding the ghosting sentence above.
+
 ## 5. One place, one line, many orgs
 
 Cross-org rules, recorded from the maintainer's decisions and the spike's evidence:
@@ -316,6 +331,37 @@ It is still unmeasured — OPRHP's facilities layer holds 8,823 points statewide
 has counted the two parks' safety-relevant subset at z12. If safety-only still overwhelms
 the screen, the dot rank (POI_VISIBILITY.md) absorbs it before anything new is invented.
 Measuring this is the registration follow-up's job, not this doc's guess.
+
+## 11. The safety-always rule has no water behind it, off the A.T.
+
+**Not met by what shipped, and unlike §9's gap this one was never a deliberate hold —
+nobody had noticed it.** The decisions table promises safety POIs on *every* trail on
+screen, and §9 calls that "a promise about the screen". Closures keep it: `apply_area_closures`
+derives them onto network lines (#964). Water does not, and cannot, because all three
+stages of the water build take the A.T. as their subject:
+
+- `build_osm_water_reach.py`'s reach gate measures a candidate against `LINE_SOURCES` +
+  `SITE_SOURCES` — ATC's centerline, ATC's side trails, ATC's shelters and campsites. An
+  OSM spring fifty feet off a Harriman trail **is** fetched (New York is in
+  `export_basemap.AT_STATES`) and **does** survive the corridor clip, and is then refused
+  with "no trail, side trail, shelter or campsite within 5 miles".
+- `fetch_trail_water.py` intersects streams with ATC's centerline alone, and downloads the
+  21 NHD subregions *the A.T.* crosses. A stream crossing a Long Path section is geometry
+  it never asks about.
+- `export_poi.py` clips to the 30-mile buffer of that same centerline, so whatever network
+  ground falls inside does so incidentally.
+
+So a hiker who has learned that this map shows springs is not told that it stops showing
+them when they step off the A.T. That is the tolerable direction to fail in — an absent
+pin rather than a false one, FEATURES.md's rule — but it is silent, which is the part that
+is not tolerable.
+
+[#1016 — No trail outside the A.T. gets an OSM or NHD water source, though the map promises
+water on every trail on screen](https://github.com/OurHike/OurHike/issues/1016) holds the
+fix and its unmeasured costs; the guard that stops a sixth organization arriving the same
+way is `pipeline/tests/test_water_covers_trail_sources.py`. §10's density question should be
+read with this in mind: the safety-relevant subset it says nobody has counted is, for water,
+currently empty by construction rather than merely uncounted.
 
 ## Open questions (for the maintainer, gathered)
 

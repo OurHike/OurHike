@@ -125,6 +125,21 @@ export const BLAZE_PALETTE_MEMBERS = Object.keys(BLAZE_COLORS).filter(
 /** Every blaze_color string this module answers for, hues and neutrals alike. */
 export const BLAZE_MEMBERS = Object.keys(BLAZE_COLORS)
 
+/**
+ * One palette member's hex, by name.
+ *
+ * NO PRODUCTION CALLER SINCE 2026-08-25, and that is worth knowing before
+ * reading this as live rendering code. The map has never painted through it -
+ * `BLAZE_MATCH_EXPRESSION` below is what `map/style.ts` hands MapLibre - and
+ * its one caller was the legend's blaze swatch, removed with those rows
+ * (chrome/Legend.tsx's header has the decision).
+ *
+ * It stays because `BLAZE_COLORS` is not exported, so this is the only way to
+ * read a member's hex, and `lib/blazeGovernance.test.ts` reads every member
+ * through it to hold #782's admission bar - the ΔE separation and the day and
+ * night contrast ratios. Deleting it would mean opening the table up to
+ * exactly the sprawl that issue closed off.
+ */
 export function blazePaintColor(blazeColor: string): string {
   if (typeof blazeColor === 'string' && blazeColor in BLAZE_COLORS) {
     return BLAZE_COLORS[blazeColor]

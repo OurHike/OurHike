@@ -33,8 +33,10 @@ from lib.elevation_gain import (
     NOISE_FLOOR_M,
     cumulative_gain,
     cumulative_gain_over_gaps,
+    cumulative_loss,
     gain_between,
     gain_over_profile,
+    loss_over_gaps,
     profile_runs,
     raw_cumulative_gain,
 )
@@ -357,3 +359,58 @@ def test_gain_between_keeps_the_marker_when_it_slices():
     ]
 
     assert gain_between(profile, 0.0, 3.0, T) == pytest.approx(20)
+
+
+# Descent, which is the same dead band applied to the ground upside down
+# (#1011 needs it per graph edge, so frame `1l` can print a bail-out's drop).
+# These tests exist to hold the negation exact rather than merely plausible:
+# an asymmetry between the two directions would show up as a card whose climb
+# and drop disagree about the same piece of trail.
+
+
+def test_a_pure_descent_is_all_loss_and_no_gain():
+    assert cumulative_loss([300, 200, 100], T) == 100 + 100
+    assert cumulative_gain([300, 200, 100], T) == 0
+
+
+def test_a_pure_ascent_has_no_loss():
+    assert cumulative_loss([100, 200, 300], T) == 0
+
+
+def test_a_hill_costs_the_same_up_as_down():
+    # Out and back over one hill: what was climbed is what was descended.
+    assert cumulative_loss([100, 250, 100], T) == cumulative_gain([100, 250, 100], T) == 150
+
+
+def test_loss_is_the_gain_of_the_reversed_walk():
+    # The property that makes one implementation serve both directions: a
+    # profile walked backwards turns every descent into the same-sized climb.
+    profile = [100, 180, 140, 260, 90, 130]
+    assert cumulative_loss(profile, T) == cumulative_gain(list(reversed(profile)), T)
+
+
+def test_noise_is_dropped_in_both_directions():
+    # The dead band is direction-agnostic by construction. If it were not,
+    # half a metre of DEM jitter would inflate descent while gain stayed
+    # clean, and only one of the two numbers on a card would be wrong.
+    noisy = jitter(1000, [0, 0.4, -0.4, 0.4, -0.4, 0.4])
+    assert cumulative_gain(noisy, T) == 0
+    assert cumulative_loss(noisy, T) == 0
+
+
+def test_a_real_drop_is_counted_at_its_true_size_not_a_quantised_one():
+    # The mirror of the gain suite's central case: a dead band that subtracted
+    # itself at the bottom of every descent would lose a threshold per
+    # reversal, which across a few thousand real ones is tens of thousands of
+    # feet in the other direction.
+    assert cumulative_loss([500, 400], T) == 100
+
+
+def test_a_dem_gap_is_not_bridged_into_a_descent():
+    # cumulative_gain_over_gaps' rule, in the other direction: joining the
+    # samples either side of a hole invents a step nobody walked down.
+    assert loss_over_gaps([500, 480, None, 200, 180], T) == 20 + 20
+
+
+def test_a_profile_that_is_entirely_nulls_has_no_loss():
+    assert loss_over_gaps([None, None], T) == 0

@@ -2,24 +2,26 @@
 //
 // The frame is the richest in its group and this card deliberately renders
 // LESS of it than it draws. What ships: the legs with each organization's own
-// name on its trail, the walked miles, the LOOP badge, the ways off, the
-// one-line credit to the orgs that keep the ground walkable, and - since
-// #1008 - a date field, the gap rows for a multi-segment walk, and the
-// "Leave this with someone" door (frame D6, screens/LeaveWithSomeone.tsx).
-// The ≈time is here now, and only where it is honest: lib/dayHikeTime.ts
-// prices a walk from the A.T. corridor profile and answers null for any walk
-// with a step it cannot price, so a hike that leaves the centerline prints no
-// time rather than a short one. That will cover more ground as elevation for
-// the other layers is published; nothing on this card changes when it does.
+// name on its trail, the walked miles, the LOOP badge, the ± elevation and
+// ≈time (#1011), the ways off, and the one-line credit to the orgs that keep
+// the ground walkable - and, since #1008, a date field, the gap rows for a
+// multi-segment walk, and the "Leave this with someone" door (frame D6,
+// screens/LeaveWithSomeone.tsx).
 //
 // What waits, and on what (#980 keeps the ledger): the turn list (a naming
 // rule #934 left open), "Starts at · Parking" (#981's pipeline data), the
-// on-route POI counts (a policy #768's rule does not cover), the ± elevation
-// (a gain/loss pair wants the same all-or-nothing treatment and a place to
-// put it, which the figures line has not got), and the frame's "Chip in ›"
-// (no org's donate wording exists anywhere in the registry or the stewards
-// export to speak with, and inventing one would be this app putting words in
-// a steward's mouth).
+// on-route POI counts (a policy #768's rule does not cover), and the frame's
+// "Chip in ›" (no org's donate wording exists anywhere in the registry or the
+// stewards export to speak with, and inventing one would be this app putting
+// words in a steward's mouth).
+//
+// THE CLIMB SAYS WHAT IT IS. It is a dense sum over a 10 m elevation model,
+// which is not the same kind of number as the miles beside it: published
+// figures for one walk disagree with each other by more than rounding, and the
+// pipeline's own gate reads +18.8% against a maintaining club on exactly the
+// rolling terrain this network is. The note under the figures is the
+// maintainer's call (2026-08-25) and is not decoration - a hiker comparing
+// this against a guidebook should know which way to read the difference.
 //
 // The figures prefer the LIVE resolution and fall back to the stored cache
 // with a sentence saying so - never silently. lib/dayHikes.ts's provenance
@@ -33,10 +35,10 @@ import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
-import { walkingTime } from '../chrome/DayHikePickBar'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
-import { formatDistance, type UnitSystem } from '../lib/units'
+import { formatNaismithMinutes, naismithMinutes } from '../lib/naismith'
+import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
 import './plan.css'
 
@@ -58,10 +60,6 @@ export interface DayHikeCardProps {
   onSave?: () => void
   onClose: () => void
   onDelete?: () => void
-  /** Naismith-family minutes for the whole walk, or null when this phone
-   *  cannot price every step of it (lib/dayHikeTime.ts). Absent means
-   *  unknown, and the card says nothing rather than a low number. */
-  walkingMinutes: number | null
   /** Set or clear the hike's date (#1008). The list and the trailhead door
    *  both read it, which is what made a card with no way to write one a
    *  gap rather than a nicety. */
@@ -75,7 +73,6 @@ export function DayHikeCard({
   stewards,
   units,
   networkAvailable,
-  walkingMinutes,
   mode,
   onSave,
   onClose,
@@ -132,6 +129,16 @@ export function DayHikeCard({
     )
   }
 
+  // Climb comes ONLY from the live resolution, never from the stored cache.
+  // A saved hike's figures were written before any of this existed and hold no
+  // climb at all, so there is nothing to fall back to - and a card that fell
+  // back to miles while quietly printing today's climb over yesterday's walk
+  // would be a display outrunning its source. Null here means the block below
+  // is simply absent, which is what it looked like before #1011.
+  const climb = resolved?.climb ?? null
+  const walkingMinutes =
+    climb === null ? null : naismithMinutes({ distanceMi: miles, ascentFt: climb.gainFt })
+
   // The orgs sentence counts organizations somebody actually named - legs the
   // export left unattributed are real trail but no org to credit, and "One
   // organization" over an unattributed walk would be an invented steward.
@@ -158,14 +165,32 @@ export function DayHikeCard({
       <p className="day-hike-card__figures">
         {formatDistance(miles, units)} · {legs.length}{' '}
         {legs.length === 1 ? 'leg' : 'legs'}
-        {/* The ≈time, on the walks this phone can price every step of and
-            silently absent on the rest - lib/dayHikeTime.ts decides which,
-            and `walkingTime` is the builder bar's own display rule so the
-            estimate a hiker read while building and the one on the finished
-            card are the same number said the same way. Never an arrival
-            clock: this is moving time, which is why it wears "walking". */}
-        {walkingTime(walkingMinutes) !== null && ` · ${walkingTime(walkingMinutes)}`}
+        {climb !== null && (
+          <>
+            {' · '}
+            <span className="day-hike-card__climb">
+              +{formatElevation(climb.gainFt, units)} / −
+              {formatElevation(climb.lossFt, units)}
+            </span>
+          </>
+        )}
+        {walkingMinutes !== null && ` · ${formatNaismithMinutes(walkingMinutes)} walking`}
       </p>
+
+      {climb !== null && (
+        // The maintainer's decision, 2026-08-25, in the hiker's own words:
+        // ship the figure and say what it is. Cumulative gain from a 10 m
+        // elevation model is not precise - published guidebook figures for the
+        // same walk routinely differ, and on rolling ground like this the
+        // pipeline's own check reads +18.8% against one maintaining club's
+        // number (pipeline/reference/published_gain.json). Saying so is what
+        // keeps the display from outrunning its source; a hiker who compares
+        // this against a guidebook should not conclude one of them is broken.
+        <p className="day-hike-card__note" role="note">
+          Climb and time are estimates from the best elevation data available — expect
+          other sources to differ.
+        </p>
+      )}
 
       {onSetDate !== undefined && (
         // The one field on this card, because two other surfaces read it:

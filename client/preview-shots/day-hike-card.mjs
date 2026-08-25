@@ -11,15 +11,23 @@
 // never-photograph list, kept by construction).
 //
 // Touched with #1002 so the camera re-photographs the card now that per-leg
-// miles print again, priced at the walked metres.
+// miles print again, priced at the walked metres. Touched again with #1011,
+// which puts the ± elevation, the ≈ walking time and the estimate note on
+// this same card.
 //
-// TWO HONEST STATES, ONE RECIPE. Until the graph publishes, the card leans
-// on the fixture's cached figures under the sentence saying exactly that -
-// a state this card ships with and tests. Once `trail_graph.json` is live,
-// the same recipe photographs the live resolution instead: whatever real
-// trail claims the fixture's ends through the same projection a tap uses,
-// with the ways-off block. Both frames are true; the camera does not care
-// which one it gets.
+// THREE HONEST STATES, ONE RECIPE, and the third arrived with #1011. Until
+// the graph publishes, the card leans on the fixture's cached figures under
+// the sentence saying exactly that - a state this card ships with and tests.
+// Once `trail_graph.json` is live, the same recipe photographs the live
+// resolution instead: whatever real trail claims the fixture's ends through
+// the same projection a tap uses, with the ways-off block. Once
+// `trail_graph_elevation.json` is live TOO, that resolution also carries a
+// climb and a time.
+//
+// The card never prints a climb over the cached figures, deliberately (see
+// screens/DayHikeCard.tsx), so the first state photographs without one and
+// that is the correct picture rather than a missing feature. All three frames
+// are true; the camera does not care which one it gets.
 
 // Touched by #1008 so the camera re-takes the card it changed: the date
 // field, the gap rows, and the "Leave this with someone" primary all landed

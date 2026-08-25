@@ -40,7 +40,7 @@ on:
         options: [ua, production, dev]
         default: ua
       include_elevation:
-        description: "Also build the elevation profile. Adds ~25 min; no client code reads it yet."
+        description: "Also sample elevation: the A.T. profile behind the ribbon, and the per-edge climb a day hike is priced from (~25 min). Untick and both stay at the last elevation run's."
         type: boolean
         default: false
       include_photos:
@@ -653,6 +653,22 @@ jobs:
       - name: Export elevation profile
         if: inputs.include_elevation
         run: python export_elevation.py
+
+      # AFTER the tile index and the junction graph, and that ordering is the
+      # whole of why this is a separate step rather than part of
+      # build_trail_graph.py. It needs the DEM index fetch_elevation.py writes
+      # (which now covers the network's ground too, not just the A.T.
+      # corridor), and it needs the graph's edges and geometry to measure
+      # along and to stay index-aligned with.
+      #
+      # Gated on include_elevation like its two neighbours: a publish without
+      # elevation ships a graph and no climb file, which the client reads as
+      # "no figures for this hike" and says so, rather than as a failure. That
+      # is the same shape trailData.test.ts already covers for a release with
+      # no elevation_profile.json.
+      - name: Export the climb along each graph edge
+        if: inputs.include_elevation
+        run: python export_network_elevation.py
 
       # Saved even when an earlier step failed, which is the whole reason the
       # cache is split into restore/save rather than left as `actions/cache`:

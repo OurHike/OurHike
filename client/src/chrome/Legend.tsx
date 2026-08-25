@@ -16,6 +16,38 @@
 // its own copy of the list, which is where somebody setting the app up rather
 // than reading a map will look.
 //
+// NO BLAZE ROWS, AND WHAT THAT COSTS (maintainer's call, 2026-08-25).
+//
+// The panel used to open with one row per blaze in view - a painted line
+// swatch, the blaze name, the count - shipped by #782 and removed on the
+// request "the legend doesn't need the color of the blaze included... it's too
+// cluttered". Recorded here rather than deleted quietly, because the rows were
+// not free to lose and the next person to reach for them should find the
+// argument rather than re-run it.
+//
+// What went with them is the only KEY this app had for its line colours. The
+// map paints a trail by its blaze (map/style.ts's `blazeLineColor`, over
+// lib/blaze.ts's closed palette - both untouched here, so the lines look
+// exactly as they did), and nothing on this panel now says which paint means
+// which blaze.
+//
+// Two things carry that instead, and they are why the cost is affordable
+// rather than why it is zero:
+//
+//   - a blaze name IS a colour word, so a line is closer to self-describing
+//     than a pin ever is: the thing a hiker reads off the map is the same
+//     word the legend would have printed;
+//   - a tapped line still names its blaze in full - `lib/lineDetail.ts`'s
+//     heading is "White blaze · Appalachian Trail", drawn by
+//     chrome/LineSheet.tsx - which is where somebody asking about one
+//     particular line in front of them is already looking.
+//
+// Neither covers the case the rows did cover: "what is on this screen",
+// answered without tapping anything. @unvalidated - nobody has watched a hiker
+// try, and what would settle it is somebody using this panel on a stretch
+// where two trail systems overlap and reporting whether the lines are
+// legible without a key.
+//
 // Closure and serious-warning rows render with no hide control whatsoever.
 // Not defaulted-on, not disabled - absent. A safety layer having no off switch
 // is a rule that holds across the whole app (features/MAP_OPTIONS.md,
@@ -42,7 +74,6 @@ import {
   type MapPoint,
 } from '../lib/legendContents'
 import { MapIcon } from '../map/MapIcon'
-import { blazePaintColor } from '../lib/blaze'
 import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
@@ -51,11 +82,6 @@ import type { BackgroundSource, UnitSystem } from '../lib/userPreferences'
 import { formatDistance } from '../lib/units'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { DownloadActivity } from '../lib/downloadActivity'
-
-export interface BlazeCount {
-  blaze: string
-  count: number
-}
 
 // The two picker entries that are not a category. Sentinels rather than the
 // empty string, so no waypoint type can ever collide with one, and not exported
@@ -76,7 +102,6 @@ export interface LegendProps {
   persistent?: boolean
   bbox: BoundingBox
   points: MapPoint[]
-  blazeCounts: BlazeCount[]
   /** Whether a trail from outside the chosen system is on screen (#783), which
    *  is the only condition under which the ghosting sentence means anything. */
   ghostedTrailsDrawn?: boolean
@@ -231,7 +256,6 @@ export function Legend({
   persistent = false,
   bbox,
   points,
-  blazeCounts,
   ghostedTrailsDrawn = false,
   hiddenTypes,
   onToggleType,
@@ -278,7 +302,7 @@ export function Legend({
   // doing, not the camera's, so they belong in neither half of the fraction -
   // "zoom in to see the rest" must only promise what zooming in delivers.
   const dropped = legendDropSummary(inView, hiddenTypes)
-  const isEmpty = inView.length === 0 && blazeCounts.length === 0
+  const isEmpty = inView.length === 0
 
   // What the type picker shows. Not a placeholder: a picker sitting at "Show one
   // only…" over a map drawing water alone is a control disowning its own state.
@@ -357,9 +381,17 @@ export function Legend({
         </p>
       )}
 
+      {/* "No WAYPOINTS", where this said "Nothing", and the word had to change
+          when the blaze rows went. `isEmpty` used to consult those rows too, so
+          a stretch of drawn trail with no shelter or spring on it suppressed
+          this line; it now fires there, and "nothing on this part of the map"
+          over a map with the A.T. running down it is the panel claiming an
+          emptiness that is not on the screen. Narrowing the noun is what keeps
+          the sentence true - the grid below it counts waypoints, and so does
+          this. */}
       {isEmpty && !emptiedByFilter && !belowPoiZoom && (
         <p className="legend__empty">
-          Nothing on this part of the map yet — pan or zoom out to see more.
+          No waypoints on this part of the map yet — pan or zoom out to see more.
         </p>
       )}
 
@@ -380,28 +412,14 @@ export function Legend({
         </p>
       )}
 
-      {/* features/NEARBY_TRAILS.md §1's sentence of state - above the blaze
-          rows, because it is about the lines those rows count, and a hiker
-          reading down should know the rows are describing two strengths of
-          line before they read the first one. No control accompanies it, and
-          that is the decision rather than an omission. */}
+      {/* features/NEARBY_TRAILS.md §1's sentence of state - above the pin
+          grid, because it is about the LINES on the map and everything below
+          it is about the pins. It used to sit above the blaze rows and its
+          reason was those rows; with them gone it is the only thing on this
+          panel that speaks about the trail lines at all, which is why it
+          stayed. No control accompanies it, and that is the decision rather
+          than an omission. */}
       {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
-
-      {blazeCounts.length > 0 && (
-        <ul className="legend__blazes">
-          {blazeCounts.map(({ blaze, count }) => (
-            <li key={blaze} className="legend__row" aria-label={`${blaze} blaze`}>
-              <span
-                className="legend__swatch"
-                style={{ backgroundColor: blazePaintColor(blaze) }}
-                aria-hidden="true"
-              />
-              <span className="legend__label">{blaze}</span>
-              <span className="legend__count">{count}</span>
-            </li>
-          ))}
-        </ul>
-      )}
 
       {rows.length > 0 && (
         <ul className="legend__pins">

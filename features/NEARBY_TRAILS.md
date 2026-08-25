@@ -69,8 +69,8 @@ it does not relitigate them.
 | Uses | **Hiking only** — bike/horse/XC/snowmobile stay unshipped |
 | Blazes | **The paint's real color renders**, palette extended under governance |
 
-*Water, one of the three safety kinds in that row, is not delivered for any trail but the
-A.T. — see §11. The decision stands; the data does not exist behind it yet.*
+*Water, one of the three safety kinds in that row, reached only the A.T. until #1016 —
+§11 has what it is measured against now, and why a network POI carries no A.T. mile.*
 
 ## 1. The chosen trail and the others — ghosting, specified
 
@@ -332,36 +332,68 @@ has counted the two parks' safety-relevant subset at z12. If safety-only still o
 the screen, the dot rank (POI_VISIBILITY.md) absorbs it before anything new is invented.
 Measuring this is the registration follow-up's job, not this doc's guess.
 
-## 11. The safety-always rule has no water behind it, off the A.T.
+## 11. Water on every trail on screen, and what it is measured against
 
-**Not met by what shipped, and unlike §9's gap this one was never a deliberate hold —
-nobody had noticed it.** The decisions table promises safety POIs on *every* trail on
-screen, and §9 calls that "a promise about the screen". Closures keep it: `apply_area_closures`
-derives them onto network lines (#964). Water does not, and cannot, because all three
-stages of the water build take the A.T. as their subject:
+The decisions table promises safety POIs on *every* trail on screen, and §9 calls that
+"a promise about the screen". Closures kept it from the start (`apply_area_closures`,
+#964). **Water did not, for as long as this network has been drawn**, and the reason was
+that all three stages of the water build took the A.T. as their subject — the reach gate
+measured against ATC's four layers, crossings intersected ATC's centerline alone, and the
+POI clip was the 30-mile buffer of that same centerline. An OSM spring fifty feet off a
+Harriman trail was fetched, clipped into the corridor, and then refused for being far from
+the A.T. Four organizations shipped that way.
+[#1016](https://github.com/OurHike/OurHike/issues/1016) closed that. All three stages now
+read `nearby_trails.geojson`:
 
-- `build_osm_water_reach.py`'s reach gate measures a candidate against `LINE_SOURCES` +
-  `SITE_SOURCES` — ATC's centerline, ATC's side trails, ATC's shelters and campsites. An
-  OSM spring fifty feet off a Harriman trail **is** fetched (New York is in
-  `export_basemap.AT_STATES`) and **does** survive the corridor clip, and is then refused
-  with "no trail, side trail, shelter or campsite within 5 miles".
-- `fetch_trail_water.py` intersects streams with ATC's centerline alone, and downloads the
-  21 NHD subregions *the A.T.* crosses. A stream crossing a Long Path section is geometry
-  it never asks about.
-- `export_poi.py` clips to the 30-mile buffer of that same centerline, so whatever network
-  ground falls inside does so incidentally.
+- **The reach gate's union gained a fourth member** — this artifact, beside ATC's
+  centerline, side trails, shelters and campsites. The radius did not move; only what it
+  is measured from. A point records which organization's trail it passed on.
+- **Crossings are computed against a `routes` table** that is the centerline plus these
+  lines, so a stream crossing a Long Path section is a crossing.
+- **The corridor is widened** by `NETWORK_BUFFER_FEET` around these lines — 500 ft, not
+  thirty miles, because this table's decisions give the network no town-scale context:
+  amenity POIs stay chosen-trail-only, and the ring exists only so the clip can never be
+  what decides whether a safety POI reaches a hiker.
 
-So a hiker who has learned that this map shows springs is not told that it stops showing
-them when they step off the A.T. That is the tolerable direction to fail in — an absent
-pin rather than a false one, FEATURES.md's rule — but it is silent, which is the part that
-is not tolerable.
+**One artifact, so this needs no code per organization.** Registering a Catskills or NJ
+layer in `sources.json` brings its water with it on the next run, the shape #1011 gave the
+DEM index, and `pipeline/tests/test_water_covers_trail_sources.py` fails if a registered
+trail-line source ever falls out of that again.
 
-[#1016 — No trail outside the A.T. gets an OSM or NHD water source, though the map promises
-water on every trail on screen](https://github.com/OurHike/OurHike/issues/1016) holds the
-fix and its unmeasured costs; the guard that stops a sixth organization arriving the same
-way is `pipeline/tests/test_water_covers_trail_sources.py`. §10's density question should be
-read with this in mind: the safety-relevant subset it says nobody has counted is, for water,
-currently empty by construction rather than merely uncounted.
+**But only once that organization's data reaches hikers.** The artifact holds every
+*exported* source, held back or not, so a reviewer can look at the map before a licence
+answer arrives — and `reaches_hikers: false` is the state every organization is registered
+in. Both water builds filter on that same field, so a review-only steward's lines gate no
+published water pin: deriving one would be that organization's data reaching a hiker, drawn
+over ground where the app shows no trail, since `publish.py` holds the whole artifact back
+when any source in it is held back.
+
+### A network POI carries no A.T. mile, and that is deliberate
+
+`export_poi.attach_miles` projects onto the nearest point of the A.T. and always succeeds —
+there is no distance at which it declines — so widening the water build put real POIs
+miles off the A.T. in front of a function that would hand each one a perfectly formed
+mile. That number is not decorative: `client/src/lib/dayPlanner.ts` treats every POI
+carrying a `mile` as a candidate stop between two points of an A.T. day, and `cascade.ts`
+does the same. A hiker planning their water around a spring that is a four-mile bushwhack
+off their route is the confidently-wrong answer FEATURES.md ranks as worse than an honest
+unknown.
+
+So a POI whose only walk is off the A.T. is published **without** a mile. Every client
+consumer already skips an absent one. What it costs is a place in an A.T. itinerary, which
+is a place these pins should never have had; what a network POI still needs is its own way
+to say how far along *its* trail it sits, which is
+[#953](https://github.com/OurHike/OurHike/issues/953)'s question and not answered here.
+
+### What is not measured
+
+**No count in this section comes from a run over real layers.** How many water points the
+widened gate admits, how many crossings 316 miles of Harriman trails add, and what that
+does to §10's density question are all unmeasured — the change was written where no
+fetched layers exist. Every stage prints its own per-source counts, so the first real
+publish answers all three in its log rather than in this document. §10's subject is
+therefore live now: the safety-relevant subset it says nobody has counted is no longer
+empty by construction, and counting it is the follow-up it always asked for.
 
 ## Open questions (for the maintainer, gathered)
 

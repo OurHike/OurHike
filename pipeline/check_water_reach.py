@@ -306,9 +306,19 @@ def processed_paths() -> tuple[Path, list[Path], list[Path]]:
     against the raw layers the gate itself read. Not the exported trails -
     those are simplified, and there is no reason to accept a metre of slack
     when the originals are on the same disk."""
+    # The network artifact joins the line list when it exists (#1016), for the
+    # reason this module exists at all: a checker measuring against a narrower
+    # union than the gate would fail every point the gate correctly passed on a
+    # network trail, and "the release gate went red on water" is exactly the
+    # kind of noise that gets a check disabled. `_load_union` skips a path that
+    # is not there, so an A.T.-only publish checks what it always checked.
+    lines = [RAW_DIR / "centerline.geojson", RAW_DIR / "side_trails.geojson"]
+    network = PROCESSED_DIR / "nearby_trails.geojson"
+    if network.exists():
+        lines.append(network)
     return (
         PROCESSED_DIR / "poi" / "water.geojson",
-        [RAW_DIR / "centerline.geojson", RAW_DIR / "side_trails.geojson"],
+        lines,
         [RAW_DIR / "shelters.geojson", RAW_DIR / "campsites.geojson"],
     )
 

@@ -31,7 +31,7 @@ from fetch_trail_water import (
     state_site_candidates,
 )
 from tests.conftest import spatial_connection
-from tests.synthetic import CENTERLINE_COORDS
+from tests.synthetic import CENTERLINE_COORDS, write_centerline
 
 M_PER_DEG_LAT = 111_132.0
 
@@ -479,10 +479,14 @@ def test_state_crossings_reads_the_column_both_loaders_write():
         (start_lon, start_lat), (end_lon, end_lat) = CENTERLINE_COORDS
         mid_lon = (start_lon + end_lon) / 2
         mid_lat = (start_lat + end_lat) / 2
+        # `routes` rather than `centerline` since #1016, and with the three
+        # columns build_routes adds - an A.T.-only row is the false/NULL/NULL
+        # case, which is what this table was before that.
         con.execute(
             f"""
-            CREATE TABLE centerline AS
-            SELECT ST_GeomFromText('LINESTRING({start_lon} {start_lat}, {end_lon} {end_lat})') AS geom
+            CREATE TABLE routes AS
+            SELECT ST_GeomFromText('LINESTRING({start_lon} {start_lat}, {end_lon} {end_lat})') AS geom,
+                   false AS on_network, NULL::VARCHAR AS src, NULL::VARCHAR AS trail_name
             """
         )
         # Columns and order exactly as the two loaders emit them.
@@ -539,3 +543,174 @@ def test_site_candidates_read_the_same_column():
     assert candidate["name"] == "Imported Brook"
     assert candidate["flow"] == "intermittent"
     assert candidate["osm_from_nhd"] is True
+
+
+# --- crossings on the network's trails (#1016) ------------------------------
+#
+# Until this, `state_crossings` intersected streams with ATC's centerline
+# alone, so a stream crossing a Long Path section was geometry this file never
+# asked about. Four organizations' trails shipped with no crossing at all.
+
+
+def _network_file(tmp_path, features):
+    path = tmp_path / "nearby_trails.geojson"
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return path
+
+
+def _network_line(coords, source="oprhp_trails", name="A Park Trail"):
+    return {
+        "type": "Feature",
+        "properties": {"source": source, "name": name},
+        "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
+    }
+
+
+def _routes_fixture(tmp_path, monkeypatch, network_features=None, shipped=None):
+    """A `routes` table over the synthetic centerline, with network lines only
+    when a test asks for them.
+
+    CENTERLINE_PATH is redirected too: build_routes reads the real
+    data/raw/centerline.geojson otherwise, which is 690,040 vertices of real
+    trail on a machine that has fetched it and absent on one that has not.
+    """
+    centerline = tmp_path / "centerline.geojson"
+    write_centerline(centerline)
+    monkeypatch.setattr(trail_water, "CENTERLINE_PATH", centerline)
+    network = _network_file(tmp_path, network_features or [])
+    if network_features is None:
+        network = tmp_path / "nowhere.geojson"
+    monkeypatch.setattr(trail_water, "NETWORK_LINES_PATH", network)
+    if shipped is None:
+        shipped = {feature["properties"]["source"] for feature in network_features or []}
+    monkeypatch.setattr(trail_water, "shipped_network_keys", lambda: shipped)
+    return spatial_connection()
+
+
+def _stream_across(con, coords):
+    """One stream crossing the line between `coords`, in the column shape both
+    loaders emit."""
+    (start_lon, start_lat), (end_lon, end_lat) = coords
+    mid_lon, mid_lat = (start_lon + end_lon) / 2, (start_lat + end_lat) / 2
+    con.execute(
+        f"""
+        CREATE OR REPLACE TABLE streams AS
+        SELECT 'nhd' AS source, 'usgs-1' AS id, FALSE AS osm_from_nhd, 'A Brook' AS name,
+               'perennial' AS flow,
+               ST_GeomFromText('LINESTRING({mid_lon - 0.02} {mid_lat}, {mid_lon + 0.02} {mid_lat})') AS geom
+        """
+    )
+
+
+def test_a_stream_crossing_a_network_trail_is_a_crossing(tmp_path, monkeypatch):
+    """#1016 for the second hydrography: the crossing exists on the ground and
+    this file simply never looked at that line."""
+    network_coords = [(-74.0, 43.0), (-73.9, 43.1)]
+    con = _routes_fixture(tmp_path, monkeypatch, [_network_line(network_coords)])
+    try:
+        assert trail_water.build_routes(con) == 1
+        _stream_across(con, network_coords)
+        crossings = trail_water.state_crossings(con)
+    finally:
+        con.close()
+
+    assert len(crossings) == 1
+    assert crossings[0]["on_network"] is True
+    assert crossings[0]["network_source"] == "oprhp_trails"
+    assert crossings[0]["trail_name"] == "A Park Trail"
+
+
+def test_an_at_crossing_says_it_is_not_on_a_network_trail(tmp_path, monkeypatch):
+    """The column that keeps the A.T.'s own crossings carrying their mile.
+    False rather than absent, so export_poi.py reads an answer rather than a
+    silence."""
+    con = _routes_fixture(tmp_path, monkeypatch, [_network_line([(-74.0, 43.0), (-73.9, 43.1)])])
+    try:
+        trail_water.build_routes(con)
+        _stream_across(con, CENTERLINE_COORDS)
+        crossings = trail_water.state_crossings(con)
+    finally:
+        con.close()
+
+    assert len(crossings) == 1
+    assert crossings[0]["on_network"] is False
+    assert crossings[0]["network_source"] is None
+
+
+def test_no_network_artifact_leaves_the_at_alone_in_routes(tmp_path, monkeypatch):
+    con = _routes_fixture(tmp_path, monkeypatch)
+    try:
+        assert trail_water.build_routes(con) == 0
+        _stream_across(con, CENTERLINE_COORDS)
+        crossings = trail_water.state_crossings(con)
+    finally:
+        con.close()
+
+    assert [c["on_network"] for c in crossings] == [False]
+
+
+def test_an_empty_network_artifact_adds_no_routes(tmp_path, monkeypatch):
+    """The licence-gate state, and the one that makes ST_Read yield a table
+    with no `source` column to name."""
+    con = _routes_fixture(tmp_path, monkeypatch, [])
+    try:
+        assert trail_water.build_routes(con) == 0
+    finally:
+        con.close()
+
+
+def test_a_crossing_both_trails_make_is_still_on_the_at(tmp_path, monkeypatch):
+    """Through Harriman the Long Path runs beside the A.T., so the two cross
+    the same brook within CROSSING_DEDUPE_M and arrive at the dedupe as a pair.
+
+    Taking the kept record's answer would decide which trail the merged pin is
+    on by which HYDROGRAPHY saw the water first - the sort is USGS-first for id
+    stability, which has nothing to say about trails - and half the time that
+    would strip the A.T. mile off a stream the A.T. genuinely crosses, dropping
+    it out of a day plan's water.
+    """
+    on_network = _crossing("nhd", 41.0, -74.0, flow="perennial", stream_id="usgs-1")
+    on_network.update({"on_network": True, "network_source": "nynjtc_long_path", "trail_name": "Long Path"})
+    on_at = _crossing("osm", 41.0 + _north(20), -74.0, name="Stony Brook", stream_id="osm-1")
+    on_at.update({"on_network": False, "network_source": None, "trail_name": None})
+
+    (merged,) = dedupe_crossings([on_network, on_at])
+
+    assert merged["on_network"] is False
+    # Combine, never drop the loser: the pin still says whose trail also
+    # crosses here, even though the mile it carries is the A.T.'s.
+    assert merged["network_source"] == "nynjtc_long_path"
+
+
+def test_a_crossing_only_network_trails_make_stays_off_the_at():
+    """The other direction, and the one that must not soften: two organizations
+    crossing the same brook away from the A.T. is not an A.T. crossing."""
+    first = _crossing("nhd", 41.0, -74.0, stream_id="usgs-1")
+    first.update({"on_network": True, "network_source": "oprhp_trails", "trail_name": "A Park Trail"})
+    second = _crossing("osm", 41.0 + _north(20), -74.0, name="Stony Brook", stream_id="osm-1")
+    second.update({"on_network": True, "network_source": "nynjtc_long_path", "trail_name": "Long Path"})
+
+    (merged,) = dedupe_crossings([first, second])
+
+    assert merged["on_network"] is True
+
+
+def test_a_review_only_organizations_lines_get_no_crossings(tmp_path, monkeypatch):
+    """The same rule as the reach gate's, for the same reason: a crossing
+    derived from a held-back organization's line is that organization's data
+    reaching a hiker."""
+    network_coords = [(-74.0, 43.0), (-73.9, 43.1)]
+    con = _routes_fixture(
+        tmp_path,
+        monkeypatch,
+        [_network_line(network_coords, source="dec_catskills_trails")],
+        shipped=set(),
+    )
+    try:
+        assert trail_water.build_routes(con) == 0
+        _stream_across(con, network_coords)
+        crossings = trail_water.state_crossings(con)
+    finally:
+        con.close()
+
+    assert crossings == []

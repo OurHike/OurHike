@@ -111,6 +111,16 @@ RANGE_PROBE_BYTES = 64 * 1024
 # measuring it would report a geography nobody serves.
 REACH_KEYS = ("poi_water.geojson", "trails.geojson", "poi_shelter.geojson", "poi_campsite.geojson")
 
+# The fifth layer the gate measures against since #1016, and the reason it is
+# OPTIONAL rather than a fifth REACH_KEY: it is licence-gated in publish.py, so
+# a release that held every steward back has no such artifact, and requiring it
+# would turn this check from "measures the A.T.'s water" into "skipped" for
+# exactly the releases that still have A.T. water to measure. Present, it is
+# used; absent, this checks what it checked before, and a network water point
+# in a release whose network lines are unpublished would read as too far -
+# which cannot happen, because the same gate is what let it publish.
+OPTIONAL_REACH_KEY = "nearby_trails.geojson"
+
 
 def _report(check: str, key: str, state: str, detail: str) -> dict:
     return {"check": check, "key": key, "state": state, "detail": detail}
@@ -410,9 +420,9 @@ def check_hash(
     PMTiles read covers its structure - but calling that `ok` would let a green
     run claim more than it checked.
 
-    With `keep_dir`, a key in REACH_KEYS is also written there as it streams -
-    still not buffered - and kept only if its hash matched. See REACH_KEYS for
-    why this is where those bytes come from.
+    With `keep_dir`, a key in REACH_KEYS (or OPTIONAL_REACH_KEY) is also
+    written there as it streams - still not buffered - and kept only if its
+    hash matched. See REACH_KEYS for why this is where those bytes come from.
     """
     if expected is None:
         return _report("hash", key, FAILED, "latest.json names this artifact but publishes no sha256 for it")
@@ -422,7 +432,7 @@ def check_hash(
             "hash", key, SKIPPED, f"{size} bytes is over the {max_bytes}-byte budget; the phone hashes it per download"
         )
 
-    keeping = keep_dir is not None and key in REACH_KEYS
+    keeping = keep_dir is not None and (key in REACH_KEYS or key == OPTIONAL_REACH_KEY)
     partial = (keep_dir / f"{key}.part") if keeping else None
 
     digest = hashlib.sha256()
@@ -490,9 +500,12 @@ def check_reach(keep_dir: Path) -> dict:
         return _report("reach", "poi_water.geojson", SKIPPED, f"needs {', '.join(missing)}, which this run did not read")
 
     try:
+        lines = [keep_dir / "trails.geojson"]
+        if (keep_dir / OPTIONAL_REACH_KEY).exists():
+            lines.append(keep_dir / OPTIONAL_REACH_KEY)
         result = reach.check_reach(
             keep_dir / "poi_water.geojson",
-            [keep_dir / "trails.geojson"],
+            lines,
             [keep_dir / "poi_shelter.geojson", keep_dir / "poi_campsite.geojson"],
             tolerance_m=reach.SIMPLIFIED_TRAILS_TOLERANCE_M,
         )
@@ -611,7 +624,8 @@ def check_all(
 
     The temporary directory is owned here rather than passed in, so the water
     check is not something a caller can forget to ask for. It holds at most the
-    four files in REACH_KEYS and is gone before this returns.
+    four files in REACH_KEYS plus OPTIONAL_REACH_KEY, and is gone before this
+    returns.
     """
     base = base.rstrip("/")
     reports: list[dict] = []

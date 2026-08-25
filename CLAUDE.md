@@ -148,22 +148,27 @@ saying so and why. That line is a real answer and takes ten seconds.
 It looks like evidence and is not, which is the failure the standard at the top
 of this file exists to prevent.
 
-`cd client && node scripts/screenshot.mjs <name>` takes one and prints the
-markdown to paste. [`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md)
-is the rest: driving the app to the state worth photographing, why the image has
-to be committed before a pull request body can render it at all, and the four
+**The app's own screenshot is automatic and is not your job.** `pr-preview.yml`
+photographs every pull request's build and puts first run and the trail screen in
+the preview comment (#988). You write the `## Screenshot` section for what those
+two shots cannot reach: the screen your change is actually about, the numbers it
+moves, or the line saying there is nothing to show.
+
+`cd client && node scripts/screenshot.mjs <name>` takes one by hand when you need
+a different screen, and `--dist` shoots the built app the way CI does.
+[`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md)
+is the rest: driving the app to the state worth photographing, where an image can
+be hosted at all given that a pull request body cannot hold bytes, and the four
 things that must never appear in one — a signed-in account, anybody's reports or
 photos, a dispersed campsite at a readable zoom, a real location fix.
 
-**This is the one generated file that goes in a commit on purpose**, against the
-rule further down that a build script's output has a home and it is not the
-repository. The exception is narrow and it is deliberate: a screenshot is
-evidence about *this* repository's own code rather than somebody else's data, so
-none of the licence, safety or personal-data arguments apply — but the byte cost
-does. One phone screenshot is 79,290 bytes measured (2026-08-25) against a
-14.3 MiB repository, so it is **one image** — or a before-and-after pair where
-the difference is the point — in `.github/pr-screenshots/`, and an honest "no
-visual" line rather than a third that shows nothing new.
+**No screenshot is ever committed.** The automated one is written into the
+directory being uploaded to Cloudflare Pages, so it is served by the same
+deployment as the app it shows and is removed with it when the pull request
+closes. That is the trade and it is deliberate: the picture lasts exactly as long
+as review does, and in exchange nothing permanent enters a public tree. Committing
+one costs 79,290 measured bytes that cannot be retracted, which is why the first
+version of this rule was replaced.
 
 ## Claim the issue before you branch
 
@@ -295,8 +300,6 @@ trigger: **you are about to add a generated file, so pick its shelf first.**
 `pipeline/data/` for anything fetched or derived — gitignored, cached between CI runs,
 published to R2 by `publish.py`. `pipeline/reference/` **only** for a join that encodes
 judgement somebody reviews row by row, and it has a line ceiling for exactly that reason.
-`.github/pr-screenshots/` for the one image a pull request carries as evidence, which is
-the single deliberate exception and is bounded above — see "Show what you changed".
 
 This is written down because an agent did the wrong one and had a good story for it:
 `reference/` is not gitignored, holds three small checked-in files, and reads as "where

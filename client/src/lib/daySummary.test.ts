@@ -116,6 +116,25 @@ describe('longestDryRun', () => {
     expect(longestDryRun([poi('w1', 'water', undefined)], 470.8, 486.2)).toBeNull()
   })
 
+  it('counts a spring sitting exactly on a day boundary (#986)', () => {
+    // A day from one spring to the next: water at both ends, and nothing
+    // between. A strict comparison excluded both and the card then said "no
+    // water waypoint on any of today" about a day bounded by water.
+    const run = longestDryRun(
+      [poi('w1', 'water', 470.8), poi('w2', 'water', 486.2)],
+      470.8,
+      486.2,
+    )
+    expect(run?.waterCount).toBe(2)
+    expect(run?.miles).toBeCloseTo(15.4, 5)
+  })
+
+  it('still reports zero water when the day genuinely has none', () => {
+    // The boundary fix must not turn "no water" into a false positive.
+    const run = longestDryRun([poi('w1', 'water', 500)], 470.8, 486.2)
+    expect(run?.waterCount).toBe(0)
+  })
+
   it('refuses a zero-length or backwards-collapsed day', () => {
     expect(longestDryRun(pois, 470.8, 470.8)).toBeNull()
   })

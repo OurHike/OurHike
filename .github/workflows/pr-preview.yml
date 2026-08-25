@@ -191,6 +191,41 @@ jobs:
           # is the behaviour worth previewing anyway.
         run: npm run build
 
+      # The picture that goes in the comment below (#988).
+      #
+      # Taken from the build this job is about to upload - served locally by
+      # `vite preview`, so it is the same bytes, not a dev-server frame - and
+      # written INTO that build. The image is therefore delivered by the same
+      # Cloudflare deployment as the app it shows, and is removed with it when
+      # the pull request closes.
+      #
+      # THAT IS THE TRADE, and it is deliberate rather than overlooked: the
+      # mechanism this replaces committed the PNG (#984), which survived
+      # forever because a commit does, and cost 79,290 measured bytes of
+      # permanent, unretractable image per pull request in a public tree. Here
+      # nothing reaches a commit and the picture lasts exactly as long as the
+      # pull request is open - which is when review happens, and is not when
+      # somebody reads an old pull request to see what a screen used to look
+      # like. The merged diff is the record; this is for the reviewer.
+      - name: Install a browser to photograph it with
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      # continue-on-error because a preview is worth more than a picture of
+      # one. If the browser will not start, the deploy and the link still
+      # happen and the comment simply carries no image - rather than a pull
+      # request losing its testable build over a screenshot.
+      - name: Photograph the build
+        id: shots
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        continue-on-error: true
+        working-directory: client
+        run: |
+          node scripts/screenshot.mjs first-run --entry --dist
+          node scripts/screenshot.mjs trail-screen --dist
+          echo "taken=true" >> "$GITHUB_OUTPUT"
+
       - name: Publish the preview
         id: deploy
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
@@ -250,6 +285,47 @@ jobs:
             echo "PREVIEW_NOTE_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # The image markup, built here rather than inline in the comment,
+      # because it has to disappear cleanly when there is no picture. A
+      # `${{ x && y || z }}` ternary around a multi-line markdown table is
+      # unreadable, and an empty one still leaves the heading behind.
+      #
+      # The trailing slash matters: the two candidate bases disagree about it
+      # (a wrangler alias URL may carry one, the worked-out URL does not), and
+      # `https://host//__screenshot/x.png` is a 404 on Pages.
+      - name: Name the images
+        id: images
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        env:
+          BASE: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+          TAKEN: ${{ steps.shots.outputs.taken }}
+        run: |
+          BASE="${BASE%/}"
+          if [ "$TAKEN" != "true" ]; then
+            echo "::warning::The preview screenshots could not be taken, so this pull request's comment carries no image. The preview itself is unaffected."
+            {
+              echo "block<<PREVIEW_IMAGES_EOF"
+              echo "_No screenshot this run - see the job log. The link above still works._"
+              echo "PREVIEW_IMAGES_EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 320 rather than the 390 a 2x capture is designed to display at
+          # (client/scripts/screenshot.mjs, CAPTURE_SCALE): two of those plus
+          # table padding overflow the ~830 px a comment gets, and seeing both
+          # states side by side is worth the few pixels.
+          {
+            echo "block<<PREVIEW_IMAGES_EOF"
+            echo "| First run | The trail screen |"
+            echo "| --- | --- |"
+            printf '| <img src="%s/__screenshot/first-run.png" width="320" alt="The first-run entry card"> | <img src="%s/__screenshot/trail-screen.png" width="320" alt="The trail screen, past first run"> |\n' "$BASE" "$BASE"
+            echo ""
+            echo "Photographed from this build at 390x844, and served by this preview - so they"
+            echo "go when it does. If the change is somewhere these two shots do not reach, say"
+            echo "what it looks like in the pull request body."
+            echo "PREVIEW_IMAGES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say where the preview is
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
@@ -264,6 +340,8 @@ jobs:
             same as you push - it always serves the latest build of this pull request.
 
             ${{ steps.wait.outputs.note }}
+
+            ${{ steps.images.outputs.block }}
 
             Signing in works. Sending a report does not: a preview is built with no
             backend on purpose, so reports queue in the outbox rather than landing in

@@ -27,28 +27,28 @@ Item 1 is a feature. Items 2–7 are a product, and the reason this is a spike.
 
 ## What already exists, so this does not re-litigate it
 
-Worth reading this list before the design below — a surprising amount of the hard part is built, and the parts that are not are mostly _joins_ between things that are.
+Worth reading this list before the design below — a surprising amount of the hard part is built, and the parts that are not are mostly *joins* between things that are.
 
-| Already built                    | Where                                | What it gives planning                                                                                                                                                                                                                                                                                                     |
-| -------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hike → Segment tree              | [SEGMENTS.md](SEGMENTS.md)           | The data model. Days, sections and the whole trail are **one recursive structure**, already designed. This spike does not invent a second one.                                                                                                                                                                             |
-| Snap a tap to the trail          | `client/src/lib/trailPosition.ts`    | `locateOnTrail()` turns a tapped coordinate into a mile from Springer, or refuses if it is more than 3 miles off the corridor. This is the route builder's whole input mechanism.                                                                                                                                          |
-| Confirmed ascent over any window | `client/src/lib/elevationGain.ts`    | Gain between two mileposts, with the 3 m dead band that keeps DEM noise out of the number. Loss is the same function on a negated profile and does not exist yet.                                                                                                                                                          |
-| The elevation profile itself     | `pipeline/export_elevation.py`       | ~141,000 samples at 25 m, shipped whole (0.87 MB gzipped) so it works with no signal.                                                                                                                                                                                                                                      |
-| Naismith time                    | `client/src/lib/naismith.ts`         | Distance + ascent → a duration. Deliberately refuses descent.                                                                                                                                                                                                                                                              |
-| The stops a day can end at       | `pipeline/export_poi.py`             | **280 shelters and 232 campsites**, plus ATC's 59 Community towns. Opentrail's 72 `r` points were counted here as resupply until [#806](https://github.com/OurHike/OurHike/issues/806) found them to be roads and gaps; its 103 towns are fetched and unpublished ([#803](https://github.com/OurHike/OurHike/issues/803)). |
-| Water near a shelter             | [TRIP_PLANNING.md](TRIP_PLANNING.md) | Designed as a precomputed shelter→nearest-water distance. Not built, and the auto-planner is the feature that makes it pay.                                                                                                                                                                                                |
+| Already built | Where | What it gives planning |
+|---|---|---|
+| Hike → Segment tree | [SEGMENTS.md](SEGMENTS.md) | The data model. Days, sections and the whole trail are **one recursive structure**, already designed. This spike does not invent a second one. |
+| Snap a tap to the trail | `client/src/lib/trailPosition.ts` | `locateOnTrail()` turns a tapped coordinate into a mile from Springer, or refuses if it is more than 3 miles off the corridor. This is the route builder's whole input mechanism. |
+| Confirmed ascent over any window | `client/src/lib/elevationGain.ts` | Gain between two mileposts, with the 3 m dead band that keeps DEM noise out of the number. Loss is the same function on a negated profile and does not exist yet. |
+| The elevation profile itself | `pipeline/export_elevation.py` | ~141,000 samples at 25 m, shipped whole (0.87 MB gzipped) so it works with no signal. |
+| Naismith time | `client/src/lib/naismith.ts` | Distance + ascent → a duration. Deliberately refuses descent. |
+| The stops a day can end at | `pipeline/export_poi.py` | **280 shelters and 232 campsites**, plus ATC's 59 Community towns. Opentrail's 72 `r` points were counted here as resupply until [#806](https://github.com/OurHike/OurHike/issues/806) found them to be roads and gaps; its 103 towns are fetched and unpublished ([#803](https://github.com/OurHike/OurHike/issues/803)). |
+| Water near a shelter | [TRIP_PLANNING.md](TRIP_PLANNING.md) | Designed as a precomputed shelter→nearest-water distance. Not built, and the auto-planner is the feature that makes it pay. |
 
 ## The questions, and where each one stands
 
-| #   | Question                                                                                        | Status                                                                                                       |
-| --- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Q1  | Can real shelter spacing carry an auto-generated plan at a target day length?                   | **Measurable, not yet measured** — `spike_day_planner.py` answers it, and needs the fetched ATC data to run. |
-| Q2  | Does the existing Hike → Segment tree hold days, sections and the trail without a second model? | **Answered: yes.** See "The model" below.                                                                    |
-| Q3  | What happens to the rest of the plan when today changes?                                        | **Answered as a design**, and it is the piece with the most product risk. See "The cascade".                 |
-| Q4  | Is the timeline the primary surface, or the map?                                                | **Answered: both, one plan.** See "The timeline".                                                            |
-| Q5  | How much of food planning can be computed honestly?                                             | **Answered: days, never calories.** See "Food".                                                              |
-| Q6  | Is any of this big enough to need a backend?                                                    | **Answered: no.** ~24 KB per thru-hike plan. See "Where a plan lives".                                       |
+| # | Question | Status |
+|---|---|---|
+| Q1 | Can real shelter spacing carry an auto-generated plan at a target day length? | **Measurable, not yet measured** — `spike_day_planner.py` answers it, and needs the fetched ATC data to run. |
+| Q2 | Does the existing Hike → Segment tree hold days, sections and the trail without a second model? | **Answered: yes.** See "The model" below. |
+| Q3 | What happens to the rest of the plan when today changes? | **Answered as a design**, and it is the piece with the most product risk. See "The cascade". |
+| Q4 | Is the timeline the primary surface, or the map? | **Answered: both, one plan.** See "The timeline". |
+| Q5 | How much of food planning can be computed honestly? | **Answered: days, never calories.** See "Food". |
+| Q6 | Is any of this big enough to need a backend? | **Answered: no.** ~24 KB per thru-hike plan. See "Where a plan lives". |
 
 ---
 
@@ -56,7 +56,7 @@ Worth reading this list before the design below — a surprising amount of the h
 
 This is the first thing to fix and the easiest to miss, because it is invisible at the scale everything currently uses it at.
 
-`client/src/lib/trailPosition.ts` measures a mile by walking the centerline's vertices. `pipeline/export_elevation.py` measures a mile by walking the _merged_ centerline after `ST_LineMerge`. Its own header says so plainly: _"a mile here and a `distance_mi` in `elevation_profile.json` are close but not identical. They should not be compared against each other as though they were the same measurement."_
+`client/src/lib/trailPosition.ts` measures a mile by walking the centerline's vertices. `pipeline/export_elevation.py` measures a mile by walking the *merged* centerline after `ST_LineMerge`. Its own header says so plainly: *"a mile here and a `distance_mi` in `elevation_profile.json` are close but not identical. They should not be compared against each other as though they were the same measurement."*
 
 They are compared anyway — `App.tsx` windows the elevation ribbon at the GPS fix's mile. Over a 10-mile window a small offset moves the ribbon slightly and nobody can tell. **A plan sums that offset 150 times**, and prints a per-day gain figure against a day boundary that is not quite where the profile thinks it is.
 
@@ -70,7 +70,7 @@ Which falls straight out of Finding 1, and is worth stating separately because i
 
 - Every candidate day boundary arrives with its position along the trail already known, so the auto-planner is a pass over a sorted array rather than 512 linear-referencing operations on a phone.
 - Shelter miles and profile miles are the same measurement by construction, so a day's distance and that day's gain describe the same stretch of ground.
-- The client's `locateOnTrail()` keeps its job — placing a _tapped point_, which has no precomputed answer — and stops being the source of truth for things that do.
+- The client's `locateOnTrail()` keeps its job — placing a *tapped point*, which has no precomputed answer — and stops being the source of truth for things that do.
 
 Cost: one more column in an artifact that already exists, and a `mile` field in `pipeline/lib/poi_schema.py`. Old data releases without it degrade the same way `spurs.json` and `elevation_profile.json` already do — the map still draws, the planner says it needs a newer download.
 
@@ -86,13 +86,13 @@ best[j] = min over reachable i < j of  best[i] + cost(day from i to j)
 
 The size, **measured 2026-08-18 by `spike_day_planner.py` against the live ATC layers** (fetched the same day: 280 shelters + 232 campsites; 273 and 227 of them within 0.5 mi of the centerline — this table was arithmetic over assumed-even spacing until #754 ran it):
 
-|                                                         | measured                                           |
-| ------------------------------------------------------- | -------------------------------------------------- |
-| candidate stops, whole trail                            | 512 (500 on-corridor)                              |
-| average spacing, shelters + campsites                   | 4.3 mi mean · 3.5 median · **10.8 p90 · 21.5 max** |
-| average spacing, shelters only                          | 7.9 mi mean · 7.2 median · 13.5 p90 · **34.4 max** |
-| stops reachable within a 25-mile cap, from any one stop | 6.4 mean                                           |
-| edges evaluated for a **whole thru-hike**               | **3,299**                                          |
+| | measured |
+|---|---|
+| candidate stops, whole trail | 512 (500 on-corridor) |
+| average spacing, shelters + campsites | 4.3 mi mean · 3.5 median · **10.8 p90 · 21.5 max** |
+| average spacing, shelters only | 7.9 mi mean · 7.2 median · 13.5 p90 · **34.4 max** |
+| stops reachable within a 25-mile cap, from any one stop | 6.4 mean |
+| edges evaluated for a **whole thru-hike** | **3,299** |
 
 Three findings the arithmetic could not have produced:
 
@@ -118,7 +118,7 @@ The target should therefore be expressible either way, and default to time:
 
 Two honest limits, both of which have to be visible in the UI rather than buried here:
 
-- **Naismith is moving time.** It knows nothing about lunch, water stops, a view, or forty minutes at a shelter. A day planned to a 8-hour Naismith target is a longer day than eight hours. Either the planner asks for _walking hours_ and says so, or it applies a break allowance the hiker sets — and pretending an arrival clock falls out of this is exactly what WIREFRAMES.md's load-bearing values already forbid.
+- **Naismith is moving time.** It knows nothing about lunch, water stops, a view, or forty minutes at a shelter. A day planned to a 8-hour Naismith target is a longer day than eight hours. Either the planner asks for *walking hours* and says so, or it applies a break allowance the hiker sets — and pretending an arrival clock falls out of this is exactly what WIREFRAMES.md's load-bearing values already forbid.
 - **It ignores descent, and tread roughness has no data source at all.** TRIP_PLANNING.md establishes both. Pennsylvania's rocks do not appear in any field the pipeline ingests, and a planner that implies otherwise is confidently wrong in advance, away from the ground where a hiker could check it.
 
 [PERSONALIZED_PACE.md](PERSONALIZED_PACE.md) is the eventual answer to the first limit and half of the second. It is Post-MVP and this feature must work without it — Naismith as the cold start, the hiker's own adjustment as the escape hatch.
@@ -147,15 +147,15 @@ StopRef                               (SEGMENTS.md's "start/end reference", name
 
 Three decisions inside that, each of which could have gone another way:
 
-**A zero day is a Segment whose start and end are the same stop.** It needs no `kind` field and no special case: it is a day with a date, a place, and no distance. That falls out of SEGMENTS.md's _"there's no fixed unit"_ rather than fighting it — and it is the reason a zero has to be _in_ the tree rather than a gap between days. A gap has no date and eats no food; a zero does both.
+**A zero day is a Segment whose start and end are the same stop.** It needs no `kind` field and no special case: it is a day with a date, a place, and no distance. That falls out of SEGMENTS.md's *"there's no fixed unit"* rather than fighting it — and it is the reason a zero has to be *in* the tree rather than a gap between days. A gap has no date and eats no food; a zero does both.
 
 **Resupply is a property of a stop, not of a day.** A resupply happens at a place — a town, a road crossing, a post office — and can land in the middle of a walking day as easily as at the end of one. Attaching it to the day would make "how much food do I need" a question about day boundaries, which is not what it is a question about.
 
-**A section is derived, not drawn.** For a thru-hiker a section _is_ the stretch between two resupplies — that is what the word means on trail. So sections generate themselves from the resupply flags, and the hiker can override the grouping but never has to build it. This answers SEGMENTS.md's open question about whether picking "thru-hike" should auto-generate ~180 empty daily Segments: **no** — generate days from the route and the target, and group them by where supplies come from.
+**A section is derived, not drawn.** For a thru-hiker a section *is* the stretch between two resupplies — that is what the word means on trail. So sections generate themselves from the resupply flags, and the hiker can override the grouping but never has to build it. This answers SEGMENTS.md's open question about whether picking "thru-hike" should auto-generate ~180 empty daily Segments: **no** — generate days from the route and the target, and group them by where supplies come from.
 
 ## Food
 
-The single most useful number in a section is _how many days of food to carry out of this town_, and it is also the easiest place to be dishonest.
+The single most useful number in a section is *how many days of food to carry out of this town*, and it is also the easiest place to be dishonest.
 
 **The app computes days. It never computes calories, weight or a menu.** Between two resupply stops it knows exactly how many days there are, including zeros, and that is a fact. What a hiker eats in a day is not a fact the app has any access to — appetite at week six is not appetite at week one, and a number invented here would be acted on in a supermarket, in advance, where it cannot be checked.
 
@@ -165,7 +165,7 @@ One genuine open question: **a zero day in town usually means eating in town.** 
 
 ## The timeline
 
-Sequence and span are two different things and a plan has both. Days are a sequence; sections, resupply stretches and food carries are spans _over_ that sequence. A list can show one; a timeline is the layout where a span can be drawn beside the rows it covers, which is the whole reason to build one rather than a table.
+Sequence and span are two different things and a plan has both. Days are a sequence; sections, resupply stretches and food carries are spans *over* that sequence. A list can show one; a timeline is the layout where a span can be drawn beside the rows it covers, which is the whole reason to build one rather than a table.
 
 ```
   ┌ SECTION 3 · Damascus → Pearisburg · 166 mi · 11 days ─────────────┐
@@ -190,11 +190,11 @@ The hardest part, and the part that decides whether anyone uses this twice. Plan
 
 **Three named responses, and the app never picks one silently.**
 
-|            | What it does                                                                                | When it is right                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Shift**  | Every later day moves by the same date delta.                                               | The change was _temporal_ — an unplanned zero, a late start. Mileage was fine; the calendar moved.                   |
-| **Absorb** | The finish date holds; the generator re-runs over the remaining route with the same target. | The change was _spatial_ — walked further or shorter than planned. The plan re-balances into the days that are left. |
-| **Leave**  | Nothing after today changes.                                                                | The rest of the plan is already fixed by things outside the app.                                                     |
+| | What it does | When it is right |
+|---|---|---|
+| **Shift** | Every later day moves by the same date delta. | The change was *temporal* — an unplanned zero, a late start. Mileage was fine; the calendar moved. |
+| **Absorb** | The finish date holds; the generator re-runs over the remaining route with the same target. | The change was *spatial* — walked further or shorter than planned. The plan re-balances into the days that are left. |
+| **Leave** | Nothing after today changes. | The rest of the plan is already fixed by things outside the app. |
 
 This is TRIP_PLANNING.md's bulk date shift, generalized — that document names the shift operation as the single most valuable one and leaves restructuring for later. Absorb is the restructuring, and it is only tractable because the generator exists: re-balancing is just re-running the plan over a shorter route with the same target.
 
@@ -221,20 +221,20 @@ The manual half, which the generator does not replace: a hiker drops points and 
 > maintainer redirected the builder to a destination-led flow — "like a Google
 > Maps route that lets you add multiple destinations": look a stop up by name
 > first, with the map and a distance from the previous stop as the other two
-> doors, and _where from + how far / how long_ as the opening question
+> doors, and *where from + how far / how long* as the opening question
 > (PR #774, from mockups chosen there). What survives of the bullets below:
 > `locateOnTrail()`'s snap and the 3-mile refusal; the least-added-distance
 > insertion, placing added destinations as well as taps; and every figure and
-> limitation, unchanged. An added destination is also now a _forced day
-> boundary_ the generator plans through (`planDaysVia`), pinned in the
+> limitation, unchanged. An added destination is also now a *forced day
+> boundary* the generator plans through (`planDaysVia`), pinned in the
 > laid-out plan — on a linear trail, forcing the boundary is the whole
 > meaning of naming a stop.
 >
 > **Amended 2026-08-25 (#973): tap-to-drop is back, as the second door.** The
 > earlier amendment concluded "tap-to-drop is no longer the input mechanism",
 > and that went one step further than the redirect required. The maintainer,
-> reviewing wireframe 2a frame 1 against what shipped: _"The route builder
-> should use this wireframe, but keep the google maps types design."_ So both,
+> reviewing wireframe 2a frame 1 against what shipped: *"The route builder
+> should use this wireframe, but keep the google maps types design."* So both,
 > and they were never in tension — the destination list is the anatomy, the
 > tap is an input into it.
 >
@@ -256,26 +256,36 @@ The manual half, which the generator does not replace: a hiker drops points and 
 
 ## The day hike on a network — what a tap means, and what a drawn line snaps to
 
-Everything above assumes one trail's mile axis. `mi 470.8 → mi 486.2 → mi 503.3` is the right model for Damascus → Atkins and the only model the A.T. ever needed. A Harriman day hike is four trails and three junctions, and "mile 2.1" is not a thing a hiker can name there — so on that ground the builder above does not degrade, it has **nothing to ask for**. That gap is [#928](https://github.com/OurHike/OurHike/issues/928) — _A day hike built by touching lines, because a park has no single mile axis to drop stops on_.
+Everything above assumes one trail's mile axis. `mi 470.8 → mi 486.2 → mi 503.3` is the right model for Damascus → Atkins and the only model the A.T. ever needed. A Harriman day hike is four trails and three junctions, and "mile 2.1" is not a thing a hiker can name there — so on that ground the builder above does not degrade, it has **nothing to ask for**. That gap is [#928](https://github.com/OurHike/OurHike/issues/928) — *A day hike built by touching lines, because a park has no single mile axis to drop stops on*.
 
-Two decisions had to land before it could be built, and both were taken by the maintainer on **2026-08-23** — on [#934](https://github.com/OurHike/OurHike/issues/934) — _Decide what a tap between two junctions means — split the segment, or snap to the nearer junction — and write it down_ — and [#935](https://github.com/OurHike/OurHike/issues/935) — _Decide the snap tolerance for a drawn route, and what happens to the parts with no trail under them_. Each was filed as a decision in its own right, on the pattern of **#552 — Decide the unit of offline coverage, and write it down**. This section records them and does not relitigate them.
+Two decisions had to land before it could be built, and both were taken by the maintainer on **2026-08-23** — on [#934](https://github.com/OurHike/OurHike/issues/934) — *Decide what a tap between two junctions means — split the segment, or snap to the nearer junction — and write it down* — and [#935](https://github.com/OurHike/OurHike/issues/935) — *Decide the snap tolerance for a drawn route, and what happens to the parts with no trail under them*. Each was filed as a decision in its own right, on the pattern of **#552 — Decide the unit of offline coverage, and write it down**. This section records them and does not relitigate them.
 
 **A tap splits the segment (#934).** Verbatim:
 
 > I think this should split the segment.
 >
-> If a user drops too points, the route should be exactly between those points. We shouldn't do any guessing about what POI the user meant. I would imaging most users would start/stop at POI's but not always
+> If a user drops too points, the route should be exactly between those points.  We shouldn't do any guessing about what POI the user meant.  I would imaging most users would start/stop at POI's but not always
 
 So the route runs **exactly between the two tapped points**, and the junction graph gains a temporary node where the finger went. The rejected alternative — snap to the nearer junction — is rejected on ground that is measured rather than argued: Harriman–Bear Mountain has **263 junctions across 316 trail-miles, one every 1.2 miles** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured by **#771 — Spike: Harriman's crossing trails next to the AT — find what a trail network breaks that a linear trail never could**), so snapping would have moved a start by roughly 0.6 mi on average, which is a material piece of a six-mile day and an arbitrary one.
 
 Note what the rule is stated about: **POIs, not pixels.** The app may not decide a hiker meant the trailhead because they tapped 400 m past it. That is the refusal `locateOnTrail()` already makes on the A.T. when a tap is off-corridor — it declines rather than inventing a plausible mile — carried onto a network.
 
-**Left open, and not ruled on:** frame `1l`'s turn list is junction-relative throughout — _"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"_ — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. But it is also not what was decided, and it wants settling before the turn list is built rather than during.
+**An end is wherever the hiker put it; a lot is an annotation, never a precondition (2026-08-25).** The same decision read forward into storage and into the card, taken by the maintainer on [#981](https://github.com/OurHike/OurHike/issues/981) — *A day hike starts at a parking lot, and nothing in the pipeline knows where the lots are*:
+
+> A dayhike should be able to start anywhere - not just the parking lot. Can you make sure the issues and features are built to allow the user to choose their start/end points
+
+The merged builder already obeys it and this records why it must keep doing so. `tapAt` accepts any point the junction graph can claim, and `lib/dayHikes.ts`'s `DayHikeEnd` stores that end as the **coordinate** it landed on, with `poiId` an optional annotation — null on every hike the builder has made. No code path asks for a trailhead. #981's body asserted the opposite — that ends are "stored as POI references rather than coordinates" — and that was corrected rather than implemented: a POI reference as an end's identity would turn a start the app cannot *name* into a start the hiker cannot *take*, which is the failure this whole section exists to prevent.
+
+So frame `1l`'s parking block is an annotation on a start that happens to be near a lot, and its absence is not a degraded card: a hike starting halfway up a trail nobody parks at is a first-class hike with no lot to name. #981 is worth building for the hiker who *did* drive — it just does not get to be the way a day hike begins.
+
+**The one real limit, stated rather than implied:** an end must sit on a trail one of the three organizations maintains — the #935 rule below, not a parking rule. A tap on open ground, a road shoulder or a herd path is refused in words, and widening *that* is [#931](https://github.com/OurHike/OurHike/issues/931)'s to do.
+
+**Left open, and not ruled on:** frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. But it is also not what was decided, and it wants settling before the turn list is built rather than during.
 
 **A drawn line snaps only to a marked path, and a day hike may be more than one segment (#935).** Verbatim:
 
-> The snap too should always be to a marked path. There should be no guessing as to whether something is walkable or not.
-> The whole point of OurHike is to give trustworthy maps. Snapping to fuzzy areas would go against that.
+> The snap too should always be to a marked path.  There should be no guessing as to whether something is walkable or not.
+> The whole point of OurHike is to give trustworthy maps.  Snapping to fuzzy areas would go against that.
 >
 > Users should be able to have multiple segments to a day hike (>1 start/stop) taht could handle some scenarios where they want to bushwack.
 
@@ -283,11 +293,11 @@ Two things, and the second changes the model.
 
 **The snap target is a maintained trail line and nothing else** — no walkability inference over roads, woods roads, herd paths or open ground. This is [NEARBY_TRAILS.md](NEARBY_TRAILS.md) §3's omit-rather-than-guess rule, the one keeping `Proposed` and `Unknown` segments out of the published artifact entirely, applied to geometry instead of status.
 
-**A day hike is an ordered list of routed segments, not one route.** This dissolves the threshold question #935 was filed asking — _when does dropping a piece stop being a footnote and become a refusal_ — because there is never a bridge to size. A stretch with no trail under it **ends a segment**; the next segment begins where trail resumes; the gap between them is drawn as a gap and belongs to the hiker, who may well be planning to bushwhack it. The app never routes anyone across ground it has no evidence for, and never refuses a hike it can honestly describe most of.
+**A day hike is an ordered list of routed segments, not one route.** This dissolves the threshold question #935 was filed asking — *when does dropping a piece stop being a footnote and become a refusal* — because there is never a bridge to size. A stretch with no trail under it **ends a segment**; the next segment begins where trail resumes; the gap between them is drawn as a gap and belongs to the hiker, who may well be planning to bushwhack it. The app never routes anyone across ground it has no evidence for, and never refuses a hike it can honestly describe most of.
 
-It also gives [#931](https://github.com/OurHike/OurHike/issues/931) — _Roads and connectors: a loop that only closes along a shoulder, drawn honestly or not at all_ — a shape it did not have. A loop that only closes along a road shoulder is expressible as two segments with a gap where the road is, without OurHike drawing a route onto a road no steward maintains. That does not build #931 or close it — a hiker still cannot **see** that the road is there, which is the whole point of its `LATER` row — but it does mean the builder is not blocked on it.
+It also gives [#931](https://github.com/OurHike/OurHike/issues/931) — *Roads and connectors: a loop that only closes along a shoulder, drawn honestly or not at all* — a shape it did not have. A loop that only closes along a road shoulder is expressible as two segments with a gap where the road is, without OurHike drawing a route onto a road no steward maintains. That does not build #931 or close it — a hiker still cannot **see** that the road is there, which is the whole point of its `LATER` row — but it does mean the builder is not blocked on it.
 
-**Still undecided: the tolerance itself — and the decision above changes what kind of number it is.** Nobody has measured one, and "always snap to a marked path" removes the walkable/unwalkable ambiguity without touching the one that bites in a park: _which marked path_. Along the A.T. through Harriman–Bear Mountain, **48% of sampled points sit within 150 m of a different marked trail** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured from the #771 spike). A tolerance generous enough to catch a line drawn with a thumb on a moving bus is therefore, across roughly half that corridor, generous enough to reach two trails at once. So this is a **disambiguation** problem rather than a reach problem, and a single number will not settle it. Whatever lands carries `@unvalidated` and what would settle it until somebody has drawn on it outdoors; #935 stays open for that half.
+**Still undecided: the tolerance itself — and the decision above changes what kind of number it is.** Nobody has measured one, and "always snap to a marked path" removes the walkable/unwalkable ambiguity without touching the one that bites in a park: *which marked path*. Along the A.T. through Harriman–Bear Mountain, **48% of sampled points sit within 150 m of a different marked trail** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured from the #771 spike). A tolerance generous enough to catch a line drawn with a thumb on a moving bus is therefore, across roughly half that corridor, generous enough to reach two trails at once. So this is a **disambiguation** problem rather than a reach problem, and a single number will not settle it. Whatever lands carries `@unvalidated` and what would settle it until somebody has drawn on it outdoors; #935 stays open for that half.
 
 ## Two rooms, one tab — the mode is the chrome (#1008, 2026-08-25)
 
@@ -297,11 +307,11 @@ The fork above ("What are you planning?", #977) asked its question once and then
 - **A saved day hike has two ways back to it.** A list screen (the trips-side `TripList` counterpart) splits still-to-walk from walked off the store's own `recorded` flag, with the cached figures a list is allowed to print; and the map offers a saved hike when the GPS fix is near its start — a straight-line radius that ships `@unvalidated` in `lib/dayHikeShelf.ts`, because nobody has measured how far from a trailhead a parked hiker stands.
 - **"Leave this with someone"** is the day flow's one safety surface that is not a map: a plain-text card of the plan, with the route and the trail miles from the app's own figures and everything else — the start, the car, above all "if I'm not back by" — typed by the hiker and never computed. The app has no arrival clock and does not pretend to one on precisely the card somebody will decide to worry from.
 
-- **≈ walking time and ± elevation arrived from the other side.** This branch built a corridor-profile pricing module for the day-hike surfaces; **#1011 — Give the network's trails their climb** landed on `main` first and did it better, so the module was deleted rather than kept beside it. The graph carries per-edge climb now, `routeClimb` scales it by the metres actually walked, and both the builder bar and the finished card price Naismith from `route.climb` — on _every_ trail in the network, not just the A.T. centerline the corridor profile covered. The two implementations agreed on the rule that matters and that rule is the one that survived: **null is all or nothing**. A walk with one unmeasured edge prints no time at all, because pricing that edge at zero ascent is a flat-ground claim about real ground and pricing only the measured edges understates by the same amount with a number attached. Both fail _short_, which is the direction that gets somebody caught by the dark.
+- **≈ walking time and ± elevation arrived from the other side.** This branch built a corridor-profile pricing module for the day-hike surfaces; **#1011 — Give the network's trails their climb** landed on `main` first and did it better, so the module was deleted rather than kept beside it. The graph carries per-edge climb now, `routeClimb` scales it by the metres actually walked, and both the builder bar and the finished card price Naismith from `route.climb` — on *every* trail in the network, not just the A.T. centerline the corridor profile covered. The two implementations agreed on the rule that matters and that rule is the one that survived: **null is all or nothing**. A walk with one unmeasured edge prints no time at all, because pricing that edge at zero ascent is a flat-ground claim about real ground and pricing only the measured edges understates by the same amount with a number attached. Both fail *short*, which is the direction that gets somebody caught by the dark.
 
 **What the storyboard drew that deliberately did not ship, and what each waits on:** starter hikes ("laid out by the clubs that maintain them" — no club-laid route dataset exists anywhere in this repository; the storyboard itself calls the work editorial, related to #981's parking lots); ≈ time on the day-hike **list** and the trailhead door (both read the stored cache, and pricing needs the routing graph a list must not load); the turn list (#934's first-leg naming question, above); recording a finished walk (#982); freehand drawing (#983).
 
-**The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, after #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
+**The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
 ## Where a plan lives
 
@@ -326,7 +336,7 @@ Sync across devices is [AUTHENTICATION.md](AUTHENTICATION.md)'s to give, and it 
 
 **The food carry is now visible** (#799). `foodCarries()` derives one carry per section, so the food block and the timeline read the same `planSections()` and cannot disagree. Two things it says that nothing said before: **a plan with no resupply anywhere** used to never print the word food, which reads as "no food needed" rather than "all nine days are on your back"; and a carry at or past `LONG_CARRY_DAYS` (`@unvalidated`) gets one line saying that is the heaviest the pack gets — a note, never a warning, because a long carry is a fact about a stretch of trail with no towns on it.
 
-That work also fixed a real defect in the zero question this document leaves open. Zeros count against the carry — the answer `lib/plan.ts` picked, erring toward carrying enough — but `insertZeroAfter` duplicated the boundary _including its resupply flag_, which closed a second section holding just the zero. So a zero in town read as its own one-day carry and vanished from the carry it actually eats from. The duplicate no longer inherits the flag: supplies are picked up once, at the stop the hiker walked into.
+That work also fixed a real defect in the zero question this document leaves open. Zeros count against the carry — the answer `lib/plan.ts` picked, erring toward carrying enough — but `insertZeroAfter` duplicated the boundary *including its resupply flag*, which closed a second section holding just the zero. So a zero in town read as its own one-day carry and vanished from the carry it actually eats from. The duplicate no longer inherits the flag: supplies are picked up once, at the stop the hiker walked into.
 
 ## Open questions (for you, not decided here)
 
@@ -341,13 +351,13 @@ That work also fixed a real defect in the zero question this document leaves ope
 
 Each phase is useful on its own, which is deliberate — none of them is a bet on the next one landing.
 
-| Phase | What                                                                                          | Depends on                                                                                       |
-| ----- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **A** | Publish `mile` on every POI (Findings 1 and 2).                                               | Nothing. Do this first regardless of what follows; it also fixes a real, existing inconsistency. |
-| **B** | The route builder: drop points, distance, gain, loss, ≈time. Adds `cumulativeLossOverGaps()`. | A, for trustworthy per-stretch gain.                                                             |
-| **C** | Multi-day: days as Segments, the timeline, zero days and resupply flags, food as days.        | B.                                                                                               |
-| **D** | The auto-generated plan.                                                                      | A and C. `spike_day_planner.py` should have been run against real data by here.                  |
-| **E** | The cascade, with pins.                                                                       | C, and worth D existing first — "absorb" is the generator re-run.                                |
+| Phase | What | Depends on |
+|---|---|---|
+| **A** | Publish `mile` on every POI (Findings 1 and 2). | Nothing. Do this first regardless of what follows; it also fixes a real, existing inconsistency. |
+| **B** | The route builder: drop points, distance, gain, loss, ≈time. Adds `cumulativeLossOverGaps()`. | A, for trustworthy per-stretch gain. |
+| **C** | Multi-day: days as Segments, the timeline, zero days and resupply flags, food as days. | B. |
+| **D** | The auto-generated plan. | A and C. `spike_day_planner.py` should have been run against real data by here. |
+| **E** | The cascade, with pins. | C, and worth D existing first — "absorb" is the generator re-run. |
 
 ## Running the spike
 

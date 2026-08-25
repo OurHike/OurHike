@@ -2,8 +2,18 @@
 // destination" flow): where from, then how far or how long - the hiker's
 // real first question, asked before any map gesture is required of them.
 // "Use this stretch" lands the resolved pair on the editable stop surface
-// (RouteStopsPanel); the tap-to-drop builder this replaces made the same
-// journey start with a ritual nothing on screen explained.
+// (RouteStopsPanel).
+//
+// TWO DOORS, NOT ONE (#973). This sheet answers "how far can I get", and
+// that is a real question nothing else in the app asks. It is not the only
+// one: a hiker who already knows where they are going wants to say so
+// directly, which is what wireframe 2a frame 1 draws and what "or just tap
+// the trail" now opens - an empty editor where the map is the input. The
+// tap builder was never a worse idea than this sheet; it was a worse
+// FRONT DOOR, because it made the journey start with a ritual nothing on
+// screen explained. Behind an explained door it is the better instrument.
+//
+// The two doors land in the same place and neither is the real one.
 //
 // The honesty rules carried over from the sheet this grew out of
 // (PlanTargetSheet):
@@ -81,6 +91,9 @@ export interface RouteEntranceSheetProps {
    *  far end. Null when nothing can say, and then a fallback is used. */
   trailMiles: number | null
   onUse: () => void
+  /** Skip the sizing question and build by tapping the trail (#973). A start
+   *  already placed here carries through. */
+  onTapToBuild: () => void
   /** Leave the builder, discarding the draft. */
   onClose: () => void
 }
@@ -140,6 +153,7 @@ export function RouteEntranceSheet({
   fixedEnd,
   trailMiles,
   onUse,
+  onTapToBuild,
   onClose,
 }: RouteEntranceSheetProps) {
   const effectiveAsk = daysUsable ? ask : 'far'
@@ -432,6 +446,18 @@ export function RouteEntranceSheet({
             onClick={onUse}
           >
             Use this stretch
+          </button>
+
+          {/* The other door, and quiet: most people want the sizing question
+              answered for them, which is why this sheet opens. Somebody who
+              does not is one tap from the map rather than three - and their
+              start, if they have placed one, comes with them. */}
+          <button
+            type="button"
+            className="route-entrance__tap-door"
+            onClick={onTapToBuild}
+          >
+            or just tap the trail to drop points yourself
           </button>
         </>
       )}

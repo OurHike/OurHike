@@ -222,14 +222,29 @@ The manual half, which the generator does not replace: a hiker drops points and 
 > Maps route that lets you add multiple destinations": look a stop up by name
 > first, with the map and a distance from the previous stop as the other two
 > doors, and *where from + how far / how long* as the opening question
-> (PR #774, from mockups chosen there). Tap-to-drop is no longer the input
-> mechanism. What survives of the bullets below: `locateOnTrail()`'s snap and
-> the 3-mile refusal, behind the picker's "choose on the map" door; the
-> least-added-distance insertion, placing added destinations rather than taps;
-> and every figure and limitation, unchanged. An added destination is also now
-> a *forced day boundary* the generator plans through (`planDaysVia`), pinned
-> in the laid-out plan — on a linear trail, forcing the boundary is the whole
+> (PR #774, from mockups chosen there). What survives of the bullets below:
+> `locateOnTrail()`'s snap and the 3-mile refusal; the least-added-distance
+> insertion, placing added destinations as well as taps; and every figure and
+> limitation, unchanged. An added destination is also now a *forced day
+> boundary* the generator plans through (`planDaysVia`), pinned in the
+> laid-out plan — on a linear trail, forcing the boundary is the whole
 > meaning of naming a stop.
+>
+> **Amended 2026-08-25 (#973): tap-to-drop is back, as the second door.** The
+> earlier amendment concluded "tap-to-drop is no longer the input mechanism",
+> and that went one step further than the redirect required. The maintainer,
+> reviewing wireframe 2a frame 1 against what shipped: *"The route builder
+> should use this wireframe, but keep the google maps types design."* So both,
+> and they were never in tension — the destination list is the anatomy, the
+> tap is an input into it.
+>
+> The entrance keeps its job, which is the question nothing else in the app
+> asks: **how far can I get?** It gains "or just tap the trail", opening an
+> empty editor where the map is the input; a start already placed carries
+> through. Every bullet below is live again, and none of it needed writing:
+> `insertRoutePoint` had implemented the placement rule, tie-break and all,
+> the whole time, and `onRouteTap` was already wired on the canvas for an open
+> draft. The editor phase simply declined to act on the tap.
 
 - **Tap the trail to drop a point.** It snaps to the centerline via `locateOnTrail()`; a tap more than 3 miles off any centerline vertex is refused rather than placed, because there is no honest mile to give it.
 - **The first point is the start, the last is the end, and everything between is intermediate.** No modes, no separate "add waypoint" tool.

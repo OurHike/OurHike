@@ -162,6 +162,7 @@ import {
   routeLegs,
   type MileAnchor,
 } from './lib/route'
+import { formatDistance } from './lib/units'
 import { DEFAULT_WALKING_HOURS, nearestStopBeyond, type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteEntranceSheet, type EntranceEnd } from './chrome/RouteEntranceSheet'
@@ -412,7 +413,50 @@ type RouteDraftState =
       days: number
       south: boolean
     }
-  | { phase: 'editor'; stops: RouteDraftStop[] }
+  | {
+      phase: 'editor'
+      stops: RouteDraftStop[]
+      /**
+       * Previous stop lists, newest last - the ↺ the wireframe puts beside
+       * the map (#973).
+       *
+       * IT EXISTS BECAUSE TAPPING IS CHEAP AND MIS-TAPPING IS CERTAIN. A
+       * point dropped a mile off where a thumb meant it is not an error the
+       * app can detect, so the only honest recovery is to let the hiker take
+       * it back - and "remove the last stop" would be the wrong verb, since
+       * least-added-distance insertion means the last stop TAPPED is often
+       * not the last stop in the list.
+       *
+       * Bounded at ROUTE_HISTORY_MAX: a route is a dozen stops, not a
+       * document, and an unbounded stack on a phone that keeps a draft
+       * across tab switches is a leak nobody would notice.
+       */
+      history: RouteDraftStop[][]
+    }
+
+/** How many steps back the route builder can go. Deep enough to undo a run
+ *  of mis-taps, shallow enough that the stack is never the reason a draft
+ *  costs memory. */
+const ROUTE_HISTORY_MAX = 20
+
+/**
+ * A new editor state with `stops` replaced and the old list remembered.
+ *
+ * Every editor mutation goes through here so undo cannot silently miss one -
+ * the failure mode of a history stack is not that it breaks loudly, it is
+ * that one path forgets to record and ↺ jumps two edits back.
+ */
+function withStops(
+  draft: Extract<RouteDraftState, { phase: 'editor' }>,
+  stops: RouteDraftStop[],
+): RouteDraftState {
+  if (stops === draft.stops) return draft
+  return {
+    ...draft,
+    stops,
+    history: [...draft.history, draft.stops].slice(-ROUTE_HISTORY_MAX),
+  }
+}
 
 /** Which slot of the draft a picked stop lands in. */
 /** A place the app already knows, as a stop the route builder can open on.
@@ -533,6 +577,11 @@ function App() {
   /** The last trail tap the entrance refused as too far off the corridor -
    *  cleared by the next accepted one (#801). */
   const [entranceRefusedTap, setEntranceRefusedTap] = useState(false)
+  /** The same, for the editor's own tap (#973). Its own flag rather than one
+   *  shared with the entrance: the two are never on screen together, and one
+   *  flag would carry a refusal from one phase into the other, where the
+   *  sentence explaining it belongs to a control the hiker has left behind. */
+  const [editorRefusedTap, setEditorRefusedTap] = useState(false)
   /** The stop picker over the draft, or null while every field rests. */
   const [stopPick, setStopPick] = useState<StopPickState | null>(null)
   /**
@@ -1885,7 +1934,7 @@ function App() {
           // so the tap builder's placement rule serves the add row unchanged
           // - between the ends when the stop is between them, extending the
           // route when it is past one.
-          return { ...draft, stops: insertRoutePoint(draft.stops, stop) }
+          return withStops(draft, insertRoutePoint(draft.stops, stop))
         }
         // A replacement that lands exactly on another stop's mile would fold
         // two stops into a zero-length leg - refused the way insertRoutePoint
@@ -1893,10 +1942,10 @@ function App() {
         if (draft.stops.some((s, i) => i !== slot.index && s.mile === stop.mile)) {
           return draft
         }
-        return {
-          ...draft,
-          stops: draft.stops.map((s, i) => (i === slot.index ? stop : s)),
-        }
+        return withStops(
+          draft,
+          draft.stops.map((s, i) => (i === slot.index ? stop : s)),
+        )
       })
       setStopPick(null)
     },
@@ -1919,7 +1968,46 @@ function App() {
       // screen is choosing, so nothing needs disambiguating, and a start
       // already set is moved rather than a question being asked.
       if (stopPick === null) {
-        if (routeDraft === null || routeDraft.phase !== 'entrance') return
+        if (routeDraft === null) return
+
+        // THE EDITOR'S OWN TAP (#973, wireframe 2a frame 1). The canvas has
+        // been in route-tap mode here the whole time - `onRouteTap` is set
+        // for any open draft - and this handler was the only thing declining
+        // to act on it.
+        //
+        // No mode and no button, which is #801's rule one phase over and the
+        // frame's own annotation: "First tap is the start, last is the end, a
+        // new point inserts where it adds the least distance." All three fall
+        // out of insertRoutePoint, so the tap places a point and says nothing
+        // about which kind it is.
+        if (routeDraft.phase === 'editor') {
+          const located = locateOnTrail(trailIndex, at)
+          if (located === null) {
+            setEditorRefusedTap(true)
+            return
+          }
+          setEditorRefusedTap(false)
+          const clientMile = located.mile
+          const mile = anchoredMile(clientMile, mileAnchors) ?? clientMile
+          // Named where a real stop is close enough to name it - the same
+          // courtesy the entrance's tap does, so a route built by tapping
+          // reads as places rather than as mile markers where it can.
+          const snapped = nearestStop(pois, mile)
+          const stop: RouteDraftStop = {
+            mile: snapped?.mile ?? mile,
+            clientMile,
+            ...(snapped?.name === undefined ? {} : { name: snapped.name }),
+            ...(snapped?.poiId === undefined ? {} : { poiId: snapped.poiId }),
+          }
+          setRouteDraft((draft) =>
+            draft === null || draft.phase !== 'editor'
+              ? draft
+              : withStops(draft, insertRoutePoint(draft.stops, stop)),
+          )
+          return
+        }
+
+        if (routeDraft.phase !== 'entrance') return
         const located = locateOnTrail(trailIndex, at)
         if (located === null) {
           setEntranceRefusedTap(true)
@@ -1997,10 +2085,19 @@ function App() {
         if (at === null) return []
         const role: 'start' | 'via' | 'end' =
           i === 0 ? 'start' : i === stops.length - 1 ? 'end' : 'via'
-        return [{ lon: at[0], lat: at[1], role }]
+        // The pipeline's mile, in the hiker's own units - the same number the
+        // stop row prints, so the map and the list name one place one way.
+        return [
+          {
+            lon: at[0],
+            lat: at[1],
+            role,
+            label: formatDistance(stop.mile, units, 'tenths'),
+          },
+        ]
       }),
     }
-  }, [routeDraft, entranceEnd, trailIndex])
+  }, [routeDraft, entranceEnd, trailIndex, units])
 
   // The editor's figures, on the pipeline miles. Null climb and time on a
   // download with no profile: the distance is still a fact, and the surface
@@ -2133,7 +2230,7 @@ function App() {
     // (#804).
     const end = routeDraft.fixedEnd ?? entranceEnd?.stop ?? null
     if (end === null) return
-    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, end] })
+    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, end], history: [] })
   }, [routeDraft, entranceEnd])
 
   const handleEditStop = useCallback((index: number) => {
@@ -2144,6 +2241,41 @@ function App() {
     setStopPick({ slot: { kind: 'add' }, onMap: false, refusedTap: false })
   }, [])
 
+  /** ↺ - back one edit. Nothing when the stack is empty, and the button is
+   *  absent then rather than dead. */
+  const handleUndoRoute = useCallback(() => {
+    setEditorRefusedTap(false)
+    setRouteDraft((draft) => {
+      if (draft === null || draft.phase !== 'editor') return draft
+      const previous = draft.history[draft.history.length - 1]
+      if (previous === undefined) return draft
+      return { ...draft, stops: previous, history: draft.history.slice(0, -1) }
+    })
+  }, [])
+
+  /**
+   * The entrance's second door (#973): straight to an empty editor, where
+   * tapping the trail builds the route.
+   *
+   * The entrance is not replaced by this. It answers "how far can I get",
+   * which is a real question and the one #804 built it for; this answers "I
+   * know where I want to go", which the frame draws and which had no door at
+   * all. A start already tapped on the entrance carries through rather than
+   * being thrown away - having placed it is the same act either way.
+   */
+  const handleTapToBuild = useCallback(() => {
+    setEditorRefusedTap(false)
+    setRouteDraft((draft) =>
+      draft === null || draft.phase !== 'entrance'
+        ? draft
+        : {
+            phase: 'editor',
+            stops: draft.start === null ? [] : [draft.start],
+            history: [],
+          },
+    )
+  }, [])
+
   // Only a destination between the ends can be removed - a route needs its
   // ends, and either end is changed by picking a different stop instead.
   const handleRemoveStop = useCallback(() => {
@@ -2152,7 +2284,10 @@ function App() {
     setRouteDraft((draft) => {
       if (draft === null || draft.phase !== 'editor') return draft
       if (index <= 0 || index >= draft.stops.length - 1) return draft
-      return { ...draft, stops: draft.stops.filter((_, i) => i !== index) }
+      return withStops(
+        draft,
+        draft.stops.filter((_, i) => i !== index),
+      )
     })
     setStopPick(null)
   }, [stopPick])
@@ -2334,8 +2469,12 @@ function App() {
       setRouteDraft((draft) => {
         if (draft === null) return draft
         if (draft.phase === 'editor')
-          return { ...draft, stops: restretchStops(draft.stops, lo, hi) }
-        return { phase: 'editor', stops: draft.south ? [hi, lo] : [lo, hi] }
+          return withStops(draft, restretchStops(draft.stops, lo, hi))
+        return {
+          phase: 'editor',
+          stops: draft.south ? [hi, lo] : [lo, hi],
+          history: [],
+        }
       })
       // The picker's slot may name a stop the re-stretch just removed.
       setStopPick(null)
@@ -2371,7 +2510,11 @@ function App() {
     setSearchOpen(false)
     setTargetRequest(null)
     setFreeChartStretch(null)
-    setRouteDraft({ phase: 'editor', stops: freeChartSouth ? [hi, lo] : [lo, hi] })
+    setRouteDraft({
+      phase: 'editor',
+      stops: freeChartSouth ? [hi, lo] : [lo, hi],
+      history: [],
+    })
   }, [freeChartStretch, freeChartSouth, chartStop])
 
   // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
@@ -4266,6 +4409,7 @@ function App() {
                 refusedTap={entranceRefusedTap}
                 trailMiles={trailMiles}
                 onUse={handleUseStretch}
+                onTapToBuild={handleTapToBuild}
                 onClose={handleRouteCancel}
               />
             ) : (
@@ -4276,6 +4420,8 @@ function App() {
                 units={units}
                 onEditStop={handleEditStop}
                 onAddStop={handleAddStop}
+                onUndo={routeDraft.history.length === 0 ? null : handleUndoRoute}
+                refusedTap={editorRefusedTap}
                 onBreakIntoDays={handleBreakIntoDays}
                 onRecordWalked={handleRecordWalked}
                 onClose={handleRouteCancel}

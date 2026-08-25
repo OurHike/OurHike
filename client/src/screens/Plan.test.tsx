@@ -256,14 +256,43 @@ describe('the cascade (#758)', () => {
     )
   }
 
-  it('draws a walked day as a record - grey, plain, and not a button', () => {
+  it('draws a walked day as a record, and offers no action on it', async () => {
+    // It became tappable in #966 - it opens the day's own summary - so what
+    // this holds is the rule that survived that: a record has no ACTIONS.
+    // No call-it-a-day, no pin, no zero, no delete, and the plan it belongs
+    // to no longer offers a wholesale re-target.
+    const user = userEvent.setup()
     const walked = callItADay(milesPlan(), 0, { mile: 486.2 })
     render(<PlanScreen {...PROPS} plan={walked} pois={POIS} />)
 
     expect(screen.getByText('walked · not a plan any more')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Damascus → Lost Mountain/ })).toBeNull()
-    // And a plan with a record no longer offers a wholesale re-target.
     expect(screen.queryByRole('button', { name: /Target:/ })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    for (const action of [/Call it a day/, /Pin/, /zero day/, /Remove/]) {
+      expect(screen.queryByRole('button', { name: action })).toBeNull()
+    }
+  })
+
+  it("opens a walked day's summary, and keeps the line written on it (#966)", async () => {
+    const user = userEvent.setup()
+    const walked = callItADay(milesPlan(), 0, { mile: 486.2 })
+    render(<PlanScreen {...PROPS} plan={walked} pois={POIS} />)
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+
+    const card = screen.getByRole('dialog', { name: 'Your day' })
+    expect(within(card).getByText('Damascus → Lost Mountain Shelter')).toBeInTheDocument()
+
+    await user.type(within(card).getByRole('textbox'), 'the ponies were unbothered')
+    await user.click(within(card).getByRole('button', { name: 'Keep' }))
+
+    expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(1)
+    const kept = PROPS.onReplacePlan.mock.calls[0][0] as HikePlan
+    expect(kept.days[0].note).toBe('the ponies were unbothered')
+    // The record itself is untouched by writing a memory about it.
+    expect(kept.days[0].walked).toBe(true)
+    expect(kept.stops).toEqual(walked.stops)
   })
 
   it('offers "call it a day" only on the current day', async () => {

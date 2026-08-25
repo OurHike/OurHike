@@ -254,7 +254,27 @@
   border-color: var(--border-1);
   background: var(--bg-sunken);
   color: var(--fg-2);
-  cursor: default;
+  /* Tappable since #966 - it opens the day's own record. Still visually a
+     record rather than a plan: the grey and the sunken ground are what say
+     "walked", and neither changes. */
+  cursor: pointer;
+}
+
+/* The hiker's own line, on the row. Italic and quoted so it reads as
+   somebody's handwriting rather than another figure the app worked out. */
+.plan__day-note {
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.plan__day-note::before {
+  content: '\201C';
+}
+
+.plan__day-note::after {
+  content: '\201D';
 }
 
 .plan__day-carry--walked {
@@ -1649,6 +1669,135 @@
   color: var(--fg-2);
 }
 
+/* ---------- The day summary (#966, wireframe 2c frame 1) ---------- */
+
+/* Docked to the screen's bottom edge, like the call-it-a-day and cascade
+   sheets it arrives beside in the same flow (.plan__actions above). */
+.day-summary {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  margin: 0 calc(-1 * var(--space-4, 16px));
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.day-summary__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+/* Lowercase, in the hiker's voice - the card's whole register, and the one
+   place on the Plan tab that speaks this way. */
+.day-summary__when {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+
+.day-summary__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.day-summary__figures {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+/* The one generated sentence. Warm, and a fact about the ground - never a
+   remark about how the day went. */
+.day-summary__memory {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.day-summary__filed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.day-summary__filed-title {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.day-summary__tiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin: 0;
+}
+
+.day-summary__tile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.day-summary__tile dt {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.day-summary__tile dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* What the figure above rests on. Small, and never optional - the tile it
+   qualifies says "on the map", and this says why that wording is the
+   careful one. */
+.day-summary__caveat {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.day-summary__note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.day-summary__note textarea {
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
 /* "What are you planning?" - the door into the builder (#977, frame `1i`).
    Wears the route entrance's dialog anatomy because the two are consecutive
    screens of one flow and a hiker should not learn the chrome twice. */
@@ -1663,7 +1812,7 @@
   margin: 0;
   font-size: 0.875rem;
   line-height: 1.45;
-  color: var(--fg-2, #5a5346);
+  color: var(--fg-2);
 }
 
 .plan-kind__door {
@@ -1673,8 +1822,8 @@
   width: 100%;
   padding: 0.85rem 0.95rem;
   text-align: left;
-  background: var(--bg-surface, #fff);
-  border: 1px solid var(--border-1, #e4ddca);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
   border-radius: 3px;
   font: inherit;
   color: inherit;
@@ -1682,13 +1831,13 @@
 }
 
 .plan-kind__door:hover {
-  border-color: var(--border-2, #c3baa4);
+  border-color: var(--border-2);
 }
 
 /* Not pressable, and it must not look it - see PlanKindSheet's header. */
 .plan-kind__door--unavailable {
   cursor: default;
-  background: var(--bg-sunken, #e3ecda);
+  background: var(--bg-sunken);
 }
 
 .plan-kind__door-name {
@@ -1699,12 +1848,12 @@
 .plan-kind__door-note {
   font-size: 0.8125rem;
   line-height: 1.4;
-  color: var(--fg-2, #5a5346);
+  color: var(--fg-2);
 }
 
 .plan-kind__door-note--refused {
   margin-top: 0.35rem;
-  color: var(--fg-3, #8a8271);
+  color: var(--fg-3);
 }
 
 /* Frame `1j`'s builder bar (#978). Wears RouteMapPickBar's anatomy - the two
@@ -1714,8 +1863,8 @@
   flex-direction: column;
   gap: 0.55rem;
   padding: 0.85rem 1rem 1rem;
-  background: var(--bg-surface, #fff);
-  border-top: 1px solid var(--border-1, #e4ddca);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-1);
 }
 
 .day-hike-bar__head {
@@ -1729,7 +1878,7 @@
   flex: 1;
   font-size: 0.875rem;
   line-height: 1.4;
-  color: var(--fg-2, #5a5346);
+  color: var(--fg-2);
 }
 
 .day-hike-bar__cancel {
@@ -1738,7 +1887,7 @@
   padding: 0;
   font: inherit;
   font-size: 0.8125rem;
-  color: var(--fg-3, #8a8271);
+  color: var(--fg-3);
   cursor: pointer;
 }
 
@@ -1748,9 +1897,9 @@
   padding: 0.6rem 0.7rem;
   font-size: 0.8125rem;
   line-height: 1.45;
-  background: var(--bg-sunken, #e3ecda);
+  background: var(--bg-sunken);
   border-radius: 3px;
-  color: var(--fg-1, #2b2620);
+  color: var(--fg-1);
 }
 
 .day-hike-bar__total {
@@ -1771,7 +1920,7 @@
 
 .day-hike-bar__org {
   font-size: 0.8125rem;
-  color: var(--fg-2, #5a5346);
+  color: var(--fg-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1785,8 +1934,8 @@
   padding: 0.6rem 0.5rem;
   font: inherit;
   font-size: 0.875rem;
-  background: var(--bg-surface, #fff);
-  border: 1px solid var(--border-2, #c3baa4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
   border-radius: 3px;
   cursor: pointer;
 }
@@ -1797,9 +1946,9 @@
 }
 
 .day-hike-bar__action--done {
-  background: var(--brand-primary, #355c3a);
-  border-color: var(--brand-primary, #355c3a);
-  color: var(--fg-on-dark, #fffdf7);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--fg-on-dark);
 }
 
 /* #931's row: named, not omitted, and with nothing to press. */
@@ -1810,9 +1959,9 @@
   gap: 0.5rem;
   margin: 0;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--border-1, #e4ddca);
+  border-top: 1px solid var(--border-1);
   font-size: 0.8125rem;
-  color: var(--fg-3, #8a8271);
+  color: var(--fg-3);
 }
 
 .day-hike-bar__later-tag {

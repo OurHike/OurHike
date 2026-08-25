@@ -704,6 +704,7 @@ describe('the planning flow', () => {
       // first draft of this test did.
       await user.click(await screen.findByRole('tab', { name: 'Plan' }))
       await user.click(await screen.findByRole('button', { name: /Start on the map/ }))
+      await throughPlanKind(user)
       await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
       await user.type(await screen.findByLabelText('Search for a stop'), 'front')
       await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))

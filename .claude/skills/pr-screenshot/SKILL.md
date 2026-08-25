@@ -79,10 +79,19 @@ already driving, or add the taps you need to a copy of the script — it exports
 IndexedDB and nothing downloads it in a sandbox, so the map canvas renders
 paper and no trail (measured 2026-08-25 — the console says
 `ArchiveNotDownloadedError`). Chrome, cards, sheets, pickers, the legend and
-first run are all DOM and photograph correctly. For real tiles underneath,
-point `--url` at the pull request's own Cloudflare preview, which is built
-against the real data source — the PR preview bot comments the link on every
-pull request.
+first run are all DOM and photograph correctly.
+
+For real tiles underneath, point `--url` at the pull request's own Cloudflare
+preview, which is built against the real data source — the PR preview bot
+comments the link on every pull request. **That works from a laptop and not
+from an agent sandbox.** Chromium there cannot reach any external host:
+measured 2026-08-25 against the live preview and against `example.com`, both
+`net::ERR_CONNECTION_RESET`, with and without Playwright's `proxy` option
+pointed at `HTTPS_PROXY`. `curl` reaches the same URL and answers 200, so the
+host is allowed and the browser is the part that cannot use the egress proxy.
+Do not work around it. A session that needs a map-data screenshot has to ask
+somebody with a browser, and should say in the pull request that it could
+not take one.
 
 ## Getting it to render in the pull request body
 

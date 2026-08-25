@@ -29,6 +29,14 @@
 // run - photographs correctly. For a shot that needs real tiles under it,
 // point --url at a deployed preview, which is built against the real data
 // source (see .github/workflows/pr-preview.yml).
+//
+// --url AT A REMOTE HOST DOES NOT WORK FROM AN AGENT SANDBOX. Chromium there
+// reaches nothing external: measured 2026-08-25 against a live pr-*.pages.dev
+// preview and against example.com, both net::ERR_CONNECTION_RESET, with and
+// without Playwright's `proxy` option pointed at HTTPS_PROXY - while `curl`
+// on the same URL answers 200, so the host is permitted and the browser is
+// the part that cannot use the egress proxy. It works from a laptop. Do not
+// route around it; say in the pull request that the shot could not be taken.
 
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'

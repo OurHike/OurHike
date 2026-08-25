@@ -47,10 +47,6 @@ const PROPS = {
   open: true,
   bbox: BBOX,
   points: POINTS,
-  blazeCounts: [
-    { blaze: 'White', count: 12 },
-    { blaze: 'Blue', count: 3 },
-  ],
   hiddenTypes: new Set<string>(),
   onToggleType: vi.fn(),
   onClose: vi.fn(),
@@ -164,11 +160,20 @@ describe('Legend', () => {
     expect(screen.getAllByRole('listitem', { name: 'Water' })).toHaveLength(1)
   })
 
-  it('lists the blaze colours in view, with counts', () => {
-    render(<Legend {...PROPS} />)
+  it('draws no blaze row, and no painted swatch, whatever the map is painting', () => {
+    // This panel used to open with one row per blaze in view (#782). They went
+    // on 2026-08-25 as clutter - chrome/Legend.tsx's header has the decision
+    // and what it costs. Asserted rather than merely deleted, because the
+    // plumbing that fed them came out too and a half-restored version of it
+    // would show up here first.
+    const { container } = render(<Legend {...PROPS} />)
 
-    expect(rowFor('White blaze')).toHaveTextContent('12')
-    expect(rowFor('Blue blaze')).toHaveTextContent('3')
+    const named = screen
+      .getAllByRole('listitem')
+      .map((row) => row.getAttribute('aria-label') ?? '')
+    expect(named.some((name) => name.endsWith('blaze'))).toBe(false)
+    expect(container.querySelector('.legend__blazes')).toBeNull()
+    expect(container.querySelector('.legend__swatch')).toBeNull()
   })
 
   it('offers a hide control on an ordinary row', async () => {
@@ -238,9 +243,9 @@ describe('Legend', () => {
   })
 
   it('says so plainly when the viewport holds nothing, instead of showing an empty sheet', () => {
-    render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
+    render(<Legend {...PROPS} points={[]} />)
 
-    expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
+    expect(screen.getByText(/no waypoints on this part of the map/i)).toBeInTheDocument()
   })
 })
 
@@ -298,10 +303,7 @@ describe('every hideable category has a row, in view or not', () => {
     // encountered in, so the grid used to re-shuffle as a hiker walked. A key
     // whose rows move is a key you have to read rather than glance at.
     const labels = () =>
-      screen
-        .getAllByRole('listitem')
-        .map((row) => row.getAttribute('aria-label'))
-        .filter((name) => name !== null && !name.endsWith('blaze'))
+      screen.getAllByRole('listitem').map((row) => row.getAttribute('aria-label'))
 
     const { rerender } = render(<Legend {...PROPS} />)
     const first = labels()
@@ -320,7 +322,7 @@ describe('every hideable category has a row, in view or not', () => {
     // Closures and serious warnings are not in HIDEABLE_TYPES, have no switch to
     // reach, and a standing "Closure 0" would be this panel making a claim about
     // closures that nothing asked it to make.
-    render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
+    render(<Legend {...PROPS} points={[]} />)
 
     expect(screen.queryByRole('listitem', { name: 'Closure' })).not.toBeInTheDocument()
     expect(
@@ -332,9 +334,9 @@ describe('every hideable category has a row, in view or not', () => {
     // `isEmpty` is decided by the viewport, not by the grid. Decided by the grid
     // it would never be true again, and the sentence would be dead code that
     // still reads as live.
-    render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
+    render(<Legend {...PROPS} points={[]} />)
 
-    expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
+    expect(screen.getByText(/no waypoints on this part of the map/i)).toBeInTheDocument()
     expect(rowFor('Water')).toHaveTextContent('0')
   })
 
@@ -539,7 +541,6 @@ describe('the "Verified?" toggle', () => {
       <Legend
         {...FILTERED}
         verifiedOnly
-        blazeCounts={[]}
         points={[{ id: 'u', type: 'water', lat: 39.5, lon: -77.5, confidence: 'low' }]}
       />,
     )
@@ -556,7 +557,6 @@ describe('the "Verified?" toggle', () => {
       <Legend
         {...FILTERED}
         verifiedOnly
-        blazeCounts={[]}
         points={[{ id: 'u', type: 'water', lat: 39.5, lon: -77.5, confidence: 'low' }]}
       />,
     )
@@ -803,7 +803,6 @@ describe('showing one category alone', () => {
         open
         bbox={bbox}
         points={points}
-        blazeCounts={[]}
         hiddenTypes={new Set()}
         onToggleType={() => {}}
         onClose={() => {}}
@@ -932,7 +931,6 @@ describe('showing one category alone', () => {
         open
         bbox={bbox}
         points={[]}
-        blazeCounts={[]}
         hiddenTypes={new Set()}
         onToggleType={() => {}}
         onClose={() => {}}
@@ -977,7 +975,6 @@ describe('reporting waypoints that did not fit', () => {
         open
         bbox={bbox}
         points={points}
-        blazeCounts={[]}
         hiddenTypes={hiddenTypes}
         onToggleType={() => {}}
         onClose={() => {}}
@@ -1126,7 +1123,6 @@ describe('below the zoom waypoints are drawn at', () => {
         open
         bbox={bbox}
         points={[]}
-        blazeCounts={[]}
         hiddenTypes={new Set()}
         onToggleType={() => {}}
         onClose={() => {}}
@@ -1147,7 +1143,6 @@ describe('below the zoom waypoints are drawn at', () => {
         open
         bbox={bbox}
         points={[]}
-        blazeCounts={[]}
         hiddenTypes={new Set()}
         onToggleType={() => {}}
         onClose={() => {}}
@@ -1170,7 +1165,6 @@ describe('the drought row', () => {
         open
         bbox={bbox}
         points={[]}
-        blazeCounts={[]}
         hiddenTypes={new Set()}
         onToggleType={() => {}}
         onClose={() => {}}
@@ -1214,7 +1208,6 @@ describe('the drought row', () => {
         open
         bbox={bbox}
         points={[]}
-        blazeCounts={[]}
         hiddenTypes={new Set()}
         onToggleType={() => {}}
         onClose={() => {}}

@@ -12,9 +12,8 @@
 
 import { useEffect, useState } from 'react'
 import { drawnPoiCounts, type DrawnPoiMap } from '../map/drawnPois'
-import { drawnBlazeCounts, drawsNearbyTrails } from '../map/drawnBlazes'
+import { drawsNearbyTrails } from '../map/drawnBlazes'
 import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
-import type { BlazeCount } from '../chrome/Legend'
 
 /** The real MapLibre map - see map/drawnPois.ts for why this is not a
  *  structural stand-in. */
@@ -35,25 +34,13 @@ export interface DrawnPois {
    *  the panel can say which of two very different things is true. */
   belowPoiZoom: boolean
   /**
-   * The blazes in view, most-drawn first, for the legend's blaze rows (#782).
-   *
-   * Measured on the same `idle` as the waypoint counts rather than on its own
-   * listener: they answer for one settled frame, and two listeners would let
-   * the legend show waypoint counts from this camera beside blaze counts from
-   * the last one.
-   *
-   * Sorted here rather than in the legend because order is a property of the
-   * measurement — "what is most of what you are looking at" — and a component
-   * re-sorting on every render would do it per paint.
-   */
-  blazes: BlazeCount[]
-  /**
    * Whether any line on screen belongs to a network other than the chosen
    * trail's (#783), which is what the legend's ghosting sentence explains.
    *
-   * Measured on the same settled frame as the two above, for the same reason:
-   * a sentence saying other trails are dimmed, beside blaze rows counted from
-   * a different camera, would be two answers about two moments.
+   * Measured on the same settled frame as the counts above, for the reason
+   * that governs everything this hook returns: they answer for ONE settled
+   * frame, and a second listener would let the legend show waypoint counts
+   * from this camera beside a ghosting sentence decided at the last one.
    */
   ghostedTrailsDrawn: boolean
 }
@@ -62,7 +49,6 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
   const [drawn, setDrawn] = useState<DrawnPois>({
     counts: undefined,
     belowPoiZoom: false,
-    blazes: [],
     ghostedTrailsDrawn: false,
   })
 
@@ -73,7 +59,6 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
       setDrawn({
         counts: undefined,
         belowPoiZoom: false,
-        blazes: [],
         ghostedTrailsDrawn: false,
       })
       return
@@ -83,12 +68,6 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
       setDrawn({
         counts: drawnPoiCounts(map),
         belowPoiZoom: map.getZoom() < POI_PIN_MIN_ZOOM,
-        blazes: [...drawnBlazeCounts(map)]
-          .map(([blaze, count]) => ({ blaze, count }))
-          // Most-drawn first, ties by name so the order is stable across
-          // frames — a legend whose rows reshuffle while a hiker reads them
-          // is worse than one that is merely unsorted.
-          .sort((a, b) => b.count - a.count || a.blaze.localeCompare(b.blaze)),
         ghostedTrailsDrawn: drawsNearbyTrails(map),
       })
 

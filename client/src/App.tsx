@@ -2811,7 +2811,6 @@ function App() {
   const {
     counts: drawnPoiCounts,
     belowPoiZoom,
-    blazes: blazeCounts,
     ghostedTrailsDrawn,
   } = useDrawnPoiCounts(map)
 
@@ -4202,12 +4201,6 @@ function App() {
           waypoints={waypoints}
           onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
           viewportPoints={viewportPoints}
-          // Live since #782, and NOT waiting on that issue's mapping table the
-          // way #657's placeholder claimed: a trail feature already carries
-          // `blaze_color` on every source shipping, so counting what the map
-          // drew never needed the table at all. map/drawnBlazes.ts records
-          // the correction.
-          blazeCounts={blazeCounts}
           ghostedTrailsDrawn={ghostedTrailsDrawn}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}

@@ -121,9 +121,11 @@ describe('a legend row can shrink into its column', () => {
   /**
    * The `.legend__pins` block that lays the grid out.
    *
-   * Not `rule()`, which takes the first `.legend__pins {` in the file - and that
-   * is the grouped `.legend__blazes, .legend__pins` reset above it, whose body
-   * is margins. Anchored on the property being asserted about instead.
+   * Not `rule()`, which takes the first `.legend__pins {` in the file - and
+   * that is the reset above it, whose body is margins. (That reset used to be
+   * a grouped `.legend__blazes, .legend__pins`; the blaze half went with the
+   * legend's blaze rows on 2026-08-25, and the ambiguity it caused did not.)
+   * Anchored on the property being asserted about instead.
    */
   function pinsGrid(): string {
     const at = css.indexOf('grid-template-columns')

@@ -19,7 +19,7 @@ import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
-import { Legend, type BlazeCount } from './Legend'
+import { Legend } from './Legend'
 import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type RibbonControl } from './ElevationRibbon'
@@ -261,9 +261,8 @@ export interface MapScreenProps {
    * exactly what it used to do.
    */
   viewportPoints: MapPoint[]
-  blazeCounts: BlazeCount[]
   /** Passed straight through to the Legend (#783) - MapScreen decides nothing
-   *  about it, the same as blazeCounts above. */
+   *  about it. */
   ghostedTrailsDrawn?: boolean
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
@@ -600,7 +599,6 @@ export function MapScreen({
   onSelectSearchResult,
   bbox,
   viewportPoints,
-  blazeCounts,
   ghostedTrailsDrawn,
   hiddenTypes,
   onToggleType,
@@ -1121,7 +1119,6 @@ export function MapScreen({
             persistent={isDesktop}
             bbox={bbox}
             points={viewportPoints}
-            blazeCounts={blazeCounts}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}

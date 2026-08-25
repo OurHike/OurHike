@@ -300,14 +300,23 @@ def test_export_without_a_ledger_is_the_pre_671_world(tmp_path):
 
 
 def test_the_real_ledger_stays_under_the_reference_review_ceiling():
-    """test_no_committed_data.py holds reference/ files to 8,000 lines; the
-    ledger's one-row-per-line serialization is what keeps ~3,000 published
-    POIs inside it. This trips BEFORE that guard does, with a message that
-    says what to do about it."""
+    """test_no_committed_data.py holds reference/ files to 12,000 lines; the
+    ledger's one-row-per-line serialization is what keeps the published POIs
+    inside it. This trips BEFORE that guard does, with a message that says
+    what to do about it.
+
+    IT ALREADY FIRED ONCE, which is the thing worth knowing about the numbers
+    below (#1026). The ledger went 4,267 -> 8,579 lines in a single publish
+    run when the app started publishing for a whole state (#1019) and water
+    started being measured against every trail it draws (#1016/#1023) - 8,563
+    rows now, against the ~3,000 this docstring used to describe. The
+    maintainer raised the committed-data ceiling to 12,000 on 2026-08-25
+    rather than split the ledger, and this early warning keeps its 500-line
+    head start on it so the message a person meets is still this one."""
     if not export_poi.LEDGER_PATH.exists():
         pytest.skip("no seeded ledger in this checkout")
     lines = export_poi.LEDGER_PATH.read_text(encoding="utf-8").count("\n")
-    assert lines < 7_500, (
+    assert lines < 11_500, (
         "the ledger is approaching the reference-review ceiling - time to decide its next shelf "
         "(features/POI_IDENTITY.md's open question) rather than trip the committed-data guard cold"
     )

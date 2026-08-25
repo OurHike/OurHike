@@ -96,6 +96,10 @@ export function tapAt(
  */
 export function undoTap(draft: DayHikeDraft): DayHikeDraft {
   if (draft.refusal !== null) return { ...draft, refusal: null }
+  // Closing the loop was one action, so undoing it is one action too. Slicing
+  // a point at the same time would silently take back two edits, and the
+  // second one is a tap the hiker placed on purpose.
+  if (draft.looped) return { ...draft, looped: false }
   if (draft.points.length === 0) return draft
   return { points: draft.points.slice(0, -1), refusal: null, looped: false }
 }

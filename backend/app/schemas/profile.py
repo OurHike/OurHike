@@ -30,6 +30,7 @@ class DeletionReceipt(BaseModel):
     """
 
     trips_deleted: int
+    day_hikes_deleted: int
     planned_hikes_deleted: int
     hikes_deleted: int
     preferences_deleted: int

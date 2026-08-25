@@ -58,7 +58,10 @@ export interface RouteDrawing {
 // the brand primary's own value; the casing is the paper tone that gives it
 // an edge against both the light sheet and the dark one - the same job the
 // trail casing does for the blaze.
-const ROUTE_INK = '#355c3a'
+// Exported since #978: the day-hike builder shares this ink (the
+// maintainer's call, 2026-08-25) - one colour meaning "your route", however
+// the two builders differ in draw order.
+export const ROUTE_INK = '#355c3a'
 const ROUTE_CASING = '#fffdf7'
 
 export function buildRouteSource(): GeoJSONSourceSpecification {

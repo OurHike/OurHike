@@ -456,6 +456,30 @@ def collect_artifacts() -> dict[str, dict]:
         else:
             artifacts[NEARBY_TRAILS_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The junction graph derived from those same lines (#974,
+    # build_trail_graph.py). It carries the nearby manifest's `sources` forward
+    # so the SAME reaches_hikers check applies: topology of data a steward has
+    # not licensed is still that steward's data, and a graph that published
+    # while its lines were held back would let a phone route over trails it is
+    # not allowed to draw.
+    graph_manifest = PROCESSED_DIR / "trail_graph_manifest.json"
+    if graph_manifest.exists():
+        manifest = json.loads(graph_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: trail_graph.json not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json."
+            )
+        else:
+            artifacts["trail_graph.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+            # The geometry half, gated with its routing half above - one
+            # manifest binds the pair so they cannot publish separately.
+            artifacts["trail_graph_geometry.json"] = {
+                "path": manifest["geometry_path"],
+                "sha256": manifest["geometry_sha256"],
+            }
+
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():
         manifest = json.loads(poi_manifest.read_text())

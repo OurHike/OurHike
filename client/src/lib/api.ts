@@ -1208,6 +1208,65 @@ export async function syncTrips(payload: TripSyncRequest): Promise<TripSyncRespo
   return (await response.json()) as TripSyncResponse
 }
 
+// --- Day hikes (#976): the trips exchange, mirrored for the other store ----
+//
+// Same envelope, same rows, same conflict accounting as `/trips/sync`, with
+// `day_hikes` as the collection field and ONE deliberate subtraction: no
+// planned-hike singleton, because nothing like `ourhike:hike` rides this
+// exchange. Day hikes sync from day one (the maintainer's decision,
+// 2026-08-25), so this and the backend's `/day-hikes/sync` are being built
+// against each other to this mirrored shape.
+
+/** One day hike as this device is offering it. `document` is null on a
+ *  delete, exactly as a TripUpload's is. */
+export interface DayHikeUpload {
+  id: string
+  document: unknown | null
+  base_updated_at: string | null
+  deleted: boolean
+}
+
+/** One day hike as the server holds it now. A null `document` with a
+ *  `deleted_at` is a tombstone to ACT on - the hiker's own delete arriving
+ *  from their other device. */
+export interface SyncedDayHikeRow {
+  id: string
+  document: unknown | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface DayHikeSyncRequest {
+  since: string | null
+  day_hikes: DayHikeUpload[]
+}
+
+export interface DayHikeSyncResponse {
+  now: string
+  day_hikes: SyncedDayHikeRow[]
+  /** How many day hikes this exchange kept beside an existing one rather
+   *  than overwriting - a conflict is a thing that HAPPENED, and the surface
+   *  that says so (#894's pattern) will read this. */
+  conflicts: number
+}
+
+/**
+ * One exchange: here is what this device did, what did the others do.
+ *
+ * A single call rather than a read and a write, for `syncTrips`' reason -
+ * splitting it would open a window in which the answer to the second no
+ * longer matches the first.
+ */
+export async function syncDayHikes(
+  payload: DayHikeSyncRequest,
+): Promise<DayHikeSyncResponse> {
+  const response = await authedFetch('/day-hikes/sync', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return (await response.json()) as DayHikeSyncResponse
+}
+
 // --- Taking it all back, or being rid of us (#895, ACCOUNT_SYNC.md phase E)
 
 /**

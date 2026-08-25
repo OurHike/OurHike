@@ -30,11 +30,12 @@
 //
 // THE THIRD DOOR GOES SOMEWHERE OF ITS OWN
 //
-// "A walk I've already done" is #982, not PR #968's day-summary card. That
-// card describes a day inside an A.T. plan and reads its figures off
-// lib/walkedMiles.ts's merged mile intervals; this describes a walk with no
-// plan behind it, across a network. Two surfaces that look alike and know
-// different things is the cheaper mistake - decided 2026-08-25.
+// "A walk I've already done" is #982, not #968's day-summary card
+// (screens/DaySummary.tsx). That card describes a day inside an A.T. plan -
+// its figures come from the plan's own days via lib/daySummary.ts; this
+// describes a walk with no plan behind it,
+// across a network. Two surfaces that look alike and know different things is
+// the cheaper mistake - decided 2026-08-25.
 
 import '../screens/plan.css'
 
@@ -44,6 +45,9 @@ export interface PlanKindSheetProps {
    * routed. False is an ordinary state, not an error - see the header.
    */
   networkAvailable: boolean
+  /** Whether the past-walk flow exists to open. False until #982 builds it -
+   *  and false renders a sentence, not a dead control (LineSheet's rule). */
+  walkedAvailable: boolean
   onPickDayHike: () => void
   onPickTrip: () => void
   onPickWalked: () => void
@@ -52,6 +56,7 @@ export interface PlanKindSheetProps {
 
 export function PlanKindSheet({
   networkAvailable,
+  walkedAvailable,
   onPickDayHike,
   onPickTrip,
   onPickWalked,
@@ -105,12 +110,27 @@ export function PlanKindSheet({
         </span>
       </button>
 
-      <button type="button" className="plan-kind__door" onClick={onPickWalked}>
-        <span className="plan-kind__door-name">A walk I&rsquo;ve already done</span>
-        <span className="plan-kind__door-note">
-          The same two ends, in the past tense.
-        </span>
-      </button>
+      {walkedAvailable ? (
+        <button type="button" className="plan-kind__door" onClick={onPickWalked}>
+          <span className="plan-kind__door-name">A walk I&rsquo;ve already done</span>
+          <span className="plan-kind__door-note">
+            The same two ends, in the past tense.
+          </span>
+        </button>
+      ) : (
+        <div className="plan-kind__door plan-kind__door--unavailable">
+          <span className="plan-kind__door-name">A walk I&rsquo;ve already done</span>
+          <span className="plan-kind__door-note">
+            The same two ends, in the past tense.
+          </span>
+          <span
+            className="plan-kind__door-note plan-kind__door-note--refused"
+            role="note"
+          >
+            Recording a finished walk isn&rsquo;t built yet. It&rsquo;s coming.
+          </span>
+        </div>
+      )}
     </div>
   )
 }

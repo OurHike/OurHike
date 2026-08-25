@@ -63,6 +63,7 @@ from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
+from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import VolunteerHoursRecord
 
@@ -137,6 +138,7 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "your_account": _row(profile),
         "preferences": _row(preferences) if preferences is not None else None,
         "trips": _rows(db, SyncedTrip, SyncedTrip.profile_id == profile_id),
+        "day_hikes": _rows(db, SyncedDayHike, SyncedDayHike.profile_id == profile_id),
         "planned_hike": _row(planned_hike) if planned_hike is not None else None,
         "hikes": _rows(db, Hike, Hike.user_id == profile_id),
         "condition_reports": _rows(db, Report, Report.reporter_id == profile_id),

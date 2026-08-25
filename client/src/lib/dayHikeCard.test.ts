@@ -158,7 +158,7 @@ describe('dayHikeBailOuts', () => {
     expect(bailOuts[0].name).toBe('Seven Hills Trail')
     expect(bailOuts[0].blaze_color).toBe('white')
     // Half of the first 836 m edge walked to reach the junction.
-    expect(bailOuts[0].mile).toBeCloseTo(0.26, 2)
+    expect(bailOuts[0].miles).toBeCloseTo(0.26, 2)
   })
 
   it('answers a single-edge walk with an empty list, which the card must print', () => {
@@ -175,21 +175,19 @@ describe('dayHikeBailOuts', () => {
     // walked through twice, and each pass is a real chance to get off.
     const resolved = resolveDayHike(
       index,
-      hikeOf([
-        [end(-74.095, 41.25), end(-74.09, 41.255), end(-74.085, 41.25)],
-      ]),
+      hikeOf([[end(-74.095, 41.25), end(-74.09, 41.255), end(-74.085, 41.25)]]),
     )
     const bailOuts = dayHikeBailOuts(index, resolved!)
 
     expect(bailOuts).toHaveLength(2)
     expect(bailOuts[0].name).toBe('Seven Hills Trail')
     expect(bailOuts[1].name).toBe('Seven Hills Trail')
-    expect(bailOuts[1].mile).toBeGreaterThan(bailOuts[0].mile)
+    expect(bailOuts[1].miles).toBeGreaterThan(bailOuts[0].miles)
     // Pass one: 418 m of Pine Meadow. Pass two: that, plus 556 m up and 556 m
     // back down Seven Hills - the doubled climb a deduplicated edge list
     // would have counted once.
-    expect(bailOuts[0].mile).toBeCloseTo(0.26, 2)
-    expect(bailOuts[1].mile).toBeCloseTo(0.95, 2)
+    expect(bailOuts[0].miles).toBeCloseTo(0.26, 2)
+    expect(bailOuts[1].miles).toBeCloseTo(0.95, 2)
   })
 
   it('walks the closing leg of a loop too', () => {
@@ -201,6 +199,6 @@ describe('dayHikeBailOuts', () => {
 
     // Out through the junction, and back through it on the closing leg.
     expect(bailOuts).toHaveLength(2)
-    expect(bailOuts[1].mile).toBeGreaterThan(bailOuts[0].mile)
+    expect(bailOuts[1].miles).toBeGreaterThan(bailOuts[0].miles)
   })
 })

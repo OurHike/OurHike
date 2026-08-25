@@ -21,9 +21,10 @@
 // home is above that ladder rather than part of it, which is why it
 // carries no zoom control.
 
+import type { DayHike } from '../lib/dayHikes'
 import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews } from '../lib/plan'
-import { tripDateRange } from '../lib/planDisplay'
+import { dayLongDateLabel, tripDateRange } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
 import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
@@ -33,6 +34,9 @@ import './plan.css'
 export interface PlanHomeProps {
   trips: readonly Trip[]
   hikes: readonly Hike[]
+  /** The saved day hikes (#980) - listed from their cached figures, which is
+   *  the store's own stated purpose for keeping them. */
+  dayHikes: readonly DayHike[]
   groups: readonly TripGroup[]
   pois: readonly StoredPoi[]
   units: UnitSystem
@@ -43,6 +47,7 @@ export interface PlanHomeProps {
   draftLive: boolean
   onOpenTrip: (id: string) => void
   onOpenHike: () => void
+  onOpenDayHike: (id: string) => void
   onOpenGroup: (id: string) => void
   onAllTrips: () => void
   onNewTrip: () => void
@@ -54,6 +59,7 @@ const RECENT_TRIPS = 3
 export function PlanHome({
   trips,
   hikes,
+  dayHikes,
   groups,
   pois,
   units,
@@ -61,6 +67,7 @@ export function PlanHome({
   draftLive,
   onOpenTrip,
   onOpenHike,
+  onOpenDayHike,
   onOpenGroup,
   onAllTrips,
   onNewTrip,
@@ -85,6 +92,8 @@ export function PlanHome({
           {trips.length} {trips.length === 1 ? 'trip' : 'trips'}
           {hikes.length > 0 &&
             ` · ${hikes.length} ${hikes.length === 1 ? 'hike' : 'hikes'}`}
+          {dayHikes.length > 0 &&
+            ` · ${dayHikes.length} ${dayHikes.length === 1 ? 'day hike' : 'day hikes'}`}
         </span>
       </header>
 
@@ -128,6 +137,30 @@ export function PlanHome({
               </button>
             )
           })}
+        </section>
+      )}
+
+      {dayHikes.length > 0 && (
+        <section className="plan-home__section">
+          <span className="plan-home__title">Your day hikes</span>
+          {sortedByDate(dayHikes).map((dayHike) => (
+            <button
+              type="button"
+              className="plan-home__row"
+              key={dayHike.id}
+              onClick={() => onOpenDayHike(dayHike.id)}
+            >
+              <span className="plan-home__row-name">{dayHike.name}</span>
+              {/* The cached figures, which exist for exactly this row: a list
+                  must not load the routing graph to say "3.4 mi". The card a
+                  tap opens re-derives against the live graph and says so when
+                  it cannot. */}
+              <span className="plan-home__meta">
+                {formatDistance(dayHike.figures.miles, units)} ·{' '}
+                {dayHike.date !== null ? dayLongDateLabel(dayHike.date) : 'no date yet'}
+              </span>
+            </button>
+          ))}
         </section>
       )}
 
@@ -191,4 +224,15 @@ function firstDate(trip: Trip): string | null {
     if (day.date !== undefined) return day.date
   }
   return null
+}
+
+/** Newest first, undated last - the recent-trips ordering, for the same
+ *  reason: an undated day hike is a plan without a date, not an error. */
+function sortedByDate(dayHikes: readonly DayHike[]): DayHike[] {
+  return [...dayHikes].sort((a, b) => {
+    if (a.date === null && b.date === null) return 0
+    if (a.date === null) return 1
+    if (b.date === null) return -1
+    return b.date.localeCompare(a.date)
+  })
 }

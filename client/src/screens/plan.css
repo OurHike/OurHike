@@ -1983,3 +1983,133 @@
   border: 1px solid currentColor;
   border-radius: 2px;
 }
+
+/* The finished day hike (#980, frame `1l`). Wears .day-hike-bar's sheet frame
+   - the card replaces the bar in the same slot, one surface continuing - with
+   the taller ceiling a legs-and-ways-off list needs. */
+.day-hike-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 85%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.day-hike-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-right: 2rem; /* clear of the close button */
+}
+
+.day-hike-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.day-hike-card__when {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--fg-2);
+}
+
+.day-hike-card__badge {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.day-hike-card__figures {
+  margin: 0;
+  font-weight: 600;
+}
+
+.day-hike-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.day-hike-card__heading {
+  margin: 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.day-hike-card__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.9375rem;
+}
+
+/* A way-off row leads with its mile; the trail name takes the slack. */
+.day-hike-card__row--mile {
+  grid-template-columns: auto 1fr auto;
+}
+
+.day-hike-card__row-mile {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.day-hike-card__row-name {
+  min-width: 0;
+}
+
+.day-hike-card__row-figures,
+.day-hike-card__row-org {
+  font-size: 0.8125rem;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.day-hike-card__note {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.day-hike-card__orgs {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+}
+
+.day-hike-card__quiet {
+  align-self: flex-start;
+  padding: 0.25rem 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.day-hike-card__confirm {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}

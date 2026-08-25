@@ -109,7 +109,7 @@ export function resolveDayHike(
  *  that leaves there - nothing the graph does not know (see the header). */
 export interface BailOut {
   /** Walked-trail miles from the hike's start to this junction. */
-  mile: number
+  miles: number
   name: string | null
   blaze_color: string | null
   source: string | null
@@ -177,12 +177,11 @@ export function dayHikeBailOuts(
           const departing = graph.edges[neighbour.edgeIndex]
           // A trail CROSSING the junction contributes an edge on each side;
           // one trail is one way off, so both collapse onto one row.
-          const identity =
-            departing.trail_id ?? `${departing.name}|${departing.source}`
+          const identity = departing.trail_id ?? `${departing.name}|${departing.source}`
           if (seenTrails.has(identity)) continue
           seenTrails.add(identity)
           out.push({
-            mile: metresToMiles(walked),
+            miles: metresToMiles(walked),
             name: departing.name,
             blaze_color: departing.blaze_color,
             source: departing.source,

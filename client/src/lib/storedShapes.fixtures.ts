@@ -222,6 +222,71 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
     ],
   },
 
+  // The day hikes a phone keeps (#976): the shape the build that introduced
+  // the key writes, recorded the day it landed so the next build is held to
+  // reading it - PLAN_KEY and TRIPS_KEY reached this list late, and this one
+  // should not repeat that.
+  //
+  // The load-bearing details a reader has to keep honouring: ends are
+  // COORDINATES ([lon, lat]) with no edgeIndex anywhere - dayHikes.ts's
+  // CRITICAL rule, since an edge's array position shifts when the pipeline
+  // republishes the graph; `poiId` is stored null by this build (the join
+  // lands with #980); and the second hike carries TWO segments, which is
+  // #935's deliberate gap - a reader that "fixes" it to one route has
+  // changed the walk.
+  'ourhike:day-hikes': {
+    openId: 'day-hike-0002',
+    hikes: [
+      {
+        id: 'day-hike-0001',
+        name: 'Bear Mountain loop',
+        date: '2026-09-06',
+        segments: [
+          [
+            { coord: [-73.988997, 41.312807], poiId: null },
+            { coord: [-73.968708, 41.322614], poiId: null },
+          ],
+        ],
+        figures: {
+          miles: 3.4,
+          legs: [
+            {
+              name: 'Appalachian Trail',
+              source: 'nynjtc',
+              blaze_color: 'white',
+              miles: 3.4,
+            },
+          ],
+        },
+        looped: true,
+        recorded: 'planned',
+      },
+      {
+        // Unnamed and undated on purpose - both are first-class states, and
+        // `recorded: 'walked'` is the provenance flag a screen reads.
+        id: 'day-hike-0002',
+        name: '',
+        date: null,
+        segments: [
+          [
+            { coord: [-74.011355, 41.242191], poiId: null },
+            { coord: [-74.003508, 41.25029], poiId: null },
+          ],
+          [
+            { coord: [-73.996802, 41.25565], poiId: null },
+            { coord: [-73.987004, 41.262418], poiId: null },
+          ],
+        ],
+        figures: {
+          miles: 2.8,
+          legs: [{ name: null, source: null, blaze_color: null, miles: 2.8 }],
+        },
+        looped: false,
+        recorded: 'walked',
+      },
+    ],
+  },
+
   // sessionStorage rather than IndexedDB, and included anyway - the surface
   // is "stored client data", and a camera that fails to parse reopens the map
   // somewhere the hiker was not.

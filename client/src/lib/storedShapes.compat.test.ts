@@ -24,6 +24,7 @@ import { PREFERENCES_KEY, loadPreferences } from './preferences'
 import { PLANNED_HIKE_KEY, loadPlannedHike } from './plannedHike'
 import { PLAN_KEY, loadPlan } from './plan'
 import { TRIPS_KEY, loadTrips } from './trips'
+import { DAY_HIKES_KEY, loadDayHikes } from './dayHikes'
 import { hikeFigures, resolvePlace } from './hikes'
 import { CAMERA_MEMORY_KEY, readCamera } from './cameraMemory'
 import {
@@ -306,6 +307,27 @@ describe('a stored phone from the baseline release', () => {
     })
   })
 
+  // The day hikes (#976). The details asserted are the ones a later build is
+  // most tempted to break: ends stay coordinates (never an edge index, whose
+  // array position shifts when the pipeline republishes the graph), a
+  // two-segment hike stays two segments (#935's deliberate gap), and the
+  // stored null poiId stays null rather than gaining a join it never had.
+  it('still reads its saved day hikes - ends, gap, figures and which is open', async () => {
+    const store = await loadDayHikes()
+
+    expect(store.hikes.map((hike) => hike.id)).toEqual(['day-hike-0001', 'day-hike-0002'])
+    expect(store.openId).toBe('day-hike-0002')
+    expect(store.hikes[0].segments[0][0]).toEqual({
+      coord: [-73.988997, 41.312807],
+      poiId: null,
+    })
+    expect(store.hikes[0].looped).toBe(true)
+    expect(store.hikes[0].figures.legs[0].blaze_color).toBe('white')
+    expect(store.hikes[1].segments).toHaveLength(2)
+    expect(store.hikes[1].recorded).toBe('walked')
+    expect(store.hikes[1].date).toBeNull()
+  })
+
   it('still reopens the map where it was left', () => {
     expect(readCamera()).toEqual({ center: [-83.4821, 35.6012], zoom: 12.5 })
   })
@@ -517,6 +539,9 @@ describe('the fixture itself', () => {
       // predicts - a hand-written array only catches what somebody added.
       PLAN_KEY,
       TRIPS_KEY,
+      // In this list from the release that introduced it (#976), which is
+      // what the comment above asks for and PLAN_KEY/TRIPS_KEY did not get.
+      DAY_HIKES_KEY,
       ...packageKeys.flatMap((key) => [progressKeyFor(key), versionKeyFor(key)]),
       sourceKeyFor(CORRIDOR_ARCHIVE_KEY),
       // The archive under the corridor key, in both shapes that are inside the

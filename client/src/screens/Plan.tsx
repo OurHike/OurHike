@@ -125,6 +125,14 @@ export interface PlanScreenProps {
    *  on every tab switch. */
   mode: PlanMode
   onSwitchMode: (mode: PlanMode) => void
+  /** Whether the full day-hike list is open, for the same reason: the map's
+   *  trailhead door opens it from another tab. */
+  dayListOpen: boolean
+  onDayListOpen: (open: boolean) => void
+  /** Which builder holds a live draft, or null - each room offers a way back
+   *  to its OWN draft and its own action otherwise, so the day room never
+   *  puts a button into the trips builder. */
+  draftKind: 'day' | 'trip' | null
   /** Reopen the target sheet over this plan's route. */
   onChangeTarget: () => void
   onInsertZeroAfter: (dayIndex: number) => void
@@ -190,6 +198,9 @@ export function PlanScreen({
   gpsAt,
   mode,
   onSwitchMode,
+  dayListOpen,
+  onDayListOpen,
+  draftKind,
   onChangeTarget,
   onInsertZeroAfter,
   onRemoveDay,
@@ -242,8 +253,6 @@ export function PlanScreen({
   const [atHome, setAtHome] = useState(
     trips.length > 1 || hikes.length > 0 || dayHikes.length > 0,
   )
-  /** The full day-hike list (frame D7), over the day home. */
-  const [dayListOpen, setDayListOpen] = useState(false)
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -289,8 +298,12 @@ export function PlanScreen({
             units={units}
             at={gpsAt}
             onOpen={onOpenDayHike}
-            onBack={() => setDayListOpen(false)}
-            onNewDayHike={networkAvailable && !draftLive ? onNewDayHike : null}
+            onBack={() => onDayListOpen(false)}
+            // The day room's own action, on the day room's own terms: a live
+            // TRIP draft is not this screen's business, and a live day draft
+            // is reached from the home's "Back to your route" rather than
+            // offered again here.
+            onNewDayHike={networkAvailable && draftKind === null ? onNewDayHike : null}
           />
           {targetSheet}
           {kindSheet}
@@ -312,7 +325,6 @@ export function PlanScreen({
           pois={pois}
           units={units}
           openTrip={trips.find((trip) => trip.id === openTripId) ?? null}
-          draftLive={draftLive}
           onOpenTrip={(id) => {
             onOpenTrip(id)
             setZoomWanted('days')
@@ -324,9 +336,10 @@ export function PlanScreen({
           }}
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
-          onAllDayHikes={() => setDayListOpen(true)}
+          onAllDayHikes={() => onDayListOpen(true)}
           onNewDayHike={networkAvailable ? onNewDayHike : null}
           onNewTrip={onNewTrip}
+          draftKind={draftKind}
           onResumeDraft={onStartOnMap}
         />
         {targetSheet}

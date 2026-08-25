@@ -1598,7 +1598,15 @@
 /* The band is the mode: Day hikes wears the brand green, Trips wears the
    chrome family - the one pair documented as dark under BOTH themes
    (design-system/tokens/colors.css), which is what an identity band is.
-   Negative margins bleed it to the screen edges through .plan's padding. */
+   Negative margins bleed it to the screen edges through .plan's padding.
+
+   Measured 2026-08-25, WCAG contrast of each pairing below against its own
+   band, in both themes - the lowest is the trips link at night:
+     trips band text  paper-0/pine-900 16.60:1 · bone-100/ink-900 14.94:1
+     trips link       moss-300/pine-900 7.73:1 · bone-500/ink-900  4.96:1
+     day band text    paper-0/forest-600 7.53:1 · ink-950/moss-400 5.59:1
+   Re-runnable from the hexes in tokens/colors.css; every one clears 4.5:1,
+   which is why these bands take no per-theme overrides of their own. */
 .plan-band {
   display: flex;
   justify-content: space-between;
@@ -1624,12 +1632,17 @@
   gap: 2px;
 }
 
+/* 0.85, not 0.75. Measured: ink-950 at 75% over moss-400 is 4.01:1 - under
+   the AA floor for 10px text, so the eyebrow was legible by day and not by
+   night on the same screen. At 85% it is 4.72:1. The table above measures
+   the full-opacity pairings; anything that thins one of them has to carry
+   its own figure, which is what this line is. */
 .plan-band__eyebrow {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  opacity: 0.75;
+  opacity: 0.85;
 }
 
 .plan-band__word {
@@ -1643,6 +1656,7 @@
 /* The way to the other room. Colour comes from the band (currentColor), so
    one rule serves both bands in both themes. */
 .plan-band__switch {
+  position: relative;
   min-height: 38px;
   padding: 0 var(--space-3, 12px);
   border: 1px solid currentColor;
@@ -1653,6 +1667,30 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Drawn at 38px like every header button, hit at 44 - chrome.css's idiom for
+   anything under the effective touch target. This one is the ONLY route
+   between the two Plan homes, so a thumb that misses it has nowhere else to
+   go. */
+.plan-band__switch::after {
+  content: '';
+  position: absolute;
+  inset: calc((38px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* THE FOCUS RING HAS TO BE VISIBLE ON THE BAND IT SITS ON.
+   desktop.css draws every focus ring in --brand-primary, which is exactly
+   what the day band paints its background with: measured 1.00:1, ring
+   invisible in both themes, on controls that are the only way off their
+   screens. On the trips band the same ring is 2.21:1 in the light theme,
+   under WCAG 1.4.11's 3:1 for a focus indicator. Both bands re-point it at
+   their own foreground, which is the colour already proven legible there by
+   the table above. */
+.plan-band :focus-visible,
+.plan__head--day :focus-visible,
+.plan__head--trips :focus-visible {
+  outline-color: currentColor;
 }
 
 /* Existing headers, painted as their mode's band on the sub-screens - the
@@ -1684,10 +1722,18 @@
   color: var(--fg-on-brand);
 }
 
-.plan__head--day .plan__crumb,
-.plan__head--day .plan__crumb-up {
+/* The OUTER element only. `.plan__crumb-up` is a span inside the button, and
+   opacity composites per element - naming both dropped the text to
+   0.85 × 0.85 = 0.72, measured 3.85:1 on the dark band: under the AA floor,
+   on this screen's only way back. At a single 0.85 it is 4.72:1 dark and
+   5.99:1 light. The inner span takes the colour and no second fade. */
+.plan__head--day .plan__crumb {
   color: inherit;
   opacity: 0.85;
+}
+
+.plan__head--day .plan__crumb-up {
+  color: inherit;
 }
 
 .plan-home__quiet-note {
@@ -1761,9 +1807,13 @@
   cursor: pointer;
   box-shadow: 0 2px 10px rgb(0 0 0 / 14%);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hikes-here__dismiss {
+  position: relative;
+  flex: none;
   width: 34px;
   height: 34px;
   border: 1px solid var(--edge-over-map);
@@ -1775,12 +1825,33 @@
   cursor: pointer;
 }
 
+/* An icon-only × over a map, tapped at a trailhead with cold hands: drawn at
+   34 and hit at 44, chrome.css's own idiom for a control under the target. */
+.hikes-here__dismiss::after {
+  content: '';
+  position: absolute;
+  inset: calc((34px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* z-index 2, which is what every other occupant of the routeSheet slot and
+   the waypoint card use (chrome.css). 3 is for surfaces that cover the map
+   outright - search, the stop picker - and this one must never cover a
+   waypoint card: unlike the builders, the door and a tapped pin can be on
+   screen at the same time. */
 .hikes-here {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 3;
+  z-index: 2;
+  /* Capped and scrolling, like every sibling sheet in this slot
+     (.day-hike-bar 60%, .plan-target and .day-hike-card 85%). The candidate
+     list has no ceiling - it is every planned hike inside the radius - and a
+     sheet that grows from the bottom edge pushes its own head, and the × on
+     it, off the top of the canvas: unreadable and unclosable at once. In
+     landscape two nearby hikes were enough. */
+  max-height: 60%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
@@ -1793,12 +1864,22 @@
 }
 
 /* After the sheet rule on purpose: same specificity, and the closed pill
-   has to win the shared properties it re-points. */
+   has to win the shared properties it re-points.
+
+   ABOVE THE MAP'S OWN CONTROLS, not among them. The canvas bottom already
+   carries the attribution strip, the scale bar bottom-left and the compass
+   over locate bottom-right (map/mapChrome.ts) - two stacked 42px buttons on
+   a 10px margin. A pill centred at bottom:12px lay across the scale bar and
+   half the compass, and won the hit test against both, so a hiker reaching
+   for north got the door instead. 110px clears the whole stack and is still
+   deep in the lower third that WIREFRAMES.md §1 reserves for what gets
+   tapped. */
 .hikes-here--closed {
   left: 50%;
   right: auto;
-  bottom: 12px;
+  bottom: 110px;
   transform: translateX(-50%);
+  max-width: calc(100% - var(--space-6, 24px));
   flex-direction: row;
   align-items: center;
   gap: var(--space-1, 4px);
@@ -1858,6 +1939,13 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--fg-2);
+}
+
+.hikes-here__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
 }
 
 .hikes-here__all {
@@ -1959,7 +2047,11 @@
   gap: var(--space-3, 12px);
 }
 
+/* The one writable field this card adds, so it meets the touch target
+   outright rather than through a pseudo-element - a date input opens a
+   picker, and a mistap lands on the figures line above it. */
 .day-hike-card__date input {
+  min-height: var(--min-touch-target, 44px);
   padding: 6px 8px;
   border: 1.5px solid var(--border-2);
   border-radius: 8px;

@@ -26,31 +26,40 @@
 import { useState } from 'react'
 
 import type { DayHike } from '../lib/dayHikes'
-import { dayHikePlanText, type LeaveWordFields } from '../lib/dayHikePlanText'
+import {
+  dayHikePlanText,
+  type LeaveWordFields,
+  type PlanTextFigures,
+} from '../lib/dayHikePlanText'
 import type { UnitSystem } from '../lib/units'
 import './plan.css'
 
 export interface LeaveWithSomeoneProps {
   hike: DayHike
-  /** Walked-trail miles - the live resolution when the caller has one, the
-   *  stored cache when it does not, exactly as the card prints them. */
-  miles: number
+  /** The app's half of the card, from one derivation - see PlanTextFigures.
+   *  It carries its own provenance, so the text can hedge a cached figure
+   *  rather than handing somebody a number the screen behind it refused to
+   *  stand behind. */
+  figures: PlanTextFigures
   units: UnitSystem
   onClose: () => void
   /** Injectable for tests; defaults to the real navigator. */
   share?: (text: string) => Promise<void>
   canShare?: boolean
+  /** The phone's local calendar day, injectable for tests. */
+  today?: string
 }
 
 type HandOver = 'idle' | 'shared' | 'share-failed' | 'copied' | 'copy-failed'
 
 export function LeaveWithSomeone({
   hike,
-  miles,
+  figures,
   units,
   onClose,
   share,
   canShare = typeof navigator !== 'undefined' && 'share' in navigator,
+  today,
 }: LeaveWithSomeoneProps) {
   const [fields, setFields] = useState<LeaveWordFields>({
     startingFrom: '',
@@ -59,7 +68,10 @@ export function LeaveWithSomeone({
   })
   const [handOver, setHandOver] = useState<HandOver>('idle')
 
-  const text = dayHikePlanText(hike, miles, units, fields)
+  const text =
+    today === undefined
+      ? dayHikePlanText(hike, figures, units, fields)
+      : dayHikePlanText(hike, figures, units, fields, today)
 
   const sendIt = async () => {
     try {
@@ -86,8 +98,14 @@ export function LeaveWithSomeone({
     }
   }
 
-  const setField = (key: keyof LeaveWordFields) => (value: string) =>
+  // Editing a field retires the hand-over status, because that status is a
+  // claim about bytes that have already left: "Copied." standing over a card
+  // the hiker has since added "if I'm not back by 6:00 pm" to would vouch for
+  // exactly the version missing the line this whole sheet exists for.
+  const setField = (key: keyof LeaveWordFields) => (value: string) => {
     setFields((current) => ({ ...current, [key]: value }))
+    setHandOver('idle')
+  }
 
   return (
     <div className="leave-word" role="dialog" aria-label="Leave this with someone">

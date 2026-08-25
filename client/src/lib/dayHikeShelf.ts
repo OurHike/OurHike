@@ -101,8 +101,10 @@ export function distanceToStartMiles(hike: DayHike, at: LonLat): number | null {
  * The saved day hikes whose start is within `NEAR_START_MILES` of the fix,
  * nearest first.
  *
- * Only hikes still to walk: the door's one sentence is "follow this one",
- * and a walked record is not a thing to follow. The start is the first
+ * Only hikes still to walk: the door offers a walk somebody can set off on,
+ * and a walked record is not one. (The door OPENS a hike rather than
+ * following it - chrome/DayHikesHere.tsx has the reason, and following a
+ * network hike is not built.) The start is the first
  * tapped end of the first segment - for a loop that is also the finish,
  * which is why the door can reappear at the end of a walk; that is true
  * rather than a defect, and the honest fix is the unvalidated radius above,

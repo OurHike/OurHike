@@ -79,13 +79,26 @@ export function DayHikeCard({
   const orgLabel = orgLabelFrom(stewards)
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
+  const gaps = dayHikeGaps(hike)
 
   if (leaving) {
     return (
       <div className="day-hike-card">
         <LeaveWithSomeone
           hike={hike}
-          miles={miles}
+          // ONE derivation for both the miles and the trail names, and its
+          // provenance with it. The card on screen prefers the live
+          // resolution and says so in a sentence when it cannot have one;
+          // handing the plain-text card the number without the sentence
+          // would be the display outrunning its source on the artifact
+          // somebody decides to worry from.
+          figures={{
+            miles,
+            legs,
+            fromCache: resolved === null,
+            gapMiles: gaps.reduce((total, gap) => total + gap.miles, 0),
+            stretches: hike.segments.length,
+          }}
           units={units}
           onClose={() => setLeaving(false)}
         />
@@ -206,15 +219,29 @@ export function DayHikeCard({
           deliberate-gap answer) and prints as one - straight-line, because
           the ground actually walked across a gap is the hiker's own guess,
           which is what a gap IS. The builder writes single-segment hikes
-          today, so these rows mostly arrive by sync from a future client;
-          the card is ready for them rather than silent about them. */}
-      {dayHikeGaps(hike).map((gap) => (
-        <p className="day-hike-card__gap" key={gap.afterSegment} role="note">
-          {formatDistance(gap.miles, units)} with no trail under it, straight across,
-          between stretch {gap.afterSegment + 1} and stretch {gap.afterSegment + 2}. We
-          won&rsquo;t route you across it — that stretch is yours.
+          today, so this arrives by sync from a future client; the card is
+          ready for it rather than silent about it.
+
+          ONE ROW, COUNTING STRETCHES, rather than a row per gap naming
+          "stretch 2": nothing on this card is numbered - the legs list is
+          trail names, and a segment holds several legs - so a row pointing
+          at a stretch the card never labels sends a hiker looking for
+          something that is not there. How many stretches the walk is in IS
+          on the card, in this sentence, which is what makes the total
+          placeable. */}
+      {gaps.length > 0 && (
+        <p className="day-hike-card__gap" role="note">
+          {formatDistance(
+            gaps.reduce((total, gap) => total + gap.miles, 0),
+            units,
+          )}{' '}
+          with no trail under it, straight across
+          {hike.segments.length > 2
+            ? `, between the ${hike.segments.length} stretches of this walk`
+            : ', between the two stretches of this walk'}
+          . We won&rsquo;t route you across it — that stretch is yours.
         </p>
-      ))}
+      )}
 
       {orgCount > 0 && (
         <p className="day-hike-card__orgs">

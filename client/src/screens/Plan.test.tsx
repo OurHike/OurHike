@@ -52,6 +52,9 @@ const PROPS = {
   // tests pass mode: 'day' themselves.
   mode: 'trips' as const,
   onSwitchMode: vi.fn(),
+  dayListOpen: false,
+  onDayListOpen: vi.fn(),
+  draftKind: null,
   onNewDayHike: vi.fn(),
   onNewTrip: vi.fn(),
   networkAvailable: true,
@@ -782,15 +785,40 @@ describe('the day room and its list (#1008)', () => {
     recorded: 'planned' as const,
   }
 
-  it('All N › opens the full day-hike list, and the crumb comes back', async () => {
+  it('All N › asks the shell for the full list, and the crumb asks to close it', async () => {
+    // The list's open state is the SHELL's (#1008): the map's trailhead door
+    // offers "All your day hikes ›" from another tab, and this screen is
+    // rebuilt on every tab switch - state local to it would always be false
+    // on arrival, landing that control one screen short of what it names.
     const user = userEvent.setup()
-    render(<PlanScreen {...PROPS} mode="day" dayHikes={[DAY_HIKE]} plan={null} />)
+    const onDayListOpen = vi.fn()
+    const { rerender } = render(
+      <PlanScreen
+        {...PROPS}
+        mode="day"
+        dayHikes={[DAY_HIKE]}
+        plan={null}
+        onDayListOpen={onDayListOpen}
+      />,
+    )
 
     await user.click(screen.getByRole('button', { name: 'All 1 ›' }))
+    expect(onDayListOpen).toHaveBeenCalledWith(true)
+
+    rerender(
+      <PlanScreen
+        {...PROPS}
+        mode="day"
+        dayHikes={[DAY_HIKE]}
+        plan={null}
+        dayListOpen={true}
+        onDayListOpen={onDayListOpen}
+      />,
+    )
     expect(screen.getByText('Ready to walk')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Day hikes/ }))
-    expect(screen.getByRole('heading', { name: 'Day hikes' })).toBeInTheDocument()
+    expect(onDayListOpen).toHaveBeenCalledWith(false)
   })
 
   it('the trips sub-screens wear the trips band', () => {

@@ -56,9 +56,15 @@ export interface PlanHomeProps {
   units: UnitSystem
   /** The trip the Plan tab would show, or null. */
   openTrip: Trip | null
-  /** A route or day-hike draft is in progress - the primary action says so
-   *  rather than offering a fresh start over the top of it. */
-  draftLive: boolean
+  /**
+   * Which builder holds a live draft, or null.
+   *
+   * A room offers "Back to your route" only for its OWN draft. One shared
+   * boolean put a button into the multi-day route builder under a band
+   * reading "you're planning / Day hikes" - the mode confusion this split
+   * exists to end, with the room's own action missing besides.
+   */
+  draftKind: 'day' | 'trip' | null
   onOpenTrip: (id: string) => void
   onOpenHike: () => void
   onOpenDayHike: (id: string) => void
@@ -89,7 +95,7 @@ export function PlanHome({
   pois,
   units,
   openTrip,
-  draftLive,
+  draftKind,
   onOpenTrip,
   onOpenHike,
   onOpenDayHike,
@@ -104,7 +110,7 @@ export function PlanHome({
     <DayHikesHome
       dayHikes={dayHikes}
       units={units}
-      draftLive={draftLive}
+      draftKind={draftKind}
       onSwitchMode={onSwitchMode}
       onOpenDayHike={onOpenDayHike}
       onAllDayHikes={onAllDayHikes}
@@ -119,7 +125,7 @@ export function PlanHome({
       pois={pois}
       units={units}
       openTrip={openTrip}
-      draftLive={draftLive}
+      draftKind={draftKind}
       onSwitchMode={onSwitchMode}
       onOpenTrip={onOpenTrip}
       onOpenHike={onOpenHike}
@@ -162,7 +168,7 @@ function ModeBand({
 interface DayHikesHomeProps {
   dayHikes: readonly DayHike[]
   units: UnitSystem
-  draftLive: boolean
+  draftKind: 'day' | 'trip' | null
   onSwitchMode: (mode: PlanMode) => void
   onOpenDayHike: (id: string) => void
   onAllDayHikes: () => void
@@ -173,7 +179,7 @@ interface DayHikesHomeProps {
 function DayHikesHome({
   dayHikes,
   units,
-  draftLive,
+  draftKind,
   onSwitchMode,
   onOpenDayHike,
   onAllDayHikes,
@@ -217,13 +223,19 @@ function DayHikesHome({
       )}
 
       {dayHikes.length === 0 && (
+        // "Signed in" carries the sentence: the exchange runs only with an
+        // account and sync on, and signed out is the app's default.
         <p className="plan-home__quiet-note">
-          No day hikes saved yet. One you build is kept here, and follows your account to
-          the next phone.
+          No day hikes saved yet. One you build is kept on this phone — and, signed in,
+          follows your account to the next one.
         </p>
       )}
 
-      {draftLive ? (
+      {/* Only a DAY draft brings a hiker back here. A live trip route is the
+          other room's business: offering "Back to your route" under a band
+          reading "Day hikes" would drop somebody into the multi-day builder
+          from the day room, and leave this room with no action of its own. */}
+      {draftKind === 'day' ? (
         <button type="button" className="plan__primary" onClick={onResumeDraft}>
           Back to your route
         </button>
@@ -252,7 +264,7 @@ interface TripsHomeProps {
   pois: readonly StoredPoi[]
   units: UnitSystem
   openTrip: Trip | null
-  draftLive: boolean
+  draftKind: 'day' | 'trip' | null
   onSwitchMode: (mode: PlanMode) => void
   onOpenTrip: (id: string) => void
   onOpenHike: () => void
@@ -269,7 +281,7 @@ function TripsHome({
   pois,
   units,
   openTrip,
-  draftLive,
+  draftKind,
   onSwitchMode,
   onOpenTrip,
   onOpenHike,
@@ -396,9 +408,11 @@ function TripsHome({
       <button
         type="button"
         className="plan__primary"
-        onClick={draftLive ? onResumeDraft : onNewTrip}
+        // Symmetrically: only a live TRIP draft is a route this room can
+        // send somebody back to.
+        onClick={draftKind === 'trip' ? onResumeDraft : onNewTrip}
       >
-        {draftLive ? 'Back to your route' : 'Plan a new trip'}
+        {draftKind === 'trip' ? 'Back to your route' : 'Plan a new trip'}
       </button>
     </div>
   )

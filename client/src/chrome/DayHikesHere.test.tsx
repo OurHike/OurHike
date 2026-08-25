@@ -45,7 +45,7 @@ describe('the door', () => {
   it('opens closed: one pill, no self-opened sheet over the map', () => {
     render(<DayHikesHere {...PROPS} />)
     expect(
-      screen.getByRole('button', { name: 'One of your day hikes starts here' }),
+      screen.getByRole('button', { name: 'Your hikes here · 1' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
   })
@@ -53,7 +53,7 @@ describe('the door', () => {
   it('counts plural honestly on the pill', () => {
     render(<DayHikesHere {...PROPS} near={[nearby('a', 0.04), nearby('b', 0.3)]} />)
     expect(
-      screen.getByRole('button', { name: '2 of your day hikes start here' }),
+      screen.getByRole('button', { name: 'Your hikes here · 2' }),
     ).toBeInTheDocument()
   })
 
@@ -67,9 +67,7 @@ describe('the door', () => {
     const onOpen = vi.fn()
     render(<DayHikesHere {...PROPS} onOpen={onOpen} />)
 
-    await user.click(
-      screen.getByRole('button', { name: 'One of your day hikes starts here' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Your hikes here · 1' }))
     await user.click(screen.getByRole('button', { name: /Pine Meadow loop/ }))
     expect(onOpen).toHaveBeenCalledWith('Pine Meadow loop')
   })
@@ -77,9 +75,7 @@ describe('the door', () => {
   it('a row says how far off the start is, and that today is the day', async () => {
     const user = userEvent.setup()
     render(<DayHikesHere {...PROPS} />)
-    await user.click(
-      screen.getByRole('button', { name: 'One of your day hikes starts here' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Your hikes here · 1' }))
     // 'fine' precision: 0.04 mi keeps its two decimals rather than rounding
     // to a claim of a tenth of a mile.
     expect(screen.getByText('0.04 mi away')).toBeInTheDocument()
@@ -91,9 +87,7 @@ describe('the door', () => {
   it('says nothing about a date a hike does not have', async () => {
     const user = userEvent.setup()
     render(<DayHikesHere {...PROPS} near={[nearby('undated', 0.1)]} />)
-    await user.click(
-      screen.getByRole('button', { name: 'One of your day hikes starts here' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Your hikes here · 1' }))
     expect(screen.queryByText(/planned/)).not.toBeInTheDocument()
   })
 
@@ -109,19 +103,27 @@ describe('the door', () => {
     const user = userEvent.setup()
     const onAll = vi.fn()
     render(<DayHikesHere {...PROPS} onAll={onAll} />)
-    await user.click(
-      screen.getByRole('button', { name: 'One of your day hikes starts here' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Your hikes here · 1' }))
     await user.click(screen.getByRole('button', { name: 'All your day hikes ›' }))
     expect(onAll).toHaveBeenCalled()
+  })
+
+  it('says the distances are straight-line, which its own source demands', async () => {
+    // dayHikeShelf's contract: "the caller MUST say so if it prints the
+    // figure". At this radius straight-line and walked differ by a multiple
+    // - a start 0.3 mi across an arm of a reservoir is a mile of walking.
+    const user = userEvent.setup()
+    render(<DayHikesHere {...PROPS} />)
+    await user.click(screen.getByRole('button', { name: 'Your hikes here · 1' }))
+    expect(
+      screen.getByText(/Straight line to each start, not trail walked/),
+    ).toBeInTheDocument()
   })
 
   it('never says "follow" - following is not built, opening is what it does', async () => {
     const user = userEvent.setup()
     render(<DayHikesHere {...PROPS} />)
-    await user.click(
-      screen.getByRole('button', { name: 'One of your day hikes starts here' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Your hikes here · 1' }))
     expect(document.body.textContent).not.toMatch(/follow/i)
   })
 })

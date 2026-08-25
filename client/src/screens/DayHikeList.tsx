@@ -69,7 +69,10 @@ export function DayHikeList({
       </header>
 
       {at !== null && shelf.toWalk.length > 1 && (
-        <div className="day-hike-list__sorts">
+        // The group label WhatsLeft.tsx already gives the identical pattern:
+        // without it these announce as two unrelated toggles rather than one
+        // exclusive choice, and say nothing about what they order.
+        <div className="day-hike-list__sorts" role="group" aria-label="Order these by">
           <button
             type="button"
             className="whats-left__sort"
@@ -136,18 +139,22 @@ export function DayHikeList({
         </section>
       )}
 
+      {/* "Signed in" is not a hedge to be trimmed: day hikes ride the
+          account exchange only while somebody has an account and sync is on
+          (lib/useDayHikesSync.ts), and the app's default state is signed
+          out. A flat "they follow your account" reads as backed up to the
+          hiker most likely to lose them. */}
       {dayHikes.length === 0 && (
         <p className="day-hike-list__empty">
-          Nothing saved yet. A day hike you build is kept here, and follows your account
-          to the next phone.
+          Nothing saved yet. A day hike you build is kept on this phone — and, signed in,
+          follows your account to the next one.
         </p>
       )}
 
-      {/* All of these live on this phone; signed in, they follow the
-          account. Said once, at the foot, where D7 says it. */}
       {dayHikes.length > 0 && (
         <p className="day-hike-list__note">
-          All of these are on this phone, and they follow your account to the next one.
+          All of these are on this phone. Signed in, they follow your account to the next
+          one.
         </p>
       )}
 

@@ -30,6 +30,18 @@ const HIKE: DayHike = {
   recorded: 'planned',
 }
 
+/** The live derivation, which is what the card gets in the normal case. */
+const FIGURES = {
+  miles: 6.2,
+  legs: [{ name: 'Pine Meadow Trail' }],
+  fromCache: false,
+  gapMiles: 0,
+  stretches: 1,
+}
+
+/** A fixed day, so the header's written/planned logic is testable. */
+const TODAY = '2026-09-12'
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -41,10 +53,11 @@ describe('the card', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={false}
+        today={TODAY}
       />,
     )
 
@@ -61,10 +74,11 @@ describe('the card', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={false}
+        today={TODAY}
       />,
     )
     expect(
@@ -76,10 +90,11 @@ describe('the card', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={false}
+        today={TODAY}
       />,
     )
     expect(document.body.textContent).not.toContain('≈')
@@ -94,10 +109,11 @@ describe('handing it over', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={false}
+        today={TODAY}
       />,
     )
     expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
@@ -110,11 +126,12 @@ describe('handing it over', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={true}
         share={share}
+        today={TODAY}
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Send it' }))
@@ -128,11 +145,12 @@ describe('handing it over', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={true}
         share={share}
+        today={TODAY}
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Send it' }))
@@ -146,10 +164,11 @@ describe('handing it over', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={false}
+        today={TODAY}
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Copy as plain text' }))
@@ -157,6 +176,28 @@ describe('handing it over', () => {
     const copied = await navigator.clipboard.readText()
     expect(copied).toContain('Pine Meadow loop · sat 12 sep')
     expect(copied).toContain('It does not track me.')
+  })
+
+  it('retires "Copied." the moment the card changes under it', async () => {
+    // The status vouches for bytes that already left. Left standing, it
+    // would vouch for a card missing the line typed after it - and the
+    // field typed last is the one this sheet exists for.
+    const user = userEvent.setup()
+    render(
+      <LeaveWithSomeone
+        hike={HIKE}
+        figures={FIGURES}
+        units="imperial"
+        onClose={vi.fn()}
+        canShare={false}
+        today={TODAY}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Copy as plain text' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Copied.')
+
+    await user.type(screen.getByLabelText(/If I.{0,3}m not back by/), '6')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('admits a refused clipboard rather than reporting a copy that never happened', async () => {
@@ -170,10 +211,11 @@ describe('handing it over', () => {
     render(
       <LeaveWithSomeone
         hike={HIKE}
-        miles={6.2}
+        figures={FIGURES}
         units="imperial"
         onClose={vi.fn()}
         canShare={false}
+        today={TODAY}
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Copy as plain text' }))

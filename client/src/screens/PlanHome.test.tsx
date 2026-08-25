@@ -54,7 +54,7 @@ const PROPS: PlanHomeProps = {
   pois: [],
   units: 'imperial',
   openTrip: null,
-  draftLive: false,
+  draftKind: null,
   onOpenTrip: vi.fn(),
   onOpenHike: vi.fn(),
   onOpenDayHike: vi.fn(),
@@ -176,10 +176,34 @@ describe('the day room', () => {
     const user = userEvent.setup()
     const onResumeDraft = vi.fn()
     render(
-      <PlanHome {...PROPS} mode="day" draftLive={true} onResumeDraft={onResumeDraft} />,
+      <PlanHome {...PROPS} mode="day" draftKind="day" onResumeDraft={onResumeDraft} />,
     )
     await user.click(screen.getByRole('button', { name: 'Back to your route' }))
     expect(onResumeDraft).toHaveBeenCalled()
+  })
+
+  it('keeps its own action while a TRIP draft is live - that route is the other room’s', async () => {
+    // One shared draftLive boolean put "Back to your route" here and dropped
+    // the hiker into the multi-day route builder from a screen headed "Day
+    // hikes", with this room's own action missing besides.
+    const user = userEvent.setup()
+    const onNewDayHike = vi.fn()
+    const onResumeDraft = vi.fn()
+    render(
+      <PlanHome
+        {...PROPS}
+        mode="day"
+        draftKind="trip"
+        onNewDayHike={onNewDayHike}
+        onResumeDraft={onResumeDraft}
+      />,
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Back to your route' }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Plan a day hike' }))
+    expect(onNewDayHike).toHaveBeenCalled()
+    expect(onResumeDraft).not.toHaveBeenCalled()
   })
 })
 
@@ -198,6 +222,24 @@ describe('the trips room', () => {
     expect(screen.getByText('Recent trips')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Plan a new trip' }))
     expect(onNewTrip).toHaveBeenCalled()
+  })
+
+  it('keeps its own action while a DAY draft is live, symmetrically', async () => {
+    const user = userEvent.setup()
+    const onNewTrip = vi.fn()
+    const onResumeDraft = vi.fn()
+    render(
+      <PlanHome
+        {...PROPS}
+        mode="trips"
+        draftKind="day"
+        onNewTrip={onNewTrip}
+        onResumeDraft={onResumeDraft}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Plan a new trip' }))
+    expect(onNewTrip).toHaveBeenCalled()
+    expect(onResumeDraft).not.toHaveBeenCalled()
   })
 
   it('shows no day-hike shelf - that room is one chip away', () => {

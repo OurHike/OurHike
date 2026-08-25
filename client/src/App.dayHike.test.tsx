@@ -287,6 +287,42 @@ describe('the day-hike builder, end to end', () => {
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
   })
 
+  it('keeps a date set on the review card across a trip back to the map (#1008)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    await serveGraph()
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    const map = await liveMap()
+    await tap(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    await user.click(await screen.findByRole('button', { name: 'Done' }))
+
+    // Date it on the review card, then go back to look at the route again -
+    // which is the only thing that button is for, since the map is frozen
+    // while the card is up.
+    const when = (await screen.findByLabelText('When')) as HTMLInputElement
+    await user.type(when, '2026-09-12')
+    await user.click(screen.getByRole('button', { name: 'Back to the map' }))
+    expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
+
+    // Done rebuilds the record from the draft. The date has to survive that,
+    // or it is lost silently - and it is the field the list, the split and
+    // the trailhead door all read.
+    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Save this day hike' }))
+
+    await waitFor(() => {
+      expect(app.store.get(DAY_HIKES_KEY)).toBeDefined()
+    })
+    const stored = app.store.get(DAY_HIKES_KEY) as {
+      hikes: Array<{ date: string | null }>
+    }
+    expect(stored.hikes[0].date).toBe('2026-09-12')
+  })
+
   it('refuses a tap off every maintained line, with the sentence', async () => {
     const user = userEvent.setup()
     app.onboard()
@@ -393,9 +429,31 @@ describe('the day-hike builder, end to end', () => {
       within(card).queryByText(/oprhp_trails|nynjtc_long_path/),
     ).not.toBeInTheDocument()
 
+    // Switching rooms puts the card away (#1008): a day-hike surface left
+    // floating over the trips room is the mode confusion the split exists
+    // to end, and switching rooms is navigation.
+    await user.click(screen.getByRole('button', { name: /Trips/ }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('heading', { name: 'Trips' })).toBeInTheDocument()
+
+    // Back to the day room, and the row is still there to reopen.
+    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+    const reopened = await screen.findByRole('dialog', {
+      name: 'Pine Meadow out and back',
+    })
+
     // Delete takes two taps, and the row leaves the home with the record.
-    await user.click(within(card).getByRole('button', { name: 'Delete this day hike' }))
-    await user.click(within(card).getByRole('button', { name: 'Delete' }))
+    await user.click(
+      within(reopened).getByRole('button', { name: 'Delete this day hike' }),
+    )
+    await user.click(within(reopened).getByRole('button', { name: 'Delete' }))
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /Pine Meadow out and back/ }),
@@ -517,6 +575,69 @@ describe('the day-hike builder, end to end', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
     expect(screen.queryByText(/1 leg ·/)).not.toBeInTheDocument()
+  })
+
+  it('offers a saved hike from the map when the fix lands at its start (#1008)', async () => {
+    const user = userEvent.setup()
+    // The location step taken, so the watch this door reads actually runs -
+    // with it declined there is no fix and, correctly, no door at all.
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    await serveGraph()
+
+    // Two saved hikes starting at two different trailheads - which is what
+    // makes the dismissal's specificity testable at all.
+    const startsAtMile = (id: string, name: string, mile: number) => ({
+      id,
+      name,
+      date: null,
+      segments: [
+        [
+          { coord: [-77, latOfMile(mile)], poiId: null },
+          { coord: [-77, latOfMile(mile + 1)], poiId: null },
+        ],
+      ],
+      figures: { miles: 1, legs: [] },
+      looped: false,
+      recorded: 'planned' as const,
+    })
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        startsAtMile('near-1', 'Reeves Meadow loop', 5),
+        startsAtMile('near-2', 'Claudius Smith Den', 20),
+      ],
+      openId: null,
+    })
+
+    render(<App />)
+    // No door before a fix: the map cannot know where anybody parked.
+    expect(
+      screen.queryByRole('button', { name: /Your hikes here/ }),
+    ).not.toBeInTheDocument()
+
+    await app.reportFixAtMile(5)
+
+    // Closed first - one pill, never a sheet that opens itself over the map -
+    // and only the hike whose start is actually here.
+    await user.click(await screen.findByRole('button', { name: 'Your hikes here · 1' }))
+    expect(await screen.findByText('Reeves Meadow loop')).toBeInTheDocument()
+    expect(screen.queryByText('Claudius Smith Den')).not.toBeInTheDocument()
+
+    // "No thanks" is about the hike it was offering, not about the door for
+    // ever.
+    await user.click(screen.getByRole('button', { name: 'Put this away' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /Your hikes here/ }),
+      ).not.toBeInTheDocument()
+    })
+
+    // Drive to the other trailhead in the same session: the hike nobody said
+    // no to still gets to ask. A plain dismissed-boolean would stay silent
+    // here, which is the defect this shape exists to prevent.
+    await app.reportFixAtMile(20)
+    await user.click(await screen.findByRole('button', { name: 'Your hikes here · 1' }))
+    expect(await screen.findByText('Claudius Smith Den')).toBeInTheDocument()
   })
 
   it('offers no day-hike button at all on a phone without the graph', async () => {

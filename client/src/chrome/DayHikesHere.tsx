@@ -56,10 +56,13 @@ export function DayHikesHere({
   if (!open) {
     return (
       <div className="hikes-here hikes-here--closed">
+        {/* The storyboard's own compact wording for the closed state, and
+            the reason to prefer it is physical: the sentence version ran
+            ~300px on a 360px phone, which is most of the width the map's
+            own controls leave. The panel's head carries the full sentence,
+            where there is room for it. */}
         <button type="button" className="hikes-here__pill" onClick={() => setOpen(true)}>
-          {near.length === 1
-            ? 'One of your day hikes starts here'
-            : `${near.length} of your day hikes start here`}
+          Your hikes here · {near.length}
         </button>
         <button type="button" className="hikes-here__dismiss" onClick={onDismiss}>
           <span className="visually-hidden">Put this away</span>
@@ -106,6 +109,13 @@ export function DayHikesHere({
           </span>
         </button>
       ))}
+
+      {/* lib/dayHikeShelf.ts's contract, kept: the figures above are
+          straight-line to each start, and at this radius straight-line and
+          walked can differ by a multiple - a start 0.3 mi across an arm of
+          a reservoir is a mile and a half of walking. Said once, under the
+          rows, rather than lengthening every one of them. */}
+      <p className="hikes-here__note">Straight line to each start, not trail walked.</p>
 
       <button type="button" className="hikes-here__all" onClick={onAll}>
         All your day hikes ›

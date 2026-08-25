@@ -47,6 +47,18 @@ const PROPS = {
   onPlanGap: vi.fn(),
   onPlanFrom: vi.fn(),
   onStartOnMap: vi.fn(),
+  // The mode split (#1008). Trips by default so the existing assertions
+  // keep describing the screens they were written against; the day-side
+  // tests pass mode: 'day' themselves.
+  mode: 'trips' as const,
+  onSwitchMode: vi.fn(),
+  dayListOpen: false,
+  onDayListOpen: vi.fn(),
+  draftKind: null,
+  onNewDayHike: vi.fn(),
+  onNewTrip: vi.fn(),
+  networkAvailable: true,
+  gpsAt: null,
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),
   onRemoveDay: vi.fn(),
@@ -754,5 +766,193 @@ describe('the Plan home (#805)', () => {
       />,
     )
     expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
+  })
+})
+
+describe('the day room and its list (#1008)', () => {
+  const DAY_HIKE = {
+    id: 'dh-1',
+    name: 'Pine Meadow loop',
+    date: '2026-09-12',
+    segments: [
+      [
+        { coord: [-74.095, 41.25] as [number, number], poiId: null },
+        { coord: [-74.085, 41.25] as [number, number], poiId: null },
+      ],
+    ],
+    figures: { miles: 6.2, legs: [] },
+    looped: true,
+    recorded: 'planned' as const,
+  }
+
+  it('All N › asks the shell for the full list, and the crumb asks to close it', async () => {
+    // The list's open state is the SHELL's (#1008): the map's trailhead door
+    // offers "All your day hikes ›" from another tab, and this screen is
+    // rebuilt on every tab switch - state local to it would always be false
+    // on arrival, landing that control one screen short of what it names.
+    const user = userEvent.setup()
+    const onDayListOpen = vi.fn()
+    const { rerender } = render(
+      <PlanScreen
+        {...PROPS}
+        mode="day"
+        dayHikes={[DAY_HIKE]}
+        plan={null}
+        onDayListOpen={onDayListOpen}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'All 1 ›' }))
+    expect(onDayListOpen).toHaveBeenCalledWith(true)
+
+    rerender(
+      <PlanScreen
+        {...PROPS}
+        mode="day"
+        dayHikes={[DAY_HIKE]}
+        plan={null}
+        dayListOpen={true}
+        onDayListOpen={onDayListOpen}
+      />,
+    )
+    expect(screen.getByText('Ready to walk')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
+    expect(onDayListOpen).toHaveBeenCalledWith(false)
+  })
+
+  it('the trips sub-screens wear the trips band', () => {
+    const { container } = render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+    expect(container.querySelector('.plan__head--trips')).not.toBeNull()
+  })
+
+  it('the hike zoom offers its own action while a DAY draft is live', async () => {
+    // The hike zoom is a trips-mode screen. On the shared draftLive boolean
+    // it said "Back to your route" over a live day hike and dropped the
+    // hiker into the day-hike builder from a screen headed by a hike's name.
+    const user = userEvent.setup()
+    const onNewTrip = vi.fn()
+    const onStartOnMap = vi.fn()
+    const hike = {
+      id: 'h9',
+      name: 'Virginia, over a few years',
+      type: 'section' as const,
+      start: { name: 'Damascus', mile: 470.8 },
+      end: { name: 'Rockfish Gap', mile: 860 },
+      tripIds: [],
+    }
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={null}
+        hike={hike}
+        draftLive={true}
+        draftKind="day"
+        onNewTrip={onNewTrip}
+        onStartOnMap={onStartOnMap}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Plan another trip' }))
+    expect(onNewTrip).toHaveBeenCalled()
+    expect(onStartOnMap).not.toHaveBeenCalled()
+  })
+
+  it('the hike zoom goes back to a live TRIP draft, which is its own', async () => {
+    const user = userEvent.setup()
+    const onStartOnMap = vi.fn()
+    const hike = {
+      id: 'h9',
+      name: 'Virginia, over a few years',
+      type: 'section' as const,
+      start: { name: 'Damascus', mile: 470.8 },
+      end: { name: 'Rockfish Gap', mile: 860 },
+      tripIds: [],
+    }
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={null}
+        hike={hike}
+        draftLive={true}
+        draftKind="trip"
+        onStartOnMap={onStartOnMap}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back to your route' }))
+    expect(onStartOnMap).toHaveBeenCalled()
+  })
+
+  // Each room's "new" primary reaches a sweep that DISCARDS the other room's
+  // draft - `openDayHike` closes the route builder, `sweepForBuilder` clears
+  // the day hike. That is the right behaviour for a door somebody
+  // deliberately opened, and a bad thing to learn afterwards from an empty
+  // builder. Splitting `draftLive` into `draftKind` is what first made these
+  // buttons reachable with the other kind live: before it, any live draft
+  // turned all three into "Back to your route".
+  it('says what a day hike costs when a route is half-built', () => {
+    render(
+      <PlanScreen
+        {...PROPS}
+        mode="day"
+        plan={null}
+        dayHikes={[DAY_HIKE]}
+        draftLive={true}
+        draftKind="trip"
+      />,
+    )
+    expect(
+      screen.getByText(/unfinished route on the map\. Starting a day hike drops it/),
+    ).toBeInTheDocument()
+  })
+
+  it('says what a trip costs when a day hike is half-built', () => {
+    render(
+      <PlanScreen
+        {...PROPS}
+        mode="trips"
+        plan={null}
+        dayHikes={[DAY_HIKE]}
+        draftLive={true}
+        draftKind="day"
+      />,
+    )
+    expect(
+      screen.getByText(/unfinished day hike on the map\. Starting a trip drops it/),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about a cost when the room owns the draft', () => {
+    // The room that owns it offers "Back to your route", which costs
+    // nothing - a warning there would be crying wolf.
+    render(
+      <PlanScreen
+        {...PROPS}
+        mode="day"
+        plan={null}
+        dayHikes={[DAY_HIKE]}
+        draftLive={true}
+        draftKind="day"
+      />,
+    )
+    expect(document.body.textContent).not.toMatch(/drops it/)
+  })
+
+  it('the hike zoom carries the same cost note, reaching the same sweep', () => {
+    const hike = {
+      id: 'h9',
+      name: 'Virginia, over a few years',
+      type: 'section' as const,
+      start: { name: 'Damascus', mile: 470.8 },
+      end: { name: 'Rockfish Gap', mile: 860 },
+      tripIds: [],
+    }
+    render(
+      <PlanScreen {...PROPS} plan={null} hike={hike} draftLive={true} draftKind="day" />,
+    )
+    expect(
+      screen.getByText(/unfinished day hike on the map\. Starting a trip drops it/),
+    ).toBeInTheDocument()
   })
 })

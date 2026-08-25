@@ -29,6 +29,9 @@
 // that is the correct picture rather than a missing feature. All three frames
 // are true; the camera does not care which one it gets.
 
+// Touched by #1008 so the camera re-takes the card it changed: the date
+// field, the gap rows, and the "Leave this with someone" primary all landed
+// on this screen (leave-with-someone.mjs photographs that sheet itself).
 export const caption = 'The finished day hike’s card'
 export const alt = 'A saved day hike’s card, opened from the Plan tab'
 

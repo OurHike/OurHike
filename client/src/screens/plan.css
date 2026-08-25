@@ -1593,6 +1593,575 @@
   color: var(--fg-2);
 }
 
+/* ----- the mode bands (#1008) ----- */
+
+/* The band is the mode: Day hikes wears the brand green, Trips wears the
+   chrome family - the one pair documented as dark under BOTH themes
+   (design-system/tokens/colors.css), which is what an identity band is.
+   Negative margins bleed it to the screen edges through .plan's padding.
+
+   Measured 2026-08-25, WCAG contrast of each pairing below against its own
+   band, in both themes - the lowest is the trips link at night:
+     trips band text  paper-0/pine-900 16.60:1 · bone-100/ink-900 14.94:1
+     trips link       moss-300/pine-900 7.73:1 · bone-500/ink-900  4.96:1
+     day band text    paper-0/forest-600 7.53:1 · ink-950/moss-400 5.59:1
+   Re-runnable from the hexes in tokens/colors.css; every one clears 4.5:1,
+   which is why these bands take no per-theme overrides of their own. */
+.plan-band {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin: calc(-1 * var(--space-4, 16px)) calc(-1 * var(--space-4, 16px)) 0;
+  padding: var(--space-4, 16px);
+}
+
+.plan-band--day {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.plan-band--trips {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.plan-band__words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 0.85, not 0.75. Measured: ink-950 at 75% over moss-400 is 4.01:1 - under
+   the AA floor for 10px text, so the eyebrow was legible by day and not by
+   night on the same screen. At 85% it is 4.72:1. The table above measures
+   the full-opacity pairings; anything that thins one of them has to carry
+   its own figure, which is what this line is. */
+.plan-band__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.plan-band__word {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+/* The way to the other room. Colour comes from the band (currentColor), so
+   one rule serves both bands in both themes. */
+.plan-band__switch {
+  position: relative;
+  min-height: 38px;
+  padding: 0 var(--space-3, 12px);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Drawn at 38px like every header button, hit at 44 - chrome.css's idiom for
+   anything under the effective touch target. This one is the ONLY route
+   between the two Plan homes, so a thumb that misses it has nowhere else to
+   go. */
+.plan-band__switch::after {
+  content: '';
+  position: absolute;
+  inset: calc((38px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* THE FOCUS RING HAS TO BE VISIBLE ON THE BAND IT SITS ON.
+   desktop.css draws every focus ring in --brand-primary, which is exactly
+   what the day band paints its background with: measured 1.00:1, ring
+   invisible in both themes, on controls that are the only way off their
+   screens. On the trips band the same ring is 2.21:1 in the light theme,
+   under WCAG 1.4.11's 3:1 for a focus indicator. Both bands re-point it at
+   their own foreground, which is the colour already proven legible there by
+   the table above. */
+.plan-band :focus-visible,
+.plan__head--day :focus-visible,
+.plan__head--trips :focus-visible {
+  outline-color: currentColor;
+}
+
+/* Existing headers, painted as their mode's band on the sub-screens - the
+   timeline and hike zoom are trips-mode rooms, the day-hike list a day-mode
+   one, and the band is what says so at a glance. */
+.plan__head--trips,
+.plan__head--day {
+  margin: calc(-1 * var(--space-4, 16px)) calc(-1 * var(--space-4, 16px)) 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+}
+
+.plan__head--trips {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.plan__head--trips .plan__head-note {
+  color: var(--fg-chrome-2);
+}
+
+/* moss-300 on pine: 7.7:1, measured in the token file's own comment - the
+   page's --link would sit at no such figure on this ground. */
+.plan__head--trips .plan__trips {
+  color: var(--fg-chrome-3);
+}
+
+.plan__head--day {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+/* The OUTER element only. `.plan__crumb-up` is a span inside the button, and
+   opacity composites per element - naming both dropped the text to
+   0.85 × 0.85 = 0.72, measured 3.85:1 on the dark band: under the AA floor,
+   on this screen's only way back. At a single 0.85 it is 4.72:1 dark and
+   5.99:1 light. The inner span takes the colour and no second fade. */
+.plan__head--day .plan__crumb {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.plan__head--day .plan__crumb-up {
+  color: inherit;
+}
+
+.plan-home__quiet-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* PlanKindSheet's unavailable-door sentence, worn by the day home's foot
+   when the junction graph is missing - a sentence, never a dead button. */
+.plan-home__refused {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* ----- the day-hike list (#1008, frame D7) ----- */
+
+/* A Plan screen that must not outgrow the viewport, because a sheet docks
+   against it. `.plan` is `min-height: 100%` and the containing block for
+   `.day-hike-card`, so a screen taller than the pane puts that card's
+   `bottom: 0` below the fold. Here the container is exactly the pane and the
+   long thing inside it scrolls.
+
+   `box-sizing` IS LOAD-BEARING, not tidiness. This app sets no universal
+   border-box reset - the only `box-sizing` in src/ is one rule scoped to
+   volunteer.css - so `height: 100%` sizes the CONTENT box, and `.plan`'s own
+   `padding: 16px` + `padding-bottom: 32px` are added outside it. The border
+   box came out 48px taller than the pane, and since `bottom: 0` resolves
+   against the padding box, the docked card hung 48px below the fold with
+   "Leave this with someone" and "Delete this day hike" on the wrong side of
+   it. That is the same defect this class was added to fix, reduced from a
+   screenful to 48px rather than removed.
+
+   NO `overflow` ON THIS ELEMENT. Bounding the height is the whole job; a
+   clip here would also clip the mode band, which reaches the screen edges
+   through .plan's padding with negative margins. The scrolling is one level
+   in, around the rows only. */
+.plan--bounded {
+  box-sizing: border-box;
+  height: 100%;
+}
+
+.plan--bounded .day-hike-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.plan--bounded .day-hike-list__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.day-hike-list,
+.day-hike-list__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.day-hike-list__sorts {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.day-hike-list__sorts [aria-pressed='true'] {
+  border-color: var(--border-strong);
+  background: var(--fg-1);
+  color: var(--bg-surface);
+}
+
+/* A walked row is a record: the sunken ground the timeline's walked days
+   already use, so the two read as the same state. */
+.day-hike-list__row--walked {
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+}
+
+.day-hike-list__empty,
+.day-hike-list__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* ----- the trailhead door (#1008, frame D8) ----- */
+
+/* Collapsed: one pill in the map's lower third. Expanded: the sheet frame
+   every bottom surface here wears. Both sit in MapScreen's routeSheet slot
+   and position themselves, as its other occupants do. */
+.hikes-here__pill {
+  min-height: 42px;
+  padding: 0 var(--space-4, 16px);
+  border: 1px solid var(--edge-over-map);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-over-map);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 14%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hikes-here__dismiss {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--edge-over-map);
+  border-radius: 50%;
+  background: var(--surface-over-map);
+  color: var(--fg-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* An icon-only × over a map, tapped at a trailhead with cold hands: drawn at
+   34 and hit at 44, chrome.css's own idiom for a control under the target. */
+.hikes-here__dismiss::after {
+  content: '';
+  position: absolute;
+  inset: calc((34px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* z-index 2, which is what every other occupant of the routeSheet slot and
+   the waypoint card use (chrome.css). 3 is for surfaces that cover the map
+   outright - search, the stop picker - and this one must never cover a
+   waypoint card: unlike the builders, the door and a tapped pin can be on
+   screen at the same time. */
+.hikes-here {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  /* Capped, like every sibling sheet in this slot (.day-hike-bar 60%,
+     .plan-target and .day-hike-card 85%). The candidate list has no ceiling
+     - it is every planned hike inside the radius - and a sheet that grows
+     from the bottom edge pushes its own head, and the × on it, off the top
+     of the canvas: unreadable and unclosable at once. In landscape two
+     nearby hikes were enough.
+
+     NO `overflow` HERE. The scrolling is one level in, around the rows only
+     (.hikes-here__rows), for two reasons this element cannot serve: the head
+     with the × on it and the straight-line qualification under it have to
+     stay put while the rows move, and `.hikes-here--closed` shares this rule
+     - a scroll container on the collapsed pill clipped its own drop shadow,
+     the only thing lifting it off pale terrain, and cut 6px off the right of
+     the dismiss button's 44px hit area. */
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+/* After the sheet rule on purpose: same specificity, and the closed pill
+   has to win the shared properties it re-points.
+
+   ABOVE THE MAP'S OWN CONTROLS, not among them. A pill centred at
+   bottom:12px lay across the scale bar and half the compass and won the hit
+   test against both, so a hiker reaching for north got the door instead.
+
+   THE ARITHMETIC, re-measured in Chromium against the real maplibre-gl.css
+   and chrome.css (2026-08-25), because the first version of it was wrong
+   twice over and the pill was clearing the controls by luck rather than by
+   this number:
+
+   - `bottom` here resolves against `.map-screen__canvas`, which is a flex
+     column of `.map-view` AND the attribution strip below it, while the
+     MapLibre controls are absolute inside `.map-view` alone. So the strip -
+     measured 15px - sits between the two origins and has to be added. The
+     earlier 104px derivation left it out.
+   - mapChrome.ts stacks a NavigationControl over the GeolocateControl
+     bottom-right, each group carrying maplibre's own 10px bottom margin.
+     With a coarse pointer the nav group is the compass alone: 10 + 42 + 10 +
+     42 = 104px, so the stack reaches 104 + 15 = 119px above the canvas
+     floor. The old 110px sat 9px INSIDE that band; only the pill's own width
+     kept the two apart, since it is centred and its longest label ("12 day
+     hikes start here") runs nowhere near the right-hand controls.
+   - `showZoomButtons` is `finePointer`, which is `matchMedia('(pointer:
+     fine)')` - the same condition the media query below tests, so the two
+     cannot drift. It adds zoom-in and zoom-out to that group: 10 + 126 + 10
+     + 42 = 188, reaching 203px above the canvas floor.
+
+   7px of gap on top of each, so the clearance is visible rather than exact.
+
+   The cost, stated rather than discovered: on a landscape phone the canvas
+   is short enough that this sits at the top edge of the lower third
+   WIREFRAMES.md §1 reserves for what gets tapped (measured at 844x390: the
+   lower third begins 130px up, and the pill's foot is at 126). Landing on
+   the compass is the worse of the two, and this door is pressed standing at
+   a car rather than mid-stride. */
+.hikes-here--closed {
+  left: 50%;
+  right: auto;
+  bottom: calc(15px + 104px + 7px);
+  transform: translateX(-50%);
+  max-width: calc(100% - var(--space-6, 24px));
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* The same condition `showZoomButtons` is passed under (lib/useFinePointer.ts
+   is this exact query), so the pill rises by exactly the two buttons that
+   appear with it: 188px of stack plus the 15px strip. */
+@media (pointer: fine) {
+  .hikes-here--closed {
+    bottom: calc(15px + 188px + 7px);
+  }
+}
+
+.hikes-here__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hikes-here__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* The one scrolling part of the sheet. `min-height: 0` because a flex item's
+   default `min-height: auto` refuses to shrink below its content, which would
+   push the sheet past its own 60% cap rather than scroll inside it. */
+.hikes-here__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hikes-here__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hikes-here__row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hikes-here__row-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hikes-here__row-away {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.hikes-here__row-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.hikes-here__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.hikes-here__all {
+  align-self: flex-start;
+  padding: var(--space-1, 4px) 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ----- leave this with someone (#1008, frame D6) ----- */
+
+.leave-word {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.leave-word__lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.leave-word__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.leave-word__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.leave-word__field input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* The line the whole card exists for gets the warning frame the target
+   sheet's caveat wears - read before it is filled in. */
+.leave-word__field--back-by input {
+  border-color: var(--warning);
+}
+
+.leave-word__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.leave-word__preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.leave-word__preview {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.leave-word__status {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* ----- the finished card's additions (#1008) ----- */
+
+.day-hike-card__date {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+/* The one writable field this card adds, so it meets the touch target
+   outright rather than through a pseudo-element - a date input opens a
+   picker, and a mistap lands on the figures line above it. */
+.day-hike-card__date input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+.day-hike-card__gap {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+
 /* ----- the Plan home (#805) ----- */
 
 .plan-home {

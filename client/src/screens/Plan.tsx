@@ -55,12 +55,14 @@ import {
 } from '../lib/planDisplay'
 import { legFigures, type LegFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
+import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
-import { PlanHome } from './PlanHome'
+import { PlanHome, type PlanMode } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
@@ -104,8 +106,33 @@ export interface PlanScreenProps {
    *  reads as a way back to it rather than a fresh start, because opening
    *  the builder reopens the draft where it stood. */
   draftLive: boolean
-  /** Open the route builder on the map - the empty state's one action. */
+  /** Open the fork, or return to a live draft (#977's opener rule). The
+   *  empty state's one action, and every home's way back to a draft. */
   onStartOnMap: () => void
+  /** Open the day-hike builder directly - the day home's own action
+   *  (#1008). Only offered while the junction graph is loaded. */
+  onNewDayHike: () => void
+  /** Open the route builder directly - the trips home's own action. */
+  onNewTrip: () => void
+  /** Whether the junction graph is loaded, so the day home can offer its
+   *  action or the sentence instead (PlanKindSheet's rule). */
+  networkAvailable: boolean
+  /** The GPS fix, or null - the day-hike list's "nearest me" sort exists
+   *  only while this does. */
+  gpsAt: LonLat | null
+  /** Which home the tab shows (#1008). Held by the shell rather than here,
+   *  because the map's trailhead door also sets it and this screen unmounts
+   *  on every tab switch. */
+  mode: PlanMode
+  onSwitchMode: (mode: PlanMode) => void
+  /** Whether the full day-hike list is open, for the same reason: the map's
+   *  trailhead door opens it from another tab. */
+  dayListOpen: boolean
+  onDayListOpen: (open: boolean) => void
+  /** Which builder holds a live draft, or null - each room offers a way back
+   *  to its OWN draft and its own action otherwise, so the day room never
+   *  puts a button into the trips builder. */
+  draftKind: 'day' | 'trip' | null
   /** Reopen the target sheet over this plan's route. */
   onChangeTarget: () => void
   onInsertZeroAfter: (dayIndex: number) => void
@@ -165,6 +192,15 @@ export function PlanScreen({
   pace = STANDARD_PACE,
   draftLive,
   onStartOnMap,
+  onNewDayHike,
+  onNewTrip,
+  networkAvailable,
+  gpsAt,
+  mode,
+  onSwitchMode,
+  dayListOpen,
+  onDayListOpen,
+  draftKind,
   onChangeTarget,
   onInsertZeroAfter,
   onRemoveDay,
@@ -254,9 +290,38 @@ export function PlanScreen({
   }, [plan, elevation])
 
   if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
+    if (dayListOpen) {
+      return (
+        // `plan--bounded`: the list is the one Plan screen with no ceiling on
+        // its own length, and a day-hike card docks against `.plan` rather
+        // than the viewport - so on a long list "bottom: 0" was the bottom of
+        // the LIST, and tapping a row opened a card a screen or two below the
+        // fold. The list scrolls inside a screen-height container instead.
+        <div className="plan plan--day plan--bounded">
+          <DayHikeList
+            dayHikes={dayHikes}
+            units={units}
+            at={gpsAt}
+            onOpen={onOpenDayHike}
+            onBack={() => onDayListOpen(false)}
+            // The day room's own action, on the day room's own terms: a live
+            // TRIP draft is not this screen's business, and a live day draft
+            // is reached from the home's "Back to your route" rather than
+            // offered again here.
+            onNewDayHike={networkAvailable && draftKind === null ? onNewDayHike : null}
+          />
+          {targetSheet}
+          {kindSheet}
+          {dayHikeCard}
+          {tripList}
+        </div>
+      )
+    }
     return (
-      <div className="plan">
+      <div className={mode === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
+          mode={mode}
+          onSwitchMode={onSwitchMode}
           trips={trips}
           hikes={hikes}
           dayHikes={dayHikes}
@@ -265,7 +330,6 @@ export function PlanScreen({
           pois={pois}
           units={units}
           openTrip={trips.find((trip) => trip.id === openTripId) ?? null}
-          draftLive={draftLive}
           onOpenTrip={(id) => {
             onOpenTrip(id)
             setZoomWanted('days')
@@ -277,7 +341,11 @@ export function PlanScreen({
           }}
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
-          onNewTrip={onStartOnMap}
+          onAllDayHikes={() => onDayListOpen(true)}
+          onNewDayHike={networkAvailable ? onNewDayHike : null}
+          onNewTrip={onNewTrip}
+          draftKind={draftKind}
+          onResumeDraft={onStartOnMap}
         />
         {targetSheet}
         {kindSheet}
@@ -346,8 +414,8 @@ export function PlanScreen({
   // what it knows.
   if (zoom === 'hike' && hike !== null) {
     return (
-      <div className="plan">
-        <header className="plan__head">
+      <div className="plan plan--trips">
+        <header className="plan__head plan__head--trips">
           <h1 className="plan__title">{hike.name}</h1>
           <span className="plan__head-note">{hike.type}</span>
           <button type="button" className="plan__trips" onClick={onOpenTrips}>
@@ -381,8 +449,24 @@ export function PlanScreen({
               onPlanGap={onPlanGap}
               onWhatsLeft={() => setWhatsLeftOpen(true)}
             />
-            <button type="button" className="plan__primary" onClick={onStartOnMap}>
-              {draftLive ? 'Back to your route' : 'Plan another trip'}
+            {/* `draftKind`, not `draftLive`, for TripsHome's reason: the hike
+                zoom is a trips-mode screen, and a live DAY draft here would
+                have offered "Back to your route" into the day-hike builder
+                from a screen headed by a hike's own name. Each room offers a
+                way back only to its own draft. */}
+            {/* And the same cost note TripsHome carries, because this button
+                reaches the same sweep. */}
+            {draftKind === 'day' && (
+              <p className="plan-home__refused" role="note">
+                There&rsquo;s an unfinished day hike on the map. Starting a trip drops it.
+              </p>
+            )}
+            <button
+              type="button"
+              className="plan__primary"
+              onClick={draftKind === 'trip' ? onStartOnMap : onNewTrip}
+            >
+              {draftKind === 'trip' ? 'Back to your route' : 'Plan another trip'}
             </button>
           </>
         )}
@@ -423,6 +507,11 @@ export function PlanScreen({
             Or say where from and how far, and it&rsquo;ll find the stretch and break it
             into days.
           </p>
+          {/* The one screen that reads `draftLive` rather than `draftKind`,
+              and deliberately: this is the state with NO mode - nothing has
+              been planned, so there is no room whose draft this is. Any live
+              draft is the one to go back to, and `onStartOnMap` routes to
+              whichever builder holds it (App's openPlanKind). */}
           <button type="button" className="plan__primary" onClick={onStartOnMap}>
             {draftLive ? 'Back to your route' : 'Start on the map'}
           </button>
@@ -441,8 +530,8 @@ export function PlanScreen({
   const anythingWalked = walkedDayCount(plan) > 0
 
   return (
-    <div className="plan">
-      <header className="plan__head">
+    <div className="plan plan--trips">
+      <header className="plan__head plan__head--trips">
         <h1 className="plan__title">
           {/* The trip's own name once it has one - a hiker who renamed it
               "Grayson week" should read that back, not have it silently

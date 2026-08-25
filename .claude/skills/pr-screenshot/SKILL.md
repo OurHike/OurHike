@@ -93,10 +93,19 @@ spend the discovery again:
 markdown text; there is no attachment field on it. Dragging an image into the
 web editor uploads it to `github.com/user-attachments/` through an
 authenticated endpoint that is part of the web UI and not the REST API, so no
-agent session can use it. Embedding the bytes inline does not work either: a
-`data:` URI is stripped by GitHub's markdown sanitiser, and even if it were
-not, a body caps at 65,536 characters while a 79 KB PNG base64-encodes to
-about 106,000.
+agent session can use it — checked against the GitHub MCP tool surface
+2026-08-25, which exposes no attachment, asset or gist call.
+
+Embedding the bytes inline does not work either, and the reason that settles it
+is arithmetic rather than a claim about GitHub's behaviour: **a pull request
+body caps at 65,536 characters, and a 79,290-byte PNG base64-encodes to
+105,720.** It does not fit, at any capture scale worth looking at — the
+smallest legible variant measured, a 23,928-byte JPEG at scale 1, still eats
+half the body. Separately, GitHub's markdown sanitiser is understood to allow
+only `http`/`https` image sources and to strip `data:` — but that half is
+recalled rather than measured, because `api.github.com` is blocked by the
+sandbox's egress policy and its `/markdown` endpoint could not be asked. The
+size limit is the load-bearing half and needs no such caveat.
 
 **So the image is committed, and the body links to it.** Verified — a raw URL
 answers `200 image/png` and GitHub proxies it into the rendered body.

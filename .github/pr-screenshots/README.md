@@ -3,10 +3,10 @@
 One image per pull request — or a before-and-after pair where the difference is
 the point — committed as evidence of what that pull request changed. A pull
 request body cannot hold image bytes — GitHub's own upload
-endpoint is part of the web UI rather than the REST API, and a `data:` URI is
-both stripped by the markdown sanitiser and larger than the 65,536-character
-body limit — so the picture is committed here and the body links into the
-commit that added it.
+endpoint is part of the web UI rather than the REST API, and a screenshot
+base64-encodes to more than the 65,536-character body limit (105,720
+characters for a measured 79,290-byte PNG) — so the picture is committed here
+and the body links into the commit that added it.
 
 Take one with `cd client && node scripts/screenshot.mjs <name>`. The rule, the
 byte budget, and the four things that must never appear in a screenshot are in

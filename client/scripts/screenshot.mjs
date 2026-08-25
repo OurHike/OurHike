@@ -88,20 +88,26 @@ export const CAPTURE_SCALE = 2
 /**
  * What one screenshot may weigh before it needs a second thought.
  *
- * Measured 2026-08-25 on the first-run entry card, the densest DOM-only frame
- * the app has: 390x844 at scale 2 is 79,290 bytes as PNG. 150 KB is that with
- * room for a busier frame.
+ * Measured 2026-08-25, both at 390x844 scale 2 as PNG:
  *
- * It stopped being about repository weight when the image stopped being
- * committed (#988) and is now a smell test: a frame several times the size of
- * a known one is usually a screenshot of something unintended - a full-page
- * capture that ran away, or a map that rendered noise. Nothing enforces it;
- * the script says the number and moves on.
- * @unvalidated Nobody has yet checked what a map-heavy frame with real tiles
- * under it weighs. A CI runner has real network where an agent sandbox does
- * not, so pr-preview.yml's own output is now the place that could answer it.
+ *   entry card, no map (agent sandbox, no network)        79,290
+ *   entry card over a real basemap (CI, pr-989)          310,289
+ *   trail screen, full basemap (CI, pr-989)              743,012
+ *
+ * The spread is the finding, and it is why the first number was the wrong
+ * one to budget against. A sandbox cannot reach the tile source, so every
+ * measurement taken there is of an app with an empty map canvas - roughly a
+ * tenth of what the same frame weighs once terrain, water and labels render.
+ * The budget was 150 KB on that basis and would have warned on every honest
+ * screenshot CI takes.
+ *
+ * 1.2 MB is the largest real frame with room above it. It is not enforced and
+ * costs nothing when exceeded - the bytes are served from a preview rather
+ * than committed (#988) - so this is a smell test only: past here usually
+ * means a capture that ran away, a `--full` page that kept scrolling, or a
+ * map that rendered noise rather than a map.
  */
-export const BYTE_BUDGET = 150_000
+export const BYTE_BUDGET = 1_200_000
 
 /** idb-keyval's default store, which is where client/src/lib/preferences.ts
  *  keeps `ourhike:preferences`. Named here rather than imported because this
@@ -175,7 +181,7 @@ export function budgetVerdict(bytes, budget = BYTE_BUDGET) {
     overBudget: bytes > budget,
     message:
       bytes > budget
-        ? `${bytes} bytes is past the ${budget}-byte budget. Crop it, or say in the pull request why this frame needs the weight.`
+        ? `${bytes} bytes is past the ${budget}-byte smell test - larger than a full-map frame. Look at it before trusting it.`
         : `${bytes} bytes.`,
   }
 }

@@ -98,16 +98,28 @@ describe('the file name', () => {
 })
 
 describe('the byte budget', () => {
-  it('passes a capture the size of a real one', () => {
-    // 79,290 bytes measured 2026-08-25 on the first-run entry card at 390x844
-    // scale 2 - the densest DOM-only frame the app has.
-    expect(budgetVerdict(79_290).overBudget).toBe(false)
+  // All measured 2026-08-25 at 390x844 scale 2. The last two are what CI
+  // actually produced on pr-989, where the tile source is reachable and the
+  // map renders; the first is the same app in a sandbox that cannot reach it.
+  it.each([
+    ['entry card with no map (sandbox)', 79_290],
+    ['entry card over a real basemap (CI)', 310_289],
+    ['trail screen, full basemap (CI)', 743_012],
+  ])('passes %s', (_label, bytes) => {
+    expect(budgetVerdict(bytes).overBudget).toBe(false)
   })
 
-  it('says so, and says what to do, when a frame is too heavy', () => {
+  it('leaves room above the largest real frame', () => {
+    // The regression this pins: a budget set from a sandbox measurement was
+    // 150 KB, and would have warned on every honest screenshot CI takes -
+    // a map-heavy frame is nearly ten times an empty-canvas one.
+    expect(BYTE_BUDGET).toBeGreaterThan(743_012)
+  })
+
+  it('says so, and says what it means, when a frame is too heavy', () => {
     const verdict = budgetVerdict(BYTE_BUDGET + 1)
     expect(verdict.overBudget).toBe(true)
-    expect(verdict.message).toContain('Crop it')
+    expect(verdict.message).toContain('smell test')
   })
 })
 

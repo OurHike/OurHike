@@ -131,6 +131,39 @@ Leave that line alone and name the issue in full in the prose above it.
 This governs what you write. It is not a licence to go retitling references in files you are
 not otherwise touching.
 
+## Show what you changed
+
+**Every pull request body carries a `## Screenshot` section**, and the template
+has it. A reviewer who can see the change has already been answered; a reviewer
+reading "adds the legend toggle" has to build the picture in their head and then
+open the branch to check it against yours.
+
+A UI change gets a picture of the thing that changed. A pipeline or backend
+change — the common case here — gets whatever the evidence actually is: a
+before-and-after table of the numbers, a test going red on the defect and green
+on the fix, a render. A change with genuinely nothing to show gets one line
+saying so and why. That line is a real answer and takes ten seconds.
+
+**An unrelated screenshot attached to fill the section is worse than the line.**
+It looks like evidence and is not, which is the failure the standard at the top
+of this file exists to prevent.
+
+`cd client && node scripts/screenshot.mjs <name>` takes one and prints the
+markdown to paste. [`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md)
+is the rest: driving the app to the state worth photographing, why the image has
+to be committed before a pull request body can render it at all, and the four
+things that must never appear in one — a signed-in account, anybody's reports or
+photos, a dispersed campsite at a readable zoom, a real location fix.
+
+**This is the one generated file that goes in a commit on purpose**, against the
+rule further down that a build script's output has a home and it is not the
+repository. The exception is narrow and it is deliberate: a screenshot is
+evidence about *this* repository's own code rather than somebody else's data, so
+none of the licence, safety or personal-data arguments apply — but the byte cost
+does. One phone screenshot is 79,290 bytes measured (2026-08-25) against a
+14.3 MiB repository, so it is **one image**, in `.github/pr-screenshots/`, and an
+honest "no visual" line rather than a second one that shows nothing new.
+
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up
@@ -261,6 +294,8 @@ trigger: **you are about to add a generated file, so pick its shelf first.**
 `pipeline/data/` for anything fetched or derived — gitignored, cached between CI runs,
 published to R2 by `publish.py`. `pipeline/reference/` **only** for a join that encodes
 judgement somebody reviews row by row, and it has a line ceiling for exactly that reason.
+`.github/pr-screenshots/` for the one image a pull request carries as evidence, which is
+the single deliberate exception and is bounded above — see "Show what you changed".
 
 This is written down because an agent did the wrong one and had a good story for it:
 `reference/` is not gitignored, holds three small checked-in files, and reads as "where

@@ -33,6 +33,7 @@ const PROPS = {
   onPickEnd: vi.fn(),
   onClearEnd: vi.fn(),
   onUse: vi.fn(),
+  onTapToBuild: vi.fn(),
   onClose: vi.fn(),
 }
 

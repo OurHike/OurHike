@@ -26,6 +26,8 @@ const PROPS = {
   units: 'imperial' as const,
   onEditStop: vi.fn(),
   onAddStop: vi.fn(),
+  onUndo: null,
+  refusedTap: false,
   onBreakIntoDays: vi.fn(),
   onRecordWalked: vi.fn(),
   onClose: vi.fn(),
@@ -49,8 +51,14 @@ describe('the editable route', () => {
   it('prices each leg between its fields - distance, ascent, moving time', () => {
     render(<RouteStopsPanel {...PROPS} />)
 
-    expect(screen.getByText('19.6 mi · 4,200 ft ↑ · ≈13h 20m')).toBeInTheDocument()
-    expect(screen.getByText('12.9 mi · 2,300 ft ↑ · ≈7h 50m')).toBeInTheDocument()
+    // Descent beside the climb (#973): Naismith gives descent no credit, so a
+    // leg that reads easy on time can still be the one that hurts.
+    expect(
+      screen.getByText('19.6 mi · 4,200 ft ↑ · 2,900 ft ↓ · ≈13h 20m'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('12.9 mi · 2,300 ft ↑ · 2,500 ft ↓ · ≈7h 50m'),
+    ).toBeInTheDocument()
   })
 
   it('says direction, total and moving time in the bar - "walking" said', () => {
@@ -95,6 +103,80 @@ describe('the editable route', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
     expect(PROPS.onClose).toHaveBeenCalled()
+  })
+
+  it('counts the points and the legs, with the direction (#973)', () => {
+    render(<RouteStopsPanel {...PROPS} />)
+    expect(screen.getByText('NOBO · 3 points · 2 legs')).toBeInTheDocument()
+  })
+
+  describe('a route that is not a route yet (#973)', () => {
+    it('asks for the first point, and offers nothing to break into days', () => {
+      render(<RouteStopsPanel {...PROPS} stops={[]} legs={[]} direction={null} />)
+
+      expect(screen.getByText('Tap the trail to drop a point.')).toBeInTheDocument()
+      expect(screen.getByText('0 points')).toBeInTheDocument()
+
+      // THE WHOLE BAR IS GONE, and this is the assertion that matters most
+      // here: before #973 an empty stop list rendered "0.0 mi · ≈0m walking"
+      // over two buttons whose handlers refuse below two stops. A total of
+      // nothing, stated as a measurement, above controls that decline to act.
+      expect(screen.queryByText(/0\.0 mi/)).toBeNull()
+      expect(screen.queryByText(/walking/)).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Break into days' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'I already walked this' })).toBeNull()
+    })
+
+    it('asks for the second point when one is down', () => {
+      render(<RouteStopsPanel {...PROPS} stops={[STOPS[0]]} legs={[]} direction={null} />)
+
+      expect(
+        screen.getByText('Tap the trail again for where this stretch ends.'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('1 point')).toBeInTheDocument()
+      expect(screen.queryByText(/0\.0 mi/)).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Break into days' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'I already walked this' })).toBeNull()
+    })
+
+    it('does not blame a missing elevation profile for having no legs', () => {
+      // The no-profile note is about legs it could not price, and there are
+      // none - printing it here would explain an absence that has a different
+      // cause.
+      render(<RouteStopsPanel {...PROPS} stops={[]} legs={[]} direction={null} />)
+      expect(screen.queryByText(/No elevation profile/)).toBeNull()
+    })
+  })
+
+  describe('undo (#973)', () => {
+    it('is absent with nothing to undo, and wired when there is', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(<RouteStopsPanel {...PROPS} onUndo={null} />)
+      expect(screen.queryByRole('button', { name: 'Undo the last change' })).toBeNull()
+
+      const onUndo = vi.fn()
+      rerender(<RouteStopsPanel {...PROPS} onUndo={onUndo} />)
+      await user.click(screen.getByRole('button', { name: 'Undo the last change' }))
+      expect(onUndo).toHaveBeenCalled()
+    })
+  })
+
+  describe('the routable limitation (#973)', () => {
+    it('is stated standing, before anybody taps the wrong thing', () => {
+      render(<RouteStopsPanel {...PROPS} />)
+      expect(
+        screen.getByText(/Only the A\.T\. centerline can carry a route/),
+      ).toBeInTheDocument()
+    })
+
+    it('becomes the refusal when a tap was refused - one sentence, not two', () => {
+      render(<RouteStopsPanel {...PROPS} refusedTap />)
+
+      expect(screen.getByRole('status').textContent).toMatch(
+        /more than 3 mi from the trail/,
+      )
+      expect(screen.queryByText(/Only the A\.T\. centerline/)).toBeNull()
+    })
   })
 
   it('never prints an arrival clock or a difficulty score', () => {

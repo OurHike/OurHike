@@ -195,6 +195,34 @@ export async function deleteOwnPhoto(poiId: string, id: string): Promise<void> {
  * already states: a thru-hiker who photographs 200 places holds ~9 MB, so
  * walking every record is walking a small list.
  */
+/**
+ * How many of the hiker's own photos belong to one local date (#966).
+ *
+ * The date is `taken ?? added` - the same fallback `listOwnPhotos` sorts by
+ * and the card prints, so the day summary's count and the card's own label
+ * cannot disagree about which day a photo belongs to. THE FALLBACK IS WHY
+ * THE SCREEN SAYS "KEPT" AND NOT "TAKEN": a library import with no EXIF
+ * date lands on the day it was added, and a count that called that "taken
+ * today" would be asserting something the file never claimed.
+ *
+ * Reads every own-photo key, like ownPhotoUsage above, but never touches
+ * `blob` - so it costs a key scan and the records' metadata rather than the
+ * day's images.
+ */
+export async function ownPhotosOn(date: string): Promise<number> {
+  const allKeys = await keys()
+  let count = 0
+  for (const key of allKeys) {
+    if (typeof key !== 'string' || !key.startsWith(POI_PHOTOS_PREFIX)) continue
+    const stored = await get<PoiPhotoRecord>(key)
+    if (stored === undefined) continue
+    for (const photo of stored.photos) {
+      if ((photo.taken ?? photo.added) === date) count += 1
+    }
+  }
+  return count
+}
+
 export async function ownPhotoUsage(): Promise<{ count: number; bytes: number }> {
   const allKeys = await keys()
   let count = 0

@@ -478,6 +478,188 @@ describe('the planning flow', () => {
     await user.click(await screen.findByRole('button', { name: 'Back to your route' }))
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
   })
+
+  // Wireframe 2a frame 1, reached by its own door (#973). What this proves is
+  // the thing that was broken rather than missing: the canvas has always been
+  // in route-tap mode while the editor is open, and the handler declined to
+  // act on it. Every rule the frame states falls out of insertRoutePoint,
+  // which lib/route.test.ts already owns - so what is held here is the WIRING,
+  // end to end and on the pipeline's mile scale.
+  describe('building a route by tapping the trail (#973)', () => {
+    /** The live map, listening. Rebuilt by the tab switch the entrance makes,
+     *  so the wait is on the listener rather than on a tick. */
+    async function liveMap() {
+      await waitFor(() => {
+        expect(MockMap.live).toHaveLength(1)
+        expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
+      })
+      return MockMap.live[0]
+    }
+
+    const tap = async (map: MockMap, clientMile: number, lng = -77) => {
+      await act(async () => {
+        map.emit('click', { lngLat: { lng, lat: latOfMile(clientMile) } })
+      })
+    }
+
+    it('drops points in walk order, names them, and prices the legs', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+
+      // An empty editor, asking for the first point rather than pretending to
+      // hold a route.
+      const panel = await screen.findByRole('dialog', { name: 'Your route' })
+      expect(
+        within(panel).getByText('Tap the trail to drop a point.'),
+      ).toBeInTheDocument()
+      expect(within(panel).getByText('0 points')).toBeInTheDocument()
+
+      const map = await liveMap()
+
+      // Client mile 3 is Front Shelter's own mile, so the tap arrives named -
+      // the pipeline mile 3.2 the shelter carries, not the 3.2 the anchors
+      // would have produced by coincidence.
+      await tap(map, 3)
+      expect(
+        await screen.findByRole('button', { name: /Front Shelter/ }),
+      ).toBeInTheDocument()
+      expect(screen.getByText('1 point')).toBeInTheDocument()
+
+      // The second tap appends: tapping in walking order always does.
+      await tap(map, 22)
+      expect(
+        await screen.findByRole('button', { name: /Beyond Shelter/ }),
+      ).toBeInTheDocument()
+      expect(screen.getByText('NOBO · 2 points · 1 leg')).toBeInTheDocument()
+      expect(screen.getByText('19.0 mi')).toBeInTheDocument()
+
+      // And a tap BETWEEN them inserts there rather than appending - the
+      // frame's "a new point inserts where it adds the least distance".
+      await tap(map, 13)
+      expect(
+        await screen.findByRole('button', { name: /Far Shelter/ }),
+      ).toBeInTheDocument()
+      expect(screen.getByText('NOBO · 3 points · 2 legs')).toBeInTheDocument()
+
+      const fields = within(panel)
+        .getAllByRole('button')
+        .map((node) => node.textContent ?? '')
+        .filter((text) => /Shelter/.test(text))
+      expect(fields[0]).toMatch(/Front Shelter/)
+      expect(fields[1]).toMatch(/Far Shelter/)
+      expect(fields[2]).toMatch(/Beyond Shelter/)
+    })
+
+    it('refuses a tap off the corridor, and says so where the tapping happens', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+
+      const panel = await screen.findByRole('dialog', { name: 'Your route' })
+      await tap(map, 10, -81)
+      expect((await within(panel).findByRole('status')).textContent).toMatch(
+        /no honest mile/,
+      )
+      expect(within(panel).getByText('0 points')).toBeInTheDocument()
+
+      // And the standing sentence comes back once a tap lands.
+      await tap(map, 3)
+      expect(
+        await screen.findByText(/Only the A.T. centerline can carry a route/),
+      ).toBeInTheDocument()
+    })
+
+    it('takes a mis-tap back, one edit at a time', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+
+      // Nothing to undo yet.
+      expect(screen.queryByRole('button', { name: 'Undo the last change' })).toBeNull()
+
+      await tap(map, 3)
+      await tap(map, 22)
+      await tap(map, 13)
+      expect(await screen.findByText('NOBO · 3 points · 2 legs')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Undo the last change' }))
+      expect(await screen.findByText('NOBO · 2 points · 1 leg')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Far Shelter/ })).toBeNull()
+
+      await user.click(screen.getByRole('button', { name: 'Undo the last change' }))
+      expect(await screen.findByText('1 point')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Undo the last change' }))
+      expect(await screen.findByText('0 points')).toBeInTheDocument()
+      // Back to nothing, and the control leaves with the history.
+      expect(screen.queryByRole('button', { name: 'Undo the last change' })).toBeNull()
+    })
+
+    it('carries a start already placed on the entrance through the door', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
+      await user.type(await screen.findByLabelText('Search for a stop'), 'front')
+      await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+      expect(await screen.findByText('mi 3.2')).toBeInTheDocument()
+
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+
+      // Placing it was the same act either way - it does not get thrown away
+      // for having been placed on the other door.
+      const panel = await screen.findByRole('dialog', { name: 'Your route' })
+      expect(
+        within(panel).getByRole('button', { name: /Front Shelter/ }),
+      ).toBeInTheDocument()
+      expect(within(panel).getByText('1 point')).toBeInTheDocument()
+      expect(
+        within(panel).getByText('Tap the trail again for where this stretch ends.'),
+      ).toBeInTheDocument()
+    })
+
+    it('carries a tapped route into the day planner', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+
+      await tap(map, 3)
+      await tap(map, 22)
+
+      await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+      expect(
+        await screen.findByRole('dialog', { name: 'How long is a day?' }),
+      ).toBeInTheDocument()
+    })
+  })
 })
 
 // The phone's answer to the question the desktop chart already answers (#910).

@@ -31,6 +31,22 @@ export function dayDateLabel(isoDate: string): string {
 }
 
 /**
+ * "tue 12 may" from an ISO date - the day summary's own header (#966),
+ * lowercase because that card speaks in the hiker's voice rather than the
+ * timeline's gutter voice, and carrying the month because a summary can be
+ * opened weeks later, when "TUE 12" no longer says which twelfth.
+ *
+ * UTC throughout, for dayDateLabel's reason: the label must not shift a day
+ * as a phone crosses a timezone.
+ */
+export function dayLongDateLabel(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+  const month = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+  return `${weekday} ${date.getUTCDate()} ${month}`.toLowerCase()
+}
+
+/**
  * ROW HEIGHT = WALKING HOURS - the terrain-row timeline's one physical
  * encoding (wireframe 1b, CHOSEN): a hard day is bigger on the screen, so a
  * section's shape can be felt by scrolling it.

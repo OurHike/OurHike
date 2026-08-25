@@ -311,7 +311,7 @@ The fork above ("What are you planning?", #977) asked its question once and then
 
 **What the storyboard drew that deliberately did not ship, and what each waits on:** starter hikes ("laid out by the clubs that maintain them" — no club-laid route dataset exists anywhere in this repository; the storyboard itself calls the work editorial, related to #981's parking lots); ≈ time on the day-hike **list** and the trailhead door (both read the stored cache, and pricing needs the routing graph a list must not load); the turn list (#934's first-leg naming question, above); recording a finished walk (#982); freehand drawing (#983).
 
-**The one surface that prints no computed time on purpose** is "Leave this with someone". Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is the hiker's own judgement about lunch and the swim and the view. That is a decision rather than a gap, and reversing it is a maintainer's call.
+**The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
 ## Where a plan lives
 

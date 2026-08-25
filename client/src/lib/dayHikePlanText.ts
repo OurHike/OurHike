@@ -27,6 +27,16 @@
 //   will decide when to worry based on that line, so it has to be a number
 //   a human chose, knowing about lunch and the swim and the view.
 //
+//   THIS SURVIVED THE ELEVATION LANDING, AND ON PURPOSE. #1011 gave the
+//   network its per-edge climb, so a walk that could print no ≈time at all
+//   when this file was written can print one now - and the builder bar and
+//   the finished card both do. This card still does not, and that is the
+//   maintainer's decision, asked and answered 2026-08-25: the reach of the
+//   estimate was never the reason. A duration on the artifact somebody
+//   decides to worry from reads as an arrival promise however it is worded,
+//   and better data does not change what the reader does with it. Do not
+//   "finish" this by wiring `walkingMinutes` in; the test below pins it.
+//
 // GROUND WITH NO TRAIL UNDER IT IS NAMED, NEVER BRIDGED BY AN ARROW. A
 // deliberate gap (#935) is the part of a day most likely to lose somebody
 // and the part a searcher most needs to hear about, so the miles the app

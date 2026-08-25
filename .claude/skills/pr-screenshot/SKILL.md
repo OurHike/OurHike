@@ -115,7 +115,14 @@ answers `200 image/png` and GitHub proxies it into the rendered body.
 
 **Pin the sha, not the branch.** A branch reference breaks the moment the
 branch is deleted after merge; the commit survives in `main`'s history and so
-does the URL naming it. **Keep the `width`** — a 2× capture is 780 px wide and
+does the URL naming it. That last part is a property of *how this repository
+merges*, not of GitHub: pull requests land here as merge commits — checked
+2026-08-25, `ccd1df0` from #965 is reachable from `main` — so every branch
+commit is preserved. **If the repository ever switches to squash merging, this
+breaks quietly**: the pinned commit would never reach `main`, and the image
+would keep working until the branch was deleted and then 404 in a body nobody
+re-reads. Committing the screenshot in the pull request's own final commit is
+not enough to save it; the fix would be to link the merge commit instead. **Keep the `width`** — a 2× capture is 780 px wide and
 GitHub renders an image at its natural size, so without the attribute a phone
 screenshot arrives at twice life size. `<img>` rather than `![]()` for that
 reason alone: markdown image syntax carries no width.

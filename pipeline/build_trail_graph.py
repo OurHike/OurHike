@@ -101,15 +101,29 @@ from collections import defaultdict
 from pathlib import Path
 
 from pyproj import Transformer
-from shapely.geometry import LineString, MultiLineString, Point, shape
+from shapely.geometry import LineString, MultiLineString, Point, box, shape
 from shapely.ops import substring, transform
 from shapely.strtree import STRtree
+
+from export_nearby_trails import RING_BBOX
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
 OUT_DIR = ROOT / "data" / "processed"
 INPUT_NAME = "nearby_trails.geojson"
+# The A.T.'s own lines (export_trails.py), which join the graph clipped to the
+# ring - see load_at_lines for why they are CUT where the network artifact's
+# lines never are.
+TRAILS_NAME = "trails.geojson"
+NEARBY_MANIFEST_NAME = "nearby_trails_manifest.json"
 ARTIFACT_NAME = "trail_graph.json"
+MANIFEST_NAME = "trail_graph_manifest.json"
+
+# Which of trails.geojson's sources become graph edges. The centerline and the
+# blue-blazed side trails are both maintained, walkable ground; road approaches
+# and anything else stay out for #931's reasons.
+AT_GRAPH_SOURCES = ("centerline", "side_trails")
 
 # EPSG:5070 (NAD83 / Conus Albers) is equal-area and in metres, and is already
 # this pipeline's projected CRS for length work - export_elevation.py measures
@@ -150,6 +164,63 @@ def _transformers() -> tuple[Transformer, Transformer]:
         Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True),
         Transformer.from_crs(PROJECTED_CRS, GEOGRAPHIC_CRS, always_xy=True),
     )
+
+
+def load_at_lines(path: Path) -> dict | None:
+    """trails.geojson's A.T. lines, clipped to the ring, as a FeatureCollection.
+
+    WITHOUT THIS THE GRAPH TELLS A HIKER A FALSE SENTENCE. export_nearby_trails
+    deliberately suppresses every other organization's copy of a route ATC owns
+    (`suppressed_by_owner`), so the A.T. is absent from the network artifact BY
+    DESIGN - and a graph built from that artifact alone would refuse a tap on
+    the widest line on the map with "that tap isn't on a marked hiking route",
+    which in that one case is untrue. Frame `1l`'s own worked example walks an
+    A.T. leg ("Appalachian Trail · 0.9 mi · ATC"), so the design assumes the
+    centerline routes.
+
+    CUT AT THE RING, WHERE THE NETWORK ARTIFACT'S LINES NEVER ARE. That is a
+    deliberate divergence from export_nearby_trails' keep-whole rule, and the
+    reason is what each artifact is for: a drawn line cut mid-park looks like a
+    trail ending where it does not, but a ROUTING graph for the ring has no use
+    for two thousand miles of Georgia-to-Maine centerline, and a cut at the
+    ring boundary makes an ordinary endpoint node - a route simply stops where
+    the published network stops, which is true.
+
+    None when the file is absent, which main() reports loudly: a graph without
+    the A.T. still routes the other trails, but every refusal on the A.T. is
+    the false sentence above, so absence has to be visible in the stats rather
+    than discovered on a phone.
+    """
+    if not path.exists():
+        return None
+    return clip_at_lines(json.loads(path.read_text(encoding="utf-8")))
+
+
+def clip_at_lines(collection: dict) -> dict:
+    """The clip itself, separated so a test can hand it a collection."""
+    ring = box(*RING_BBOX)
+    kept = []
+    for feature in collection.get("features", []):
+        properties = feature.get("properties") or {}
+        if properties.get("source") not in AT_GRAPH_SOURCES:
+            continue
+        geometry_json = feature.get("geometry")
+        if not geometry_json:
+            continue
+        geometry = shape(geometry_json)
+        if geometry.is_empty or not geometry.intersects(ring):
+            continue
+        clipped = geometry.intersection(ring)
+        if clipped.is_empty:
+            continue
+        kept.append(
+            {
+                "type": "Feature",
+                "properties": properties,
+                "geometry": json.loads(json.dumps(clipped.__geo_interface__)),
+            }
+        )
+    return {"type": "FeatureCollection", "features": kept}
 
 
 def routable_lines(collection: dict) -> tuple[list[dict], dict]:
@@ -366,6 +437,11 @@ def build_graph(
         if ends[0] == ends[1] and line.length <= quant_m:
             continue
 
+        # The piece's own vertices, back in WGS84 - the client draws the
+        # highlight from these and projects taps onto them. Without them an
+        # edge is a straight chord between its junctions, and a chord across a
+        # switchback is a picture of a trail that does not exist.
+        edge_geometry = [[round(lon, 6), round(lat, 6)] for lon, lat in (to_geographic.transform(x, y) for x, y in line.coords)]
         raw_edges.append(
             {
                 "from": ends[0],
@@ -375,6 +451,7 @@ def build_graph(
                 "source": properties.get("source"),
                 "name": properties.get("name"),
                 "blaze_color": properties.get("blaze_color"),
+                "geometry": edge_geometry,
             }
         )
 
@@ -470,11 +547,25 @@ def load_input(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build(collection: dict, endpoint_snap_m: float = ENDPOINT_SNAP_M) -> tuple[dict, dict]:
-    """The whole pipeline, from FeatureCollection to graph plus stats."""
+def build(
+    collection: dict,
+    at_collection: dict | None = None,
+    endpoint_snap_m: float = ENDPOINT_SNAP_M,
+) -> tuple[dict, dict]:
+    """The whole pipeline, from FeatureCollection(s) to graph plus stats."""
     to_projected, to_geographic = _transformers()
 
-    lines, refused = routable_lines(collection)
+    merged = dict(collection)
+    at_count = 0
+    if at_collection is not None:
+        at_features = at_collection.get("features", [])
+        at_count = len(at_features)
+        merged = {
+            "type": "FeatureCollection",
+            "features": [*collection.get("features", []), *at_features],
+        }
+
+    lines, refused = routable_lines(merged)
     for entry in lines:
         entry["line"] = transform(to_projected.transform, entry["line"])
 
@@ -482,7 +573,9 @@ def build(collection: dict, endpoint_snap_m: float = ENDPOINT_SNAP_M) -> tuple[d
     graph = build_graph(pieces, welds, to_geographic)
 
     stats = {
-        "lines_in": len(collection.get("features", [])),
+        "lines_in": len(merged.get("features", [])),
+        "at_lines": at_count,
+        "at_included": at_collection is not None,
         "lines_routable": len(lines),
         "refused": refused,
         "endpoint_snap_m": endpoint_snap_m,
@@ -495,7 +588,7 @@ def build(collection: dict, endpoint_snap_m: float = ENDPOINT_SNAP_M) -> tuple[d
     return graph, stats
 
 
-def sweep(collection: dict, tolerances=SWEEP_TOLERANCES_M) -> list[dict]:
+def sweep(collection: dict, at_collection: dict | None = None, tolerances=SWEEP_TOLERANCES_M) -> list[dict]:
     """What ENDPOINT_SNAP_M should be, measured rather than argued.
 
     Reports each candidate's endpoint joins and component count. The value to
@@ -504,7 +597,7 @@ def sweep(collection: dict, tolerances=SWEEP_TOLERANCES_M) -> list[dict]:
     """
     rows = []
     for tolerance in tolerances:
-        _, stats = build(collection, endpoint_snap_m=tolerance)
+        _, stats = build(collection, at_collection, endpoint_snap_m=tolerance)
         rows.append(
             {
                 "endpoint_snap_m": tolerance,
@@ -518,11 +611,27 @@ def sweep(collection: dict, tolerances=SWEEP_TOLERANCES_M) -> list[dict]:
     return rows
 
 
-def write_artifact(graph: dict, stats: dict) -> dict:
+def write_artifact(graph: dict, stats: dict, sources: dict | None = None) -> dict:
+    """Write the artifact and its manifest sidecar, publish.py's shape.
+
+    `sources` is copied from the nearby-trails manifest so THE LICENCE GATE
+    TRAVELS WITH THE DERIVATION: this graph is those lines' topology, and
+    publish.py must be able to hold it back on exactly the `reaches_hikers`
+    check it applies to the lines themselves. Topology of data a steward has
+    not licensed is still that steward's data.
+    """
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(graph, separators=(",", ":")), encoding="utf-8")
-    return {"path": str(path), "bytes": path.stat().st_size, **stats}
+    manifest = {
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "bytes": path.stat().st_size,
+        "sources": sources or {},
+        **stats,
+    }
+    (OUT_DIR / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
 
 
 def main() -> dict:
@@ -541,10 +650,15 @@ def main() -> dict:
     arguments = parser.parse_args()
 
     collection = load_input(IN_DIR / INPUT_NAME)
+    at_collection = load_at_lines(IN_DIR / TRAILS_NAME)
+    if at_collection is None:
+        # Loud, because a graph without the A.T. refuses taps on the widest
+        # line on the map with a sentence that is false in that one case.
+        print(f"WARNING: {TRAILS_NAME} not found - the A.T. is NOT in this graph.")
 
     if arguments.sweep:
         print(f"{'snap_m':>8}  {'joins':>7}  {'nodes':>7}  {'edges':>7}  {'junctions':>10}  {'components':>11}")
-        for row in sweep(collection):
+        for row in sweep(collection, at_collection):
             print(
                 f"{row['endpoint_snap_m']:>8.1f}  {row['endpoint_joins']:>7}  {row['nodes']:>7}  "
                 f"{row['edges']:>7}  {row['junctions']:>10}  {row['components']:>11}"
@@ -552,10 +666,16 @@ def main() -> dict:
         print("\nTake the knee: where components stop falling and joins keep climbing.")
         return {}
 
-    graph, stats = build(collection, endpoint_snap_m=arguments.snap_m)
-    manifest = write_artifact(graph, stats)
+    graph, stats = build(collection, at_collection, endpoint_snap_m=arguments.snap_m)
 
-    print(f"  lines in:        {stats['lines_in']}")
+    # The licence gate travels with the derivation - see write_artifact.
+    nearby_manifest_path = IN_DIR / NEARBY_MANIFEST_NAME
+    sources = {}
+    if nearby_manifest_path.exists():
+        sources = json.loads(nearby_manifest_path.read_text(encoding="utf-8")).get("sources", {})
+    manifest = write_artifact(graph, stats, sources)
+
+    print(f"  lines in:        {stats['lines_in']} (A.T.: {stats['at_lines']})")
     print(f"  routable:        {stats['lines_routable']} (refused: {stats['refused']})")
     print(f"  nodes:           {stats['nodes']}")
     print(f"  edges:           {stats['edges']}")

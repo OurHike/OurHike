@@ -145,6 +145,7 @@ def client_keys() -> dict[str, str]:
         # name, and the day the licence gate opens is a bad day to discover
         # the two ends spelled it differently.
         _string_const(config, "NEARBY_TRAILS_KEY"): "config.ts NEARBY_TRAILS_KEY",
+        _string_const(config, "TRAIL_GRAPH_KEY"): "config.ts TRAIL_GRAPH_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_REPORTS_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_ATC_UPDATES_KEY"): "publishedConditions.ts",
@@ -219,6 +220,13 @@ def published(tmp_path, monkeypatch) -> set[str]:
     nearby = manifest_entry("nearby_trails.geojson")
     nearby["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
     (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(nearby))
+
+    # The junction graph derived from those lines (#974). Same post-licence
+    # framing as its parent above, for the same reason: this file asks whether
+    # the two ends agree on the NAME, and the gate has its own tests.
+    graph = manifest_entry("trail_graph.json")
+    graph["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
+    (tmp_path / "trail_graph_manifest.json").write_text(json.dumps(graph))
 
     conditions_dir = tmp_path / "conditions"
     conditions_dir.mkdir()

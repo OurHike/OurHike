@@ -376,3 +376,96 @@ def test_connected_components_counts_islands():
         _feature([(LON, LAT + 0.2), (LON + 0.01, LAT + 0.2)], feature_id="oprhp_trails:2"),
     )
     assert graph_builder.connected_components(far_apart) == 2
+
+
+# ----------------------------------------------------- geometry and the A.T.
+
+
+def test_every_edge_carries_its_pieces_own_vertices_in_walking_order():
+    # A bent line: the graph must keep the bend, because a straight chord
+    # across it is a picture of a trail that does not exist (routeLayers.ts's
+    # own words for the A.T. builder, inherited here).
+    bent = _feature([(LON, LAT), (LON + 0.005, LAT + 0.004), (LON + 0.01, LAT)])
+
+    graph, _ = _build(bent)
+
+    assert len(graph["edges"]) == 1
+    geometry = graph["edges"][0]["geometry"]
+    assert len(geometry) == 3, "the interior vertex must survive"
+    # Ends of the geometry are the edge's own nodes, in from->to order.
+    edge = graph["edges"][0]
+    assert geometry[0] == graph["nodes"][edge["from"]]
+    assert geometry[-1] == graph["nodes"][edge["to"]]
+
+
+def test_a_split_keeps_each_pieces_interior_vertices():
+    # Splitting at a crossing must not straighten the halves.
+    bent = _feature(
+        [(LON, LAT), (LON + 0.005, LAT + 0.004), (LON + 0.01, LAT), (LON + 0.02, LAT)],
+        feature_id="oprhp_trails:1",
+    )
+    crossing = _feature(
+        [(LON + 0.01, LAT - 0.01), (LON + 0.01, LAT + 0.01)],
+        feature_id="oprhp_trails:2",
+    )
+
+    graph, _ = _build(bent, crossing)
+
+    west_half = [edge for edge in graph["edges"] if edge["trail_id"] == "oprhp_trails:1" and len(edge["geometry"]) > 2]
+    assert west_half, "the piece west of the crossing keeps its bend"
+
+
+def test_the_at_joins_the_graph_and_is_cut_at_the_ring():
+    # A centerline that runs far outside the ring: only the inside part may
+    # become edges, ending at an ordinary node on the boundary.
+    at = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "id": "centerline:1",
+                    "source": "centerline",
+                    "name": "Appalachian Trail",
+                    "blaze_color": "White",
+                },
+                # From inside the ring to far north of its 42.55 edge.
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[LON, LAT], [LON, 44.0]],
+                },
+            }
+        ],
+    }
+    network = _feature([(LON - 0.01, LAT), (LON + 0.01, LAT)], feature_id="oprhp_trails:1")
+
+    graph, stats = graph_builder.build(_collection(network), at_collection=graph_builder.clip_at_lines(at))
+
+    assert stats["at_included"] is True
+    at_edges = [edge for edge in graph["edges"] if edge["source"] == "centerline"]
+    assert at_edges, "the A.T. must be routable inside the ring"
+    ring_north = graph_builder.RING_BBOX[3]
+    for edge in at_edges:
+        for lon, lat in edge["geometry"]:
+            assert lat <= ring_north + 1e-6, "nothing outside the ring becomes an edge"
+
+
+def test_a_graph_built_without_the_at_says_so_in_its_stats():
+    _, stats = _build(_feature([(LON, LAT), (LON + 0.01, LAT)]))
+
+    assert stats["at_included"] is False
+    assert stats["at_lines"] == 0
+
+
+def test_the_manifest_sidecar_carries_the_hash_and_the_licence_sources(tmp_path, monkeypatch):
+    monkeypatch.setattr(graph_builder, "OUT_DIR", tmp_path)
+    graph, stats = _build(_feature([(LON, LAT), (LON + 0.01, LAT)]))
+
+    manifest = graph_builder.write_artifact(graph, stats, sources={"oprhp_trails": {"reaches_hikers": False}})
+
+    sidecar = json.loads((tmp_path / graph_builder.MANIFEST_NAME).read_text())
+    assert sidecar["sha256"] == manifest["sha256"]
+    assert sidecar["path"].endswith(graph_builder.ARTIFACT_NAME)
+    # The licence gate travels with the derivation - publish.py holds this
+    # artifact back on the same reaches_hikers check as its parent's.
+    assert sidecar["sources"] == {"oprhp_trails": {"reaches_hikers": False}}

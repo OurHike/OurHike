@@ -549,6 +549,13 @@ jobs:
       - name: Export the trails other organizations maintain
         run: python export_nearby_trails.py
 
+      # AFTER the network export, because the graph is that artifact's own
+      # topology (build_trail_graph.py reads nearby_trails.geojson), and after
+      # export_trails.py further up for the same reason - the A.T.'s lines
+      # join the graph clipped to the ring.
+      - name: Build the junction graph the day-hike builder routes over
+        run: python build_trail_graph.py
+
       # AFTER the POIs, and that ordering is load-bearing rather than tidy.
       # export_spurs.py publishes the id of the POI each spur leads to, and
       # that id has to be the one the client already holds - so it resolves

@@ -23,6 +23,13 @@ ALIAS="${ALIAS:-}"
 # destroy something.
 API_BASE="${API_BASE:-https://api.cloudflare.com/client/v4}"
 
+# Where this alias answers, so that "removed" can be a measurement rather than
+# an assertion. Same construction pr-preview.yml works the URL out with, and
+# the same assumption behind it: that the project's pages.dev subdomain
+# matches the project name, which is how Pages names them. Overridable for the
+# same reason API_BASE is - the suite serves a stand-in on loopback.
+PREVIEW_URL_TEMPLATE="${PREVIEW_URL_TEMPLATE:-https://%s.$PROJECT.pages.dev/}"
+
 # The alias is the only thing between "tidy up a closed pull request" and
 # "delete a deployment somebody is using". A filter one character too loose
 # would not look wrong in review and would not fail a test that only checks
@@ -37,6 +44,9 @@ DEPLOYMENTS="$API_BASE/accounts/$ACCOUNT_ID/pages/projects/$PROJECT/deployments"
 found=0
 deleted=0
 failed=0
+# Not 0 and not a code, because "we did not get far enough to look" is a third
+# thing and the comment on the pull request has to be able to say it.
+reachable=unchecked
 
 report() {
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -44,6 +54,7 @@ report() {
       echo "found=$found"
       echo "deleted=$deleted"
       echo "failed=$failed"
+      echo "reachable=$reachable"
     } >>"$GITHUB_OUTPUT"
   fi
 }
@@ -54,6 +65,45 @@ api() {
   # "success": false at least as often as it arrives as a 4xx, and the message
   # inside the body is the only useful part of either.
   curl -sS -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" "$@"
+}
+
+# ASK THE URL, RATHER THAN INFERRING IT FROM A 200 ON THE DELETE (#1004).
+#
+# Deleted and unreachable are two different states here, and this action used
+# to report the first as though it were the second: the pull request comment
+# said the preview "no longer serves anything" the moment Cloudflare answered
+# "success": true. On the first case anyone could observe, that sentence was
+# false. Run 32847903961 deleted the one deployment for `pr-1003` with
+# `force=true` and got success; 32 minutes later
+# `https://pr-1003.ourhike-preview.pages.dev/` still answered 200, still
+# serving that deployment's own files - `/assets/main-BTYohYcr.js` returned
+# 816,086 bytes there and the SPA fallback on another preview. Cloudflare
+# documents no propagation delay for a deleted deployment's branch alias, so
+# what happens after that is not known here and this does not guess.
+#
+# One probe, taken immediately, reported as what it is: a reading at a moment,
+# not a promise about the next hour. It does NOT fail the step. A red check on
+# every close, for a Cloudflare behaviour nothing in this repository can fix,
+# would bury the failure this action does have teeth for - a deletion that was
+# refused - and that one is still an error below.
+probe_alias() {
+  local url code
+  # shellcheck disable=SC2059 - the template is ours, not caller-supplied.
+  url="$(printf "$PREVIEW_URL_TEMPLATE" "$ALIAS")"
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$url" 2>/dev/null || echo 000)"
+  printf '%s' "$code"
+}
+
+say_whether_it_still_serves() {
+  local url
+  # shellcheck disable=SC2059 - as above.
+  url="$(printf "$PREVIEW_URL_TEMPLATE" "$ALIAS")"
+  reachable="$(probe_alias)"
+  if [ "$reachable" = "200" ]; then
+    echo "::warning::$url still answered 200 immediately after the deletion Cloudflare accepted. Deleted and unreachable are not the same state - see #1004."
+  else
+    echo "$url answered $reachable immediately afterwards."
+  fi
 }
 
 # Collect every id first, and only then delete. Not page-by-page-deleting as
@@ -133,6 +183,10 @@ found=${#ids[@]}
 
 if [ "$found" -eq 0 ]; then
   echo "No deployments found for '$ALIAS'; nothing to remove."
+  say_whether_it_still_serves
+  if [ "$reachable" = "200" ]; then
+    echo "::warning::Nothing matched '$ALIAS' and yet it is serving, so something is holding that URL up that this filter does not select. That is not a tidy-up any more - see #1004."
+  fi
   exit 0
 fi
 
@@ -155,6 +209,8 @@ for id in "${ids[@]}"; do
 done
 
 echo "Deleted $deleted of $found deployment(s) for '$ALIAS'."
+
+say_whether_it_still_serves
 
 if [ "$failed" -gt 0 ]; then
   echo "::error::$failed of $found deployment(s) for '$ALIAS' could not be deleted and are still reachable."

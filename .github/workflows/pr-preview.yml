@@ -405,6 +405,49 @@ jobs:
           project: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
           alias: ${{ steps.preview.outputs.alias }}
 
+      # THE COMMENT SAYS WHAT WAS MEASURED, NOT WHAT WAS ASKED FOR (#1004).
+      #
+      # It used to assert that `pr-<n>....pages.dev` "no longer serves
+      # anything", posted the instant Cloudflare returned success and checking
+      # nothing. On the first close anybody here could observe, that sentence
+      # was false: run 32847903961 deleted pr-1003's only deployment with
+      # `force=true` and got success, and the alias was still serving that
+      # build 32 minutes later. The deploy path has always had a `Wait for the
+      # preview to answer` step; the teardown path asserted the opposite and
+      # had nothing equivalent, which is why it took a person with curl to
+      # notice.
+      #
+      # The teardown now probes and hands back what it got. Turning that into
+      # a sentence happens here in bash rather than in a nested `${{ }}`
+      # conditional, because there are three cases and they are worth being
+      # able to read.
+      - name: Put what the URL answered into words
+        id: reachability
+        if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
+        env:
+          URL: ${{ steps.preview.outputs.url }}
+          CODE: ${{ steps.teardown.outputs.reachable }}
+        run: |
+          case "$CODE" in
+            200)
+              line="**\`$URL\` was still answering 200** when checked straight after Cloudflare accepted the deletion. Deleted and no longer reachable are two different states here - see #1004." ;;
+            ''|unchecked)
+              line="\`$URL\` was not checked, because the removal did not get that far." ;;
+            000)
+              # NOT "so it is gone". A removed preview answers 404 - measured
+              # 2026-08-25 on pr-100 and pr-99999, both of which return
+              # Cloudflare's own 404 page. A 000 is curl failing to get an
+              # answer at all, which is a fact about the probe.
+              line="\`$URL\` could not be reached at all when checked straight afterwards. That is the probe failing rather than evidence either way - a removed preview answers 404." ;;
+            *)
+              line="\`$URL\` answered $CODE when checked straight afterwards." ;;
+          esac
+          {
+            echo "line<<REACHABILITY_EOF"
+            echo "$line"
+            echo "REACHABILITY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say the pull request is closed
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
@@ -415,15 +458,25 @@ jobs:
 
             This pull request is closed, and its preview deployments have been removed
             (${{ steps.teardown.outputs.deleted || 0 }} of ${{ steps.teardown.outputs.found || 0 }}).
-            `${{ steps.preview.outputs.url }}` no longer serves anything.
+            ${{ steps.reachability.outputs.line }}
 
             ${{ steps.teardown.outputs.failed != '0' && steps.teardown.outputs.failed != '' && '**Some could not be removed and are still reachable** - see the run log for which, and why.' || '' }}
+
+            Previews orphaned before this teardown worked at all are a separate
+            backlog, swept by `scripts/sweep-pages-previews.sh` (#1004).
 
       # Last, so that the comment above is already posted when it runs. A red
       # check on a closed pull request is not something anyone goes looking at,
       # which is why the outcome is on the pull request too - but it still has
       # to be red, or a cleanup that stopped working would look exactly like
       # one that never had anything to do.
+      #
+      # Deliberately NOT red on the alias still answering. That would go red on
+      # every close for as long as Cloudflare behaves the way #1004 measured,
+      # which nothing in this repository can change - and an alarm that is
+      # always on is how a refused deletion, which this can fix, would stop
+      # being noticed. It is a warning in the log and a sentence on the pull
+      # request instead.
       - name: Fail if any preview outlived its pull request
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
         env:

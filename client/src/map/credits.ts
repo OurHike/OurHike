@@ -73,6 +73,17 @@ export const OPRHP_CREDIT =
  */
 export const NYNJTC_CREDIT = 'New York-New Jersey Trail Conference'
 
+/**
+ * Mohonk Preserve's attribution.
+ *
+ * NOT a condition - Mohonk Preserve states no terms at all, and their data
+ * ships on the maintainer's authorisation (pipeline/sources.json's
+ * `mohonk_licence`), the same footing NYNJTC_CREDIT above is on. Present for
+ * the same reason: a map that draws a steward's trails and does not say so is
+ * the "quiet inaccuracy" this file's header objects to.
+ */
+export const MOHONK_CREDIT = 'Mohonk Preserve'
+
 /** OpenFreeMap's own terms for hosting the vector sheet - see liveTopo.ts. */
 export const OPENFREEMAP_CREDIT = 'OpenFreeMap © OpenMapTiles'
 
@@ -132,7 +143,7 @@ export function mapCredits({
   // drawn, and the trails are the subject of the map. OPRHP's is a licence
   // condition besides, so it should not be the clause that falls off the end
   // of a small strip - see chrome/MapAttribution.tsx for what collapsing does.
-  if (hasNearbyTrails) credits.push(OPRHP_CREDIT, NYNJTC_CREDIT)
+  if (hasNearbyTrails) credits.push(OPRHP_CREDIT, NYNJTC_CREDIT, MOHONK_CREDIT)
 
   if (background === 'hiking_topo_live') {
     credits.push(OPENFREEMAP_CREDIT, ELEVATION_ATTRIBUTION)

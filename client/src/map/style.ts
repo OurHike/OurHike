@@ -117,7 +117,13 @@ import {
   sheetVariant,
   type SheetAppearance,
 } from './liveTopo'
-import { NYNJTC_CREDIT, OPRHP_CREDIT, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
+import {
+  MOHONK_CREDIT,
+  NYNJTC_CREDIT,
+  OPRHP_CREDIT,
+  OSM_CREDIT,
+  USGS_TOPO_CREDIT,
+} from './credits'
 import { whenStyleReady } from './styleReady'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
@@ -965,7 +971,7 @@ export function buildMapStyle({
       [NEARBY_TRAILS_SOURCE_ID]: {
         type: 'geojson',
         data: emptyTrailOverview(),
-        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT}`,
+        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT}`,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and

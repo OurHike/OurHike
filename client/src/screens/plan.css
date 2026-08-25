@@ -1706,3 +1706,119 @@
   margin-top: 0.35rem;
   color: var(--fg-3, #8a8271);
 }
+
+/* Frame `1j`'s builder bar (#978). Wears RouteMapPickBar's anatomy - the two
+   are the same gesture on two kinds of trail. */
+.day-hike-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface, #fff);
+  border-top: 1px solid var(--border-1, #e4ddca);
+}
+
+.day-hike-bar__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.day-hike-bar__prompt {
+  margin: 0;
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--fg-2, #5a5346);
+}
+
+.day-hike-bar__cancel {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--fg-3, #8a8271);
+  cursor: pointer;
+}
+
+/* The one thing on this bar a hiker might act on. */
+.day-hike-bar__refusal {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  background: var(--bg-sunken, #e3ecda);
+  border-radius: 3px;
+  color: var(--fg-1, #2b2620);
+}
+
+.day-hike-bar__total {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hike-bar__orgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-bar__org {
+  font-size: 0.8125rem;
+  color: var(--fg-2, #5a5346);
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hike-bar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.day-hike-bar__action {
+  flex: 1;
+  padding: 0.6rem 0.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-2, #c3baa4);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.day-hike-bar__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.day-hike-bar__action--done {
+  background: var(--brand-primary, #355c3a);
+  border-color: var(--brand-primary, #355c3a);
+  color: var(--fg-on-dark, #fffdf7);
+}
+
+/* #931's row: named, not omitted, and with nothing to press. */
+.day-hike-bar__later {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-1, #e4ddca);
+  font-size: 0.8125rem;
+  color: var(--fg-3, #8a8271);
+}
+
+.day-hike-bar__later-tag {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}

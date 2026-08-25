@@ -27,6 +27,8 @@ import {
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
 import { fetchNearbyTrails } from './nearbyTrailData'
+import { fetchTrailGraph } from './trailGraphData'
+import type { TrailGraphIndex } from './trailGraph'
 import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
 import { NO_TOMBSTONES, type Tombstones } from './poiIdentity'
@@ -126,6 +128,12 @@ export interface TrailData {
    * their own.
    */
   nearbyTrailsUrl: string | null
+  /** The junction graph's routing half, indexed - or null while this phone
+   *  has not got one, which PlanKindSheet reads as "no day hikes yet". The
+   *  geometry half is NOT here: it is fetched lazily when the builder opens
+   *  (lib/trailGraphData.fetchTrailGraphGeometry), because with the whole
+   *  A.T. in the graph it is by far the heavier half. */
+  graphIndex: TrailGraphIndex | null
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
   haveTrailLines: boolean
@@ -195,6 +203,7 @@ export function useTrailData(
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
   const [nearbyTrailsUrl, setNearbyTrailsUrl] = useState<string | null>(null)
+  const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
   /** Whether the phone has been asked whether it holds trail lines yet.
    *  Distinct from holding none: for the first tick of every launch those two
    *  look the same, and one of them is a reason to spend a hiker's data. */
@@ -510,6 +519,26 @@ export function useTrailData(
     }
   }, [online, nearbyTrailsUrl])
 
+  // The junction graph's routing half, on the nearby-lines pattern above -
+  // once, not once per reconnection, with the state itself as the guard. No
+  // object URL to revoke: fetchTrailGraph returns a parsed index.
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online || graphIndex !== null) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchTrailGraph(controller.signal).then((index) => {
+      if (index === null || !wanted) return
+      setGraphIndex(index)
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [online, graphIndex])
+
   const ensure = useCallback(async () => {
     setError(null)
     try {
@@ -538,6 +567,7 @@ export function useTrailData(
     // is drawing.
     overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
     nearbyTrailsUrl,
+    graphIndex,
     trailsUrl,
     haveTrailLines,
     error,

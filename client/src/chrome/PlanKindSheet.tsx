@@ -45,6 +45,9 @@ export interface PlanKindSheetProps {
    * routed. False is an ordinary state, not an error - see the header.
    */
   networkAvailable: boolean
+  /** Whether the past-walk flow exists to open. False until #982 builds it -
+   *  and false renders a sentence, not a dead control (LineSheet's rule). */
+  walkedAvailable: boolean
   onPickDayHike: () => void
   onPickTrip: () => void
   onPickWalked: () => void
@@ -53,6 +56,7 @@ export interface PlanKindSheetProps {
 
 export function PlanKindSheet({
   networkAvailable,
+  walkedAvailable,
   onPickDayHike,
   onPickTrip,
   onPickWalked,
@@ -106,12 +110,27 @@ export function PlanKindSheet({
         </span>
       </button>
 
-      <button type="button" className="plan-kind__door" onClick={onPickWalked}>
-        <span className="plan-kind__door-name">A walk I&rsquo;ve already done</span>
-        <span className="plan-kind__door-note">
-          The same two ends, in the past tense.
-        </span>
-      </button>
+      {walkedAvailable ? (
+        <button type="button" className="plan-kind__door" onClick={onPickWalked}>
+          <span className="plan-kind__door-name">A walk I&rsquo;ve already done</span>
+          <span className="plan-kind__door-note">
+            The same two ends, in the past tense.
+          </span>
+        </button>
+      ) : (
+        <div className="plan-kind__door plan-kind__door--unavailable">
+          <span className="plan-kind__door-name">A walk I&rsquo;ve already done</span>
+          <span className="plan-kind__door-note">
+            The same two ends, in the past tense.
+          </span>
+          <span
+            className="plan-kind__door-note plan-kind__door-note--refused"
+            role="note"
+          >
+            Recording a finished walk isn&rsquo;t built yet. It&rsquo;s coming.
+          </span>
+        </div>
+      )}
     </div>
   )
 }

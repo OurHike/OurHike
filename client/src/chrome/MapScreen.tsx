@@ -46,6 +46,7 @@ import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
+import type { DayHikeDrawing } from '../map/dayHikeLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -199,6 +200,7 @@ export interface MapScreenProps {
    * POI - see MapViewProps.onRouteTap for the exclusivity.
    */
   routeDrawing?: RouteDrawing | null
+  dayHikeDrawing?: DayHikeDrawing | null
   onRouteTap?: (at: { lon: number; lat: number }) => void
   routeSheet?: ReactNode
   /**
@@ -577,6 +579,7 @@ export function MapScreen({
   onSelectLine,
   lineSheet,
   routeDrawing = null,
+  dayHikeDrawing = null,
   onRouteTap,
   routeSheet,
   atcNoticeCount = 0,
@@ -1015,6 +1018,7 @@ export function MapScreen({
               disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
+              dayHikeDrawing={dayHikeDrawing}
               onRouteTap={onRouteTap}
               onSelectPoi={onSelectPoi}
               onSelectLine={onSelectLine}

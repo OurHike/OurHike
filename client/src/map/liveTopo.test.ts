@@ -618,6 +618,13 @@ describe('the offline-only background', () => {
       // keeping one stack rather than two is what stops the offline style
       // being a second thing to keep in step.
       'trail-overview-line',
+      // The day-hike casing (#978), UNDER both trail-line stacks - the one
+      // placement rule that module exists for: a translucent band beneath
+      // the lines, never a recolour of a blaze. It survives the subtraction
+      // for the route layers' reason below - planning tomorrow's loop at a
+      // trailhead with no signal is a normal use, not an edge case - and for
+      // the sketch's duller one: empty until a hiker starts tapping.
+      'day-hike-route-casing',
       // The trails other organizations maintain (#950), and they survive the
       // subtraction for the same duller reason the sketch above does: the
       // source is empty unless the shell has a network artifact to put in it,
@@ -669,6 +676,11 @@ describe('the offline-only background', () => {
       ROUTE_LINE_LAYER_ID,
       ROUTE_POINT_LAYER_ID,
       ROUTE_LABEL_LAYER_ID,
+      // The day hike's tapped points (#978), above the lines like every
+      // marker - only its casing lives below the trail stacks. Same offline
+      // reasoning as the route layers directly above.
+      'day-hike-route-points',
+      'day-hike-route-point-labels',
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
       // The long-term closures a steward marks on the trail line itself

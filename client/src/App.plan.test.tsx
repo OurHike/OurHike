@@ -77,6 +77,15 @@ const POIS = [
   shelter(22, 'Beyond Shelter'),
 ]
 
+/** The 1i door (#977) now interposes on the one primary action: every path
+ *  into a builder chooses its kind first. These tests want the trip. */
+async function throughPlanKind(user: ReturnType<typeof userEvent.setup>) {
+  expect(
+    await screen.findByRole('dialog', { name: 'What are you planning?' }),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /A multi-day trip/ }))
+}
+
 async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
 
@@ -86,6 +95,7 @@ async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
   ).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Start on the map' }))
+  await throughPlanKind(user)
   expect(await screen.findByRole('dialog', { name: 'Plan a route' })).toBeInTheDocument()
   expect(screen.getByText('Where from?')).toBeInTheDocument()
 }
@@ -738,6 +748,7 @@ describe('the ribbon while a trip is being planned', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await throughPlanKind(user)
     await screen.findByRole('dialog', { name: 'Plan a route' })
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
@@ -856,6 +867,7 @@ describe('the ribbon while a trip is being planned', () => {
     // frames the plan on the map.
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await throughPlanKind(user)
     await screen.findByRole('dialog', { name: 'Plan a route' })
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })

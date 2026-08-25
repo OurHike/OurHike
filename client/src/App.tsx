@@ -208,6 +208,29 @@ import {
 import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
+import { PlanKindSheet } from './chrome/PlanKindSheet'
+import { DayHikePickBar } from './chrome/DayHikePickBar'
+import {
+  canCloseLoop,
+  draftStatus,
+  EMPTY_DRAFT,
+  loopDraft,
+  tapAt,
+  undoTap,
+  type DayHikeDraft,
+} from './lib/dayHikeDraft'
+import { routeGeometry, type TrailGraphIndex } from './lib/trailGraph'
+import { attachTrailGraphGeometry, fetchTrailGraphGeometry } from './lib/trailGraphData'
+import { orgLabelFrom } from './lib/stewards'
+import {
+  EMPTY_DAY_HIKES,
+  loadDayHikes,
+  saveDayHikes,
+  type DayHike,
+  type DayHikeStore,
+} from './lib/dayHikes'
+import { useDayHikesSync } from './lib/useDayHikesSync'
+import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { stopLabel } from './lib/planDisplay'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -490,6 +513,17 @@ type StopPickState = { slot: StopSlot; onMap: boolean; refusedTap: boolean }
 // other.
 type AuthFlowState = null | { screen: 'choose' | 'email'; afterReport: boolean }
 
+/** A saved day hike's default name: its longest leg's trail, or a plain
+ *  fallback. The hiker renames it; this is what the row says until they do. */
+function dayHikeName(route: {
+  legs: Array<{ name: string | null; miles: number }>
+}): string {
+  const longest = [...route.legs].sort((a, b) => b.miles - a.miles)[0]
+  return longest?.name !== null && longest?.name !== undefined
+    ? `${longest.name} day hike`
+    : 'Day hike'
+}
+
 function App() {
   // Two pieces of state rather than one nullable, because null only ever meant
   // "not read off the phone yet" - and saying that with a boolean keeps the
@@ -577,6 +611,29 @@ function App() {
   /** The last trail tap the entrance refused as too far off the corridor -
    *  cleared by the next accepted one (#801). */
   const [entranceRefusedTap, setEntranceRefusedTap] = useState(false)
+  /**
+   * The day hike being built (#978, frame `1j`), or null when that builder
+   * is closed. A SIBLING of routeDraft, not a third arm on it: DayHikeDraft
+   * is already the whole state and carries its own undo, so it needs neither
+   * `history` nor the `withStops` funnel. The two modes are mutually
+   * exclusive - each opener clears the other - because four derived values
+   * below (the chart selection, the ribbon) key off `routeDraft !== null`
+   * and would answer for the A.T. while somebody built in Harriman.
+   */
+  const [dayHike, setDayHike] = useState<DayHikeDraft | null>(null)
+  /** Frame `1i`'s door - "What are you planning?" - over the Plan tab. */
+  const [planKindOpen, setPlanKindOpen] = useState(false)
+  /**
+   * The graph with its edge vertices attached, once the lazy geometry fetch
+   * lands - or null while only the routing half is here. Taps and routing
+   * work on the bare index meanwhile (chord projection, stated in
+   * lib/trailGraph.ts); the drawn highlight waits for real vertices, because
+   * a chord across a switchback is a picture of a trail that does not exist.
+   */
+  const [dayHikeIndex, setDayHikeIndex] = useState<TrailGraphIndex | null>(null)
+  /** The SAVED day hikes (#976) - loaded once, written through saveDayHikes,
+   *  and fed to the account sync exactly as tripStore is. */
+  const [dayHikeStore, setDayHikeStore] = useState<DayHikeStore>(EMPTY_DAY_HIKES)
   /** The same, for the editor's own tap (#973). Its own flag rather than one
    *  shared with the entrance: the two are never on screen together, and one
    *  flag would carry a refusal from one phase into the other, where the
@@ -756,6 +813,7 @@ function App() {
     trailsUrl,
     overviewTrailsUrl,
     nearbyTrailsUrl,
+    graphIndex,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
@@ -1962,6 +2020,16 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- listed below
   const handleStopMapTap = useCallback(
     (at: { lon: number; lat: number }) => {
+      // THE DAY HIKE'S TAP, first and before the corridor guard: a day hike
+      // routes over the junction graph, not the A.T. index, and a phone can
+      // hold one without the other. tapAt owns the refusal - a tap off every
+      // maintained line places nothing and sets the sentence the bar shows.
+      if (dayHike !== null) {
+        const graphForTaps = dayHikeIndex ?? graphIndex
+        if (graphForTaps === null) return
+        setDayHike((draft) => (draft === null ? draft : tapAt(graphForTaps, draft, at)))
+        return
+      }
       if (trailIndex === null) return
       // NO BUTTON FIRST (#801). With the entrance open and no picker over
       // it, a tap on the trail sets the START - there is nothing else this
@@ -2049,8 +2117,150 @@ function App() {
         clientMile,
       })
     },
-    [stopPick, trailIndex, mileAnchors, applyPickedStop, routeDraft, pois],
+    [
+      stopPick,
+      trailIndex,
+      mileAnchors,
+      applyPickedStop,
+      routeDraft,
+      pois,
+      dayHike,
+      dayHikeIndex,
+      graphIndex,
+    ],
   )
+
+  // Opening the day-hike builder repeats openRouteBuilderFrom's exact sweep
+  // rather than sharing a helper - the one-thing-open rule is each opener's
+  // own responsibility, and a shared helper under this branch's pressure is
+  // how one acquires a caller that does not want all six lines (CLAUDE.md's
+  // altitude note cuts both ways; revisit when a third door repeats it).
+  const openDayHike = useCallback(() => {
+    setActiveTab('trail')
+    setSelectedPoiId(null)
+    setLegendOpen(false)
+    setSearchOpen(false)
+    setTargetRequest(null)
+    setFreeChartStretch(null)
+    setRouteDraft(null)
+    setPlanKindOpen(false)
+    setDayHike((draft) => draft ?? EMPTY_DRAFT)
+  }, [])
+
+  const handleDayHikeCancel = useCallback(() => {
+    setDayHike(null)
+  }, [])
+
+  // Derived once per state change, not per render - draftStatus runs the
+  // router and App re-renders on the GPS clock.
+  const dayHikeStatus = useMemo(() => {
+    if (dayHike === null) return null
+    const graphForTaps = dayHikeIndex ?? graphIndex
+    if (graphForTaps === null) return null
+    return draftStatus(graphForTaps, dayHike)
+  }, [dayHike, dayHikeIndex, graphIndex])
+
+  const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
+    if (dayHike === null) return null
+    const points = dayHike.points.map((point, index) => ({
+      lon: point.at.lon,
+      lat: point.at.lat,
+      label: String(index + 1),
+    }))
+    // The highlight waits for real vertices (dayHikeIndex): routeGeometry
+    // refuses chord drawing itself, so before the geometry lands this is
+    // points only - the taps are the hiker's own work and draw immediately.
+    if (
+      dayHikeIndex === null ||
+      dayHikeStatus === null ||
+      dayHikeStatus.kind !== 'routed'
+    ) {
+      return { lines: [], points }
+    }
+    const first = dayHike.points[0]
+    const last = dayHike.looped
+      ? dayHike.points[0]
+      : dayHike.points[dayHike.points.length - 1]
+    const lines =
+      routeGeometry(dayHikeIndex.graph, dayHikeStatus.route.edgeIndices, first, last) ??
+      []
+    return { lines, points }
+  }, [dayHike, dayHikeIndex, dayHikeStatus])
+
+  const dayHikeOrgLabel = useMemo(() => orgLabelFrom(stewards), [stewards])
+
+  /**
+   * Done: the draft becomes a saved DayHike and the builder closes.
+   *
+   * ENDS ARE STORED AS COORDINATES, NEVER AS GraphPoint.edgeIndex - the
+   * index is positional into an array the pipeline compacts in input order,
+   * so a republished graph would silently shift a saved hike onto a
+   * different trail. A coordinate re-resolves against whatever graph the
+   * phone holds. poiId stays null until the finished-hike card's join
+   * (#980); the field exists now so the shape needs no migration.
+   */
+  const handleDayHikeDone = useCallback(() => {
+    if (dayHike === null || dayHikeStatus === null || dayHikeStatus.kind !== 'routed') {
+      return
+    }
+    const route = dayHikeStatus.route
+    const hike: DayHike = {
+      id: crypto.randomUUID(),
+      name: dayHikeName(route),
+      date: null,
+      segments: [
+        dayHike.points.map((point) => ({
+          coord: [point.at.lon, point.at.lat] as [number, number],
+          poiId: null,
+        })),
+      ],
+      figures: {
+        miles: route.miles,
+        legs: route.legs.map((leg) => ({
+          name: leg.name,
+          source: leg.source,
+          blaze_color: leg.blaze_color,
+          miles: leg.miles,
+        })),
+      },
+      looped: dayHike.looped,
+      recorded: 'planned',
+    }
+    // saveDayHikes records the sync ledger itself (read-before-write, so the
+    // edit travels as the hiker's own act) - nothing to record here. The
+    // store is re-read rather than trusted to React state so a save landing
+    // from the sync between renders is never overwritten.
+    void loadDayHikes().then((store) => {
+      const next = { hikes: [...store.hikes, hike], openId: hike.id }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+    setDayHike(null)
+  }, [dayHike, dayHikeStatus])
+
+  // The geometry half of the graph, fetched the first time the builder
+  // opens and attached onto a NEW index (lib/trailGraphData.ts). Keyed on
+  // the mode being open rather than on launch: with the whole A.T. in the
+  // graph this is by far the heavier artifact, and a launch that never opens
+  // the door should never pay for it.
+  useEffect(() => {
+    if (dayHike === null || graphIndex === null || dayHikeIndex !== null) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchTrailGraphGeometry(graphIndex.graph.edges.length, controller.signal).then(
+      (geometry) => {
+        if (geometry === null || !wanted) return
+        setDayHikeIndex(attachTrailGraphGeometry(graphIndex, geometry))
+      },
+    )
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [dayHike, graphIndex, dayHikeIndex])
 
   const handleRouteCancel = useCallback(() => {
     setRouteDraft(null)
@@ -2232,6 +2442,21 @@ function App() {
     if (end === null) return
     setRouteDraft({ phase: 'editor', stops: [routeDraft.start, end], history: [] })
   }, [routeDraft, entranceEnd])
+
+  // The Plan tab's one primary action (#805). A live draft goes BACK to its
+  // builder - the door is for starting, never a toll gate on the way back to
+  // your own route (openRouteBuilderFrom's rule, kept here for both modes).
+  const openPlanKind = useCallback(() => {
+    if (dayHike !== null) {
+      setActiveTab('trail')
+      return
+    }
+    if (routeDraft !== null) {
+      openRouteBuilder()
+      return
+    }
+    setPlanKindOpen(true)
+  }, [dayHike, routeDraft, openRouteBuilder])
 
   const handleEditStop = useCallback((index: number) => {
     setStopPick({ slot: { kind: 'replace', index }, onMap: false, refusedTap: false })
@@ -3634,6 +3859,33 @@ function App() {
 
   useTripsSync(tripStore, account !== null && syncOn, handleAdoptTrips, noteSyncRan)
 
+  useEffect(() => {
+    let wanted = true
+    void loadDayHikes().then((store) => {
+      if (wanted) setDayHikeStore(store)
+    })
+    return () => {
+      wanted = false
+    }
+  }, [])
+
+  // The day hikes' own exchange (#976, decided 2026-08-25: sync from day
+  // one) - its own ledger and endpoint, never trips': a day-hike id in the
+  // trips ledger would upload as a tombstone no synced_trips row matches, a
+  // silent no-op that looks like a working sync.
+  const handleAdoptDayHikes = useCallback((merged: DayHikeStore) => {
+    // Reconciliation already wrote IndexedDB through adoptDayHikes - the
+    // same do-not-mark rule handleAdoptTrips explains.
+    setDayHikeStore(merged)
+  }, [])
+
+  useDayHikesSync(
+    dayHikeStore,
+    account !== null && syncOn,
+    handleAdoptDayHikes,
+    noteSyncRan,
+  )
+
   // Signing in ends the sign-in flow, whichever way it completed - an email
   // form resolving in this tab, or a provider redirect landing back on a
   // freshly loaded page. Watching the account rather than the call site is
@@ -4066,12 +4318,27 @@ function App() {
               <PlanScreen
                 plan={plan}
                 elevation={elevation}
+                kindSheet={
+                  planKindOpen ? (
+                    <PlanKindSheet
+                      networkAvailable={graphIndex !== null}
+                      walkedAvailable={false}
+                      onPickDayHike={openDayHike}
+                      onPickTrip={() => {
+                        setPlanKindOpen(false)
+                        openRouteBuilder()
+                      }}
+                      onPickWalked={() => setPlanKindOpen(false)}
+                      onClose={() => setPlanKindOpen(false)}
+                    />
+                  ) : null
+                }
                 pois={pois}
                 gpsMile={gpsPlanMile}
                 units={units}
                 pace={pace}
-                draftLive={routeDraft !== null}
-                onStartOnMap={openRouteBuilder}
+                draftLive={routeDraft !== null || dayHike !== null}
+                onStartOnMap={openPlanKind}
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
                   applyPlanEdit((current) => insertZeroAfter(current, index))
@@ -4324,17 +4591,43 @@ function App() {
           {...line.mapScreen}
           {...workday.mapScreen}
           routeDrawing={routeDrawing}
+          dayHikeDrawing={dayHikeDrawing}
           // Defined for the whole builder session so a stray tap can never
           // fall through to a waypoint card underneath - but the handler
           // only ACTS while the picker's map door is open (one tap, one
           // interpreter). Suppressed while the target sheet is up: the
           // sheet covers the surface that would explain the tap.
           onRouteTap={
-            routeDraft === null || targetRequest !== null ? undefined : handleStopMapTap
+            (routeDraft === null && dayHike === null) || targetRequest !== null
+              ? undefined
+              : handleStopMapTap
           }
           routeSheet={
             targetRequest !== null ? (
               targetSheet
+            ) : dayHike !== null ? (
+              <DayHikePickBar
+                draft={dayHike}
+                status={dayHikeStatus ?? { kind: 'empty' }}
+                units={units}
+                orgLabel={dayHikeOrgLabel}
+                // No honest time exists yet: naismithMinutes requires ascent
+                // (descent structurally absent by design), and the only
+                // elevation this phone holds is the A.T. corridor profile on
+                // the pipeline mile axis. ascentFt: 0 would price every climb
+                // in Harriman at zero - a flat-ground claim on real ground -
+                // so the bar prints no time at all, which it supports.
+                walkingMinutes={null}
+                onUndo={() =>
+                  setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
+                }
+                onCloseLoop={() =>
+                  setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
+                }
+                onDone={handleDayHikeDone}
+                onCancel={handleDayHikeCancel}
+                canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
+              />
             ) : stopPick !== null && stopPick.onMap ? (
               <RouteMapPickBar
                 refusedTap={stopPick.refusedTap}

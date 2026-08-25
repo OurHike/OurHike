@@ -127,6 +127,9 @@ export interface PlanScreenProps {
   onOpenTrips: () => void
   /** The target sheet, when the shell has it open over this screen. */
   targetSheet?: ReactNode
+  /** "What are you planning?" (#977, frame `1i`) - rendered by the shell so
+   *  the one primary action opens a choice rather than assuming a trip. */
+  kindSheet?: ReactNode
   /** The trip switcher, when the shell has it open over this screen. */
   tripList?: ReactNode
   /** The hike the open trip belongs to, or null (#790). Null is the common
@@ -168,6 +171,7 @@ export function PlanScreen({
   tripCount,
   onOpenTrips,
   targetSheet,
+  kindSheet,
   tripList,
   hike,
   trips,
@@ -263,6 +267,7 @@ export function PlanScreen({
           onNewTrip={onStartOnMap}
         />
         {targetSheet}
+        {kindSheet}
         {tripList}
       </div>
     )
@@ -368,6 +373,7 @@ export function PlanScreen({
           </>
         )}
         {targetSheet}
+        {kindSheet}
         {tripList}
       </div>
     )
@@ -407,6 +413,7 @@ export function PlanScreen({
           </button>
         </div>
         {targetSheet}
+        {kindSheet}
         {tripList}
       </div>
     )
@@ -658,6 +665,7 @@ export function PlanScreen({
       )}
 
       {targetSheet}
+      {kindSheet}
       {tripList}
     </div>
   )

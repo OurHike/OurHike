@@ -1859,12 +1859,24 @@
 /* Frame `1j`'s builder bar (#978). Wears RouteMapPickBar's anatomy - the two
    are the same gesture on two kinds of trail. */
 .day-hike-bar {
+  /* Anchored to the canvas bottom like every sheet MapScreen hosts in its
+     routeSheet slot - the same frame the target sheet wears. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 60%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
   padding: 0.85rem 1rem 1rem;
   background: var(--bg-surface);
-  border-top: 1px solid var(--border-1);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
 }
 
 .day-hike-bar__head {

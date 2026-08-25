@@ -4,12 +4,16 @@
 // LESS of it than it draws. What ships: the legs with each organization's own
 // name on its trail, the walked miles, the LOOP badge, the ± elevation and
 // ≈time (#1011), the ways off, and the one-line credit to the orgs that keep
-// the ground walkable. What waits, and on what (#980 keeps the ledger): the
-// turn list (a naming rule #934 left open), "Starts at · Parking" (#981's
-// pipeline data), the on-route POI counts (a policy #768's rule does not
-// cover), and the frame's "Chip in ›" (no org's donate wording exists anywhere
-// in the registry or the stewards export to speak with, and inventing one
-// would be this app putting words in a steward's mouth).
+// the ground walkable - and, since #1008, a date field, the gap rows for a
+// multi-segment walk, and the "Leave this with someone" door (frame D6,
+// screens/LeaveWithSomeone.tsx).
+//
+// What waits, and on what (#980 keeps the ledger): the turn list (a naming
+// rule #934 left open), "Starts at · Parking" (#981's pipeline data), the
+// on-route POI counts (a policy #768's rule does not cover), and the frame's
+// "Chip in ›" (no org's donate wording exists anywhere in the registry or the
+// stewards export to speak with, and inventing one would be this app putting
+// words in a steward's mouth).
 //
 // THE CLIMB SAYS WHAT IT IS. It is a dense sum over a 10 m elevation model,
 // which is not the same kind of number as the miles beside it: published
@@ -29,10 +33,13 @@ import { useState } from 'react'
 
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
+import type { PlanTextLegs } from '../lib/dayHikePlanText'
+import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
 import { formatNaismithMinutes, naismithMinutes } from '../lib/naismith'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import { LeaveWithSomeone } from './LeaveWithSomeone'
 import './plan.css'
 
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five']
@@ -53,6 +60,10 @@ export interface DayHikeCardProps {
   onSave?: () => void
   onClose: () => void
   onDelete?: () => void
+  /** Set or clear the hike's date (#1008). The list and the trailhead door
+   *  both read it, which is what made a card with no way to write one a
+   *  gap rather than a nicety. */
+  onSetDate?: (date: string | null) => void
 }
 
 export function DayHikeCard({
@@ -66,14 +77,57 @@ export function DayHikeCard({
   onSave,
   onClose,
   onDelete,
+  onSetDate,
 }: DayHikeCardProps) {
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
   // Delete and its neighbour look alike, and one of them has no way back.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // "Leave this with someone" (frame D6) replaces the card in the same
+  // sheet frame - one surface continuing, the bar-to-card convention.
+  const [leaving, setLeaving] = useState(false)
 
   const orgLabel = orgLabelFrom(stewards)
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
+  const gaps = dayHikeGaps(hike)
+  // Grouped by stretch where the app can see the seams, flat where it
+  // cannot. The live resolution routes each segment separately and keeps
+  // them apart; the cache holds one flat list, so it can only be handed over
+  // as a stretch when there is exactly one stretch for it to be.
+  const planTextLegs: PlanTextLegs =
+    resolved !== null
+      ? {
+          kind: 'placed',
+          byStretch: resolved.segments.map((segment) => segment.route.legs),
+        }
+      : hike.segments.length === 1
+        ? { kind: 'placed', byStretch: [hike.figures.legs] }
+        : { kind: 'unplaced', flat: hike.figures.legs }
+
+  if (leaving) {
+    return (
+      <div className="day-hike-card">
+        <LeaveWithSomeone
+          hike={hike}
+          // ONE derivation for both the miles and the trail names, and its
+          // provenance with it. The card on screen prefers the live
+          // resolution and says so in a sentence when it cannot have one;
+          // handing the plain-text card the number without the sentence
+          // would be the display outrunning its source on the artifact
+          // somebody decides to worry from.
+          figures={{
+            miles,
+            legs: planTextLegs,
+            fromCache: resolved === null,
+            gapMiles: gaps.reduce((total, gap) => total + gap.miles, 0),
+            stretches: hike.segments.length,
+          }}
+          units={units}
+          onClose={() => setLeaving(false)}
+        />
+      </div>
+    )
+  }
 
   // Climb comes ONLY from the live resolution, never from the stored cache.
   // A saved hike's figures were written before any of this existed and hold no
@@ -136,6 +190,23 @@ export function DayHikeCard({
           Climb and time are estimates from the best elevation data available — expect
           other sources to differ.
         </p>
+      )}
+
+      {onSetDate !== undefined && (
+        // The one field on this card, because two other surfaces read it:
+        // the list splits and sorts by it, and the trailhead door says
+        // "planned for today" from it. Clearing the input clears the date -
+        // an undated day hike is a first-class state, not an error.
+        <label className="day-hike-card__date">
+          <span className="day-hike-card__heading">When</span>
+          <input
+            type="date"
+            value={hike.date ?? ''}
+            onChange={(event) =>
+              onSetDate(event.target.value === '' ? null : event.target.value)
+            }
+          />
+        </label>
       )}
 
       {resolved === null && (
@@ -202,6 +273,34 @@ export function DayHikeCard({
         </section>
       )}
 
+      {/* A stretch with no trail under it is part of the walk (#935's
+          deliberate-gap answer) and prints as one - straight-line, because
+          the ground actually walked across a gap is the hiker's own guess,
+          which is what a gap IS. The builder writes single-segment hikes
+          today, so this arrives by sync from a future client; the card is
+          ready for it rather than silent about it.
+
+          ONE ROW, COUNTING STRETCHES, rather than a row per gap naming
+          "stretch 2": nothing on this card is numbered - the legs list is
+          trail names, and a segment holds several legs - so a row pointing
+          at a stretch the card never labels sends a hiker looking for
+          something that is not there. How many stretches the walk is in IS
+          on the card, in this sentence, which is what makes the total
+          placeable. */}
+      {gaps.length > 0 && (
+        <p className="day-hike-card__gap" role="note">
+          {formatDistance(
+            gaps.reduce((total, gap) => total + gap.miles, 0),
+            units,
+          )}{' '}
+          with no trail under it, straight across
+          {hike.segments.length > 2
+            ? `, between the ${hike.segments.length} stretches of this walk`
+            : ', between the two stretches of this walk'}
+          . We won&rsquo;t route you across it — that stretch is yours.
+        </p>
+      )}
+
       {orgCount > 0 && (
         <p className="day-hike-card__orgs">
           {COUNT_WORDS[orgCount] ?? String(orgCount)}{' '}
@@ -219,28 +318,42 @@ export function DayHikeCard({
             Back to the map
           </button>
         </>
-      ) : confirmingDelete ? (
-        <div className="day-hike-card__confirm">
-          <span>Delete this day hike?</span>
-          <button type="button" className="day-hike-card__quiet" onClick={onDelete}>
-            Delete
-          </button>
+      ) : (
+        <>
+          {/* The saved hike's one primary action (frame D6): the only
+              safety-shaped thing in the day flow that is not a map, and
+              the thing a hiker opens this card for on the morning of. */}
           <button
             type="button"
-            className="day-hike-card__quiet"
-            onClick={() => setConfirmingDelete(false)}
+            className="plan__primary"
+            onClick={() => setLeaving(true)}
           >
-            Keep it
+            Leave this with someone
           </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="day-hike-card__quiet"
-          onClick={() => setConfirmingDelete(true)}
-        >
-          Delete this day hike
-        </button>
+          {confirmingDelete ? (
+            <div className="day-hike-card__confirm">
+              <span>Delete this day hike?</span>
+              <button type="button" className="day-hike-card__quiet" onClick={onDelete}>
+                Delete
+              </button>
+              <button
+                type="button"
+                className="day-hike-card__quiet"
+                onClick={() => setConfirmingDelete(false)}
+              >
+                Keep it
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="day-hike-card__quiet"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete this day hike
+            </button>
+          )}
+        </>
       )}
     </div>
   )

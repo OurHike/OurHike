@@ -3,9 +3,14 @@
 // Two kinds of pin. The positive ones check the sourced blocks render from
 // the LIVE resolution, org names from the steward join and never raw source
 // keys. The negative ones are the point of the card's scope: nothing here may
-// print a figure whose source does not exist yet - no ≈time, no ±ft, no
-// parking, no "Chip in" - because a block invented to fill the frame is the
-// exact failure CLAUDE.md's evidence standard names.
+// print a figure whose source does not exist yet - no ±ft, no parking, no
+// "Chip in" - because a block invented to fill the frame is the exact failure
+// CLAUDE.md's evidence standard names.
+//
+// ≈time and ± elevation moved sides with #1011: the graph carries per-edge
+// climb now, so the card prints both when the walk can be priced and neither
+// when it cannot. The tests below pin both halves - the numbers when there
+// are numbers, and silence rather than a placeholder when there are not.
 
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -239,6 +244,77 @@ describe('the two modes', () => {
     await user.click(screen.getByRole('button', { name: 'Delete this day hike' }))
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the #1008 additions', () => {
+  it('offers the date as a field the hiker sets, and clearing it clears the date', async () => {
+    const user = userEvent.setup()
+    const onSetDate = vi.fn()
+    renderCard({ onSetDate })
+
+    const field = screen.getByLabelText('When') as HTMLInputElement
+    expect(field.value).toBe('2026-08-29')
+
+    await user.clear(field)
+    expect(onSetDate).toHaveBeenLastCalledWith(null)
+  })
+
+  it('shows no date field at all when the shell offers no way to keep one', () => {
+    renderCard()
+    expect(screen.queryByLabelText('When')).not.toBeInTheDocument()
+  })
+
+  it('draws a gap as a gap: straight-line miles and the refusal to route it', () => {
+    renderCard({
+      hike: {
+        ...HIKE,
+        looped: false,
+        segments: [
+          [
+            { coord: [-74.095, 41.25], poiId: null },
+            { coord: [-74.09, 41.25], poiId: null },
+          ],
+          [
+            { coord: [-74.085, 41.25], poiId: null },
+            { coord: [-74.08, 41.25], poiId: null },
+          ],
+        ],
+      },
+      // The cache path: a multi-segment loop refuses resolution anyway.
+      resolved: null,
+    })
+
+    expect(
+      screen.getByText(/with no trail under it, straight across/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/that stretch is yours/)).toBeInTheDocument()
+  })
+
+  it('a single-segment walk shows no gap row - nothing to be honest about', () => {
+    renderCard()
+    expect(screen.queryByText(/no trail under it/)).not.toBeInTheDocument()
+  })
+
+  it('saved mode opens Leave this with someone in the same sheet frame', async () => {
+    const user = userEvent.setup()
+    renderCard()
+
+    await user.click(screen.getByRole('button', { name: 'Leave this with someone' }))
+    expect(
+      screen.getByRole('dialog', { name: 'Leave this with someone' }),
+    ).toBeInTheDocument()
+    // The card's own blocks stepped aside; the close returns to them.
+    expect(screen.queryByText('Legs')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByText('Legs')).toBeInTheDocument()
+  })
+
+  it('review mode offers no leave door - Save stays the one primary', () => {
+    renderCard({ mode: 'review', onSave: vi.fn() })
+    expect(
+      screen.queryByRole('button', { name: 'Leave this with someone' }),
+    ).not.toBeInTheDocument()
   })
 })
 

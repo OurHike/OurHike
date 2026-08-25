@@ -22,6 +22,7 @@ import App from './App'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
 import { TRIPS_KEY } from './lib/trips'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 
@@ -42,6 +43,12 @@ vi.mock('./lib/api', () => ({
   fetchFieldNotes: vi.fn(async () => []),
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
+  // Needed by PoiCard -> useCommunityPhotos, which runs on mount. Left out,
+  // a POI tap THREW: the trail tab's ErrorBoundary swallowed the whole
+  // MapScreen subtree, and a test asserting the trailhead door was gone
+  // passed because the map had gone with it. A vi.mock factory is a full
+  // replacement, so an export missing here is missing at run time.
+  fetchPoiPhotos: vi.fn(async () => []),
 }))
 // The graph loader reads DATA_CONFIGURED and dataUrl; the harness's app runs
 // with neither configured, so this file turns them on and serves the two
@@ -287,6 +294,42 @@ describe('the day-hike builder, end to end', () => {
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
   })
 
+  it('keeps a date set on the review card across a trip back to the map (#1008)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    await serveGraph()
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    const map = await liveMap()
+    await tap(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    await user.click(await screen.findByRole('button', { name: 'Done' }))
+
+    // Date it on the review card, then go back to look at the route again -
+    // which is the only thing that button is for, since the map is frozen
+    // while the card is up.
+    const when = (await screen.findByLabelText('When')) as HTMLInputElement
+    await user.type(when, '2026-09-12')
+    await user.click(screen.getByRole('button', { name: 'Back to the map' }))
+    expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
+
+    // Done rebuilds the record from the draft. The date has to survive that,
+    // or it is lost silently - and it is the field the list, the split and
+    // the trailhead door all read.
+    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Save this day hike' }))
+
+    await waitFor(() => {
+      expect(app.store.get(DAY_HIKES_KEY)).toBeDefined()
+    })
+    const stored = app.store.get(DAY_HIKES_KEY) as {
+      hikes: Array<{ date: string | null }>
+    }
+    expect(stored.hikes[0].date).toBe('2026-09-12')
+  })
+
   it('refuses a tap off every maintained line, with the sentence', async () => {
     const user = userEvent.setup()
     app.onboard()
@@ -393,9 +436,31 @@ describe('the day-hike builder, end to end', () => {
       within(card).queryByText(/oprhp_trails|nynjtc_long_path/),
     ).not.toBeInTheDocument()
 
+    // Switching rooms puts the card away (#1008): a day-hike surface left
+    // floating over the trips room is the mode confusion the split exists
+    // to end, and switching rooms is navigation.
+    await user.click(screen.getByRole('button', { name: /Trips/ }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('heading', { name: 'Trips' })).toBeInTheDocument()
+
+    // Back to the day room, and the row is still there to reopen.
+    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+    const reopened = await screen.findByRole('dialog', {
+      name: 'Pine Meadow out and back',
+    })
+
     // Delete takes two taps, and the row leaves the home with the record.
-    await user.click(within(card).getByRole('button', { name: 'Delete this day hike' }))
-    await user.click(within(card).getByRole('button', { name: 'Delete' }))
+    await user.click(
+      within(reopened).getByRole('button', { name: 'Delete this day hike' }),
+    )
+    await user.click(within(reopened).getByRole('button', { name: 'Delete' }))
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /Pine Meadow out and back/ }),
@@ -483,18 +548,27 @@ describe('the day-hike builder, end to end', () => {
     render(<App />)
     await openHike()
     // Into a day hike, with points on it - the work that used to be silently
-    // outlived by an invisible route draft. This door is the guarded one and
-    // lands the hiker on the trail tab itself.
-    await user.click(await screen.findByRole('button', { name: 'Plan another trip' }))
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    // outlived by an invisible route draft. Since #1008 the way in from here
+    // is the day room's own action: home, the switch chip, then "Plan a day
+    // hike" - the same guarded door (openDayHike), which lands the hiker on
+    // the trail tab itself.
+    await user.click(await screen.findByRole('button', { name: /All your plans/ }))
+    await user.click(await screen.findByRole('button', { name: /Day hikes/ }))
+    await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
     const map = await liveMap()
     await tap(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
     expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
 
-    // Back to the timeline - the tab bar consults neither builder - and in
+    // Back to the timeline - the tab bar consults neither builder. The Plan
+    // tab reopens on the day room (the hiker's last pick sticks, #1008), so
+    // the way to the hike is the chip back to the trips room - and then in
     // through the gap door, which calls openRouteBuilderFrom directly.
-    await openHike()
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: /Trips/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+    )
     await user.click(await screen.findByRole('button', { name: 'Plan this stretch' }))
 
     // THE FIRST ASSERTION IS THE ONE THAT CATCHES IT, verified by reverting
@@ -508,6 +582,142 @@ describe('the day-hike builder, end to end', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
     expect(screen.queryByText(/1 leg ·/)).not.toBeInTheDocument()
+  })
+
+  it('offers a saved hike from the map when the fix lands at its start (#1008)', async () => {
+    const user = userEvent.setup()
+    // The location step taken, so the watch this door reads actually runs -
+    // with it declined there is no fix and, correctly, no door at all.
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    await serveGraph()
+
+    // Two saved hikes starting at two different trailheads - which is what
+    // makes the dismissal's specificity testable at all.
+    const startsAtMile = (id: string, name: string, mile: number) => ({
+      id,
+      name,
+      date: null,
+      segments: [
+        [
+          { coord: [-77, latOfMile(mile)], poiId: null },
+          { coord: [-77, latOfMile(mile + 1)], poiId: null },
+        ],
+      ],
+      figures: { miles: 1, legs: [] },
+      looped: false,
+      recorded: 'planned' as const,
+    })
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        startsAtMile('near-1', 'Reeves Meadow loop', 5),
+        startsAtMile('near-2', 'Claudius Smith Den', 20),
+      ],
+      openId: null,
+    })
+
+    render(<App />)
+    // No door before a fix: the map cannot know where anybody parked.
+    expect(
+      screen.queryByRole('button', { name: /day hikes? starts? here/ }),
+    ).not.toBeInTheDocument()
+
+    await app.reportFixAtMile(5)
+
+    // Closed first - one pill, never a sheet that opens itself over the map -
+    // and only the hike whose start is actually here.
+    await user.click(
+      await screen.findByRole('button', { name: 'A day hike starts here' }),
+    )
+    expect(await screen.findByText('Reeves Meadow loop')).toBeInTheDocument()
+    expect(screen.queryByText('Claudius Smith Den')).not.toBeInTheDocument()
+
+    // "No thanks" is about the hike it was offering, not about the door for
+    // ever.
+    await user.click(screen.getByRole('button', { name: 'Put this away' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /day hikes? starts? here/ }),
+      ).not.toBeInTheDocument()
+    })
+
+    // Drive to the other trailhead in the same session: the hike nobody said
+    // no to still gets to ask. A plain dismissed-boolean would stay silent
+    // here, which is the defect this shape exists to prevent.
+    await app.reportFixAtMile(20)
+    await user.click(
+      await screen.findByRole('button', { name: 'A day hike starts here' }),
+    )
+    expect(await screen.findByText('Claudius Smith Den')).toBeInTheDocument()
+  })
+
+  it('yields the map’s lower third to anything the hiker actually tapped (#1008)', async () => {
+    app.onboard({ location_permission_requested: true })
+    // A waypoint to tap: the door is the only occupant of that space nobody
+    // asked for, and it is the last child of the canvas - so equal z-index
+    // would let it win on DOM order over a card that answers a tap.
+    app.putTrailData({
+      pois: [
+        {
+          id: 'poi-1',
+          name: 'Reeves Meadow Shelter',
+          type: 'shelter',
+          lat: latOfMile(5),
+          lon: -77,
+          confidence: 'high',
+          mile: 5,
+        },
+      ],
+    })
+    await serveGraph()
+
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        {
+          id: 'near-1',
+          name: 'Reeves Meadow loop',
+          date: null,
+          segments: [
+            [
+              { coord: [-77, latOfMile(5)], poiId: null },
+              { coord: [-77, latOfMile(6)], poiId: null },
+            ],
+          ],
+          figures: { miles: 1, legs: [] },
+          looped: false,
+          recorded: 'planned',
+        },
+      ],
+      openId: null,
+    })
+
+    render(<App />)
+    await app.reportFixAtMile(5)
+    expect(
+      await screen.findByRole('button', { name: 'A day hike starts here' }),
+    ).toBeInTheDocument()
+
+    // Tap the pin: the card is what was asked for, so the door stands down.
+    // The mock answers queryRenderedFeatures from what a test says is drawn,
+    // which is App.flows.test.tsx's own idiom for reaching a waypoint.
+    const map = await liveMap()
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'poi-1' } },
+    ])
+    await act(async () => {
+      map.emit('click', { point: { x: 160, y: 300 } })
+    })
+    // BOTH HALVES, and the positive one is the load-bearing half. "The door
+    // is gone" alone is true of the failure this test exists to catch as
+    // well as of the behaviour it wants: a tap that opens nothing and takes
+    // the door with it looks identical from here. Asserting the card is up
+    // is what separates "yielded" from "both gone".
+    expect(await screen.findByText('Reeves Meadow Shelter')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: 'A day hike starts here' }),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('offers no day-hike button at all on a phone without the graph', async () => {

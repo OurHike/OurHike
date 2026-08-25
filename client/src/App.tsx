@@ -216,7 +216,10 @@ import {
 } from './lib/dayHikes'
 import { useDayHikesSync } from './lib/useDayHikesSync'
 import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
+import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
+import { DayHikesHere } from './chrome/DayHikesHere'
+import type { PlanMode } from './screens/PlanHome'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -256,6 +259,7 @@ import { pinConditionFor, stalenessPresentation } from './lib/stalenessDisplay'
 import { stalenessTier } from './lib/staleness'
 import {
   advanceToday,
+  localDay,
   passedPlaces,
   readPassedToday,
   writePassedToday,
@@ -512,6 +516,86 @@ function App() {
    *  it; only "Save this day hike" commits it to the store. The draft stays
    *  alive underneath, so "Back to the map" is a real return, not a rebuild. */
   const [dayHikeReview, setDayHikeReview] = useState<DayHike | null>(null)
+  /**
+   * A date set on the review card, before there is a record to keep it on.
+   *
+   * Its own state because the review record is NOT durable: "Back to the
+   * map" clears it (the draft underneath is what survives), and pressing
+   * Done again rebuilds the record from the draft. A date typed before that
+   * round trip lived only on the discarded record, so it vanished with no
+   * warning - on the one field the list, the split and the trailhead door
+   * all read. Cleared with the draft, never outliving it.
+   */
+  const [dayHikeDraftDate, setDayHikeDraftDate] = useState<string | null>(null)
+  /**
+   * Which home the Plan tab shows (#1008): the day-hike room or the trips
+   * room. Null until the hiker (or the trailhead door) picks one, so the
+   * default can be derived from stores that load after mount - a useState
+   * initialiser here would run against empty stores and freeze the wrong
+   * answer.
+   */
+  const [planMode, setPlanMode] = useState<PlanMode | null>(null)
+  /**
+   * Whether the Plan tab shows the full day-hike list (frame D7).
+   *
+   * Held here rather than inside PlanScreen because the map's trailhead door
+   * offers "All your day hikes ›" from another tab entirely, and PlanScreen
+   * is rebuilt on every tab switch - state local to it is always false on
+   * arrival, so that control would have landed one screen short of what it
+   * named.
+   *
+   * Lifting it bought that door its destination and took on the cost every
+   * lifted flag has: it now OUTLIVES the tab switch that used to clear it,
+   * and `Plan.tsx` reads it before it reads the mode. `enterTripsRoom` below
+   * is what pays that cost back.
+   */
+  const [dayListOpen, setDayListOpen] = useState(false)
+  /**
+   * Landing in the trips room, from every door that puts a hiker there.
+   *
+   * ONE FUNCTION RATHER THAN A MIRROR LINE IN EACH DOOR, for the reason
+   * `sweepForBuilder` gives about its own: a rule copied into four openers is
+   * the same fix today and the same bug at the fifth. Three things have to be
+   * true to actually arrive, and each of them was a separate defect when the
+   * doors said only the first:
+   *
+   * - `planMode` is 'trips'. The mode is sticky by design - it is the hiker's
+   *   own pick - so a door that makes a TRIP the subject has to say so, or a
+   *   hiker who once tapped the chip lands on a room their new trip is not in.
+   * - The day-hike list is closed. `Plan.tsx` tests `dayListOpen` BEFORE the
+   *   mode, so a list left open from an earlier visit wins over the trips room
+   *   outright: the trip that was just laid out never appears, and the screen
+   *   that greets the hiker is the day-hike list wearing the day band.
+   * - Any open day-hike card is put away. It docks over up to 85% of the
+   *   screen, and a day-hike surface floating over the trips room is the exact
+   *   "which mode am I in" confusion this split exists to end.
+   *
+   * The close is a read-modify-write that marks the sync ledger, so it is
+   * guarded on there being something to close - inside, against the loaded
+   * store, which is what keeps this callback stable and lets the doors below
+   * list it as a dependency.
+   */
+  const enterTripsRoom = useCallback(() => {
+    setPlanMode('trips')
+    setDayListOpen(false)
+    void loadDayHikes().then((store) => {
+      if (store.openId === null) return
+      const next = { ...store, openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+  /**
+   * The trailhead door (frame D8), put away - by the hikes it was offering
+   * rather than outright.
+   *
+   * A plain boolean would be wrong for the case that actually happens: drive
+   * to a second trailhead in one session and the door for a DIFFERENT hike
+   * would stay silenced by a dismissal aimed at the first. Holding the ids
+   * means "no thanks" applies to what was asked, and a hike the hiker has
+   * not said no to still gets to ask once.
+   */
+  const [hikesHereDismissed, setHikesHereDismissed] = useState<readonly string[]>([])
   /**
    * The desktop chart's own settled selection - a measurement, nothing more
    * - read only while no route draft is open (PR #885 review). With a draft
@@ -1801,9 +1885,11 @@ function App() {
     (stops: readonly ViaStopLike[]) => {
       const plan = recordedPlan(stops.map((stop) => ({ ...stop, resupply: false })))
       applyTripStore((store) => addTrip(store, plan, undefined, true))
+      // The trips room, because a trip is what just happened (#1008).
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore],
+    [applyTripStore, enterTripsRoom],
   )
 
   /**
@@ -1845,6 +1931,14 @@ function App() {
     // over the route builder describing a walk that no longer exists.
     setDayHikeReview(null)
     setDayHike(null)
+    setDayHikeDraftDate(null)
+    // A route being built IS the trip room's subject, so the Plan tab is set
+    // to it now rather than when the route becomes a trip. Without this the
+    // mode a hiker last picked outlives the thing they are actually doing:
+    // build a route after a visit to the day room and the Plan tab still
+    // opens on Day hikes, where the one primary button is "Plan a day hike"
+    // - and that button reaches this same sweep, discarding the route.
+    setPlanMode('trips')
   }, [])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
@@ -1943,11 +2037,15 @@ function App() {
     // and a card reviewing a snapshot of a draft being edited would lie.
     setDayHikeReview(null)
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
+    // The mirror of `sweepForBuilder`'s last line, and for the same reason:
+    // the draft a hiker is building is what the Plan tab is about.
+    setPlanMode('day')
   }, [routeBuilder])
 
   const handleDayHikeCancel = useCallback(() => {
     setDayHikeReview(null)
     setDayHike(null)
+    setDayHikeDraftDate(null)
   }, [])
 
   // Derived once per state change, not per render - draftStatus runs the
@@ -2029,7 +2127,9 @@ function App() {
     const hike: DayHike = {
       id: crypto.randomUUID(),
       name: dayHikeName(route),
-      date: null,
+      // Whatever the hiker set on a review card before "Back to the map"
+      // discarded it - see dayHikeDraftDate.
+      date: dayHikeDraftDate,
       segments: [
         dayHike.points.map((point) => ({
           coord: [point.at.lon, point.at.lat] as [number, number],
@@ -2052,7 +2152,7 @@ function App() {
     // "Save this day hike" there is the commit (#980). The draft stays live
     // underneath so closing the card returns to the builder mid-thought.
     setDayHikeReview(hike)
-  }, [dayHike, dayHikeStatus])
+  }, [dayHike, dayHikeStatus, dayHikeDraftDate])
 
   const handleDayHikeSave = useCallback(() => {
     if (dayHikeReview === null) return
@@ -2070,6 +2170,7 @@ function App() {
     })
     setDayHikeReview(null)
     setDayHike(null)
+    setDayHikeDraftDate(null)
   }, [dayHikeReview])
 
   /** Open a saved hike's card from the Plan tab. Written through the store
@@ -2104,6 +2205,19 @@ function App() {
     // in the sync ledger as the hiker's own act, tombstone and all.
     void loadDayHikes().then((store) => {
       const next = { hikes: store.hikes.filter((hike) => hike.id !== id), openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
+  /** Date a saved hike (#1008) - the same read-modify-write every other
+   *  store edit takes, so a sync landing between renders is never lost. */
+  const handleSetDayHikeDate = useCallback((id: string, date: string | null) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, date } : hike)),
+      }
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
@@ -2147,6 +2261,108 @@ function App() {
         onSave={handleDayHikeSave}
         onClose={handleDayHikeCardClose}
         onDelete={() => handleDeleteDayHike(cardDayHike.id)}
+        onSetDate={(date) => {
+          if (dayHikeReview === null) {
+            handleSetDayHikeDate(cardDayHike.id, date)
+            return
+          }
+          // Pre-save it rides the review record AND the draft-scoped state,
+          // so a trip back to the map to re-check the route does not throw
+          // it away.
+          setDayHikeReview({ ...dayHikeReview, date })
+          setDayHikeDraftDate(date)
+        }}
+      />
+    ) : null
+
+  /**
+   * Which Plan home to show (#1008): the hiker's own last pick wins; until
+   * they make one, the day side when a day-hike card is open or day hikes
+   * are all they have, the trips side otherwise.
+   */
+  const effectivePlanMode: PlanMode =
+    planMode ??
+    (cardDayHike !== null
+      ? 'day'
+      : tripStore.trips.length > 0 || tripStore.hikes.length > 0
+        ? 'trips'
+        : dayHikeStore.hikes.length > 0
+          ? 'day'
+          : 'trips')
+
+  /**
+   * The switch chip. Crossing into the trips room is the same arrival as any
+   * other door's, so it lands the same way - see `enterTripsRoom`. Switching
+   * back to the day room needs none of that: the list and the card it would
+   * close are that room's own furniture.
+   */
+  const handleSwitchPlanMode = useCallback(
+    (mode: PlanMode) => {
+      if (mode === 'trips') {
+        enterTripsRoom()
+        return
+      }
+      setPlanMode(mode)
+    },
+    [enterTripsRoom],
+  )
+
+  /** The trailhead door's candidates (frame D8): saved starts near the fix,
+   *  less the ones this session has already been told no about. */
+  const hikesNearHere = useMemo(() => {
+    if (gps.status !== 'located') return []
+    return dayHikesNearHere(dayHikeStore.hikes, gps.at).filter(
+      (entry) => !hikesHereDismissed.includes(entry.hike.id),
+    )
+  }, [gps, dayHikeStore.hikes, hikesHereDismissed])
+
+  /**
+   * Whether something a hiker ASKED for already has the map's lower third.
+   *
+   * The door is the only occupant of that space nobody asked for - every
+   * other one is the answer to a tap. The builders it defers to could never
+   * collide with these, because opening a builder suppresses the taps that
+   * raise them; the door renders in exactly the state where those taps are
+   * live, so it is the first surface here that can land on top of one. z-index
+   * does not settle it either: these are siblings at the same level, and the
+   * routeSheet slot is the LAST child of the canvas, so equal z-index means
+   * the door wins on DOM order.
+   */
+  const lowerThirdTaken =
+    selectedPoiId !== null ||
+    line.mapScreen.lineSheet != null ||
+    atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.atcNoticeList != null ||
+    workday.mapScreen.workdaySheet != null
+
+  const dayHikesHereNode =
+    hikesNearHere.length > 0 && !lowerThirdTaken ? (
+      <DayHikesHere
+        near={hikesNearHere}
+        units={units}
+        // lib/passedToday.ts's own helper rather than a second copy of the
+        // idiom - it already spells the phone's LOCAL calendar day as
+        // YYYY-MM-DD, which is the store's date shape and the right clock
+        // here: "that's today" is a claim about the hiker's morning, not
+        // UTC's.
+        today={localDay(now)}
+        onOpen={(id) => {
+          handleOpenDayHike(id)
+          setPlanMode('day')
+          setDayListOpen(false)
+          setActiveTab('plan')
+        }}
+        onAll={() => {
+          setPlanMode('day')
+          setDayListOpen(true)
+          setActiveTab('plan')
+        }}
+        onDismiss={() =>
+          setHikesHereDismissed((dismissed) => [
+            ...dismissed,
+            ...hikesNearHere.map((entry) => entry.hike.id),
+          ])
+        }
       />
     ) : null
 
@@ -2444,9 +2660,11 @@ function App() {
       )
       setTargetRequest(null)
       closeRouteBuilder()
+      // Laid-out days are a trip: land in the room that shows them.
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [targetRequest, applyTripStore, closeRouteBuilder],
+    [targetRequest, applyTripStore, closeRouteBuilder, enterTripsRoom],
   )
 
   // Every timeline edit runs through here, against whichever trip is open.
@@ -2487,9 +2705,10 @@ function App() {
     (id: string) => {
       applyTripStore((store) => openTrip(store, id))
       setTripsOpen(false)
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore],
+    [applyTripStore, enterTripsRoom],
   )
 
   const handleRenameTrip = useCallback(
@@ -3890,12 +4109,28 @@ function App() {
                 units={units}
                 pace={pace}
                 draftLive={routeBuilder.draftLive || dayHike !== null}
+                // WHICH builder holds it, not merely that one does: each
+                // room offers a way back to its own draft and its own
+                // action otherwise. The day hike wins a tie for the reason
+                // the map tap does - the two are exclusive (#997), and this
+                // is the same precedence stated once more.
+                draftKind={
+                  dayHike !== null ? 'day' : routeBuilder.draftLive ? 'trip' : null
+                }
+                dayListOpen={dayListOpen}
+                onDayListOpen={setDayListOpen}
                 dayHikes={dayHikeStore.hikes}
                 onOpenDayHike={handleOpenDayHike}
                 {...(dayHikeReview === null && dayHikeCardNode !== null
                   ? { dayHikeCard: dayHikeCardNode }
                   : {})}
                 onStartOnMap={openPlanKind}
+                onNewDayHike={openDayHike}
+                onNewTrip={routeBuilder.openRouteBuilder}
+                networkAvailable={graphIndex !== null}
+                gpsAt={gps.status === 'located' ? gps.at : null}
+                mode={effectivePlanMode}
+                onSwitchMode={handleSwitchPlanMode}
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
                   applyPlanEdit((current) => insertZeroAfter(current, index))
@@ -4190,7 +4425,9 @@ function App() {
                 canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
               />
             ) : (
-              routeBuilder.mapScreen.routeSheet
+              // The trailhead door (frame D8) takes the slot only when
+              // nothing else wants it - a door must never cover a builder.
+              (routeBuilder.mapScreen.routeSheet ?? dayHikesHereNode)
             )
           }
           warnings={warningPins}

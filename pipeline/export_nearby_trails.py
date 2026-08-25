@@ -3,11 +3,37 @@ behind the chosen trail (#950, features/NEARBY_TRAILS.md).
 
 export_trails.py's subject is the A.T.: two ATC sources, clipped to a 30-mile
 corridor around ATC's own centerline. This module's subject is everything else
-already on the ground a hiker is standing on - NYS OPRHP's statewide layer and
-NYNJTC's two public extracts today, DEC's Catskills and the NJ layers when
+already on the ground a hiker is standing on - NYS OPRHP's statewide layer,
+NYS DEC's statewide hiking layer, NYNJTC's two public extracts and Mohonk
+Preserve's own, with the NJ layers still to come when
 pipeline/NYC_SOURCE_SURVEY.md's next verdicts are acted on. Different sources,
 a different extent, and a different licence footing, which is why it is a
 second export rather than a branch inside the first.
+
+AND NO EXTENT OF ITS OWN, SINCE #1019. This module used to clip everything to
+a bounding box around New York City - NYC_SOURCE_SURVEY.md §1's proposed
+"ring", which that section had left with two edges explicitly open. The
+maintainer closed both on 2026-08-25, in these words:
+
+    "There shouldnt be a ring around NYC. Include all of DEC, NYNJTC & NYSP.
+     Don't limit data from orgs based on geography."
+
+So every filter below is something the SOURCE says about a trail - is it
+walkable, is it open, does another organization own the route - and none of
+them is where the trail is. What that bought, measured 2026-08-25 by running
+this export either side of the change against the same fetched layers:
+
+    4,002 features -> 21,805, and 5.4 MB -> 23.5 MB on disk (1.7 -> 7.3 MB
+    gzipped, which is what a phone actually pulls). #1019 flags that
+    download rather than solving it: features/NEARBY_TRAILS.md §9 carries
+    the number into #552's offline-unit decision, which is where a
+    per-region cut would be argued and is not this module's to take.
+
+    NYS Parks: 3,618 of their 16,641 statewide segments -> 16,187. NYNJTC's
+    Long Path: 33 of 43 sections -> all 43, so it no longer stops at a
+    section boundary in the Catskills while NYNJTC's own line runs on to
+    43.23°. DEC, registered by the same change: the ring would have kept 418
+    of its 5,286 rows, and 5,224 ship.
 
 WHAT THE CLIENT DOES WITH THIS, AND WHY THE PROPERTY NAMES ARE NOT NEGOTIABLE
 
@@ -26,43 +52,44 @@ by the SAME expressions the A.T. is drawn by:
                   downcased, against "closed" and draws the barred band.
   `id`            the feature identity map/lineTaps.ts hands the sheet.
 
-THE FOUR FILTERS, AND THE EVIDENCE UNDER EACH
+THE THREE FILTERS, AND THE EVIDENCE UNDER EACH
 
-All counts below were measured on 2026-08-24 against the layers
-fetch_external_layers.py had just fetched, re-running the census
-spike_nyc_trails.py first ran on 2026-08-18. Where the two disagree the newer
-number is the one written down, and none of them disagreed by more than the
-statewide/ring difference the ring clip explains.
+Counts below carry their own date. The 2026-08-24 ones were measured against
+the layers fetch_external_layers.py had just fetched, re-running the census
+spike_nyc_trails.py first ran on 2026-08-18; the 2026-08-25 ones were measured
+by #1019's re-run, which is also the first run of this export over DEC's layer
+and over the whole of OPRHP's. Where two dates disagree the newer is written
+down.
 
 1. HIKING ONLY - the maintainer's decision, 2026-08-18 ("Only keep hiking
    trails for now... It's OurHike, not OurBike"). A source declaring a
-   `foot_field` keeps only rows that allow foot travel; a source with no use
-   flags at all keeps every row, because NYNJTC publishes hiking trails and
-   nothing else. Statewide, OPRHP's Foot column is a clean two-value domain
-   (Y 16,441 / N 200).
+   `foot_field` keeps only the rows whose value is in its own `foot_allowed`
+   set; a source with no use flags at all keeps every row, because NYNJTC and
+   Mohonk publish hiking trails and nothing else. Statewide, OPRHP's Foot
+   column is a clean two-value domain (Y 16,441 / N 200), so its allowed set
+   is the default {"Y"} and the 200 are what this filter drops - it dropped 53
+   while the ring was on, because the other 147 were outside the box before
+   this filter ever saw them.
 
-2. THE RING - NYC_SOURCE_SURVEY.md §1's proposal, applied. A feature is kept
-   if any part of it INTERSECTS the ring; its geometry is never cut at the
-   boundary. That mirrors export_trails.py's own corridor clip, and the reason
-   is the same one stated there: cutting would end a trail at a line nobody
-   drew on the ground. So a kept feature may run some distance past the ring
-   - the Long Path sections that straddle 42.55° are exported whole.
+   WHY THE ALLOWED SET IS PER-SOURCE RATHER THAN ONE CONSTANT, which is the
+   shape #1019 found when DEC arrived. DEC's FOOT is the same five-code
+   CORRIDOR USE domain OPRHP's is (Y/N/U/M/-99, read off the live field
+   metadata 2026-08-25) and its live values are not: over all 5,286 rows of
+   DEC's own Hiking Trails layer, 4,050 read `Y` and 1,236 read `M` - DEC's
+   code for MAINTAINED - and nothing reads N, U or -99. A single {"Y"} would
+   have dropped 23% of the layer DEC itself publishes as hiking trails, which
+   is the opposite of what a hiking-only filter is for. sources.json's
+   `dec_hiking_trails` entry carries what `M` is read as, and what would
+   settle it.
 
-   BE CLEAR ABOUT WHAT THAT DOES NOT DO: it saves the geometry of features
-   that cross the edge, not features that lie wholly beyond it. Measured
-   2026-08-24, 10 of NYNJTC's 43 Long Path sections are north of the ring
-   entirely and are dropped, so the exported Long Path does stop - just at a
-   section boundary rather than mid-line. See RING_BBOX (b), which is where
-   that is argued.
-
-3. STATUS - the maintainer's decision, 2026-08-18, taken with the statewide
+2. STATUS - the maintainer's decision, 2026-08-18, taken with the statewide
    counts in front of them: `Open` ships, `Closed` SHIPS DRAWN AS CLOSED (so
    somebody standing at the trailhead with an old paper map is told, rather
    than the trail silently missing), `Proposed` is dropped because it is not
    ground, and blank/`Unknown` are dropped and counted - omit rather than
    guess. main() prints every dropped count; nothing is filtered silently.
 
-4. THE ROUTE OWNER'S LINE WINS - features/NEARBY_TRAILS.md §5. A source that
+3. THE ROUTE OWNER'S LINE WINS - features/NEARBY_TRAILS.md §5. A source that
    `owns_route_names` in the registry supplies that route's geometry, and
    another organization's copy of it is suppressed. See suppressed_by_owner()
    for why the match is on the source's own NAME field only and never on an
@@ -99,10 +126,15 @@ future reader has to re-fetch to check. The maintainer determined on
 2026-08-24 that OurHike is a non-commercial use within them, with the
 counter-reading recorded beside it.
 
-NYNJTC STATE NOTHING - empty licenseInfo on both items - so their two public
-extracts ship on the maintainer's authorisation, the same footing atc_licence
-and photo_licence already use. SOURCE_SURVEY.md §5's verdict on the full
-NYNJTC network is untouched by that: still an agreement, not a scrape.
+NYNJTC, MOHONK PRESERVE AND NYS DEC STATE NOTHING - empty licenseInfo on the
+AGOL items, and DEC is an on-prem service with no item to carry terms at all
+and an empty copyrightText - so those four layers ship on the maintainer's
+authorisation, the same footing atc_licence and photo_licence already use.
+SOURCE_SURVEY.md §5's verdict on the full NYNJTC network is untouched by that:
+still an agreement, not a scrape. DEC's own authorisation is #1019's scope
+decision read as covering the data as well as its extent, which is argued in
+sources.json's `dec_licence` along with the one-field way to undo it if that
+reading is wrong.
 
 THE ATTRIBUTION IS NOT OPTIONAL, and it is not this file's to render. OPRHP's
 condition is met by client/src/map/credits.ts, which puts their name in the
@@ -111,12 +143,17 @@ lines somewhere that credit does not follow, the condition is broken - so the
 export records each source's `steward` and `attribution` in its manifest, and
 export_sources.py names them on the sources screen.
 
-WHAT STILL DOES NOT SHIP: two of the four oprhp_* layers. Facilities (8,823
-points) and park polygons (858) keep `reaches_hikers: false` for a reason that
-is nothing to do with licensing - nothing exports them. That is the field's
-other meaning (see reaches_hikers_comment) and the two should not be blurred.
-The closures layer left that group under #964 and now ships, derived onto the
-trail lines as described above.
+WHAT STILL DOES NOT SHIP: two of the four oprhp_* layers, and every DEC layer
+but the trails. OPRHP's facilities (8,823 points) and park polygons (858) keep
+`reaches_hikers: false` for a reason that is nothing to do with licensing -
+nothing exports them. That is the field's other meaning (see
+reaches_hikers_comment) and the two should not be blurred. The closures layer
+left that group under #964 and now ships, derived onto the trail lines as
+described above. DEC's back-country features (21,466 points), trailheads
+(10,524) and lean-tos (314) are not registered at all - #1019 registered the
+trail lines it needed and left the POIs to whoever answers
+NYC_SOURCE_SURVEY.md §10(g)'s open question about whether any of them are
+water, which is one of CLAUDE.md's four ways and raises the evidence bar.
 
 The provenance line features/NEARBY_TRAILS.md §6 specifies - "Trail data: NYS
 OPRHP", in a voice that does not outrun a steward who disclaims accuracy - is
@@ -130,7 +167,7 @@ import json
 from pathlib import Path
 
 from shapely import wkt as shapely_wkt
-from shapely.geometry import MultiLineString, box, shape
+from shapely.geometry import MultiLineString, shape
 from shapely.ops import unary_union
 
 from export_trails import geometry_to_wkt, simplify_records
@@ -148,64 +185,26 @@ SOURCES_PATH = ROOT / "sources.json"
 ARTIFACT_NAME = "nearby_trails.geojson"
 MANIFEST_NAME = "nearby_trails_manifest.json"
 
-# NYC_SOURCE_SURVEY.md §1's "as a spike bbox" - Delaware Water Gap to the
-# Connecticut line, New York Harbor to the Catskills' northern escarpment.
+# What a `foot_field` has to read for a segment to be a hiking trail, where
+# the source's entry does not say otherwise. OPRHP's domain also declares
+# U/M/I/-99; none of the four appears in its live data (measured 2026-08-24,
+# 16,641 rows: Y 16,441, N 200), and an unrecognised value is dropped and
+# counted rather than assumed walkable.
 #
-# `@unvalidated` - a survey's PROPOSAL, not a decision anybody has taken. §1
-# says so in its own words: the ring is "proposed, with edges", and two of
-# those edges are explicitly the maintainer's rather than the survey's. Both
-# are still open, and both move this number:
-#
-#   (a) LONG ISLAND. The survey's county list does not include Nassau or
-#       Suffolk - "NYNJTC does not cover LI and the scope call did not name
-#       it" - but the bbox above reaches to −73.4° and takes in the western
-#       half of the island anyway. Measured 2026-08-24, and the two numbers
-#       are worth keeping apart because keep_reason() tests the unit BEFORE
-#       the foot and status filters: main() reports 2,058 segments dropped as
-#       Long Island, of which 1,951 would have passed every other filter too.
-#       That 1,951 against the 5,759 that otherwise survive is the number the
-#       decision turns on - a bbox-only ring would be 34% ground the scope
-#       call never asked for. EXCLUDED_UNITS below resolves that toward the
-#       county list, which is the closest thing to a decision that exists;
-#       main() prints what it drops so the other answer is one constant away.
-#   (b) THE NORTHERN CUT. The Long Path continues past the Catskills toward
-#       Albany, reaching 43.23°, and this box cuts it: measured 2026-08-24,
-#       10 of NYNJTC's 43 sections lie entirely north of 42.55° and are
-#       dropped. Keeping whole features rather than cutting geometry (filter
-#       2) does NOT save them - it only means the 33 that survive are not
-#       themselves truncated. §1(b) guesses this is the right call for v1
-#       ("cut the trail at the ring's edge AND SAY SO ON SCREEN rather than
-#       pretend it ends there"), and the second half of that sentence is not
-#       built: nothing on the map tells a hiker at Windham that the Long Path
-#       continues past where our line stops. **#557 — Draw the map from
-#       several coverage units, and say plainly where they end** is that
-#       work's home, and until it lands this export produces a trail with a
-#       silent end, which is the honest description of it.
-#
-# What would settle it: the maintainer answering §1's two NEEDS REVIEW edges,
-# on #768. Until then this is a proposal being applied, and saying so is the
-# point of the tag.
-RING_BBOX = (-75.4, 40.45, -73.4, 42.55)
-
-# See RING_BBOX (a). Expressed in OPRHP's own vocabulary - its `Unit` column
-# is its eleven administrative regions - because that is the one place the
-# distinction is already drawn by the steward rather than inferred by us.
-EXCLUDED_UNITS = frozenset({"Long Island"})
-
-# What a `foot_field` has to read for a segment to be a hiking trail. OPRHP's
-# domain also declares U/M/I/-99; none of the four appears in the live data
-# (measured 2026-08-24, 16,641 rows: Y 16,441, N 200), and an unrecognised
-# value is dropped and counted rather than assumed walkable.
-FOOT_ALLOWED = frozenset({"Y"})
+# A source overrides this with `foot_allowed` in sources.json, next to the
+# organization whose vocabulary it describes - DEC's `M` (MAINTAINED) is the
+# case that made the default a default. Filter 1 above has the measurement.
+FOOT_ALLOWED_DEFAULT = frozenset({"Y"})
 
 # Raw status -> the `trail_status` the client reads, for the two that ship.
-# Anything else is dropped by filter 3.
+# Anything else is dropped by filter 2.
 SHIPPED_STATUSES = {"Open": "open", "Closed": "closed"}
 
-# What a source with no status column at all publishes. NYNJTC's two extracts
-# have no status field: their sections are the trail as NYNJTC maintains it,
-# and inventing a "closed" for a layer that cannot say so would be the exact
-# failure this pipeline's closure treatment exists to avoid.
+# What a source with no status column at all publishes. NYNJTC's two extracts,
+# Mohonk's layer and DEC's have no status field: their rows are the trail as
+# each organization maintains it, and inventing a "closed" for a layer that
+# cannot say so would be the exact failure this pipeline's closure treatment
+# exists to avoid.
 DEFAULT_STATUS = "open"
 
 
@@ -345,19 +344,18 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
 def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str]) -> str | None:
     """None if this feature ships, else the reason it does not - a short string
     main() counts and prints. Every drop is one of these; there is no path out
-    of this function that discards a feature without naming why."""
+    of this function that discards a feature without naming why.
+
+    NOTHING IN HERE ASKS WHERE THE FEATURE IS, since #1019. Two tests used to:
+    a bounding box around New York City and an exclusion of OPRHP's `Long
+    Island` region. Both are gone by the maintainer's decision of 2026-08-25
+    (quoted in this module's docstring), and the geometry argument survives
+    only as the emptiness check - a source that hands us nothing to draw."""
     if geometry is None or geometry.is_empty:
         return "no geometry"
 
-    if not box(*RING_BBOX).intersects(geometry):
-        return "outside the ring"
-
-    unit_field = source.get("unit_field")
-    if unit_field and properties.get(unit_field) in EXCLUDED_UNITS:
-        return f"excluded unit: {properties.get(unit_field)}"
-
     foot_field = source.get("foot_field")
-    if foot_field and properties.get(foot_field) not in FOOT_ALLOWED:
+    if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
         return f"not a foot trail: {foot_field}={properties.get(foot_field)!r}"
 
     status_field = source.get("status_field")
@@ -627,6 +625,32 @@ def records_to_geojson(records: list[dict]) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+def exported_bbox(records: list[dict]) -> list[float] | None:
+    """The ground this artifact actually covers, as [west, south, east, north].
+
+    REPLACES A DECLARED EXTENT WITH A MEASURED ONE (#1019). The manifest used
+    to carry `ring_bbox` - the box this module clipped to - which answered
+    "what did we decide to cover" and was read by nobody. Now that nothing is
+    clipped there is no such decision to report, and the honest neighbouring
+    fact is what the exported lines actually span. Derived from the records
+    rather than declared above them, so it cannot go stale when a source is
+    added or an organization's layer grows.
+
+    None when there are no records, which the completeness gate has already
+    refused to let happen for a real run; a caller reading this key still has
+    to handle it rather than index into an empty list.
+    """
+    if not records:
+        return None
+    bounds = [shapely_wkt.loads(record["wkt"]).bounds for record in records]
+    return [
+        min(b[0] for b in bounds),
+        min(b[1] for b in bounds),
+        max(b[2] for b in bounds),
+        max(b[3] for b in bounds),
+    ]
+
+
 def write_artifact(records: list[dict], per_source: dict) -> dict:
     """Write the artifact and return its manifest entry."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -637,7 +661,7 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
         "path": str(path),
         "sha256": sha256_file(path),
         "feature_count": len(records),
-        "ring_bbox": list(RING_BBOX),
+        "bbox": exported_bbox(records),
         "sources": per_source,
     }
 

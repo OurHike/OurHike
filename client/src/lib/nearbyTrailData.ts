@@ -3,8 +3,10 @@
 //
 // WHAT ARRIVES HERE
 //
-// One GeoJSON artifact of somebody else's trails - NYS OPRHP's and NYNJTC's
-// today - carrying exactly the properties the A.T.'s own lines carry
+// One GeoJSON artifact of somebody else's trails - NYS OPRHP's, NYNJTC's,
+// Mohonk Preserve's and NYS DEC's today, statewide since #1019 rather than
+// clipped to a box around New York City - carrying exactly the properties the
+// A.T.'s own lines carry
 // (`source`, `blaze_color`, `name`, `trail_status`, `id`). That is what lets
 // map/style.ts draw them with the same expressions rather than a second
 // appearance to keep in step: they take the side-trail width because no

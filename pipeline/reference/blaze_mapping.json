@@ -142,6 +142,38 @@
         "Other": "Other",
         "Yellow": "Yellow"
       }
+    },
+    "dec_hiking_trails": {
+      "_note": [
+        "New York State Department of Environmental Conservation, statewide",
+        "Hiking Trails layer (#1019). MARKER is a genuine ArcGIS coded-value",
+        "domain whose codes are the words, like oprhp_trails' Blaze and unlike",
+        "nynjtc_long_path's plain string, so nothing decodes in front of this",
+        "table. Counts are the actual values on all 5,286 fetched rows,",
+        "measured 2026-08-25 - not the domain's declared possibilities.",
+        "2,929 further rows say nothing at all (2,724 null, 205 a single",
+        "space); export_nearby_trails.py counts those as `absent` and never",
+        "asks this table about them, which is why they are not a row here.",
+        "The domain declares exactly the seven values mapped below, so an",
+        "unmapped warning from this source means DEC has published a value",
+        "outside its own domain. That has already happened once - see below."
+      ],
+      "mapped": {
+        "White": "White",
+        "Blue": "Blue",
+        "Yellow": "Yellow",
+        "Orange": "Orange",
+        "Red": "Red",
+        "Green": "Green",
+        "Other": "Other"
+      },
+      "deferred": {
+        "ORANGE AND RED": {
+          "count": 1,
+          "why": "Two paints on one segment, and the palette holds one hue per line - no member means 'orange and red', and painting either half would tell a hiker at a junction that the blaze is a colour it is not. DEC's own coded domain does not declare this value, so it is one row's free text rather than a paint DEC publishes.",
+          "settles_it": "A decision about whether a two-colour blaze is drawable at all - a dashed two-hue line is the obvious answer and is a map-style question rather than a row in this file - or DEC correcting the row to one of the seven its domain declares."
+        }
+      }
     }
   }
 }

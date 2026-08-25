@@ -51,8 +51,10 @@ export const USGS_TOPO_CREDIT = 'USGS US Topo'
  * Their item's terms say it in as many words: "Any maps, reports, or other
  * materials created using OPRHP data must include proper credit and
  * attribution to the NY State Office of Parks, Recreation and Historic
- * Preservation (OPRHP)." A map drawing their 3,618 trail lines is a map
+ * Preservation (OPRHP)." A map drawing their 16,187 trail lines is a map
  * created using OPRHP data, so this is what makes drawing them permitted.
+ * (3,618 until #1019 stopped clipping their layer to a box around New York
+ * City; the condition did not change with the count, and neither did this.)
  *
  * SPELLED IN FULL, not as "NYS OPRHP". The abbreviation is what their own
  * `tags` field uses and would fit the corner better, but the terms ask for
@@ -83,6 +85,24 @@ export const NYNJTC_CREDIT = 'New York-New Jersey Trail Conference'
  * the "quiet inaccuracy" this file's header objects to.
  */
 export const MOHONK_CREDIT = 'Mohonk Preserve'
+
+/**
+ * NYS DEC's attribution (#1019).
+ *
+ * NOT a condition - DEC state no terms at all (their service returns an empty
+ * copyrightText, and being on-prem there is no ArcGIS item carrying terms to
+ * read), and their data ships on the maintainer's authorisation,
+ * pipeline/sources.json's `dec_licence`. The same footing NYNJTC_CREDIT and
+ * MOHONK_CREDIT are on, and here for the same reason: the Catskills and the
+ * Adirondacks are DEC's ground, and a map drawing 5,224 of their trail lines
+ * without naming them is the "quiet inaccuracy" this file's header objects to.
+ *
+ * SPELLED IN FULL, like OPRHP_CREDIT above. "NYS DEC" is what the agency calls
+ * itself in its own URLs and would fit the corner better, but this project's
+ * reading is that an abbreviation does not name an organization to somebody
+ * who does not already know it.
+ */
+export const DEC_CREDIT = 'New York State Department of Environmental Conservation'
 
 /** OpenFreeMap's own terms for hosting the vector sheet - see liveTopo.ts. */
 export const OPENFREEMAP_CREDIT = 'OpenFreeMap © OpenMapTiles'
@@ -139,11 +159,27 @@ export function mapCredits({
 
   if (hasRasterArchive) credits.push(USGS_TOPO_CREDIT)
 
-  // Before the background credits, not after: these two name whose TRAILS are
-  // drawn, and the trails are the subject of the map. OPRHP's is a licence
+  // Before the background credits, not after: these four name whose TRAILS
+  // are drawn, and the trails are the subject of the map. OPRHP's is a licence
   // condition besides, so it should not be the clause that falls off the end
   // of a small strip - see chrome/MapAttribution.tsx for what collapsing does.
-  if (hasNearbyTrails) credits.push(OPRHP_CREDIT, NYNJTC_CREDIT, MOHONK_CREDIT)
+  //
+  // ALL FOUR TOGETHER, because the artifact is all-or-nothing: one file holds
+  // every steward's lines, and publish.py refuses to upload it unless every
+  // source in it may ship (pipeline/publish.py's `reaches_hikers` gate).
+  //
+  // WHERE THAT IS NOT QUITE TRUE, said rather than left for somebody to find:
+  // a phone holding a release OLDER than a steward is credited for lines it
+  // does not have - a release exported before #1019 carries no DEC lines and
+  // this list still names DEC. The flag these key off is "an artifact loaded"
+  // (App.tsx passes `nearbyTrailsUrl !== null`, a blob URL), not "which
+  // sources are in it", and nothing parses 23 MB of features to find out. It
+  // is the weak form of the failure this module was written to fix - naming a
+  // source that is not on screen - and the fix if it ever matters is the
+  // stewards artifact, which lib/stewards.ts already fetches and which lists
+  // exactly the sources THIS release ships.
+  if (hasNearbyTrails)
+    credits.push(OPRHP_CREDIT, NYNJTC_CREDIT, MOHONK_CREDIT, DEC_CREDIT)
 
   if (background === 'hiking_topo_live') {
     credits.push(OPENFREEMAP_CREDIT, ELEVATION_ATTRIBUTION)

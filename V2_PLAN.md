@@ -653,9 +653,14 @@ and #780's definition of "the org" — the maintainer's cross-org POI and line-p
 decisions of 2026-08-18 are recorded on #772's thread and presume it.
 
 **What you are walking into:** three things, each named in the issues so nobody
-re-discovers them. The licence on every new source here is **pending the maintainer's own
-outreach** to OPRHP and NYNJTC — fetch-and-review only, nothing publishes to hikers, the
-same posture as the club PDFs' registry entries. **#100 — Build the dbt ELT transform
+re-discovers them. The licence on every new source here was **pending the maintainer's own
+outreach** to OPRHP and NYNJTC — fetch-and-review only, nothing publishing to hikers, the
+same posture as the club PDFs' registry entries. **That changed on 2026-08-24**: OPRHP's
+terms were found to be stated (a truncated read had hidden them), and NYNJTC's, Mohonk
+Preserve's and NYS DEC's — all genuinely unstated — ship on the maintainer's authorisation
+recorded in `sources.json`. The asks are still open; DEC's is the live one (#1019, which
+also removed the survey's proposed ring, so these layers ship statewide rather than clipped
+to a box around New York City). **#100 — Build the dbt ELT transform
 layer before NYNJTC's own trail network arrives** is where new-source staging models
 belong — its Phase A is already merged, so do not build a parallel ingestion path. And
 **#552 — Decide the unit of offline coverage, and write it down** should be answered with

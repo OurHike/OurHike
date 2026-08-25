@@ -228,9 +228,22 @@ tap (switching stays in the picker), safety POIs that ignore the choice, the clo
 treatment reused for long-term-closed trails, the route owner's line wherever two orgs
 draw the same trail, and a governed extension of the blaze palette (the Long Path's aqua
 is real paint). What "the org" means on a jointly-owned route is
-[#780](https://github.com/OurHike/OurHike/issues/780)'s research. The licence posture is
-the project's standing one: the maintainer is talking to OPRHP and NYNJTC directly, and
-until an answer is recorded in `sources.json`, everything here is fetch-and-review only.
+[#780](https://github.com/OurHike/OurHike/issues/780)'s research.
+
+**Where the licence posture actually stands, 2026-08-25** — the sentence here used to say
+"fetch-and-review only, nothing publishes to hikers", and that stopped being true on
+2026-08-24. OPRHP's terms turned out to be stated all along (a truncated read had hidden
+them); NYNJTC's, Mohonk Preserve's and now NYS DEC's are genuinely unstated, and those
+three ship on the maintainer's authorisation recorded in `sources.json` — the same footing
+ATC's own data uses. Every ask is still open, and DEC's is the live one
+([#1019](https://github.com/OurHike/OurHike/issues/1019)).
+
+**And there is no ring.** The survey drew one as a proposal with two edges left to the
+maintainer; the maintainer removed the whole thing on 2026-08-25 — *"Include all of DEC,
+NYNJTC & NYSP. Don't limit data from orgs based on geography"* — so what ships is every
+line those organizations publish, statewide, and DEC (the Catskills, and the Adirondacks
+with them) is registered rather than absent. The map went from 4,002 trail lines to 21,805
+that day.
 
 ## v2 — the same account on two devices
 

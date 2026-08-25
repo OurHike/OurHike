@@ -131,6 +131,45 @@ Leave that line alone and name the issue in full in the prose above it.
 This governs what you write. It is not a licence to go retitling references in files you are
 not otherwise touching.
 
+## Show what you changed
+
+**Every pull request body carries a `## Screenshot` section**, and the template
+has it. A reviewer who can see the change has already been answered; a reviewer
+reading "adds the legend toggle" has to build the picture in their head and then
+open the branch to check it against yours.
+
+A UI change gets a picture of the thing that changed. A pipeline or backend
+change — the common case here — gets whatever the evidence actually is: a
+before-and-after table of the numbers, a test going red on the defect and green
+on the fix, a render. A change with genuinely nothing to show gets one line
+saying so and why. That line is a real answer and takes ten seconds.
+
+**An unrelated screenshot attached to fill the section is worse than the line.**
+It looks like evidence and is not, which is the failure the standard at the top
+of this file exists to prevent.
+
+**The app's own screenshot is automatic and is not your job.** `pr-preview.yml`
+photographs every pull request's build and puts first run and the trail screen in
+the preview comment (#988). You write the `## Screenshot` section for what those
+two shots cannot reach: the screen your change is actually about, the numbers it
+moves, or the line saying there is nothing to show.
+
+`cd client && node scripts/screenshot.mjs <name>` takes one by hand when you need
+a different screen, and `--dist` shoots the built app the way CI does.
+[`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md)
+is the rest: driving the app to the state worth photographing, where an image can
+be hosted at all given that a pull request body cannot hold bytes, and the four
+things that must never appear in one — a signed-in account, anybody's reports or
+photos, a dispersed campsite at a readable zoom, a real location fix.
+
+**No screenshot is ever committed.** The automated one is written into the
+directory being uploaded to Cloudflare Pages, so it is served by the same
+deployment as the app it shows and is removed with it when the pull request
+closes. That is the trade and it is deliberate: the picture lasts exactly as long
+as review does, and in exchange nothing permanent enters a public tree. Committing
+one costs 79,290 measured bytes that cannot be retracted, which is why the first
+version of this rule was replaced.
+
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up

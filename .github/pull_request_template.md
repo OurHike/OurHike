@@ -14,6 +14,23 @@ Closes #
 
 <!-- What is different afterwards, and why that is the right difference. -->
 
+## Screenshot
+
+<!--
+The preview comment already carries first run and the trail screen, taken from
+this build automatically. This section is for what those two cannot reach.
+
+A UI change: say which screen, and what is different about it. A pipeline or
+backend change: whatever the evidence actually is — a before-and-after table, a
+test going red then green, a render. A change with genuinely nothing to show
+says so in one line and why, which is a real answer.
+
+`cd client && npm run build && node scripts/screenshot.mjs <name> --dist` takes
+a shot of any screen so you can look at it; the output is gitignored and is not
+committed. Nothing here goes in a commit. Full instructions, and what must never
+appear in a screenshot, are in .claude/skills/pr-screenshot/SKILL.md.
+-->
+
 ## How it was checked
 
 <!--

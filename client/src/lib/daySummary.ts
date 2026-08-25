@@ -119,12 +119,21 @@ export function longestDryRun(
         poi.type === 'water' && poi.mile !== undefined,
     )
     .map((poi) => poi.mile)
-    .filter((mile) => mile > low && mile < high)
+    // INCLUSIVE of the day's own ends (#986). A day that starts at a spring
+    // and ends at one had both excluded by a strict comparison, so the card
+    // said "no water waypoint on any of today" about a day with water at
+    // both ends of it. Water is one of the four ways this app can hurt
+    // somebody, and that sentence is the wrong one to get wrong.
+    .filter((mile) => mile >= low && mile <= high)
     .sort((a, b) => a - b)
 
   // The day's ends close the first and last runs. A day with no water on it
   // is one run the length of the day, which is the honest answer and not an
   // absence to be hidden.
+  // A spring exactly on a boundary is already in `water`, so it would appear
+  // twice here - harmless for the maximum (a zero-length run never wins) and
+  // wrong for the count, which is why the count comes off `water` deduped
+  // rather than off this list.
   const marks = [low, ...water, high]
   let best = { miles: 0, fromMile: low, toMile: low }
   for (let i = 1; i < marks.length; i++) {
@@ -134,5 +143,5 @@ export function longestDryRun(
     }
   }
 
-  return { ...best, waterCount: water.length }
+  return { ...best, waterCount: new Set(water).size }
 }

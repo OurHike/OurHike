@@ -49,6 +49,17 @@ describe('the source and layers', () => {
     expect(layout['text-ignore-placement']).toBe(true)
   })
 
+  it('asks only for the fontstack this app actually bundles (#986)', () => {
+    // public/glyphs ships ONE stack. A layer naming any other renders no text
+    // at all - and offline, which is where this app lives, there is nowhere
+    // to fetch the missing glyphs from.
+    for (const layer of buildRouteLayers()) {
+      const font = (layer as { layout?: Record<string, unknown> }).layout?.['text-font']
+      if (font === undefined) continue
+      expect(font).toEqual(['Noto Sans Regular'])
+    }
+  })
+
   it('keeps the route solid - dashes are reserved for closures', () => {
     for (const layer of buildRouteLayers()) {
       expect(JSON.stringify(layer)).not.toContain('dasharray')

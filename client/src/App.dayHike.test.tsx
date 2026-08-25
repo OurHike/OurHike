@@ -21,7 +21,8 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
-import { appHarness } from './test/appHarness'
+import { TRIPS_KEY } from './lib/trips'
+import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -313,6 +314,111 @@ describe('the day-hike builder, end to end', () => {
     await waitFor(() => {
       expect(requested.some((url) => url.includes(TRAIL_GRAPH_GEOMETRY_KEY))).toBe(true)
     })
+  })
+
+  it('closes the day hike when a route-builder door opens over it (#997)', async () => {
+    // THE ASYMMETRY THAT SHIPPED. `openDayHike` always cleared the route
+    // draft; nothing cleared the day hike. Both surfaces the two modes share
+    // - the map tap and `routeSheet` - answer for the day hike first, so a
+    // route builder opened on top of one held a live draft that nobody could
+    // see or reach, and cancelling the day hike revealed a route the hiker
+    // did not remember starting.
+    //
+    // Driven through the GAP DOOR rather than the Plan tab's primary action,
+    // because the primary action was never the bug: `openPlanKind` guards on
+    // `dayHike !== null` and sends the hiker back to their day hike. The
+    // timeline's own doors call `openRouteBuilderFrom` directly, and the tab
+    // bar reaches the timeline whatever is open.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({
+      pois: [
+        {
+          id: 's10',
+          type: 'shelter',
+          name: 'Middle Shelter',
+          lat: latOfMile(10),
+          lon: -77,
+          confidence: 'high',
+          mile: 10.2,
+        },
+        {
+          id: 's22',
+          type: 'shelter',
+          name: 'Beyond Shelter',
+          lat: latOfMile(22),
+          lon: -77,
+          confidence: 'high',
+          mile: 22.2,
+        },
+      ],
+    })
+    app.store.set('ourhike:stewards', STEWARDS)
+    // A walked trip with ground past it, so the timeline offers a gap.
+    app.store.set(TRIPS_KEY, {
+      openId: 'trip-1',
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Autumn section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+            ],
+            days: [{ id: 'day-a', pinned: false, generated: true, walked: true }],
+          },
+        },
+      ],
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          tripIds: ['trip-1'],
+        },
+      ],
+    })
+    await serveGraph()
+
+    const openHike = async () => {
+      await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+      await user.click(
+        await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+      )
+    }
+
+    render(<App />)
+    await openHike()
+    // Into a day hike, with points on it - the work that used to be silently
+    // outlived by an invisible route draft. This door is the guarded one and
+    // lands the hiker on the trail tab itself.
+    await user.click(await screen.findByRole('button', { name: 'Plan another trip' }))
+    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    const map = await liveMap()
+    await tap(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+
+    // Back to the timeline - the tab bar consults neither builder - and in
+    // through the gap door, which calls openRouteBuilderFrom directly.
+    await openHike()
+    await user.click(await screen.findByRole('button', { name: 'Plan this stretch' }))
+
+    // THE FIRST ASSERTION IS THE ONE THAT CATCHES IT, verified by reverting
+    // the fix: `routeSheet` renders the day-hike bar OR the builder, never
+    // both, so with the day hike still live the draft exists in state and
+    // this dialog is simply not in the document. The two below are the
+    // complement - they prove the day hike was closed, rather than the
+    // builder having won some race for the same slot.
+    expect(
+      await screen.findByRole('dialog', { name: 'Plan a route' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/1 leg ·/)).not.toBeInTheDocument()
   })
 
   it('offers no day-hike button at all on a phone without the graph', async () => {

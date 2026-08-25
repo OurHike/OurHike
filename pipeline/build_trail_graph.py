@@ -564,8 +564,8 @@ def main() -> dict:
     print(f"  artifact:        {manifest['bytes']} bytes at {manifest['path']}")
     print(
         "\n#757 established that ~3,000 edges routes acceptably on a phone. "
-        f"This graph has {stats['edges']}; if that is well past 3,000 the client approach needs revisiting "
-        "before lib/trailGraph.ts is written, not after."
+        f"This graph has {stats['edges']}; well past 3,000 and lib/trailGraph.ts's plain-scan "
+        "shortestPath is the first thing to revisit."
     )
     return manifest
 

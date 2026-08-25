@@ -20,7 +20,7 @@
 //
 // The decision recorded in features/HIKE_PLANNING.md from #934, and the reason
 // `GraphPoint` carries an edge and a fraction along it rather than a node id.
-// The route runs exactly between the two tapped points. The app does not
+// The route runs exactly between the two tapped points. This builder does not
 // decide the hiker meant the junction, or the trailhead, or the nearest
 // shelter - #771 measured a junction every 1.2 trail-miles through
 // Harriman-Bear Mountain, so snapping to one would move a start by ~0.6 mi on
@@ -60,10 +60,11 @@ export interface TrailGraph {
   edges: GraphEdge[]
 }
 
-export interface LonLat {
-  lon: number
-  lat: number
-}
+// trailPosition.ts's own coordinate type, re-exported so this module's
+// callers need not import from two places. The MILES of the two modules must
+// never meet (Finding 1); their coordinates are the same thing.
+export type { LonLat } from './trailPosition'
+import type { LonLat } from './trailPosition'
 
 /**
  * A place on the network: an edge, and how far along it.

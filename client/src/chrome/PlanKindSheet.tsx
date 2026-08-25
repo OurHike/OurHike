@@ -30,11 +30,12 @@
 //
 // THE THIRD DOOR GOES SOMEWHERE OF ITS OWN
 //
-// "A walk I've already done" is #982, not PR #968's day-summary card. That
-// card describes a day inside an A.T. plan and reads its figures off
-// lib/walkedMiles.ts's merged mile intervals; this describes a walk with no
-// plan behind it, across a network. Two surfaces that look alike and know
-// different things is the cheaper mistake - decided 2026-08-25.
+// "A walk I've already done" is #982, not #968's day-summary card
+// (screens/DaySummary.tsx). That card describes a day inside an A.T. plan -
+// its figures come from the plan's own days via lib/daySummary.ts; this
+// describes a walk with no plan behind it,
+// across a network. Two surfaces that look alike and know different things is
+// the cheaper mistake - decided 2026-08-25.
 
 import '../screens/plan.css'
 

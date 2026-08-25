@@ -29,9 +29,12 @@
 //
 // A MANIFEST THAT NAMES NO HASH IS A REFUSAL HERE
 //
-// The same call lib/nearbyTrailData.ts makes and for a stronger reason. There,
-// an unverifiable line is drawn as context. Here there is no lesser use to
-// fall back to - a graph is either trusted for routing or it is not loaded.
+// The same call lib/nearbyTrailData.ts makes, for a reason one step stronger.
+// The module both of us departed from is lib/trailOverview.ts, which DOES draw
+// unverifiable bytes - three seconds of a corridor sketch nobody reads a
+// position off. nearbyTrailData refuses them because its lines sit under the
+// hiker's dot; this refuses them because a graph decides where a router says
+// somebody can walk, and there is no lesser use of one to fall back to.
 
 import { DATA_CONFIGURED, dataUrl, TRAIL_GRAPH_KEY } from './config'
 import { publishedHash } from './dataManifest'

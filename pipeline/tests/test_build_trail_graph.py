@@ -214,7 +214,7 @@ def test_an_end_stopping_short_of_another_line_is_joined_within_the_tolerance():
         source="nynjtc_long_path",
     )
 
-    graph, stats = _build(main, stub, snap=8.0)
+    graph, stats = _build(main, stub, snap=graph_builder.ENDPOINT_SNAP_M)
 
     assert stats["endpoint_joins"] >= 1
     assert stats["components"] == 1, "a 5 m gap at the default tolerance should be one junction"

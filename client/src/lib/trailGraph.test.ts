@@ -126,10 +126,20 @@ describe('finding the tap', () => {
   })
 
   it('refuses a tap just outside the tolerance and accepts one just inside', () => {
-    // MAX_OFF_NETWORK_FEET is 150 ft, about 45.7 m. 0.0002 deg of latitude is
-    // about 22 m; 0.0006 is about 67 m.
-    expect(nearestPointOnGraph(index, { lon: -74.095, lat: 41.2502 })).not.toBeNull()
-    expect(nearestPointOnGraph(index, { lon: -74.095, lat: 41.2506 })).toBeNull()
+    // The offsets are DERIVED from MAX_OFF_NETWORK_FEET rather than restated
+    // as coordinates, so retuning the @unvalidated constant retunes this test
+    // instead of silently detaching it from the boundary it names.
+    const degreesPerFoot = 1 / (111_320 * 3.280839895)
+    const inside = {
+      lon: -74.095,
+      lat: 41.25 + MAX_OFF_NETWORK_FEET * 0.5 * degreesPerFoot,
+    }
+    const outside = {
+      lon: -74.095,
+      lat: 41.25 + MAX_OFF_NETWORK_FEET * 1.5 * degreesPerFoot,
+    }
+    expect(nearestPointOnGraph(index, inside)).not.toBeNull()
+    expect(nearestPointOnGraph(index, outside)).toBeNull()
   })
 
   it('takes the nearer of two trails and reports how far off the tap was', () => {
@@ -143,9 +153,10 @@ describe('finding the tap', () => {
   })
 
   it('honours a caller that wants a tighter tolerance than the default', () => {
-    const at = { lon: -74.095, lat: 41.2502 }
+    const degreesPerFoot = 1 / (111_320 * 3.280839895)
+    const at = { lon: -74.095, lat: 41.25 + MAX_OFF_NETWORK_FEET * 0.5 * degreesPerFoot }
     expect(nearestPointOnGraph(index, at)).not.toBeNull()
-    expect(nearestPointOnGraph(index, at, 10)).toBeNull()
+    expect(nearestPointOnGraph(index, at, MAX_OFF_NETWORK_FEET * 0.1)).toBeNull()
   })
 })
 

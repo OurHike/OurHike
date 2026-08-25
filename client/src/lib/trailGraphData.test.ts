@@ -107,9 +107,10 @@ describe('the junction graph', () => {
   })
 
   it('routes on nothing when the manifest names no hash for it', async () => {
-    // Stricter than nearbyTrailData for a stronger reason: there, an
-    // unverifiable line is still drawn as context. Here there is no lesser
-    // use to fall back to - a graph is trusted for routing or not loaded.
+    // The same refusal nearbyTrailData makes, one step stronger: the module
+    // both departed from (trailOverview) draws unverifiable bytes as a
+    // three-second sketch. A graph has no lesser use to fall back to - it is
+    // trusted for routing or it is not loaded.
     serve({ manifest: { artifacts: {} } })
 
     await expect(fetchTrailGraph()).resolves.toBeNull()

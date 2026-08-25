@@ -163,14 +163,23 @@ describe('what it refuses', () => {
     )
   })
 
-  it('will not let a hiker finish a walk that has no route', () => {
+  it('offers no Done at all while the walk has no route', () => {
+    // Not a disabled button - LineSheet.tsx's rule, which the A.T. builder now
+    // carries too: a control that looks pressable and is not teaches a hiker
+    // the app is broken. A control that does not apply is absent.
     renderBar({ status: { kind: 'started' } })
 
-    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument()
   })
 })
 
 describe('the controls', () => {
+  it('offers no Undo before there is anything to take back', () => {
+    renderBar({ status: { kind: 'empty' } })
+
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
   it('undoes, closes the loop, finishes and cancels', () => {
     const props = renderBar({ draft: { ...DRAFT, points: [{} as never] } })
 
@@ -233,6 +242,9 @@ describe('walkingTime', () => {
   it('rounds to five minutes', () => {
     expect(walkingTime(133)).toBe('≈2h 15m walking')
     expect(walkingTime(137)).toBe('≈2h 15m walking')
+    // Delegates to lib/naismith.ts's formatNaismithMinutes, so the two
+    // builders cannot round or print the same minutes differently.
+    expect(walkingTime(63)).toBe('≈1h 5m walking')
   })
 
   it('drops the hour when there is not one', () => {

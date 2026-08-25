@@ -214,6 +214,16 @@ describe('closing the loop', () => {
     expect(loop?.miles).toBeCloseTo((out?.miles ?? 0) * 2, 5)
   })
 
+  it('undo after closing the loop reopens it and takes back nothing else', () => {
+    // Closing the loop was one action, so undo is one action: the tapped
+    // points are the hiker's work and this must not silently eat one.
+    const two = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    const undone = undoTap(loopDraft(two))
+
+    expect(undone.looped).toBe(false)
+    expect(undone.points).toHaveLength(2)
+  })
+
   it('reopens when the hiker taps again, rather than appending after the return leg', () => {
     const looped = loopDraft(tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER))
     const reopened = tapAt(index, looped, UP_SEVEN_HILLS)

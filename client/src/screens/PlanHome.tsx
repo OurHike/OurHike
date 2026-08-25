@@ -182,35 +182,40 @@ export function PlanHome({
         </section>
       )}
 
-      <section className="plan-home__section">
-        <div className="plan-home__section-head">
-          <span className="plan-home__title">Recent trips</span>
-          {trips.length > RECENT_TRIPS && (
+      {/* Hidden with no trips at all, which a day-hikes-only home can now
+          be: a header over an empty list is a shelf with a label and no
+          answer on it. */}
+      {trips.length > 0 && (
+        <section className="plan-home__section">
+          <div className="plan-home__section-head">
+            <span className="plan-home__title">Recent trips</span>
+            {trips.length > RECENT_TRIPS && (
+              <button type="button" className="plan-home__all" onClick={onAllTrips}>
+                All {trips.length} ›
+              </button>
+            )}
+          </div>
+          {recent.slice(0, RECENT_TRIPS).map((trip) => (
+            <button
+              type="button"
+              className="plan-home__row"
+              key={trip.id}
+              onClick={() => onOpenTrip(trip.id)}
+            >
+              <span className="plan-home__row-name">{trip.name}</span>
+              <span className="plan-home__meta">
+                {tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
+                  'no dates yet'}
+              </span>
+            </button>
+          ))}
+          {trips.length <= RECENT_TRIPS && trips.length > 0 && (
             <button type="button" className="plan-home__all" onClick={onAllTrips}>
-              All {trips.length} ›
+              Rename or delete ›
             </button>
           )}
-        </div>
-        {recent.slice(0, RECENT_TRIPS).map((trip) => (
-          <button
-            type="button"
-            className="plan-home__row"
-            key={trip.id}
-            onClick={() => onOpenTrip(trip.id)}
-          >
-            <span className="plan-home__row-name">{trip.name}</span>
-            <span className="plan-home__meta">
-              {tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
-                'no dates yet'}
-            </span>
-          </button>
-        ))}
-        {trips.length <= RECENT_TRIPS && trips.length > 0 && (
-          <button type="button" className="plan-home__all" onClick={onAllTrips}>
-            Rename or delete ›
-          </button>
-        )}
-      </section>
+        </section>
+      )}
 
       <button type="button" className="plan__primary" onClick={onNewTrip}>
         {draftLive ? 'Back to your route' : 'Plan a new trip'}

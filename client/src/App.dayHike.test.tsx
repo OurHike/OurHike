@@ -386,6 +386,11 @@ describe('the day-hike builder, end to end', () => {
     expect(within(card).getByText('If you need to get off')).toBeInTheDocument()
     expect(within(card).getByText(/Seven Hills Trail \(white\)/)).toBeInTheDocument()
     expect(within(card).queryByText(/7\.0 mi/)).not.toBeInTheDocument()
+    // The steward join reaches the card too - names, never raw keys.
+    expect(within(card).getByText('NYS Parks')).toBeInTheDocument()
+    expect(
+      within(card).queryByText(/oprhp_trails|nynjtc_long_path/),
+    ).not.toBeInTheDocument()
 
     // Delete takes two taps, and the row leaves the home with the record.
     await user.click(within(card).getByRole('button', { name: 'Delete this day hike' }))

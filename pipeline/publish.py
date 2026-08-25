@@ -473,6 +473,12 @@ def collect_artifacts() -> dict[str, dict]:
             )
         else:
             artifacts["trail_graph.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+            # The geometry half, gated with its routing half above - one
+            # manifest binds the pair so they cannot publish separately.
+            artifacts["trail_graph_geometry.json"] = {
+                "path": manifest["geometry_path"],
+                "sha256": manifest["geometry_sha256"],
+            }
 
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():

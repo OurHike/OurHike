@@ -5,6 +5,7 @@ import {
   parseStewards,
   storedStewards,
   type Steward,
+  orgLabelFrom,
 } from './stewards'
 
 // What the phone makes of pipeline/export_sources.py's artifact (#927). The
@@ -19,6 +20,7 @@ const ATC = {
   licence: '© ATC, used with permission',
   attribution: null,
   layers: ['A.T. Centerline', 'A.T. Shelters'],
+  keys: ['centerline'],
 }
 
 function only(value: unknown): Steward {
@@ -117,5 +119,38 @@ describe('the layer count', () => {
 
   it('says nothing at all when no layers are published', () => {
     expect(layerCountLine({ ...ATC, layers: [] })).toBeNull()
+  })
+})
+
+describe('orgLabelFrom, which frame 1j tallies with', () => {
+  const stewards = parseStewards({
+    stewards: [
+      {
+        name: 'NY–NJ Trail Conference',
+        keys: ['nynjtc_long_path', 'nynjtc_highlands_trail'],
+      },
+      { name: 'Appalachian Trail Conservancy', keys: ['centerline', 'side_trails'] },
+    ],
+  })
+  const label = orgLabelFrom(stewards)
+
+  it('turns a source key into the organization a hiker should read', () => {
+    expect(label('nynjtc_long_path')).toBe('NY–NJ Trail Conference')
+    expect(label('centerline')).toBe('Appalachian Trail Conservancy')
+  })
+
+  it('shows an unclaimed key as itself rather than a prettied guess', () => {
+    // Ugly and true: a raw key says "this app has a key it cannot name",
+    // where a cleaned-up guess would say something nobody stands behind.
+    expect(label('oprhp_trails')).toBe('oprhp_trails')
+  })
+
+  it('calls an edge with no source at all Unattributed', () => {
+    expect(label(null)).toBe('Unattributed')
+  })
+
+  it('has nothing to join on when the phone holds no steward list', () => {
+    const bare = orgLabelFrom(EMPTY_STEWARDS)
+    expect(bare('nynjtc_long_path')).toBe('nynjtc_long_path')
   })
 })

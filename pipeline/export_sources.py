@@ -188,6 +188,13 @@ def build_output(registry: dict | None = None) -> dict:
                 # a card can say "Centerline, shelters, closures" without this
                 # file inventing a summary of somebody else's data.
                 "layers": sorted(e.get("title", e["key"]) for e in entries),
+                # The registry keys behind those layers - what a graph edge's
+                # `source` is (#978), so the phone can turn `oprhp_trails`
+                # into the organization's name. NOT index-aligned with
+                # `layers`: both lists are sorted independently, in different
+                # vocabularies. Joining them positionally is the mistake this
+                # comment exists to prevent.
+                "keys": sorted(e["key"] for e in entries),
             }
         )
 

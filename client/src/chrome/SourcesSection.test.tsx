@@ -14,6 +14,7 @@ const ATC = {
   licence: '© ATC, used with permission',
   attribution: null,
   layers: ['A.T. Centerline', 'A.T. Shelters'],
+  keys: [],
 }
 
 const OSM = {
@@ -23,6 +24,7 @@ const OSM = {
   licence: null,
   attribution: '(c) OpenStreetMap contributors',
   layers: ['OSM water point sources'],
+  keys: [],
 }
 
 const BOTH: Stewards = [ATC, OSM]

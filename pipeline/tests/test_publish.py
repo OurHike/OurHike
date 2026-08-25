@@ -1100,8 +1100,19 @@ def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
 def _write_graph_manifest(tmp_path, sources):
     artifact = tmp_path / "trail_graph.json"
     artifact.write_text('{"nodes":[],"edges":[]}')
+    geometry = tmp_path / "trail_graph_geometry.json"
+    geometry.write_text("[]")
     (tmp_path / "trail_graph_manifest.json").write_text(
-        json.dumps({"path": str(artifact), "sha256": "gr4ph", "edges": 0, "sources": sources})
+        json.dumps(
+            {
+                "path": str(artifact),
+                "sha256": "gr4ph",
+                "geometry_path": str(geometry),
+                "geometry_sha256": "g30m",
+                "edges": 0,
+                "sources": sources,
+            }
+        )
     )
 
 
@@ -1116,6 +1127,7 @@ def test_collect_holds_back_the_graph_on_the_same_licence_gate_as_its_lines(tmp_
     artifacts = publish.collect_artifacts()
 
     assert "trail_graph.json" not in artifacts
+    assert "trail_graph_geometry.json" not in artifacts
     assert "HELD BACK" in capsys.readouterr().out
 
 
@@ -1126,7 +1138,11 @@ def test_collect_publishes_the_graph_once_every_steward_has_answered(tmp_path, m
         {"oprhp_trails": {"reaches_hikers": True}, "nynjtc_long_path": {"reaches_hikers": True}},
     )
 
-    assert publish.collect_artifacts()["trail_graph.json"]["sha256"] == "gr4ph"
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["trail_graph.json"]["sha256"] == "gr4ph"
+    # The pair publishes together or not at all - one manifest binds them.
+    assert artifacts["trail_graph_geometry.json"]["sha256"] == "g30m"
 
 
 def test_collect_treats_an_unbuilt_graph_as_an_absence(tmp_path, monkeypatch):

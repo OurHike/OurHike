@@ -36,7 +36,12 @@
 // hiker's dot; this refuses them because a graph decides where a router says
 // somebody can walk, and there is no lesser use of one to fall back to.
 
-import { DATA_CONFIGURED, dataUrl, TRAIL_GRAPH_KEY } from './config'
+import {
+  DATA_CONFIGURED,
+  dataUrl,
+  TRAIL_GRAPH_GEOMETRY_KEY,
+  TRAIL_GRAPH_KEY,
+} from './config'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
 import { buildGraphIndex, type TrailGraph, type TrailGraphIndex } from './trailGraph'
@@ -98,4 +103,75 @@ export async function fetchTrailGraph(
     // None of them is worth a word to the hiker.
     return null
   }
+}
+
+/** Whether the parsed JSON is one coordinate list per edge. */
+function isGraphGeometry(value: unknown): value is Array<Array<[number, number]>> {
+  if (!Array.isArray(value)) return false
+  const first = value[0]
+  if (value.length > 0) {
+    if (!Array.isArray(first) || first.length < 2) return false
+    const vertex = first[0]
+    if (
+      !Array.isArray(vertex) ||
+      typeof vertex[0] !== 'number' ||
+      typeof vertex[1] !== 'number'
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
+ * The graph's edge vertices, fetched lazily when the day-hike builder opens.
+ *
+ * `edgeCount` is the graph the caller already holds, and the check against it
+ * is the point: the two artifacts are index-aligned, and edge 40 drawn from
+ * edge 41's vertices is a route on the wrong trail. A count mismatch means
+ * the pair on this phone came from two different publishes, and null - no
+ * highlight, chords refused - beats drawing the wrong one.
+ */
+export async function fetchTrailGraphGeometry(
+  edgeCount: number,
+  signal?: AbortSignal,
+): Promise<Array<Array<[number, number]>> | null> {
+  if (!DATA_CONFIGURED) return null
+
+  try {
+    const response = await fetch(dataUrl(TRAIL_GRAPH_GEOMETRY_KEY), { signal })
+    if (!response.ok) return null
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    const expected = await publishedHash(TRAIL_GRAPH_GEOMETRY_KEY, { signal })
+    if (expected === null) return null
+    if ((await sha256Of(bytes)) !== expected) return null
+
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    if (!isGraphGeometry(parsed)) return null
+    if (parsed.length !== edgeCount) return null
+
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The index with its edges carrying their vertices - a NEW index, the input
+ * untouched, so a caller holding the routing-only index keeps it.
+ */
+export function attachTrailGraphGeometry(
+  index: TrailGraphIndex,
+  geometry: Array<Array<[number, number]>>,
+): TrailGraphIndex {
+  if (geometry.length !== index.graph.edges.length) return index
+  const graph = {
+    nodes: index.graph.nodes,
+    edges: index.graph.edges.map((edge, edgeIndex) => ({
+      ...edge,
+      geometry: geometry[edgeIndex],
+    })),
+  }
+  return buildGraphIndex(graph)
 }

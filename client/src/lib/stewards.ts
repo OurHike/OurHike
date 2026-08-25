@@ -43,6 +43,9 @@ export interface Steward {
   attribution: string | null
   /** The titles of the layers of theirs that ship. Their words, not ours. */
   layers: readonly string[]
+  /** The registry keys behind those layers - what a graph edge's `source` is.
+   *  NOT index-aligned with `layers`; both are sorted independently. */
+  keys: readonly string[]
 }
 
 export type Stewards = readonly Steward[]
@@ -88,6 +91,7 @@ export function parseStewards(value: unknown): Stewards {
       licence: optionalString(record?.licence),
       attribution: optionalString(record?.attribution),
       layers: stringList(record?.layers),
+      keys: stringList(record?.keys),
     })
   }
   return stewards
@@ -124,4 +128,28 @@ export function layerCountLine(steward: Steward): string | null {
   const count = steward.layers.length
   if (count === 0) return null
   return count === 1 ? '1 layer' : `${count} layers`
+}
+
+/**
+ * A graph edge's `source` key, as the organization a hiker should read
+ * (#978, frame `1j`'s live tally).
+ *
+ * Three answers, in honesty order:
+ * - a steward claims the key: their `name`, their words;
+ * - no steward claims it: the KEY itself, which is ugly and true - a raw
+ *   `oprhp_trails` says "this app has a key it cannot name" where a prettied
+ *   guess would say something nobody stands behind;
+ * - null (an edge with no source at all): "Unattributed", which is not a
+ *   claim about who maintains it but a statement that nothing does the
+ *   claiming.
+ */
+export function orgLabelFrom(stewards: Stewards): (source: string | null) => string {
+  const byKey = new Map<string, string>()
+  for (const steward of stewards) {
+    for (const key of steward.keys) byKey.set(key, steward.name)
+  }
+  return (source) => {
+    if (source === null) return 'Unattributed'
+    return byKey.get(source) ?? source
+  }
 }

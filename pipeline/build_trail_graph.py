@@ -101,11 +101,10 @@ from collections import defaultdict
 from pathlib import Path
 
 from pyproj import Transformer
-from shapely.geometry import LineString, MultiLineString, Point, box, shape
+from shapely.geometry import LineString, MultiLineString, Point, shape
 from shapely.ops import substring, transform
 from shapely.strtree import STRtree
 
-from export_nearby_trails import RING_BBOX
 from lib.hashing import sha256_file
 
 ROOT = Path(__file__).resolve().parent
@@ -118,6 +117,7 @@ INPUT_NAME = "nearby_trails.geojson"
 TRAILS_NAME = "trails.geojson"
 NEARBY_MANIFEST_NAME = "nearby_trails_manifest.json"
 ARTIFACT_NAME = "trail_graph.json"
+GEOMETRY_NAME = "trail_graph_geometry.json"
 MANIFEST_NAME = "trail_graph_manifest.json"
 
 # Which of trails.geojson's sources become graph edges. The centerline and the
@@ -167,7 +167,7 @@ def _transformers() -> tuple[Transformer, Transformer]:
 
 
 def load_at_lines(path: Path) -> dict | None:
-    """trails.geojson's A.T. lines, clipped to the ring, as a FeatureCollection.
+    """trails.geojson's A.T. lines - centerline and side trails, WHOLE.
 
     WITHOUT THIS THE GRAPH TELLS A HIKER A FALSE SENTENCE. export_nearby_trails
     deliberately suppresses every other organization's copy of a route ATC owns
@@ -175,16 +175,14 @@ def load_at_lines(path: Path) -> dict | None:
     DESIGN - and a graph built from that artifact alone would refuse a tap on
     the widest line on the map with "that tap isn't on a marked hiking route",
     which in that one case is untrue. Frame `1l`'s own worked example walks an
-    A.T. leg ("Appalachian Trail · 0.9 mi · ATC"), so the design assumes the
-    centerline routes.
+    A.T. leg ("Appalachian Trail - 0.9 mi - ATC").
 
-    CUT AT THE RING, WHERE THE NETWORK ARTIFACT'S LINES NEVER ARE. That is a
-    deliberate divergence from export_nearby_trails' keep-whole rule, and the
-    reason is what each artifact is for: a drawn line cut mid-park looks like a
-    trail ending where it does not, but a ROUTING graph for the ring has no use
-    for two thousand miles of Georgia-to-Maine centerline, and a cut at the
-    ring boundary makes an ordinary endpoint node - a route simply stops where
-    the published network stops, which is true.
+    NOT CLIPPED TO THE RING - the maintainer's call, 2026-08-25: the graph
+    holds all trails from the three organizations this app ships, the whole
+    A.T. included. Which geographies a phone downloads is a future, hiker-made
+    choice (the same decision space as OFFLINE_COVERAGE's unit question), not a
+    build-time cut. The routing artifact stays small because geometry ships
+    separately - see write_artifact.
 
     None when the file is absent, which main() reports loudly: a graph without
     the A.T. still routes the other trails, but every refusal on the A.T. is
@@ -193,12 +191,12 @@ def load_at_lines(path: Path) -> dict | None:
     """
     if not path.exists():
         return None
-    return clip_at_lines(json.loads(path.read_text(encoding="utf-8")))
+    return at_lines_of(json.loads(path.read_text(encoding="utf-8")))
 
 
-def clip_at_lines(collection: dict) -> dict:
-    """The clip itself, separated so a test can hand it a collection."""
-    ring = box(*RING_BBOX)
+def at_lines_of(collection: dict) -> dict:
+    """The A.T. features that may route, separated so a test can hand it a
+    collection."""
     kept = []
     for feature in collection.get("features", []):
         properties = feature.get("properties") or {}
@@ -207,19 +205,7 @@ def clip_at_lines(collection: dict) -> dict:
         geometry_json = feature.get("geometry")
         if not geometry_json:
             continue
-        geometry = shape(geometry_json)
-        if geometry.is_empty or not geometry.intersects(ring):
-            continue
-        clipped = geometry.intersection(ring)
-        if clipped.is_empty:
-            continue
-        kept.append(
-            {
-                "type": "Feature",
-                "properties": properties,
-                "geometry": json.loads(json.dumps(clipped.__geo_interface__)),
-            }
-        )
+        kept.append({"type": "Feature", "properties": properties, "geometry": geometry_json})
     return {"type": "FeatureCollection", "features": kept}
 
 
@@ -612,21 +598,42 @@ def sweep(collection: dict, at_collection: dict | None = None, tolerances=SWEEP_
 
 
 def write_artifact(graph: dict, stats: dict, sources: dict | None = None) -> dict:
-    """Write the artifact and its manifest sidecar, publish.py's shape.
+    """Write the routing artifact, the geometry artifact, and one manifest.
+
+    TWO ARTIFACTS, SPLIT ON WHEN A PHONE NEEDS THEM - the maintainer's call,
+    2026-08-25. The routing half (nodes, edges, lengths, attribution) is what
+    PlanKindSheet needs at launch to say whether a day hike is even on offer;
+    the geometry half (each edge's vertices, index-aligned with `edges`) is
+    only needed once the builder opens, and with the whole A.T. in the graph it
+    is by far the heavier half. Splitting keeps "can I plan a day hike" cheap
+    on every launch that never opens the door.
+
+    INDEX-ALIGNED, AND THE MANIFEST BINDS THE PAIR. trail_graph_geometry.json
+    is one coordinate list per edge, in edge order. The alignment invariant is
+    real and silent when broken - edge 40's highlight drawn from edge 41's
+    vertices is a route on the wrong trail - so both files' hashes live in ONE
+    manifest and the client refuses a geometry whose edge count disagrees.
 
     `sources` is copied from the nearby-trails manifest so THE LICENCE GATE
     TRAVELS WITH THE DERIVATION: this graph is those lines' topology, and
-    publish.py must be able to hold it back on exactly the `reaches_hikers`
-    check it applies to the lines themselves. Topology of data a steward has
-    not licensed is still that steward's data.
+    publish.py must be able to hold both halves back on exactly the
+    `reaches_hikers` check it applies to the lines themselves.
     """
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    geometry = [edge.pop("geometry") for edge in graph["edges"]]
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(graph, separators=(",", ":")), encoding="utf-8")
+    geometry_path = OUT_DIR / GEOMETRY_NAME
+    geometry_path.write_text(json.dumps(geometry, separators=(",", ":")), encoding="utf-8")
+
     manifest = {
         "path": str(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
+        "geometry_path": str(geometry_path),
+        "geometry_sha256": sha256_file(geometry_path),
+        "geometry_bytes": geometry_path.stat().st_size,
         "sources": sources or {},
         **stats,
     }
@@ -682,6 +689,7 @@ def main() -> dict:
     print(f"  junctions (>=3): {stats['junctions']}")
     print(f"  components:      {stats['components']}")
     print(f"  artifact:        {manifest['bytes']} bytes at {manifest['path']}")
+    print(f"  geometry:        {manifest['geometry_bytes']} bytes at {manifest['geometry_path']}")
     print(
         "\n#757 established that ~3,000 edges routes acceptably on a phone. "
         f"This graph has {stats['edges']}; well past 3,000 and lib/trailGraph.ts's plain-scan "

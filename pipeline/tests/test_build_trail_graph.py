@@ -415,9 +415,10 @@ def test_a_split_keeps_each_pieces_interior_vertices():
     assert west_half, "the piece west of the crossing keeps its bend"
 
 
-def test_the_at_joins_the_graph_and_is_cut_at_the_ring():
-    # A centerline that runs far outside the ring: only the inside part may
-    # become edges, ending at an ordinary node on the boundary.
+def test_the_at_joins_the_graph_whole_and_unclipped():
+    # The maintainer's call, 2026-08-25: all trails from the three orgs, the
+    # whole A.T. included - no ring cut. Geography is a future download
+    # choice, not a build-time one.
     at = {
         "type": "FeatureCollection",
         "features": [
@@ -429,25 +430,29 @@ def test_the_at_joins_the_graph_and_is_cut_at_the_ring():
                     "name": "Appalachian Trail",
                     "blaze_color": "White",
                 },
-                # From inside the ring to far north of its 42.55 edge.
+                # From inside the old ring to far north of its 42.55 edge.
                 "geometry": {
                     "type": "LineString",
                     "coordinates": [[LON, LAT], [LON, 44.0]],
                 },
-            }
+            },
+            {
+                "type": "Feature",
+                "properties": {"id": "roads:1", "source": "roads", "name": "Road"},
+                "geometry": {"type": "LineString", "coordinates": [[LON, LAT], [LON + 0.01, LAT]]},
+            },
         ],
     }
     network = _feature([(LON - 0.01, LAT), (LON + 0.01, LAT)], feature_id="oprhp_trails:1")
 
-    graph, stats = graph_builder.build(_collection(network), at_collection=graph_builder.clip_at_lines(at))
+    graph, stats = graph_builder.build(_collection(network), at_collection=graph_builder.at_lines_of(at))
 
     assert stats["at_included"] is True
+    assert stats["at_lines"] == 1, "centerline joins; a source outside AT_GRAPH_SOURCES does not"
     at_edges = [edge for edge in graph["edges"] if edge["source"] == "centerline"]
-    assert at_edges, "the A.T. must be routable inside the ring"
-    ring_north = graph_builder.RING_BBOX[3]
-    for edge in at_edges:
-        for lon, lat in edge["geometry"]:
-            assert lat <= ring_north + 1e-6, "nothing outside the ring becomes an edge"
+    assert at_edges, "the A.T. must be routable"
+    northmost = max(lat for edge in at_edges for lon, lat in edge["geometry"])
+    assert northmost > 43.0, "nothing may be cut at the old ring boundary"
 
 
 def test_a_graph_built_without_the_at_says_so_in_its_stats():
@@ -457,15 +462,25 @@ def test_a_graph_built_without_the_at_says_so_in_its_stats():
     assert stats["at_lines"] == 0
 
 
-def test_the_manifest_sidecar_carries_the_hash_and_the_licence_sources(tmp_path, monkeypatch):
+def test_write_artifact_splits_geometry_out_and_the_manifest_binds_the_pair(tmp_path, monkeypatch):
     monkeypatch.setattr(graph_builder, "OUT_DIR", tmp_path)
-    graph, stats = _build(_feature([(LON, LAT), (LON + 0.01, LAT)]))
+    graph, stats = _build(_feature([(LON, LAT), (LON + 0.005, LAT + 0.004), (LON + 0.01, LAT)]))
 
     manifest = graph_builder.write_artifact(graph, stats, sources={"oprhp_trails": {"reaches_hikers": False}})
 
+    routing = json.loads((tmp_path / graph_builder.ARTIFACT_NAME).read_text())
+    geometry = json.loads((tmp_path / graph_builder.GEOMETRY_NAME).read_text())
+    # The routing half a phone downloads at launch carries no vertices...
+    assert all("geometry" not in edge for edge in routing["edges"])
+    # ...the lazy half carries one line per edge, index-aligned - the
+    # invariant the client re-checks, because edge 40 drawn from edge 41's
+    # vertices is a route on the wrong trail.
+    assert len(geometry) == len(routing["edges"])
+    assert len(geometry[0]) == 3, "the bend survives the split"
+
     sidecar = json.loads((tmp_path / graph_builder.MANIFEST_NAME).read_text())
     assert sidecar["sha256"] == manifest["sha256"]
-    assert sidecar["path"].endswith(graph_builder.ARTIFACT_NAME)
-    # The licence gate travels with the derivation - publish.py holds this
-    # artifact back on the same reaches_hikers check as its parent's.
+    assert sidecar["geometry_sha256"] == manifest["geometry_sha256"]
+    # The licence gate travels with the derivation - publish.py holds BOTH
+    # halves back on the same reaches_hikers check as their parent's.
     assert sidecar["sources"] == {"oprhp_trails": {"reaches_hikers": False}}

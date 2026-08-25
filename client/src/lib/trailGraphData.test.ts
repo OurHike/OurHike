@@ -21,8 +21,9 @@ vi.mock('./config', async (importOriginal) => ({
   dataUrl: (key: string) => `https://data.example/${key}`,
 }))
 
-const { fetchTrailGraph } = await import('./trailGraphData')
-const { TRAIL_GRAPH_KEY } = await import('./config')
+const { attachTrailGraphGeometry, fetchTrailGraph, fetchTrailGraphGeometry } =
+  await import('./trailGraphData')
+const { TRAIL_GRAPH_KEY, TRAIL_GRAPH_GEOMETRY_KEY } = await import('./config')
 
 // Two nodes and the edge between them, carrying exactly what
 // pipeline/build_trail_graph.py writes.
@@ -187,5 +188,106 @@ describe('bytes that pass the hash and are still not a graph', () => {
 
     expect(index).not.toBeNull()
     expect(index?.graph.edges).toHaveLength(0)
+  })
+})
+
+describe('the geometry half, fetched when the door opens', () => {
+  const GEOMETRY = JSON.stringify([
+    [
+      [-74.1, 41.25],
+      [-74.095, 41.254],
+      [-74.09, 41.25],
+    ],
+  ])
+
+  function serveGeometry({
+    body,
+    manifest,
+  }: {
+    body?: string | 'missing'
+    manifest?: unknown
+  }) {
+    // Same server shape as serve(), pointed at the geometry key.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (String(url).includes('latest.json')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(manifest ?? { artifacts: {} }),
+          } as unknown as Response)
+        }
+        if (body === 'missing') {
+          return Promise.resolve({ ok: false, status: 404 } as unknown as Response)
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          arrayBuffer: () =>
+            Promise.resolve(new TextEncoder().encode(body ?? GEOMETRY).buffer),
+        } as unknown as Response)
+      }),
+    )
+  }
+
+  it('returns the aligned vertices for a matching edge count', async () => {
+    serveGeometry({
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) } },
+      },
+    })
+
+    const geometry = await fetchTrailGraphGeometry(1)
+
+    expect(geometry).not.toBeNull()
+    expect(geometry?.[0]).toHaveLength(3)
+  })
+
+  it('refuses a geometry whose edge count disagrees with the graph', async () => {
+    // The pair came from two different publishes. Edge 40 drawn from edge
+    // 41's vertices is a route on the wrong trail - no highlight beats that.
+    serveGeometry({
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) } },
+      },
+    })
+
+    await expect(fetchTrailGraphGeometry(2)).resolves.toBeNull()
+  })
+
+  it('refuses unhashed or missing geometry the same way the graph is refused', async () => {
+    serveGeometry({ manifest: { artifacts: {} } })
+    await expect(fetchTrailGraphGeometry(1)).resolves.toBeNull()
+
+    serveGeometry({ body: 'missing' })
+    await expect(fetchTrailGraphGeometry(1)).resolves.toBeNull()
+  })
+
+  it('attaches onto a new index and leaves the routing-only one untouched', async () => {
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } } },
+    })
+    const bare = await fetchTrailGraph()
+    expect(bare).not.toBeNull()
+
+    const attached = attachTrailGraphGeometry(bare!, [
+      [
+        [-74.1, 41.25],
+        [-74.09, 41.25],
+      ],
+    ])
+
+    expect(attached.graph.edges[0].geometry).toHaveLength(2)
+    expect(bare!.graph.edges[0].geometry).toBeUndefined()
+  })
+
+  it('attaching a misaligned geometry changes nothing', async () => {
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } } },
+    })
+    const bare = await fetchTrailGraph()
+
+    expect(attachTrailGraphGeometry(bare!, [])).toBe(bare)
   })
 })

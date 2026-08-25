@@ -104,6 +104,16 @@ export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
  */
 export const TRAIL_GRAPH_KEY = 'trail_graph.json'
 
+/**
+ * The graph's edge vertices, index-aligned with TRAIL_GRAPH_KEY's `edges` and
+ * fetched only when the day-hike builder opens (#978). Split from the routing
+ * half so "can I plan a day hike" stays cheap on every launch that never opens
+ * the door - with the whole A.T. in the graph, this is by far the heavier
+ * half. One manifest binds the pair; lib/trailGraphData.ts refuses a geometry
+ * whose edge count disagrees with the graph it was fetched for.
+ */
+export const TRAIL_GRAPH_GEOMETRY_KEY = 'trail_graph_geometry.json'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

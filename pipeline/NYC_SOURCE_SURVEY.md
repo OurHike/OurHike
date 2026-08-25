@@ -24,7 +24,7 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | source | trails | POIs | closures | structured | last known change | verdict |
 |---|:-:|:-:|:-:|:-:|---|---|
 | NYS OPRHP AGOL org (4 layers) | ✓ 16,641 | ✓ 8,823 | ✓ live | ✓ | **2026-08-17** | **registered** (#769/#776); §2 |
-| NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | register next — §3 |
+| NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | trails **registered, ship** (#1019, maintainer authorisation 2026-08-25); the POI layers still unregistered — §3 |
 | NYNJTC public extracts (LP, HT, SRT) | ✓ 43 + 12 | | ✓ one live detour | ✓ | **2026-08-04** | register now — §4 |
 | NYNJTC full network | ✓ | ✓ | | org-internal | GIS program alive | **agreement, not a scrape** — §4 |
 | Mohonk Preserve trails/carriage roads | ✓ 304 | | | ✓ (own AGOL org) | **2026-08-24** | **registered, ships** (#992, maintainer authorisation 2026-08-25); §11 |
@@ -63,6 +63,28 @@ cut** — the Long Path itself continues past the Catskills toward Albany, and v
 program should probably cut the trail at the ring's edge and say so on screen rather than
 pretend it ends there (the seam question [#772](https://github.com/OurHike/OurHike/issues/772)
 owns).
+
+**Both closed 2026-08-25, and the ring with them**
+([#1019](https://github.com/OurHike/OurHike/issues/1019)). The maintainer's words:
+
+> There shouldnt be a ring around NYC. Include all of DEC, NYNJTC & NYSP. Don't limit data
+> from orgs based on geography.
+
+So there is no ring, no Long Island question and no northern cut: an organization's layer
+ships whole, and `export_nearby_trails.py` filters only on what a source says about a trail
+— walkable, open, whose route it is. The county lists above stay in this section as what
+the scope call meant by "within a day of NYC"; they are no longer a clip. The bbox is gone
+from the code rather than widened, because a wider box is the same decision with a
+different number in it.
+
+What the ring cost while it was on, measured 2026-08-25 by running the export either side
+of the change against the same fetched layers: **4,002 features → 21,805**. NYS Parks 3,618
+of their 16,641 statewide segments → 16,187. NYNJTC's Long Path 33 of 43 sections → all 43.
+DEC, registered by the same change, 418 rows → 5,224. What it now costs to carry: 1.7 MB
+gzipped → 7.3 MB, on a screen with no offline store yet —
+[features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §9 hands that number to
+[#552](https://github.com/OurHike/OurHike/issues/552), which is where a per-region cut
+belongs if one is wanted.
 
 ## 2. NYS OPRHP — registered, and what it does not cover
 
@@ -118,6 +140,43 @@ on-prem ArcGIS server, folder `dil`, and it qualifies well:
 **Verdict: register next**, as four-to-six `external_arcgis_layer` entries —
 `lib/arcgis.py`'s fetcher pages MapServer layers exactly as it pages FeatureServer ones, so
 `fetch_external_layers.py` consumes these with no code change beyond the freshness note.
+
+**Acted on 2026-08-25** ([#1019](https://github.com/OurHike/OurHike/issues/1019)), for the
+hiking layer only. `dil/dil_trails/MapServer/2` is in [sources.json](sources.json) as
+`dec_hiking_trails` behind a new `dec_licence` block, shipping on the maintainer's
+authorisation — the same footing `nynjtc_licence` and `mohonk_licence` use, since DEC's
+`copyrightText` is empty and an on-prem service has no AGOL item carrying terms to read.
+The prediction above held exactly, and then some: **no code change at all**, not even the
+freshness note — `lib/arcgis.py` paged the MapServer and 5,286 features came back on the
+first run.
+
+Re-probed that day against this section's 2026-08-11 reading: **5,286 segments**, up from
+5,277, so the layer moves as claimed. Three things the survey did not say, found on the
+re-probe and now carried in the entry itself:
+
+- **`MARKER` is a coded domain whose codes are the words** (Red/Yellow/Blue/Orange/Green/
+  White/Other), like OPRHP's `Blaze` and unlike `side_trails`' integers — so it goes
+  straight to `reference/blaze_mapping.json` with no decode in front of it. Live values:
+  2,929 rows say nothing at all, and one reads `ORANGE AND RED`, which DEC's own domain
+  does not declare and which is deferred rather than painted.
+- **`FOOT` reads `Y` on 4,050 rows and `M` on 1,236, and nothing else.** DEC's CORRIDOR USE
+  domain glosses `M` as MAINTAINED; 991 of those rows are `ASSET: FOOT TRAIL`, 681 carry a
+  marker colour, and the named ones are ordinary hiking trails — the Finger Lakes Trail,
+  the North Country Trail, the Long Path. Reading `M` as not-walkable would drop 23% of
+  DEC's own hiking layer, so the entry declares `foot_allowed: ["Y", "M"]`. That reading is
+  ours rather than DEC's and is tagged `@unvalidated` in `sources.json` with what would
+  settle it.
+- **There is no status column**, so every kept row exports as open. DEC publishes no
+  closure state in this layer and the export does not invent one.
+
+The `UNIT` hygiene is exactly as warned — AFP 2,293, CFP 312, hundreds of per-county
+state-forest codes, blanks and misspellings — and it stopped mattering, because nothing
+filters on where a trail is (§1). Two of DEC's rows are somebody else's route and are
+suppressed by the route-owner rule rather than by anything DEC-specific: 61 named
+`Long Path` (NYNJTC's) and 1 named `Appalachian Trail` (ATC's). **What is still
+unregistered:** Back Country Features (21,466 points), Trailheads (10,524) and the 314
+lean-tos. Those are POIs, they carry §10(g)'s open water question, and this change did not
+touch them.
 
 ## 4. NYNJTC — a public shelf bigger than the A.T. survey knew, and still an agreement
 
@@ -242,7 +301,7 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 | source | terms | state |
 |---|---|---|
 | NYS OPRHP (4 layers) | **Stated** — reuse permitted, attribution to OPRHP required, *non-commercial purposes*. **Corrected 2026-08-24 (#950):** this row read "Unstated; no-warranty disclaimer" because the item's `licenseInfo` was read through a 200-character truncation that cut off exactly where the disclaimer ends and the terms begin. Full text (1,095 chars) is quoted in `oprhp_licence`. | **Ask still open, on a narrower question** — not "what are the terms" but "is OurHike non-commercial within them", given features/PRICING_MODEL.md's paid passes (#769) |
-| NYS DEC (`dil` layers) | Unstated; no copyright text on service | **NEEDS REVIEW** — bundle with the OPRHP ask; Open-NY listing is precedent |
+| NYS DEC (`dil` layers) | Unstated; no copyright text on the service or on the hiking layer, re-read whole 2026-08-25. On-prem, so there is no AGOL item carrying terms either | **The hiking layer ships on maintainer authorisation, 2026-08-25** (#1019, `dec_licence`) — the same footing NYNJTC's and Mohonk's extracts ship on, not a stated grant. The ask is still open and is now the live one: bundle with OPRHP, one state, two agencies; Open-NY listing is precedent |
 | data.ny.gov copies | No licence field on either listing | Not a source: DEC copy last updated **2013**, OPRHP copy **2014-12-24** — proof the State publishes these openly, and proof the AGOL/on-prem services are the copies of record |
 | NYNJTC public extracts | Unstated — `licenseInfo` AND `accessInformation` both empty on both items, re-verified whole 2026-08-24 against the registered service URLs | Covered by the maintainer's NYNJTC conversation (#768). An absent licence is more restrictive than OPRHP's stated one, not less |
 | NYNJTC full network | Withheld | **An agreement, not a scrape** (SOURCE_SURVEY.md §10, reaffirmed) |
@@ -255,7 +314,11 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 
 1. **Register DEC** — `external_arcgis_layer` entries for the hiking layer, backcountry
    features, trailheads and lean-tos; the `max(UPDATED)` statistic recorded as the
-   freshness marker. No new fetch code needed.
+   freshness marker. No new fetch code needed. **The hiking layer is done** (2026-08-25,
+   #1019, §3) and needed no fetch code, as predicted; the three POI layers are not, and the
+   `max(UPDATED)` marker is recorded in the entry's notes rather than wired to anything —
+   nothing reads a freshness marker for an external layer today, so `fetch_external_layers.py`
+   re-fetches DEC on every run.
 2. **Register NYNJTC's Long Path and Highlands Trail services** — public, fresh, stable
    URLs; review-only until the conversation concludes.
 3. **Read the NJDEP Data Distribution Agreement**, then register the two NJ layers.
@@ -265,9 +328,13 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 5. **NEEDS REVIEW, gathered:**
    - (a) The maintainer's county links (#770 comment) — Westchester found nothing
      structured; the other NY counties are unprobed.
-   - (b) **Long Island: in the ring or out?** §1's open edge.
+   - (b) ~~**Long Island: in the ring or out?** §1's open edge.~~ **Dissolved 2026-08-25**
+     (#1019): there is no ring, so the question stopped being one — see §1. Long Island's
+     2,058 OPRHP segments ship.
    - (c) **Bundle DEC into the OPRHP ask** — one state, two agencies, Open-NY precedent
-     for both.
+     for both. **Still open, and now the live one rather than the tidy one**: DEC's trails
+     reach hikers as of 2026-08-25 on the maintainer's authorisation (#1019, `dec_licence`),
+     which is a decision taken in the absence of DEC's terms rather than a grant from them.
    - (d) **NJDEP Data Distribution Agreement** — full text unread.
    - (e) **NYNJTC's informal-trails layers are a do-not-ship hazard** — the §3b posture
      from the A.T. survey, applied here before anyone fetches them.

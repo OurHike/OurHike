@@ -318,8 +318,18 @@ signal draws no nearby trails at all. That was a deliberate hold rather than an 
 what a download contains is #552's decision, and building a second store beside
 `lib/trailData.ts`'s in advance of it would be a shape to unpick later — but the paragraph
 above is a requirement this build does not satisfy, and it should be read as outstanding
-rather than as described-and-done. The whole exported network is 1.72 MB gzipped
-(measured 2026-08-24), which is the number that decision has to weigh.
+rather than as described-and-done.
+
+**The number that decision has to weigh has moved, and it is the reason to take it.** The
+whole exported network was 1.72 MB gzipped on 2026-08-24, when the export clipped every
+organization's layer to a bounding box around New York City. The maintainer removed that
+clip on 2026-08-25 and registered NYS DEC in the same change
+([#1019](https://github.com/OurHike/OurHike/issues/1019)) — *"Include all of DEC, NYNJTC &
+NYSP. Don't limit data from orgs based on geography"* — and the artifact measured **7.34 MB
+gzipped, 23.5 MB raw, 21,805 features** the same day. That is what a phone pulls in one
+request today, for the whole of New York state, on a screen whose only offline story is
+still "it does not store it". A per-region cut is the obvious answer and it is
+[#552](https://github.com/OurHike/OurHike/issues/552)'s to make, not this doc's.
 
 ## 10. POI density, honestly
 

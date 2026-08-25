@@ -118,6 +118,7 @@ import {
   type SheetAppearance,
 } from './liveTopo'
 import {
+  DEC_CREDIT,
   MOHONK_CREDIT,
   NYNJTC_CREDIT,
   OPRHP_CREDIT,
@@ -140,10 +141,11 @@ export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
  * ITS OWN SOURCE, AND NOT BECAUSE THE MAP WANTED ONE. These lines belong in
  * the same source as the A.T.'s - they are drawn by the same expressions off
  * the same properties, and a single source would have meant a single set of
- * layers. They are separated because they are separately LICENSED: neither
- * NYS OPRHP nor NYNJTC has stated reuse terms, so the pipeline publishes them
- * as their own artifact and publish.py holds that artifact back entirely
- * while either steward is outstanding (lib/config.ts's NEARBY_TRAILS_KEY).
+ * layers. They are separated because they are separately LICENSED: NYS OPRHP
+ * states terms and NYNJTC, Mohonk Preserve and NYS DEC state none, so the
+ * pipeline publishes them as their own artifact and publish.py holds that
+ * artifact back entirely while ANY steward in it is outstanding (lib/config.ts's
+ * NEARBY_TRAILS_KEY).
  * One MapLibre GeoJSON source takes one `data`, so two artifacts is two
  * sources.
  *
@@ -971,7 +973,7 @@ export function buildMapStyle({
       [NEARBY_TRAILS_SOURCE_ID]: {
         type: 'geojson',
         data: emptyTrailOverview(),
-        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT}`,
+        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT} · ${DEC_CREDIT}`,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and

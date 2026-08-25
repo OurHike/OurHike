@@ -11,12 +11,19 @@ uniform 1-degree grid with a deterministic URL per cell:
 
 Verified 2026-08-12 against the real ANST centerline buffered 30 miles:
 **56/56 corridor cells resolve, zero discovery requests.** That measurement is
-of the corridor alone and predates the network extent below; how many cells the
-network adds has not been measured here, because this sandbox has no fetched
-layers to measure against. It is bounded rather than unknown - the network's
-own ring is nine cells (export_nearby_trails.RING_BBOX), most of which the
-corridor already crosses in NY and NJ - and the run prints the before/after
-counts, so the real figure lands in the log rather than in this docstring.
+of the corridor alone and predates the network extent below.
+
+WHAT THE NETWORK ADDS IS NO LONGER BOUNDED BY NINE CELLS. This docstring used
+to say it was - the network was clipped to a bounding box around New York City
+that spans nine cells, most of which the corridor already crosses in NY and NJ.
+#1019 removed that clip and registered NYS DEC, so the network is now every
+line NYS Parks, DEC, NYNJTC and Mohonk Preserve publish: measured 2026-08-25
+against the exported artifact either side of that change, **the lines touch 31
+cells where they used to touch 7** - from n41w073 in the Hudson Highlands to
+n46w074 on the Canadian border and n43w080 at Lake Erie. How many of those 31 the corridor already crosses is still unmeasured
+here, because this sandbox has no centerline fetch to compare against - and
+main() prints the before/after counts, so the real figure lands in the log
+rather than in this docstring.
 
 WHY THIS FILE USED TO ASK TNM ACCESS, AND WHY IT NO LONGER DOES
 

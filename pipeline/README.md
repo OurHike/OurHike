@@ -192,18 +192,21 @@ So **three** of the six external sources now carry `reaches_hikers: true` and sh
 
 Writes `data/processed/nearby_trails.geojson` and its manifest. Every feature carries the five properties the client already reads off a trail line — `source`, `blaze_color`, `name`, `trail_status`, `id` — so these draw through the same expressions the A.T. does and **ghost automatically**, because `client/src/map/nearbyTrails.ts` dims every source outside the chosen system.
 
-Four filters, each printing what it dropped (measured 2026-08-24 on a live fetch, **3,663 features out of 16,696 read**, 5.08 MB raw / 1.72 MB gzipped):
+Three filters, each printing what it dropped (measured 2026-08-25 on a live fetch, **21,805 features out of 22,286 read**, 23.5 MB raw / 7.3 MB gzipped):
 
 | filter | basis | what it dropped |
 |---|---|---|
-| Hiking only | maintainer, 2026-08-18 (*"It's OurHike, not OurBike"*) | 53 OPRHP segments with `Foot: N` |
-| The ring | [NYC_SOURCE_SURVEY.md](NYC_SOURCE_SURVEY.md) §1's **proposal** | 10,714 OPRHP segments outside it, 2,058 on Long Island, and 10 of NYNJTC's 43 Long Path sections north of the cut |
-| Status | maintainer, 2026-08-18 | 8 OPRHP segments with a blank or `Unknown` status (`Closed` **ships**, drawn barred) |
-| The route owner's line wins | [features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §5 | OPRHP's copy of the A.T. (66) and of the Long Path (124) |
+| Hiking only | maintainer, 2026-08-18 (*"It's OurHike, not OurBike"*) | 200 OPRHP segments with `Foot: N`. DEC's own `FOOT` reads `Y` on 4,050 rows and `M` (MAINTAINED) on 1,236 and nothing else, so its entry declares both walkable — see `foot_allowed` in [sources.json](sources.json) |
+| Status | maintainer, 2026-08-18 | 43 OPRHP segments with a blank, `Proposed` or `Unknown` status (`Closed` **ships**, drawn barred). No other source publishes a status column |
+| The route owner's line wins | [features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §5 | OPRHP's copy of the A.T. (66) and of the Long Path (145); DEC's copy of each (1 and 61) |
+
+**There was a fourth, and it was geographic.** Everything was clipped to a bounding box around New York City — [NYC_SOURCE_SURVEY.md](NYC_SOURCE_SURVEY.md) §1's proposed "ring", which that section left with two edges the maintainer had not closed. Both were closed on 2026-08-25, the same way: *"There shouldnt be a ring around NYC. Include all of DEC, NYNJTC & NYSP. Don't limit data from orgs based on geography"* ([#1019](https://github.com/OurHike/OurHike/issues/1019)). Measured either side of that change against the same fetched layers: 4,002 features → 21,805, NYS Parks 3,618 of their 16,641 statewide segments → 16,187, NYNJTC's Long Path 33 of 43 sections → all 43, and DEC — registered by the same change — 418 rows → 5,224.
 
 It also derives the **closed areas** onto those lines ([#964](https://github.com/OurHike/OurHike/issues/964)). NYS Parks publishes closures as polygons over ground with the reason as prose and no dates, which the app's other two closure feeds cannot represent — both are start/end mile markers on the A.T. centerline, and measured 2026-08-24 two of the four closures never touch the A.T. So `apply_area_closures()` intersects the polygons with the trail records instead: **99 sections closed from 4 areas, 64 wholly and 35 split at the boundary**. A partly-covered trail is split rather than closed whole, because closing whole would mark the Ramapo-Dunderberg shut on 16.7% of its length. The client needs no change — the barred band over this source already reads `trail_status`.
 
-Two of those want reading before they are trusted. The ring is a **survey proposal with two edges the maintainer has not closed**, and applying it decides one of them by default — see `RING_BBOX`'s comment for what Long Island and the northern cut each cost. And the route-owner rule matches a source's own `Name` and nothing else: matching OPRHP's `Alt_Name` too would have looked like the obvious generalisation and deleted 26 real trails the A.T. merely runs along, the 1777 East Trail and the Ramapo-Dunderberg among them.
+One of those wants reading before it is trusted: the route-owner rule matches a source's own `Name` and nothing else. Matching OPRHP's `Alt_Name` too would have looked like the obvious generalisation and deleted 26 real trails the A.T. merely runs along, the 1777 East Trail and the Ramapo-Dunderberg among them.
+
+**And one number wants watching.** 7.3 MB gzipped is what a phone pulls in one request for the whole of New York state, against 1.7 MB when the ring was on — on a screen that still does not store what it fetched ([features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §9). The junction graph derived from these lines grew with them: 8,185 edges → 37,134, which `build_trail_graph.py` itself now prints a warning about against the ~3,000 [#757](https://github.com/OurHike/OurHike/issues/757) established as routable on a phone. Neither is fixed here; both are [#552](https://github.com/OurHike/OurHike/issues/552)'s coverage-unit decision arriving with a bigger number attached than it had before.
 
 ## POI descriptions
 

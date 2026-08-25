@@ -24,6 +24,7 @@ import {
   metresToMiles,
   nearestPointOnGraph,
   routeBetween,
+  routeGeometry,
   routeThrough,
   type TrailGraph,
 } from './trailGraph'
@@ -279,5 +280,142 @@ describe('the graph index', () => {
     const empty = buildGraphIndex({ nodes: [], edges: [] })
 
     expect(nearestPointOnGraph(empty, { lon: -74.1, lat: 41.25 })).toBeNull()
+  })
+})
+
+describe('routeGeometry, which is what the casing draws', () => {
+  // The same graph, but with real polylines: e0 bends north mid-way.
+  const DRAWN: TrailGraph = {
+    nodes: GRAPH.nodes,
+    edges: [
+      {
+        ...GRAPH.edges[0],
+        geometry: [
+          [-74.1, 41.25],
+          [-74.095, 41.254],
+          [-74.09, 41.25],
+        ],
+      },
+      {
+        ...GRAPH.edges[1],
+        geometry: [
+          [-74.09, 41.25],
+          [-74.08, 41.25],
+        ],
+      },
+      {
+        ...GRAPH.edges[2],
+        geometry: [
+          [-74.09, 41.25],
+          [-74.09, 41.26],
+        ],
+      },
+      { ...GRAPH.edges[3] },
+    ],
+  }
+
+  it('keeps the bend rather than drawing the chord', () => {
+    const lines = routeGeometry(DRAWN, [0])
+
+    expect(lines).not.toBeNull()
+    expect(lines?.[0]).toHaveLength(3)
+    expect(lines?.[0][1]).toEqual([-74.095, 41.254])
+  })
+
+  it('reverses an edge walked against its published direction', () => {
+    // e1 then e0: entering e0 at node 1, which is its `to`, so its
+    // vertices must come back reversed - two legs meeting head to head is
+    // the case a naive concatenation gets wrong invisibly.
+    const lines = routeGeometry(DRAWN, [1, 0])
+
+    expect(lines).not.toBeNull()
+    expect(lines?.[1][0]).toEqual([-74.09, 41.25])
+    expect(lines?.[1][2]).toEqual([-74.1, 41.25])
+  })
+
+  it('trims the first and last edges to the tapped fractions', () => {
+    const start = {
+      edgeIndex: 0,
+      fraction: 0.5,
+      at: { lon: 0, lat: 0 },
+      offNetworkFeet: 0,
+    }
+    const end = { edgeIndex: 1, fraction: 0.5, at: { lon: 0, lat: 0 }, offNetworkFeet: 0 }
+
+    const lines = routeGeometry(DRAWN, [0, 1], start, end)
+
+    expect(lines).not.toBeNull()
+    // The first line begins mid-edge, not at node 0.
+    expect(lines?.[0][0][0]).toBeGreaterThan(-74.1)
+    // The last line ends mid-edge, not at node 2.
+    const lastLine = lines?.[lines.length - 1]
+    expect(lastLine?.[lastLine.length - 1][0]).toBeLessThan(-74.08)
+  })
+
+  it('slices a single-edge route between the two taps, either way round', () => {
+    const nearFrom = {
+      edgeIndex: 1,
+      fraction: 0.25,
+      at: { lon: 0, lat: 0 },
+      offNetworkFeet: 0,
+    }
+    const nearTo = {
+      edgeIndex: 1,
+      fraction: 0.75,
+      at: { lon: 0, lat: 0 },
+      offNetworkFeet: 0,
+    }
+
+    const forward = routeGeometry(DRAWN, [1], nearFrom, nearTo)
+    const backward = routeGeometry(DRAWN, [1], nearTo, nearFrom)
+
+    expect(forward).not.toBeNull()
+    expect(backward).not.toBeNull()
+    const span = (lines: Array<Array<[number, number]>>) =>
+      Math.abs(lines[0][lines[0].length - 1][0] - lines[0][0][0])
+    // Both cover the same half of the 0.01-degree edge.
+    expect(span(forward!)).toBeCloseTo(0.005, 5)
+    expect(span(backward!)).toBeCloseTo(0.005, 5)
+  })
+
+  it('refuses to draw chords when an edge has no geometry', () => {
+    // GRAPH's edges carry no geometry at all - an older artifact. No drawing
+    // beats drawing a straight line across a switchback.
+    expect(routeGeometry(GRAPH, [0, 1])).toBeNull()
+  })
+})
+
+describe('projection onto a bent edge', () => {
+  it('measures a tap against the trail, not the chord between junctions', () => {
+    const bent = buildGraphIndex({
+      nodes: [
+        [-74.1, 41.25],
+        [-74.09, 41.25],
+      ],
+      edges: [
+        {
+          from: 0,
+          to: 1,
+          length_m: 1200,
+          trail_id: 'oprhp_trails:1',
+          source: 'oprhp_trails',
+          name: 'Pine Meadow Trail',
+          blaze_color: 'blue',
+          geometry: [
+            [-74.1, 41.25],
+            [-74.095, 41.254],
+            [-74.09, 41.25],
+          ],
+        },
+      ],
+    })
+
+    // On the bend's apex - roughly 445 m from the chord, well past the 150 ft
+    // tolerance, and ON the trail. The chord fallback would refuse it.
+    const found = nearestPointOnGraph(bent, { lon: -74.095, lat: 41.254 })
+
+    expect(found).not.toBeNull()
+    expect(found?.offNetworkFeet).toBeLessThan(5)
+    expect(found?.fraction).toBeCloseTo(0.5, 1)
   })
 })

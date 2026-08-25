@@ -52,6 +52,14 @@ export interface GraphEdge {
   source: string | null
   name: string | null
   blaze_color: string | null
+  /**
+   * The piece's own vertices, `[lon, lat]` in from->to order. Optional
+   * because a graph published before it existed still routes; without it an
+   * edge projects and draws as the straight chord between its nodes, which
+   * across a switchback is a picture of a trail that does not exist - so
+   * {@link routeGeometry} returns null rather than drawing chords.
+   */
+  geometry?: Array<[number, number]>
 }
 
 /** The artifact as published: nodes are `[lon, lat]`. */
@@ -162,12 +170,14 @@ function localMetres(from: LonLat, to: LonLat): { x: number; y: number } {
 /**
  * Where on this edge the point lies, as a fraction, plus how far off it was.
  *
- * The edge is treated as the straight line between its two nodes. That is a
- * real approximation and it is stated rather than hidden: build_trail_graph.py
- * splits at every junction, so an edge is one trail between two junctions and
- * can bend a long way in between. It costs accuracy on a long curving edge and
- * nothing on a short one, and it is why `offNetworkFeet` is reported rather
- * than assumed small - the caller refuses on it.
+ * Walks the edge's own vertices where the artifact carries them, so a tap on
+ * the far side of a switchback measures its distance to the TRAIL and not to
+ * the chord between two junctions - a chord could refuse a finger that was on
+ * the ground the whole time. `fraction` is distance along the polyline over
+ * its total, which is the same scale `length_m` prices.
+ *
+ * The chord remains as the fallback for a geometry-less edge (an artifact
+ * published before geometry existed), stated rather than hidden.
  */
 function projectOntoEdge(
   index: TrailGraphIndex,
@@ -175,33 +185,47 @@ function projectOntoEdge(
   at: LonLat,
 ): { fraction: number; offMetres: number; point: LonLat } {
   const edge = index.graph.edges[edgeIndex]
-  const fromNode = index.graph.nodes[edge.from]
-  const toNode = index.graph.nodes[edge.to]
-  const start: LonLat = { lon: fromNode[0], lat: fromNode[1] }
-  const end: LonLat = { lon: toNode[0], lat: toNode[1] }
+  const vertices: Array<[number, number]> =
+    edge.geometry !== undefined && edge.geometry.length >= 2
+      ? edge.geometry
+      : [index.graph.nodes[edge.from], index.graph.nodes[edge.to]]
 
-  const span = localMetres(start, end)
-  const offset = localMetres(start, at)
-  const spanLengthSquared = span.x * span.x + span.y * span.y
+  let best: { offMetres: number; point: LonLat; along: number } | null = null
+  let walked = 0
+  let total = 0
 
-  let fraction = 0
-  if (spanLengthSquared > 0) {
-    fraction = (offset.x * span.x + offset.y * span.y) / spanLengthSquared
-    fraction = Math.min(1, Math.max(0, fraction))
+  for (let step = 0; step + 1 < vertices.length; step += 1) {
+    const start: LonLat = { lon: vertices[step][0], lat: vertices[step][1] }
+    const end: LonLat = { lon: vertices[step + 1][0], lat: vertices[step + 1][1] }
+    const span = localMetres(start, end)
+    const spanLength = Math.hypot(span.x, span.y)
+    const offset = localMetres(start, at)
+
+    let along = 0
+    if (spanLength > 0) {
+      along = (offset.x * span.x + offset.y * span.y) / (spanLength * spanLength)
+      along = Math.min(1, Math.max(0, along))
+    }
+    const offMetres = Math.hypot(offset.x - span.x * along, offset.y - span.y * along)
+    if (best === null || offMetres < best.offMetres) {
+      best = {
+        offMetres,
+        point: {
+          lon: start.lon + (end.lon - start.lon) * along,
+          lat: start.lat + (end.lat - start.lat) * along,
+        },
+        along: walked + spanLength * along,
+      }
+    }
+    walked += spanLength
+    total += spanLength
   }
 
-  const nearestX = span.x * fraction
-  const nearestY = span.y * fraction
-  const offMetres = Math.hypot(offset.x - nearestX, offset.y - nearestY)
-
-  return {
-    fraction,
-    offMetres,
-    point: {
-      lon: start.lon + (end.lon - start.lon) * fraction,
-      lat: start.lat + (end.lat - start.lat) * fraction,
-    },
+  if (best === null || total === 0) {
+    const node = index.graph.nodes[edge.from]
+    return { fraction: 0, offMetres: Infinity, point: { lon: node[0], lat: node[1] } }
   }
+  return { fraction: best.along / total, offMetres: best.offMetres, point: best.point }
 }
 
 /**
@@ -439,6 +463,140 @@ export function routeThrough(
     }
   }
   return assemble(index.graph, edgeIndices, metres)
+}
+
+/**
+ * The drawn shape of a route: one coordinate line per edge, oriented in
+ * walking order, with the partial first and last edges trimmed to where the
+ * hiker actually tapped.
+ *
+ * Null when any edge lacks geometry, rather than a straight chord between its
+ * junctions - across a switchback a chord is a picture of a trail that does
+ * not exist, and this surface exists to be believed.
+ *
+ * ORIENTATION IS CHAINED BY NODE ID, NOT BY COORDINATE. Two edges meeting at
+ * an endpoint-welded junction (pipeline/build_trail_graph.py) share a NODE
+ * while their published coordinates still disagree by metres - the weld
+ * unifies identity and edits nobody's line. Comparing coordinates would break
+ * the chain at exactly those junctions; the node ids cannot. The same reason
+ * the result is one line per edge rather than one concatenated line: at a
+ * welded junction the small published gap stays visible, which is true.
+ */
+export function routeGeometry(
+  graph: TrailGraph,
+  edgeIndices: number[],
+  start?: GraphPoint,
+  end?: GraphPoint,
+): Array<Array<[number, number]>> | null {
+  if (edgeIndices.length === 0) return null
+  for (const edgeIndex of edgeIndices) {
+    const edge = graph.edges[edgeIndex]
+    if (edge === undefined || edge.geometry === undefined || edge.geometry.length < 2) {
+      return null
+    }
+  }
+
+  // Which node each edge is entered FROM, chained by shared node ids.
+  const entered: number[] = []
+  if (edgeIndices.length === 1) {
+    const only = graph.edges[edgeIndices[0]]
+    const forward =
+      start === undefined || end === undefined || start.fraction <= end.fraction
+    entered.push(forward ? only.from : only.to)
+  } else {
+    for (let step = 0; step < edgeIndices.length; step += 1) {
+      const edge = graph.edges[edgeIndices[step]]
+      if (step === 0) {
+        const next = graph.edges[edgeIndices[1]]
+        const fromShared = edge.from === next.from || edge.from === next.to
+        entered.push(fromShared ? edge.to : edge.from)
+      } else {
+        const previous = graph.edges[edgeIndices[step - 1]]
+        const cameFrom =
+          edge.from === previous.from || edge.from === previous.to ? edge.from : edge.to
+        entered.push(cameFrom)
+      }
+    }
+  }
+
+  const lines: Array<Array<[number, number]>> = []
+  for (let step = 0; step < edgeIndices.length; step += 1) {
+    const edge = graph.edges[edgeIndices[step]]
+    const geometry = edge.geometry as Array<[number, number]>
+    const forward = entered[step] === edge.from
+    let coords = forward ? geometry : [...geometry].reverse()
+
+    // Trim the partial edges to the tapped fractions. Fractions are measured
+    // from the edge's `from` end, so a reversed traversal flips them.
+    const isFirst = step === 0
+    const isLast = step === edgeIndices.length - 1
+    let fromFraction = 0
+    let toFraction = 1
+    if (isFirst && start !== undefined && start.edgeIndex === edgeIndices[step]) {
+      fromFraction = forward ? start.fraction : 1 - start.fraction
+    }
+    if (isLast && end !== undefined && end.edgeIndex === edgeIndices[step]) {
+      toFraction = forward ? end.fraction : 1 - end.fraction
+    }
+    if (isFirst && isLast && fromFraction > toFraction) {
+      ;[fromFraction, toFraction] = [toFraction, fromFraction]
+    }
+    if (fromFraction > 0 || toFraction < 1) {
+      coords = cutPolyline(coords, fromFraction, toFraction)
+    }
+    if (coords.length >= 2) lines.push(coords)
+  }
+  return lines.length > 0 ? lines : null
+}
+
+/** The piece of `coords` between two fractions of its polyline length. */
+function cutPolyline(
+  coords: Array<[number, number]>,
+  fromFraction: number,
+  toFraction: number,
+): Array<[number, number]> {
+  const lengths: number[] = []
+  let total = 0
+  for (let step = 0; step + 1 < coords.length; step += 1) {
+    const span = localMetres(
+      { lon: coords[step][0], lat: coords[step][1] },
+      { lon: coords[step + 1][0], lat: coords[step + 1][1] },
+    )
+    const length = Math.hypot(span.x, span.y)
+    lengths.push(length)
+    total += length
+  }
+  if (total === 0) return coords
+
+  const startAt = Math.max(0, Math.min(1, fromFraction)) * total
+  const endAt = Math.max(0, Math.min(1, toFraction)) * total
+  if (endAt <= startAt) return []
+
+  const out: Array<[number, number]> = []
+  let walked = 0
+  for (let step = 0; step < lengths.length; step += 1) {
+    const segmentStart = walked
+    const segmentEnd = walked + lengths[step]
+    const a = coords[step]
+    const b = coords[step + 1]
+    const pointAt = (distance: number): [number, number] => {
+      const t = lengths[step] === 0 ? 0 : (distance - segmentStart) / lengths[step]
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+    }
+    // The segment overlaps [startAt, endAt] when it ends past the start and
+    // begins before the end; emit the clipped piece's vertices exactly once.
+    if (segmentEnd > startAt && segmentStart < endAt) {
+      if (out.length === 0) out.push(pointAt(Math.max(startAt, segmentStart)))
+      if (segmentEnd <= endAt) {
+        out.push(b)
+      } else {
+        out.push(pointAt(endAt))
+        break
+      }
+    }
+    walked = segmentEnd
+  }
+  return out
 }
 
 /**

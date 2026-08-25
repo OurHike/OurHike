@@ -122,6 +122,26 @@
       "mapped": {
         "aqua": "Aqua"
       }
+    },
+    "mohonk_trails": {
+      "_note": [
+        "Mohonk Preserve, Trails and Carriage Roads. Blaze is a genuine ArcGIS",
+        "coded-value domain (not a plain string like nynjtc_long_path's).",
+        "Counts below are the actual values on all 304 fetched rows, measured",
+        "2026-08-25 - not the domain's declared possibilities, which also name",
+        "'Education' as a value: zero of the 304 fetched rows use it, so it is",
+        "left out of this table on purpose rather than guessed at. A future",
+        "fetch that surfaces it will warn loudly as unmapped, which is correct -",
+        "nobody has decided what (if anything) is painted where Mohonk marks a",
+        "segment for education rather than for a colour."
+      ],
+      "mapped": {
+        "N/A": "None",
+        "Blue": "Blue",
+        "Red": "Red",
+        "Other": "Other",
+        "Yellow": "Yellow"
+      }
     }
   }
 }

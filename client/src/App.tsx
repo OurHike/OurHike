@@ -151,24 +151,11 @@ import { useTrailData } from './lib/useTrailData'
 import { ribbonWindow } from './lib/elevationProfile'
 import { ribbonLanes, ribbonView } from './lib/ribbonView'
 import { viewportMiles } from './lib/viewportMiles'
-import {
-  anchoredClientMile,
-  anchoredMile,
-  insertRoutePoint,
-  legFigures,
-  mileAtWalkingMinutes,
-  restretchStops,
-  routeDirection,
-  routeLegs,
-  type MileAnchor,
-} from './lib/route'
-import { DEFAULT_WALKING_HOURS, nearestStopBeyond, type ViaStop } from './lib/dayPlanner'
+import { anchoredClientMile, anchoredMile, type MileAnchor } from './lib/route'
+import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
-import { RouteEntranceSheet, type EntranceEnd } from './chrome/RouteEntranceSheet'
-import { RouteStopsPanel, type RouteLegDisplay } from './chrome/RouteStopsPanel'
-import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
-import { RouteMapPickBar } from './chrome/RouteMapPickBar'
-import type { RouteDrawing } from './map/routeLayers'
+import { type RouteStopChoice } from './chrome/RouteStopPicker'
+import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   insertZeroAfter,
   removeDay,
@@ -196,14 +183,7 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
-import { nearestStop } from './lib/cascade'
-import {
-  hikeFromTrips,
-  hikeOfTrip,
-  recordedPlan,
-  type HikePiece,
-  type PlaceRef,
-} from './lib/hikes'
+import { hikeFromTrips, hikeOfTrip, recordedPlan } from './lib/hikes'
 import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
@@ -233,7 +213,6 @@ import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
 import { DayHikeCard } from './screens/DayHikeCard'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
-import { mileMarker, stopLabel } from './lib/planDisplay'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
 import { useModerator } from './lib/useModerator'
@@ -395,127 +374,6 @@ type ReportingState =
   | { step: 'pick'; anchor?: ReportAnchor }
   | { step: 'form'; type: ReportTypeId; anchor?: ReportAnchor }
 
-/**
- * A dropped route point (#755), on both mile scales at once.
- *
- * `mile` is the pipeline's axis - what every figure is computed and printed
- * on. `clientMile` is the centerline index's own scale, kept solely because
- * drawing goes through trailSlice/trailPointAtMile, which live there. See
- * lib/route.ts's header for why the two are never compared.
- *
- * `seq` is drop order, for undo: an inserted point lands mid-array, so "the
- * last point I dropped" and "the last point of the route" are different
- * points, and undo means the former.
- */
-interface RouteDraftStop {
-  mile: number
-  /** Null for a stop no tap and no anchor could place on the client scale -
-   *  it still plans and prices honestly (those run on `mile`), it just
-   *  cannot be drawn. */
-  clientMile: number | null
-  name?: string
-  poiId?: string
-}
-
-/**
- * The route builder's two screens (the chosen "route by destination" flow):
- * the ENTRANCE asks where from and how far or how long; "Use this stretch"
- * lands the resolved pair on the EDITOR, where every stop is a field and
- * destinations join between the ends. The draft survives tab switches -
- * the Plan tab reopens the editor rather than tolling the entrance again -
- * and dies only at the close button or when a plan is laid out of it.
- */
-type RouteDraftState =
-  | {
-      phase: 'entrance'
-      start: RouteDraftStop | null
-      /** The far end when the hiker NAMED one (#804). With both ends fixed
-       *  the entrance stops asking how far and states it. */
-      fixedEnd: RouteDraftStop | null
-      ask: 'far' | 'long'
-      miles: number
-      days: number
-      south: boolean
-    }
-  | {
-      phase: 'editor'
-      stops: RouteDraftStop[]
-      /**
-       * Previous stop lists, newest last - the ↺ the wireframe puts beside
-       * the map (#973).
-       *
-       * IT EXISTS BECAUSE TAPPING IS CHEAP AND MIS-TAPPING IS CERTAIN. A
-       * point dropped a mile off where a thumb meant it is not an error the
-       * app can detect, so the only honest recovery is to let the hiker take
-       * it back - and "remove the last stop" would be the wrong verb, since
-       * least-added-distance insertion means the last stop TAPPED is often
-       * not the last stop in the list.
-       *
-       * Bounded at ROUTE_HISTORY_MAX: a route is a dozen stops, not a
-       * document, and an unbounded stack on a phone that keeps a draft
-       * across tab switches is a leak nobody would notice.
-       */
-      history: RouteDraftStop[][]
-    }
-
-/** Whether two stop lists are the same route. Position and mile are what a
- *  leg is computed from, so they are what "changed" means here. */
-function sameStops(a: readonly RouteDraftStop[], b: readonly RouteDraftStop[]): boolean {
-  return a.length === b.length && a.every((stop, i) => stop.mile === b[i].mile)
-}
-
-/** How many steps back the route builder can go. Deep enough to undo a run
- *  of mis-taps, shallow enough that the stack is never the reason a draft
- *  costs memory. */
-const ROUTE_HISTORY_MAX = 20
-
-/**
- * A new editor state with `stops` replaced and the old list remembered.
- *
- * Every editor mutation goes through here so undo cannot silently miss one -
- * the failure mode of a history stack is not that it breaks loudly, it is
- * that one path forgets to record and ↺ jumps two edits back.
- */
-function withStops(
-  draft: Extract<RouteDraftState, { phase: 'editor' }>,
-  stops: RouteDraftStop[],
-): RouteDraftState {
-  // BY CONTENT, not by reference (#986). insertRoutePoint returns a fresh
-  // array even when it refuses a re-tap on a mile already in the route, so a
-  // reference check recorded a no-op edit - and the hiker's next ↺ press
-  // spent itself undoing nothing, which reads as undo being broken.
-  if (sameStops(stops, draft.stops)) return draft
-  return {
-    ...draft,
-    stops,
-    history: [...draft.history, draft.stops].slice(-ROUTE_HISTORY_MAX),
-  }
-}
-
-/** Which slot of the draft a picked stop lands in. */
-/** A place the app already knows, as a stop the route builder can open on.
- *  The client mile is re-derived from the anchors rather than carried,
- *  because a PlaceRef only ever holds the pipeline's axis (lib/hikes.ts). */
-function draftStopFor(place: PlaceRef, anchors: readonly MileAnchor[]): RouteDraftStop {
-  return {
-    mile: place.mile,
-    clientMile: anchoredClientMile(place.mile, anchors),
-    ...(place.name === undefined ? {} : { name: place.name }),
-    ...(place.poiId === undefined ? {} : { poiId: place.poiId }),
-  }
-}
-
-type StopSlot =
-  | { kind: 'start' }
-  | { kind: 'end' }
-  | { kind: 'replace'; index: number }
-  | { kind: 'add' }
-
-/** The stop picker, when it is up: the slot being filled, whether the hiker
- *  went on to the map to fill it, and whether the last map tap was refused
- *  (off the corridor - cleared by the next accepted tap). */
-type StopPickState = { slot: StopSlot; onMap: boolean; refusedTap: boolean }
-
 // Sign-in is its own flow rather than another step of the reporting one,
 // because it is reachable from two places that want different things back:
 // finishing a contribution, and the account row in Settings. Conflating them
@@ -614,22 +472,21 @@ function App() {
   const [reportingClosure, setReportingClosure] = useState(false)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
-   * The route being built (#755), or null when the builder is closed. Held
-   * here and not persisted: a draft is a sketch, and the thing worth keeping
-   * - the plan - is what "Break into days" produces from it (#756).
-   */
-  const [routeDraft, setRouteDraft] = useState<RouteDraftState | null>(null)
-  /** The last trail tap the entrance refused as too far off the corridor -
-   *  cleared by the next accepted one (#801). */
-  const [entranceRefusedTap, setEntranceRefusedTap] = useState(false)
-  /**
    * The day hike being built (#978, frame `1j`), or null when that builder
-   * is closed. A SIBLING of routeDraft, not a third arm on it: DayHikeDraft
-   * is already the whole state and carries its own undo, so it needs neither
-   * `history` nor the `withStops` funnel. The two modes are mutually
-   * exclusive - each opener clears the other - because four derived values
-   * below (the chart selection, the ribbon) key off `routeDraft !== null`
-   * and would answer for the A.T. while somebody built in Harriman.
+   * is closed. A SIBLING of the route draft, not a third arm on it:
+   * DayHikeDraft is already the whole state and carries its own undo, so it
+   * needs neither `history` nor the `withStops` funnel. Exclusivity matters
+   * because the derived values below (the chart selection, the ribbon) key
+   * off `routeBuilder.draftLive` - `routeDraft` itself lives in
+   * chrome/routeBuilderPanel.tsx since #991 - and would answer for the A.T.
+   * while somebody built in Harriman.
+   *
+   * EXCLUSIVITY RUNS BOTH WAYS AGAIN (#997). It was written as though it
+   * did and implemented in one direction: `openDayHike` cleared the route
+   * draft, nothing cleared the day hike, so a route builder opened over one
+   * held a draft that neither the map tap nor `routeSheet` would show,
+   * because both answer for the day hike first. `sweepForBuilder` clears it
+   * now, and every route-builder door passes through there.
    */
   const [dayHike, setDayHike] = useState<DayHikeDraft | null>(null)
   /** Frame `1i`'s door - "What are you planning?" - over the Plan tab. */
@@ -649,13 +506,6 @@ function App() {
    *  it; only "Save this day hike" commits it to the store. The draft stays
    *  alive underneath, so "Back to the map" is a real return, not a rebuild. */
   const [dayHikeReview, setDayHikeReview] = useState<DayHike | null>(null)
-  /** The same, for the editor's own tap (#973). Its own flag rather than one
-   *  shared with the entrance: the two are never on screen together, and one
-   *  flag would carry a refusal from one phase into the other, where the
-   *  sentence explaining it belongs to a control the hiker has left behind. */
-  const [editorRefusedTap, setEditorRefusedTap] = useState(false)
-  /** The stop picker over the draft, or null while every field rests. */
-  const [stopPick, setStopPick] = useState<StopPickState | null>(null)
   /**
    * The desktop chart's own settled selection - a measurement, nothing more
    * - read only while no route draft is open (PR #885 review). With a draft
@@ -1915,130 +1765,136 @@ function App() {
   )
 
   /**
-   * The entrance's resolved far end: the raw answer to "how far" (start plus
-   * the asked-for miles) or "how long" (the reach of days x the default
-   * walking target, priced by mileAtWalkingMinutes so it cannot disagree
-   * with the card), SNAPPED to the nearest real place to sleep past the
-   * start. The bare clamped mile when no such place lies that way - shown
-   * as exactly that - and null when even that leaves no trail.
+   * Every write to the trip store runs through here: apply, persist,
+   * fire-and-forget. The in-memory store is the truth the screens render
+   * either way - the same contract the single plan had.
    */
-  const entranceEnd = useMemo(() => {
-    if (routeDraft === null || routeDraft.phase !== 'entrance') return null
-    if (routeDraft.start === null) return null
-    const { start, ask, miles, days, south } = routeDraft
-
-    const raw =
-      ask === 'long' && elevation !== null
-        ? mileAtWalkingMinutes(
-            elevation,
-            start.mile,
-            days * DEFAULT_WALKING_HOURS * 60,
-            south ? 'SOBO' : 'NOBO',
-            pace,
-          )
-        : start.mile + (south ? -miles : miles)
-    const reachMi = Math.abs(raw - start.mile)
-
-    const snapped = nearestStopBeyond(pois, start.mile, raw)
-    if (snapped !== null) {
-      return {
-        reachMi,
-        kind: snapped.kind === 'terminus' ? undefined : snapped.kind,
-        stop: {
-          mile: snapped.mile,
-          clientMile: anchoredClientMile(snapped.mile, mileAnchors),
-          ...(snapped.name === undefined ? {} : { name: snapped.name }),
-          ...(snapped.poiId === undefined ? {} : { poiId: snapped.poiId }),
-        } satisfies RouteDraftStop,
-      }
-    }
-
-    let low = Infinity
-    let high = -Infinity
-    for (const choice of routeStopChoices) {
-      if (choice.mile < low) low = choice.mile
-      if (choice.mile > high) high = choice.mile
-    }
-    if (low > high) return null
-    const clamped = Math.min(high, Math.max(low, raw))
-    if (clamped === start.mile) return null
-    return {
-      reachMi,
-      kind: undefined,
-      stop: {
-        mile: clamped,
-        clientMile: anchoredClientMile(clamped, mileAnchors),
-      } satisfies RouteDraftStop,
-    }
-  }, [routeDraft, elevation, pois, routeStopChoices, mileAnchors, pace])
+  const applyTripStore = useCallback((edit: (current: TripStore) => TripStore) => {
+    setTripStore((current) => {
+      const next = edit(current)
+      if (next !== current) void saveTrips(next)
+      return next
+    })
+  }, [])
 
   /**
-   * A door's answer lands in the slot being filled. The one resolver every
-   * door funnels through: a stop born from arithmetic (a snap, a distance)
-   * arrives without a client mile and gets one from the inverse anchor
-   * here, so the drawing below never has to know where a stop came from.
+   * Keep a drafted stretch as ground already walked (#789).
+   *
+   * The same two ends the builder just described, said in the past tense -
+   * which is why this door is there rather than behind a second way to name
+   * two places. Every day in the record is walked on arrival, so it feeds
+   * the roll-up and #791's gaps exactly as a walked trip does; `recorded`
+   * marks the provenance, so no screen prints a remembered 300-mile stretch
+   * as if somebody walked it in a day.
+   *
+   * The builder hands over the stops and closes itself, so what is left
+   * here is the part that was always the shell's: the trip store, and where
+   * the hiker lands afterwards.
    */
-  const applyPickedStop = useCallback(
-    (picked: {
-      mile: number
-      clientMile?: number | null
-      name?: string
-      poiId?: string
-    }) => {
-      if (stopPick === null) return
-      const slot = stopPick.slot
-      const stop: RouteDraftStop = {
-        mile: picked.mile,
-        clientMile: picked.clientMile ?? anchoredClientMile(picked.mile, mileAnchors),
-        ...(picked.name === undefined ? {} : { name: picked.name }),
-        ...(picked.poiId === undefined ? {} : { poiId: picked.poiId }),
-      }
-      setRouteDraft((draft) => {
-        if (draft === null) return draft
-        if (slot.kind === 'start') {
-          return draft.phase === 'entrance' ? { ...draft, start: stop } : draft
-        }
-        if (slot.kind === 'end') {
-          return draft.phase === 'entrance' ? { ...draft, fixedEnd: stop } : draft
-        }
-        if (draft.phase !== 'editor') return draft
-        if (slot.kind === 'add') {
-          // Trail order IS least-added-distance order on a monotonic route,
-          // so the tap builder's placement rule serves the add row unchanged
-          // - between the ends when the stop is between them, extending the
-          // route when it is past one.
-          return withStops(draft, insertRoutePoint(draft.stops, stop))
-        }
-        // A replacement that lands exactly on another stop's mile would fold
-        // two stops into a zero-length leg - refused the way insertRoutePoint
-        // refuses a re-tap: nothing changes.
-        if (draft.stops.some((s, i) => i !== slot.index && s.mile === stop.mile)) {
-          return draft
-        }
-        return withStops(
-          draft,
-          draft.stops.map((s, i) => (i === slot.index ? stop : s)),
-        )
-      })
-      setStopPick(null)
+  const handleRecordWalked = useCallback(
+    (stops: readonly ViaStopLike[]) => {
+      const plan = recordedPlan(stops.map((stop) => ({ ...stop, resupply: false })))
+      applyTripStore((store) => addTrip(store, plan, undefined, true))
+      setActiveTab('plan')
     },
-    [stopPick, mileAnchors],
+    [applyTripStore],
   )
 
-  // A map tap while the picker's map door is open (and only then - one tap,
-  // one interpreter). Snapped by the centerline index - the one job
-  // locateOnTrail keeps under HIKE_PLANNING.md Finding 2 - then carried onto
-  // the pipeline's axis by the nearest anchor, so every figure slices the
-  // profile at miles that mean what the display says. A tap the index
-  // refuses (>3 mi off the corridor) sets a flag the bar explains, rather
-  // than silently doing nothing.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- listed below
-  const handleStopMapTap = useCallback(
+  /**
+   * The one-thing-open-at-a-time rule the legend, the search and the
+   * waypoint card already keep between them. It is the shell's because the
+   * things being closed are, and it is stable so the builder's own handlers
+   * can list it as a dependency rather than close over a first-render copy.
+   *
+   * THE DAY HIKE CLOSES HERE, and this is the whole of #997's fix. The rule
+   * was written as "each opener clears the other" and implemented in one
+   * direction: `openDayHike` cleared the route draft, nothing cleared the
+   * day hike. Both surfaces the two modes share - the map tap and
+   * `routeSheet` - answer for the day hike first, so a route builder opened
+   * on top of one held a live draft that nobody could see or reach.
+   *
+   * ONE PLACE RATHER THAN TWO, which is what makes it stay fixed. Every door
+   * that opens a route draft from nothing passes through here: the panel's
+   * `openRouteBuilderFrom` (so "start on the map", #790's gap door and
+   * #791's plan-from-here) calls it as `onOpenBuilder`, and
+   * `handlePlanChartStretch` calls it directly rather than keeping the copy
+   * of these lines it used to. A mirror line in each opener would have been
+   * the same fix today and the same bug again at the next door.
+   *
+   * Symmetric with `openDayHike`, deliberately: that door already discards a
+   * route draft without asking, and a rule that discards in one direction
+   * and refuses in the other is what made this confusing in the first place.
+   * The alternative - refuse, and send the hiker back to the day hike, which
+   * is what `openPlanKind` does - is the kinder behaviour and a different
+   * decision; #997 records it.
+   */
+  const sweepForBuilder = useCallback(() => {
+    setActiveTab('trail')
+    setSelectedPoiId(null)
+    setLegendOpen(false)
+    setSearchOpen(false)
+    setTargetRequest(null)
+    // Both halves of the day-hike surface: the draft (#997) and frame `1l`'s
+    // review card over it - a review outliving its cleared draft would sit
+    // over the route builder describing a walk that no longer exists.
+    setDayHikeReview(null)
+    setDayHike(null)
+  }, [])
+  const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
+
+  // The route builder (#991), the fourth of these. Its state, its twenty-odd
+  // handlers and the ~100 lines of JSX behind three `MapScreenProps` fields
+  // all live in chrome/routeBuilderPanel.tsx now; what is left here is the
+  // seam, which is this call, the chart cluster below it, and the two places
+  // the day-hike builder has to be told about (the map tap and the sweep).
+  const routeBuilder = useRouteBuilderPanel({
+    trailIndex,
+    mileAnchors,
+    pois,
+    elevation,
+    pace,
+    units,
+    routeStopChoices,
+    gpsPlanMile,
+    gpsClientMile: fix?.mile ?? null,
+    trailMiles,
+    targetOpen: targetRequest !== null,
+    setTargetRequest,
+    onRecordWalked: handleRecordWalked,
+    onOpenBuilder: sweepForBuilder,
+    clearFreeChartStretch,
+  })
+  // Destructured, and the reason is memoisation rather than brevity: the
+  // hook returns a fresh object every render, so a `[routeBuilder]` dep
+  // would rebuild the chart's whole prop bundle on every keystroke anywhere
+  // in this shell. Each field below is either a value or a `useCallback`,
+  // and several are STABLER than what they replaced - `draftLive` flips when
+  // a draft opens or closes, where the old `routeDraft` dep changed on every
+  // edit to one.
+  const {
+    draftLive,
+    draftStretch,
+    draftSouth,
+    restretchToMiles,
+    toggleDraftDirection,
+    openFromMiles,
+    closeRouteBuilder,
+  } = routeBuilder
+  /**
+   * A tap on the map, while either builder is open.
+   *
+   * THE DAY HIKE'S TAP, first and before anything the route builder does: a
+   * day hike routes over the junction graph, not the A.T. index, and a phone
+   * can hold one without the other. tapAt owns the refusal - a tap off every
+   * maintained line places nothing and sets the sentence the bar shows.
+   *
+   * Everything after it is the route builder's and lives in its own file
+   * now (#991), so this delegates rather than deciding. The precedence is
+   * unchanged and stays here, in the shell, because it is a fact about two
+   * features rather than about either one.
+   */
+  const handleMapTap = useCallback(
     (at: { lon: number; lat: number }) => {
-      // THE DAY HIKE'S TAP, first and before the corridor guard: a day hike
-      // routes over the junction graph, not the A.T. index, and a phone can
-      // hold one without the other. tapAt owns the refusal - a tap off every
-      // maintained line places nothing and sets the sentence the bar shows.
       if (dayHike !== null) {
         // While frame `1l`'s card reviews the route, the map underneath is a
         // picture, not a control: a tap that edited the draft would desync
@@ -2049,112 +1905,25 @@ function App() {
         setDayHike((draft) => (draft === null ? draft : tapAt(graphForTaps, draft, at)))
         return
       }
-      if (trailIndex === null) return
-      // NO BUTTON FIRST (#801). With the entrance open and no picker over
-      // it, a tap on the trail sets the START - there is nothing else this
-      // screen is choosing, so nothing needs disambiguating, and a start
-      // already set is moved rather than a question being asked.
-      if (stopPick === null) {
-        if (routeDraft === null) return
-
-        // THE EDITOR'S OWN TAP (#973, wireframe 2a frame 1). The canvas has
-        // been in route-tap mode here the whole time - `onRouteTap` is set
-        // for any open draft - and this handler was the only thing declining
-        // to act on it.
-        //
-        // No mode and no button, which is #801's rule one phase over and the
-        // frame's own annotation: "First tap is the start, last is the end, a
-        // new point inserts where it adds the least distance." All three fall
-        // out of insertRoutePoint, so the tap places a point and says nothing
-        // about which kind it is.
-        if (routeDraft.phase === 'editor') {
-          const located = locateOnTrail(trailIndex, at)
-          if (located === null) {
-            setEditorRefusedTap(true)
-            return
-          }
-          setEditorRefusedTap(false)
-          const clientMile = located.mile
-          const mile = anchoredMile(clientMile, mileAnchors) ?? clientMile
-          // Named where a real stop is close enough to name it - the same
-          // courtesy the entrance's tap does, so a route built by tapping
-          // reads as places rather than as mile markers where it can.
-          const snapped = nearestStop(pois, mile)
-          const stop: RouteDraftStop = {
-            mile: snapped?.mile ?? mile,
-            clientMile,
-            ...(snapped?.name === undefined ? {} : { name: snapped.name }),
-            ...(snapped?.poiId === undefined ? {} : { poiId: snapped.poiId }),
-          }
-          setRouteDraft((draft) =>
-            draft === null || draft.phase !== 'editor'
-              ? draft
-              : withStops(draft, insertRoutePoint(draft.stops, stop)),
-          )
-          return
-        }
-
-        if (routeDraft.phase !== 'entrance') return
-        const located = locateOnTrail(trailIndex, at)
-        if (located === null) {
-          setEntranceRefusedTap(true)
-          return
-        }
-        setEntranceRefusedTap(false)
-        const clientMile = located.mile
-        const snapped = nearestStop(
-          pois,
-          anchoredMile(clientMile, mileAnchors) ?? clientMile,
-        )
-        setRouteDraft((draft) =>
-          draft === null || draft.phase !== 'entrance'
-            ? draft
-            : {
-                ...draft,
-                start: {
-                  mile:
-                    snapped?.mile ?? anchoredMile(clientMile, mileAnchors) ?? clientMile,
-                  clientMile,
-                  ...(snapped?.name === undefined ? {} : { name: snapped.name }),
-                  ...(snapped?.poiId === undefined ? {} : { poiId: snapped.poiId }),
-                },
-              },
-        )
-        return
-      }
-      if (!stopPick.onMap) return
-      const located = locateOnTrail(trailIndex, at)
-      if (located === null) {
-        setStopPick({ ...stopPick, refusedTap: true })
-        return
-      }
-      const clientMile = located.mile
-      // The ?? is totality, not a path: without anchors the entrance has
-      // already refused, so no tap reaches here to need the fallback.
-      applyPickedStop({
-        mile: anchoredMile(clientMile, mileAnchors) ?? clientMile,
-        clientMile,
-      })
+      routeBuilder.mapScreen.onRouteTap?.(at)
     },
-    [
-      stopPick,
-      trailIndex,
-      mileAnchors,
-      applyPickedStop,
-      routeDraft,
-      pois,
-      dayHike,
-      dayHikeReview,
-      dayHikeIndex,
-      graphIndex,
-    ],
+    [dayHike, dayHikeReview, dayHikeIndex, graphIndex, routeBuilder],
   )
-
-  // Opening the day-hike builder repeats openRouteBuilderFrom's exact sweep
-  // rather than sharing a helper - the one-thing-open rule is each opener's
-  // own responsibility, and a shared helper under this branch's pressure is
-  // how one acquires a caller that does not want all six lines (CLAUDE.md's
-  // altitude note cuts both ways; revisit when a third door repeats it).
+  // Opening the day-hike builder repeats the route builder's sweep rather
+  // than sharing one. That was argued when this door was written - "the
+  // one-thing-open rule is each opener's own responsibility", and a shared
+  // helper acquires a caller that does not want all six lines - and it asked
+  // to be revisited when a third door repeated it.
+  //
+  // A THIRD DOOR DID, and repeating cost exactly what the note feared in the
+  // other direction: #997. The route builder's two openers now share
+  // `sweepForBuilder`, because the line that fixes #997 has to be in every
+  // door that opens a route draft and was worth writing once. This one still
+  // stands apart, and that is a real difference rather than an oversight -
+  // its list is not the same list. It clears `planKindOpen` (the sheet it was
+  // opened from) and seeds a draft; `sweepForBuilder` clears the day hike,
+  // which this door is creating. Merging them would need a parameter, and a
+  // sweep with a mode flag is not a shared rule.
   const openDayHike = useCallback(() => {
     setActiveTab('trail')
     setSelectedPoiId(null)
@@ -2162,13 +1931,13 @@ function App() {
     setSearchOpen(false)
     setTargetRequest(null)
     setFreeChartStretch(null)
-    setRouteDraft(null)
+    routeBuilder.closeRouteBuilder()
     setPlanKindOpen(false)
     // Re-entering the builder puts the review away: the taps are live again,
     // and a card reviewing a snapshot of a draft being edited would lie.
     setDayHikeReview(null)
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
-  }, [])
+  }, [routeBuilder])
 
   const handleDayHikeCancel = useCallback(() => {
     setDayHikeReview(null)
@@ -2376,187 +2145,6 @@ function App() {
     }
   }, [dayHike, graphIndex, dayHikeIndex])
 
-  const handleRouteCancel = useCallback(() => {
-    setRouteDraft(null)
-    setStopPick(null)
-    // The refusal belongs to the draft, not to the app (#986). Left set, it
-    // greeted the NEXT route the hiker started with an accusation about a tap
-    // they never made, in a panel with nothing in it to explain.
-    setEditorRefusedTap(false)
-  }, [])
-
-  // What the canvas draws for the draft: the centerline's own geometry
-  // between consecutive stops (trailSlice never bridges a part gap), and
-  // the stops snapped back onto the line. Client miles throughout - this is
-  // the drawing, and the drawing is the one consumer that scale exists for.
-  // On the entrance the stretch grows as the slider moves: start alone,
-  // then start to the resolved end.
-  const routeDrawing: RouteDrawing | null = useMemo(() => {
-    if (routeDraft === null || trailIndex === null) return null
-    const stops: RouteDraftStop[] =
-      routeDraft.phase === 'editor'
-        ? routeDraft.stops
-        : routeDraft.start === null
-          ? []
-          : entranceEnd === null
-            ? [routeDraft.start]
-            : [routeDraft.start, entranceEnd.stop]
-    return {
-      legs: stops.slice(1).flatMap((to, i) => {
-        const from = stops[i]
-        if (from.clientMile === null || to.clientMile === null) return []
-        return [trailSlice(trailIndex, from.clientMile, to.clientMile)]
-      }),
-      points: stops.flatMap((stop, i) => {
-        if (stop.clientMile === null) return []
-        const at = trailPointAtMile(trailIndex, stop.clientMile)
-        if (at === null) return []
-        const role: 'start' | 'via' | 'end' =
-          i === 0 ? 'start' : i === stops.length - 1 ? 'end' : 'via'
-        // A MILE MARKER, never converted (#986). It reads as the same
-        // quantity as a distance and is not one: mile 470.8 is a name for a
-        // place, and `formatDistance` would render it "757.7 km" to a metric
-        // hiker while the stop row beside it still said "mi 470.8". One
-        // place, two numbers, neither of which names it.
-        return [{ lon: at[0], lat: at[1], role, label: `mi ${mileMarker(stop.mile)}` }]
-      }),
-    }
-  }, [routeDraft, entranceEnd, trailIndex])
-
-  // The editor's figures, on the pipeline miles. Null climb and time on a
-  // download with no profile: the distance is still a fact, and the surface
-  // says why the rest is missing rather than printing a time that quietly
-  // ignored every climb (see RouteLegDisplay).
-  const routeLegDisplays: RouteLegDisplay[] = useMemo(() => {
-    if (routeDraft === null || routeDraft.phase !== 'editor') return []
-    return routeLegs(routeDraft.stops).map(({ from, to }) =>
-      elevation === null
-        ? {
-            distanceMi: Math.abs(to.mile - from.mile),
-            ascentFt: null,
-            descentFt: null,
-            minutes: null,
-          }
-        : legFigures(elevation, from.mile, to.mile, pace),
-    )
-  }, [routeDraft, elevation, pace])
-
-  // Opening the builder is a map act: it lands on the trail tab with
-  // everything else closed - the same one-thing-open-at-a-time rule the
-  // legend, the search and the waypoint card already keep between them.
-  // A draft already in progress reopens where it stood - the entrance is
-  // for starting, never a toll gate on the way back to your own route.
-  const openRouteBuilderFrom = useCallback(
-    (start: RouteDraftStop | null, south?: boolean) => {
-      setActiveTab('trail')
-      setSelectedPoiId(null)
-      setLegendOpen(false)
-      setSearchOpen(false)
-      setTargetRequest(null)
-      // The chart's selection now mirrors the draft; a measurement left
-      // behind here would resurface the moment the builder closed.
-      setFreeChartStretch(null)
-      setRouteDraft((draft) => {
-        if (draft === null) {
-          return {
-            phase: 'entrance',
-            start,
-            fixedEnd: null,
-            // The mockup's own opening answers - a mid-length section,
-            // walked the way most of this trail is walked. Both are one
-            // drag from anything else.
-            ask: 'far',
-            miles: 45,
-            days: 3,
-            south: south ?? false,
-          }
-        }
-        // A suggested start fills an entrance that has none yet, and never
-        // overwrites a route the hiker is already editing: their own draft
-        // outranks a starting point this app proposed.
-        if (start === null || draft.phase !== 'entrance') return draft
-        return { ...draft, start, ...(south === undefined ? {} : { south }) }
-      })
-    },
-    [],
-  )
-
-  const openRouteBuilder = useCallback(
-    () => openRouteBuilderFrom(null),
-    [openRouteBuilderFrom],
-  )
-
-  /**
-   * Start a route at the beginning of a stretch nobody has walked (#790's
-   * gap row).
-   *
-   * The gap's low end and nothing else: how far, which way and where it
-   * really ends are the entrance's questions, and answering them from the
-   * gap's own length would put a 554-mile "trip" in front of a hiker who
-   * asked to plan a week. Choosing WHICH gap and how much of it fits the
-   * days somebody has is **#791 - What's left**.
-   */
-  const handlePlanGap = useCallback(
-    (gap: Extract<HikePiece, { kind: 'gap' }>) => {
-      // A gap row starts at its low end, walking on up the trail. "What's
-      // left" (#791) is where BOTH ends are offered, because that is the
-      // screen where choosing between them is the question being asked.
-      openRouteBuilderFrom(draftStopFor(gap.from, mileAnchors), false)
-    },
-    [openRouteBuilderFrom, mileAnchors],
-  )
-
-  /**
-   * Plan from one end of a gap, walking toward the other (#791).
-   *
-   * The direction is DERIVED from the pair rather than stored anywhere: a
-   * hiker who picked the high end is walking south, which is exactly what
-   * the entrance's own toggle means. Nothing new is kept, and a
-   * flip-flopper's third trip going the other way needs no new concept.
-   */
-  const handlePlanFrom = useCallback(
-    (start: PlaceRef, toward: PlaceRef) => {
-      openRouteBuilderFrom(draftStopFor(start, mileAnchors), toward.mile < start.mile)
-    },
-    [openRouteBuilderFrom, mileAnchors],
-  )
-
-  /** One field of the entrance changes; everything else stands. */
-  const patchEntrance = useCallback(
-    (patch: Partial<Extract<RouteDraftState, { phase: 'entrance' }>>) => {
-      setRouteDraft((draft) =>
-        draft !== null && draft.phase === 'entrance' ? { ...draft, ...patch } : draft,
-      )
-    },
-    [],
-  )
-
-  const handlePickStart = useCallback(
-    (door: 'gps' | 'search' | 'map') => {
-      if (door === 'gps') {
-        if (fix === null || gpsPlanMile === null) return
-        const start: RouteDraftStop = { mile: gpsPlanMile, clientMile: fix.mile }
-        setRouteDraft((draft) =>
-          draft !== null && draft.phase === 'entrance' ? { ...draft, start } : draft,
-        )
-        return
-      }
-      setStopPick({ slot: { kind: 'start' }, onMap: door === 'map', refusedTap: false })
-    },
-    [fix, gpsPlanMile],
-  )
-
-  const handleUseStretch = useCallback(() => {
-    if (routeDraft === null || routeDraft.phase !== 'entrance') return
-    if (routeDraft.start === null) return
-    // A named end wins over a resolved one: the hiker said where they are
-    // going, so nothing snaps it to whatever the "how far" answer reached
-    // (#804).
-    const end = routeDraft.fixedEnd ?? entranceEnd?.stop ?? null
-    if (end === null) return
-    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, end], history: [] })
-  }, [routeDraft, entranceEnd])
-
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to
   // your own route (openRouteBuilderFrom's rule, kept here for both modes).
@@ -2565,144 +2153,12 @@ function App() {
       setActiveTab('trail')
       return
     }
-    if (routeDraft !== null) {
-      openRouteBuilder()
+    if (routeBuilder.draftLive) {
+      routeBuilder.openRouteBuilder()
       return
     }
     setPlanKindOpen(true)
-  }, [dayHike, routeDraft, openRouteBuilder])
-
-  const handleEditStop = useCallback((index: number) => {
-    setStopPick({ slot: { kind: 'replace', index }, onMap: false, refusedTap: false })
-  }, [])
-
-  const handleAddStop = useCallback(() => {
-    setStopPick({ slot: { kind: 'add' }, onMap: false, refusedTap: false })
-  }, [])
-
-  /** ↺ - back one edit. Nothing when the stack is empty, and the button is
-   *  absent then rather than dead. */
-  const handleUndoRoute = useCallback(() => {
-    setEditorRefusedTap(false)
-    setRouteDraft((draft) => {
-      if (draft === null || draft.phase !== 'editor') return draft
-      const previous = draft.history[draft.history.length - 1]
-      if (previous === undefined) return draft
-      return { ...draft, stops: previous, history: draft.history.slice(0, -1) }
-    })
-  }, [])
-
-  /**
-   * The entrance's second door (#973): straight to an empty editor, where
-   * tapping the trail builds the route.
-   *
-   * The entrance is not replaced by this. It answers "how far can I get",
-   * which is a real question and the one #804 built it for; this answers "I
-   * know where I want to go", which the frame draws and which had no door at
-   * all. A start already tapped on the entrance carries through rather than
-   * being thrown away - having placed it is the same act either way.
-   */
-  const handleTapToBuild = useCallback(() => {
-    setEditorRefusedTap(false)
-    setRouteDraft((draft) =>
-      draft === null || draft.phase !== 'entrance'
-        ? draft
-        : {
-            phase: 'editor',
-            // Both ends the hiker named, not just the start (#986). Naming an
-            // end on the entrance is the same act as naming a start, and
-            // dropping it silently made the second door cost work.
-            stops: [draft.start, draft.fixedEnd].filter(
-              (stop): stop is RouteDraftStop => stop !== null,
-            ),
-            history: [],
-          },
-    )
-  }, [])
-
-  // Only a destination between the ends can be removed - a route needs its
-  // ends, and either end is changed by picking a different stop instead.
-  const handleRemoveStop = useCallback(() => {
-    if (stopPick === null || stopPick.slot.kind !== 'replace') return
-    const index = stopPick.slot.index
-    setRouteDraft((draft) => {
-      if (draft === null || draft.phase !== 'editor') return draft
-      if (index <= 0 || index >= draft.stops.length - 1) return draft
-      return withStops(
-        draft,
-        draft.stops.filter((_, i) => i !== index),
-      )
-    })
-    setStopPick(null)
-  }, [stopPick])
-
-  /** The stop before the slot being filled - what the picker's distance
-   *  door measures from. The add row measures from the current end,
-   *  extending the route the way "and then on to..." extends a hike;
-   *  a stop the least-added-distance placement then puts BETWEEN the ends
-   *  lands there instead, same rule either way. */
-  const pickPrevious = useMemo(() => {
-    if (stopPick === null || routeDraft === null) return null
-    // The entrance's own two slots measure from nothing: a start has no
-    // previous stop, and a named end is a destination rather than a
-    // distance from one (#804).
-    if (stopPick.slot.kind === 'start' || stopPick.slot.kind === 'end') return null
-    if (routeDraft.phase !== 'editor') return null
-    const stops = routeDraft.stops
-    const anchor =
-      stopPick.slot.kind === 'add'
-        ? stops[stops.length - 1]
-        : stopPick.slot.index > 0
-          ? stops[stopPick.slot.index - 1]
-          : null
-    if (anchor === null || anchor === undefined) return null
-    return { mile: anchor.mile, label: stopLabel(anchor) }
-  }, [stopPick, routeDraft])
-
-  /** Which way the distance door walks: the draft's own direction. */
-  const pickSouth = useMemo(() => {
-    if (routeDraft === null) return false
-    if (routeDraft.phase === 'entrance') return routeDraft.south
-    return routeDirection(routeDraft.stops) === 'SOBO'
-  }, [routeDraft])
-
-  const handleBreakIntoDays = useCallback(() => {
-    if (routeDraft === null || routeDraft.phase !== 'editor') return
-    if (routeDraft.stops.length < 2) return
-    setTargetRequest({
-      route: routeDraft.stops.map(({ mile, name, poiId }) => ({
-        mile,
-        ...(name === undefined ? {} : { name }),
-        ...(poiId === undefined ? {} : { poiId }),
-      })),
-    })
-  }, [routeDraft])
-
-  // --- The desktop chart and the route: one selection (PR #885 review) -----
-
-  /**
-   * The draft's stretch on the chart's own axis, or null while the draft
-   * has no two ends yet. The entrance's span is start-to-resolved-end - the
-   * same pair routeDrawing draws - so the chart tracks the "how far" slider
-   * live; the editor's span is its ends.
-   */
-  const draftStretch = useMemo<ChartStretch | null>(() => {
-    if (routeDraft === null) return null
-    let a: number
-    let b: number
-    if (routeDraft.phase === 'editor') {
-      if (routeDraft.stops.length < 2) return null
-      a = routeDraft.stops[0].mile
-      b = routeDraft.stops[routeDraft.stops.length - 1].mile
-    } else {
-      const end = routeDraft.fixedEnd ?? entranceEnd?.stop ?? null
-      if (routeDraft.start === null || end === null) return null
-      a = routeDraft.start.mile
-      b = end.mile
-    }
-    if (a === b) return null
-    return { startMile: Math.min(a, b), endMile: Math.max(a, b) }
-  }, [routeDraft, entranceEnd])
+  }, [dayHike, routeBuilder])
 
   /**
    * The trail inside the map's viewport, on the pipeline's axis - the "always
@@ -2771,99 +2227,57 @@ function App() {
     return lanes === undefined ? undefined : { ...lanes, stalenessFor: laneStaleness }
   }, [ribbon, pois, searchablePois, laneStaleness])
 
-  const chartSelection = routeDraft !== null ? draftStretch : freeChartStretch
-  const chartSouth =
-    routeDraft === null
-      ? freeChartSouth
-      : routeDraft.phase === 'entrance'
-        ? routeDraft.south
-        : routeDirection(routeDraft.stops) === 'SOBO'
-
-  /** A profile-axis mile as a route stop: unnamed - a chart mile has no
-   *  name - and drawable through the same anchor carry every
-   *  distance-derived stop uses. */
-  const chartStop = useCallback(
-    (mile: number): RouteDraftStop => ({
-      mile,
-      clientMile: anchoredClientMile(mile, mileAnchors),
-    }),
-    [mileAnchors],
-  )
+  const chartSelection = draftLive ? draftStretch : freeChartStretch
+  const chartSouth = draftSouth ?? freeChartSouth
 
   /**
    * A drag settled on the chart. With no draft open it is a measurement and
-   * nothing more. With one open it re-stretches the route (the review's
-   * "overriding what was selected"): the ends move, destinations still
-   * inside survive, the walk's direction stands (lib/route.ts's
-   * restretchStops). On the entrance it answers both of that screen's
-   * questions at once, so it lands straight on the editor the way "Use this
-   * stretch" does. A null - a click - changes no route: clearing one is the
-   * builder's close button, and the chart already refuses to send it.
+   * nothing more; with one open it re-stretches the route (the review's
+   * "overriding what was selected"). A null - a click - changes no route:
+   * clearing one is the builder's close button, and the chart already
+   * refuses to send it.
+   *
+   * `draftLive` is what picks the branch, rather than anything the builder
+   * reports back from the call: a state updater runs at render, so a seam
+   * that answered "did I act?" would answer it a render too late.
    */
   const handleChartStretch = useCallback(
     (stretch: ChartStretch | null) => {
-      if (routeDraft === null) {
+      if (!draftLive) {
         setFreeChartStretch(stretch)
         return
       }
       if (stretch === null) return
-      const lo = chartStop(stretch.startMile)
-      const hi = chartStop(stretch.endMile)
-      if (lo.mile === hi.mile) return
-      setRouteDraft((draft) => {
-        if (draft === null) return draft
-        if (draft.phase === 'editor')
-          return withStops(draft, restretchStops(draft.stops, lo, hi))
-        return {
-          phase: 'editor',
-          stops: draft.south ? [hi, lo] : [lo, hi],
-          history: [],
-        }
-      })
-      // The picker's slot may name a stop the re-stretch just removed.
-      setStopPick(null)
+      restretchToMiles(stretch.startMile, stretch.endMile)
     },
-    [routeDraft, chartStop],
+    [draftLive, restretchToMiles],
   )
 
   /** The chart's direction toggle turns the ROUTE around while one is being
    *  built - reversing the stops, which is what walking it the other way
    *  means - and is a display choice only while measuring. */
   const handleChartSouth = useCallback(() => {
-    if (routeDraft === null) {
+    if (!draftLive) {
       setFreeChartSouth((was) => !was)
       return
     }
-    setRouteDraft((draft) => {
-      if (draft === null) return draft
-      if (draft.phase === 'entrance') return { ...draft, south: !draft.south }
-      // THROUGH withStops like every other editor edit (#986). Reversing the
-      // stops is exactly the kind of change undo has to see: it was the one
-      // path that mutated them directly, so ↺ after a flip restored a state
-      // from two edits back - the failure withStops' own comment describes.
-      return withStops(draft, [...draft.stops].reverse())
-    })
-  }, [routeDraft])
+    toggleDraftDirection()
+  }, [draftLive, toggleDraftDirection])
 
   /** "Plan this stretch": the measured selection becomes a route - ends at
    *  its ends, walked the way the figures were just reading. */
   const handlePlanChartStretch = useCallback(() => {
     if (freeChartStretch === null) return
-    const lo = chartStop(freeChartStretch.startMile)
-    const hi = chartStop(freeChartStretch.endMile)
-    if (lo.mile === hi.mile) return
-    // The same one-thing-open-at-a-time sweep opening the builder makes.
-    setSelectedPoiId(null)
-    setLegendOpen(false)
-    setSearchOpen(false)
-    setTargetRequest(null)
+    // THE sweep, not a copy of it (#997). This handler used to repeat four
+    // of its five lines inline, which is how the day-hike clear could have
+    // been added to one opener and missed here. The one line it did not
+    // repeat - setActiveTab('trail') - is a no-op on this path rather than a
+    // difference: the chart is a MapScreen prop, and App returns early for
+    // every other tab, so nothing reaches here from anywhere else.
+    sweepForBuilder()
     setFreeChartStretch(null)
-    setRouteDraft({
-      phase: 'editor',
-      stops: freeChartSouth ? [hi, lo] : [lo, hi],
-      history: [],
-    })
-  }, [freeChartStretch, freeChartSouth, chartStop])
+    openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
+  }, [freeChartStretch, freeChartSouth, openFromMiles, sweepForBuilder])
 
   // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
   // fix - a desk has none - only the published profile; the fix, when one
@@ -2900,7 +2314,7 @@ function App() {
       stretchToRuns,
       selection: chartSelection,
       southbound: chartSouth,
-      selectionFromPlan: routeDraft !== null,
+      selectionFromPlan: draftLive,
       onSelectStretch: handleChartStretch,
       onToggleSouthbound: handleChartSouth,
       onPlanStretch: handlePlanChartStretch,
@@ -2916,7 +2330,7 @@ function App() {
     gpsPlanMile,
     chartSelection,
     chartSouth,
-    routeDraft,
+    draftLive,
     handleChartStretch,
     handleChartSouth,
     handlePlanChartStretch,
@@ -2960,19 +2374,6 @@ function App() {
   }, [plan, currentTrip])
 
   /**
-   * Every write to the trip store runs through here: apply, persist,
-   * fire-and-forget. The in-memory store is the truth the screens render
-   * either way - the same contract the single plan had.
-   */
-  const applyTripStore = useCallback((edit: (current: TripStore) => TripStore) => {
-    setTripStore((current) => {
-      const next = edit(current)
-      if (next !== current) void saveTrips(next)
-      return next
-    })
-  }, [])
-
-  /**
    * Laying days out either KEEPS A NEW TRIP or re-lays the one already open,
    * and the difference is which door the sheet came through: the route
    * builder makes a trip that did not exist, while the timeline's "change
@@ -2987,10 +2388,10 @@ function App() {
         tripId === null ? addTrip(store, next) : updateTrip(store, tripId, next),
       )
       setTargetRequest(null)
-      setRouteDraft(null)
+      closeRouteBuilder()
       setActiveTab('plan')
     },
-    [targetRequest, applyTripStore],
+    [targetRequest, applyTripStore, closeRouteBuilder],
   )
 
   // Every timeline edit runs through here, against whichever trip is open.
@@ -3056,32 +2457,6 @@ function App() {
    * Named for the ground rather than asked for: naming is a rename away,
    * and a dialog before the thing exists is a dialog nobody reads.
    */
-  /**
-   * Keep the drafted stretch as ground already walked (#789).
-   *
-   * The same two ends the builder just described, said in the past tense -
-   * which is why this door is here rather than behind a second way to name
-   * two places. Every day in the record is walked on arrival, so it feeds
-   * the roll-up and #791's gaps exactly as a walked trip does; `recorded`
-   * marks the provenance, so no screen prints a remembered 300-mile stretch
-   * as if somebody walked it in a day.
-   */
-  const handleRecordWalked = useCallback(() => {
-    if (routeDraft === null || routeDraft.phase !== 'editor') return
-    if (routeDraft.stops.length < 2) return
-    const stops = routeDraft.stops.map(({ mile, name, poiId }) => ({
-      mile,
-      ...(name === undefined ? {} : { name }),
-      ...(poiId === undefined ? {} : { poiId }),
-      resupply: false,
-    }))
-    const plan = recordedPlan(stops)
-    applyTripStore((store) => addTrip(store, plan, undefined, true))
-    setRouteDraft(null)
-    setStopPick(null)
-    setActiveTab('plan')
-  }, [routeDraft, applyTripStore])
-
   const handleGroupIntoHike = useCallback(() => {
     applyTripStore((store) => {
       const hike = hikeFromTrips(store.trips, 'My hike')
@@ -4449,7 +3824,7 @@ function App() {
                       onPickDayHike={openDayHike}
                       onPickTrip={() => {
                         setPlanKindOpen(false)
-                        openRouteBuilder()
+                        routeBuilder.openRouteBuilder()
                       }}
                       onPickWalked={() => setPlanKindOpen(false)}
                       onClose={() => setPlanKindOpen(false)}
@@ -4460,7 +3835,7 @@ function App() {
                 gpsMile={gpsPlanMile}
                 units={units}
                 pace={pace}
-                draftLive={routeDraft !== null || dayHike !== null}
+                draftLive={routeBuilder.draftLive || dayHike !== null}
                 dayHikes={dayHikeStore.hikes}
                 onOpenDayHike={handleOpenDayHike}
                 {...(dayHikeReview === null && dayHikeCardNode !== null
@@ -4493,8 +3868,8 @@ function App() {
                 hikes={tripStore.hikes}
                 groups={tripStore.groups}
                 onOpenGroup={setOpenGroupId}
-                onPlanGap={handlePlanGap}
-                onPlanFrom={handlePlanFrom}
+                onPlanGap={routeBuilder.handlePlanGap}
+                onPlanFrom={routeBuilder.handlePlanFrom}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
                 {...(openGroup !== null
@@ -4537,7 +3912,7 @@ function App() {
                           onRemove={handleRemoveTrip}
                           onNew={() => {
                             setTripsOpen(false)
-                            openRouteBuilder()
+                            routeBuilder.openRouteBuilder()
                           }}
                           onGroupIntoHike={handleGroupIntoHike}
                           groups={tripStore.groups}
@@ -4718,17 +4093,18 @@ function App() {
           {...atc.mapScreen}
           {...line.mapScreen}
           {...workday.mapScreen}
-          routeDrawing={routeDrawing}
+          // The route builder's three, from the same kind of hook (#991).
+          {...routeBuilder.mapScreen}
           dayHikeDrawing={dayHikeDrawing}
-          // Defined for the whole builder session so a stray tap can never
-          // fall through to a waypoint card underneath - but the handler
-          // only ACTS while the picker's map door is open (one tap, one
-          // interpreter). Suppressed while the target sheet is up: the
-          // sheet covers the surface that would explain the tap.
+          // Two things sit OVER the builder's own surface, and both are the
+          // shell's: the break-into-days sheet, and the day-hike builder.
+          // The precedence between them is unchanged - target, then day
+          // hike, then whatever the route builder wanted to show.
           onRouteTap={
-            (routeDraft === null && dayHike === null) || targetRequest !== null
+            targetRequest !== null ||
+            (dayHike === null && routeBuilder.mapScreen.onRouteTap === undefined)
               ? undefined
-              : handleStopMapTap
+              : handleMapTap
           }
           routeSheet={
             targetRequest !== null ? (
@@ -4760,97 +4136,8 @@ function App() {
                 onCancel={handleDayHikeCancel}
                 canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
               />
-            ) : stopPick !== null && stopPick.onMap ? (
-              <RouteMapPickBar
-                refusedTap={stopPick.refusedTap}
-                units={units}
-                onCancel={() =>
-                  setStopPick({ ...stopPick, onMap: false, refusedTap: false })
-                }
-              />
-            ) : stopPick !== null ? (
-              <RouteStopPicker
-                choices={routeStopChoices}
-                pois={pois}
-                previous={pickPrevious}
-                south={pickSouth}
-                removable={
-                  stopPick.slot.kind === 'replace' &&
-                  routeDraft !== null &&
-                  routeDraft.phase === 'editor' &&
-                  stopPick.slot.index > 0 &&
-                  stopPick.slot.index < routeDraft.stops.length - 1
-                }
-                units={units}
-                onPick={applyPickedStop}
-                onMapPick={() => setStopPick({ ...stopPick, onMap: true })}
-                onRemove={handleRemoveStop}
-                onClose={() => setStopPick(null)}
-              />
-            ) : routeDraft === null ? null : routeDraft.phase === 'entrance' ? (
-              <RouteEntranceSheet
-                start={routeDraft.start}
-                ask={routeDraft.ask}
-                miles={routeDraft.miles}
-                days={routeDraft.days}
-                south={routeDraft.south}
-                end={
-                  entranceEnd === null
-                    ? null
-                    : ({
-                        mile: entranceEnd.stop.mile,
-                        ...(entranceEnd.stop.name === undefined
-                          ? {}
-                          : { name: entranceEnd.stop.name }),
-                        ...(entranceEnd.kind === undefined
-                          ? {}
-                          : { kind: entranceEnd.kind }),
-                      } satisfies EntranceEnd)
-                }
-                reachMi={
-                  routeDraft.ask === 'long' ? (entranceEnd?.reachMi ?? null) : null
-                }
-                hoursTarget={DEFAULT_WALKING_HOURS}
-                daysUsable={elevation !== null}
-                gpsUsable={fix !== null && gpsPlanMile !== null}
-                refused={routeStopChoices.length === 0}
-                units={units}
-                onAsk={(ask) => patchEntrance({ ask })}
-                onMiles={(miles) => patchEntrance({ miles })}
-                onDays={(days) => patchEntrance({ days })}
-                onSouth={(south) => patchEntrance({ south })}
-                onPickStart={handlePickStart}
-                onPickEnd={() =>
-                  setStopPick({ slot: { kind: 'end' }, onMap: false, refusedTap: false })
-                }
-                onClearEnd={() =>
-                  setRouteDraft((draft) =>
-                    draft !== null && draft.phase === 'entrance'
-                      ? { ...draft, fixedEnd: null }
-                      : draft,
-                  )
-                }
-                fixedEnd={routeDraft.fixedEnd}
-                refusedTap={entranceRefusedTap}
-                trailMiles={trailMiles}
-                onUse={handleUseStretch}
-                onTapToBuild={handleTapToBuild}
-                onClose={handleRouteCancel}
-              />
             ) : (
-              <RouteStopsPanel
-                stops={routeDraft.stops}
-                legs={routeLegDisplays}
-                direction={routeDirection(routeDraft.stops)}
-                units={units}
-                onEditStop={handleEditStop}
-                onAddStop={handleAddStop}
-                onUndo={routeDraft.history.length === 0 ? null : handleUndoRoute}
-                refusedTap={editorRefusedTap}
-                onBreakIntoDays={handleBreakIntoDays}
-                onRecordWalked={handleRecordWalked}
-                onClose={handleRouteCancel}
-              />
+              routeBuilder.mapScreen.routeSheet
             )
           }
           warnings={warningPins}

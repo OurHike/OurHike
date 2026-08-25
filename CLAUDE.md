@@ -148,27 +148,38 @@ saying so and why. That line is a real answer and takes ten seconds.
 It looks like evidence and is not, which is the failure the standard at the top
 of this file exists to prevent.
 
-**The app's own screenshot is automatic and is not your job.** `pr-preview.yml`
-photographs every pull request's build and puts first run and the trail screen in
-the preview comment (#988). You write the `## Screenshot` section for what those
-two shots cannot reach: the screen your change is actually about, the numbers it
-moves, or the line saying there is nothing to show.
+**A change a hiker can see points the camera at itself.** The preview comment's
+pictures come from shot recipes — small Playwright drivers in
+`client/preview-shots/`, each reaching one screen — and `pr-preview.yml`
+photographs every recipe your pull request adds or changes, leading the comment
+with those shots (#998). So a UI change is not finished until a recipe reaches
+the screen it changed: add one, or touch the existing recipe for that screen so
+it is re-photographed. The camera runs in CI, where the map data is real and
+the image has somewhere to live — two things an agent sandbox cannot give you.
+The standing two shots, first run and the trail screen, stay automatic; they
+answer "does the app still come up", which was the *only* question the comment
+answered before #998, and a picture of the entry page is not evidence about the
+water card.
 
-`cd client && node scripts/screenshot.mjs <name>` takes one by hand when you need
-a different screen, and `--dist` shoots the built app the way CI does.
+You still write the `## Screenshot` section: which shot to look at and what is
+different in it, plus everything a recipe cannot reach — the numbers a pipeline
+change moves, or the line saying there is nothing to show.
 [`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md)
-is the rest: driving the app to the state worth photographing, where an image can
-be hosted at all given that a pull request body cannot hold bytes, and the four
-things that must never appear in one — a signed-in account, anybody's reports or
-photos, a dispersed campsite at a readable zoom, a real location fix.
+is the rest: the recipe contract, `cd client && node scripts/screenshot.mjs`
+for a one-off frame by hand, where an image can be hosted at all given that a
+pull request body cannot hold bytes, and the four things that must never appear
+in one — a signed-in account, anybody's reports or photos, a dispersed campsite
+at a readable zoom, a real location fix. A recipe is those rules on a timer: it
+re-photographs whenever touched, so a recipe that drives into somebody's data
+publishes it on every future pull request too.
 
-**No screenshot is ever committed.** The automated one is written into the
-directory being uploaded to Cloudflare Pages, so it is served by the same
-deployment as the app it shows and is removed with it when the pull request
-closes. That is the trade and it is deliberate: the picture lasts exactly as long
-as review does, and in exchange nothing permanent enters a public tree. Committing
-one costs 79,290 measured bytes that cannot be retracted, which is why the first
-version of this rule was replaced.
+**No screenshot is ever committed — recipes are, pixels are not.** The captures
+are written into the directory being uploaded to Cloudflare Pages, so each is
+served by the same deployment as the app it shows and is removed with it when
+the pull request closes. That is the trade and it is deliberate: the picture
+lasts exactly as long as review does, and in exchange nothing permanent enters
+a public tree. Committing one costs 79,290 measured bytes that cannot be
+retracted, which is why the first version of this rule was replaced.
 
 ## Claim the issue before you branch
 

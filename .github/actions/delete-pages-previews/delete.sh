@@ -63,17 +63,41 @@ api() {
 # What that produces is a cleanup that silently leaves some behind - which is
 # the exact failure this action exists to prevent, arrived at by way of the
 # fix for it.
+#
+# NO `per_page` (#1001). It used to ask for 100 and Cloudflare refused every
+# request with "Invalid list options provided. Review the `page` or `per_page`
+# parameter." - so this action listed nothing, deleted nothing, and reported
+# "0 of 0" as though there had been nothing to remove. Every preview built
+# since it was written is still reachable.
+#
+# The ceiling is not published: the Pages limits page does not state it, and
+# Cloudflare's own OpenAPI schema declares both `page` and `per_page` as bare
+# integers with no `maximum`. It is enforced server-side and documented
+# nowhere, and the API checks auth before query parameters, so it cannot be
+# bisected without a token either. A number picked here would be an
+# unvalidated constant on a path whose only alarm is a red check on a closed
+# pull request - which is precisely how the last one survived.
+#
+# So: send no page size and take whatever Cloudflare defaults to. Correct at
+# any cap, and nothing to re-break when they move it. The cost is more
+# requests when that default is small, which the loop below already handles.
 ids=()
 page=1
 while :; do
-  if ! response="$(api "$DEPLOYMENTS?env=preview&per_page=100&page=$page")"; then
+  if ! response="$(api "$DEPLOYMENTS?env=preview&page=$page")"; then
     echo "::error::Could not reach the Cloudflare API to list deployments for '$PROJECT'."
     exit 1
   fi
 
   if [ "$(jq -r '.success // false' <<<"$response")" != "true" ]; then
-    jq -r '.errors[]?.message // empty' <<<"$response" >&2 || true
-    echo "::error::Cloudflare declined to list deployments for '$PROJECT'. The token needs \"Cloudflare Pages: Edit\" on this account."
+    # CLOUDFLARE'S OWN WORDS FIRST. This used to assert a token-permission
+    # problem for every kind of refusal, so the run that found #1001 said the
+    # token needed "Cloudflare Pages: Edit" while the body it had just been
+    # handed said the parameters were invalid. An annotation that names the
+    # wrong cause is worse than one that names none: it reads as a diagnosis,
+    # and the next person re-issues a token that was never the problem.
+    reason="$(jq -r '[.errors[]?.message] | join("; ")' <<<"$response" 2>/dev/null || true)"
+    echo "::error::Cloudflare declined to list deployments for '$PROJECT': ${reason:-no reason given}. If that is a permissions problem, the token needs \"Cloudflare Pages: Edit\" on this account."
     exit 1
   fi
 

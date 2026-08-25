@@ -152,6 +152,44 @@ def test_only_the_closures_layer_may_be_empty():
     assert flagged == {"oprhp_trail_closures"}
 
 
+def test_the_real_registry_registers_mohonk_trails_as_external_and_shipping():
+    """#992's deliverable, checked as data: Mohonk Preserve's own trails and
+    carriage-road layer, registered the same way OPRHP's and NYNJTC's were -
+    external kind, a steward, a licence pointing at the maintainer's
+    authorisation (mohonk_licence), blaze/name fields so
+    export_nearby_trails.py's network_line_sources() picks it up, and
+    reaches_hikers True - the same shape nynjtc_trails' entries took once
+    their own authorisation landed (#950)."""
+    registry = load_registry(REAL_REGISTRY)
+    entry = find_source(registry, "mohonk_trails")
+
+    assert entry is not None, "sources.json no longer registers mohonk_trails (#992)"
+    assert entry["kind"] == EXTERNAL_ARCGIS_LAYER
+    assert entry["trust"] == "authoritative"
+    assert entry["steward"] == "Mohonk Preserve"
+    assert entry["licence"].strip()
+    assert entry["url"].startswith("https://services8.arcgis.com/cQ05sucxF4UWabFF/")
+    assert entry["blaze_field"] == "Blaze"
+    assert entry["name_field"] == "Name"
+    assert entry["reaches_hikers"] is True
+
+
+def test_the_registry_records_the_mohonk_licence_block():
+    """The basis mohonk_trails' reaches_hikers: True rests on, checked as
+    data: the terms are recorded verbatim (not summarized, after
+    oprhp_licence's truncation lesson) and the block says plainly that this
+    ships on the maintainer's authorisation rather than on Mohonk Preserve's
+    own stated terms - the same shape nynjtc_licence's basis reads."""
+    registry = load_registry(REAL_REGISTRY)
+    block = registry["mohonk_licence"]
+
+    assert "WITHOUT ANY WARRANTY" in block["terms_verbatim"]
+    assert len(block["terms_verbatim"]) > 100
+    assert "992" in block["open_question"]
+    assert block["basis"].startswith("Maintainer authorisation")
+    assert block["recorded_date"] == "2026-08-25"
+
+
 def test_the_registry_records_the_oprhp_licence_block():
     """The gate #769 exists to hold - but NOT for the reason this test used to
     give (#950, corrected 2026-08-24).

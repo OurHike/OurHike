@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   mapCredits,
+  MOHONK_CREDIT,
   NYNJTC_CREDIT,
   OPENFREEMAP_CREDIT,
   OPRHP_CREDIT,
@@ -115,14 +116,18 @@ describe('mapCredits', () => {
   it('credits the trail stewards only when their trails are drawn', () => {
     // OPRHP's attribution is a CONDITION of using their data - "any maps...
     // created using OPRHP data must include proper credit" - so its absence
-    // when their lines ARE drawn is a breach, not an untidy corner.
+    // when their lines ARE drawn is a breach, not an untidy corner. NYNJTC's
+    // and Mohonk Preserve's are not conditions (both ship on the maintainer's
+    // authorisation, not stated terms), but the same "say what is drawn" rule
+    // applies to a courtesy as much as to a licence.
     const drawn = mapCredits({ background: 'usgs_topo_offline', hasNearbyTrails: true })
 
     expect(drawn).toContain(OPRHP_CREDIT)
     expect(drawn).toContain(NYNJTC_CREDIT)
+    expect(drawn).toContain(MOHONK_CREDIT)
   })
 
-  it('names neither steward on a phone that has none of their trails', () => {
+  it('names none of the stewards on a phone that has none of their trails', () => {
     // The failure this module was written to fix, in its licence-shaped form:
     // a corner claiming OPRHP data is on screen when the artifact 404'd is
     // false about the one thing a hiker could check. Today this is the
@@ -131,6 +136,7 @@ describe('mapCredits', () => {
 
     expect(absent).not.toContain(OPRHP_CREDIT)
     expect(absent).not.toContain(NYNJTC_CREDIT)
+    expect(absent).not.toContain(MOHONK_CREDIT)
   })
 
   it('says everything the style declares, once a phone is holding all of it', () => {

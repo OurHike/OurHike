@@ -64,6 +64,11 @@ class FakeState:
     deployments: list[dict] = field(default_factory=list)
     undeletable: set[str] = field(default_factory=set)
     list_failure: dict | None = None
+    # Cloudflare's own default, whatever it turns out to be, is not published
+    # either - so this is a stand-in figure chosen small enough that the
+    # paging tests below really page. The script sends no page size, so this
+    # is the double's business alone and nothing depends on it being right.
+    page_size: int = 25
     delete_calls: list[tuple[str, dict]] = field(default_factory=list)
     list_calls: list[dict] = field(default_factory=list)
     auth_seen: set[str] = field(default_factory=set)
@@ -95,10 +100,38 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(self.state.list_failure)
             return
 
+        # REFUSES `per_page` AT ALL, and that is the point of #1001 rather
+        # than an oversight. This stand-in used to honour whatever it was
+        # sent, so the suite passed green while the real API rejected every
+        # list the script issued and the action deleted nothing for weeks.
+        #
+        # It does not model the real cap because there is no real cap to
+        # model from here: the Pages limits page does not state one, and
+        # Cloudflare's OpenAPI schema declares `per_page` as a bare integer
+        # with no `maximum`. Refusing the parameter outright is the one
+        # faithful thing available - it pins the script to the behaviour that
+        # can be verified without a token, which is not sending a page size
+        # nobody here can check. Anyone who later wants one has to come
+        # through this line, and should arrive with a figure they measured.
+        if "per_page" in query:
+            self._json(
+                {
+                    "success": False,
+                    "errors": [{"message": "Invalid list options provided. Review the `page` or `per_page` parameter."}],
+                    "result": None,
+                }
+            )
+            return
+
         page = int(query.get("page", "1"))
-        per_page = int(query.get("per_page", "100"))
-        start = (page - 1) * per_page
-        self._json({"success": True, "errors": [], "result": self.state.deployments[start : start + per_page]})
+        start = (page - 1) * self.state.page_size
+        self._json(
+            {
+                "success": True,
+                "errors": [],
+                "result": self.state.deployments[start : start + self.state.page_size],
+            }
+        )
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
@@ -307,6 +340,30 @@ class TestItRefusesWhatItCannotDoSafely:
         assert "Cloudflare Pages: Edit" in result.output
         assert cloudflare.state.delete_calls == []
 
+    def test_the_refusal_says_what_cloudflare_actually_said(self, cloudflare, tmp_path):
+        """#1001: the annotation used to name a cause Cloudflare had not given.
+
+        Every refusal was reported as a token-permission problem, so the run
+        that finally exposed this said the token needed "Cloudflare Pages:
+        Edit" while the body it had just parsed said the list options were
+        invalid. Anyone acting on that re-issues a working token. An
+        annotation that names the wrong cause is worse than one that names
+        none, because it reads as a diagnosis.
+        """
+        cloudflare.state.list_failure = {
+            "success": False,
+            "errors": [{"message": "Invalid list options provided. Review the `page` or `per_page` parameter."}],
+            "result": None,
+        }
+
+        result = run(cloudflare, tmp_path, "pr-281")
+
+        assert result.returncode == 1
+        assert "Invalid list options provided" in result.output
+        # The token stays on offer as a possibility, not as the answer.
+        assert "If that is a permissions problem" in result.output
+        assert cloudflare.state.delete_calls == []
+
     def test_it_reports_counts_even_when_it_fails(self, cloudflare, tmp_path):
         """So the comment on the pull request can say how many are left."""
         cloudflare.state.deployments = [preview(281, "a")]
@@ -346,6 +403,21 @@ class TestTheRequestsItMakes:
         run(cloudflare, tmp_path, "pr-281")
 
         assert cloudflare.state.list_calls[0]["env"] == "preview"
+
+    def test_it_asks_for_no_page_size_at_all(self, cloudflare, tmp_path):
+        """#1001, stated directly rather than only enforced by the stand-in.
+
+        Asking for 100 got every list refused, and the ceiling that would
+        have made some other number safe is published nowhere - not in the
+        Pages limits, not in Cloudflare's OpenAPI schema, and not reachable
+        by probing, since auth is checked before query parameters. Sending
+        none is the only page size that can be justified from here.
+        """
+        cloudflare.state.deployments = [preview(281, "a")]
+
+        run(cloudflare, tmp_path, "pr-281")
+
+        assert all("per_page" not in query for query in cloudflare.state.list_calls)
 
 
 class TestTheWorkflowUsesIt:

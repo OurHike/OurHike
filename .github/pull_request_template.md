@@ -17,18 +17,19 @@ Closes #
 ## Screenshot
 
 <!--
-The preview comment already carries first run and the trail screen, taken from
-this build automatically. This section is for what those two cannot reach.
+The preview comment leads with a shot of every recipe under
+client/preview-shots/ this PR adds or changes, then the standing two (first
+run, the trail screen). A change a hiker can see points the camera at itself:
+add or touch the recipe for the screen that changed, then use this section to
+say which shot to look at and what is different in it.
 
-A UI change: say which screen, and what is different about it. A pipeline or
-backend change: whatever the evidence actually is — a before-and-after table, a
-test going red then green, a render. A change with genuinely nothing to show
-says so in one line and why, which is a real answer.
+A pipeline or backend change: whatever the evidence actually is — a
+before-and-after table, a test going red then green, a render. A change with
+genuinely nothing to show says so in one line and why, which is a real answer.
 
-`cd client && npm run build && node scripts/screenshot.mjs <name> --dist` takes
-a shot of any screen so you can look at it; the output is gitignored and is not
-committed. Nothing here goes in a commit. Full instructions, and what must never
-appear in a screenshot, are in .claude/skills/pr-screenshot/SKILL.md.
+Recipes are code and are committed; pixels never are — captures land in
+client/dist/__screenshot/, gitignored. Full instructions, the recipe contract,
+and what must never appear in a shot: .claude/skills/pr-screenshot/SKILL.md.
 -->
 
 ## How it was checked

@@ -85,6 +85,11 @@ export const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: fa
  */
 export const CAPTURE_SCALE = 2
 
+/** Settle after load — and after a recipe's drive, which reuses it (see
+ *  capture()). Named so photograph-preview.mjs and parseArgs() cannot hold
+ *  two different opinions of it. */
+export const DEFAULT_WAIT_MS = 3500
+
 /**
  * What one screenshot may weigh before it needs a second thought.
  *
@@ -152,7 +157,7 @@ export function parseArgs(argv) {
     url: value('url', undefined),
     dist: flag('dist'),
     skipEntry: !flag('entry'),
-    waitMs: Number(value('wait', 3500)),
+    waitMs: Number(value('wait', DEFAULT_WAIT_MS)),
     scale: Number(value('scale', CAPTURE_SCALE)),
     fullPage: flag('full'),
     viewport,
@@ -309,7 +314,7 @@ async function skipFirstRun(context) {
 }
 
 export async function capture(options) {
-  const { name, outDir, url, dist, skipEntry, waitMs, scale, fullPage, viewport } =
+  const { name, outDir, url, dist, skipEntry, waitMs, scale, fullPage, viewport, drive } =
     options
   mkdirSync(outDir, { recursive: true })
   const path = join(outDir, `${slug(name)}.png`)
@@ -329,6 +334,17 @@ export async function capture(options) {
     const page = await context.newPage()
     await page.goto(target, { waitUntil: 'load', timeout: 60_000 })
     await page.waitForTimeout(waitMs)
+    // A shot recipe's taps (client/preview-shots/, driven by
+    // photograph-preview.mjs). Not a CLI flag: a drive is a function, and the
+    // command line cannot carry one — recipes are how one arrives here.
+    if (drive !== undefined) {
+      await drive(page)
+      // The same settle again, deliberately the same constant: what a tap
+      // opens animates in exactly like what a load does, and two numbers
+      // here would be two opinions about how long this app takes to stop
+      // moving.
+      await page.waitForTimeout(waitMs)
+    }
     await page.screenshot({ path, fullPage })
     return { path, bytes: statSync(path).size, displayWidth: Math.round(viewport.width) }
   } finally {

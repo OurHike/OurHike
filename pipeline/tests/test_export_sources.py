@@ -219,6 +219,16 @@ class TestAgainstTheRealRegistry:
         assert any("Parks" in n for n in named), "OPRHP's attribution is a licence condition"
         assert any("New York-New Jersey" in n for n in named)
 
+    def test_names_mohonk_preserve_now_that_its_lines_ship(self):
+        """Mohonk Preserve joined OPRHP and NYNJTC on 2026-08-25 (#992), on the
+        maintainer's authorisation rather than stated terms - the same footing
+        NYNJTC shipped on. Not a licence condition the way OPRHP's is, but the
+        same "say what is drawn" rule this exporter exists to hold applies to a
+        courtesy as much as to a condition."""
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert any("Mohonk" in n for n in named)
+
     def test_still_omits_the_oprhp_layers_nothing_exports(self):
         """The distinction the licence flip had to keep, and it is not about
         licensing: a source is held back either because its terms are

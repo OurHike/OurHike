@@ -114,6 +114,23 @@ export const TRAIL_GRAPH_KEY = 'trail_graph.json'
  */
 export const TRAIL_GRAPH_GEOMETRY_KEY = 'trail_graph_geometry.json'
 
+/**
+ * The climb along each graph edge - `[gain_ft, loss_ft]` or null - index-aligned
+ * with TRAIL_GRAPH_KEY's `edges` (#1011, pipeline/export_network_elevation.py).
+ *
+ * Two scalars per edge, not a profile, because routing never reads this and the
+ * card reads it once per open: summing a walk is tens of additions, where a
+ * dense profile would be thousands of sample reads on a screen a hiker reopens
+ * while deciding. It is the third file on the same shelf as the geometry above,
+ * under the same alignment rule.
+ *
+ * A 404 is ordinary and means "no figures for this hike", which the card says
+ * in a sentence. A null ENTRY is different and stronger: that edge's ground was
+ * never measured, so a walk crossing it has no total at all rather than a
+ * total missing one edge.
+ */
+export const TRAIL_GRAPH_ELEVATION_KEY = 'trail_graph_elevation.json'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

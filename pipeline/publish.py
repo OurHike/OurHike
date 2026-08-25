@@ -480,6 +480,29 @@ def collect_artifacts() -> dict[str, dict]:
                 "sha256": manifest["geometry_sha256"],
             }
 
+    # The climb along those same edges (#1011, export_network_elevation.py).
+    # Its own manifest, because a publish can legitimately run without it -
+    # the elevation steps are gated on `include_elevation` in the workflow, and
+    # a run that skipped them ships a graph with no elevation rather than no
+    # graph. The client already treats an absent elevation artifact as "no
+    # figures", never as a failure.
+    #
+    # SAME LICENCE GATE, and for the reason the graph's own comment gives one
+    # level up: climb measured along a steward's line is derived from that
+    # steward's data. export_network_elevation.py copies `sources` out of the
+    # graph manifest precisely so this check has something to read.
+    graph_elevation_manifest = PROCESSED_DIR / "trail_graph_elevation_manifest.json"
+    if graph_elevation_manifest.exists():
+        manifest = json.loads(graph_elevation_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: trail_graph_elevation.json not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json."
+            )
+        else:
+            artifacts["trail_graph_elevation.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():
         manifest = json.loads(poi_manifest.read_text())

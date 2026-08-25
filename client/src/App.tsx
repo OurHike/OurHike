@@ -140,6 +140,7 @@ import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
 import { positionLine } from './lib/positionLine'
+import { naismithMinutes } from './lib/naismith'
 import {
   locateOnTrail,
   mileOnTrail,
@@ -199,7 +200,12 @@ import {
   type DayHikeDraft,
 } from './lib/dayHikeDraft'
 import { routeGeometry, type TrailGraphIndex } from './lib/trailGraph'
-import { attachTrailGraphGeometry, fetchTrailGraphGeometry } from './lib/trailGraphData'
+import {
+  attachTrailGraphElevation,
+  attachTrailGraphGeometry,
+  fetchTrailGraphElevation,
+  fetchTrailGraphGeometry,
+} from './lib/trailGraphData'
 import { orgLabelFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
@@ -1953,6 +1959,29 @@ function App() {
     return draftStatus(graphForTaps, dayHike)
   }, [dayHike, dayHikeIndex, graphIndex])
 
+  // What the builder bar prints as ≈time, and the one place it is derived.
+  //
+  // Naismith takes ascent and no descent - structurally, so a call site cannot
+  // wire descent in without changing its signature first (lib/naismith.ts).
+  // The climb comes off the route, which priced it from the same walked metres
+  // its legs are priced from, so the time and the miles cannot disagree about
+  // how much of an edge was walked.
+  //
+  // Null whenever the walk cannot be priced: no elevation on this phone, or an
+  // edge of it nobody has measured. The bar supports printing no time, and
+  // that is the honest output - an over-read dead band on rolling terrain
+  // over-states time, which is the safe direction, but zero would understate
+  // it, which is not.
+  const dayHikeWalkingMinutes = useMemo(() => {
+    if (dayHikeStatus === null || dayHikeStatus.kind !== 'routed') return null
+    const climb = dayHikeStatus.route.climb
+    if (climb === null) return null
+    return naismithMinutes({
+      distanceMi: dayHikeStatus.route.miles,
+      ascentFt: climb.gainFt,
+    })
+  }, [dayHikeStatus])
+
   const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (dayHike === null) return null
     const points = dayHike.points.map((point, index) => ({
@@ -2121,29 +2150,55 @@ function App() {
       />
     ) : null
 
-  // The geometry half of the graph, fetched the first time the builder
-  // opens and attached onto a NEW index (lib/trailGraphData.ts). Keyed on
-  // the mode being open rather than on launch: with the whole A.T. in the
-  // graph this is by far the heavier artifact, and a launch that never opens
-  // the door should never pay for it.
+  // The two heavy halves of the graph - each edge's vertices and its climb
+  // (#1011) - fetched the first time the builder opens and attached onto a NEW
+  // index (lib/trailGraphData.ts). Keyed on the mode being open rather than on
+  // launch: with the whole A.T. in the graph these are by far the heavier
+  // artifacts, and a launch that never opens the door should never pay for
+  // them.
+  //
+  // INDEPENDENT OF EACH OTHER ON PURPOSE. Either can 404 on a release exported
+  // before it existed, and neither absence should take the other down: without
+  // geometry the highlight is refused and the walk still prices; without
+  // elevation the walk still draws and the climb goes unsaid. Both are states
+  // the surfaces below already know how to say.
+  //
+  // BOTH DOORS, NOT JUST THE BUILDER. A saved card opens from the Plan tab
+  // with no draft in hand, so keying this on `dayHike` alone left the one
+  // surface a hiker returns to resolving against the routing-only graph -
+  // no vertices to draw and, since #1011, no climb to print. Either door
+  // opening is what these are needed for.
   useEffect(() => {
-    if (dayHike === null || graphIndex === null || dayHikeIndex !== null) return
+    if (
+      (dayHike === null && cardDayHike === null) ||
+      graphIndex === null ||
+      dayHikeIndex !== null
+    ) {
+      return
+    }
 
     const controller = new AbortController()
     let wanted = true
 
-    void fetchTrailGraphGeometry(graphIndex.graph.edges.length, controller.signal).then(
-      (geometry) => {
-        if (geometry === null || !wanted) return
-        setDayHikeIndex(attachTrailGraphGeometry(graphIndex, geometry))
-      },
-    )
+    const edgeCount = graphIndex.graph.edges.length
+    void Promise.all([
+      fetchTrailGraphGeometry(edgeCount, controller.signal),
+      fetchTrailGraphElevation(edgeCount, controller.signal),
+    ]).then(([geometry, elevation]) => {
+      if (!wanted) return
+      let next = graphIndex
+      if (geometry !== null) next = attachTrailGraphGeometry(next, geometry)
+      if (elevation !== null) next = attachTrailGraphElevation(next, elevation)
+      // Unchanged means both 404'd - leave dayHikeIndex null so the builder
+      // keeps routing on the graph it already has.
+      if (next !== graphIndex) setDayHikeIndex(next)
+    })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [dayHike, graphIndex, dayHikeIndex])
+  }, [dayHike, cardDayHike, graphIndex, dayHikeIndex])
 
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to
@@ -4118,13 +4173,12 @@ function App() {
                 status={dayHikeStatus ?? { kind: 'empty' }}
                 units={units}
                 orgLabel={dayHikeOrgLabel}
-                // No honest time exists yet: naismithMinutes requires ascent
-                // (descent structurally absent by design), and the only
-                // elevation this phone holds is the A.T. corridor profile on
-                // the pipeline mile axis. ascentFt: 0 would price every climb
-                // in Harriman at zero - a flat-ground claim on real ground -
-                // so the bar prints no time at all, which it supports.
-                walkingMinutes={null}
+                // Priced from the graph's own per-edge climb (#1011). Still
+                // null - and the bar still prints no time - whenever this
+                // phone holds no elevation artifact or the walk crosses an
+                // edge nobody measured: ascentFt: 0 would price a climb in
+                // Harriman at zero, a flat-ground claim on real ground.
+                walkingMinutes={dayHikeWalkingMinutes}
                 onUndo={() =>
                   setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
                 }

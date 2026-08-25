@@ -130,9 +130,12 @@ export interface TrailData {
   nearbyTrailsUrl: string | null
   /** The junction graph's routing half, indexed - or null while this phone
    *  has not got one, which PlanKindSheet reads as "no day hikes yet". The
-   *  geometry half is NOT here: it is fetched lazily when the builder opens
-   *  (lib/trailGraphData.fetchTrailGraphGeometry), because with the whole
-   *  A.T. in the graph it is by far the heavier half. */
+   *  two heavy halves are NOT here: the edge vertices and the per-edge climb
+   *  (#1011) are fetched lazily when the builder opens
+   *  (lib/trailGraphData.fetchTrailGraphGeometry and
+   *  fetchTrailGraphElevation), because with the whole A.T. in the graph they
+   *  are far heavier than the routing half and a launch that never opens the
+   *  builder should not pay for either. */
   graphIndex: TrailGraphIndex | null
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */

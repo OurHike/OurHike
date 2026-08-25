@@ -2,15 +2,22 @@
 //
 // The frame is the richest in its group and this card deliberately renders
 // LESS of it than it draws. What ships: the legs with each organization's own
-// name on its trail, the walked miles, the LOOP badge, the ways off, and the
-// one-line credit to the orgs that keep the ground walkable. What waits, and
-// on what (#980 keeps the ledger): the turn list (a naming rule #934 left
-// open), "Starts at · Parking" (#981's pipeline data), the on-route POI
-// counts (a policy #768's rule does not cover), the ± elevation and ≈time
-// (no elevation exists for network trails - the same reason the builder bar
-// prices nothing), and the frame's "Chip in ›" (no org's donate wording
-// exists anywhere in the registry or the stewards export to speak with, and
-// inventing one would be this app putting words in a steward's mouth).
+// name on its trail, the walked miles, the LOOP badge, the ± elevation and
+// ≈time (#1011), the ways off, and the one-line credit to the orgs that keep
+// the ground walkable. What waits, and on what (#980 keeps the ledger): the
+// turn list (a naming rule #934 left open), "Starts at · Parking" (#981's
+// pipeline data), the on-route POI counts (a policy #768's rule does not
+// cover), and the frame's "Chip in ›" (no org's donate wording exists anywhere
+// in the registry or the stewards export to speak with, and inventing one
+// would be this app putting words in a steward's mouth).
+//
+// THE CLIMB SAYS WHAT IT IS. It is a dense sum over a 10 m elevation model,
+// which is not the same kind of number as the miles beside it: published
+// figures for one walk disagree with each other by more than rounding, and the
+// pipeline's own gate reads +18.8% against a maintaining club on exactly the
+// rolling terrain this network is. The note under the figures is the
+// maintainer's call (2026-08-25) and is not decoration - a hiker comparing
+// this against a guidebook should know which way to read the difference.
 //
 // The figures prefer the LIVE resolution and fall back to the stored cache
 // with a sentence saying so - never silently. lib/dayHikes.ts's provenance
@@ -24,7 +31,8 @@ import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
-import { formatDistance, type UnitSystem } from '../lib/units'
+import { formatNaismithMinutes, naismithMinutes } from '../lib/naismith'
+import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import './plan.css'
 
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five']
@@ -67,6 +75,16 @@ export function DayHikeCard({
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
 
+  // Climb comes ONLY from the live resolution, never from the stored cache.
+  // A saved hike's figures were written before any of this existed and hold no
+  // climb at all, so there is nothing to fall back to - and a card that fell
+  // back to miles while quietly printing today's climb over yesterday's walk
+  // would be a display outrunning its source. Null here means the block below
+  // is simply absent, which is what it looked like before #1011.
+  const climb = resolved?.climb ?? null
+  const walkingMinutes =
+    climb === null ? null : naismithMinutes({ distanceMi: miles, ascentFt: climb.gainFt })
+
   // The orgs sentence counts organizations somebody actually named - legs the
   // export left unattributed are real trail but no org to credit, and "One
   // organization" over an unattributed walk would be an invented steward.
@@ -93,7 +111,32 @@ export function DayHikeCard({
       <p className="day-hike-card__figures">
         {formatDistance(miles, units)} · {legs.length}{' '}
         {legs.length === 1 ? 'leg' : 'legs'}
+        {climb !== null && (
+          <>
+            {' · '}
+            <span className="day-hike-card__climb">
+              +{formatElevation(climb.gainFt, units)} / −
+              {formatElevation(climb.lossFt, units)}
+            </span>
+          </>
+        )}
+        {walkingMinutes !== null && ` · ${formatNaismithMinutes(walkingMinutes)} walking`}
       </p>
+
+      {climb !== null && (
+        // The maintainer's decision, 2026-08-25, in the hiker's own words:
+        // ship the figure and say what it is. Cumulative gain from a 10 m
+        // elevation model is not precise - published guidebook figures for the
+        // same walk routinely differ, and on rolling ground like this the
+        // pipeline's own check reads +18.8% against one maintaining club's
+        // number (pipeline/reference/published_gain.json). Saying so is what
+        // keeps the display from outrunning its source; a hiker who compares
+        // this against a guidebook should not conclude one of them is broken.
+        <p className="day-hike-card__note" role="note">
+          Climb and time are estimates from the best elevation data available — expect
+          other sources to differ.
+        </p>
+      )}
 
       {resolved === null && (
         // Which of the two honest reasons applies changes what a hiker can do

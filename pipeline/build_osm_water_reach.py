@@ -14,9 +14,11 @@ This is the gate `export_poi.py` reads instead, in `fetch_trail_water.py`'s
 shape and on its constants:
 
   1. **Distance** - within `MATCH_RADIUS_FT` of the nearest of the centerline,
-     any side trail, or any shelter or campsite. A union of three, not three
-     rules: a point passes on whichever is closest. The maintainer's decision
-     (2026-08-17).
+     any side trail, any trail another organization maintains, or any shelter
+     or campsite. A union of four, not four rules: a point passes on whichever
+     is closest. The maintainer's decision (2026-08-17); the fourth arrived
+     with #1016 and did not change the radius, only what the radius is measured
+     from.
   2. **Grade** - `MAX_GRADE` rise-over-run from real USGS EPQS elevations at
      both ends, measured to whichever feature the point passed on, so the
      question stays *"can a hiker get from there to the water and back"* - and
@@ -35,6 +37,16 @@ for. A centerline-only gate would delete OSM water for exactly the reason it
 would delete most shelters. **"Any side trail" is ATC's own `side_trails.geojson`
 and never OSM's path network**, which would quietly widen this gate back out
 toward the thing it exists to close.
+
+AND WHY IT IS FOUR SINCE #1016
+
+The same argument, one trail system over. A hiker standing on a Harriman trail
+is standing on ground this app draws, and until #1016 the union held no line
+they could be standing on - so an OSM spring fifty feet from them was fetched,
+clipped into the corridor, and then refused for being far from the A.T. Four
+organizations' trails shipped that way. `nearby_trails.geojson` is the fourth
+member, and the same "never OSM's path network" rule governs it: it is the
+published artifact of registered stewards' own layers, not a scrape.
 
 WHAT THIS COSTS, MEASURED
 
@@ -94,9 +106,11 @@ from pathlib import Path
 
 import duckdb
 
+from export_nearby_trails import SOURCES_PATH, shipped_line_source_keys
 from fetch_trail_water import M_PER_FT, MATCH_RADIUS_FT, MAX_GRADE, MIN_GRADE_RUN_FT, elevation_ft, grade_gate
 from lib import fetch_receipts
-from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
+from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor, count_features
+from lib.source_registry import load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -117,16 +131,34 @@ MATCH_RADIUS_M = MATCH_RADIUS_FT * M_PER_FT
 # 1-5 mi, and 73.5% of the corridor's points fall past even that.
 MEASURE_CEILING_M = 5.0 * 1609.344
 
-# What a hiker could be walking from. Two line layers and two point layers, and
-# which one a point passed on is recorded but never changes the gate.
+# What a hiker could be walking from. Three line layers and two point layers,
+# and which one a point passed on is recorded but never changes the gate.
 LINE_SOURCES = {"centerline": "centerline.geojson", "side_trail": "side_trails.geojson"}
 SITE_SOURCES = {"shelter": "shelters.geojson", "campsite": "campsites.geojson"}
+
+# The third line layer, and the one this file was missing until #1016: every
+# other organization's published lines, in one artifact under data/processed/
+# rather than one file per key under data/raw/.
+#
+# ONE ARTIFACT IS WHY THIS NEEDS NO CODE PER ORGANIZATION, which is the half of
+# #1016 that matters more than the four sources it fixes today.
+# `export_nearby_trails.network_line_sources` puts every registry entry carrying
+# `blaze_field` or `blaze_default` into this file, so registering a Catskills or
+# NJ layer in sources.json brings its water with it on the next run with nobody
+# editing a list here - the shape #1011 gave the DEM index.
+#
+# Absent is a normal state and means A.T. only, exactly as it did before: a
+# publish that skipped the network export, or one whose licence gate held those
+# lines back. main() says which happened rather than quietly gating a smaller
+# world.
+NETWORK_LINES_PATH = ROOT / "data" / "processed" / "nearby_trails.geojson"
+NETWORK_LINE_TABLE = "network_trail"
 
 TOO_FAR = "the nearest {feature} is {distance_ft:.0f} ft away, past the {radius:.0f} ft a hiker walks for water"
 TOO_STEEP = (
     "the ground drops {drop_ft:.0f} ft over {distance_ft:.0f} ft - a {grade:.0%} grade, which is a scramble rather than a walk"
 )
-NOTHING_NEAR = "no trail, side trail, shelter or campsite within {ceiling:.0f} miles"
+NOTHING_NEAR = "no trail, side trail, network trail, shelter or campsite within {ceiling:.0f} miles"
 NO_ELEVATION = "USGS would not give an elevation for one end of the walk, so the ground between is unknown"
 
 # Write guards, in fetch_osm_water.py's shape and for its reason: a well-formed
@@ -162,7 +194,13 @@ def load_water(con: duckdb.DuckDBPyConnection) -> int:
     return con.execute("SELECT count(*) FROM water").fetchone()[0]
 
 
-def load_lines(con: duckdb.DuckDBPyConnection, table: str, filename: str) -> int:
+def load_lines(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    path: Path,
+    source_field: str | None = None,
+    keys: set[str] | None = None,
+) -> int:
     """One line layer, projected to metres, with its bounding box as columns.
 
     The bbox columns are a prefilter and never a distance: a range join on four
@@ -171,17 +209,55 @@ def load_lines(con: duckdb.DuckDBPyConnection, table: str, filename: str) -> int
     cheap alternative and is wrong at this frame - the gate binds at 30.5 m and
     the centerline carries 690,040 vertices, so a vertex approximation could
     move a point across the gate by a couple of metres.
+
+    `source_field` names a property carrying which organization drew the line,
+    for the one layer that mixes several (`nearby_trails.geojson`). It is
+    reported and never gated on: a spring is reachable or it is not, and whose
+    trail it sits beside has no bearing on whether a hiker can walk to it.
+
+    `keys` restricts which of those organizations count - see
+    `shipped_network_keys`, and note that this is not a gate on the water
+    either: it decides whose LINES this build is allowed to measure against.
     """
-    path = (RAW_DIR / filename).as_posix()
+    label = f'"{source_field}"' if source_field else "NULL::VARCHAR"
+    where = ""
+    if keys is not None:
+        # Empty set -> no rows, which is the right answer and not a no-op: it
+        # means every organization in the artifact is still review-only.
+        quoted = ", ".join("'" + key.replace("'", "''") + "'" for key in sorted(keys)) or "NULL"
+        where = f'WHERE "{source_field}" IN ({quoted})'
     con.execute(f"""
         CREATE OR REPLACE TABLE {table} AS
-        SELECT g, ST_XMin(g) AS xmin, ST_XMax(g) AS xmax, ST_YMin(g) AS ymin, ST_YMax(g) AS ymax
+        SELECT g, src, ST_XMin(g) AS xmin, ST_XMax(g) AS xmax, ST_YMin(g) AS ymin, ST_YMax(g) AS ymax
         FROM (
-            SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
-            FROM ST_Read('{path}')
+            SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g,
+                   {label} AS src
+            FROM ST_Read('{path.as_posix()}')
+            {where}
         )
     """)
     return con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+
+
+def shipped_network_keys() -> set[str]:
+    """The organizations whose lines this build may measure against - those
+    whose data reaches hikers. See export_nearby_trails.shipped_line_source_keys
+    for why the artifact holds more than that."""
+    return shipped_line_source_keys(load_registry(SOURCES_PATH))
+
+
+def load_network_lines(con: duckdb.DuckDBPyConnection, path: Path | None = None) -> int:
+    """The published network lines, or 0 when there is no artifact to read.
+
+    Zero is not an error and must not be treated as one - see NETWORK_LINES_PATH
+    for the two ordinary ways it happens. What it costs is stated where it can
+    be seen: this run then gates exactly the A.T.'s water, and `main` prints
+    that it did.
+    """
+    path = NETWORK_LINES_PATH if path is None else path
+    if not count_features(con, path):
+        return 0
+    return load_lines(con, NETWORK_LINE_TABLE, path, source_field="source", keys=shipped_network_keys())
 
 
 def load_sites(con: duckdb.DuckDBPyConnection) -> int:
@@ -209,7 +285,7 @@ def nearest_line(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, dict]:
     """
     rows = con.execute(f"""
         WITH pairs AS (
-            SELECT w.osm_id, ST_Distance(w.g, t.g) AS d, ST_ClosestPoint(t.g, w.g) AS cp
+            SELECT w.osm_id, ST_Distance(w.g, t.g) AS d, ST_ClosestPoint(t.g, w.g) AS cp, t.src AS src
             FROM water w
             JOIN {table} t
               ON t.xmin <= ST_X(w.g) + {MEASURE_CEILING_M}
@@ -220,12 +296,13 @@ def nearest_line(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, dict]:
         SELECT osm_id,
                MIN(d) AS d,
                ST_X(ST_Transform(arg_min(cp, d), '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lon,
-               ST_Y(ST_Transform(arg_min(cp, d), '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lat
+               ST_Y(ST_Transform(arg_min(cp, d), '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lat,
+               arg_min(src, d) AS src
         FROM pairs
         WHERE d <= {MEASURE_CEILING_M}
         GROUP BY 1
     """).fetchall()
-    return {r[0]: {"dist_m": r[1], "lon": r[2], "lat": r[3]} for r in rows}
+    return {r[0]: {"dist_m": r[1], "lon": r[2], "lat": r[3], "src": r[4]} for r in rows}
 
 
 def nearest_site(con: duckdb.DuckDBPyConnection) -> dict[str, dict]:
@@ -261,15 +338,22 @@ def measure_distances(con: duckdb.DuckDBPyConnection, quiet: bool = False) -> li
         if not quiet:
             print(message, flush=True)
 
-    say("Building the 30-mile corridor ...")
-    build_corridor(con, RAW_DIR / "centerline.geojson")
+    say("Building the corridor ...")
+    widened = build_corridor(con, RAW_DIR / "centerline.geojson", NETWORK_LINES_PATH)
+    say(f"  {'widened around the published network lines' if widened else 'the A.T. alone - no network artifact'}.")
     say(f"  {load_water(con)} OSM water points inside the corridor.")
+    line_tables = []
     for table, filename in LINE_SOURCES.items():
-        say(f"  {load_lines(con, table, filename)} {table} lines.")
+        say(f"  {load_lines(con, table, RAW_DIR / filename)} {table} lines.")
+        line_tables.append(table)
+    network_lines = load_network_lines(con)
+    if network_lines:
+        say(f"  {network_lines} network trail lines.")
+        line_tables.append(NETWORK_LINE_TABLE)
     say(f"  {load_sites(con)} shelters + campsites.")
 
     say("Measuring distances ...")
-    per_source = {label: nearest_line(con, label) for label in LINE_SOURCES}
+    per_source = {label: nearest_line(con, label) for label in line_tables}
     per_source["site"] = nearest_site(con)
 
     records = []
@@ -286,6 +370,14 @@ def measure_distances(con: duckdb.DuckDBPyConnection, quiet: bool = False) -> li
             label = min(found, key=lambda k: found[k]["dist_m"])
             hit = found[label]
             record["nearest"] = hit["site_kind"] if label == "site" else label
+            if label == NETWORK_LINE_TABLE:
+                # Which organization's trail it is beside. Reported, never
+                # gated on - and read downstream for a different question than
+                # this file's: export_poi.py withholds the A.T. mile from a
+                # point whose only walk is off the A.T., because a mile is a
+                # position ON the A.T. and dayPlanner.ts offers anything
+                # carrying one as a stop along it.
+                record["nearest_source"] = hit["src"]
             record["nearest_m"] = round(hit["dist_m"], 2)
             record["walk_to"] = {"lon": hit["lon"], "lat": hit["lat"]}
             record["passes_distance"] = hit["dist_m"] <= MATCH_RADIUS_M
@@ -396,6 +488,13 @@ def write(records: list[dict], guard: bool = True, previous: int | None = None) 
         "match_radius_ft": MATCH_RADIUS_FT,
         "max_grade": MAX_GRADE,
         "min_grade_run_ft": MIN_GRADE_RUN_FT,
+        # Which union these verdicts were taken against (#1016). Stamped for
+        # the same reason `min_grade_run_ft` is: this file is restored from the
+        # last publish and resumed rather than rebuilt, so without a record of
+        # what it was measured against, a run that finally HAS the network
+        # lines would resume A.T.-only verdicts and publish them - the defect
+        # surviving its own fix. See main().
+        "measured_against_network": bool(NETWORK_LINES_PATH.exists()),
         "n_corridor": len(records),
         "n_reachable": len(reachable),
         "points": records,
@@ -404,6 +503,29 @@ def write(records: list[dict], guard: bool = True, previous: int | None = None) 
     tmp = OUT_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     tmp.replace(OUT_PATH)
+
+
+def network_union_changed(path: Path, network_path: Path | None = None) -> bool:
+    """Whether the verdicts on `path` were taken against a different union than
+    this run would use (#1016).
+
+    ONE DIRECTION ONLY, deliberately: true when the file has no network behind
+    it and the artifact is here now. The other direction - verdicts that
+    included the network, on a run where the artifact has gone missing - is NOT
+    a re-measure, because re-measuring would throw away good verdicts to
+    replace them with a narrower set. Those points simply fail the export's own
+    gate if their lines are no longer published, which is the safe direction
+    and already how a held-back licence behaves.
+
+    A file written before this stamp existed has no key and reads as false, so
+    the first run after #1016 with an artifact present re-measures once. That is
+    the intended migration and it is why absence is not treated as unknown.
+    """
+    network = NETWORK_LINES_PATH if network_path is None else network_path
+    if not network.exists():
+        return False
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return not payload.get("measured_against_network", False)
 
 
 def drop_stale_grade_verdicts(records: list[dict], floor_on_disk: float | None) -> int:
@@ -465,6 +587,19 @@ def summarise(records: list[dict]) -> None:
         print(f"{len(passed) - len(graded)} still ungraded - re-run to finish the EPQS lookups.")
     print(f"{len(reachable)} of {n} corridor water points are reachable ({100 * len(reachable) / n:.1f}%).")
 
+    # Per organization, because #1016's whole subject is that four of them had
+    # none. A source registered and drawn but showing 0 here is the same defect
+    # in a new place, and a number nobody printed is a number nobody checked.
+    on_network = [r for r in reachable if r.get("nearest_source")]
+    if on_network:
+        by_source: dict[str, int] = {}
+        for record in on_network:
+            by_source[record["nearest_source"]] = by_source.get(record["nearest_source"], 0) + 1
+        named = ", ".join(f"{source}: {count}" for source, count in sorted(by_source.items()))
+        print(f"{len(on_network)} of them are reachable from a network trail rather than the A.T. ({named}).")
+    elif any(r.get("nearest") == NETWORK_LINE_TABLE for r in records):
+        print("No water point is reachable from a network trail - every one measured against them is past the gate.")
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -477,7 +612,16 @@ def main(argv: list[str] | None = None) -> int:
     # run's. See write().
     previous = read_previous_reachable_count()
 
-    if OUT_PATH.exists() and not args.remeasure:
+    resumable = OUT_PATH.exists() and not args.remeasure
+    if resumable and network_union_changed(OUT_PATH):
+        # The distance pass has to be redone, not patched: a point that was
+        # never in the corridor has no row here to re-measure, so the widened
+        # union can only arrive through a full re-measure. The EPQS cache makes
+        # the re-grade cheap for every point already answered for.
+        print("The verdicts on disk were taken without the network lines that are here now - re-measuring (#1016).")
+        resumable = False
+
+    if resumable:
         payload = json.loads(OUT_PATH.read_text(encoding="utf-8"))
         records = payload["points"]
         print(f"Resuming from {OUT_PATH.name} ({len(records)} points).")

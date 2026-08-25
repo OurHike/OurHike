@@ -296,6 +296,17 @@ TRAIL_WATER_PATH = RAW_DIR / "trail_water.json"
 # RAW_DIR, and a module constant built from it at import time would not follow.
 OSM_WATER_REACH_FILENAME = "osm_water_reach.json"
 
+# export_nearby_trails.py's artifact - the other organizations' published lines,
+# which widen the corridor this export clips to (#1016). Under data/processed/
+# rather than data/raw/ because it is derived output rather than a fetch, and
+# absent on any run whose network export was skipped or held back, in which case
+# the corridor is the A.T.'s thirty miles exactly as it always was.
+#
+# NOT a filename-resolved-at-call-time like the constants above: nothing in this
+# module's tests redirects the processed directory, and build_corridor takes a
+# path rather than a name.
+NETWORK_LINES_PATH = OUT_DIR.parent / "nearby_trails.geojson"
+
 # Metres per foot, for the places the two units meet: a site member's
 # distance is measured in metres (the equirectangular gate that grouped it) and
 # published in feet (what `nearby` states, and what lib/units.ts formats from).
@@ -416,6 +427,13 @@ TRAIL_ID = "AT"
 # scaffolding between two steps of this module, not part of the schema:
 # write_poi_type reads POI_COLUMNS and never sees it.
 RAW_PROPERTIES_KEY = "_source_properties"
+
+# Set on a record that sits on another organization's trail rather than on the
+# A.T., carrying which organization (#1016). Read only by attach_miles, and
+# never exported - a leading underscore keeps it in the same class as
+# RAW_PROPERTIES_KEY above: working state on the way to the columns, not a
+# column. See mark_off_trail_records for why a mile has to be withheld.
+NOT_ON_AT_KEY = "_not_on_at"
 
 # ATC's free-text column on the shelter and campsite layers. Named `Comments`,
 # not `Descriptio` - see lib/atc_notes.py for why the field actually aliased
@@ -1056,6 +1074,13 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
                 "name": crossing.get("name"),
                 "flow": crossing.get("flow"),
                 "flow_source": crossing.get("flow_source"),
+                # Which trail the stream crosses (#1016). Absent on every
+                # crossing derived before that landed, which is why this reads
+                # `.get` and why False is the right reading of absence here:
+                # the only trail this file held until then was the A.T.
+                "on_network_trail": bool(crossing.get("on_network")),
+                "network_source": crossing.get("network_source"),
+                "trail_name": crossing.get("trail_name"),
             },
         }
         record = unify_poi(
@@ -1136,6 +1161,64 @@ def load_osm_water_reach(path: Path | None = None) -> dict[str, bool] | None:
         return None
     payload = json.loads(reach_path.read_text(encoding="utf-8"))
     return {str(record["osm_id"]): bool(record["reachable"]) for record in payload["points"]}
+
+
+def load_osm_water_network_anchors(path: Path | None = None) -> dict[str, str]:
+    """`osm_id -> the organization whose trail is this point's only walk`, for
+    the points build_osm_water_reach.py passed on a network line rather than on
+    anything of ATC's (#1016).
+
+    Read separately from load_osm_water_reach rather than folded into its map,
+    because the two answer different questions and only one of them gates: that
+    one decides whether a pin is drawn at all, this one decides whether the pin
+    may claim a position on the A.T. See mark_off_trail_records.
+    """
+    reach_path = (RAW_DIR / OSM_WATER_REACH_FILENAME) if path is None else path
+    if not reach_path.exists():
+        return {}
+    payload = json.loads(reach_path.read_text(encoding="utf-8"))
+    return {
+        str(record["osm_id"]): record["nearest_source"]
+        for record in payload["points"]
+        if record.get("nearest_source") and record.get("reachable")
+    }
+
+
+def mark_off_trail_records(records: list[dict], anchors: dict[str, str]) -> int:
+    """Mark every record that sits on another organization's trail rather than
+    on the A.T., so attach_miles withholds a mile from it. Returns how many.
+
+    WHY A MILE HAS TO BE WITHHELD RATHER THAN COMPUTED ANYWAY. `attach_miles`
+    projects onto the nearest point of the A.T. and always succeeds - there is
+    no distance at which it declines - so a spring on a Harriman trail four
+    miles off the A.T. would come out carrying a perfectly formed mile. That
+    number is not merely decorative on the phone: `client/src/lib/dayPlanner.ts`
+    treats every POI with a `mile` as a candidate stop between two points of an
+    A.T. day (`candidateStops`), and `cascade.ts` the same. A hiker planning
+    water around a spring that is a four-mile bushwhack off their route is the
+    confidently-wrong answer FEATURES.md ranks as more dangerous than an honest
+    unknown.
+
+    The client already reads an absent mile correctly - every consumer above
+    skips `poi.mile === undefined` - so withholding costs the pin nothing but
+    its place in an A.T. itinerary, which is a place it should never have had.
+    """
+    marked = 0
+    for record in records:
+        anchor = None
+        if record["poi_type"] == "water" and record["source"] == OSM_WATER_SOURCE:
+            anchor = anchors.get(str(record["source_feature_id"]))
+        elif record.get(RAW_PROPERTIES_KEY, {}).get("on_network_trail"):
+            # fetch_trail_water.py's own answer for a crossing: this stream
+            # crosses somebody else's trail, not the A.T. The fallback keeps
+            # the value a string in the one case the artifact carried the flag
+            # without a source key, so a caller counting by organization never
+            # has to handle a bool among the names.
+            anchor = record[RAW_PROPERTIES_KEY].get("network_source") or "an unnamed network source"
+        if anchor:
+            record[NOT_ON_AT_KEY] = anchor
+            marked += 1
+    return marked
 
 
 def gate_osm_water_reach(records: list[dict], verdicts: dict[str, bool] | None) -> list[dict]:
@@ -1232,13 +1315,22 @@ def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline
 
     tree = STRtree([cal.line for cal in calibrated])
     points_meters = _reproject_points_to_meters(con, records)
+    positioned = 0
     for record, point in zip(records, points_meters):
+        # A POI on somebody else's trail gets no A.T. mile (#1016). This
+        # projection has no failure mode - it returns a number for a point in
+        # Ohio - so the refusal has to happen here, on a fact established
+        # upstream, rather than being inferred from the result. See
+        # mark_off_trail_records for what a wrong mile does on the phone.
+        if record.get(NOT_ON_AT_KEY):
+            continue
         index = int(tree.nearest(point))
         cal = calibrated[index]
         # Three decimals, matching elevation_profile.json's distance_mi - the
         # axis this is meant to be comparable against digit for digit.
         record["mile"] = round(cal.mile_at(cal.line.project(point)), 3)
-    return len(records)
+        positioned += 1
+    return positioned
 
 
 def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[dict]) -> dict:
@@ -1333,8 +1425,9 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     reimplementing it is what makes the preflight a real rehearsal - a check
     that read the sources its own way could pass while the export failed.
     """
-    print("Building 30-mile corridor from centerline...")
-    build_corridor(con, RAW_DIR / "centerline.geojson")
+    print("Building the corridor from the centerline...")
+    widened = build_corridor(con, RAW_DIR / "centerline.geojson", NETWORK_LINES_PATH)
+    print(f"  {'widened around the published network lines (#1016).' if widened else '30 miles around the A.T. alone.'}")
 
     print("Unifying POI sources...")
     skipped: list[str] = []
@@ -1368,6 +1461,13 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     deduped = dedupe_water(reached)
     if len(deduped) != len(reached):
         print(f"  {len(reached) - len(deduped)} OSM water twin(s) of opentrail points dropped (<= {WATER_DEDUP_RADIUS_M:.0f} m).")
+
+    off_trail = mark_off_trail_records(deduped, load_osm_water_network_anchors())
+    if off_trail:
+        # #1016's whole subject, counted where a reader will see it: these are
+        # the safety POIs that reach a hiker on somebody else's trail, and the
+        # ones that must not carry an A.T. mile.
+        print(f"  {off_trail} POI(s) sit on a network trail rather than the A.T. - no A.T. mile for those.")
     return deduped
 
 

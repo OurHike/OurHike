@@ -221,6 +221,32 @@ def network_line_sources(registry: dict) -> list[dict]:
     return [s for s in external_arcgis_sources(registry) if "blaze_field" in s or "blaze_default" in s]
 
 
+def shipped_line_source_keys(registry: dict) -> set[str]:
+    """The network line sources whose geometry actually reaches hikers.
+
+    WHO NEEDS THIS AND WHY (#1016). The water build measures against this
+    export's artifact - `build_osm_water_reach.py` gates OSM springs on being
+    near one of these lines, `fetch_trail_water.py` intersects streams with
+    them - and the artifact holds every EXPORTED source, held back or not,
+    because a reviewer has to be able to look at the map before a licence
+    answer arrives. That is the right shape for this file and the wrong input
+    for those two.
+
+    A newly registered organization is review-only by default, which is the
+    normal opening state rather than an edge case: `reaches_hikers` goes true
+    when somebody answers about terms. Without this filter, registering one
+    would immediately start deriving PUBLISHED water pins from lines nobody
+    may publish - and drawing them over ground where the app shows no trail,
+    because publish.py holds the whole artifact back when any source in it is
+    held back.
+
+    So the same field decides both, one file apart: `reaches_hikers` says
+    whether an organization's data reaches a hiker, and water derived from
+    that organization's trails is that organization's data reaching a hiker.
+    """
+    return {source["key"] for source in network_line_sources(registry) if source.get("reaches_hikers")}
+
+
 def owned_route_names(registry: dict) -> dict[str, str]:
     """Route name -> the key of the source that owns that route's geometry.
 

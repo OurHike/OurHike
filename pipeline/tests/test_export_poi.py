@@ -2136,3 +2136,130 @@ def test_unify_poi_declares_the_mile_it_cannot_know():
     record = unify_poi(feature, "shelter", "atc_shelters", "AT", {"id_field": "GlobalID", "name_field": "Name"})
 
     assert record["mile"] is None
+
+
+# --- no A.T. mile for a POI that is not on the A.T. (#1016) -------------------
+#
+# THE FAILURE THESE PREVENT, and it is on the phone rather than in the data.
+# attach_miles projects onto the nearest point of the A.T. and always succeeds -
+# it would return a number for a point in Ohio. Widening the water build to
+# other organizations' trails put real POIs four miles and more off the A.T.
+# into this export for the first time, and client/src/lib/dayPlanner.ts treats
+# every POI carrying a `mile` as a candidate stop between two points of an A.T.
+# day (`candidateStops`); cascade.ts does the same. A hiker planning their
+# water around a spring that is a four-mile bushwhack off their route is the
+# confidently-wrong answer FEATURES.md ranks as worse than an honest unknown.
+#
+# The client already skips `poi.mile === undefined`, so withholding is free.
+
+
+def _osm_water_record(feature_id="1", **extra):
+    return {
+        "id": f"osm_water:{feature_id}",
+        "poi_type": "water",
+        "source": export_poi.OSM_WATER_SOURCE,
+        "source_feature_id": feature_id,
+        "lat": 40.5,
+        "lon": -74.1,
+        **extra,
+    }
+
+
+def test_a_spring_beside_a_network_trail_is_marked_off_trail():
+    records = [_osm_water_record("1")]
+
+    assert export_poi.mark_off_trail_records(records, {"1": "oprhp_trails"}) == 1
+    assert records[0][export_poi.NOT_ON_AT_KEY] == "oprhp_trails"
+
+
+def test_a_spring_beside_the_at_is_not_marked():
+    """The gate says which feature each point passed on, so this is read off a
+    fact rather than guessed from a distance - and a point that passed on ATC's
+    own centerline keeps the mile it has always had."""
+    records = [_osm_water_record("1")]
+
+    assert export_poi.mark_off_trail_records(records, {}) == 0
+    assert export_poi.NOT_ON_AT_KEY not in records[0]
+
+
+def test_a_crossing_on_somebody_elses_trail_is_marked():
+    """fetch_trail_water.py's own answer, carried through: this stream crosses
+    a network trail, so the crossing is not a point on the A.T."""
+    records = [
+        {
+            "id": "nhd:1",
+            "poi_type": "crossing",
+            "source": "nhd_stream",
+            "source_feature_id": "1",
+            export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": True, "network_source": "nynjtc_long_path"},
+        }
+    ]
+
+    assert export_poi.mark_off_trail_records(records, {}) == 1
+    assert records[0][export_poi.NOT_ON_AT_KEY] == "nynjtc_long_path"
+
+
+def test_an_at_crossing_keeps_its_mile():
+    records = [
+        {
+            "id": "nhd:1",
+            "poi_type": "crossing",
+            "source": "nhd_stream",
+            "source_feature_id": "1",
+            export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": False},
+        }
+    ]
+
+    assert export_poi.mark_off_trail_records(records, {}) == 0
+
+
+def test_attach_miles_withholds_the_mile_from_an_off_trail_poi(tmp_path, con):
+    """The whole point. The projection would happily produce a mile for this
+    point - the test below proves it does for the same coordinates unmarked."""
+    centerline, markers, _ = _mile_fixture(tmp_path, con)
+    records = [{"id": "off", "lat": 40.5, "lon": -74.1, export_poi.NOT_ON_AT_KEY: "mohonk_trails"}]
+
+    attached = export_poi.attach_miles(con, records, centerline, markers)
+
+    assert attached == 0
+    assert "mile" not in records[0]
+
+
+def test_attach_miles_counts_only_what_it_positioned(tmp_path, con):
+    """One marked, one not, at the SAME coordinates - so the difference can
+    only be the mark, and the returned count is what a caller prints."""
+    centerline, markers, _ = _mile_fixture(tmp_path, con)
+    records = [
+        {"id": "on", "lat": 40.5, "lon": -74.1},
+        {"id": "off", "lat": 40.5, "lon": -74.1, export_poi.NOT_ON_AT_KEY: "oprhp_trails"},
+    ]
+
+    assert export_poi.attach_miles(con, records, centerline, markers) == 1
+    assert records[0]["mile"] == pytest.approx(69.1 / 2, rel=0.02)
+    assert "mile" not in records[1]
+
+
+def test_the_anchors_come_only_from_reachable_points(tmp_path):
+    """A point the gate refused is not published at all, so an anchor for it
+    would be an answer about a pin nobody draws - and reading one would be a
+    quiet way for an unreachable point's organization to end up in a count."""
+    path = tmp_path / "osm_water_reach.json"
+    path.write_text(
+        json.dumps(
+            {
+                "points": [
+                    {"osm_id": "1", "nearest_source": "oprhp_trails", "reachable": True},
+                    {"osm_id": "2", "nearest_source": "mohonk_trails", "reachable": False},
+                    {"osm_id": "3", "reachable": True},
+                ]
+            }
+        )
+    )
+
+    assert export_poi.load_osm_water_network_anchors(path) == {"1": "oprhp_trails"}
+
+
+def test_absent_verdicts_are_no_anchors_rather_than_an_error(tmp_path):
+    """The pre-#1016 file, and every run whose reach build has not happened -
+    which read_sources already refuses on for its own reasons."""
+    assert export_poi.load_osm_water_network_anchors(tmp_path / "nowhere.json") == {}

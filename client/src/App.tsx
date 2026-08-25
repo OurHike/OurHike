@@ -479,14 +479,12 @@ function App() {
    * chrome/routeBuilderPanel.tsx since #991 - and would answer for the A.T.
    * while somebody built in Harriman.
    *
-   * EXCLUSIVITY IS ONE-WAY, which this comment claimed was two (#997).
-   * `openDayHike` below clears the route draft, but no route-builder door
-   * clears the day hike, so opening the builder from the Plan tab's gap or
-   * "plan from here" rows while a day hike is up leaves both live - and the
-   * tap handler and the sheet below both answer for the day hike, so the
-   * route builder opens where nobody can see or reach it. Left standing
-   * here rather than fixed: #991 is an extraction whose whole claim is that
-   * behaviour did not change, and the fix is a behaviour change.
+   * EXCLUSIVITY RUNS BOTH WAYS AGAIN (#997). It was written as though it
+   * did and implemented in one direction: `openDayHike` cleared the route
+   * draft, nothing cleared the day hike, so a route builder opened over one
+   * held a draft that neither the map tap nor `routeSheet` would show,
+   * because both answer for the day hike first. `sweepForBuilder` clears it
+   * now, and every route-builder door passes through there.
    */
   const [dayHike, setDayHike] = useState<DayHikeDraft | null>(null)
   /** Frame `1i`'s door - "What are you planning?" - over the Plan tab. */
@@ -1796,16 +1794,41 @@ function App() {
     [applyTripStore],
   )
 
-  // The one-thing-open-at-a-time rule the legend, the search and the
-  // waypoint card already keep between them. It is the shell's because the
-  // things being closed are, and it is stable so the builder's own handlers
-  // can list it as a dependency rather than close over a first-render copy.
+  /**
+   * The one-thing-open-at-a-time rule the legend, the search and the
+   * waypoint card already keep between them. It is the shell's because the
+   * things being closed are, and it is stable so the builder's own handlers
+   * can list it as a dependency rather than close over a first-render copy.
+   *
+   * THE DAY HIKE CLOSES HERE, and this is the whole of #997's fix. The rule
+   * was written as "each opener clears the other" and implemented in one
+   * direction: `openDayHike` cleared the route draft, nothing cleared the
+   * day hike. Both surfaces the two modes share - the map tap and
+   * `routeSheet` - answer for the day hike first, so a route builder opened
+   * on top of one held a live draft that nobody could see or reach.
+   *
+   * ONE PLACE RATHER THAN TWO, which is what makes it stay fixed. Every door
+   * that opens a route draft from nothing passes through here: the panel's
+   * `openRouteBuilderFrom` (so "start on the map", #790's gap door and
+   * #791's plan-from-here) calls it as `onOpenBuilder`, and
+   * `handlePlanChartStretch` calls it directly rather than keeping the copy
+   * of these lines it used to. A mirror line in each opener would have been
+   * the same fix today and the same bug again at the next door.
+   *
+   * Symmetric with `openDayHike`, deliberately: that door already discards a
+   * route draft without asking, and a rule that discards in one direction
+   * and refuses in the other is what made this confusing in the first place.
+   * The alternative - refuse, and send the hiker back to the day hike, which
+   * is what `openPlanKind` does - is the kinder behaviour and a different
+   * decision; #997 records it.
+   */
   const sweepForBuilder = useCallback(() => {
     setActiveTab('trail')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
     setTargetRequest(null)
+    setDayHike(null)
   }, [])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
@@ -1872,11 +1895,21 @@ function App() {
     },
     [dayHike, dayHikeIndex, graphIndex, routeBuilder],
   )
-  // Opening the day-hike builder repeats openRouteBuilderFrom's exact sweep
-  // rather than sharing a helper - the one-thing-open rule is each opener's
-  // own responsibility, and a shared helper under this branch's pressure is
-  // how one acquires a caller that does not want all six lines (CLAUDE.md's
-  // altitude note cuts both ways; revisit when a third door repeats it).
+  // Opening the day-hike builder repeats the route builder's sweep rather
+  // than sharing one. That was argued when this door was written - "the
+  // one-thing-open rule is each opener's own responsibility", and a shared
+  // helper acquires a caller that does not want all six lines - and it asked
+  // to be revisited when a third door repeated it.
+  //
+  // A THIRD DOOR DID, and repeating cost exactly what the note feared in the
+  // other direction: #997. The route builder's two openers now share
+  // `sweepForBuilder`, because the line that fixes #997 has to be in every
+  // door that opens a route draft and was worth writing once. This one still
+  // stands apart, and that is a real difference rather than an oversight -
+  // its list is not the same list. It clears `planKindOpen` (the sheet it was
+  // opened from) and seeds a draft; `sweepForBuilder` clears the day hike,
+  // which this door is creating. Merging them would need a parameter, and a
+  // sweep with a mode flag is not a shared rule.
   const openDayHike = useCallback(() => {
     setActiveTab('trail')
     setSelectedPoiId(null)
@@ -2127,14 +2160,16 @@ function App() {
    *  its ends, walked the way the figures were just reading. */
   const handlePlanChartStretch = useCallback(() => {
     if (freeChartStretch === null) return
-    // The same one-thing-open-at-a-time sweep opening the builder makes.
-    setSelectedPoiId(null)
-    setLegendOpen(false)
-    setSearchOpen(false)
-    setTargetRequest(null)
+    // THE sweep, not a copy of it (#997). This handler used to repeat four
+    // of its five lines inline, which is how the day-hike clear could have
+    // been added to one opener and missed here. The one line it did not
+    // repeat - setActiveTab('trail') - is a no-op on this path rather than a
+    // difference: the chart is a MapScreen prop, and App returns early for
+    // every other tab, so nothing reaches here from anywhere else.
+    sweepForBuilder()
     setFreeChartStretch(null)
     openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
-  }, [freeChartStretch, freeChartSouth, openFromMiles])
+  }, [freeChartStretch, freeChartSouth, openFromMiles, sweepForBuilder])
 
   // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
   // fix - a desk has none - only the published profile; the fix, when one

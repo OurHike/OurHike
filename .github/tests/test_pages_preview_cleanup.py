@@ -360,6 +360,31 @@ class TestTheWorkflowUsesIt:
         assert (ACTION_DIR / "action.yml").is_file()
         assert SCRIPT.is_file()
 
+    def test_the_manifest_parses_at_all(self):
+        """The gap that let #990 run for six days.
+
+        Everything else in this file tests `delete.sh`, hard - the happy
+        path, that `pr-28` never selects `pr-281`, that a malformed alias
+        stops the run before a request goes out. None of it runs if the
+        manifest that invokes the script cannot be loaded, and the only
+        assertion about action.yml was that it exists as a file.
+
+        It did exist. It also carried `description: Cloudflare API token with
+        "Cloudflare Pages: Edit".` - an unquoted YAML scalar containing a
+        colon-space, which is a parse error - so the runner reported "Failed
+        to load ... action.yml" and every teardown since 2026-08-19 left its
+        preview reachable, built against the real Supabase project. A
+        thoroughly tested script behind a manifest nobody parses is a script
+        that never runs.
+        """
+        manifest = yaml.safe_load((ACTION_DIR / "action.yml").read_text(encoding="utf-8"))
+        assert manifest["runs"]["using"] == "composite"
+        # The three the workflow reads back to decide whether anything
+        # outlived its pull request. A rename here goes red rather than
+        # silently making that check compare empty strings.
+        assert set(manifest["outputs"]) == {"found", "deleted", "failed"}
+        assert set(manifest["inputs"]) == {"api-token", "account-id", "project", "alias"}
+
     def test_the_closed_path_can_resolve_the_local_action_it_runs(self):
         """`uses: ./…` is resolved out of the workspace at step time, so the
         teardown needs a checkout that still happens when the pull request

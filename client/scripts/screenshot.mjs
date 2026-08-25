@@ -41,18 +41,26 @@
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
-import { resolve, dirname, join, relative } from 'node:path'
+import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const CLIENT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const REPO_ROOT = resolve(CLIENT_DIR, '..')
 
-/** Where a committed screenshot lives, and the reason it is not under
- *  `client/`: every path in `client/` is in the client suite's scope
- *  (`scripts/suite_scopes.py client`), so a screenshot committed there would
- *  run the whole client suite to prove that a PNG still parses. `.github/` is
- *  in no suite's scope, which is the correct amount of CI for an image. */
-export const DEFAULT_OUT_DIR = resolve(REPO_ROOT, '.github', 'pr-screenshots')
+/**
+ * Inside the built output, which is gitignored - and that is the whole point.
+ *
+ * A screenshot is never committed here (#988). `pr-preview.yml` writes one
+ * into the directory it is about to upload to Cloudflare Pages, so the image
+ * is served by the same deployment as the app it shows and disappears with it
+ * when the pull request closes. Nothing about it reaches a commit, which is
+ * what the previous mechanism cost: 79,290 bytes of permanent, unretractable
+ * PNG per pull request in a public tree.
+ *
+ * `__screenshot/` rather than a bare name because it is served at the root of
+ * the preview alongside the app's own routes, and a double underscore says
+ * "not part of the app" to anybody reading a URL.
+ */
+export const DEFAULT_OUT_DIR = resolve(CLIENT_DIR, 'dist', '__screenshot')
 
 /**
  * The phone WIREFRAMES.md sizes against, and the one measure-first-run.mjs
@@ -80,17 +88,26 @@ export const CAPTURE_SCALE = 2
 /**
  * What one screenshot may weigh before it needs a second thought.
  *
- * Measured 2026-08-25 on the first-run entry card, the densest DOM-only frame
- * the app has: 390x844 at scale 2 is 79,290 bytes as PNG. 150 KB is that with
- * room for a busier frame, and is NOT a technical limit - it is the point at
- * which "is this image worth carrying in a public repository forever" stops
- * being rhetorical. The whole repository packs to 14.3 MiB, so a screenshot
- * is roughly half a percent of it each.
- * @unvalidated Nobody has yet checked what a map-heavy frame with real tiles
- * under it weighs; the corridor archive does not download in this sandbox.
- * A shot taken against a deployed preview would settle it.
+ * Measured 2026-08-25, both at 390x844 scale 2 as PNG:
+ *
+ *   entry card, no map (agent sandbox, no network)        79,290
+ *   entry card over a real basemap (CI, pr-989)          310,289
+ *   trail screen, full basemap (CI, pr-989)              743,012
+ *
+ * The spread is the finding, and it is why the first number was the wrong
+ * one to budget against. A sandbox cannot reach the tile source, so every
+ * measurement taken there is of an app with an empty map canvas - roughly a
+ * tenth of what the same frame weighs once terrain, water and labels render.
+ * The budget was 150 KB on that basis and would have warned on every honest
+ * screenshot CI takes.
+ *
+ * 1.2 MB is the largest real frame with room above it. It is not enforced and
+ * costs nothing when exceeded - the bytes are served from a preview rather
+ * than committed (#988) - so this is a smell test only: past here usually
+ * means a capture that ran away, a `--full` page that kept scrolling, or a
+ * map that rendered noise rather than a map.
  */
-export const BYTE_BUDGET = 150_000
+export const BYTE_BUDGET = 1_200_000
 
 /** idb-keyval's default store, which is where client/src/lib/preferences.ts
  *  keeps `ourhike:preferences`. Named here rather than imported because this
@@ -102,9 +119,11 @@ export function usage() {
   return [
     'usage: node scripts/screenshot.mjs <name> [options]',
     '',
-    '  --out=DIR        where the PNG goes (default .github/pr-screenshots/)',
+    '  --out=DIR        where the PNG goes (default client/dist/__screenshot/)',
+    '  --dist           photograph the BUILT app (vite preview over dist/) rather',
+    '                   than the dev server. What CI shoots: same bytes it deploys.',
     '  --url=URL        an app already running - a deployed preview, or your own',
-    '                   dev server. Omitted: this script starts vite and stops it.',
+    '                   dev server. Omitted: this script serves the app itself.',
     '  --entry          keep first run on screen (default: skip past it)',
     '  --wait=MS        settle time after load (default 3500)',
     '  --scale=N        device pixel ratio (default 2 - read CAPTURE_SCALE first)',
@@ -131,6 +150,7 @@ export function parseArgs(argv) {
     name,
     outDir: value('out', DEFAULT_OUT_DIR),
     url: value('url', undefined),
+    dist: flag('dist'),
     skipEntry: !flag('entry'),
     waitMs: Number(value('wait', 3500)),
     scale: Number(value('scale', CAPTURE_SCALE)),
@@ -153,37 +173,15 @@ export function slug(name) {
     .replace(/^-+|-+$/g, '')
 }
 
-/** The line to paste into the pull request body, with the width that makes a
- *  2x capture display at phone size. `<img>` rather than `![]()` for exactly
- *  that reason - markdown image syntax carries no width. */
-export function markdownFor({ owner, repo, sha, path, width, alt }) {
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${sha}/${path}`
-  return `<img src="${url}" width="${width}" alt="${alt}">`
-}
-
-/**
- * A screenshot's path as a raw URL would need it, or null if it is not in the
- * repository at all.
- *
- * The null case is the one worth handling rather than papering over: a
- * capture written to /tmp cannot be linked from a pull request body, because
- * the URL that renders one is a path INTO a commit. Printing a plausible
- * `raw.githubusercontent.com/.../tmp/...` line would be a broken image nobody
- * notices until the pull request is open.
- */
-export function repoPath(absolutePath, root = REPO_ROOT) {
-  const within = relative(root, absolutePath)
-  return within.startsWith('..') || within === '' ? null : within
-}
-
-/** Whether a capture is small enough to commit without a conversation. */
+/** Whether a capture is small enough to ship in a preview without a
+ *  second thought. */
 export function budgetVerdict(bytes, budget = BYTE_BUDGET) {
   return {
     bytes,
     overBudget: bytes > budget,
     message:
       bytes > budget
-        ? `${bytes} bytes is past the ${budget}-byte budget. Crop it, or say in the pull request why this frame needs the weight.`
+        ? `${bytes} bytes is past the ${budget}-byte smell test - larger than a full-map frame. Look at it before trusting it.`
         : `${bytes} bytes.`,
   }
 }
@@ -235,13 +233,22 @@ async function freePort() {
   })
 }
 
-/** Vite, on a port nobody else is on, torn down when this exits. */
-async function startDevServer() {
+/**
+ * Vite, on a port nobody else is on, torn down when this exits.
+ *
+ * `dist` picks `vite preview`, which serves the BUILT output rather than the
+ * dev server's on-the-fly modules. That is what CI shoots, and the reason is
+ * that the screenshot then shows the exact bytes being deployed - a dev-server
+ * frame can differ from a production one in ways a reviewer would be the first
+ * to find out about (minification, the service worker, the PWA manifest).
+ */
+async function startServer({ dist }) {
   const port = await freePort()
   const bin = join(CLIENT_DIR, 'node_modules', '.bin', 'vite')
+  const args = dist ? ['preview'] : []
   const child = spawn(
     bin,
-    ['--port', String(port), '--strictPort', '--host', '127.0.0.1'],
+    [...args, '--port', String(port), '--strictPort', '--host', '127.0.0.1'],
     {
       cwd: CLIENT_DIR,
       stdio: 'ignore',
@@ -302,11 +309,12 @@ async function skipFirstRun(context) {
 }
 
 export async function capture(options) {
-  const { name, outDir, url, skipEntry, waitMs, scale, fullPage, viewport } = options
+  const { name, outDir, url, dist, skipEntry, waitMs, scale, fullPage, viewport } =
+    options
   mkdirSync(outDir, { recursive: true })
   const path = join(outDir, `${slug(name)}.png`)
 
-  const server = url === undefined ? await startDevServer() : null
+  const server = url === undefined ? await startServer({ dist }) : null
   const target = url ?? server.url
   const browser = await launchChromium()
   try {
@@ -338,25 +346,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const { path, bytes, displayWidth } = await capture(options)
   const verdict = budgetVerdict(bytes)
-  console.log(`Wrote ${path} - ${verdict.message}`)
-
-  const tracked = repoPath(path)
-  if (tracked === null) {
-    console.log(
-      '\nThat is outside the repository, so nothing can link to it. A pull request\n' +
-        `body links INTO a commit - re-run with --out=${DEFAULT_OUT_DIR} to commit it.`,
-    )
-  } else {
-    console.log(
-      '\nCommit it, then put this in the pull request body with that commit sha:\n\n  ' +
-        markdownFor({
-          owner: 'OurHike',
-          repo: 'OurHike',
-          sha: '<sha>',
-          path: tracked,
-          width: displayWidth,
-          alt: slug(options.name),
-        }),
-    )
-  }
+  console.log(`Wrote ${path} (${displayWidth} px wide as displayed) - ${verdict.message}`)
 }

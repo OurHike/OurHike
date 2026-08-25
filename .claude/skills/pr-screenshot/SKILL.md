@@ -101,8 +101,20 @@ The contract, everything optional but the file:
 ([`client/scripts/photograph-preview.mjs`](../../../client/scripts/photograph-preview.mjs))
 the pull request's file list; every recipe the pull request adds or changes is
 photographed from the same build being deployed and leads the comment,
-captioned, above the standing two. In CI the map data is real, so the shot can
-show actual tiles — the one thing no sandbox capture can.
+captioned, above the standing two.
+
+**The tiles in CI are real; the trail data is not, and this sentence used to
+say otherwise.** It read "in CI the map data is real, so the shot can show
+actual tiles — the one thing no sandbox capture can", and half of that holds:
+the basemap comes from OpenFreeMap, which the style fetches, so a CI shot does
+show a real map. The release artifacts do not arrive at all — the preview build
+carries an empty `VITE_DATA_BASE_URL`, measured 2026-08-25 in two deployed
+previews, so the app comes up with no trail line, no waypoints and no steward
+credits ([#1024](https://github.com/OurHike/OurHike/issues/1024)). A recipe
+aimed at anything downstream of the release will drive correctly and photograph
+its absence. Aim one there anyway if that is the screen your change touches —
+it is right for the day #1024 is fixed — and say in `## Screenshot` what the
+shot cannot show meanwhile.
 
 Three consequences worth knowing before writing one:
 

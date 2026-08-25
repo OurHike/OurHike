@@ -116,9 +116,15 @@ describe('the editable route', () => {
 
       expect(screen.getByText('Tap the trail to drop a point.')).toBeInTheDocument()
       expect(screen.getByText('0 points')).toBeInTheDocument()
-      // Absent, not disabled: a control that refuses when pressed teaches a
-      // hiker to distrust the next one.
+
+      // THE WHOLE BAR IS GONE, and this is the assertion that matters most
+      // here: before #973 an empty stop list rendered "0.0 mi · ≈0m walking"
+      // over two buttons whose handlers refuse below two stops. A total of
+      // nothing, stated as a measurement, above controls that decline to act.
+      expect(screen.queryByText(/0\.0 mi/)).toBeNull()
+      expect(screen.queryByText(/walking/)).toBeNull()
       expect(screen.queryByRole('button', { name: 'Break into days' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'I already walked this' })).toBeNull()
     })
 
     it('asks for the second point when one is down', () => {
@@ -128,7 +134,9 @@ describe('the editable route', () => {
         screen.getByText('Tap the trail again for where this stretch ends.'),
       ).toBeInTheDocument()
       expect(screen.getByText('1 point')).toBeInTheDocument()
+      expect(screen.queryByText(/0\.0 mi/)).toBeNull()
       expect(screen.queryByRole('button', { name: 'Break into days' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'I already walked this' })).toBeNull()
     })
 
     it('does not blame a missing elevation profile for having no legs', () => {

@@ -177,28 +177,31 @@ export function RouteStopsPanel({
         </p>
       </div>
 
-      <div className="route-stops-bar">
-        {legs.length > 0 && totalMinutes === null && (
-          <p className="route-stops-bar__note" role="note">
-            No elevation profile in this download &mdash; distance only.
-          </p>
-        )}
-        <div className="route-stops-bar__row">
-          <span className="route-stops-bar__figures">
-            {[
-              direction,
-              formatDistance(totalDistanceMi, units),
-              totalMinutes === null
-                ? null
-                : `${formatNaismithMinutes(totalMinutes)} walking`,
-            ]
-              .filter((part) => part !== null)
-              .join(' · ')}
-          </span>
-          {/* Absent below two stops rather than present and dead: there is
-              no route to break, and a button that refuses when pressed
-              teaches a hiker to distrust the next one. */}
-          {legs.length > 0 && (
+      {/* THE WHOLE BAR, or none of it (#973). Below two stops there is no
+          route to total, nothing to break into days and nothing to record as
+          walked - the shell's handlers refuse all three. A bar printing
+          "0.0 mi · ≈0m walking" over two dead buttons states a measurement of
+          nothing and then declines to act on it, which is the failure this
+          panel is otherwise careful about everywhere else. */}
+      {legs.length > 0 && (
+        <div className="route-stops-bar">
+          {totalMinutes === null && (
+            <p className="route-stops-bar__note" role="note">
+              No elevation profile in this download &mdash; distance only.
+            </p>
+          )}
+          <div className="route-stops-bar__row">
+            <span className="route-stops-bar__figures">
+              {[
+                direction,
+                formatDistance(totalDistanceMi, units),
+                totalMinutes === null
+                  ? null
+                  : `${formatNaismithMinutes(totalMinutes)} walking`,
+              ]
+                .filter((part) => part !== null)
+                .join(' · ')}
+            </span>
             <button
               type="button"
               className="route-stops-bar__break"
@@ -206,22 +209,22 @@ export function RouteStopsPanel({
             >
               Break into days
             </button>
-          )}
-        </div>
-        {/* The same stretch, said in the past tense. A section hiker's own
+          </div>
+          {/* The same stretch, said in the past tense. A section hiker's own
             history mostly predates this app, and without a door for it the
             roll-up opens on somebody who has walked 600 miles and tells
             them the whole trail is ahead of them (#789). */}
-        <div className="route-stops-bar__row">
-          <button
-            type="button"
-            className="route-stops-bar__recorded"
-            onClick={onRecordWalked}
-          >
-            I already walked this
-          </button>
+          <div className="route-stops-bar__row">
+            <button
+              type="button"
+              className="route-stops-bar__recorded"
+              onClick={onRecordWalked}
+            >
+              I already walked this
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </>
   )
 }

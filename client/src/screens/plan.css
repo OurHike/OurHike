@@ -1757,6 +1757,22 @@
 
 /* ----- the day-hike list (#1008, frame D7) ----- */
 
+/* A Plan screen that must not outgrow the viewport, because a sheet docks
+   against it. `.plan` is `min-height: 100%` and the containing block for
+   `.day-hike-card`, so a screen taller than the pane puts that card's
+   `bottom: 0` below the fold. Here the container is exactly the pane and the
+   long thing inside it scrolls. */
+.plan--bounded {
+  height: 100%;
+  overflow: hidden;
+}
+
+.plan--bounded .day-hike-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .day-hike-list {
   display: flex;
   flex-direction: column;

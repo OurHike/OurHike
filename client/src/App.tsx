@@ -2244,13 +2244,27 @@ function App() {
     )
   }, [gps, dayHikeStore.hikes, hikesHereDismissed])
 
-  // Never while a waypoint card is up. The door and a tapped pin are the
-  // first two things in this shell that can want the map's lower third at
-  // the same time - the builders it defers to cannot coexist with a card,
-  // because opening one clears the selection. A hiker who tapped a pin
-  // asked for that pin.
+  /**
+   * Whether something a hiker ASKED for already has the map's lower third.
+   *
+   * The door is the only occupant of that space nobody asked for - every
+   * other one is the answer to a tap. The builders it defers to could never
+   * collide with these, because opening a builder suppresses the taps that
+   * raise them; the door renders in exactly the state where those taps are
+   * live, so it is the first surface here that can land on top of one. z-index
+   * does not settle it either: these are siblings at the same level, and the
+   * routeSheet slot is the LAST child of the canvas, so equal z-index means
+   * the door wins on DOM order.
+   */
+  const lowerThirdTaken =
+    selectedPoiId !== null ||
+    line.mapScreen.lineSheet != null ||
+    atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.atcNoticeList != null ||
+    workday.mapScreen.workdaySheet != null
+
   const dayHikesHereNode =
-    hikesNearHere.length > 0 && selectedPoiId === null ? (
+    hikesNearHere.length > 0 && !lowerThirdTaken ? (
       <DayHikesHere
         near={hikesNearHere}
         units={units}

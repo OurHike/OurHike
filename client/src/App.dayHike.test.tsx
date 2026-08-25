@@ -22,6 +22,7 @@ import App from './App'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
 import { TRIPS_KEY } from './lib/trips'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 
@@ -638,6 +639,69 @@ describe('the day-hike builder, end to end', () => {
     await app.reportFixAtMile(20)
     await user.click(await screen.findByRole('button', { name: 'Your hikes here · 1' }))
     expect(await screen.findByText('Claudius Smith Den')).toBeInTheDocument()
+  })
+
+  it('yields the map’s lower third to anything the hiker actually tapped (#1008)', async () => {
+    app.onboard({ location_permission_requested: true })
+    // A waypoint to tap: the door is the only occupant of that space nobody
+    // asked for, and it is the last child of the canvas - so equal z-index
+    // would let it win on DOM order over a card that answers a tap.
+    app.putTrailData({
+      pois: [
+        {
+          id: 'poi-1',
+          name: 'Reeves Meadow Shelter',
+          type: 'shelter',
+          lat: latOfMile(5),
+          lon: -77,
+          confidence: 'high',
+          mile: 5,
+        },
+      ],
+    })
+    await serveGraph()
+
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        {
+          id: 'near-1',
+          name: 'Reeves Meadow loop',
+          date: null,
+          segments: [
+            [
+              { coord: [-77, latOfMile(5)], poiId: null },
+              { coord: [-77, latOfMile(6)], poiId: null },
+            ],
+          ],
+          figures: { miles: 1, legs: [] },
+          looped: false,
+          recorded: 'planned',
+        },
+      ],
+      openId: null,
+    })
+
+    render(<App />)
+    await app.reportFixAtMile(5)
+    expect(
+      await screen.findByRole('button', { name: 'Your hikes here · 1' }),
+    ).toBeInTheDocument()
+
+    // Tap the pin: the card is what was asked for, so the door stands down.
+    // The mock answers queryRenderedFeatures from what a test says is drawn,
+    // which is App.flows.test.tsx's own idiom for reaching a waypoint.
+    const map = await liveMap()
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'poi-1' } },
+    ])
+    await act(async () => {
+      map.emit('click', { point: { x: 160, y: 300 } })
+    })
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: 'Your hikes here · 1' }),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('offers no day-hike button at all on a phone without the graph', async () => {

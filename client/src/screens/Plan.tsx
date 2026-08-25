@@ -292,7 +292,12 @@ export function PlanScreen({
   if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
     if (dayListOpen) {
       return (
-        <div className="plan plan--day">
+        // `plan--bounded`: the list is the one Plan screen with no ceiling on
+        // its own length, and a day-hike card docks against `.plan` rather
+        // than the viewport - so on a long list "bottom: 0" was the bottom of
+        // the LIST, and tapping a row opened a card a screen or two below the
+        // fold. The list scrolls inside a screen-height container instead.
+        <div className="plan plan--day plan--bounded">
           <DayHikeList
             dayHikes={dayHikes}
             units={units}

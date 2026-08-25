@@ -1593,6 +1593,393 @@
   color: var(--fg-2);
 }
 
+/* ----- the mode bands (#1008) ----- */
+
+/* The band is the mode: Day hikes wears the brand green, Trips wears the
+   chrome family - the one pair documented as dark under BOTH themes
+   (design-system/tokens/colors.css), which is what an identity band is.
+   Negative margins bleed it to the screen edges through .plan's padding. */
+.plan-band {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin: calc(-1 * var(--space-4, 16px)) calc(-1 * var(--space-4, 16px)) 0;
+  padding: var(--space-4, 16px);
+}
+
+.plan-band--day {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.plan-band--trips {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.plan-band__words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-band__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.plan-band__word {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+/* The way to the other room. Colour comes from the band (currentColor), so
+   one rule serves both bands in both themes. */
+.plan-band__switch {
+  min-height: 38px;
+  padding: 0 var(--space-3, 12px);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Existing headers, painted as their mode's band on the sub-screens - the
+   timeline and hike zoom are trips-mode rooms, the day-hike list a day-mode
+   one, and the band is what says so at a glance. */
+.plan__head--trips,
+.plan__head--day {
+  margin: calc(-1 * var(--space-4, 16px)) calc(-1 * var(--space-4, 16px)) 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+}
+
+.plan__head--trips {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.plan__head--trips .plan__head-note {
+  color: var(--fg-chrome-2);
+}
+
+/* moss-300 on pine: 7.7:1, measured in the token file's own comment - the
+   page's --link would sit at no such figure on this ground. */
+.plan__head--trips .plan__trips {
+  color: var(--fg-chrome-3);
+}
+
+.plan__head--day {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.plan__head--day .plan__crumb,
+.plan__head--day .plan__crumb-up {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.plan-home__quiet-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* PlanKindSheet's unavailable-door sentence, worn by the day home's foot
+   when the junction graph is missing - a sentence, never a dead button. */
+.plan-home__refused {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* ----- the day-hike list (#1008, frame D7) ----- */
+
+.day-hike-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.day-hike-list__sorts {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.day-hike-list__sorts [aria-pressed='true'] {
+  border-color: var(--border-strong);
+  background: var(--fg-1);
+  color: var(--bg-surface);
+}
+
+/* A walked row is a record: the sunken ground the timeline's walked days
+   already use, so the two read as the same state. */
+.day-hike-list__row--walked {
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+}
+
+.day-hike-list__empty,
+.day-hike-list__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* ----- the trailhead door (#1008, frame D8) ----- */
+
+/* Collapsed: one pill in the map's lower third. Expanded: the sheet frame
+   every bottom surface here wears. Both sit in MapScreen's routeSheet slot
+   and position themselves, as its other occupants do. */
+.hikes-here__pill {
+  min-height: 42px;
+  padding: 0 var(--space-4, 16px);
+  border: 1px solid var(--edge-over-map);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-over-map);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 14%);
+  white-space: nowrap;
+}
+
+.hikes-here__dismiss {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--edge-over-map);
+  border-radius: 50%;
+  background: var(--surface-over-map);
+  color: var(--fg-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hikes-here {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+/* After the sheet rule on purpose: same specificity, and the closed pill
+   has to win the shared properties it re-points. */
+.hikes-here--closed {
+  left: 50%;
+  right: auto;
+  bottom: 12px;
+  transform: translateX(-50%);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.hikes-here__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hikes-here__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hikes-here__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hikes-here__row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hikes-here__row-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hikes-here__row-away {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.hikes-here__row-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.hikes-here__all {
+  align-self: flex-start;
+  padding: var(--space-1, 4px) 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ----- leave this with someone (#1008, frame D6) ----- */
+
+.leave-word {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.leave-word__lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.leave-word__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.leave-word__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.leave-word__field input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* The line the whole card exists for gets the warning frame the target
+   sheet's caveat wears - read before it is filled in. */
+.leave-word__field--back-by input {
+  border-color: var(--warning);
+}
+
+.leave-word__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.leave-word__preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.leave-word__preview {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.leave-word__status {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* ----- the finished card's additions (#1008) ----- */
+
+.day-hike-card__date {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.day-hike-card__date input {
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+.day-hike-card__gap {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+
 /* ----- the Plan home (#805) ----- */
 
 .plan-home {

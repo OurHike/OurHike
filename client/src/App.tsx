@@ -210,7 +210,10 @@ import {
 } from './lib/dayHikes'
 import { useDayHikesSync } from './lib/useDayHikesSync'
 import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
+import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
+import { DayHikesHere } from './chrome/DayHikesHere'
+import type { PlanMode } from './screens/PlanHome'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -506,6 +509,16 @@ function App() {
    *  it; only "Save this day hike" commits it to the store. The draft stays
    *  alive underneath, so "Back to the map" is a real return, not a rebuild. */
   const [dayHikeReview, setDayHikeReview] = useState<DayHike | null>(null)
+  /**
+   * Which home the Plan tab shows (#1008): the day-hike room or the trips
+   * room. Null until the hiker (or the trailhead door) picks one, so the
+   * default can be derived from stores that load after mount - a useState
+   * initialiser here would run against empty stores and freeze the wrong
+   * answer.
+   */
+  const [planMode, setPlanMode] = useState<PlanMode | null>(null)
+  /** The trailhead door (frame D8), put away for this session. */
+  const [hikesHereDismissed, setHikesHereDismissed] = useState(false)
   /**
    * The desktop chart's own settled selection - a measurement, nothing more
    * - read only while no route draft is open (PR #885 review). With a draft
@@ -2080,6 +2093,19 @@ function App() {
     })
   }, [])
 
+  /** Date a saved hike (#1008) - the same read-modify-write every other
+   *  store edit takes, so a sync landing between renders is never lost. */
+  const handleSetDayHikeDate = useCallback((id: string, date: string | null) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, date } : hike)),
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
   /** The hike a card is showing: the unsaved review outranks the store's
    *  open one - they cannot both be on screen, and the review is newer. */
   const cardDayHike =
@@ -2118,6 +2144,56 @@ function App() {
         onSave={handleDayHikeSave}
         onClose={handleDayHikeCardClose}
         onDelete={() => handleDeleteDayHike(cardDayHike.id)}
+        onSetDate={(date) =>
+          dayHikeReview !== null
+            ? // Pre-save the date rides the review record; Save commits it
+              // with everything else.
+              setDayHikeReview({ ...dayHikeReview, date })
+            : handleSetDayHikeDate(cardDayHike.id, date)
+        }
+      />
+    ) : null
+
+  /**
+   * Which Plan home to show (#1008): the hiker's own last pick wins; until
+   * they make one, the day side when a day-hike card is open or day hikes
+   * are all they have, the trips side otherwise.
+   */
+  const effectivePlanMode: PlanMode =
+    planMode ??
+    (cardDayHike !== null
+      ? 'day'
+      : tripStore.trips.length > 0 || tripStore.hikes.length > 0
+        ? 'trips'
+        : dayHikeStore.hikes.length > 0
+          ? 'day'
+          : 'trips')
+
+  /** The trailhead door's candidates (frame D8): saved starts near the fix. */
+  const hikesNearHere = useMemo(() => {
+    if (gps.status !== 'located') return []
+    return dayHikesNearHere(dayHikeStore.hikes, gps.at)
+  }, [gps, dayHikeStore.hikes])
+
+  const dayHikesHereNode =
+    !hikesHereDismissed && hikesNearHere.length > 0 ? (
+      <DayHikesHere
+        near={hikesNearHere}
+        units={units}
+        // en-CA spells the phone's own calendar day as YYYY-MM-DD - the
+        // store's date shape. Local on purpose: "that's today" is a claim
+        // about the hiker's morning, not UTC's.
+        today={new Intl.DateTimeFormat('en-CA').format(now)}
+        onOpen={(id) => {
+          handleOpenDayHike(id)
+          setPlanMode('day')
+          setActiveTab('plan')
+        }}
+        onAll={() => {
+          setPlanMode('day')
+          setActiveTab('plan')
+        }}
+        onDismiss={() => setHikesHereDismissed(true)}
       />
     ) : null
 
@@ -3842,6 +3918,12 @@ function App() {
                   ? { dayHikeCard: dayHikeCardNode }
                   : {})}
                 onStartOnMap={openPlanKind}
+                onNewDayHike={openDayHike}
+                onNewTrip={routeBuilder.openRouteBuilder}
+                networkAvailable={graphIndex !== null}
+                gpsAt={gps.status === 'located' ? gps.at : null}
+                mode={effectivePlanMode}
+                onSwitchMode={setPlanMode}
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
                   applyPlanEdit((current) => insertZeroAfter(current, index))
@@ -4137,7 +4219,9 @@ function App() {
                 canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
               />
             ) : (
-              routeBuilder.mapScreen.routeSheet
+              // The trailhead door (frame D8) takes the slot only when
+              // nothing else wants it - a door must never cover a builder.
+              (routeBuilder.mapScreen.routeSheet ?? dayHikesHereNode)
             )
           }
           warnings={warningPins}

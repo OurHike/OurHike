@@ -1,27 +1,36 @@
-// The Plan tab's front door (#805).
+// The Plan tab's front door (#805) - now two front doors, one per mode
+// (#1008).
 //
-// Before this, the tab opened straight into whichever plan was last open,
-// and the way to everything else was an 11-px underlined "Your trips" in
-// the header - which a maintainer walking through the built app missed
-// entirely. A hiker with seven trips and two hikes had no page that said
-// so.
+// THE FORK EXISTED AND THEN NOTHING DOWNSTREAM LOOKED DIFFERENT. "What are
+// you planning?" (#977) asks the question once, and until #1008 every
+// screen after it wore the same chrome: day hikes were a section between
+// "Your hikes" and "Recent trips", and a hiker mid-flow had nothing on
+// screen saying which of two kinds of plan they were inside. So the mode is
+// the chrome now: **Day hikes** is the forest band and speaks in legs and
+// walks; **Trips** is the deep band and keeps the trail vocabulary - days,
+// zeros, resupply, carries. features/SEGMENTS.md calls `Hike.type` "a label,
+// not a constraint"; this makes the label load-bearing on screen without
+// enforcing anything in the model.
 //
-// FIVE SECTIONS, IN THE ORDER SOMEBODY WANTS THEM: carry on with what is
-// open, the hikes, the groups, the recent trips, and one primary action.
-// The rule underneath is the one the entrance was also reworked around -
-// **one primary action per screen, and it is the thing that goes down a
-// level.** Everything else is a row, a chip or a link.
+// EACH HOME KEEPS THE RULE THE OLD ONE WAS BUILT AROUND: one primary action
+// per screen, and it is the thing that goes down a level. What changed is
+// that the action now does what its mode says - "Plan a day hike" opens the
+// day-hike builder, "Plan a new trip" opens the route builder - rather than
+// both opening the fork to ask a question the band has already answered.
+// The fork itself is kept exactly as built and stays the entrance where the
+// question is real: the empty state, where no mode exists yet
+// (chrome/PlanKindSheet.tsx).
 //
-// THE COST, STATED RATHER THAN DISCOVERED: a hiker with one trip now taps
-// twice to reach the timeline they used to land on. So the shell only
-// shows this when there is something to choose between - see PlanScreen,
-// which opens straight into a lone trip exactly as it did.
-//
-// The Hike / Trip / Days zooms (#790) sit INSIDE a hike or a trip. This
-// home is above that ladder rather than part of it, which is why it
-// carries no zoom control.
+// WHAT THE DAY HOME DOES NOT SHOW, AND WHY: the storyboard's "starter hikes
+// near you" waits for data that does not exist - no club-laid route dataset
+// is anywhere in this repository, and a shelf with a label and no answer on
+// it is the failure #805 removed. Its "carry on with" card waits for a
+// state that means it: the store's `openId` says "card open now", not "last
+// worked on", and a carry-on row built from it would duplicate the card
+// floating over this same screen.
 
 import type { DayHike } from '../lib/dayHikes'
+import { splitDayHikes } from '../lib/dayHikeShelf'
 import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews } from '../lib/plan'
 import { dayLongDateLabel, tripDateRange } from '../lib/planDisplay'
@@ -31,7 +40,12 @@ import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
 
+/** Which of the two kinds of planning the tab is showing. */
+export type PlanMode = 'day' | 'trips'
+
 export interface PlanHomeProps {
+  mode: PlanMode
+  onSwitchMode: (mode: PlanMode) => void
   trips: readonly Trip[]
   hikes: readonly Hike[]
   /** The saved day hikes (#980) - listed from their cached figures, which is
@@ -42,21 +56,32 @@ export interface PlanHomeProps {
   units: UnitSystem
   /** The trip the Plan tab would show, or null. */
   openTrip: Trip | null
-  /** A route draft is in progress - the primary action says so rather than
-   *  offering a fresh start over the top of it. */
+  /** A route or day-hike draft is in progress - the primary action says so
+   *  rather than offering a fresh start over the top of it. */
   draftLive: boolean
   onOpenTrip: (id: string) => void
   onOpenHike: () => void
   onOpenDayHike: (id: string) => void
   onOpenGroup: (id: string) => void
   onAllTrips: () => void
+  onAllDayHikes: () => void
+  /** Open the day-hike builder, or null when this phone has no junction
+   *  graph - null renders the sentence, never a dead button. */
+  onNewDayHike: (() => void) | null
+  /** Open the route builder. */
   onNewTrip: () => void
+  /** Back to whichever builder holds the live draft (the shell knows which,
+   *  chrome/PlanKindSheet's opener rule). */
+  onResumeDraft: () => void
 }
 
-/** How many trips the home lists before sending you to the full list. */
+/** How many entries a home lists before sending you to the full list. */
 const RECENT_TRIPS = 3
+const RECENT_DAY_HIKES = 3
 
 export function PlanHome({
+  mode,
+  onSwitchMode,
   trips,
   hikes,
   dayHikes,
@@ -70,8 +95,189 @@ export function PlanHome({
   onOpenDayHike,
   onOpenGroup,
   onAllTrips,
+  onAllDayHikes,
+  onNewDayHike,
   onNewTrip,
+  onResumeDraft,
 }: PlanHomeProps) {
+  return mode === 'day' ? (
+    <DayHikesHome
+      dayHikes={dayHikes}
+      units={units}
+      draftLive={draftLive}
+      onSwitchMode={onSwitchMode}
+      onOpenDayHike={onOpenDayHike}
+      onAllDayHikes={onAllDayHikes}
+      onNewDayHike={onNewDayHike}
+      onResumeDraft={onResumeDraft}
+    />
+  ) : (
+    <TripsHome
+      trips={trips}
+      hikes={hikes}
+      groups={groups}
+      pois={pois}
+      units={units}
+      openTrip={openTrip}
+      draftLive={draftLive}
+      onSwitchMode={onSwitchMode}
+      onOpenTrip={onOpenTrip}
+      onOpenHike={onOpenHike}
+      onOpenGroup={onOpenGroup}
+      onAllTrips={onAllTrips}
+      onNewTrip={onNewTrip}
+      onResumeDraft={onResumeDraft}
+    />
+  )
+}
+
+/** The band both homes wear: the eyebrow, the mode word, and the way to the
+ *  other room. The switch chip names its destination, not this screen -
+ *  that is what makes it a door rather than a title. */
+function ModeBand({
+  mode,
+  onSwitchMode,
+}: {
+  mode: PlanMode
+  onSwitchMode: (mode: PlanMode) => void
+}) {
+  const other: PlanMode = mode === 'day' ? 'trips' : 'day'
+  return (
+    <header className={`plan-band plan-band--${mode}`}>
+      <div className="plan-band__words">
+        <span className="plan-band__eyebrow">you&rsquo;re planning</span>
+        <h1 className="plan-band__word">{mode === 'day' ? 'Day hikes' : 'Trips'}</h1>
+      </div>
+      <button
+        type="button"
+        className="plan-band__switch"
+        onClick={() => onSwitchMode(other)}
+      >
+        {other === 'day' ? 'Day hikes' : 'Trips'} <span aria-hidden="true">⇄</span>
+      </button>
+    </header>
+  )
+}
+
+interface DayHikesHomeProps {
+  dayHikes: readonly DayHike[]
+  units: UnitSystem
+  draftLive: boolean
+  onSwitchMode: (mode: PlanMode) => void
+  onOpenDayHike: (id: string) => void
+  onAllDayHikes: () => void
+  onNewDayHike: (() => void) | null
+  onResumeDraft: () => void
+}
+
+function DayHikesHome({
+  dayHikes,
+  units,
+  draftLive,
+  onSwitchMode,
+  onOpenDayHike,
+  onAllDayHikes,
+  onNewDayHike,
+  onResumeDraft,
+}: DayHikesHomeProps) {
+  const shelf = splitDayHikes(dayHikes)
+  const recent = [...shelf.toWalk, ...shelf.walked]
+
+  return (
+    <div className="plan-home plan-home--day">
+      <ModeBand mode="day" onSwitchMode={onSwitchMode} />
+
+      {dayHikes.length > 0 && (
+        <section className="plan-home__section">
+          <div className="plan-home__section-head">
+            <span className="plan-home__title">Your day hikes</span>
+            <button type="button" className="plan-home__all" onClick={onAllDayHikes}>
+              All {dayHikes.length} ›
+            </button>
+          </div>
+          {recent.slice(0, RECENT_DAY_HIKES).map((dayHike) => (
+            <button
+              type="button"
+              className="plan-home__row"
+              key={dayHike.id}
+              onClick={() => onOpenDayHike(dayHike.id)}
+            >
+              <span className="plan-home__row-name">{dayHike.name}</span>
+              {/* The cached figures, which exist for exactly this row: a list
+                  must not load the routing graph to say "3.4 mi". The card a
+                  tap opens re-derives against the live graph and says so when
+                  it cannot. */}
+              <span className="plan-home__meta">
+                {formatDistance(dayHike.figures.miles, units)} ·{' '}
+                {dayHike.date !== null ? dayLongDateLabel(dayHike.date) : 'no date yet'}
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
+
+      {dayHikes.length === 0 && (
+        <p className="plan-home__quiet-note">
+          No day hikes saved yet. One you build is kept here, and follows your account to
+          the next phone.
+        </p>
+      )}
+
+      {draftLive ? (
+        <button type="button" className="plan__primary" onClick={onResumeDraft}>
+          Back to your route
+        </button>
+      ) : onNewDayHike !== null ? (
+        <button type="button" className="plan__primary" onClick={onNewDayHike}>
+          Plan a day hike
+        </button>
+      ) : (
+        // PlanKindSheet's sentence, verbatim - the same claim about the same
+        // missing artifact, and a test pins the two copies together so one
+        // cannot be reworded without the other. A sentence, never a dead
+        // button (LineSheet's rule).
+        <p className="plan-home__refused" role="note">
+          This phone hasn&rsquo;t got the trail network yet, so there&rsquo;s nothing to
+          build a day hike on. It arrives with the next data sync.
+        </p>
+      )}
+    </div>
+  )
+}
+
+interface TripsHomeProps {
+  trips: readonly Trip[]
+  hikes: readonly Hike[]
+  groups: readonly TripGroup[]
+  pois: readonly StoredPoi[]
+  units: UnitSystem
+  openTrip: Trip | null
+  draftLive: boolean
+  onSwitchMode: (mode: PlanMode) => void
+  onOpenTrip: (id: string) => void
+  onOpenHike: () => void
+  onOpenGroup: (id: string) => void
+  onAllTrips: () => void
+  onNewTrip: () => void
+  onResumeDraft: () => void
+}
+
+function TripsHome({
+  trips,
+  hikes,
+  groups,
+  pois,
+  units,
+  openTrip,
+  draftLive,
+  onSwitchMode,
+  onOpenTrip,
+  onOpenHike,
+  onOpenGroup,
+  onAllTrips,
+  onNewTrip,
+  onResumeDraft,
+}: TripsHomeProps) {
   // Newest first, by the dates the trips already carry (#805). Undated
   // trips sort last rather than being hidden - they are plans somebody has
   // not decided a date for, which is a normal state and not an error.
@@ -85,17 +291,8 @@ export function PlanHome({
   })
 
   return (
-    <div className="plan-home">
-      <header className="plan__head">
-        <h1 className="plan__title">Plan</h1>
-        <span className="plan__head-note">
-          {trips.length} {trips.length === 1 ? 'trip' : 'trips'}
-          {hikes.length > 0 &&
-            ` · ${hikes.length} ${hikes.length === 1 ? 'hike' : 'hikes'}`}
-          {dayHikes.length > 0 &&
-            ` · ${dayHikes.length} ${dayHikes.length === 1 ? 'day hike' : 'day hikes'}`}
-        </span>
-      </header>
+    <div className="plan-home plan-home--trips">
+      <ModeBand mode="trips" onSwitchMode={onSwitchMode} />
 
       {openTrip !== null && (
         <section className="plan-home__section">
@@ -140,30 +337,6 @@ export function PlanHome({
         </section>
       )}
 
-      {dayHikes.length > 0 && (
-        <section className="plan-home__section">
-          <span className="plan-home__title">Your day hikes</span>
-          {sortedByDate(dayHikes).map((dayHike) => (
-            <button
-              type="button"
-              className="plan-home__row"
-              key={dayHike.id}
-              onClick={() => onOpenDayHike(dayHike.id)}
-            >
-              <span className="plan-home__row-name">{dayHike.name}</span>
-              {/* The cached figures, which exist for exactly this row: a list
-                  must not load the routing graph to say "3.4 mi". The card a
-                  tap opens re-derives against the live graph and says so when
-                  it cannot. */}
-              <span className="plan-home__meta">
-                {formatDistance(dayHike.figures.miles, units)} ·{' '}
-                {dayHike.date !== null ? dayLongDateLabel(dayHike.date) : 'no date yet'}
-              </span>
-            </button>
-          ))}
-        </section>
-      )}
-
       {groups.length > 0 && (
         <section className="plan-home__section">
           <span className="plan-home__title">Your groups</span>
@@ -182,9 +355,6 @@ export function PlanHome({
         </section>
       )}
 
-      {/* Hidden with no trips at all, which a day-hikes-only home can now
-          be: a header over an empty list is a shelf with a label and no
-          answer on it. */}
       {trips.length > 0 && (
         <section className="plan-home__section">
           <div className="plan-home__section-head">
@@ -217,7 +387,17 @@ export function PlanHome({
         </section>
       )}
 
-      <button type="button" className="plan__primary" onClick={onNewTrip}>
+      {trips.length === 0 && hikes.length === 0 && (
+        <p className="plan-home__quiet-note">
+          No trips yet. A trip follows one trail and breaks into days, zeros and resupply.
+        </p>
+      )}
+
+      <button
+        type="button"
+        className="plan__primary"
+        onClick={draftLive ? onResumeDraft : onNewTrip}
+      >
         {draftLive ? 'Back to your route' : 'Plan a new trip'}
       </button>
     </div>
@@ -229,15 +409,4 @@ function firstDate(trip: Trip): string | null {
     if (day.date !== undefined) return day.date
   }
   return null
-}
-
-/** Newest first, undated last - the recent-trips ordering, for the same
- *  reason: an undated day hike is a plan without a date, not an error. */
-function sortedByDate(dayHikes: readonly DayHike[]): DayHike[] {
-  return [...dayHikes].sort((a, b) => {
-    if (a.date === null && b.date === null) return 0
-    if (a.date === null) return 1
-    if (b.date === null) return -1
-    return b.date.localeCompare(a.date)
-  })
 }

@@ -47,6 +47,15 @@ const PROPS = {
   onPlanGap: vi.fn(),
   onPlanFrom: vi.fn(),
   onStartOnMap: vi.fn(),
+  // The mode split (#1008). Trips by default so the existing assertions
+  // keep describing the screens they were written against; the day-side
+  // tests pass mode: 'day' themselves.
+  mode: 'trips' as const,
+  onSwitchMode: vi.fn(),
+  onNewDayHike: vi.fn(),
+  onNewTrip: vi.fn(),
+  networkAvailable: true,
+  gpsAt: null,
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),
   onRemoveDay: vi.fn(),
@@ -754,5 +763,38 @@ describe('the Plan home (#805)', () => {
       />,
     )
     expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
+  })
+})
+
+describe('the day room and its list (#1008)', () => {
+  const DAY_HIKE = {
+    id: 'dh-1',
+    name: 'Pine Meadow loop',
+    date: '2026-09-12',
+    segments: [
+      [
+        { coord: [-74.095, 41.25] as [number, number], poiId: null },
+        { coord: [-74.085, 41.25] as [number, number], poiId: null },
+      ],
+    ],
+    figures: { miles: 6.2, legs: [] },
+    looped: true,
+    recorded: 'planned' as const,
+  }
+
+  it('All N › opens the full day-hike list, and the crumb comes back', async () => {
+    const user = userEvent.setup()
+    render(<PlanScreen {...PROPS} mode="day" dayHikes={[DAY_HIKE]} plan={null} />)
+
+    await user.click(screen.getByRole('button', { name: 'All 1 ›' }))
+    expect(screen.getByText('Ready to walk')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
+    expect(screen.getByRole('heading', { name: 'Day hikes' })).toBeInTheDocument()
+  })
+
+  it('the trips sub-screens wear the trips band', () => {
+    const { container } = render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+    expect(container.querySelector('.plan__head--trips')).not.toBeNull()
   })
 })

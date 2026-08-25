@@ -55,12 +55,14 @@ import {
 } from '../lib/planDisplay'
 import { legFigures, type LegFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
+import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
-import { PlanHome } from './PlanHome'
+import { PlanHome, type PlanMode } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
@@ -104,8 +106,25 @@ export interface PlanScreenProps {
    *  reads as a way back to it rather than a fresh start, because opening
    *  the builder reopens the draft where it stood. */
   draftLive: boolean
-  /** Open the route builder on the map - the empty state's one action. */
+  /** Open the fork, or return to a live draft (#977's opener rule). The
+   *  empty state's one action, and every home's way back to a draft. */
   onStartOnMap: () => void
+  /** Open the day-hike builder directly - the day home's own action
+   *  (#1008). Only offered while the junction graph is loaded. */
+  onNewDayHike: () => void
+  /** Open the route builder directly - the trips home's own action. */
+  onNewTrip: () => void
+  /** Whether the junction graph is loaded, so the day home can offer its
+   *  action or the sentence instead (PlanKindSheet's rule). */
+  networkAvailable: boolean
+  /** The GPS fix, or null - the day-hike list's "nearest me" sort exists
+   *  only while this does. */
+  gpsAt: LonLat | null
+  /** Which home the tab shows (#1008). Held by the shell rather than here,
+   *  because the map's trailhead door also sets it and this screen unmounts
+   *  on every tab switch. */
+  mode: PlanMode
+  onSwitchMode: (mode: PlanMode) => void
   /** Reopen the target sheet over this plan's route. */
   onChangeTarget: () => void
   onInsertZeroAfter: (dayIndex: number) => void
@@ -165,6 +184,12 @@ export function PlanScreen({
   pace = STANDARD_PACE,
   draftLive,
   onStartOnMap,
+  onNewDayHike,
+  onNewTrip,
+  networkAvailable,
+  gpsAt,
+  mode,
+  onSwitchMode,
   onChangeTarget,
   onInsertZeroAfter,
   onRemoveDay,
@@ -217,6 +242,8 @@ export function PlanScreen({
   const [atHome, setAtHome] = useState(
     trips.length > 1 || hikes.length > 0 || dayHikes.length > 0,
   )
+  /** The full day-hike list (frame D7), over the day home. */
+  const [dayListOpen, setDayListOpen] = useState(false)
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -254,9 +281,29 @@ export function PlanScreen({
   }, [plan, elevation])
 
   if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
+    if (dayListOpen) {
+      return (
+        <div className="plan plan--day">
+          <DayHikeList
+            dayHikes={dayHikes}
+            units={units}
+            at={gpsAt}
+            onOpen={onOpenDayHike}
+            onBack={() => setDayListOpen(false)}
+            onNewDayHike={networkAvailable && !draftLive ? onNewDayHike : null}
+          />
+          {targetSheet}
+          {kindSheet}
+          {dayHikeCard}
+          {tripList}
+        </div>
+      )
+    }
     return (
-      <div className="plan">
+      <div className={mode === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
+          mode={mode}
+          onSwitchMode={onSwitchMode}
           trips={trips}
           hikes={hikes}
           dayHikes={dayHikes}
@@ -277,7 +324,10 @@ export function PlanScreen({
           }}
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
-          onNewTrip={onStartOnMap}
+          onAllDayHikes={() => setDayListOpen(true)}
+          onNewDayHike={networkAvailable ? onNewDayHike : null}
+          onNewTrip={onNewTrip}
+          onResumeDraft={onStartOnMap}
         />
         {targetSheet}
         {kindSheet}
@@ -346,8 +396,8 @@ export function PlanScreen({
   // what it knows.
   if (zoom === 'hike' && hike !== null) {
     return (
-      <div className="plan">
-        <header className="plan__head">
+      <div className="plan plan--trips">
+        <header className="plan__head plan__head--trips">
           <h1 className="plan__title">{hike.name}</h1>
           <span className="plan__head-note">{hike.type}</span>
           <button type="button" className="plan__trips" onClick={onOpenTrips}>
@@ -381,7 +431,11 @@ export function PlanScreen({
               onPlanGap={onPlanGap}
               onWhatsLeft={() => setWhatsLeftOpen(true)}
             />
-            <button type="button" className="plan__primary" onClick={onStartOnMap}>
+            <button
+              type="button"
+              className="plan__primary"
+              onClick={draftLive ? onStartOnMap : onNewTrip}
+            >
               {draftLive ? 'Back to your route' : 'Plan another trip'}
             </button>
           </>
@@ -441,8 +495,8 @@ export function PlanScreen({
   const anythingWalked = walkedDayCount(plan) > 0
 
   return (
-    <div className="plan">
-      <header className="plan__head">
+    <div className="plan plan--trips">
+      <header className="plan__head plan__head--trips">
         <h1 className="plan__title">
           {/* The trip's own name once it has one - a hiker who renamed it
               "Grayson week" should read that back, not have it silently

@@ -483,18 +483,27 @@ describe('the day-hike builder, end to end', () => {
     render(<App />)
     await openHike()
     // Into a day hike, with points on it - the work that used to be silently
-    // outlived by an invisible route draft. This door is the guarded one and
-    // lands the hiker on the trail tab itself.
-    await user.click(await screen.findByRole('button', { name: 'Plan another trip' }))
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    // outlived by an invisible route draft. Since #1008 the way in from here
+    // is the day room's own action: home, the switch chip, then "Plan a day
+    // hike" - the same guarded door (openDayHike), which lands the hiker on
+    // the trail tab itself.
+    await user.click(await screen.findByRole('button', { name: /All your plans/ }))
+    await user.click(await screen.findByRole('button', { name: /Day hikes/ }))
+    await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
     const map = await liveMap()
     await tap(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
     expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
 
-    // Back to the timeline - the tab bar consults neither builder - and in
+    // Back to the timeline - the tab bar consults neither builder. The Plan
+    // tab reopens on the day room (the hiker's last pick sticks, #1008), so
+    // the way to the hike is the chip back to the trips room - and then in
     // through the gap door, which calls openRouteBuilderFrom directly.
-    await openHike()
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: /Trips/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+    )
     await user.click(await screen.findByRole('button', { name: 'Plan this stretch' }))
 
     // THE FIRST ASSERTION IS THE ONE THAT CATCHES IT, verified by reverting

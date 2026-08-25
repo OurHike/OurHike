@@ -18,6 +18,7 @@ vi.mock('idb-keyval', () => ({
 import { get, set } from 'idb-keyval'
 import {
   buildPlan,
+  DAY_NOTE_MAX_CHARS,
   dateOfDay,
   foodCarries,
   insertZeroAfter,
@@ -29,6 +30,7 @@ import {
   planSections,
   removeDay,
   savePlan,
+  setDayNote,
   togglePinned,
   toggleResupply,
   validatePlan,
@@ -340,5 +342,84 @@ describe('foodCarries (#799)', () => {
   it('has a stated threshold for when a carry is worth mentioning', () => {
     // A number, not a rule the screens each invent for themselves.
     expect(LONG_CARRY_DAYS).toBeGreaterThan(0)
+  })
+})
+
+describe("the hiker's own line on a day (#966)", () => {
+  const dayPlan = () =>
+    buildPlan([stop(470.8), stop(486.2), stop(503.3)], { miles: 15 }, '2026-05-12')
+
+  it('stores what was written, and shows it on the view', () => {
+    const kept = setDayNote(dayPlan(), 0, 'the ponies were unbothered')
+    expect(kept.days[0].note).toBe('the ponies were unbothered')
+    expect(planDayViews(kept)[0].note).toBe('the ponies were unbothered')
+    expect(planDayViews(kept)[1].note).toBeNull()
+  })
+
+  it('may be written on a WALKED day - the one edit the past accepts', () => {
+    // Every other mutator refuses a walked day. This one exists because a
+    // memory is written about the past, after it, which is what the day
+    // summary is for.
+    const walked = { ...dayPlan() }
+    walked.days = walked.days.map((day, i) => (i === 0 ? { ...day, walked: true } : day))
+    const kept = setDayNote(walked, 0, 'mile 500 came and went')
+    expect(kept.days[0].note).toBe('mile 500 came and went')
+    // ...and it changes nothing else about the record.
+    expect(kept.days[0].walked).toBe(true)
+    expect(kept.stops).toEqual(walked.stops)
+    expect(kept.days[0].date).toBe(walked.days[0].date)
+  })
+
+  it('does not drop the "auto" marker - writing a memory is not an edit', () => {
+    const generated = dayPlan()
+    expect(generated.days[0].generated).toBe(true)
+    expect(setDayNote(generated, 0, 'good water at the gap').days[0].generated).toBe(true)
+  })
+
+  it('clears the field on a blank line rather than storing an empty string', () => {
+    const kept = setDayNote(dayPlan(), 0, 'something')
+    expect(setDayNote(kept, 0, '   ').days[0].note).toBeUndefined()
+    expect('note' in setDayNote(kept, 0, '').days[0]).toBe(false)
+  })
+
+  it('trims and caps what it stores', () => {
+    const long = 'x'.repeat(DAY_NOTE_MAX_CHARS + 50)
+    expect(setDayNote(dayPlan(), 0, `  spaced  `).days[0].note).toBe('spaced')
+    expect(setDayNote(dayPlan(), 0, long).days[0].note).toHaveLength(DAY_NOTE_MAX_CHARS)
+  })
+
+  it('ignores an index that is not a day', () => {
+    const plan = dayPlan()
+    expect(setDayNote(plan, -1, 'nope')).toBe(plan)
+    expect(setDayNote(plan, 99, 'nope')).toBe(plan)
+  })
+
+  it('costs its own line and never the plan when storage returns junk', () => {
+    // validateRhythm's trade, applied to the other field carrying no
+    // invariant: a plan whose days are all there is worth more than one
+    // line of prose an older build wrote wrong.
+    const plan = dayPlan() as HikePlan & { days: Record<string, unknown>[] }
+    const withNumber = validatePlan({
+      ...plan,
+      days: plan.days.map((day, i) => (i === 0 ? { ...day, note: 42 } : day)),
+    })
+    expect(withNumber).not.toBeNull()
+    expect(withNumber?.days).toHaveLength(2)
+    expect(withNumber?.days[0].note).toBeUndefined()
+
+    const overLong = validatePlan({
+      ...plan,
+      days: plan.days.map((day, i) =>
+        i === 0 ? { ...day, note: 'y'.repeat(DAY_NOTE_MAX_CHARS + 10) } : day,
+      ),
+    })
+    expect(overLong?.days[0].note).toHaveLength(DAY_NOTE_MAX_CHARS)
+  })
+
+  it('survives a save/load round trip', async () => {
+    const kept = setDayNote(dayPlan(), 1, 'cold night at the knob')
+    await savePlan(kept)
+    vi.mocked(get).mockResolvedValueOnce(vi.mocked(set).mock.calls.at(-1)?.[1])
+    expect((await loadPlan())?.days[1].note).toBe('cold night at the knob')
   })
 })

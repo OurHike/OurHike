@@ -39,6 +39,7 @@ import {
   planDayViews,
   planSections,
   planDirection,
+  setDayNote,
   walkedDayCount,
   type HikePlan,
   type PlanDayView,
@@ -56,6 +57,7 @@ import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
 import { PlanHome } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
@@ -183,6 +185,14 @@ export function PlanScreen({
    *  when the recorded end moved something. */
   const [calling, setCalling] = useState<number | null>(null)
   const [cascading, setCascading] = useState(false)
+  /** The walked day whose summary is open (#966), or null. Its own state
+   *  rather than a mode on `selectedDay`, because the two are opened by
+   *  different rows and one of them is a record with no actions on it. */
+  const [summaryDay, setSummaryDay] = useState<number | null>(null)
+  /** The day whose summary opens once the cascade choice is made. The card
+   *  belongs at the END of calling a day, and when a cascade is offered the
+   *  end is one sheet later. */
+  const [summaryAfterCascade, setSummaryAfterCascade] = useState<number | null>(null)
   const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
   const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
   /**
@@ -517,7 +527,11 @@ export function PlanScreen({
                     }
                     units={units}
                     elevation={elevation}
-                    onSelect={() => setSelectedDay(day.index)}
+                    onSelect={() =>
+                      // A walked day has no actions on it and never gains
+                      // any - it opens its own record instead (#966).
+                      day.walked ? setSummaryDay(day.index) : setSelectedDay(day.index)
+                    }
                   />
                 </li>
               ))}
@@ -600,7 +614,12 @@ export function PlanScreen({
             // something - ending exactly at the planned stop changes no
             // later day, and asking would be the "recalculate?" prompt the
             // design forbids.
-            if (end.mile !== plan.stops[calling + 1].mile) setCascading(true)
+            if (end.mile !== plan.stops[calling + 1].mile) {
+              setCascading(true)
+              setSummaryAfterCascade(calling)
+            } else {
+              setSummaryDay(calling)
+            }
           }}
           onClose={() => setCalling(null)}
         />
@@ -616,9 +635,28 @@ export function PlanScreen({
           onChoose={(next) => {
             if (next !== null) onReplacePlan(next)
             setCascading(false)
+            setSummaryDay(summaryAfterCascade)
+            setSummaryAfterCascade(null)
           }}
         />
       )}
+      {summaryDay !== null && views[summaryDay] !== undefined && (
+        <DaySummary
+          day={views[summaryDay]}
+          figures={figures.get(summaryDay)}
+          pois={pois}
+          units={units}
+          nextDayWalked={views[summaryDay + 1]?.walked === true}
+          onNextDay={() => setSummaryDay(summaryDay + 1)}
+          onKeepNote={(note) => {
+            const kept = setDayNote(plan, summaryDay, note)
+            if (kept !== plan) onReplacePlan(kept)
+            setSummaryDay(null)
+          }}
+          onClose={() => setSummaryDay(null)}
+        />
+      )}
+
       {targetSheet}
       {tripList}
     </div>
@@ -732,13 +770,17 @@ interface DayRowProps {
 function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowProps) {
   const resupply = day.end.resupply
 
-  // A walked day is a record, not a plan - grey, immutable, and not a
-  // button: there are no actions to take on the past.
+  // A walked day is a record, not a plan - grey and immutable, and there
+  // are still no actions to take on the past. It became a button anyway
+  // (#966): READING a day is not acting on it, and the day somebody just
+  // finished is the one row on this timeline they are most likely to want
+  // to open. What opens is the summary, which edits nothing about the day
+  // except the line the hiker writes themselves.
   if (day.walked) {
     return (
       <div className="plan__row">
         <RowGutter day={day} />
-        <div className="plan__day plan__day--walked">
+        <button type="button" className="plan__day plan__day--walked" onClick={onSelect}>
           <span className="plan__day-top">
             <span className="plan__day-title">
               {stopLabel(day.start)} → {stopLabel(day.end)}
@@ -750,7 +792,11 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
           <span className="plan__day-carry plan__day-carry--walked">
             walked · not a plan any more
           </span>
-        </div>
+          {/* The hiker's own line, back on the timeline where they will
+              scroll past it months later - which is the whole reason the
+              card asked them to write one. */}
+          {day.note !== null && <span className="plan__day-note">{day.note}</span>}
+        </button>
       </div>
     )
   }

@@ -95,7 +95,36 @@ export interface PlanDayMeta {
    * gave you a short day" and "you asked for one".
    */
   rest?: boolean
+  /**
+   * The line the hiker wrote for themselves about this day (#966), from the
+   * day summary's "add a line for future you".
+   *
+   * THEIRS, AND THE ONLY PROSE ON A DAY. Everything else in this interface
+   * is something the app worked out; this is the one field the app never
+   * writes, never parses and never shows to anybody else. It is stored on
+   * the day rather than in a separate log for the reason `date` is: the
+   * cascade moves days around, and a memory that came unstuck from the day
+   * it belongs to would attach itself to whatever ended up at that index.
+   *
+   * Capped at DAY_NOTE_MAX_CHARS on the way in and on the way back out of
+   * storage - see validatePlan, which drops an over-long or non-string
+   * value rather than refusing the whole plan, because a plan whose days
+   * are all there is worth more than one line of prose.
+   */
+  note?: string
 }
+
+/**
+ * How long the hiker's own line may be.
+ *
+ * @unvalidated 280 is picked, not measured. It is a sentence or two - the
+ * length the wireframe's "the ponies were unbothered" sits at - and the
+ * ceiling exists so a plan that syncs cannot become unbounded prose. What
+ * would settle it: what people actually write, once anybody has written
+ * any. Nothing on screen counts down toward it; a hiker who hits it is
+ * writing a journal entry, and this was never the place for one.
+ */
+export const DAY_NOTE_MAX_CHARS = 280
 
 /**
  * A rest every `everyDays` walking days (#798).
@@ -168,6 +197,24 @@ export function validatePlan(candidate: unknown): HikePlan | null {
     }
   }
 
+  // The hiker's own line is SANITISED rather than validated, which is the
+  // same trade validateRhythm makes below and for the same reason: every
+  // other field on a day carries an invariant the arithmetic assumes, and
+  // this one carries none. A note that came back as a number, or longer
+  // than the cap an older build did not enforce, costs its own line -
+  // never the plan's days, which are the part nobody can retype.
+  const days = plan.days.map((day) => {
+    const note = (day as { note?: unknown }).note
+    if (note === undefined) return day
+    if (typeof note !== 'string' || note.length === 0) {
+      const { note: _dropped, ...rest } = day
+      return rest as PlanDayMeta
+    }
+    return note.length <= DAY_NOTE_MAX_CHARS
+      ? day
+      : { ...day, note: note.slice(0, DAY_NOTE_MAX_CHARS) }
+  })
+
   // Dated throughout or not at all, and forward-only: a plan that is half a
   // calendar cannot answer "when do I finish", and one whose dates run
   // backwards cannot be shifted without inventing which of the two orders
@@ -202,7 +249,7 @@ export function validatePlan(candidate: unknown): HikePlan | null {
       ? { walkingHours: hours as number }
       : { miles: targetMiles as number },
     stops: plan.stops as PlanStop[],
-    days: plan.days as PlanDayMeta[],
+    days: days as PlanDayMeta[],
     ...(validateRhythm(plan.rhythm) === null
       ? {}
       : { rhythm: validateRhythm(plan.rhythm) as RestRhythm }),
@@ -304,6 +351,8 @@ export interface PlanDayView {
    *  be a rest or just a zero somebody added; a nearo is only legible as
    *  one because of this. */
   rest: boolean
+  /** The hiker's own line about this day, or null - see PlanDayMeta.note. */
+  note: string | null
 }
 
 /** `startDate` plus `index` days, in plain date arithmetic - UTC throughout
@@ -334,6 +383,7 @@ export function planDayViews(plan: HikePlan): PlanDayView[] {
       walked: meta.walked === true,
       wasDistanceMi: meta.wasDistanceMi ?? null,
       rest: meta.rest === true,
+      note: meta.note ?? null,
     }
   })
 }
@@ -561,6 +611,40 @@ export function toggleResupply(plan: HikePlan, stopIndex: number): HikePlan {
     stops: plan.stops.map((stop, i) =>
       i === stopIndex ? { ...stop, resupply: !stop.resupply } : stop,
     ),
+  }
+}
+
+/**
+ * Write (or clear) the hiker's own line on a day (#966).
+ *
+ * THE ONE MUTATOR THAT MAY TOUCH A WALKED DAY, and the exception is the
+ * point rather than an oversight. Every other edit here refuses a walked
+ * day because the past is a record - but a memory is written *about* the
+ * past, after it, and the day summary exists precisely so somebody can
+ * write one at camp. Nothing about the day's boundaries, dates or figures
+ * changes; the record stays exactly as walked.
+ *
+ * It does not call `touched()` either. Writing down what the ponies did is
+ * not editing the plan, and a generated day that gets a line is still a day
+ * the app laid out - dropping the "auto" marker for it would make the
+ * timeline claim an edit nobody made.
+ *
+ * Blank in, field gone: an empty or whitespace-only line is a hiker
+ * clearing what they wrote, not storing an empty string.
+ */
+export function setDayNote(plan: HikePlan, index: number, note: string): HikePlan {
+  if (index < 0 || index >= plan.days.length) return plan
+  const trimmed = note.trim().slice(0, DAY_NOTE_MAX_CHARS)
+  return {
+    ...plan,
+    days: plan.days.map((meta, i) => {
+      if (i !== index) return meta
+      if (trimmed.length === 0) {
+        const { note: _cleared, ...rest } = meta
+        return rest
+      }
+      return { ...meta, note: trimmed }
+    }),
   }
 }
 

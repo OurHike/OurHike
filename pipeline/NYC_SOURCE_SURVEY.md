@@ -27,6 +27,7 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | register next — §3 |
 | NYNJTC public extracts (LP, HT, SRT) | ✓ 43 + 12 | | ✓ one live detour | ✓ | **2026-08-04** | register now — §4 |
 | NYNJTC full network | ✓ | ✓ | | org-internal | GIS program alive | **agreement, not a scrape** — §4 |
+| Mohonk Preserve trails/carriage roads | ✓ 304 | | | ✓ (own AGOL org) | **2026-08-24** | **registered, review-only** (#992); §11 |
 | NJDEP State Park Service Trails | ✓ 3,305 | ✓ (Land/62, uncounted) | | ✓ | undated (on-prem) | register after terms read — §5 |
 | NJ Geospatial Forum Statewide Trails | ✓ 13,296 | | | ✓ | 2026-06-09 | the NJ-county answer — §5 |
 | NJ Highlands Council HT copy | ✓ | | | ✓ | unprobed | secondary to NYNJTC's own — §5 |
@@ -225,7 +226,7 @@ rule) will have to be argued rather than assumed:
 |---|---|---|
 | Harriman / Bear Mountain | OPRHP (`Unit: Palisades`) | AT (ATC/NPS layers), Long Path (NYNJTC), PIPC administers, NYNJTC maintains |
 | Hudson Highlands SP Preserve | OPRHP (`Taconic`; 24 named trails at Breakneck alone) | NYNJTC maintains most trails, publishes none of them; AT clips Anthony's Nose |
-| Minnewaska / Shawangunks | OPRHP | Long Path + SRT (NYNJTC), and NYNJTC's live fire-detour layer |
+| Minnewaska / Shawangunks | OPRHP | Long Path + SRT (NYNJTC), NYNJTC's live fire-detour layer, and Mohonk Preserve's own carriage-road network (registered review-only, #992) |
 | Catskill Forest Preserve | DEC (`UNIT: CFP`) | Long Path (NYNJTC), NYNJTC's Catskill programs, 314-lean-to layer statewide |
 | NJ Highlands / Ramapos | NJDEP + the statewide compilation | Highlands Trail (NYNJTC), NYNJTC maintains |
 | The AT corridor through NY/NJ | ATC/NPS (already shipping) | crosses OPRHP, PIPC and NJDEP ground registered above |
@@ -248,6 +249,7 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 | NJDEP layers + NJ compilation | **NJDEP Data Distribution Agreement — stated** | **NEEDS REVIEW** — read in full; possibly no ask needed |
 | ATC / NPS | See `atc_licence` in sources.json | In hand |
 | OpenStreetMap | ODbL 1.0 | In hand (basemap + water precedent) |
+| Mohonk Preserve (trails layer) | Unstated — no-warranty disclaimer only, no reuse grant, read whole 2026-08-25 | **NEEDS REVIEW** — no maintainer authorisation recorded, unlike NYNJTC's extracts; registered review-only (#992) |
 
 ## 10. What to do with all this, ranked
 
@@ -272,3 +274,49 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
    - (f) **PIPC's NJ section** — expected inside the NJ layers, unverified.
    - (g) Whether DEC's Back Country Features asset types include **water** — raises the
      evidence bar if true (CLAUDE.md's four ways).
+   - (h) **Mohonk Preserve's licence** — registered review-only (#992); no maintainer
+     authorisation recorded yet, unlike NYNJTC's extracts. §11.
+
+## 11. Mohonk Preserve — found after this survey, filling a real gap
+
+Not in this survey's original 2026-08-18 pass: Mohonk Preserve is a ~8,200-acre nonprofit
+nature preserve immediately adjacent to and interleaved with Minnewaska (§8's overlap
+table already listed OPRHP and NYNJTC on that ground; Mohonk Preserve, a distinct
+landowner with its own carriage-road network, was never surveyed as its own source).
+Registered 2026-08-25 (#992):
+
+- **Service:** Mohonk Preserve's own public AGOL org (id `cQ05sucxF4UWabFF`), item
+  `88014aef85ef42c397c738154cf7f1dc`, owned directly by their GIS & Land Projects Manager.
+  `Trails_CarriageRoads/FeatureServer/0` — **304 polyline segments**, fields
+  Name/General_Classification/Classification/Use_/Blaze/Mileage/Surface/Owner/Manager.
+  The layer is already a filtered VIEW (`definitionQuery`: classification in Carriage
+  Road/Trail, `Manager = 'Mohonk Preserve'`) — Mohonk's own curated public extract, not
+  their raw internal dataset. 298 of 304 rows carry `Owner: Mohonk Preserve`; six
+  (Marakill Woods) carry `Owner: NYS OPRHP/PIPC` with `Manager` still Mohonk Preserve.
+- **Freshness, measured the way this survey measures it elsewhere:**
+  `editingInfo.dataLastEditDate` read live 2026-08-25 as **2026-08-24T20:52:57Z** —
+  edited the day before. The AGOL item's own container metadata (title/sharing) last
+  changed 2025-07-28, a full year stale by comparison — reading only the item, not the
+  layer, would have understated how current this source actually is.
+- **The candidate actually suggested** (`gis.ny.gov/gisdata/inventories/
+  details.cfm?DSID=295`, the old NYS GIS Clearinghouse listing) **is dead
+  infrastructure**: 404 on the detail page and on the bare inventory path, which
+  301-redirects to `data.gis.ny.gov` — the whole ColdFusion inventory system has moved,
+  with no working listing for this dataset found on the replacement. Worth recording
+  here because it is this survey's own rule 3 in miniature: finding a live,
+  actively-edited service instead of trusting a page's own claim about itself is the
+  discipline every other row in this document was already held to.
+- **Licence — unstated**, the same shape as NYNJTC's extracts before their maintainer
+  authorisation. Read whole rather than through the 200-character truncation that
+  misread OPRHP's once (§9): the item's `licenseInfo` is a no-warranty disclaimer only,
+  no reuse or redistribution grant either way. No maintainer authorisation is recorded
+  for this source, unlike NYNJTC's — `mohonk_licence` in sources.json holds both the
+  verbatim text and that distinction.
+
+**Verdict: registered, review-only** (`reaches_hikers: false`) — fetched by the existing
+`fetch_external_layers.py` with no code change. Deliberately not wired into
+`export_nearby_trails.py`: that export's `network_line_sources()` picks up any external
+entry carrying `blaze_field`/`blaze_default`, and `publish.py`'s upload gate for the
+combined `nearby_trails.geojson` artifact is all-or-nothing across every contributing
+source — adding either key now would silently hold back the OPRHP and NYNJTC lines that
+ship today, ahead of Mohonk Preserve's own licence being resolved.

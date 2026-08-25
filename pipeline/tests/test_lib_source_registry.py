@@ -152,6 +152,56 @@ def test_only_the_closures_layer_may_be_empty():
     assert flagged == {"oprhp_trail_closures"}
 
 
+def test_the_real_registry_registers_mohonk_trails_as_external_and_review_only():
+    """#992's deliverable, checked as data: Mohonk Preserve's own trails and
+    carriage-road layer, registered the same way OPRHP's and NYNJTC's were -
+    external kind, a steward, a licence pointing at a genuinely pending
+    outreach - except reaches_hikers is False here rather than True, because
+    unlike NYNJTC's post-authorisation state there is no maintainer call on
+    record for this source yet (see mohonk_licence's basis)."""
+    registry = load_registry(REAL_REGISTRY)
+    entry = find_source(registry, "mohonk_trails")
+
+    assert entry is not None, "sources.json no longer registers mohonk_trails (#992)"
+    assert entry["kind"] == EXTERNAL_ARCGIS_LAYER
+    assert entry["trust"] == "authoritative"
+    assert entry["steward"] == "Mohonk Preserve"
+    assert entry["licence"].strip()
+    assert entry["url"].startswith("https://services8.arcgis.com/cQ05sucxF4UWabFF/")
+    assert entry["reaches_hikers"] is False
+
+
+def test_mohonk_trails_carries_no_blaze_marker_yet():
+    """A source only reaches export_nearby_trails.py's network_line_sources()
+    by carrying blaze_field or blaze_default (see that function's docstring).
+    mohonk_trails is registered fetch-and-review-only, and publish.py's
+    upload gate for the shared nearby_trails.geojson artifact is
+    all-or-nothing across every contributing source - so giving this entry
+    either key would silently hold back the OPRHP and NYNJTC lines that ship
+    today, the moment the export next runs. Guards against that landing by
+    accident before mohonk_trails' licence is actually resolved."""
+    entry = find_source(load_registry(REAL_REGISTRY), "mohonk_trails")
+
+    assert "blaze_field" not in entry
+    assert "blaze_default" not in entry
+
+
+def test_the_registry_records_the_mohonk_licence_block():
+    """The gate mohonk_trails' reaches_hikers: False rests on, checked as
+    data: the terms are recorded verbatim (not summarized, after
+    oprhp_licence's truncation lesson) and the block says plainly that no
+    maintainer authorisation has been given - the fact that keeps
+    reaches_hikers False rather than True the way nynjtc_licence's did once
+    an authorisation was recorded there."""
+    registry = load_registry(REAL_REGISTRY)
+    block = registry["mohonk_licence"]
+
+    assert "WITHOUT ANY WARRANTY" in block["terms_verbatim"]
+    assert len(block["terms_verbatim"]) > 100
+    assert "992" in block["open_question"]
+    assert "nor a maintainer authorisation" in block["basis"].lower()
+
+
 def test_the_registry_records_the_oprhp_licence_block():
     """The gate #769 exists to hold - but NOT for the reason this test used to
     give (#950, corrected 2026-08-24).

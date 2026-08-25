@@ -442,3 +442,72 @@ describe('projection onto a bent edge', () => {
     expect(found?.fraction).toBeCloseTo(0.5, 1)
   })
 })
+
+// Climb over a walk (#1011). The graph above carries no `climb`, which is the
+// state of a phone that has not fetched the elevation artifact - so these
+// build their own graph with it attached rather than mutating the shared one.
+describe('pricing the climb of a walk', () => {
+  /** GRAPH with a climb on every edge, or on the ones named. */
+  function withClimb(climbs: Record<number, [number, number] | null>): TrailGraph {
+    return {
+      nodes: GRAPH.nodes,
+      edges: GRAPH.edges.map((edge, at) => ({ ...edge, climb: climbs[at] })),
+    }
+  }
+
+  it('is null when this phone has fetched no elevation at all', () => {
+    // The shared GRAPH's edges have no `climb` key. Undefined, not null: the
+    // artifact was never fetched, rather than fetched and empty.
+    const route = routeBetween(index, pointOn(0, 0), pointOn(1, 1))
+    expect(route?.climb).toBeNull()
+  })
+
+  it('adds every whole edge it walks', () => {
+    const graph = withClimb({ 0: [100, 20], 1: [50, 10] })
+    const priced = buildGraphIndex(graph)
+    const route = routeBetween(priced, pointOn(0, 0), pointOn(1, 1))
+    expect(route?.climb).toEqual({ gainFt: 150, lossFt: 30 })
+  })
+
+  it('pro-rates a partial edge by the share actually walked', () => {
+    // Half of edge 0 is walked, so half its climb is counted - the same share
+    // walkedMetresPerEdge gives the miles, so the two cannot disagree about
+    // how much of the edge the hiker covered.
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20] }))
+    const route = routeBetween(priced, pointOn(0, 0), pointOn(0, 0.5))
+    expect(route?.climb).toEqual({ gainFt: 50, lossFt: 10 })
+  })
+
+  it('refuses the whole walk when one edge of it was never measured', () => {
+    // The rule this artifact exists to make possible: a total missing one
+    // edge reads as the climb of the whole walk and is silently low, on the
+    // figure a hiker uses to judge whether they beat the dark.
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: null }))
+    const route = routeBetween(priced, pointOn(0, 0), pointOn(1, 1))
+    expect(route?.miles).toBeGreaterThan(0)
+    expect(route?.climb).toBeNull()
+  })
+
+  it('counts a re-walked stretch once per pass, as its legs already do', () => {
+    // The out-and-back half of #1002, applied to climb: walking edge 0 out
+    // and back is two passes of real ground and two passes of real ascent.
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10] }))
+    const there = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
+    const andBack = routeThrough(priced, [pointOn(0, 0), pointOn(0, 1), pointOn(0, 0)])
+    expect(there?.climb).toEqual({ gainFt: 100, lossFt: 20 })
+    expect(andBack?.climb).toEqual({ gainFt: 200, lossFt: 40 })
+  })
+
+  it('prices a closed loop over every edge the loop walks', () => {
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: [70, 5] }))
+    const loop = closeTheLoop(priced, [pointOn(0, 0), pointOn(2, 1)])
+    expect(loop?.climb).not.toBeNull()
+    expect(loop?.climb?.gainFt).toBeGreaterThan(0)
+  })
+
+  it('is null when any section of a multi-tap walk cannot be priced', () => {
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: null }))
+    const route = routeThrough(priced, [pointOn(0, 0), pointOn(1, 1), pointOn(2, 1)])
+    expect(route?.climb).toBeNull()
+  })
+})

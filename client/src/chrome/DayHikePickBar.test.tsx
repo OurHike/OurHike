@@ -62,6 +62,10 @@ const ROUTE: GraphRoute = {
     { source: 'nynjtc_long_path', legs: 2 },
     { source: 'oprhp_trails', legs: 1 },
   ],
+  // The bar takes its minutes as a prop rather than deriving them, so this
+  // only has to be a valid GraphRoute. Null is the real state on a phone
+  // holding no elevation artifact (#1011).
+  climb: null,
 }
 
 const DRAFT: DayHikeDraft = { points: [], refusal: null, looped: false }

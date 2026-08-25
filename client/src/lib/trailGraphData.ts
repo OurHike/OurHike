@@ -39,6 +39,7 @@
 import {
   DATA_CONFIGURED,
   dataUrl,
+  TRAIL_GRAPH_ELEVATION_KEY,
   TRAIL_GRAPH_GEOMETRY_KEY,
   TRAIL_GRAPH_KEY,
 } from './config'
@@ -171,6 +172,77 @@ export function attachTrailGraphGeometry(
     edges: index.graph.edges.map((edge, edgeIndex) => ({
       ...edge,
       geometry: geometry[edgeIndex],
+    })),
+  }
+  return buildGraphIndex(graph)
+}
+
+/** Whether the parsed JSON is one `[gain, loss]` pair (or null) per edge. */
+function isGraphElevation(value: unknown): value is Array<[number, number] | null> {
+  if (!Array.isArray(value)) return false
+  // Spot-check the first ENTRY THAT IS NOT NULL, not simply the first entry:
+  // a graph whose leading edges sit in a DEM gap is a real artifact, and
+  // reading its leading null as "wrong shape" would throw the whole file away
+  // over the one case it is designed to express.
+  const first = value.find((entry) => entry !== null)
+  if (first === undefined) return true
+  if (!Array.isArray(first) || first.length !== 2) return false
+  return typeof first[0] === 'number' && typeof first[1] === 'number'
+}
+
+/**
+ * The climb along each edge, fetched lazily when the day-hike builder opens.
+ *
+ * Same shape as {@link fetchTrailGraphGeometry} and for the same reasons -
+ * held to its published hash, refused outright when the manifest names no
+ * hash, and refused when its length disagrees with the graph the caller
+ * already holds. That last check is the one that matters most here: edge 40
+ * priced from edge 41's climb is not a visible defect, it is a plausible
+ * number against the wrong trail.
+ *
+ * Null - no elevation on this phone - is ordinary. The builder still routes
+ * and the card still prints miles; only the climb and the ≈time go unsaid,
+ * which is what they did before this artifact existed.
+ */
+export async function fetchTrailGraphElevation(
+  edgeCount: number,
+  signal?: AbortSignal,
+): Promise<Array<[number, number] | null> | null> {
+  if (!DATA_CONFIGURED) return null
+
+  try {
+    const response = await fetch(dataUrl(TRAIL_GRAPH_ELEVATION_KEY), { signal })
+    if (!response.ok) return null
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    const expected = await publishedHash(TRAIL_GRAPH_ELEVATION_KEY, { signal })
+    if (expected === null) return null
+    if ((await sha256Of(bytes)) !== expected) return null
+
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    if (!isGraphElevation(parsed)) return null
+    if (parsed.length !== edgeCount) return null
+
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The index with its edges carrying their climb - a NEW index, the input
+ * untouched, so a caller holding the elevation-free one keeps it.
+ */
+export function attachTrailGraphElevation(
+  index: TrailGraphIndex,
+  elevation: Array<[number, number] | null>,
+): TrailGraphIndex {
+  if (elevation.length !== index.graph.edges.length) return index
+  const graph = {
+    nodes: index.graph.nodes,
+    edges: index.graph.edges.map((edge, edgeIndex) => ({
+      ...edge,
+      climb: elevation[edgeIndex],
     })),
   }
   return buildGraphIndex(graph)

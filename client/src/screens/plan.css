@@ -2039,6 +2039,12 @@
   font-weight: 600;
 }
 
+/* The climb pair reads as one figure, so it wraps as one: "+1,240 ft /
+   -1,180 ft" broken across the slash is two numbers a hiker has to reassemble. */
+.day-hike-card__climb {
+  white-space: nowrap;
+}
+
 .day-hike-card__section {
   display: flex;
   flex-direction: column;

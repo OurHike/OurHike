@@ -60,6 +60,18 @@ export interface GraphEdge {
    * {@link routeGeometry} returns null rather than drawing chords.
    */
   geometry?: Array<[number, number]>
+  /**
+   * `[gain_ft, loss_ft]` along the whole edge, from
+   * pipeline/export_network_elevation.py, attached by
+   * lib/trailGraphData.ts when the builder opens.
+   *
+   * `undefined` means this phone has not fetched the elevation artifact;
+   * `null` means the artifact HAS it and nobody has measured this edge - a
+   * DEM gap. Both stop {@link routeClimb} answering, and they must: the two
+   * are different facts but the honest reply to a hiker is the same one.
+   * Never 0, which would be the claim that the ground is flat.
+   */
+  climb?: [number, number] | null
 }
 
 /** The artifact as published: nodes are `[lon, lat]`. */
@@ -105,6 +117,13 @@ export interface GraphRoute {
   edgeIndices: number[]
   /** Legs per organization, which frame `1j` tallies while the hiker builds. */
   legsBySource: Array<{ source: string | null; legs: number }>
+  /**
+   * Ascent and descent over this walk, or null when this phone cannot price it
+   * - no elevation artifact fetched, or an edge of the walk that nobody has
+   * measured. See {@link routeClimb}; the null carries all the way to the
+   * card, which says so rather than printing a figure.
+   */
+  climb: RouteClimb | null
 }
 
 /**
@@ -425,6 +444,10 @@ function assemble(
     miles: metresToMiles(metres),
     edgeIndices,
     legsBySource: tallyBySource(legs),
+    // Priced here rather than by the caller, off the SAME walkedMetres the
+    // legs are priced from - a second opinion about how much of an edge was
+    // walked is the drift #1002 was about.
+    climb: routeClimb(graph, edgeIndices, walkedMetres),
   }
 }
 
@@ -495,11 +518,13 @@ export function routeThrough(
 
   const edgeIndices: number[] = []
   const legs: RouteLeg[] = []
+  const sectionClimbs: Array<RouteClimb | null> = []
   let metres = 0
   for (let step = 0; step + 1 < points.length; step += 1) {
     const section = routeBetween(index, points[step], points[step + 1])
     if (section === null) return null
     metres += section.miles * METRES_PER_MILE
+    sectionClimbs.push(section.climb)
     for (const edgeIndex of section.edgeIndices) {
       // The join between two sections lands on the same edge twice; drawing it
       // once is right and counting it once already happened above.
@@ -529,7 +554,25 @@ export function routeThrough(
     miles: metresToMiles(metres),
     edgeIndices,
     legsBySource: tallyBySource(legs),
+    // Sections ADD, exactly as their legs do above and for the same reason:
+    // the edge shared across a join was deduplicated for DRAWING, but both
+    // sections really walked their span of it and really climbed it. One
+    // unpriceable section makes the whole walk unpriceable - the same refusal
+    // routeClimb applies per edge, one level up.
+    climb: climbAcross(sectionClimbs),
   }
+}
+
+/** Sum of every section's climb, or null if any one of them had none. */
+function climbAcross(climbs: Array<RouteClimb | null>): RouteClimb | null {
+  let gainFt = 0
+  let lossFt = 0
+  for (const climb of climbs) {
+    if (climb === null) return null
+    gainFt += climb.gainFt
+    lossFt += climb.lossFt
+  }
+  return { gainFt, lossFt }
 }
 
 /**
@@ -602,6 +645,64 @@ export function walkedMetresPerEdge(
     }
     return edge.length_m
   })
+}
+
+/** Confirmed ascent and descent over a walk, both positive, in feet. */
+export interface RouteClimb {
+  gainFt: number
+  lossFt: number
+}
+
+/**
+ * The climb over one walk, or null when any edge of it was never measured.
+ *
+ * NULL RATHER THAN A TOTAL WITH A HOLE IN IT. The same rule
+ * {@link routeThrough} applies to an unroutable leg, for the same reason: a
+ * hiker handed "+800 ft" for a walk whose third edge has no elevation has been
+ * told something false, and the error is silently in the optimistic direction.
+ * "We cannot price this climb" is a sentence the card can print; a wrong number
+ * is not.
+ *
+ * PARTIAL EDGES ARE PRO-RATED BY DISTANCE, WHICH IS AN APPROXIMATION AND IS
+ * SAID SO HERE. `walkedMetres` scales the first and last edges by where the
+ * hiker tapped, and this scales their climb by the same share - so it assumes
+ * an edge's gradient is uniform along it, which no trail's is.
+ *
+ * What bounds the error: only the two END edges of a walk are ever partial -
+ * every edge between them is walked whole - so the worst case is a fraction of
+ * two edges' own relief, not of the route's. Edges here are short, because
+ * build_trail_graph.py splits a line at every crossing. The alternative was
+ * counting a partial edge whole, which over-states, or refusing to price any
+ * walk that does not start and end on a junction, which is nearly all of them.
+ *
+ * It is deliberately the SAME share `walkedMetresPerEdge` already computes,
+ * rather than a second opinion about how much of an edge was walked - the
+ * drift #1002 was about.
+ */
+export function routeClimb(
+  graph: TrailGraph,
+  edgeIndices: number[],
+  walkedMetres: number[],
+): RouteClimb | null {
+  if (edgeIndices.length === 0) return null
+  let gainFt = 0
+  let lossFt = 0
+  for (let at = 0; at < edgeIndices.length; at += 1) {
+    const edge = graph.edges[edgeIndices[at]]
+    if (edge === undefined) return null
+    const climb = edge.climb
+    // undefined (not fetched) and null (fetched, unmeasured) both stop here.
+    if (climb === undefined || climb === null) return null
+    const walked = walkedMetres[at]
+    // A zero-length edge contributes nothing rather than dividing by zero.
+    const share =
+      edge.length_m > 0 && walked !== undefined
+        ? Math.min(Math.max(walked / edge.length_m, 0), 1)
+        : 0
+    gainFt += climb[0] * share
+    lossFt += climb[1] * share
+  }
+  return { gainFt, lossFt }
 }
 
 /**

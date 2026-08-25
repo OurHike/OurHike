@@ -21,9 +21,15 @@ vi.mock('./config', async (importOriginal) => ({
   dataUrl: (key: string) => `https://data.example/${key}`,
 }))
 
-const { attachTrailGraphGeometry, fetchTrailGraph, fetchTrailGraphGeometry } =
-  await import('./trailGraphData')
-const { TRAIL_GRAPH_KEY, TRAIL_GRAPH_GEOMETRY_KEY } = await import('./config')
+const {
+  attachTrailGraphElevation,
+  attachTrailGraphGeometry,
+  fetchTrailGraph,
+  fetchTrailGraphElevation,
+  fetchTrailGraphGeometry,
+} = await import('./trailGraphData')
+const { TRAIL_GRAPH_KEY, TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_ELEVATION_KEY } =
+  await import('./config')
 
 // Two nodes and the edge between them, carrying exactly what
 // pipeline/build_trail_graph.py writes.
@@ -289,5 +295,89 @@ describe('the geometry half, fetched when the door opens', () => {
     const bare = await fetchTrailGraph()
 
     expect(attachTrailGraphGeometry(bare!, [])).toBe(bare)
+  })
+})
+
+describe('the climb half, fetched with the geometry (#1011)', () => {
+  it('reads one [gain, loss] pair per edge when the bytes match', async () => {
+    const body = JSON.stringify([[120, 40]])
+    serve({
+      body,
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_ELEVATION_KEY]: { sha256: await hashOf(body) } },
+      },
+    })
+    expect(await fetchTrailGraphElevation(1)).toEqual([[120, 40]])
+  })
+
+  it('keeps a null entry rather than reading it as a broken file', async () => {
+    // The case the shape check is written around: an artifact whose LEADING
+    // edges sit in a DEM gap is a real artifact saying "nobody measured
+    // these", and throwing it away would discard the one thing it exists to
+    // express.
+    const body = JSON.stringify([null, [10, 5]])
+    serve({
+      body,
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_ELEVATION_KEY]: { sha256: await hashOf(body) } },
+      },
+    })
+    expect(await fetchTrailGraphElevation(2)).toEqual([null, [10, 5]])
+  })
+
+  it('refuses a file whose entry count disagrees with the graph', async () => {
+    // Edge 40 priced from edge 41's climb is not a visible defect - it is a
+    // plausible number against the wrong trail.
+    const body = JSON.stringify([
+      [120, 40],
+      [10, 5],
+    ])
+    serve({
+      body,
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_ELEVATION_KEY]: { sha256: await hashOf(body) } },
+      },
+    })
+    expect(await fetchTrailGraphElevation(1)).toBeNull()
+  })
+
+  it('refuses bytes the manifest names no hash for', async () => {
+    serve({ body: JSON.stringify([[1, 1]]), manifest: { artifacts: {} } })
+    expect(await fetchTrailGraphElevation(1)).toBeNull()
+  })
+
+  it('refuses bytes that do not match the published hash', async () => {
+    serve({
+      body: JSON.stringify([[999, 999]]),
+      manifest: {
+        artifacts: {
+          [TRAIL_GRAPH_ELEVATION_KEY]: { sha256: await hashOf('something else') },
+        },
+      },
+    })
+    expect(await fetchTrailGraphElevation(1)).toBeNull()
+  })
+
+  it('treats a 404 as no figures rather than a failure', async () => {
+    serve({ body: 'missing' })
+    expect(await fetchTrailGraphElevation(1)).toBeNull()
+  })
+
+  it("attaches the climb onto a new index, leaving the caller's untouched", async () => {
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } } },
+    })
+    const bare = await fetchTrailGraph()
+    const attached = attachTrailGraphElevation(bare!, [[120, 40]])
+    expect(attached.graph.edges[0].climb).toEqual([120, 40])
+    expect(bare!.graph.edges[0].climb).toBeUndefined()
+  })
+
+  it('hands back the same index when the counts disagree', async () => {
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } } },
+    })
+    const bare = await fetchTrailGraph()
+    expect(attachTrailGraphElevation(bare!, [])).toBe(bare)
   })
 })

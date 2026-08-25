@@ -18,6 +18,8 @@ file (see CENTERLINE_PATH), and write_gate_problems() - the count comparison
 that gates main()'s final tile_index.json write.
 """
 
+import json
+
 import pytest
 
 import fetch_elevation
@@ -371,3 +373,106 @@ def test_stamping_does_not_disturb_the_index_it_was_given():
     fetch_elevation.stamp_last_modified(index, head=lambda _url: "x")
 
     assert [(tile["url"], list(tile["bounds"])) for tile in index] == before
+
+
+# --- the network extent (#1011) -------------------------------------------
+#
+# The A.T. corridor is not the only ground a hiker can now build a hike on:
+# build_trail_graph.py routes over NYS OPRHP's, NYNJTC's and Mohonk's lines and
+# does NOT clip them to the corridor. These hold the index to that wider world
+# without letting it depend on a hand-maintained list.
+
+
+def _network_geojson(path, coord_groups):
+    """A nearby_trails.geojson-shaped file with the properties this script
+    never reads - shaped like the real artifact anyway, so a test cannot pass
+    against a file the real pipeline would not produce."""
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"source": "oprhp_trails", "name": f"trail {i}", "blaze_color": "blue"},
+            "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
+        }
+        for i, coords in enumerate(coord_groups)
+    ]
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return path
+
+
+def _con_with(centerline_path):
+    from lib.corridor import build_corridor
+    from tests.conftest import spatial_connection
+
+    con = spatial_connection()
+    build_corridor(con, centerline_path)
+    return con
+
+
+def test_an_absent_network_artifact_indexes_the_corridor_exactly_as_before(tmp_path):
+    """The A.T. publish must not depend on the network export having run - it
+    is `continue-on-error` in the workflow for exactly that reason."""
+    centerline = tmp_path / "centerline.geojson"
+    write_centerline(centerline, CENTERLINE_COORDS)
+    con = _con_with(centerline)
+    assert fetch_elevation.network_extent(con, tmp_path / "nowhere.geojson") is False
+
+
+def test_an_empty_network_artifact_counts_as_no_network(tmp_path):
+    # A file with no features is the licence gate having held everything back,
+    # not a network to widen the index for.
+    centerline = tmp_path / "centerline.geojson"
+    write_centerline(centerline, CENTERLINE_COORDS)
+    con = _con_with(centerline)
+    empty = _network_geojson(tmp_path / "nearby_trails.geojson", [])
+    assert fetch_elevation.network_extent(con, empty) is False
+
+
+def test_the_index_reaches_a_cell_only_the_network_touches(tmp_path):
+    """The defect this fixes, stated as a test: ground a hiker can route over
+    that no DEM tile covered.
+
+    The centerline sits in one cell; the network line sits two cells away, well
+    outside even a 30-mile buffer. Before this, that second cell was not
+    indexed and every edge on it published as unmeasured.
+    """
+    centerline = tmp_path / "centerline.geojson"
+    write_centerline(centerline, SMALL_CENTERLINE_COORDS)
+    con = _con_with(centerline)
+    corridor_only = corridor_bbox(con)
+
+    far_away = [(-78.50, 23.00), (-78.49, 23.01)]
+    _network_geojson(tmp_path / "nearby_trails.geojson", [far_away])
+    assert fetch_elevation.network_extent(con, tmp_path / "nearby_trails.geojson") is True
+
+    widened = fetch_elevation._union_bbox(corridor_only, fetch_elevation.network_bbox(con))
+    corridor_cells = set(candidate_cells(corridor_only))
+    widened_cells = set(candidate_cells(widened))
+
+    assert fetch_elevation.cell_name(23, 79) not in corridor_cells
+    assert fetch_elevation.cell_name(23, 79) in widened_cells
+    # And nothing the corridor had is lost by widening.
+    assert corridor_cells <= widened_cells
+
+
+def test_a_network_inside_the_corridor_adds_no_cells(tmp_path):
+    # The common case in NY and NJ, where the A.T. and the network share
+    # ground: widening must not invent cells nobody's trails enter.
+    centerline = tmp_path / "centerline.geojson"
+    write_centerline(centerline, CENTERLINE_COORDS)
+    con = _con_with(centerline)
+    corridor_only = corridor_bbox(con)
+    inside = [(CENTERLINE_COORDS[0][0], CENTERLINE_COORDS[0][1]), (CENTERLINE_COORDS[1][0], CENTERLINE_COORDS[1][1])]
+    _network_geojson(tmp_path / "nearby_trails.geojson", [inside])
+    fetch_elevation.network_extent(con, tmp_path / "nearby_trails.geojson")
+
+    widened = fetch_elevation._union_bbox(corridor_only, fetch_elevation.network_bbox(con))
+    assert set(candidate_cells(widened)) == set(candidate_cells(corridor_only))
+
+
+def test_union_bbox_takes_the_outer_edge_of_each_side():
+    assert fetch_elevation._union_bbox((-80.0, 30.0, -75.0, 35.0), (-78.0, 28.0, -70.0, 33.0)) == (
+        -80.0,
+        28.0,
+        -70.0,
+        35.0,
+    )

@@ -70,6 +70,10 @@ const RESOLVED: ResolvedDayHike = {
   segments: [],
   miles: 6.4,
   looped: true,
+  // 1,240 ft of ascent over 6.4 miles - a plausible Harriman day, and enough
+  // that Naismith's climb term is visible in the printed time rather than
+  // rounding away.
+  climb: { gainFt: 1240, lossFt: 1180 },
   legs: [
     {
       name: 'Pine Meadow Trail',
@@ -147,16 +151,27 @@ describe('the sourced blocks', () => {
 })
 
 describe('the honest absences', () => {
-  it('prices nothing and promises nothing it has no source for', () => {
-    renderCard()
+  it('prices nothing when the walk crosses ground nobody measured', () => {
+    // climb: null is not "flat" - it is a phone with no elevation artifact, or
+    // a walk crossing an edge in a DEM gap. Either way a ≈ here would be an
+    // invented figure wearing an honest prefix.
+    renderCard({ resolved: { ...RESOLVED, climb: null } })
 
-    // No time: no elevation exists for network trails, so a ≈ here would be
-    // an invented figure wearing an honest prefix.
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
     expect(screen.queryByText(/walking\b/)).not.toBeInTheDocument()
-    // No climb figures, no parking block, no donate link - each waits on a
-    // source that does not exist yet (#981, #931, the registry).
     expect(screen.queryByText(/ft\b/)).not.toBeInTheDocument()
+    // And no estimate note either, which would otherwise be a caveat about a
+    // number that is not on the screen.
+    expect(
+      screen.queryByText(/estimates from the best elevation data/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('promises nothing it still has no source for', () => {
+    renderCard()
+
+    // Parking waits on #981's pipeline data and the donate link on wording no
+    // steward has given us. Climb no longer waits on anything (#1011).
     expect(screen.queryByText(/Parking/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Chip in/)).not.toBeInTheDocument()
   })
@@ -224,5 +239,55 @@ describe('the two modes', () => {
     await user.click(screen.getByRole('button', { name: 'Delete this day hike' }))
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the climb, once the phone can price it (#1011)', () => {
+  it('prints ascent and descent beside the miles', () => {
+    renderCard()
+
+    expect(screen.getByText(/\+1,240 ft/)).toBeInTheDocument()
+    expect(screen.getByText(/−1,180 ft/)).toBeInTheDocument()
+  })
+
+  it('prints a walking time with the ≈ prefix and the qualifier', () => {
+    // WIREFRAMES.md's load-bearing rules, unchanged by this being a network
+    // hike: ≈ always, "walking" always, and never an arrival clock.
+    renderCard()
+
+    expect(screen.getByText(/≈.*walking/)).toBeInTheDocument()
+    expect(screen.queryByText(/arrive|arrival|by \d/i)).not.toBeInTheDocument()
+  })
+
+  it('prices the climb into the time rather than timing the miles alone', () => {
+    // Pinned exactly, because the whole point of #1011 is that the climb term
+    // is no longer zero. 6.4 mi at 5 km/h is 123.6 min; 1,240 ft of ascent
+    // adds 37.8 more at Naismith's 1h/600m; 161.4 rounds to 160 = 2h 40m.
+    // Distance alone would print ≈2h 5m, so this test fails if the ascent
+    // term ever silently drops back out.
+    renderCard()
+
+    expect(screen.getByText(/≈2h 40m walking/)).toBeInTheDocument()
+  })
+
+  it('says the figures are estimates rather than letting them read as surveyed', () => {
+    // The maintainer's call, 2026-08-25. The pipeline's own gate reads +18.8%
+    // against a maintaining club on terrain like this, so a hiker comparing
+    // against a guidebook needs to know which kind of number this is.
+    renderCard()
+
+    expect(
+      screen.getByText(/estimates from the best elevation data available/),
+    ).toBeInTheDocument()
+  })
+
+  it('never prints a climb over the stored cache, which has none', () => {
+    // The cache was written before any of this existed. Printing today's
+    // climb over yesterday's walk would be a display outrunning its source -
+    // the same rule the miles fallback already states in a sentence.
+    renderCard({ resolved: null, networkAvailable: false })
+
+    expect(screen.queryByText(/ft\b/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
   })
 })

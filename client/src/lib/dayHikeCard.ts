@@ -20,10 +20,17 @@
 //
 // What a bail-out row does NOT claim, deliberately: where the trail comes out,
 // how long it runs, or how far down it drops. Frame `1l` writes "Kakiat Trail
-// down to Route 202 · 1.1 mi · −640 ft" - the destination needs road data
-// (#931), the descent needs elevation no network trail has. Until those exist
-// the row is the junction's mile, the trail's name and its blaze: everything
-// the graph actually knows.
+// down to Route 202 · 1.1 mi · −640 ft", and the blocker is now ONE thing
+// rather than two: the destination needs road data (#931).
+//
+// Elevation stopped being the other half at #1011 - every edge carries its own
+// climb now, and the whole route's is on `ResolvedDayHike.climb` below. That
+// is deliberately not enough to print this row's drop, and the reason is worth
+// keeping: a bail-out's descent is the drop to WHERE IT COMES OUT, and until
+// #931 says where that is there is no endpoint to measure to. Summing the
+// first edge instead would print a precise-looking figure for a walk that
+// does not end there. So the row stays the junction's mile, the trail's name
+// and its blaze: everything the graph actually knows.
 
 import type { DayHike } from './dayHikes'
 import {
@@ -36,6 +43,7 @@ import {
   closeTheLoop,
   type GraphPoint,
   type GraphRoute,
+  type RouteClimb,
   type RouteLeg,
   type TrailGraphIndex,
 } from './trailGraph'
@@ -56,6 +64,17 @@ export interface ResolvedDayHike {
    *  here so the bail-out walk enumerates the same pairs the route used,
    *  rather than re-deriving the answer from a shape that cannot hold it. */
   looped: boolean
+  /**
+   * Ascent and descent across every segment, or null when any of them could
+   * not be priced (#1011).
+   *
+   * NULL IS ALL-OR-NOTHING, like `miles` is not. Miles sum happily across
+   * segments because a gap between them contributes no walked distance and
+   * nobody claims otherwise. A climb total missing one segment is a different
+   * animal: it reads as the climb of the whole walk and is silently low, on
+   * the figure a hiker uses to judge whether they beat the dark.
+   */
+  climb: RouteClimb | null
 }
 
 /**
@@ -103,7 +122,20 @@ export function resolveDayHike(
     miles: milesTotal,
     legs: segments.flatMap((segment) => segment.route.legs),
     looped: hike.looped,
+    climb: totalClimb(segments),
   }
+}
+
+/** Every segment's climb added, or null if any segment had none. */
+function totalClimb(segments: ResolvedSegment[]): RouteClimb | null {
+  let gainFt = 0
+  let lossFt = 0
+  for (const segment of segments) {
+    if (segment.route.climb === null) return null
+    gainFt += segment.route.climb.gainFt
+    lossFt += segment.route.climb.lossFt
+  }
+  return { gainFt, lossFt }
 }
 
 /** One marked way off the route: the junction's walked mile, and the trail

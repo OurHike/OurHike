@@ -1,4 +1,6 @@
-"""Index the USGS 3DEP 1/3 arc-second DEM tiles that cover the AT corridor.
+"""Index the USGS 3DEP 1/3 arc-second DEM tiles covering the ground this app
+publishes trails for - the A.T. corridor, and since #1011 the other
+organizations' lines the junction graph routes over too (see network_extent()).
 
 Nothing is downloaded and nothing is discovered. The tile list is COMPUTED
 from the corridor's own geometry, because 3DEP's 1/3 arc-second product is a
@@ -8,7 +10,13 @@ uniform 1-degree grid with a deterministic URL per cell:
     cell = f"n{ceil(lat):02d}w{ceil(-lon):03d}"     # the cell's north-west corner
 
 Verified 2026-08-12 against the real ANST centerline buffered 30 miles:
-**56/56 corridor cells resolve, zero discovery requests.**
+**56/56 corridor cells resolve, zero discovery requests.** That measurement is
+of the corridor alone and predates the network extent below; how many cells the
+network adds has not been measured here, because this sandbox has no fetched
+layers to measure against. It is bounded rather than unknown - the network's
+own ring is nine cells (export_nearby_trails.RING_BBOX), most of which the
+corridor already crosses in NY and NJ - and the run prints the before/after
+counts, so the real figure lands in the log rather than in this docstring.
 
 WHY THIS FILE USED TO ASK TNM ACCESS, AND WHY IT NO LONGER DOES
 
@@ -46,7 +54,7 @@ answer, so the edition parsing and the footprint dedup are not ported.
 
 WHAT IS STILL DONE HERE
 
-The corridor polygon filter, which is not the same question as the cell grid:
+The coverage filter, which is not the same question as the cell grid:
 a 1-degree cell is large, and one can clip the corridor's bounding rectangle
 in a corner the trail itself never reaches. The corridor is built fresh on
 every run from data/raw/centerline.geojson via lib/corridor.py's
@@ -86,6 +94,10 @@ ROOT = Path(__file__).parent
 # on every run (see module docstring) - deliberately never
 # data/spike/corridor.geojson, which is stale proof-of-concept output.
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
+# The published network lines (export_nearby_trails.py), which this script
+# runs AFTER in publish-vector-data.yml. Optional: a run without it indexes
+# exactly the corridor cells it always did. See network_extent().
+NEARBY_TRAILS_PATH = ROOT / "data" / "processed" / "nearby_trails.geojson"
 OUT_DIR = ROOT / "data" / "raw" / "elevation"
 # A small JSON list of {url, bounds} - NOT downloaded rasters.
 INDEX_PATH = OUT_DIR / "tile_index.json"
@@ -327,6 +339,55 @@ def write_gate_problems(
     return []
 
 
+def network_extent(con, path: Path) -> bool:
+    """Load the published network trail lines into a `network` table, so the
+    tile index covers the ground a day hike can be built on and not only the
+    A.T. corridor.
+
+    WHY THE INDEX WAS SHORT, AND WHY IT IS NOT A BUG SOMEBODY INTRODUCED. This
+    script has always computed its cells from `build_corridor()` - the A.T.
+    centerline buffered 30 miles - because until #950 the A.T. was the only
+    trail this app drew. The junction graph now holds NYS OPRHP's, NYNJTC's and
+    Mohonk Preserve's lines too, and build_trail_graph.py does NOT clip them to
+    the A.T. corridor. So there was ground a hiker can route over that no DEM
+    tile covered, and #1011 needs it covered.
+
+    NO BUFFER, DELIBERATELY, unlike the corridor. A 3DEP cell is a whole degree
+    square; a line anywhere inside one pulls the entire cell, so buffering
+    before the intersection test would only add cells the trails never enter.
+    The corridor's 30 miles exist because POIs and the basemap need context
+    AROUND the trail - elevation needs the trail itself.
+
+    NOT A CODE CHANGE PER SOURCE, which is the recurring half of #1011. This
+    reads the published artifact, and `export_nearby_trails.network_line_sources`
+    puts every registry entry carrying `blaze_field` or `blaze_default` into it.
+    So registering a Catskills or NJ layer in sources.json pulls the DEM cells
+    it needs on the next run, with nobody editing a list of cells or of trails.
+
+    False when the artifact is absent - a publish that skipped the network
+    export, or one whose licence gate held those lines back. main() says so out
+    loud rather than silently indexing a smaller world.
+    """
+    if not path.exists():
+        return False
+    con.execute(f"CREATE OR REPLACE TABLE network AS SELECT * FROM ST_Read('{path.as_posix()}')")
+    return bool(con.execute("SELECT COUNT(*) FROM network").fetchone()[0])
+
+
+def _union_bbox(*boxes: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """The smallest (west, south, east, north) containing all of them."""
+    wests, souths, easts, norths = zip(*boxes)
+    return (min(wests), min(souths), max(easts), max(norths))
+
+
+def network_bbox(con) -> tuple[float, float, float, float]:
+    """(west, south, east, north) of the `network` table already on `con`."""
+    xmin, ymin, xmax, ymax = con.execute(
+        "SELECT MIN(ST_XMin(geom)), MIN(ST_YMin(geom)), MAX(ST_XMax(geom)), MAX(ST_YMax(geom)) FROM network"
+    ).fetchone()
+    return (xmin, ymin, xmax, ymax)
+
+
 def corridor_bbox(con) -> tuple[float, float, float, float]:
     """(west, south, east, north) of the corridor already built on `con`."""
     xmin, ymin, xmax, ymax = con.execute(
@@ -342,21 +403,36 @@ def main(allow_shrink: bool = False):
     build_corridor(con, CENTERLINE_PATH)
 
     bbox = corridor_bbox(con)
+    has_network = network_extent(con, NEARBY_TRAILS_PATH)
+    if has_network:
+        bbox = _union_bbox(bbox, network_bbox(con))
+    else:
+        # Visible rather than inferred. An index built without the network is
+        # correct for the A.T. and short for everything else, and
+        # export_network_elevation.py would report those edges as unmeasured
+        # without anybody knowing why.
+        print(f"No network lines at {NEARBY_TRAILS_PATH} - indexing the A.T. corridor only.")
+
     candidates = candidate_cells(bbox)
-    print(f"Corridor bbox {bbox} -> {len(candidates)} candidate 1-degree cell(s).")
+    print(f"Corridor{' + network' if has_network else ''} bbox {bbox} -> {len(candidates)} candidate 1-degree cell(s).")
 
-    def corridor_hit(bounds: tuple[float, float, float, float]) -> bool:
+    def covered_hit(bounds: tuple[float, float, float, float]) -> bool:
+        """A cell is indexed if the A.T. corridor OR any network trail line
+        touches it. Two tables rather than one union: the corridor is a single
+        buffered polygon and the network is thousands of lines, so the cheap
+        test is asked first and the expensive one only when it misses."""
         west, south, east, north = bounds
-        return con.execute(f"""
-            SELECT EXISTS (
-                SELECT 1 FROM corridor
-                WHERE ST_Intersects(geom, ST_MakeEnvelope({west}, {south}, {east}, {north}))
-            )
-        """).fetchone()[0]
+        envelope = f"ST_MakeEnvelope({west}, {south}, {east}, {north})"
+        hit = con.execute(f"SELECT EXISTS (SELECT 1 FROM corridor WHERE ST_Intersects(geom, {envelope}))").fetchone()[0]
+        if hit or not has_network:
+            return bool(hit)
+        return bool(con.execute(f"SELECT EXISTS (SELECT 1 FROM network WHERE ST_Intersects(geom, {envelope}))").fetchone()[0])
 
-    index = build_tile_index(bbox, corridor_hit=corridor_hit)
+    index = build_tile_index(bbox, corridor_hit=covered_hit)
     new_count = len(index)
-    print(f"{new_count} DEM tile(s) intersect the corridor, with zero discovery requests.")
+    print(
+        f"{new_count} DEM tile(s) intersect the corridor{' or the network' if has_network else ''}, with zero discovery requests."
+    )
 
     stamp_last_modified(index)
     stamped = sum(1 for tile in index if tile.get("last_modified"))

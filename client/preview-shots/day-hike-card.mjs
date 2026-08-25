@@ -10,6 +10,9 @@
 // coordinate pair, no account, no location fix (the skill's
 // never-photograph list, kept by construction).
 //
+// Touched with #1002 so the camera re-photographs the card now that per-leg
+// miles print again, priced at the walked metres.
+//
 // TWO HONEST STATES, ONE RECIPE. Until the graph publishes, the card leans
 // on the fixture's cached figures under the sentence saying exactly that -
 // a state this card ships with and tests. Once `trail_graph.json` is live,

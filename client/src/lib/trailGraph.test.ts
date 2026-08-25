@@ -213,6 +213,29 @@ describe('legs, which is what the hiker reads', () => {
     expect(legs.map((leg) => leg.blaze_color)).toEqual(['blue', 'white'])
   })
 
+  it('prices a routed leg at the metres walked, never the edges billed whole (#1002)', () => {
+    // Halfway along e0 to halfway along e1: 836 m of trail, which once wore a
+    // 1,672 m leg - the finished-hike card printed 0.5 mi beside a 1.0 mi leg
+    // for the same walk.
+    const route = routeBetween(index, pointOn(0, 0.5), pointOn(1, 0.5))
+
+    expect(route?.legs).toHaveLength(1)
+    expect(route?.legs[0].miles).toBeCloseTo(route!.miles, 4)
+  })
+
+  it('counts re-walked ground in the leg, which a deduplicated edge list cannot (#1002)', () => {
+    // Mid-e0, up Seven Hills, back down to mid-e1: both Seven Hills spans are
+    // real distance while the drawn edge list holds edge 2 once. The legs sum
+    // to the route, and the Seven Hills leg carries both passes.
+    const route = routeThrough(index, [pointOn(0, 0.5), pointOn(2, 0.5), pointOn(1, 0.5)])
+
+    expect(route).not.toBeNull()
+    const legMiles = route!.legs.reduce((sum, leg) => sum + leg.miles, 0)
+    expect(legMiles).toBeCloseTo(route!.miles, 4)
+    const sevenHills = route!.legs.find((leg) => leg.name === 'Seven Hills Trail')
+    expect(sevenHills?.miles).toBeCloseTo(metresToMiles(1112), 4)
+  })
+
   it('carries each leg its own organization, for frame 1j to tally live', () => {
     const route = routeBetween(index, pointOn(0, 0), pointOn(2, 1))
 

@@ -449,12 +449,17 @@ export function PlanScreen({
               onPlanGap={onPlanGap}
               onWhatsLeft={() => setWhatsLeftOpen(true)}
             />
+            {/* `draftKind`, not `draftLive`, for TripsHome's reason: the hike
+                zoom is a trips-mode screen, and a live DAY draft here would
+                have offered "Back to your route" into the day-hike builder
+                from a screen headed by a hike's own name. Each room offers a
+                way back only to its own draft. */}
             <button
               type="button"
               className="plan__primary"
-              onClick={draftLive ? onStartOnMap : onNewTrip}
+              onClick={draftKind === 'trip' ? onStartOnMap : onNewTrip}
             >
-              {draftLive ? 'Back to your route' : 'Plan another trip'}
+              {draftKind === 'trip' ? 'Back to your route' : 'Plan another trip'}
             </button>
           </>
         )}
@@ -495,6 +500,11 @@ export function PlanScreen({
             Or say where from and how far, and it&rsquo;ll find the stretch and break it
             into days.
           </p>
+          {/* The one screen that reads `draftLive` rather than `draftKind`,
+              and deliberately: this is the state with NO mode - nothing has
+              been planned, so there is no room whose draft this is. Any live
+              draft is the one to go back to, and `onStartOnMap` routes to
+              whichever builder holds it (App's openPlanKind). */}
           <button type="button" className="plan__primary" onClick={onStartOnMap}>
             {draftLive ? 'Back to your route' : 'Start on the map'}
           </button>

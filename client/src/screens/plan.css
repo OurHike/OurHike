@@ -1892,14 +1892,20 @@
 /* After the sheet rule on purpose: same specificity, and the closed pill
    has to win the shared properties it re-points.
 
-   ABOVE THE MAP'S OWN CONTROLS, not among them. The canvas bottom already
-   carries the attribution strip, the scale bar bottom-left and the compass
-   over locate bottom-right (map/mapChrome.ts) - two stacked 42px buttons on
-   a 10px margin. A pill centred at bottom:12px lay across the scale bar and
-   half the compass, and won the hit test against both, so a hiker reaching
-   for north got the door instead. 110px clears the whole stack and is still
-   deep in the lower third that WIREFRAMES.md §1 reserves for what gets
-   tapped. */
+   ABOVE THE MAP'S OWN CONTROLS, not among them. A pill centred at
+   bottom:12px lay across the scale bar and half the compass and won the hit
+   test against both, so a hiker reaching for north got the door instead.
+
+   110px is derived rather than picked: mapChrome.ts stacks compass over
+   locate bottom-right, each a 42px button (chrome.css --map-control-size) in
+   a MapLibre control group carrying its own 10px bottom margin, so the stack
+   reaches 10 + 42 + 10 + 42 = 104px above the canvas floor. The scale bar
+   bottom-left is one short control well inside that.
+
+   The cost, stated rather than discovered: on a landscape phone the canvas
+   is short enough that 110px sits above the lower third WIREFRAMES.md §1
+   reserves for what gets tapped. Landing on the compass is the worse of the
+   two, and this door is pressed standing at a car rather than mid-stride. */
 .hikes-here--closed {
   left: 50%;
   right: auto;

@@ -825,4 +825,62 @@ describe('the day room and its list (#1008)', () => {
     const { container } = render(<PlanScreen {...PROPS} plan={smallPlan()} />)
     expect(container.querySelector('.plan__head--trips')).not.toBeNull()
   })
+
+  it('the hike zoom offers its own action while a DAY draft is live', async () => {
+    // The hike zoom is a trips-mode screen. On the shared draftLive boolean
+    // it said "Back to your route" over a live day hike and dropped the
+    // hiker into the day-hike builder from a screen headed by a hike's name.
+    const user = userEvent.setup()
+    const onNewTrip = vi.fn()
+    const onStartOnMap = vi.fn()
+    const hike = {
+      id: 'h9',
+      name: 'Virginia, over a few years',
+      type: 'section' as const,
+      start: { name: 'Damascus', mile: 470.8 },
+      end: { name: 'Rockfish Gap', mile: 860 },
+      tripIds: [],
+    }
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={null}
+        hike={hike}
+        draftLive={true}
+        draftKind="day"
+        onNewTrip={onNewTrip}
+        onStartOnMap={onStartOnMap}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Plan another trip' }))
+    expect(onNewTrip).toHaveBeenCalled()
+    expect(onStartOnMap).not.toHaveBeenCalled()
+  })
+
+  it('the hike zoom goes back to a live TRIP draft, which is its own', async () => {
+    const user = userEvent.setup()
+    const onStartOnMap = vi.fn()
+    const hike = {
+      id: 'h9',
+      name: 'Virginia, over a few years',
+      type: 'section' as const,
+      start: { name: 'Damascus', mile: 470.8 },
+      end: { name: 'Rockfish Gap', mile: 860 },
+      tripIds: [],
+    }
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={null}
+        hike={hike}
+        draftLive={true}
+        draftKind="trip"
+        onStartOnMap={onStartOnMap}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back to your route' }))
+    expect(onStartOnMap).toHaveBeenCalled()
+  })
 })

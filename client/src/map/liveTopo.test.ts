@@ -67,6 +67,7 @@ import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
   ROUTE_POINT_LAYER_ID,
+  ROUTE_LABEL_LAYER_ID,
 } from './routeLayers'
 import { DROUGHT_LAYER_ID } from '../lib/droughtStyle'
 
@@ -667,6 +668,7 @@ describe('the offline-only background', () => {
       ROUTE_CASING_LAYER_ID,
       ROUTE_LINE_LAYER_ID,
       ROUTE_POINT_LAYER_ID,
+      ROUTE_LABEL_LAYER_ID,
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
       // The long-term closures a steward marks on the trail line itself

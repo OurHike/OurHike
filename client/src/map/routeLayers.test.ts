@@ -11,6 +11,8 @@ import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
   ROUTE_POINT_LAYER_ID,
+  ROUTE_LABEL_LAYER_ID,
+  ROUTE_POINT_LABEL_PROPERTY,
   ROUTE_POINT_ROLE_PROPERTY,
   routeFeatureCollection,
 } from './routeLayers'
@@ -29,10 +31,22 @@ describe('the source and layers', () => {
       ROUTE_CASING_LAYER_ID,
       ROUTE_LINE_LAYER_ID,
       ROUTE_POINT_LAYER_ID,
+      ROUTE_LABEL_LAYER_ID,
     ])
     expect(new Set(layers.map((layer) => 'source' in layer && layer.source))).toEqual(
       new Set(['route']),
     )
+  })
+
+  it('never drops a mile label for collision (#973)', () => {
+    // Few points, every one of them put there deliberately. Hiding one
+    // because a trail label reached the spot first would be the map editing
+    // the hiker's own work.
+    const labels = buildRouteLayers().find((layer) => layer.id === ROUTE_LABEL_LAYER_ID)
+    expect(labels?.type).toBe('symbol')
+    const layout = (labels as { layout: Record<string, unknown> }).layout
+    expect(layout['text-allow-overlap']).toBe(true)
+    expect(layout['text-ignore-placement']).toBe(true)
   })
 
   it('keeps the route solid - dashes are reserved for closures', () => {
@@ -53,8 +67,8 @@ describe('routeFeatureCollection', () => {
       ] as Array<Array<[number, number]>>,
     ],
     points: [
-      { lon: -81.5, lat: 36.6, role: 'start' as const },
-      { lon: -81.4, lat: 36.7, role: 'end' as const },
+      { lon: -81.5, lat: 36.6, role: 'start' as const, label: '470.8 mi' },
+      { lon: -81.4, lat: 36.7, role: 'end' as const, label: '486.2 mi' },
     ],
   }
 
@@ -73,5 +87,10 @@ describe('routeFeatureCollection', () => {
       points.map((feature) => feature.properties[ROUTE_POINT_ROLE_PROPERTY]),
     ).toEqual(['start', 'end'])
     expect(points.every((feature) => !('id' in feature))).toBe(true)
+    // The label travels already formatted, because the hiker's unit system
+    // decides it and no MapLibre expression knows about that (#973).
+    expect(
+      points.map((feature) => feature.properties[ROUTE_POINT_LABEL_PROPERTY]),
+    ).toEqual(['470.8 mi', '486.2 mi'])
   })
 })

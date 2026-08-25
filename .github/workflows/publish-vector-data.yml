@@ -40,7 +40,7 @@ on:
         options: [ua, production, dev]
         default: ua
       include_elevation:
-        description: "Also build the elevation profile. Adds ~25 min; no client code reads it yet."
+        description: "Also sample elevation: the A.T. profile behind the ribbon, and the per-edge climb a day hike is priced from (~25 min). Untick and both stay at the last elevation run's."
         type: boolean
         default: false
       include_photos:

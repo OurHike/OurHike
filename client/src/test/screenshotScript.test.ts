@@ -1,4 +1,4 @@
-// The pull request's camera gets a suite (.claude/skills/pr-screenshot).
+// The preview's camera gets a suite (.claude/skills/pr-screenshot, #988).
 //
 // scripts/screenshot.mjs drives a browser, so most of it cannot be asserted
 // cheaply - a real capture wants a Chromium, a dev server and about eight
@@ -9,7 +9,8 @@
 // a pull request with a broken image in it that nobody sees until review.
 //
 // So the pure decisions are exported and asserted here, and the browser half
-// is left to the person running it, who is looking at the output anyway.
+// is left to pr-preview.yml, which runs it on every pull request - a break
+// there shows up as a missing image in a comment rather than as a silent pass.
 
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
@@ -17,9 +18,7 @@ import { resolve } from 'node:path'
 import {
   parseArgs,
   slug,
-  markdownFor,
   budgetVerdict,
-  repoPath,
   usage,
   PHONE,
   DESKTOP,
@@ -43,16 +42,18 @@ describe('the defaults', () => {
     expect(parseArgs(['whatever', '--entry']).skipEntry).toBe(false)
   })
 
-  it('writes where a screenshot can be committed without running a suite', () => {
-    // `.github/` is in no suite's scope while every path under `client/` is in
-    // the client suite's (scripts/suite_scopes.py), so a screenshot committed
-    // under the client tree would run the whole client suite to prove a PNG
-    // still parses. Asserting the client tree specifically, rather than that
-    // the string contains '.github', is what would actually catch a default
-    // moved back inside client/.
+  it('writes somewhere gitignored, so a capture cannot be committed by accident', () => {
+    // Inside dist/, which client/.gitignore ignores - and that is the rule
+    // this default enforces rather than merely follows (#988). The previous
+    // default wrote into a tracked directory and every screenshot became a
+    // permanent, unretractable 79,290 bytes in a public tree.
     expect(parseArgs(['whatever']).outDir).toBe(DEFAULT_OUT_DIR)
-    expect(DEFAULT_OUT_DIR.startsWith(`${resolve('.')}/`)).toBe(false)
-    expect(DEFAULT_OUT_DIR).toBe(resolve('..', '.github', 'pr-screenshots'))
+    expect(DEFAULT_OUT_DIR).toBe(resolve('dist', '__screenshot'))
+  })
+
+  it('can photograph the built app, which is what CI deploys', () => {
+    expect(parseArgs(['whatever']).dist).toBe(false)
+    expect(parseArgs(['whatever', '--dist']).dist).toBe(true)
   })
 
   it('takes a laptop viewport for the marketing site', () => {
@@ -67,6 +68,7 @@ describe('the defaults', () => {
       '--scale=1',
       '--out=/tmp/elsewhere',
       '--full',
+      '--dist',
     ])
     expect(parsed).toMatchObject({
       name: 'a-name',
@@ -75,6 +77,7 @@ describe('the defaults', () => {
       scale: 1,
       outDir: '/tmp/elsewhere',
       fullPage: true,
+      dist: true,
     })
   })
 
@@ -85,60 +88,12 @@ describe('the defaults', () => {
 })
 
 describe('the file name', () => {
-  // A space here becomes %20 inside a raw githubusercontent URL, and the
-  // markdown around it stops being copy-pasteable.
+  // It becomes a path segment under /__screenshot/ on the preview host, and a
+  // space there arrives as %20 in the comment's img src.
   it('survives being a URL', () => {
     expect(slug('Entry card, step 2')).toBe('entry-card-step-2')
     expect(slug('  Legend  ')).toBe('legend')
     expect(slug('already-fine')).toBe('already-fine')
-  })
-})
-
-describe('the line that goes in the pull request', () => {
-  it('is an img tag, because markdown image syntax carries no width', () => {
-    const line = markdownFor({
-      owner: 'OurHike',
-      repo: 'OurHike',
-      sha: 'abc123',
-      path: '.github/pr-screenshots/legend.png',
-      width: 390,
-      alt: 'legend',
-    })
-    expect(line).toBe(
-      '<img src="https://raw.githubusercontent.com/OurHike/OurHike/abc123/' +
-        '.github/pr-screenshots/legend.png" width="390" alt="legend">',
-    )
-  })
-
-  it('pins a commit rather than a branch', () => {
-    // A branch is deleted when the pull request merges; the commit it pointed
-    // at survives in main's history, and so does the URL naming it.
-    const line = markdownFor({
-      owner: 'OurHike',
-      repo: 'OurHike',
-      sha: 'deadbee',
-      path: 'a.png',
-      width: 390,
-      alt: 'a',
-    })
-    expect(line).toContain('/deadbee/')
-  })
-})
-
-describe('where the capture landed', () => {
-  const root = '/repo'
-
-  it('gives a path a raw URL can use', () => {
-    expect(repoPath('/repo/.github/pr-screenshots/a.png', root)).toBe(
-      '.github/pr-screenshots/a.png',
-    )
-  })
-
-  it('refuses to pretend /tmp is in the repository', () => {
-    // The failure this prevents: a plausible raw URL pointing at a path that
-    // was never committed, which renders as a broken image in review.
-    expect(repoPath('/tmp/scratch/a.png', root)).toBeNull()
-    expect(repoPath('/repo', root)).toBeNull()
   })
 })
 

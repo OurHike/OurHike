@@ -1,6 +1,6 @@
 ---
 name: pr-screenshot
-description: Show what a pull request changed, with a picture. Use when opening a pull request, when updating one after a review, or whenever a PR body is being written or rewritten here. Covers what to show for a change with no UI, how to capture the app, how an image is made to render in a PR body at all, and what must never appear in one.
+description: Show what a pull request changed, with a picture. Use when opening a pull request, when updating one after a review, or whenever a PR body is being written or rewritten here. Covers what the automated preview screenshot already shows and what it cannot, what to show for a change with no UI, how to capture a screen by hand, and what must never appear in a screenshot.
 user-invocable: true
 ---
 
@@ -11,10 +11,21 @@ build the picture in their head and then check yours against it. A pull request
 that shows the legend toggle has already answered the question the reviewer was
 going to open the branch to ask.
 
-**Every pull request carries a `## Screenshot` section.** It is in
-[`.github/pull_request_template.md`](../../../.github/pull_request_template.md),
-between "What this changes" and "How it was checked", because it belongs to the
-same argument: what is different, what it looks like, and how you know it works.
+**Two things happen, and only one of them is yours.**
+
+`pr-preview.yml` photographs every pull request's build and posts first run and
+the trail screen in the preview comment. Nobody runs it, nobody commits
+anything, and it happens whether you think about it or not. It is the answer to
+"does the app still come up on this branch", and it is not an answer to "what
+did you change".
+
+The `## Screenshot` section in
+[`.github/pull_request_template.md`](../../../.github/pull_request_template.md)
+is yours, and it is for everything those two shots cannot reach: the screen your
+change is actually about, the numbers it moves, or the line saying there is
+nothing to show. It sits between "What this changes" and "How it was checked"
+because it belongs to the same argument — what is different, what it looks like,
+and how you know it works.
 
 ## What goes in it
 
@@ -58,14 +69,15 @@ cd client
 node scripts/screenshot.mjs legend-toggle
 ```
 
-That starts vite on a free port, skips first run, photographs a 390×844 phone
-at 2× into `.github/pr-screenshots/`, stops the server, and prints the exact
-line to paste into the pull request body. Options:
+That serves the app itself on a free port, skips first run, photographs a
+390×844 phone at 2× into `client/dist/__screenshot/` (gitignored), and stops the
+server. Options:
 
 | | |
 |---|---|
+| `--dist` | photograph the **built** app via `vite preview` rather than the dev server. What CI shoots, so it is the same bytes that get deployed — run `npm run build` first |
 | `--entry` | keep first run on screen — the default skips past it, because otherwise every screenshot is of the same three entry cards |
-| `--url=…` | photograph something already running: a deployed preview, or your own dev server |
+| `--url=…` | photograph something already running: your own dev server, or a deployed preview |
 | `--desktop` | 1280×800 and not a phone, for `site/` |
 | `--wait=6000` | longer settle, for a screen that animates in |
 | `--full` | the whole scrollable page rather than the viewport |
@@ -93,68 +105,59 @@ Do not work around it. A session that needs a map-data screenshot has to ask
 somebody with a browser, and should say in the pull request that it could
 not take one.
 
-## Getting it to render in the pull request body
+## Where an image can live at all
 
-This is fiddlier than it looks, and the reason is worth knowing so you do not
-spend the discovery again:
+A pull request body is markdown text with no attachment field, so an image in
+one is always a URL. Two facts bound what is possible, and both were checked
+rather than assumed:
 
-**The bytes have to live somewhere GitHub can fetch.** A pull request body is
-markdown text; there is no attachment field on it. Dragging an image into the
-web editor uploads it to `github.com/user-attachments/` through an
-authenticated endpoint that is part of the web UI and not the REST API, so no
-agent session can use it — checked against the GitHub MCP tool surface
-2026-08-25, which exposes no attachment, asset or gist call.
+**You cannot upload to GitHub.** Dragging an image into the web editor posts it
+to `github.com/user-attachments/` through an authenticated endpoint that is part
+of the web UI and not the REST API — checked against the GitHub MCP tool
+surface 2026-08-25, which exposes no attachment, asset or gist call.
 
-Embedding the bytes inline does not work either, and the reason that settles it
-is arithmetic rather than a claim about GitHub's behaviour: **a pull request
-body caps at 65,536 characters, and a 79,290-byte PNG base64-encodes to
-105,720.** It does not fit, at any capture scale worth looking at — the
-smallest legible variant measured, a 23,928-byte JPEG at scale 1, still eats
-half the body. Separately, GitHub's markdown sanitiser is understood to allow
-only `http`/`https` image sources and to strip `data:` — but that half is
-recalled rather than measured, because `api.github.com` is blocked by the
-sandbox's egress policy and its `/markdown` endpoint could not be asked. The
-size limit is the load-bearing half and needs no such caveat.
+**You cannot inline the bytes.** A pull request body caps at 65,536 characters
+and a 79,290-byte PNG base64-encodes to 105,720 — 161% of the limit. Even the
+smallest legible variant measured, a 23,928-byte JPEG at scale 1, eats 49% of
+the body. (GitHub's markdown sanitiser is also understood to strip `data:`
+image sources, but that half is recalled rather than measured; the arithmetic
+settles it either way.)
 
-**So the image is committed, and the body links to it.** Verified — a raw URL
-answers `200 image/png` and GitHub proxies it into the rendered body.
+So an image has to be *served* from somewhere. **The preview is that
+somewhere**, and it is why the automated screenshot exists: `pr-preview.yml`
+writes the capture into the directory it uploads to Cloudflare Pages, so the
+image comes from the same deployment as the app it shows, at
+`https://pr-<n>.<project>.pages.dev/__screenshot/<name>.png`.
 
-1. Write the capture to `.github/pr-screenshots/` (the script's default). Not
-   under `client/`: everything there is in the client suite's scope, so a
-   committed PNG would run the whole client suite to prove a PNG still parses.
-   `.github/` is in no suite's scope.
-2. Commit it on the branch, with the change it is evidence for.
-3. Put the printed line in the body, with that commit's sha in place of
-   `<sha>`:
+**It dies when the pull request closes**, because the preview does — the
+workflow tears previews down on close so a build vouched for by nobody does not
+stay reachable. That is the deliberate trade: the picture lasts exactly as long
+as review does, and in exchange nothing permanent enters a public tree. The
+first version of this rule committed the PNG instead and it cost 79,290
+unretractable bytes per pull request (#984, replaced by #988). **Do not commit a
+screenshot to get around this.** If the archaeology matters, the merged diff is
+the record.
 
-   ```html
-   <img src="https://raw.githubusercontent.com/OurHike/OurHike/<sha>/.github/pr-screenshots/legend-toggle.png" width="390" alt="the legend, with the toggle open">
-   ```
+### Adding a shot of your own
 
-**Pin the sha, not the branch.** A branch reference breaks the moment the
-branch is deleted after merge; the commit survives in `main`'s history and so
-does the URL naming it. That last part is a property of *how this repository
-merges*, not of GitHub: pull requests land here as merge commits — checked
-2026-08-25, `ccd1df0` from #965 is reachable from `main` — so every branch
-commit is preserved. **If the repository ever switches to squash merging, this
-breaks quietly**: the pinned commit would never reach `main`, and the image
-would keep working until the branch was deleted and then 404 in a body nobody
-re-reads. Committing the screenshot in the pull request's own final commit is
-not enough to save it; the fix would be to link the merge commit instead.
+If your change is somewhere the two automated shots do not reach, take one and
+describe it rather than trying to host it:
 
-**Keep the `width`.** A 2× capture is 780 px wide and GitHub renders an image
-at its natural size, so without the attribute a phone screenshot arrives at
-twice life size. `<img>` rather than `![]()` for that reason alone: markdown
-image syntax carries no width.
+```
+cd client
+npm run build
+node scripts/screenshot.mjs legend-toggle --dist
+```
 
-**What this costs, since it is a permanent publication.** One phone screenshot
-is 79,290 bytes measured; the whole repository packs to 14.3 MiB, so each one
-is roughly half a percent of it, and a commit cannot be retracted
-([CONTRIBUTING.md](../../../CONTRIBUTING.md), "Data does not go in commits").
-That is the reason for *one* image — or the before-and-after pair above, where
-the difference is the point — and not eight, and for the 150 KB budget the
-script warns past. It is also why an honest "no visual" line is a perfectly
-good outcome rather than a failure to try.
+That writes into `client/dist/__screenshot/`, which is gitignored. Look at it,
+then say in the `## Screenshot` section what it showed. A sentence a reviewer
+can check against the preview themselves — "the toggle sits above the
+attribution strip and the legend no longer covers the scale bar" — is worth more
+than a picture nobody can see, and it is the honest thing available.
+
+If a change genuinely needs a picture in the thread, ask the maintainer to drag
+one in. That is not a workaround; it is the only path that both hosts the bytes
+and keeps them out of a commit.
 
 ## Never photograph these
 
@@ -180,9 +183,13 @@ If you notice one of these *after* committing, say so in the pull request
 rather than quietly force-pushing over it: the bytes are already in every fork
 that fetched the branch, and the maintainer needs to know which ones.
 
-## Updating one
+## When the automated shot is wrong
 
-Re-run the script over the same name, commit, and update the sha in the body.
-Same file name, so the directory does not accumulate a shot per push — the
-history keeps the old ones, and the old URLs keep working, which is the point
-of pinning a sha.
+If the preview comment's screenshot shows a broken or blank app, that is a
+finding, not a glitch — it is the build a reviewer would open. Chase it before
+explaining it away.
+
+If it is missing entirely, the workflow says why in the job log and the comment
+says so in one line. A pull request from a fork gets no secrets, so it gets no
+preview and no screenshot; that is expected and is not something to fix in the
+pull request.

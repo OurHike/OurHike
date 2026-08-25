@@ -58,7 +58,6 @@ const PROPS = {
   viewportPoints: [
     { id: 'w1', type: 'water', lat: 39.5, lon: -77.5, confidence: 'high' as const },
   ],
-  blazeCounts: [{ blaze: 'White', count: 12 }],
   hiddenTypes: new Set<string>(),
   onToggleType: vi.fn(),
   verifiedOnly: false,

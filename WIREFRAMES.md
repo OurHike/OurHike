@@ -65,7 +65,15 @@ Where a wireframe _does_ commit to an exact value, it's because the value carrie
 
 ### 2. Legend (`12b`)
 
-Bottom sheet from the header icon. **Counts are only what's in the current viewport**: blaze rows (white / blue / unknown, line swatch on a topo-tinted chip), then a 2-column grid of pin types with counts, and a **"Verified?"** filter under the grid. Rows are tappable to hide — **except the closure row and the serious-warning row**, which carry an "Always shown" tag and no hide affordance.
+Bottom sheet from the header icon. **Counts are only what's in the current viewport**: a 2-column grid of pin types with counts, and a **"Verified?"** filter under the grid. Rows are tappable to hide — **except the closure row and the serious-warning row**, which carry an "Always shown" tag and no hide affordance.
+
+**Amended 2026-08-25 — the blaze rows are gone.** This section used to open the panel with them: "blaze rows (white / blue / unknown, line swatch on a topo-tinted chip), then a 2-column grid…". They shipped under [#782](https://github.com/OurHike/OurHike/issues/782) and were removed at the maintainer's request — *"the legend doesn't need the color of the blaze included… it's too cluttered"* — so the panel now begins at the pin grid.
+
+Recorded rather than struck out, because the rows were **the only key this app had for its line colours**, and a reader arriving at §3 should know the key it implies is not on screen. §3 is unchanged and so is the paint: `map/style.ts` still colours a trail by its blaze over [`client/src/lib/blaze.ts`](client/src/lib/blaze.ts)'s closed palette, and that palette's admission bar still holds. What went is the panel that named those colours.
+
+Two things carry the naming instead, and neither is a full replacement: a blaze name **is** a colour word, so a line is closer to self-describing than a pin is, and **tapping a line still names its blaze in full** — §3's sheet heads "White blaze · Appalachian Trail" (`client/src/lib/lineDetail.ts`). Neither answers "what is on this screen" without a tap, which is what the rows answered. **`@unvalidated`** — nobody has watched a hiker try, and what would settle it is somebody reading this panel where two trail systems overlap and reporting whether the lines are legible without a key.
+
+One sentence in the panel still speaks about the lines: the ghosting note (§1 of [NEARBY_TRAILS.md](features/NEARBY_TRAILS.md)), which now sits directly above the pin grid. The empty-viewport sentence narrowed its noun to match — it reads **"No waypoints on this part of the map yet"**, because it used to be suppressed by the blaze rows and would otherwise now claim an empty map over a drawn trail.
 
 **Amended 2026-08-15 ([#723](https://github.com/OurHike/OurHike/issues/723)) — the grid is every hideable category, in view or not, and only the grid.** This section used to read "lists **only what's in the current viewport**" and "Full 10-category list lives in Settings, not here", and both halves of that were wrong for one reason: **a row is not only a count, it is the hide switch**, and a switch that exists only while something of its category is on screen is a switch a hiker cannot find when they want it.
 

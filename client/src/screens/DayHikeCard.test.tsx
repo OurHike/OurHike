@@ -3,9 +3,14 @@
 // Two kinds of pin. The positive ones check the sourced blocks render from
 // the LIVE resolution, org names from the steward join and never raw source
 // keys. The negative ones are the point of the card's scope: nothing here may
-// print a figure whose source does not exist yet - no ≈time, no ±ft, no
-// parking, no "Chip in" - because a block invented to fill the frame is the
-// exact failure CLAUDE.md's evidence standard names.
+// print a figure whose source does not exist yet - no ±ft, no parking, no
+// "Chip in" - because a block invented to fill the frame is the exact failure
+// CLAUDE.md's evidence standard names.
+//
+// ≈time moved sides. It is printed when it is HANDED one (lib/dayHikeTime.ts
+// prices a walk that lies on the A.T. centerline) and absent when it is not,
+// so the tests below pin both halves: the number when there is one, and
+// silence rather than a placeholder when there is not.
 
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -101,6 +106,10 @@ function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) 
       stewards={STEWARDS}
       units="imperial"
       networkAvailable={true}
+      // Unpriced by default, which is the state most saved hikes are in:
+      // lib/dayHikeTime.ts answers null for any walk with a step off the
+      // A.T. centerline, and this fixture's legs are Harriman trails.
+      walkingMinutes={null}
       mode="saved"
       onClose={vi.fn()}
       onDelete={vi.fn()}
@@ -129,6 +138,26 @@ describe('the sourced blocks', () => {
     ).toBeInTheDocument()
   })
 
+  it('prints the walking time when the walk can be priced, as moving time', () => {
+    // 135 minutes is 2h 15m. The ≈ and the 5-minute rounding are
+    // lib/naismith.ts's display rule, reached through the builder bar's
+    // `walkingTime` so the estimate a hiker read while building and the one
+    // on the finished card cannot drift apart.
+    renderCard({ walkingMinutes: 135 })
+
+    expect(screen.getByText(/≈2h 15m walking/)).toBeInTheDocument()
+  })
+
+  it('never turns the estimate into a time of day', () => {
+    // Moving time, not an arrival clock - lib/naismith.ts refuses one and
+    // HIKER_SAFETY.md's posture forbids it. The word "walking" is what keeps
+    // the number readable as a duration.
+    renderCard({ walkingMinutes: 135 })
+
+    expect(document.body.textContent).not.toMatch(/\d{1,2}:\d{2}/)
+    expect(document.body.textContent).not.toMatch(/back by|arrive|expect me/i)
+  })
+
   it('prints a way off with its mile, name and blaze', () => {
     renderCard()
 
@@ -150,8 +179,12 @@ describe('the honest absences', () => {
   it('prices nothing and promises nothing it has no source for', () => {
     renderCard()
 
-    // No time: no elevation exists for network trails, so a ≈ here would be
-    // an invented figure wearing an honest prefix.
+    // No time, because this walk has none to print: its legs are Harriman
+    // trails and no elevation is published for them, so lib/dayHikeTime.ts
+    // hands the card a null and the card says nothing. A ≈ here would be an
+    // invented figure wearing an honest prefix. (A walk that CAN be priced
+    // prints one, two tests up - the absence is a property of the evidence,
+    // not a property of this card.)
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
     expect(screen.queryByText(/walking\b/)).not.toBeInTheDocument()
     // No climb figures, no parking block, no donate link - each waits on a

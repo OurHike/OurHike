@@ -210,6 +210,11 @@ import {
 } from './lib/dayHikes'
 import { useDayHikesSync } from './lib/useDayHikesSync'
 import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
+import {
+  dayHikeWalkingMinutes,
+  walkingMinutesOver,
+  type DayHikeGround,
+} from './lib/dayHikeTime'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
@@ -1749,6 +1754,14 @@ function App() {
     return anchoredMile(fix.mile, mileAnchors)
   }, [fix, mileAnchors])
 
+  /** What a day hike costs in walking time, or null - lib/dayHikeTime.ts
+   *  answers null for any walk it cannot price every step of, and every
+   *  surface below prints nothing rather than a low number. */
+  const dayHikeGround: DayHikeGround = useMemo(
+    () => ({ profile: elevation, trailIndex, anchors: mileAnchors }),
+    [elevation, trailIndex, mileAnchors],
+  )
+
   /** The volunteer workdays on the map and the sheet over a tapped one -
    *  chrome/workdayPanel.tsx owns both (#327). Placed here rather than beside
    *  the other map features because the sheet quotes `gpsPlanMile`, which is
@@ -2051,6 +2064,22 @@ function App() {
     return draftStatus(graphForTaps, dayHike)
   }, [dayHike, dayHikeIndex, graphIndex])
 
+  /** The bar's ≈time while the hike is being built. Null for a draft that is
+   *  not routed yet, and null for one this phone cannot price every step of
+   *  - see lib/dayHikeTime.ts for why a partial answer is worse than none. */
+  const draftWalkingMinutes = useMemo(() => {
+    if (dayHike === null || dayHikeStatus === null || dayHikeStatus.kind !== 'routed')
+      return null
+    const graph = dayHikeIndex ?? graphIndex
+    if (graph === null) return null
+    return walkingMinutesOver(
+      [{ points: dayHike.points, route: dayHikeStatus.route, looped: dayHike.looped }],
+      graph,
+      dayHikeGround,
+      pace,
+    )
+  }, [dayHike, dayHikeStatus, dayHikeIndex, graphIndex, dayHikeGround, pace])
+
   const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (dayHike === null) return null
     const points = dayHike.points.map((point, index) => ({
@@ -2219,10 +2248,18 @@ function App() {
     return dayHikeBailOuts(graph, cardResolution)
   }, [cardResolution, dayHikeIndex, graphIndex])
 
+  const cardWalkingMinutes = useMemo(() => {
+    if (cardResolution === null) return null
+    const graph = dayHikeIndex ?? graphIndex
+    if (graph === null) return null
+    return dayHikeWalkingMinutes(cardResolution, graph, dayHikeGround, pace)
+  }, [cardResolution, dayHikeIndex, graphIndex, dayHikeGround, pace])
+
   const dayHikeCardNode =
     cardDayHike !== null ? (
       <DayHikeCard
         hike={cardDayHike}
+        walkingMinutes={cardWalkingMinutes}
         resolved={cardResolution}
         bailOuts={cardBailOuts}
         stewards={stewards}
@@ -4354,13 +4391,13 @@ function App() {
                 status={dayHikeStatus ?? { kind: 'empty' }}
                 units={units}
                 orgLabel={dayHikeOrgLabel}
-                // No honest time exists yet: naismithMinutes requires ascent
-                // (descent structurally absent by design), and the only
-                // elevation this phone holds is the A.T. corridor profile on
-                // the pipeline mile axis. ascentFt: 0 would price every climb
-                // in Harriman at zero - a flat-ground claim on real ground -
-                // so the bar prints no time at all, which it supports.
-                walkingMinutes={null}
+                // Priced where the walk lies on the A.T. centerline - the one
+                // ground this phone holds elevation for - and null everywhere
+                // else, which the bar already supports. lib/dayHikeTime.ts
+                // holds the rule and the reason it is all-or-nothing: a walk
+                // part-priced comes back SHORT, and short is the direction
+                // that gets somebody caught by the dark.
+                walkingMinutes={draftWalkingMinutes}
                 onUndo={() =>
                   setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
                 }

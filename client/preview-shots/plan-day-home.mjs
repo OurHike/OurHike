@@ -8,6 +8,15 @@
 // home instead of opening the row. With one day hike and no trips, the tab
 // opens on the day room by itself, which is the defaulting rule under test
 // in PlanHome.test.tsx photographed working.
+//
+// 2026-08-25: re-photographed on purpose. This band's legibility changed and
+// nothing else in the pull request reaches it - the eyebrow went from 0.75
+// to 0.85 opacity (4.01:1 to 4.72:1 at night), the switch chip took a 44px
+// hit area, and its focus ring stopped being drawn in the same colour as the
+// band behind it (measured 1.00:1, on the only control between the two
+// rooms). `photograph-preview.mjs` shoots the recipes a pull request adds or
+// CHANGES, so a contrast fix with no recipe touched ships with no picture of
+// the thing it fixed.
 
 export const caption = 'The day-hikes home, with its mode band'
 export const alt = 'The Plan tab in day-hike mode: forest band, switch chip, saved hikes'

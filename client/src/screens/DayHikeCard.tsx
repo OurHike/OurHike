@@ -6,14 +6,20 @@
 // one-line credit to the orgs that keep the ground walkable, and - since
 // #1008 - a date field, the gap rows for a multi-segment walk, and the
 // "Leave this with someone" door (frame D6, screens/LeaveWithSomeone.tsx).
+// The ≈time is here now, and only where it is honest: lib/dayHikeTime.ts
+// prices a walk from the A.T. corridor profile and answers null for any walk
+// with a step it cannot price, so a hike that leaves the centerline prints no
+// time rather than a short one. That will cover more ground as elevation for
+// the other layers is published; nothing on this card changes when it does.
+//
 // What waits, and on what (#980 keeps the ledger): the turn list (a naming
 // rule #934 left open), "Starts at · Parking" (#981's pipeline data), the
 // on-route POI counts (a policy #768's rule does not cover), the ± elevation
-// and ≈time (no elevation exists for network trails - the same reason the
-// builder bar prices nothing), and the frame's "Chip in ›" (no org's donate
-// wording exists anywhere in the registry or the stewards export to speak
-// with, and inventing one would be this app putting words in a steward's
-// mouth).
+// (a gain/loss pair wants the same all-or-nothing treatment and a place to
+// put it, which the figures line has not got), and the frame's "Chip in ›"
+// (no org's donate wording exists anywhere in the registry or the stewards
+// export to speak with, and inventing one would be this app putting words in
+// a steward's mouth).
 //
 // The figures prefer the LIVE resolution and fall back to the stored cache
 // with a sentence saying so - never silently. lib/dayHikes.ts's provenance
@@ -27,6 +33,7 @@ import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
+import { walkingTime } from '../chrome/DayHikePickBar'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -51,6 +58,10 @@ export interface DayHikeCardProps {
   onSave?: () => void
   onClose: () => void
   onDelete?: () => void
+  /** Naismith-family minutes for the whole walk, or null when this phone
+   *  cannot price every step of it (lib/dayHikeTime.ts). Absent means
+   *  unknown, and the card says nothing rather than a low number. */
+  walkingMinutes: number | null
   /** Set or clear the hike's date (#1008). The list and the trailhead door
    *  both read it, which is what made a card with no way to write one a
    *  gap rather than a nicety. */
@@ -64,6 +75,7 @@ export function DayHikeCard({
   stewards,
   units,
   networkAvailable,
+  walkingMinutes,
   mode,
   onSave,
   onClose,
@@ -146,6 +158,13 @@ export function DayHikeCard({
       <p className="day-hike-card__figures">
         {formatDistance(miles, units)} · {legs.length}{' '}
         {legs.length === 1 ? 'leg' : 'legs'}
+        {/* The ≈time, on the walks this phone can price every step of and
+            silently absent on the rest - lib/dayHikeTime.ts decides which,
+            and `walkingTime` is the builder bar's own display rule so the
+            estimate a hiker read while building and the one on the finished
+            card are the same number said the same way. Never an arrival
+            clock: this is moving time, which is why it wears "walking". */}
+        {walkingTime(walkingMinutes) !== null && ` · ${walkingTime(walkingMinutes)}`}
       </p>
 
       {onSetDate !== undefined && (

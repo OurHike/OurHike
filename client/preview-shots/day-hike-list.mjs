@@ -1,16 +1,26 @@
 // Your day hikes (#1008, storyboard frame D7) - the list that did not
 // exist, with a card opened over it.
 //
-// TWO THINGS THIS SHOT IS EVIDENCE FOR, and neither can be asserted in
-// jsdom, which does no layout:
+// WHAT THIS SHOT IS EVIDENCE FOR - one thing, and it cannot be asserted in
+// jsdom, which does no layout: that a card opened from a row DOCKS TO THE
+// SCREEN, not to the bottom of the list. `.plan` is the containing block for
+// `.day-hike-card` and grows with its content, so before `plan--bounded` a
+// tap on the first row of a twenty-hike list opened a card a screenful below
+// the fold and read as a tap that did nothing.
 //
-//   1. The split shelves and the sort chips, on a list long enough to be a
-//      list rather than a row.
-//   2. That a card opened from a row DOCKS TO THE SCREEN, not to the bottom
-//      of the list. `.plan` is the containing block for `.day-hike-card` and
-//      grows with its content, so before `plan--bounded` a tap on the first
-//      row of a twenty-hike list opened a card a screenful below the fold and
-//      read as a tap that did nothing.
+// WHAT IT IS NOT EVIDENCE FOR, said here because an earlier version of this
+// header claimed both and a reviewer would have believed it:
+//
+//   - The sort chips. They are gated on a GPS fix (DayHikeList.tsx renders
+//     them only when `at !== null`), and a preview run has none: the capture
+//     writes `onboarding_completed` alone, so the location permission is
+//     never requested and the watch never starts. They CANNOT appear here,
+//     and per the skill's never-photograph list they must not be made to - a
+//     real fix is one of the four things a shot may never contain.
+//   - The walked shelf. The two `recorded: 'walked'` fixtures are at the foot
+//     of a twelve-row list, and the drive deliberately opens a card over
+//     them. The `Ready to walk` heading is in frame; `Walked` is behind the
+//     card, which is the point of the shot.
 //
 // Fixtures are nobody's data: invented names, a grid of coordinates walking
 // north, no account, no location fix (the skill's never-photograph list, kept
@@ -19,7 +29,7 @@
 
 export const caption = 'Your day hikes, with one opened'
 export const alt =
-  'The saved day-hike list, split into ready-to-walk and walked, with a hike’s card open over it'
+  'The saved day-hike list under its ready-to-walk heading, with a hike’s card docked to the bottom of the screen over it'
 
 const NAMES = [
   'Pine Meadow loop',

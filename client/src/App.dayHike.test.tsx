@@ -43,6 +43,12 @@ vi.mock('./lib/api', () => ({
   fetchFieldNotes: vi.fn(async () => []),
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
+  // Needed by PoiCard -> useCommunityPhotos, which runs on mount. Left out,
+  // a POI tap THREW: the trail tab's ErrorBoundary swallowed the whole
+  // MapScreen subtree, and a test asserting the trailhead door was gone
+  // passed because the map had gone with it. A vi.mock factory is a full
+  // replacement, so an export missing here is missing at run time.
+  fetchPoiPhotos: vi.fn(async () => []),
 }))
 // The graph loader reads DATA_CONFIGURED and dataUrl; the harness's app runs
 // with neither configured, so this file turns them on and serves the two
@@ -701,6 +707,12 @@ describe('the day-hike builder, end to end', () => {
     await act(async () => {
       map.emit('click', { point: { x: 160, y: 300 } })
     })
+    // BOTH HALVES, and the positive one is the load-bearing half. "The door
+    // is gone" alone is true of the failure this test exists to catch as
+    // well as of the behaviour it wants: a tap that opens nothing and takes
+    // the door with it looks identical from here. Asserting the card is up
+    // is what separates "yielded" from "both gone".
+    expect(await screen.findByText('Reeves Meadow Shelter')).toBeInTheDocument()
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: 'A day hike starts here' }),

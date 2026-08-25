@@ -131,16 +131,19 @@ commit is preserved. **If the repository ever switches to squash merging, this
 breaks quietly**: the pinned commit would never reach `main`, and the image
 would keep working until the branch was deleted and then 404 in a body nobody
 re-reads. Committing the screenshot in the pull request's own final commit is
-not enough to save it; the fix would be to link the merge commit instead. **Keep the `width`** — a 2× capture is 780 px wide and
-GitHub renders an image at its natural size, so without the attribute a phone
-screenshot arrives at twice life size. `<img>` rather than `![]()` for that
-reason alone: markdown image syntax carries no width.
+not enough to save it; the fix would be to link the merge commit instead.
+
+**Keep the `width`.** A 2× capture is 780 px wide and GitHub renders an image
+at its natural size, so without the attribute a phone screenshot arrives at
+twice life size. `<img>` rather than `![]()` for that reason alone: markdown
+image syntax carries no width.
 
 **What this costs, since it is a permanent publication.** One phone screenshot
 is 79,290 bytes measured; the whole repository packs to 14.3 MiB, so each one
 is roughly half a percent of it, and a commit cannot be retracted
 ([CONTRIBUTING.md](../../../CONTRIBUTING.md), "Data does not go in commits").
-That is the reason for *one* image and not eight, and for the 150 KB budget the
+That is the reason for *one* image — or the before-and-after pair above, where
+the difference is the point — and not eight, and for the 150 KB budget the
 script warns past. It is also why an honest "no visual" line is a perfectly
 good outcome rather than a failure to try.
 

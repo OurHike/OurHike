@@ -27,6 +27,7 @@ afterEach(() => {
 function renderSheet(overrides: Partial<Parameters<typeof PlanKindSheet>[0]> = {}) {
   const props = {
     networkAvailable: true,
+    walkedAvailable: true,
     onPickDayHike: vi.fn(),
     onPickTrip: vi.fn(),
     onPickWalked: vi.fn(),
@@ -114,6 +115,7 @@ describe('what it must not become', () => {
     const { container } = render(
       <PlanKindSheet
         networkAvailable
+        walkedAvailable
         onPickDayHike={vi.fn()}
         onPickTrip={vi.fn()}
         onPickWalked={vi.fn()}
@@ -130,6 +132,7 @@ describe('what it must not become', () => {
     const { container } = render(
       <PlanKindSheet
         networkAvailable
+        walkedAvailable
         onPickDayHike={vi.fn()}
         onPickTrip={vi.fn()}
         onPickWalked={vi.fn()}
@@ -139,5 +142,16 @@ describe('what it must not become', () => {
 
     const text = container.textContent ?? ''
     expect(text).not.toMatch(/\bmi\b|miles|hours|easy|moderate|strenuous|≈/i)
+  })
+})
+
+describe('before the past-walk flow exists', () => {
+  it('renders the third door as a sentence, not a dead control', () => {
+    renderSheet({ walkedAvailable: false })
+
+    expect(
+      screen.queryByRole('button', { name: /A walk I.{0,3}ve already done/ }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/isn.{0,3}t built yet/i)).toBeInTheDocument()
   })
 })

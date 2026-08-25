@@ -32,6 +32,7 @@
 // close.
 
 import type { DayHikeDraft, DraftStatus } from '../lib/dayHikeDraft'
+import { formatNaismithMinutes } from '../lib/naismith'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
 
@@ -52,21 +53,15 @@ export interface DayHikePickBarProps {
 }
 
 /**
- * Five-minute rounding and the "walking" qualifier, the same way
- * RouteStopsPanel prints them.
+ * lib/naismith.ts's own display rule, with the one word this surface adds.
  *
- * Naismith gets no descent credit, deliberately and documented in
- * lib/naismith.ts - a known weakness of the rule left in place so nobody
- * "improves" it into an optimistic number. This prints what that returns.
+ * Delegating rather than re-rounding is the point: the A.T. builder and this
+ * one must print the same minutes the same way, and two copies of a rounding
+ * rule is how they stop doing that without anybody deciding it.
  */
 export function walkingTime(minutes: number | null): string | null {
   if (minutes === null || !Number.isFinite(minutes) || minutes <= 0) return null
-  const rounded = Math.round(minutes / 5) * 5
-  const hours = Math.floor(rounded / 60)
-  const rest = rounded % 60
-  if (hours === 0) return `≈${rest}m walking`
-  if (rest === 0) return `≈${hours}h walking`
-  return `≈${hours}h ${String(rest).padStart(2, '0')}m walking`
+  return `${formatNaismithMinutes(minutes)} walking`
 }
 
 export function DayHikePickBar({
@@ -130,28 +125,30 @@ export function DayHikePickBar({
         <p className="day-hike-bar__total">Tap again further along to turn.</p>
       )}
 
+      {/* No disabled buttons on this bar - the same rule LineSheet.tsx states
+          and the A.T. builder now carries: a control that looks pressable and
+          is not teaches a hiker the app is broken. A control that does not
+          apply yet is absent, like Close the loop always was. */}
       <div className="day-hike-bar__actions">
-        <button
-          type="button"
-          className="day-hike-bar__action"
-          onClick={onUndo}
-          disabled={draft.points.length === 0 && draft.refusal === null}
-        >
-          Undo
-        </button>
+        {(draft.points.length > 0 || draft.refusal !== null) && (
+          <button type="button" className="day-hike-bar__action" onClick={onUndo}>
+            Undo
+          </button>
+        )}
         {canCloseLoop && (
           <button type="button" className="day-hike-bar__action" onClick={onCloseLoop}>
             Close the loop
           </button>
         )}
-        <button
-          type="button"
-          className="day-hike-bar__action day-hike-bar__action--done"
-          onClick={onDone}
-          disabled={route === null}
-        >
-          Done
-        </button>
+        {route !== null && (
+          <button
+            type="button"
+            className="day-hike-bar__action day-hike-bar__action--done"
+            onClick={onDone}
+          >
+            Done
+          </button>
+        )}
       </div>
 
       {/* #931, drawn rather than omitted - see the header. Deliberately a row

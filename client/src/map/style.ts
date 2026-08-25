@@ -82,6 +82,12 @@ import {
   buildCorridorSource,
   CORRIDOR_SOURCE_ID,
 } from './corridorLayers'
+import {
+  buildDayHikeCasingLayers,
+  buildDayHikePointLayers,
+  buildDayHikeSource,
+  DAY_HIKE_SOURCE_ID,
+} from './dayHikeLayers'
 import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
 import {
@@ -983,6 +989,9 @@ export function buildMapStyle({
       // no `attribution`: what it draws is the hiker's own intent, and there
       // is no third party to credit for a line they chose themselves.
       [ROUTE_SOURCE_ID]: buildRouteSource(),
+      // No attribution, for ROUTE_SOURCE_ID's reason: runtime geometry the
+      // hiker made, not somebody's data.
+      [DAY_HIKE_SOURCE_ID]: buildDayHikeSource(),
       // The drought bands (#720). Empty until the shell fills them, like the
       // two above, and carrying no `attribution` for a third reason again:
       // NDMC's permission asks for a specific four-partner credit sentence,
@@ -1107,6 +1116,13 @@ export function buildMapStyle({
       // length is within 150 m of another marked trail (#771) - the one drawn
       // last still owns the pixels. Drawn first, a nearby trail can never
       // cover the trail the map is about, whatever its opacity.
+      // UNDER both trail-line stacks, and that placement is the point
+      // (#978, frame `1j`): the day-hike highlight is a translucent casing
+      // beneath the lines, never a recolour of a blaze - a green route drawn
+      // over a yellow trail lies about which paint a hiker is following.
+      // map/dayHikeLayers.ts carries the full argument; style.test.ts pins
+      // the order by index.
+      ...buildDayHikeCasingLayers(),
       ...buildTrailLineLayers(
         NEARBY_TRAILS_SOURCE_ID,
         NEARBY_TRAIL_CASING_LAYER_ID,
@@ -1204,6 +1220,9 @@ export function buildMapStyle({
       // around, and a picture where their own green line covered the barrier
       // would be a picture of an open trail (#755).
       ...buildRouteLayers(),
+      // The day hike's tapped points ride above the lines like every marker;
+      // only its casing lives below.
+      ...buildDayHikePointLayers(),
       // Over the blaze, and that ordering is the closure's entire job. A
       // barred red band UNDER the trail line would be a closure the trail is
       // drawn straight through - which is a picture of an open trail. See

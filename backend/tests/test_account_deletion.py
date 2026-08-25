@@ -31,6 +31,7 @@ from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
+from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from tests.factories import make_closure, make_profile
@@ -49,6 +50,7 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
     club = Club(id=f"club-{profile_id}", name="A club")
     db.add(club)
     db.add(SyncedTrip(id=f"trip-{profile_id}", profile_id=profile_id, document={"name": "Grayson"}))
+    db.add(SyncedDayHike(id=f"day-hike-{profile_id}", profile_id=profile_id, document={"name": "McAfee Knob"}))
     db.add(SyncedPlannedHike(profile_id=profile_id, start_mile=1.0, end_mile=9.0))
     db.add(Hike(user_id=profile_id, overall_start_reference=0.0, overall_end_reference=100.0))
     db.add(UserPreferences(profile_id=profile_id, data={"units": "imperial"}))
@@ -112,6 +114,7 @@ def test_the_private_rows_go(db_session, hiker):
     db_session.commit()
 
     assert _count(db_session, SyncedTrip, SyncedTrip.profile_id == hiker.id) == 0
+    assert _count(db_session, SyncedDayHike, SyncedDayHike.profile_id == hiker.id) == 0
     assert _count(db_session, SyncedPlannedHike, SyncedPlannedHike.profile_id == hiker.id) == 0
     assert _count(db_session, Hike, Hike.user_id == hiker.id) == 0
     assert _count(db_session, UserPreferences, UserPreferences.profile_id == hiker.id) == 0
@@ -195,6 +198,7 @@ def test_it_does_not_reach_into_another_hikers_rows(db_session, hiker):
     db_session.commit()
 
     assert _count(db_session, SyncedTrip, SyncedTrip.profile_id == bystander.id) == 1
+    assert _count(db_session, SyncedDayHike, SyncedDayHike.profile_id == bystander.id) == 1
     assert _count(db_session, UserPreferences, UserPreferences.profile_id == bystander.id) == 1
     assert db_session.get(Profile, bystander.id).display_name == "Sundial"
 
@@ -270,6 +274,9 @@ def test_every_table_that_names_a_profile_is_accounted_for(db_session, hiker):
 # set is a line somebody wrote on purpose.
 _TABLES_EMPTIED = {
     "synced_trips",
+    # The same claim as synced_trips, decided with #976: a synced day hike
+    # is private planning nobody else has acted on.
+    "synced_day_hikes",
     "synced_planned_hikes",
     "hikes",
     "user_preferences",

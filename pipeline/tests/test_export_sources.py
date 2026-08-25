@@ -251,3 +251,36 @@ class TestAgainstTheRealRegistry:
         # And no tier, because the registry does not record one for the eleven
         # A.T. feeds that ship - see the module docstring.
         assert atc["trust"] is None
+
+
+def test_each_steward_lists_the_registry_keys_behind_its_layers():
+    """The join a graph edge's `source` resolves through (#978): the phone has
+    to turn `oprhp_trails` into an organization's name, and the KEY only
+    survived into this artifact where a title was missing. Not index-aligned
+    with `layers` - both are sorted independently, in different vocabularies -
+    which the field's comment states so nobody joins them positionally."""
+    registry = {
+        "sources": [
+            {
+                "key": "oprhp_trails",
+                "title": "NYS Parks Trails",
+                "kind": "external_arcgis_layer",
+                "provider": "NYS OPRHP",
+                "steward": "New York State Office of Parks",
+                "reaches_hikers": True,
+            },
+            {
+                "key": "oprhp_closures",
+                "title": "NYS Parks Closures",
+                "kind": "external_arcgis_layer",
+                "provider": "NYS OPRHP",
+                "steward": "New York State Office of Parks",
+                "reaches_hikers": True,
+            },
+        ]
+    }
+
+    output = export_sources.build_output(registry)
+
+    (steward,) = output["stewards"]
+    assert steward["keys"] == ["oprhp_closures", "oprhp_trails"]

@@ -1095,3 +1095,57 @@ def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
     body = s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read()
     manifest = json.loads(body)
     assert manifest["artifacts"]["background.pmtiles"]["size_bytes"] == 10
+
+
+def _write_graph_manifest(tmp_path, sources):
+    artifact = tmp_path / "trail_graph.json"
+    artifact.write_text('{"nodes":[],"edges":[]}')
+    geometry = tmp_path / "trail_graph_geometry.json"
+    geometry.write_text("[]")
+    (tmp_path / "trail_graph_manifest.json").write_text(
+        json.dumps(
+            {
+                "path": str(artifact),
+                "sha256": "gr4ph",
+                "geometry_path": str(geometry),
+                "geometry_sha256": "g30m",
+                "edges": 0,
+                "sources": sources,
+            }
+        )
+    )
+
+
+def test_collect_holds_back_the_graph_on_the_same_licence_gate_as_its_lines(tmp_path, monkeypatch, capsys):
+    """The junction graph (#974) is nearby_trails.geojson's own topology, so it
+    inherits that artifact's reaches_hikers gate verbatim: a graph that
+    published while its lines were held back would let a phone route over
+    trails it is not allowed to draw."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "trail_graph.json" not in artifacts
+    assert "trail_graph_geometry.json" not in artifacts
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_collect_publishes_the_graph_once_every_steward_has_answered(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_manifest(
+        tmp_path,
+        {"oprhp_trails": {"reaches_hikers": True}, "nynjtc_long_path": {"reaches_hikers": True}},
+    )
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["trail_graph.json"]["sha256"] == "gr4ph"
+    # The pair publishes together or not at all - one manifest binds them.
+    assert artifacts["trail_graph_geometry.json"]["sha256"] == "g30m"
+
+
+def test_collect_treats_an_unbuilt_graph_as_an_absence(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+
+    assert "trail_graph.json" not in publish.collect_artifacts()

@@ -84,6 +84,10 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     "poi_photos",
     "profiles",
     "reports",
+    # A hiker's own day hikes (#976): the same private-planning claim as the
+    # #892 pair below - a route somebody intends to walk, served to nobody
+    # else.
+    "synced_day_hikes",
     # A hiker's own trips and the hike they say they are on (#892). Private
     # planning, published to nobody and served to nobody else - so like
     # volunteer_hours below, the whole design is that it is private, and the

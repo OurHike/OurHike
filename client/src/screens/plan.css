@@ -1761,19 +1761,29 @@
    against it. `.plan` is `min-height: 100%` and the containing block for
    `.day-hike-card`, so a screen taller than the pane puts that card's
    `bottom: 0` below the fold. Here the container is exactly the pane and the
-   long thing inside it scrolls. */
+   long thing inside it scrolls.
+
+   NO `overflow` ON THIS ELEMENT. Bounding the height is the whole job; a
+   clip here would also clip the mode band, which reaches the screen edges
+   through .plan's padding with negative margins. The scrolling is one level
+   in, around the rows only. */
 .plan--bounded {
   height: 100%;
-  overflow: hidden;
 }
 
 .plan--bounded .day-hike-list {
   flex: 1;
   min-height: 0;
+}
+
+.plan--bounded .day-hike-list__scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
-.day-hike-list {
+.day-hike-list,
+.day-hike-list__scroll {
   display: flex;
   flex-direction: column;
   gap: var(--space-4, 16px);

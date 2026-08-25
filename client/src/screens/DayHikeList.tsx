@@ -68,101 +68,107 @@ export function DayHikeList({
         </h1>
       </header>
 
-      {at !== null && shelf.toWalk.length > 1 && (
-        // The group label WhatsLeft.tsx already gives the identical pattern:
-        // without it these announce as two unrelated toggles rather than one
-        // exclusive choice, and say nothing about what they order.
-        <div className="day-hike-list__sorts" role="group" aria-label="Order these by">
-          <button
-            type="button"
-            className="whats-left__sort"
-            aria-pressed={sort === 'recent'}
-            onClick={() => setSort('recent')}
-          >
-            recent
-          </button>
-          <button
-            type="button"
-            className="whats-left__sort"
-            aria-pressed={sort === 'nearest'}
-            onClick={() => setSort('nearest')}
-          >
-            nearest me
-          </button>
-        </div>
-      )}
-
-      {toWalk.length > 0 && (
-        <section className="plan-home__section">
-          <span className="plan-home__title">Ready to walk</span>
-          {toWalk.map((hike) => (
+      {/* The band stays OUT of this scroller. It bleeds to the screen edges
+          through .plan's padding with negative margins, and a scroll
+          container clips exactly that - which is what put a half-drawn band
+          on this screen the first time the list was made to scroll. */}
+      <div className="day-hike-list__scroll">
+        {at !== null && shelf.toWalk.length > 1 && (
+          // The group label WhatsLeft.tsx already gives the identical pattern:
+          // without it these announce as two unrelated toggles rather than one
+          // exclusive choice, and say nothing about what they order.
+          <div className="day-hike-list__sorts" role="group" aria-label="Order these by">
             <button
               type="button"
-              className="plan-home__row"
-              key={hike.id}
-              onClick={() => onOpen(hike.id)}
+              className="whats-left__sort"
+              aria-pressed={sort === 'recent'}
+              onClick={() => setSort('recent')}
             >
-              <span className="plan-home__row-name">{hike.name}</span>
-              {/* Cached figures on purpose - see the header. Miles and legs
+              recent
+            </button>
+            <button
+              type="button"
+              className="whats-left__sort"
+              aria-pressed={sort === 'nearest'}
+              onClick={() => setSort('nearest')}
+            >
+              nearest me
+            </button>
+          </div>
+        )}
+
+        {toWalk.length > 0 && (
+          <section className="plan-home__section">
+            <span className="plan-home__title">Ready to walk</span>
+            {toWalk.map((hike) => (
+              <button
+                type="button"
+                className="plan-home__row"
+                key={hike.id}
+                onClick={() => onOpen(hike.id)}
+              >
+                <span className="plan-home__row-name">{hike.name}</span>
+                {/* Cached figures on purpose - see the header. Miles and legs
                   only: no walking time exists for network trails, and this
                   row must not invent one (the builder bar's own rule). */}
-              <span className="plan-home__meta">
-                {formatDistance(hike.figures.miles, units)}
-                {hike.figures.legs.length > 0 &&
-                  ` · ${hike.figures.legs.length} ${
-                    hike.figures.legs.length === 1 ? 'leg' : 'legs'
-                  }`}
-                {' · '}
-                {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
-              </span>
-            </button>
-          ))}
-        </section>
-      )}
+                <span className="plan-home__meta">
+                  {formatDistance(hike.figures.miles, units)}
+                  {hike.figures.legs.length > 0 &&
+                    ` · ${hike.figures.legs.length} ${
+                      hike.figures.legs.length === 1 ? 'leg' : 'legs'
+                    }`}
+                  {' · '}
+                  {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
+                </span>
+              </button>
+            ))}
+          </section>
+        )}
 
-      {shelf.walked.length > 0 && (
-        <section className="plan-home__section">
-          <span className="plan-home__title">Walked</span>
-          {shelf.walked.map((hike) => (
-            <button
-              type="button"
-              className="plan-home__row day-hike-list__row--walked"
-              key={hike.id}
-              onClick={() => onOpen(hike.id)}
-            >
-              <span className="plan-home__row-name">{hike.name}</span>
-              <span className="plan-home__meta">
-                {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date'}
-              </span>
-            </button>
-          ))}
-        </section>
-      )}
+        {shelf.walked.length > 0 && (
+          <section className="plan-home__section">
+            <span className="plan-home__title">Walked</span>
+            {shelf.walked.map((hike) => (
+              <button
+                type="button"
+                className="plan-home__row day-hike-list__row--walked"
+                key={hike.id}
+                onClick={() => onOpen(hike.id)}
+              >
+                <span className="plan-home__row-name">{hike.name}</span>
+                <span className="plan-home__meta">
+                  {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date'}
+                </span>
+              </button>
+            ))}
+          </section>
+        )}
 
-      {/* "Signed in" is not a hedge to be trimmed: day hikes ride the
+        {/* "Signed in" is not a hedge to be trimmed: day hikes ride the
           account exchange only while somebody has an account and sync is on
           (lib/useDayHikesSync.ts), and the app's default state is signed
           out. A flat "they follow your account" reads as backed up to the
           hiker most likely to lose them. */}
-      {dayHikes.length === 0 && (
-        <p className="day-hike-list__empty">
-          Nothing saved yet. A day hike you build is kept on this phone — and, signed in,
-          follows your account to the next one.
-        </p>
-      )}
+        {dayHikes.length === 0 && (
+          <p className="day-hike-list__empty">
+            Nothing saved yet. A day hike you build is kept on this phone — and, signed
+            in, follows your account to the next one.
+          </p>
+        )}
 
-      {dayHikes.length > 0 && (
-        <p className="day-hike-list__note">
-          All of these are on this phone. Signed in, they follow your account to the next
-          one.
-        </p>
-      )}
+        {dayHikes.length > 0 && (
+          <p className="day-hike-list__note">
+            All of these are on this phone. Signed in, they follow your account to the
+            next one.
+          </p>
+        )}
 
-      {onNewDayHike !== null && (
-        <button type="button" className="plan__primary" onClick={onNewDayHike}>
-          Plan a day hike
-        </button>
-      )}
+        {onNewDayHike !== null && (
+          <button type="button" className="plan__primary" onClick={onNewDayHike}>
+            Plan a day hike
+          </button>
+        )}
+      </div>
     </div>
   )
 }

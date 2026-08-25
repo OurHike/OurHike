@@ -209,6 +209,8 @@ import {
   type DayHikeStore,
 } from './lib/dayHikes'
 import { useDayHikesSync } from './lib/useDayHikesSync'
+import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
+import { DayHikeCard } from './screens/DayHikeCard'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -500,6 +502,10 @@ function App() {
   /** The SAVED day hikes (#976) - loaded once, written through saveDayHikes,
    *  and fed to the account sync exactly as tripStore is. */
   const [dayHikeStore, setDayHikeStore] = useState<DayHikeStore>(EMPTY_DAY_HIKES)
+  /** Frame `1l` as a review (#980): Done builds the record and the card holds
+   *  it; only "Save this day hike" commits it to the store. The draft stays
+   *  alive underneath, so "Back to the map" is a real return, not a rebuild. */
+  const [dayHikeReview, setDayHikeReview] = useState<DayHike | null>(null)
   /**
    * The desktop chart's own settled selection - a measurement, nothing more
    * - read only while no route draft is open (PR #885 review). With a draft
@@ -1828,6 +1834,10 @@ function App() {
     setLegendOpen(false)
     setSearchOpen(false)
     setTargetRequest(null)
+    // Both halves of the day-hike surface: the draft (#997) and frame `1l`'s
+    // review card over it - a review outliving its cleared draft would sit
+    // over the route builder describing a walk that no longer exists.
+    setDayHikeReview(null)
     setDayHike(null)
   }, [])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
@@ -1886,6 +1896,10 @@ function App() {
   const handleMapTap = useCallback(
     (at: { lon: number; lat: number }) => {
       if (dayHike !== null) {
+        // While frame `1l`'s card reviews the route, the map underneath is a
+        // picture, not a control: a tap that edited the draft would desync
+        // the card from the ground it is describing.
+        if (dayHikeReview !== null) return
         const graphForTaps = dayHikeIndex ?? graphIndex
         if (graphForTaps === null) return
         setDayHike((draft) => (draft === null ? draft : tapAt(graphForTaps, draft, at)))
@@ -1893,7 +1907,7 @@ function App() {
       }
       routeBuilder.mapScreen.onRouteTap?.(at)
     },
-    [dayHike, dayHikeIndex, graphIndex, routeBuilder],
+    [dayHike, dayHikeReview, dayHikeIndex, graphIndex, routeBuilder],
   )
   // Opening the day-hike builder repeats the route builder's sweep rather
   // than sharing one. That was argued when this door was written - "the
@@ -1919,10 +1933,14 @@ function App() {
     setFreeChartStretch(null)
     routeBuilder.closeRouteBuilder()
     setPlanKindOpen(false)
+    // Re-entering the builder puts the review away: the taps are live again,
+    // and a card reviewing a snapshot of a draft being edited would lie.
+    setDayHikeReview(null)
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
   }, [routeBuilder])
 
   const handleDayHikeCancel = useCallback(() => {
+    setDayHikeReview(null)
     setDayHike(null)
   }, [])
 
@@ -2001,17 +2019,107 @@ function App() {
       looped: dayHike.looped,
       recorded: 'planned',
     }
+    // Done no longer saves: it hands the record to frame `1l`'s card, and
+    // "Save this day hike" there is the commit (#980). The draft stays live
+    // underneath so closing the card returns to the builder mid-thought.
+    setDayHikeReview(hike)
+  }, [dayHike, dayHikeStatus])
+
+  const handleDayHikeSave = useCallback(() => {
+    if (dayHikeReview === null) return
+    const hike = dayHikeReview
     // saveDayHikes records the sync ledger itself (read-before-write, so the
     // edit travels as the hiker's own act) - nothing to record here. The
     // store is re-read rather than trusted to React state so a save landing
-    // from the sync between renders is never overwritten.
+    // from the sync between renders is never overwritten. openId stays null:
+    // nothing is on screen once the card closes, and the card defines what
+    // that pointer means now.
     void loadDayHikes().then((store) => {
-      const next = { hikes: [...store.hikes, hike], openId: hike.id }
+      const next = { hikes: [...store.hikes, hike], openId: null }
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
+    setDayHikeReview(null)
     setDayHike(null)
-  }, [dayHike, dayHikeStatus])
+  }, [dayHikeReview])
+
+  /** Open a saved hike's card from the Plan tab. Written through the store
+   *  because that is where `openId` lives - held in the one document so the
+   *  pointer cannot outlive the hike it names. */
+  const handleOpenDayHike = useCallback((id: string) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        openId: store.hikes.some((hike) => hike.id === id) ? id : null,
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
+  const handleDayHikeCardClose = useCallback(() => {
+    if (dayHikeReview !== null) {
+      // The review's close is "Back to the map": the draft is still there.
+      setDayHikeReview(null)
+      return
+    }
+    void loadDayHikes().then((store) => {
+      const next = { ...store, openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [dayHikeReview])
+
+  const handleDeleteDayHike = useCallback((id: string) => {
+    // The filter IS the delete; saveDayHikes' before/after diff records it
+    // in the sync ledger as the hiker's own act, tombstone and all.
+    void loadDayHikes().then((store) => {
+      const next = { hikes: store.hikes.filter((hike) => hike.id !== id), openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
+  /** The hike a card is showing: the unsaved review outranks the store's
+   *  open one - they cannot both be on screen, and the review is newer. */
+  const cardDayHike =
+    dayHikeReview ??
+    (dayHikeStore.openId !== null
+      ? (dayHikeStore.hikes.find((hike) => hike.id === dayHikeStore.openId) ?? null)
+      : null)
+
+  // Derived once per state change, not per render, for dayHikeStatus's
+  // reason: resolution runs the router per tapped pair and App re-renders
+  // on the GPS clock.
+  const cardResolution = useMemo(() => {
+    if (cardDayHike === null) return null
+    const graph = dayHikeIndex ?? graphIndex
+    if (graph === null) return null
+    return resolveDayHike(graph, cardDayHike)
+  }, [cardDayHike, dayHikeIndex, graphIndex])
+
+  const cardBailOuts = useMemo(() => {
+    if (cardResolution === null) return []
+    const graph = dayHikeIndex ?? graphIndex
+    if (graph === null) return []
+    return dayHikeBailOuts(graph, cardResolution)
+  }, [cardResolution, dayHikeIndex, graphIndex])
+
+  const dayHikeCardNode =
+    cardDayHike !== null ? (
+      <DayHikeCard
+        hike={cardDayHike}
+        resolved={cardResolution}
+        bailOuts={cardBailOuts}
+        stewards={stewards}
+        units={units}
+        networkAvailable={graphIndex !== null}
+        mode={dayHikeReview !== null ? 'review' : 'saved'}
+        onSave={handleDayHikeSave}
+        onClose={handleDayHikeCardClose}
+        onDelete={() => handleDeleteDayHike(cardDayHike.id)}
+      />
+    ) : null
 
   // The geometry half of the graph, fetched the first time the builder
   // opens and attached onto a NEW index (lib/trailGraphData.ts). Keyed on
@@ -3728,6 +3836,11 @@ function App() {
                 units={units}
                 pace={pace}
                 draftLive={routeBuilder.draftLive || dayHike !== null}
+                dayHikes={dayHikeStore.hikes}
+                onOpenDayHike={handleOpenDayHike}
+                {...(dayHikeReview === null && dayHikeCardNode !== null
+                  ? { dayHikeCard: dayHikeCardNode }
+                  : {})}
                 onStartOnMap={openPlanKind}
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
@@ -3996,6 +4109,10 @@ function App() {
           routeSheet={
             targetRequest !== null ? (
               targetSheet
+            ) : dayHikeReview !== null ? (
+              // Frame `1l` as a review, in the same slot the bar held - one
+              // surface continuing, with Save as its one primary action.
+              dayHikeCardNode
             ) : dayHike !== null ? (
               <DayHikePickBar
                 draft={dayHike}

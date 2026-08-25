@@ -29,6 +29,7 @@ import {
   type CalledEnd,
 } from '../lib/cascade'
 import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
+import type { DayHike } from '../lib/dayHikes'
 import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
 import type { TripGroup } from '../lib/tripGroups'
 import { formatNaismithMinutes } from '../lib/naismith'
@@ -130,6 +131,11 @@ export interface PlanScreenProps {
   /** "What are you planning?" (#977, frame `1i`) - rendered by the shell so
    *  the one primary action opens a choice rather than assuming a trip. */
   kindSheet?: ReactNode
+  /** The saved day hikes (#980), for the home's own section. */
+  dayHikes: readonly DayHike[]
+  onOpenDayHike: (id: string) => void
+  /** A saved day hike's card (frame `1l`), when the shell has one open. */
+  dayHikeCard?: ReactNode
   /** The trip switcher, when the shell has it open over this screen. */
   tripList?: ReactNode
   /** The hike the open trip belongs to, or null (#790). Null is the common
@@ -172,6 +178,9 @@ export function PlanScreen({
   onOpenTrips,
   targetSheet,
   kindSheet,
+  dayHikes,
+  onOpenDayHike,
+  dayHikeCard,
   tripList,
   hike,
   trips,
@@ -205,7 +214,9 @@ export function PlanScreen({
    * with one trip should not tap twice to reach the timeline they used to
    * land on.
    */
-  const [atHome, setAtHome] = useState(trips.length > 1 || hikes.length > 0)
+  const [atHome, setAtHome] = useState(
+    trips.length > 1 || hikes.length > 0 || dayHikes.length > 0,
+  )
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -242,12 +253,14 @@ export function PlanScreen({
     }
   }, [plan, elevation])
 
-  if (atHome && (trips.length > 1 || hikes.length > 0)) {
+  if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
     return (
       <div className="plan">
         <PlanHome
           trips={trips}
           hikes={hikes}
+          dayHikes={dayHikes}
+          onOpenDayHike={onOpenDayHike}
           groups={groups}
           pois={pois}
           units={units}
@@ -268,6 +281,7 @@ export function PlanScreen({
         />
         {targetSheet}
         {kindSheet}
+        {dayHikeCard}
         {tripList}
       </div>
     )
@@ -290,7 +304,7 @@ export function PlanScreen({
 
   // The bar carries the way back to the home as well as the zooms, so a
   // hiker with several trips and only one depth still has one (#805).
-  const canGoHome = trips.length > 1 || hikes.length > 0
+  const canGoHome = trips.length > 1 || hikes.length > 0 || dayHikes.length > 0
   const zoomBar =
     available.length > 1 || canGoHome ? (
       <div className="plan__zoombar">
@@ -374,6 +388,7 @@ export function PlanScreen({
         )}
         {targetSheet}
         {kindSheet}
+        {dayHikeCard}
         {tripList}
       </div>
     )
@@ -414,6 +429,7 @@ export function PlanScreen({
         </div>
         {targetSheet}
         {kindSheet}
+        {dayHikeCard}
         {tripList}
       </div>
     )
@@ -673,6 +689,7 @@ export function PlanScreen({
 
       {targetSheet}
       {kindSheet}
+      {dayHikeCard}
       {tripList}
     </div>
   )

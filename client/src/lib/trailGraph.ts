@@ -466,37 +466,25 @@ export function routeThrough(
 }
 
 /**
- * The drawn shape of a route: one coordinate line per edge, oriented in
- * walking order, with the partial first and last edges trimmed to where the
- * hiker actually tapped.
+ * Which node each edge is entered FROM, walking the route in order - the
+ * orientation every consumer of an edge list needs, whether it is drawing the
+ * line (routeGeometry) or accumulating miles to a junction (the finished-hike
+ * card's bail-outs, #980).
  *
- * Null when any edge lacks geometry, rather than a straight chord between its
- * junctions - across a switchback a chord is a picture of a trail that does
- * not exist, and this surface exists to be believed.
- *
- * ORIENTATION IS CHAINED BY NODE ID, NOT BY COORDINATE. Two edges meeting at
- * an endpoint-welded junction (pipeline/build_trail_graph.py) share a NODE
- * while their published coordinates still disagree by metres - the weld
- * unifies identity and edits nobody's line. Comparing coordinates would break
- * the chain at exactly those junctions; the node ids cannot. The same reason
- * the result is one line per edge rather than one concatenated line: at a
- * welded junction the small published gap stays visible, which is true.
+ * CHAINED BY NODE ID, NOT BY COORDINATE. Two edges meeting at an
+ * endpoint-welded junction (pipeline/build_trail_graph.py) share a NODE while
+ * their published coordinates still disagree by metres - the weld unifies
+ * identity and edits nobody's line. Comparing coordinates would break the
+ * chain at exactly those junctions; the node ids cannot. The single-edge
+ * direction falls back to the tapped fractions, the only orientation evidence
+ * one edge carries.
  */
-export function routeGeometry(
+export function enteredNodes(
   graph: TrailGraph,
   edgeIndices: number[],
   start?: GraphPoint,
   end?: GraphPoint,
-): Array<Array<[number, number]>> | null {
-  if (edgeIndices.length === 0) return null
-  for (const edgeIndex of edgeIndices) {
-    const edge = graph.edges[edgeIndex]
-    if (edge === undefined || edge.geometry === undefined || edge.geometry.length < 2) {
-      return null
-    }
-  }
-
-  // Which node each edge is entered FROM, chained by shared node ids.
+): number[] {
   const entered: number[] = []
   if (edgeIndices.length === 1) {
     const only = graph.edges[edgeIndices[0]]
@@ -518,6 +506,38 @@ export function routeGeometry(
       }
     }
   }
+  return entered
+}
+
+/**
+ * The drawn shape of a route: one coordinate line per edge, oriented in
+ * walking order, with the partial first and last edges trimmed to where the
+ * hiker actually tapped.
+ *
+ * Null when any edge lacks geometry, rather than a straight chord between its
+ * junctions - across a switchback a chord is a picture of a trail that does
+ * not exist, and this surface exists to be believed.
+ *
+ * Orientation comes from {@link enteredNodes}, one line per edge rather than
+ * one concatenated line for the same welded-junction reason it states: at a
+ * welded junction the small published gap stays visible, which is true.
+ */
+export function routeGeometry(
+  graph: TrailGraph,
+  edgeIndices: number[],
+  start?: GraphPoint,
+  end?: GraphPoint,
+): Array<Array<[number, number]>> | null {
+  if (edgeIndices.length === 0) return null
+  for (const edgeIndex of edgeIndices) {
+    const edge = graph.edges[edgeIndex]
+    if (edge === undefined || edge.geometry === undefined || edge.geometry.length < 2) {
+      return null
+    }
+  }
+
+  // Which node each edge is entered FROM, chained by shared node ids.
+  const entered = enteredNodes(graph, edgeIndices, start, end)
 
   const lines: Array<Array<[number, number]>> = []
   for (let step = 0; step < edgeIndices.length; step += 1) {

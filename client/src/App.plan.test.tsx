@@ -24,6 +24,7 @@ import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { ROUTE_SOURCE_ID, ROUTE_POINT_LABEL_PROPERTY } from './map/routeLayers'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
+import { MIN_FLAT_PACE_MPH } from './lib/pace'
 import { PLAN_KEY } from './lib/plan'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
 import { hikeFigures } from './lib/hikes'
@@ -738,6 +739,60 @@ describe('the planning flow', () => {
       await user.click(screen.getByRole('button', { name: 'Undo the last change' }))
       // One press, one real edit back - not a press spent undoing the re-tap.
       expect(await screen.findByText('1 point')).toBeInTheDocument()
+    })
+
+    it('re-prices the route when the pace changes (#996)', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+      // The ribbon suite's climb, seeded for the same reason it exists there:
+      // leg minutes print only over real elevation, and #996 is about minutes.
+      const miles: number[] = []
+      const feet: number[] = []
+      for (let mile = 0; mile <= 40; mile += 0.1) {
+        const rounded = Number(mile.toFixed(2))
+        miles.push(rounded)
+        feet.push(
+          rounded <= 15 ? 1000 : rounded <= 17 ? 1000 + (rounded - 15) * 500 : 2000,
+        )
+      }
+      app.store.set(ELEVATION_STORE_KEY, {
+        distanceMi: Float32Array.from(miles),
+        elevationFt: Float32Array.from(feet),
+      })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+      await tap(map, 3)
+      await tap(map, 22)
+      await screen.findByText('NOBO · 2 points · 1 leg')
+
+      // The priced line is the builder bar's joined figures ("NOBO · 19.2 mi
+      // · ≈7h 25m walking") - a sibling of the dialog, not inside it. queryBy,
+      // because the minutes arrive with the elevation store's async load - the
+      // first wait below is on the priced line existing at all.
+      const priced = () => screen.queryByText(/walking$/)?.textContent ?? null
+      await waitFor(() => expect(priced()).not.toBeNull())
+      const before = priced()
+      expect(before).toMatch(/≈/)
+
+      // Settings → Map & Display → the slowest flat pace. The route is
+      // untouched; only the hiker's own speed moved.
+      await user.click(screen.getByRole('tab', { name: 'Settings' }))
+      await user.click(await screen.findByRole('tab', { name: 'Map & Display' }))
+      fireEvent.change(await screen.findByLabelText('Flat pace'), {
+        target: { value: String(MIN_FLAT_PACE_MPH) },
+      })
+      await user.click(screen.getByRole('tab', { name: 'Trail' }))
+
+      // The same walk at a slower pace is a longer time. Before #996's fix the
+      // figures memo did not list pace, and this panel re-opened on the memo's
+      // cached answer - priced at a speed the hiker had just corrected.
+      await waitFor(() => expect(priced()).not.toBe(before))
+      expect(priced()).toMatch(/≈/)
     })
 
     it('carries a tapped route into the day planner', async () => {

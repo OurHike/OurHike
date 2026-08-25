@@ -11,6 +11,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
+import type { DayHike } from '../lib/dayHikes'
 import type { Hike } from '../lib/hikes'
 import type { TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
@@ -37,6 +38,8 @@ const PROPS = {
   onOpenTrips: vi.fn(),
   hike: null as Hike | null,
   hikes: [] as readonly Hike[],
+  dayHikes: [] as readonly DayHike[],
+  onOpenDayHike: vi.fn(),
   groups: [] as readonly TripGroup[],
   onOpenGroup: vi.fn(),
   trips: [] as readonly Trip[],

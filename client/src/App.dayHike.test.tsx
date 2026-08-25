@@ -14,7 +14,7 @@
 // rendered consequence, a listener count), never a tick, and the file is run
 // three times before any push.
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -252,8 +252,20 @@ describe('the day-hike builder, end to end', () => {
     await user.click(screen.getByRole('button', { name: 'Close the loop' }))
     await user.click(await screen.findByRole('button', { name: 'Done' }))
 
-    // The bar closes and ONE record landed, ends as coordinates - never a
-    // GraphPoint.edgeIndex, which a republished graph would silently shift.
+    // Done opens frame `1l`'s card as a REVIEW - nothing stored yet. Every
+    // edge the fixture holds is on this loop, so the ways-off block prints
+    // its decided sentence rather than omitting itself.
+    expect(
+      await screen.findByRole('button', { name: 'Save this day hike' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/No marked trail leaves this loop/)).toBeInTheDocument()
+    expect(app.store.get(DAY_HIKES_KEY)).toBeUndefined()
+
+    // The commit is the card's own primary action.
+    await user.click(screen.getByRole('button', { name: 'Save this day hike' }))
+
+    // ONE record landed, ends as coordinates - never a GraphPoint.edgeIndex,
+    // which a republished graph would silently shift.
     await waitFor(() => {
       expect(app.store.get(DAY_HIKES_KEY)).toBeDefined()
     })
@@ -314,6 +326,83 @@ describe('the day-hike builder, end to end', () => {
     await waitFor(() => {
       expect(requested.some((url) => url.includes(TRAIL_GRAPH_GEOMETRY_KEY))).toBe(true)
     })
+  })
+
+  it('reopens a saved hike from the Plan home, shows its ways off, and deletes it', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+
+    // A hike saved by an earlier session: ends mid-first-edge and
+    // mid-second-edge of Pine Meadow, walking through the Seven Hills
+    // junction. Cached figures deliberately stale (7 miles) - the card must
+    // re-derive against the live graph, not print the cache.
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        {
+          id: 'saved-1',
+          name: 'Pine Meadow out and back',
+          date: '2026-08-29',
+          segments: [
+            [
+              { coord: [-74.095, 41.25], poiId: null },
+              { coord: [-74.085, 41.25], poiId: null },
+            ],
+          ],
+          figures: {
+            miles: 7,
+            legs: [
+              {
+                name: 'Pine Meadow Trail',
+                source: 'oprhp_trails',
+                blaze_color: 'blue',
+                miles: 7,
+              },
+            ],
+          },
+          looped: false,
+          recorded: 'planned',
+        },
+      ],
+      openId: null,
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+
+    // The home lists it - a saved day hike is enough to have a home at all.
+    expect(await screen.findByText('Your day hikes')).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+
+    // The card, resolved against the live graph: real miles, and Seven Hills
+    // as the marked way off at the junction - never the cache's 7 miles.
+    const card = await screen.findByRole('dialog', {
+      name: 'Pine Meadow out and back',
+    })
+    expect(await within(card).findByText(/0\.5 mi · 1 leg\b/)).toBeInTheDocument()
+    expect(within(card).getByText('If you need to get off')).toBeInTheDocument()
+    expect(within(card).getByText(/Seven Hills Trail \(white\)/)).toBeInTheDocument()
+    expect(within(card).queryByText(/7\.0 mi/)).not.toBeInTheDocument()
+    // The steward join reaches the card too - names, never raw keys.
+    expect(within(card).getByText('NYS Parks')).toBeInTheDocument()
+    expect(
+      within(card).queryByText(/oprhp_trails|nynjtc_long_path/),
+    ).not.toBeInTheDocument()
+
+    // Delete takes two taps, and the row leaves the home with the record.
+    await user.click(within(card).getByRole('button', { name: 'Delete this day hike' }))
+    await user.click(within(card).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /Pine Meadow out and back/ }),
+      ).not.toBeInTheDocument()
+    })
+    const stored = app.store.get(DAY_HIKES_KEY) as { hikes: unknown[] }
+    expect(stored.hikes).toHaveLength(0)
   })
 
   it('closes the day hike when a route-builder door opens over it (#997)', async () => {

@@ -35,6 +35,9 @@
       "discovered_date": "2026-07-24",
       "notes": "Also given directly by user as https://arcg.is/1nqL542",
       "blaze_default": "White",
+      "owns_route_names": [
+        "Appalachian Trail"
+      ],
       "reaches_hikers": true
     },
     {
@@ -146,7 +149,7 @@
       "freshness": {
         "kind": "http_etag",
         "url": "https://appalachiantrail.org/trail-updates/feed/",
-        "notes": "The RSS feed, used as a change signal and NOT as the content. Measured 2026-08-24: it held 3 items while the listing held 89 across ten paginated pages, so building the artifact from it would silently drop the most consequential closure (features/ATC_TRAIL_UPDATES.md, 'what the feed does not carry'). The 2026-08-09 version of this note read '3 items while the page showed 9'; the 9 was page one mistaken for the whole list, which is https://github.com/OurHike/OurHike/issues/945. It does carry an ETag that moves when ATC edits, which is all a freshness marker needs - WEAK (`W/\"...\"`) as measured 2026-08-24, where this note said 'strong' on 2026-08-12; check_freshness.py compares it verbatim and only asks whether it moved, but a weak validator lets the upstream change the bytes without changing the tag. The listing page itself is still not usable as the marker, for a different reason than this note gave: it no longer 403s a scripted request (measured 2026-08-24, it answers 200), but a HEAD on it returns neither an ETag nor a Last-Modified, so a marker read from it would be UNKNOWN forever."
+        "notes": "The RSS feed, used as a change signal and NOT as the content. Measured 2026-08-24: it held 3 items while the listing held 89 across ten paginated pages, so building the artifact from it would silently drop the most consequential closure (features/ATC_TRAIL_UPDATES.md, 'what the feed does not carry'). The 2026-08-09 version of this note read '3 items while the page showed 9'; the 9 was page one mistaken for the whole list, which is https://github.com/OurHike/OurHike/issues/945. It does carry an ETag that moves when ATC edits, which is all a freshness marker needs - WEAK (`W/\"...\"`) as measured 2026-08-24, where this note said 'strong' on 2026-08-12; check_freshness.py compares it verbatim and only asks whether it moved, but a weak validator lets the upstream change the bytes without changing the tag. The listing page itself is still not usable as the marker, and now for two reasons. The correction this note carried briefly on 2026-08-24 - 'it no longer 403s a scripted request, it answers 200' - was measured with curl and did not describe the pipeline's own client: re-measured the same day, ATC refuses the literal `python-requests/*` User-Agent with 403 and answers 200 to curl and to a named agent, so the original 2026-08-12 finding was right about check_freshness.py and still is. lib/atc_scrape.py reaches the listing only because it sets a User-Agent naming the project. On top of that, a HEAD on the listing returns neither an ETag nor a Last-Modified, so even an allowed request would give a marker of UNKNOWN forever."
       },
       "discovered_via": "features/ATC_TRAIL_UPDATES.md - read from ATC's public website, not from an ArcGIS service. Registered by hand because discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-12",
@@ -232,12 +235,17 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - unstated by OPRHP (their item's licenseInfo is a no-warranty disclaimer and accessInformation is empty, both read 2026-08-18), maintainer outreach in progress. Fetched for REVIEW AND THE #771 SPIKE ONLY; nothing from this source reaches a published artifact until that block records OPRHP's answer.",
+      "licence": "See oprhp_licence below. OPRHP states terms and they permit this: reuse allowed, attribution to OPRHP REQUIRED (map/credits.ts carries it), non-commercial purposes - which the maintainer determined on 2026-08-24 that OurHike satisfies, with the reasoning recorded in that block.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "blaze_field": "Blaze",
+      "name_field": "Name",
+      "foot_field": "Foot",
+      "status_field": "Status",
+      "unit_field": "Unit",
       "discovered_via": "The NY State Parks Explorer mobile app's per-park Web Maps on OPRHP's public AGOL org 'nysparks' (org id 1xFZPtKn1wKC6POA) - read 'Old Croton Parks App' item 36c9404f8fad4dfc9df0e0037e1fb96b's operationalLayers, then probed live 2026-08-18 (#768/#769). Registered by hand - discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-18",
       "notes": "16,641 polyline segments statewide, measured 2026-08-18: per-segment Unit/Name/Alt_Name, up to three Blaze colours plus Map_Blaze, Surface, Status, Public_, per-use flags (Foot/Bike/Horse/XC/SS/Snowmb) and Miles. editingInfo.dataLastEditDate verified live 2026-08-18 - then reading 2026-08-17T19:43Z, edited the day before this registration, so the layer is actively maintained. This is the layer the Parks Explorer app syncs its offline data from (capabilities Query,Extract,Sync,ChangeTracking; a literal ParksApp column). What Public_ and Status gate is unmeasured - #771 measures before anything filters on them, and until then the fetch takes every row rather than guessing.",
-      "reaches_hikers": false
+      "reaches_hikers": true
     },
     {
       "key": "oprhp_trail_closures",
@@ -248,13 +256,16 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - unstated, maintainer outreach in progress; REVIEW AND SPIKE ONLY until that block records OPRHP's answer.",
+      "licence": "See oprhp_licence below. OPRHP states terms and they permit this: reuse allowed, attribution to OPRHP REQUIRED (map/credits.ts carries it), non-commercial purposes - which the maintainer determined on 2026-08-24 that OurHike satisfies. Exported since #964: export_nearby_trails.py intersects these closed AREAS with the trail lines and ships the sections inside them as closed.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "closure_areas": true,
+      "reason_field": "Name",
+      "place_field": "Descript",
       "may_be_empty": true,
       "discovered_via": "Sibling of oprhp_trails on the same org, surfaced by an AGOL search for the org's trail services, probed live 2026-08-18 (#768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
       "notes": "TEMPORARY closure polygons - 4 features on 2026-08-18, and an honest count of zero is the expected answer in a good week, which is what may_be_empty records and why this layer could never sit behind fetch_all.py's non-empty completeness gate. dataLastEditDate verified live 2026-08-18 (then 2026-06-16). A safety surface: if OPRHP data ever ships, this is the layer whose freshness matters most (CLAUDE.md's closures path).",
-      "reaches_hikers": false
+      "reaches_hikers": true
     },
     {
       "key": "oprhp_facilities",
@@ -265,7 +276,7 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - unstated, maintainer outreach in progress; REVIEW AND SPIKE ONLY until that block records OPRHP's answer.",
+      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` is false here for a different reason than it used to be: nothing exports this layer yet. Registered and not wired to anything, per reaches_hikers_comment.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "Drawn by every per-park 'Parks App' Web Map alongside oprhp_trails (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
@@ -281,12 +292,69 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - unstated, maintainer outreach in progress; REVIEW AND SPIKE ONLY until that block records OPRHP's answer.",
+      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` is false here for a different reason than it used to be: nothing exports this layer yet. Registered and not wired to anything, per reaches_hikers_comment.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "The first layer every per-park 'Parks App' Web Map draws (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
       "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30).",
       "reaches_hikers": false
+    },
+    {
+      "key": "nynjtc_long_path",
+      "title": "NYNJTC Long Path",
+      "provider": "NYNJTC",
+      "kind": "external_arcgis_layer",
+      "url": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Long_Path_2023/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York-New Jersey Trail Conference",
+      "steward_contact": "https://secure.nynjtc.org/contact-us",
+      "licence": "See nynjtc_licence below. NYNJTC has stated no terms of their own; this ships on the maintainer's authorisation of 2026-08-24, the same footing atc_licence and photo_licence use, and covers this public extract only.",
+      "attribution": "New York-New Jersey Trail Conference",
+      "blaze_field": "Blaze",
+      "name_field": "Trail_Name",
+      "owns_route_names": [
+        "Long Path"
+      ],
+      "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a74's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
+      "discovered_date": "2026-08-24",
+      "notes": "43 polyline segments, measured live 2026-08-24 - the same count and the same field list NYC_SOURCE_SURVEY.md \u00a74 read on 2026-08-18, so the shelf has not moved under the survey. Fields Trail_Name/Blaze/Maintainer/Mileage/Source/Comments/LP_Section/GuideURL; all 43 rows read Trail_Name 'Long Path', Maintainer 'NYNJTC' and Source 'NYNJTC'. THE BLAZE FIELD IS A PLAIN STRING WITH NO CODED DOMAIN, and reads the lowercase 'aqua' on all 43 rows (measured 2026-08-24) - unlike side_trails' and oprhp_trails' coded fields, which is why export_nearby_trails.py sends it straight to reference/blaze_mapping.json's reviewed table instead of decoding a domain first. NYNJTC updates the same service in place each season - the layer inside is named Long_Path_2025Sep - which is the property a registry URL wants. dataLastEditDate verified live 2026-08-24, then reading 2026-08-04T17:36:44Z. capabilities are Query only, with no Extract or Sync, unlike OPRHP's. The trail runs north past the Catskills toward Albany, which is the open northern cut NYC_SOURCE_SURVEY.md \u00a71 leaves to the maintainer rather than deciding.",
+      "reaches_hikers": true
+    },
+    {
+      "key": "nynjtc_highlands_trail",
+      "title": "NYNJTC Highlands Trail (NY and NJ sections)",
+      "provider": "NYNJTC",
+      "kind": "external_arcgis_layer",
+      "url": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/NYNJTC_HighlandsTrail2021sections/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York-New Jersey Trail Conference",
+      "steward_contact": "https://secure.nynjtc.org/contact-us",
+      "licence": "See nynjtc_licence below. NYNJTC has stated no terms of their own; this ships on the maintainer's authorisation of 2026-08-24, the same footing atc_licence and photo_licence use, and covers this public extract only.",
+      "attribution": "New York-New Jersey Trail Conference",
+      "blaze_default": "Unknown",
+      "name_field": "Trail_Name",
+      "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a74's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
+      "discovered_date": "2026-08-24",
+      "notes": "12 section features, measured live 2026-08-24 - again matching NYC_SOURCE_SURVEY.md \u00a74's 2026-08-18 reading. Fields Trail_Name/Section_Name/Source/MapOrder; all 12 rows read Trail_Name 'Highlands' and Source 'NYNJTC', and Section_Name is a per-section label ('NJ 2'..'NJ 9' among the sampled twelve). dataLastEditDate verified live 2026-08-24, then reading 2025-12-04T21:03:02Z - eight months older than the Long Path's, which is what the survey meant by 'thinner'. THIS LAYER PUBLISHES NO BLAZE AT ALL: there is no blaze field, so blaze_default 'Unknown' states that absence rather than asserting a paint. That is deliberate and is the omit-rather-than-guess rule applied to a colour - the Highlands Trail does wear a blaze on the ground, and this pipeline has read it from no source it registered, so painting one here would be a display outrunning its source. What would settle it: the same NYNJTC conversation the licence waits on, or a blaze field appearing in one of the seasonal republishes this service does in place.",
+      "reaches_hikers": true
+    },
+    {
+      "key": "mohonk_trails",
+      "title": "Mohonk Preserve Trails and Carriage Roads",
+      "provider": "Mohonk Preserve",
+      "kind": "external_arcgis_layer",
+      "url": "https://services8.arcgis.com/cQ05sucxF4UWabFF/arcgis/rest/services/Mohonk_Preserve_Trails_and_Carriage_Roads/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Mohonk Preserve",
+      "steward_contact": "https://www.mohonkpreserve.org/about/contact-us/",
+      "licence": "See mohonk_licence below. Mohonk Preserve has stated no reuse terms of their own - the item's licenseInfo is a no-warranty disclaimer only, quoted verbatim in that block - but ships on the maintainer's authorisation of 2026-08-25, the same footing atc_licence and nynjtc_licence already use.",
+      "attribution": "Mohonk Preserve",
+      "blaze_field": "Blaze",
+      "name_field": "Name",
+      "discovered_via": "Web search for the trail/carriage-road GIS data behind the suggested NYS GIS Clearinghouse listing gis.ny.gov/gisdata/inventories/details.cfm?DSID=295 (dead - 404, and the inventory system it belonged to has moved to data.gis.ny.gov with no working listing for this dataset found there). Led to the 'GIS and Mapping Activities at Mohonk Preserve' write-up (espatiallynewyork.com, Nov 2023), then to this item directly on Mohonk Preserve's own public AGOL org via arcgis.com's sharing/rest search. Probed live 2026-08-25 (#992).",
+      "discovered_date": "2026-08-25",
+      "notes": "304 polyline segments, measured live 2026-08-25 via returnCountOnly. Fields Name/General_Classification/Classification/Use_/Blaze/Mileage/Surface/Owner/Manager - Blaze is a genuine coded field, unlike nynjtc_long_path's plain string or nynjtc_highlands_trail's absent one; actual values on the fetched 304 rows (not just the domain's declared possibilities) are N/A 124, Blue 61, Red 49, Other 33, Yellow 30, plus 7 rows with no Blaze value at all - see reference/blaze_mapping.json's mohonk_trails entry. The layer is already a filtered VIEW - its own definitionQuery is \\\"(General_Classification = 'Carriage Road' OR General_Classification = 'Trail') AND (Manager = 'Mohonk Preserve')\\\" - so this is Mohonk's own curated public extract, not their full internal dataset; 298 of 304 rows carry Owner 'Mohonk Preserve', the other 6 ('Marakill Woods North/South') carry Owner 'NYS OPRHP/PIPC' with Manager still 'Mohonk Preserve'. editingInfo.dataLastEditDate verified live 2026-08-25, then reading 2026-08-24T20:52:57Z - edited the day before, while the AGOL item's own container metadata (title/sharing) last changed 2025-07-28; a read of the item alone would have missed how current the layer actually is. blaze_field/name_field added and reaches_hikers flipped true 2026-08-25 on the maintainer's direct authorisation, the same shape #950 gave NYNJTC's extracts - export_nearby_trails.py's network_line_sources() and publish.py's shared-artifact gate needed no code change to pick this source up.",
+      "reaches_hikers": true
     }
   ],
   "usdm_licence": {
@@ -299,12 +367,35 @@
     "open_question": "NDMC has not been asked directly whether redistributing the polygons is in scope. The wording above is theirs, verbatim from droughtmonitor.unl.edu/About/Permission.aspx; an email to DroughtMonitor@unl.edu would turn this declaration into a confirmation. Until then this is the maintainer's reading, recorded as such rather than as NDMC's."
   },
   "oprhp_licence": {
-    "_comment": "The basis on which the four oprhp_* layers above may be fetched, and the bar their data has to clear before any of it is republished to hikers. OPRHP's own terms are UNSTATED: the trails item's licenseInfo is a no-warranty disclaimer ('no representations or warranties... as to the accuracy, reliability, or completeness of the data') and its accessInformation is empty, both read 2026-08-18 - public and queryable is not a reuse grant (SOURCE_SURVEY.md's rule 3, 'licensed beats good'). The maintainer declared 2026-08-18, in the planning conversation recorded in https://github.com/OurHike/OurHike/issues/768, that they are reaching out to OPRHP directly and expects the answer to be attribution-to-source terms. Until that answer is recorded here, every oprhp_* entry is fetch-and-review only - the same footing as gatc_water_sources - and OPRHP's own accuracy disclaimer is provenance any eventual display must carry rather than outrun.",
+    "_comment": "The basis on which the four oprhp_* layers above may be fetched, and the bar their data has to clear before any of it is republished to hikers. CORRECTED 2026-08-24 (#950). This block previously said OPRHP's terms were UNSTATED and that the item's licenseInfo was 'a no-warranty disclaimer'. THAT WAS WRONG, and the way it was wrong is worth recording: the licenseInfo was read through a 200-character truncation on 2026-08-18, which cut off exactly at the sentence where the disclaimer ends and the actual terms begin. The full field is 1,095 characters of plain text on AGOL item a89dcd37f8bc41929e490dacd872e288 (the item whose `url` is the registered NY_State_Parks_Trails FeatureServer), re-read in full 2026-08-24 and quoted verbatim in `terms_verbatim` below. SO THERE IS A GRANT, WITH TWO CONDITIONS ON IT. Reuse is permitted; attribution to OPRHP is REQUIRED on 'any maps, reports, or other materials created using OPRHP data'; and the data is provided 'for informational and NON-COMMERCIAL purposes'. The second condition is the one that needs a human: features/PRICING_MODEL.md designs a paid thru-hike pass and regional passes, so whether shipping these lines inside OurHike is a non-commercial use is a judgement about the product, not a fact about the layer. The reading that says yes is PRICING_MODEL.md's own pricing value #5 - the trail line is in the tier that 'stay[s] free forever, for everyone, regardless of ability to pay', and what is sold is the convenience layer above it. That reading is not recorded here as settled, because nobody with authority to settle it has written it down.",
     "author": "New York State Office of Parks, Recreation and Historic Preservation",
-    "license": "Unstated - pending OPRHP's answer to the maintainer's ask",
-    "basis": "Maintainer outreach in progress, declared 2026-08-18",
-    "recorded_date": "2026-08-18",
-    "open_question": "https://github.com/OurHike/OurHike/issues/769 - OPRHP's answer should replace this block's license line with the agreed terms, the way atc_licence's open question reads."
+    "license": "Reuse permitted with attribution to OPRHP; non-commercial condition determined satisfied by the maintainer 2026-08-24",
+    "terms_verbatim": "The data are dynamic and may change over time. Although every effort has been made to ensure the accuracy of information, NY State Office of Parks, Recreation and Historic Preservation (OPRHP) makes no representations or warranties, express or implied, as to the accuracy, reliability, or completeness of the data and assumes no responsibility or legal liability for its use. The data are for informational purposes only and are not intended for or suitable for legal, engineering, surveying, or site-specific decision-making. The user is responsible for ensuring the accuracy and appropriateness of any use of the data and assumes all risks associated with its use. The data and applications are provided for informational and non-commercial purposes. Any maps, reports, or other materials created using OPRHP data must include proper credit and attribution to the NY State Office of Parks, Recreation and Historic Preservation (OPRHP). By accessing or using the OPRHP data and applications, you agree to be bound by the above terms of use and failure to do so constitutes a misuse of the data.",
+    "terms_source": "https://www.arcgis.com/home/item.html?id=a89dcd37f8bc41929e490dacd872e288 (licenseInfo field, 1,095 characters, read in full 2026-08-24)",
+    "attribution_required": "New York State Office of Parks, Recreation and Historic Preservation (OPRHP)",
+    "basis": "OPRHP's own published item terms (read 2026-08-24, quoted verbatim above), plus the maintainer's determination of the same date that OurHike is a non-commercial use within them. THE REASONING, recorded because a determination nobody can inspect is worth no more than an assertion: features/PRICING_MODEL.md's pricing value #1 keeps the core map, water, shelters, GPS, elevation, closures and warnings 'free forever, for everyone, regardless of ability to pay', and a trail line is squarely in that tier. What OurHike sells is the planning and community layer above it - value #5's 'a maintained, polished experience on top of open data'. So OPRHP's data itself is given to hikers for nothing. THE COUNTER-READING, stated so nobody has to reconstruct it: the app as a whole does take money, and a stricter reading of 'non-commercial purposes' looks at the product rather than at the tier. This block records that the maintainer weighed that and decided; it does not record that OPRHP agrees, because OPRHP has not been asked this specific question yet.",
+    "recorded_date": "2026-08-24",
+    "open_question": "https://github.com/OurHike/OurHike/issues/769 - OPRHP's own answer would replace the maintainer's determination above with theirs, and is still worth having. Until then the determination is what this ships on. If OPRHP reads it the other way, the remedy is one field per source and a re-run, which is the whole reason the gate is a registry field rather than a code path."
+  },
+  "nynjtc_licence": {
+    "_comment": "The basis on which the two nynjtc_* layers above may be fetched, and the bar their data has to clear before any of it is republished to hikers. NYNJTC's terms are genuinely UNSTATED, and this was re-checked properly on 2026-08-24 after the same truncation bug that had misread OPRHP's (see oprhp_licence): both AGOL items were fetched whole and matched to the registered FeatureServer URLs - 55350d7014c746949809bde71e373d67 ('Long Path - 2025 Fall') and aa7e805d911546a189d47b7263c6e686 ('Highlands Trail in NY & NJ - Fall 2025'). Both carry an EMPTY licenseInfo and an EMPTY accessInformation - zero characters, not a disclaimer and not a grant - and both services return an empty copyrightText. Public and queryable is not a reuse grant (SOURCE_SURVEY.md's rule 3, 'licensed beats good'), and an absent licence is more restrictive than OPRHP's stated one rather than less: with nothing said, ordinary copyright is what applies. The sharper point one registration cannot blur: these two are NYNJTC's PUBLIC EXTRACTS, and SOURCE_SURVEY.md \u00a75's verdict on the wider network stands - the full NYNJTC trail network is deliberately withheld and is 'an agreement, not a scrape'. Registering the extracts is not a step toward taking the rest. The maintainer's NYNJTC conversation (declared 2026-08-18 on issue #768) covers both.",
+    "author": "New York-New Jersey Trail Conference",
+    "license": "Maintainer authorisation, 2026-08-24 - NYNJTC has stated no terms of their own",
+    "terms_source": "AGOL items 55350d7014c746949809bde71e373d67 and aa7e805d911546a189d47b7263c6e686, licenseInfo empty on both, read 2026-08-24",
+    "basis": "Maintainer authorisation, 2026-08-24, on the maintainer's own reading that these are openly published datasets. THE SAME FOOTING atc_licence AND photo_licence ALREADY USE, and worth being precise about what it is and is not: it is the maintainer deciding, as the person who carries the consequence, that publishing NYNJTC's two PUBLIC EXTRACTS is acceptable. It is NOT a grant from NYNJTC, who have stated nothing - their items carry an empty licenseInfo and an empty accessInformation, verified whole 2026-08-24 - so ordinary copyright is the default this decision is taken against. WHAT IT DOES NOT TOUCH: SOURCE_SURVEY.md \u00a75's verdict on the full NYNJTC network stands unchanged - 'an agreement, not a scrape'. This authorisation covers the two public extracts and nothing else, and must not be read as precedent for the network.",
+    "recorded_date": "2026-08-24",
+    "open_question": "https://github.com/OurHike/OurHike/issues/768 - NYNJTC's own answer should replace the maintainer's authorisation with their stated terms, the way atc_licence's open question reads. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line."
+  },
+  "mohonk_licence": {
+    "_comment": "The basis on which mohonk_trails above may be fetched AND republished to hikers. Mohonk Preserve's terms are genuinely UNSTATED beyond a no-warranty disclaimer, read whole (not through the 200-character truncation that misread oprhp_licence once already - see that block's _comment) on 2026-08-25 from AGOL item 88014aef85ef42c397c738154cf7f1dc. Public and queryable is not a reuse grant (SOURCE_SURVEY.md's rule, 'licensed beats good') - but the maintainer authorised shipping this public extract on 2026-08-25, the same call already made for NYNJTC's two extracts in nynjtc_licence. THIS DOES NOT MAKE THE TERMS ANY LESS UNSTATED: it is the maintainer deciding, as the person who carries the consequence, that publishing Mohonk Preserve's public extract is acceptable - it is NOT a grant from Mohonk Preserve, who have stated nothing beyond the disclaimer quoted below.",
+    "author": "Mohonk Preserve",
+    "license": "Maintainer authorisation, 2026-08-25 - Mohonk Preserve has stated no terms of their own",
+    "terms_verbatim": "GIS DATA IS PROVIDED AS IS AND WITHOUT ANY WARRANTY, EXPRESS OR IMPLIED, AS TO THEIR PERFORMANCE, MERCHANTABILITY, OR FITNESS FOR ANY PARTICULAR PURPOSE. Mohonk Preserve Inc. does NOT represent or warrant that the GIS data or the data documentation provided are error-free, complete, current, or accurate.",
+    "terms_source": "https://www.arcgis.com/sharing/rest/content/items/88014aef85ef42c397c738154cf7f1dc?f=json (licenseInfo field, read in full 2026-08-25)",
+    "attribution_required": "Not stated as a condition in licenseInfo. 'Mohonk Preserve' is recorded as attribution per this project's practice of naming every registered steward, not because their terms require it - client/src/map/credits.ts's MOHONK_CREDIT is on the same footing as NYNJTC_CREDIT there: a courtesy this project extends to every club whose trails it draws, not a licence condition.",
+    "basis": "Maintainer authorisation, 2026-08-25, on the maintainer's own reading that this is an openly published dataset - THE SAME FOOTING atc_licence AND nynjtc_licence ALREADY USE. Worth being precise about what it is and is not: it is the maintainer deciding, as the person who carries the consequence, that publishing Mohonk Preserve's public trails-and-carriage-roads extract is acceptable. It is NOT a grant from Mohonk Preserve, who have stated nothing - their item carries only the no-warranty disclaimer quoted above as terms_verbatim.",
+    "recorded_date": "2026-08-25",
+    "open_question": "https://github.com/OurHike/OurHike/issues/992 - Mohonk Preserve's own stated terms would still be the ideal, and should replace the maintainer's authorisation above the way atc_licence's and nynjtc_licence's open questions read. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line."
   },
   "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it."
 }

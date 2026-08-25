@@ -63,6 +63,36 @@ export interface AtcUpdate {
   /** ATC's `dateModified`, as an ISO string. The age a hiker cares about. */
   updated_at: string
   source_url: string
+  /**
+   * Whether a person read ATC's page for this row, or a job parsed it (#963).
+   *
+   * `reviewed` is the original path and still the only one that can produce a
+   * band: somebody read the notice, decided what it means, and typed the row.
+   * `unreviewed` means the hourly job found it on ATC's site after the last
+   * review, it passed a deliberately narrow gate, and NOBODY HERE HAS READ IT.
+   *
+   * Optional because artifacts baked before #963 do not carry it, and every
+   * row in one of those was reviewed by definition - so absent reads as
+   * `reviewed` rather than as unknown. A deployed client meeting a newer
+   * artifact is the case this shape is for.
+   */
+  review_state?: AtcReviewState
+}
+
+export type AtcReviewState = 'reviewed' | 'unreviewed'
+
+/**
+ * Whether a person stood behind this row.
+ *
+ * The distinction has to reach the screen, because the alternative is a
+ * display outrunning its source. An automatic row carries `obstructs_trail:
+ * false` - the pipeline forces it, so that an unread notice can never draw a
+ * barrier - and a UI that read that boolean naively would tell a hiker "the
+ * ATC did not report the trail blocked here", which is a claim nobody
+ * checked. What is true is that we have not looked.
+ */
+export function isReviewedByAPerson(update: AtcUpdate): boolean {
+  return update.review_state !== 'unreviewed'
 }
 
 /** The categories ATC publishes, verbatim. Not mapped onto `ClosureReason`:
@@ -77,6 +107,25 @@ export type AtcCategory =
   /** Bear warnings and the like. Not among the five measured on 2026-08-09;
    *  ATC was using it for two live notices on 2026-08-12. */
   | 'Animal'
+  // The six below were invisible while the review only ever read page one of
+  // ATC's listing (#945). Reading all ten on 2026-08-24 found every one of
+  // them in use across the 89 updates live that day. Counts, that day:
+  //
+  //   Water 4 · Relocation 1 · Permits 1 · Construction 1 · Fire 1 ·
+  //   Conservation 1
+  //
+  // Nothing here validates a category at runtime - `parsePublished` checks
+  // `generated_at` and that the payload is an array, and the rows are cast -
+  // so an unlisted word would have rendered rather than thrown. That makes
+  // this union a claim about the artifact rather than a guard on it, and a
+  // stale claim is the kind of thing the next reader trusts. It is kept
+  // truthful for that reason, not because a build would have broken.
+  | 'Water'
+  | 'Relocation'
+  | 'Permits'
+  | 'Construction'
+  | 'Fire'
+  | 'Conservation'
 
 /**
  * Whether this update gets a band, rather than only a banner.
@@ -219,6 +268,22 @@ function mile(value: number): string {
  * sit in one sentence because they are two different facts - how far you walk
  * before you are in it, and where on the trail "it" is.
  */
+/**
+ * The tail a banner grows when nobody here has read the notice (#963).
+ *
+ * Everything else in an automatic banner is ATC's own word - their category,
+ * their headline, their mile - and needs no hedge. What is OurHike's is the
+ * POSITION claim: "here", or "2.1 mi ahead", derived from a mile a regex read
+ * off their prose. The gate that let the row through is narrow, but narrow is
+ * not the same as checked, and a hiker deciding whether to trust a warning is
+ * entitled to know which of the two this is.
+ *
+ * Four words, at the end, because the banner is read while walking.
+ */
+function unchecked(update: AtcUpdate): string {
+  return isReviewedByAPerson(update) ? '' : ' · not checked by OurHike'
+}
+
 export function atcUpdateBanner(
   update: AtcUpdate,
   currentMile: number,
@@ -240,7 +305,7 @@ export function atcUpdateBanner(
       ? `along ${formatDistance(Math.abs(end - start), units, 'whole')} of trail`
       : 'here'
 
-    return `ATC · ${update.category} ${where} · ${update.title} · ${range}`
+    return `ATC · ${update.category} ${where} · ${update.title} · ${range}${unchecked(update)}`
   }
 
   if (direction === undefined) return null
@@ -250,7 +315,7 @@ export function atcUpdateBanner(
     direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
   if (distanceAhead < 0) return null
 
-  return `ATC · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}`
+  return `ATC · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}${unchecked(update)}`
 }
 
 /**

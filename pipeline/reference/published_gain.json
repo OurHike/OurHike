@@ -3,25 +3,48 @@
     "Published cumulative-ascent figures to check lib/elevation_gain.py's dead",
     "band against. Read by check_elevation_gain.py.",
     "",
-    "`sections` is EMPTY ON PURPOSE and the check fails while it stays that",
-    "way. Inventing plausible-looking section figures would make an",
-    "unvalidated threshold look validated, which is worse than no check: the",
-    "whole reason this file exists is that a gain number can agree with a",
-    "consensus by construction and mean nothing. An empty table that fails",
-    "loudly is the honest state.",
+    "`sections` carries THREE rows, chosen for different character rather than",
+    "for agreement, because the point of the table is that ONE threshold has to",
+    "work for all of them:",
     "",
-    "To fill it in: pick sections with a well-known, quotable gain figure and",
-    "unambiguous mileposts - the Whites (Franconia Ridge, the Presidentials),",
-    "the Roan Highlands, the Blood Mountain climb - and record where each",
-    "number came from. Two or three sections of genuinely different character",
-    "are worth more than a dozen from the same guidebook, because the point is",
-    "that ONE threshold has to work for all of them.",
+    "  Katahdin via the Hunt Trail   a sustained alpine climb that barely",
+    "                                exercises the dead band. Anchors the top of",
+    "                                the scale.",
+    "  Moosilauke via Glencliff      a second sustained climb, different range,",
+    "                                different DEM projects. Weakest source of",
+    "                                the three (route-stat aggregation, not a",
+    "                                land manager) and kept anyway, because a",
+    "                                second pure ascent is still worth a row.",
+    "  Carvers Gap to US 19E         rolling, descent-dominated balds. THE",
+    "                                discriminating case: see its",
+    "                                tolerance_reason for why it reads +18.8%",
+    "                                against TEHCC and why tuning the dead band",
+    "                                to it would be the wrong trade.",
+    "",
+    "AN EMPTY TABLE STILL FAILS, AND THAT RULE IS NOT SOFTENED BY THESE ROWS.",
+    "check_elevation_gain.py returns 1 on an empty `sections`, and on a table",
+    "whose every row lacks a published figure. Inventing plausible-looking",
+    "section figures would make an unvalidated threshold LOOK validated, which",
+    "is worse than no check at all: a gain number can agree with a consensus by",
+    "construction and mean nothing. Delete a row you cannot cite rather than",
+    "guessing its figure.",
+    "",
+    "TO ADD A ROW: pick a section with a well-known, quotable gain figure and",
+    "unambiguous mileposts - the Whites (Franconia Ridge, the Presidentials) and",
+    "the Blood Mountain climb are the obvious unclaimed ones - and record where",
+    "the number came from in `source` and `source_year`. Locate start_mi/end_mi",
+    "by projecting a known coordinate onto the calibrated axis and write the",
+    "residual into `_anchor`, as the three rows below do; see `_mileposts`.",
+    "",
+    "A row may widen its own tolerance past check_elevation_gain.SECTION_TOLERANCE,",
+    "but ONLY with a `tolerance_reason` saying why - check_sections() raises on a",
+    "silent widening, because a gate quietly turned off is worse than an absent",
+    "one. Carvers Gap is the worked example of a justified override.",
     "",
     "Mileposts are northbound miles from Springer, matching",
     "elevation_profile.json's distance_mi. Note that AT mileages shift between",
     "years as the trail is relocated, so `source_year` is not optional detail."
   ],
-
   "_schema": {
     "whole_trail": {
       "published_gain_ft": "number, or null",
@@ -37,11 +60,11 @@
         "source": "who published it",
         "source_year": "number",
         "tolerance": "optional: overrides check_elevation_gain.SECTION_TOLERANCE for this section",
-        "tolerance_reason": "REQUIRED when tolerance is overridden - the check refuses a silent widening"
+        "tolerance_reason": "REQUIRED when tolerance is overridden - the check refuses a silent widening",
+        "_anchor": "optional but expected: how start_mi/end_mi were located - the coordinate projected onto the calibrated axis and how far it sat off the centerline, so the next reader can re-derive the milepost rather than trust it"
       }
     ]
   },
-
   "_mileposts": [
     "start_mi/end_mi are on the calibrated NOBO axis (#652) - ATC's own",
     "half-mile Measure scale, which elevation_profile.json's distance_mi has",
@@ -51,7 +74,6 @@
     "any of them with export_elevation.calibrated_trail_axis and a Point;",
     "issue #133 carries the worked method."
   ],
-
   "whole_trail": {
     "published_gain_ft": 510000,
     "source": "commonly cited consensus figure for the full AT, as recorded in issue #91",
@@ -62,7 +84,6 @@
       "parameter is not a test, because some threshold always hits it."
     ]
   },
-
   "sections": [
     {
       "name": "Katahdin via the Hunt Trail",

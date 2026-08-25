@@ -26,6 +26,7 @@ from tests.tokens import auth_headers
 # here before `test_every_profile_linked_table_reaches_the_file` will pass.
 SECTION_FOR_TABLE = {
     "synced_trips": "trips",
+    "synced_day_hikes": "day_hikes",
     "synced_planned_hikes": "planned_hike",
     "hikes": "hikes",
     "user_preferences": "preferences",
@@ -163,5 +164,6 @@ def test_a_hiker_with_nothing_gets_a_file_rather_than_an_error(db_session, clien
 
     assert archive["your_account"]["id"] == profile.id
     assert archive["trips"] == []
+    assert archive["day_hikes"] == []
     assert archive["preferences"] is None
     assert archive["planned_hike"] is None

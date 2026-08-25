@@ -9,7 +9,7 @@
 //
 // features/CONDITIONS_DELIVERY.md is the design.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   API_CONFIGURED,
   fetchClosures,
@@ -50,6 +50,20 @@ import type { WorkProjectSummary } from './workProjects'
  * ends.
  */
 export const CONDITIONS_REFRESH_MS = 60 * 60 * 1000
+
+/**
+ * The shortest gap between two re-reads triggered by the app becoming visible.
+ *
+ * Five minutes. The hourly interval is paced against the publish cadence, but
+ * a return-to-foreground is not a clock tick - it is the one moment we know a
+ * hiker is about to READ the thing, and the artifact may have been republished
+ * several times while the screen was off. Refetching then is worth the bytes.
+ *
+ * Doing it on every visibility change would not be: switching to a messaging
+ * app and back is a normal thing to do repeatedly, and each round trip is a
+ * hiker's data and battery.
+ */
+export const VISIBILITY_REFRESH_MIN_MS = 5 * 60 * 1000
 
 export interface Conditions {
   /**
@@ -184,6 +198,35 @@ export function useConditions(online: boolean): Conditions {
       CONDITIONS_REFRESH_MS,
     )
     return () => clearInterval(timer)
+  }, [online])
+
+  // AND AGAIN THE MOMENT THE PHONE COMES BACK OUT OF A POCKET, because the
+  // interval above does not survive that.
+  //
+  // A backgrounded tab has its timers throttled hard and a backgrounded PWA
+  // may have them suspended outright - that is the browser doing its job for
+  // the battery, not a bug. What it means here is that the hourly re-read
+  // silently stops while the screen is off, so the state a hiker sees on
+  // waking their phone is whatever was fetched before they put it away. On a
+  // surface carrying ATC's closures, four hours in a pocket is exactly when
+  // the answer is most likely to have changed and least likely to have been
+  // re-read.
+  //
+  // Throttled to `VISIBILITY_REFRESH_MIN_MS`, because app-switching is not
+  // rare: without it, flicking between the map and a messaging app would
+  // refetch every baseline each time, on a hiker's data.
+  const lastReadAt = useRef(0)
+  useEffect(() => {
+    if (!online) return
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastReadAt.current < VISIBILITY_REFRESH_MIN_MS) return
+      lastReadAt.current = now
+      setRefreshCount((count) => count + 1)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [online])
 
   // The published baseline, fetched once and independently of the backend.

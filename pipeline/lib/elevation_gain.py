@@ -242,3 +242,38 @@ def gain_between(
     """
     window = [record for record in profile if start_mi <= record["distance_mi"] <= end_mi]
     return gain_over_profile(window, threshold)
+
+
+def cumulative_loss(elevations: Sequence[float], threshold: float) -> float:
+    """Total confirmed DESCENT over one unbroken run of samples, as a positive
+    number.
+
+    The same dead band as `cumulative_gain`, applied to the ground turned
+    upside down. That is exact rather than approximate, and it is worth saying
+    why: the band asks one direction-agnostic question - *did the ground
+    reverse by more than the DEM can resolve?* - and negating every elevation
+    swaps which reversals are peaks and which are troughs without changing the
+    size of any of them. A descent measured this way costs nothing to have been
+    measured, for the same reason a climb does not (see the module docstring's
+    note on the naive running-reference implementation).
+
+    Kept as a named function rather than left to each caller to negate, so the
+    two directions cannot drift apart, and returned positive because every
+    surface that prints it prints a sign of its own (frame `1l` writes
+    "-640 ft").
+
+    NOT A LICENCE TO SPEND IT. `client/src/lib/naismith.ts` takes no descent
+    parameter on purpose - Naismith gives no descent credit, a known weakness
+    of the rule left in place deliberately. This exists so a card can SHOW a
+    drop, not so a time estimate can shorten for one.
+    """
+    return cumulative_gain([-value for value in elevations], threshold)
+
+
+def loss_over_gaps(elevations: Iterable[float | None], threshold: float) -> float:
+    """Total confirmed descent across a profile that may contain nulls, as a
+    positive number. `cumulative_gain_over_gaps`' rule, in the other direction:
+    each unbroken run is measured on its own and a gap contributes nothing.
+    """
+    values = list(elevations)
+    return cumulative_gain_over_gaps([None if v is None else -v for v in values], threshold)

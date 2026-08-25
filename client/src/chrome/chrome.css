@@ -728,17 +728,16 @@
   font-size: 13px;
 }
 
-.legend__blazes,
 .legend__pins {
   margin: var(--space-3, 12px) 0 0;
   padding: 0;
   list-style: none;
 }
 
-/* Pin types read as a 2-column grid; blaze rows stay full width so a blaze
-   name has room to sit on one line beside its swatch. The swatch is a solid
-   bar, which is now literally how the map draws the line (map/style.ts) - it
-   used to be a solid bar standing in for a dashed one. */
+/* Pin types read as a 2-column grid. The blaze rows that used to sit above
+   them full-width, each behind a solid bar painted the colour the map draws
+   that line, went on 2026-08-25 - chrome/Legend.tsx's header has why, and
+   `.legend__swatch` went with them since nothing else painted one. */
 /* Two columns where two fit, ONE WHERE THEY DO NOT, and a 16px gutter either
    way (#528).
 
@@ -772,13 +771,6 @@
   gap: var(--space-2, 8px);
   min-height: var(--min-touch-target);
   font-size: 13px;
-}
-
-.legend__swatch {
-  width: 22px;
-  height: 4px;
-  border-radius: 2px;
-  border: 1px solid var(--border-2);
 }
 
 /* The label is the only part of a row that may give up width, and `min-width: 0`
@@ -1554,6 +1546,56 @@
   color: var(--fg-2);
   cursor: pointer;
   text-align: left;
+}
+
+/* The counts line and undo, above the fields (#973, wireframe 2a frame 1).
+   Right-padded clear of the close button, which is absolutely placed in the
+   same corner. */
+.route-stops__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  padding-right: 28px;
+  margin-bottom: var(--space-2, 8px);
+}
+
+.route-stops__count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.route-stops__undo {
+  min-width: var(--min-touch-target, 44px);
+  min-height: 32px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: none;
+  color: var(--fg-2);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The tap affordance, while there is not yet a route. Not a placeholder in
+   an empty list - the list is genuinely empty, and this says what to do
+   about it. */
+.route-stops__hint {
+  margin: var(--space-2, 8px) 0 0 20px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* The routable limitation, stated standing rather than only on a refusal. */
+.route-stops__limit {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-3);
 }
 
 .route-stops-bar {
@@ -3635,5 +3677,21 @@ a.poi-card__credit::after {
   background: var(--bg-surface);
   border: 1px solid var(--border-2);
   border-radius: 10px;
+  cursor: pointer;
+}
+
+/* The entrance's second door (#973): quiet, because most people want the
+   sizing question this sheet asks. Full width so it reads as a way out of
+   the sheet rather than a control inside it. */
+.route-entrance__tap-door {
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-2, 8px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px dashed var(--border-2);
+  border-radius: 10px;
+  background: none;
+  color: var(--fg-2);
+  font-size: 13px;
   cursor: pointer;
 }

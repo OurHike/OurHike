@@ -152,16 +152,82 @@ def test_only_the_closures_layer_may_be_empty():
     assert flagged == {"oprhp_trail_closures"}
 
 
-def test_the_registry_records_the_oprhp_licence_block():
-    """The gate #769 exists to hold: OPRHP's terms are unstated and the
-    maintainer's outreach is in progress, so the block must say the licence
-    is pending rather than assert one nobody granted - and it must survive
-    discovery runs the way photo_licence now does."""
+def test_the_real_registry_registers_mohonk_trails_as_external_and_shipping():
+    """#992's deliverable, checked as data: Mohonk Preserve's own trails and
+    carriage-road layer, registered the same way OPRHP's and NYNJTC's were -
+    external kind, a steward, a licence pointing at the maintainer's
+    authorisation (mohonk_licence), blaze/name fields so
+    export_nearby_trails.py's network_line_sources() picks it up, and
+    reaches_hikers True - the same shape nynjtc_trails' entries took once
+    their own authorisation landed (#950)."""
     registry = load_registry(REAL_REGISTRY)
+    entry = find_source(registry, "mohonk_trails")
 
-    assert registry["oprhp_licence"]["basis"].startswith("Maintainer outreach in progress")
-    assert registry["oprhp_licence"]["recorded_date"] == "2026-08-18"
-    assert "pending" in registry["oprhp_licence"]["license"].lower()
+    assert entry is not None, "sources.json no longer registers mohonk_trails (#992)"
+    assert entry["kind"] == EXTERNAL_ARCGIS_LAYER
+    assert entry["trust"] == "authoritative"
+    assert entry["steward"] == "Mohonk Preserve"
+    assert entry["licence"].strip()
+    assert entry["url"].startswith("https://services8.arcgis.com/cQ05sucxF4UWabFF/")
+    assert entry["blaze_field"] == "Blaze"
+    assert entry["name_field"] == "Name"
+    assert entry["reaches_hikers"] is True
+
+
+def test_the_registry_records_the_mohonk_licence_block():
+    """The basis mohonk_trails' reaches_hikers: True rests on, checked as
+    data: the terms are recorded verbatim (not summarized, after
+    oprhp_licence's truncation lesson) and the block says plainly that this
+    ships on the maintainer's authorisation rather than on Mohonk Preserve's
+    own stated terms - the same shape nynjtc_licence's basis reads."""
+    registry = load_registry(REAL_REGISTRY)
+    block = registry["mohonk_licence"]
+
+    assert "WITHOUT ANY WARRANTY" in block["terms_verbatim"]
+    assert len(block["terms_verbatim"]) > 100
+    assert "992" in block["open_question"]
+    assert block["basis"].startswith("Maintainer authorisation")
+    assert block["recorded_date"] == "2026-08-25"
+
+
+def test_the_registry_records_the_oprhp_licence_block():
+    """The gate #769 exists to hold - but NOT for the reason this test used to
+    give (#950, corrected 2026-08-24).
+
+    It read "OPRHP's terms are unstated", which was wrong: the item's
+    licenseInfo had been read through a 200-character truncation that cut off
+    exactly where the no-warranty disclaimer ends and the actual terms begin.
+    OPRHP states terms - reuse permitted, attribution required, non-commercial
+    purposes - and the block now quotes all 1,095 characters verbatim so no
+    future reader has to re-fetch to check.
+
+    What the block must still do is hold the gate, on the narrower question
+    that survived the correction: whether OurHike's paid tiers make this a
+    commercial use. So the assertions below are about the terms being RECORDED
+    and the open question being about commerciality, not about the licence
+    being pending."""
+    registry = load_registry(REAL_REGISTRY)
+    block = registry["oprhp_licence"]
+
+    # The verbatim text, so a truncated re-read can never quietly replace it.
+    assert "non-commercial" in block["terms_verbatim"]
+    assert "credit and attribution" in block["terms_verbatim"]
+    assert len(block["terms_verbatim"]) > 1000
+    # And the attribution OPRHP requires, named where an exporter can read it.
+    assert "OPRHP" in block["attribution_required"]
+    assert block["recorded_date"] == "2026-08-24"
+
+    # The maintainer's determination on the one condition that needed a human,
+    # and BOTH readings of it. A determination recorded without the argument
+    # against it is an assertion wearing a date - CLAUDE.md's standard applied
+    # to a licence rather than to a constant.
+    assert "maintainer's determination" in block["basis"]
+    assert "THE COUNTER-READING" in block["basis"]
+    assert "non-commercial" in block["license"]
+
+    # And it is still an open question with OPRHP, because they have not been
+    # asked this specific thing. Recording our own answer is not their answer.
+    assert "769" in block["open_question"]
 
 
 def test_the_registry_still_records_the_photo_licence_block():

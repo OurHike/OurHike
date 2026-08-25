@@ -45,6 +45,45 @@ export const OSM_CREDIT = '© OpenStreetMap contributors'
 /** The downloaded corridor raster. Public domain; credited as good practice. */
 export const USGS_TOPO_CREDIT = 'USGS US Topo'
 
+/**
+ * NYS OPRHP's attribution, and it is a CONDITION rather than a courtesy (#950).
+ *
+ * Their item's terms say it in as many words: "Any maps, reports, or other
+ * materials created using OPRHP data must include proper credit and
+ * attribution to the NY State Office of Parks, Recreation and Historic
+ * Preservation (OPRHP)." A map drawing their 3,618 trail lines is a map
+ * created using OPRHP data, so this is what makes drawing them permitted.
+ *
+ * SPELLED IN FULL, not as "NYS OPRHP". The abbreviation is what their own
+ * `tags` field uses and would fit the corner better, but the terms ask for
+ * "proper credit" and OSM_CREDIT above already records this project's reading
+ * that an abbreviation does not satisfy a licence that asks for a name.
+ */
+export const OPRHP_CREDIT =
+  'NY State Office of Parks, Recreation and Historic Preservation'
+
+/**
+ * NYNJTC's attribution.
+ *
+ * NOT a condition - NYNJTC state no terms at all, and their data ships on the
+ * maintainer's authorisation (pipeline/sources.json's `nynjtc_licence`). It is
+ * here because a map that draws a club's trails and does not say so is exactly
+ * the "quiet inaccuracy" this file's header objects to, and because the
+ * project's whole posture is that the clubs who maintain the trails are named.
+ */
+export const NYNJTC_CREDIT = 'New York-New Jersey Trail Conference'
+
+/**
+ * Mohonk Preserve's attribution.
+ *
+ * NOT a condition - Mohonk Preserve states no terms at all, and their data
+ * ships on the maintainer's authorisation (pipeline/sources.json's
+ * `mohonk_licence`), the same footing NYNJTC_CREDIT above is on. Present for
+ * the same reason: a map that draws a steward's trails and does not say so is
+ * the "quiet inaccuracy" this file's header objects to.
+ */
+export const MOHONK_CREDIT = 'Mohonk Preserve'
+
 /** OpenFreeMap's own terms for hosting the vector sheet - see liveTopo.ts. */
 export const OPENFREEMAP_CREDIT = 'OpenFreeMap © OpenMapTiles'
 
@@ -61,6 +100,19 @@ export interface MapCreditsOptions {
    * crediting USGS on a phone holding no USGS tiles.
    */
   hasRasterArchive?: boolean
+  /**
+   * Whether the other organizations' trail lines are actually on the map
+   * (#950) - lib/nearbyTrailData.ts handed the shell an artifact, and it is
+   * not empty.
+   *
+   * Its own flag rather than something read off the style, for the reason
+   * `hasRasterArchive` is one: the source is in the style whether or not the
+   * fetch succeeded, so the style cannot answer this. Crediting OPRHP on a
+   * phone drawing none of their data would be the same false corner this
+   * module was written to fix - and here it would be false about a licence
+   * condition, which is worse than false about a courtesy.
+   */
+  hasNearbyTrails?: boolean
 }
 
 /**
@@ -81,10 +133,17 @@ export interface MapCreditsOptions {
 export function mapCredits({
   background,
   hasRasterArchive = false,
+  hasNearbyTrails = false,
 }: MapCreditsOptions): string[] {
   const credits = [OSM_CREDIT]
 
   if (hasRasterArchive) credits.push(USGS_TOPO_CREDIT)
+
+  // Before the background credits, not after: these two name whose TRAILS are
+  // drawn, and the trails are the subject of the map. OPRHP's is a licence
+  // condition besides, so it should not be the clause that falls off the end
+  // of a small strip - see chrome/MapAttribution.tsx for what collapsing does.
+  if (hasNearbyTrails) credits.push(OPRHP_CREDIT, NYNJTC_CREDIT, MOHONK_CREDIT)
 
   if (background === 'hiking_topo_live') {
     credits.push(OPENFREEMAP_CREDIT, ELEVATION_ATTRIBUTION)

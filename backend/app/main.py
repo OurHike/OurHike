@@ -19,6 +19,7 @@ from app.routers import (
     preferences,
     profiles,
     reports,
+    synced_day_hikes,
     synced_trips,
     volunteer_hours,
 )
@@ -84,3 +85,4 @@ app.include_router(app_failures.router)
 app.include_router(field_notes.router)
 app.include_router(volunteer_hours.router)
 app.include_router(synced_trips.router)
+app.include_router(synced_day_hikes.router)

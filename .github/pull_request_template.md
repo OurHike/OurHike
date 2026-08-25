@@ -14,6 +14,24 @@ Closes #
 
 <!-- What is different afterwards, and why that is the right difference. -->
 
+## Screenshot
+
+<!--
+The preview comment leads with a shot of every recipe under
+client/preview-shots/ this PR adds or changes, then the standing two (first
+run, the trail screen). A change a hiker can see points the camera at itself:
+add or touch the recipe for the screen that changed, then use this section to
+say which shot to look at and what is different in it.
+
+A pipeline or backend change: whatever the evidence actually is — a
+before-and-after table, a test going red then green, a render. A change with
+genuinely nothing to show says so in one line and why, which is a real answer.
+
+Recipes are code and are committed; pixels never are — captures land in
+client/dist/__screenshot/, gitignored. Full instructions, the recipe contract,
+and what must never appear in a shot: .claude/skills/pr-screenshot/SKILL.md.
+-->
+
 ## How it was checked
 
 <!--

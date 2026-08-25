@@ -12,7 +12,11 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CONDITIONS_REFRESH_MS, useConditions } from './useConditions'
+import {
+  CONDITIONS_REFRESH_MS,
+  VISIBILITY_REFRESH_MIN_MS,
+  useConditions,
+} from './useConditions'
 import * as published from './publishedConditions'
 
 function baseline() {
@@ -143,5 +147,55 @@ describe('the drought bands', () => {
     await waitFor(() => expect(result.current.closures).toBeNull())
     expect(result.current.drought).toEqual([])
     expect(result.current.droughtWeek).toBeNull()
+  })
+})
+
+describe('coming back to the app (#963)', () => {
+  // A backgrounded PWA has its timers throttled or suspended, so the hourly
+  // re-read stops while the screen is off. These are about the moment a hiker
+  // takes the phone back out, which is when the answer matters most and is
+  // least likely to have been refetched.
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    baseline()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('re-reads the published baselines when the app becomes visible again', async () => {
+    const reads = vi.spyOn(published, 'fetchPublishedAtcUpdates').mockResolvedValue(null)
+    renderHook(() => useConditions(true))
+    await act(async () => {})
+    const before = reads.mock.calls.length
+
+    // Long enough in a pocket that the throttle does not swallow it.
+    await act(async () => {
+      vi.advanceTimersByTime(VISIBILITY_REFRESH_MIN_MS + 1000)
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(reads.mock.calls.length).toBeGreaterThan(before)
+  })
+
+  it('does not refetch on every app switch', async () => {
+    const reads = vi.spyOn(published, 'fetchPublishedAtcUpdates').mockResolvedValue(null)
+    renderHook(() => useConditions(true))
+    await act(async () => {
+      vi.advanceTimersByTime(VISIBILITY_REFRESH_MIN_MS + 1000)
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    const before = reads.mock.calls.length
+
+    // Two more flicks straight away, the way somebody checks a message.
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(reads.mock.calls.length).toBe(before)
   })
 })

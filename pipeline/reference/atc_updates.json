@@ -29,21 +29,27 @@
     "every other build input. #463 would open that pull request automatically",
     "one day; it is deliberately post-MVP and it proposes, never publishes.",
     "",
-    "NINE UPDATES IS A PAGE, NOT A COUNT - read this before trusting either.",
-    "ATC's listing paginates at nine, newest first. Measured 2026-08-24: it",
-    "runs to TEN pages, 89 updates, the oldest 4,252 days (11.6 years) old,",
-    "with no active/expired marker anywhere on it. The two reviews before this",
-    "one (2026-08-09 and 2026-08-12) each recorded `nine updates live`, and",
-    "each had in fact read page one and stopped. So what is in this file is",
-    "the RECENT END of ATC's list, deliberately reviewed; it is NOT everything",
-    "ATC still considers in effect, and pages 2-10 remain unread. #945 - The",
-    "ATC Trail Updates review only ever saw page one, and ATC's list runs to",
-    "ten - carries that gap and the question of where a review boundary should",
-    "sit.",
+    "TEN PAGES, NOT NINE UPDATES. ATC's listing paginates at nine, newest first,",
+    "and it is a full archive: 89 updates on 2026-08-24, the oldest 4,252 days",
+    "(11.6 years). The 2026-08-09 spike and the 2026-08-12 review each recorded",
+    "'nine updates live' and each had read page one and stopped. #945 - The ATC",
+    "Trail Updates review only ever saw page one, and ATC's list runs to ten -",
+    "is that finding; this review is its fix, and all ten pages have now been",
+    "read.",
     "",
-    "What survives of the original claim is the part that governs cost: the",
-    "TOP of that list turns over a few times a month, which is what keeps a",
-    "human gate affordable rather than aspirational.",
+    "THE TRAP IS THE SORT ORDER, so know it before reading the list again. ATC",
+    "sorts by `datePublished`, DESCENDING - verified 2026-08-24: the 89 are in",
+    "strict published order and NOT in modified order. So a notice ATC edits",
+    "every season does not move up. The three yearly bear warnings sat on page",
+    "NINE, 1,189 to 1,496 days down by the listing's own clock, having each been",
+    "edited 116 days ago. Page depth says when ATC first posted a thing and",
+    "nothing whatever about whether it is still true.",
+    "",
+    "So read by `dateModified`, which every update carries in JSON-LD on its own",
+    "page, and never by listing position:",
+    "",
+    "  curl -s https://appalachiantrail.org/trail-updates/<slug>/ \\",
+    "    | grep -o '\"dateModified\":\"[^\"]*\"'",
     "",
     "WHAT A ROW CARRIES, and what it must not. Facts and a link: the mile",
     "range, ATC's category, the states, their headline, their own last-updated",
@@ -85,13 +91,62 @@
     "keeps the banner, and a warning that is only a banner is a smaller failure",
     "than a barrier that is not there.",
     "",
-    "AN UPDATE WITH NO PLACE DOES NOT GO IN THIS FILE. Two of the nine live on",
-    "2026-08-09 were like that and neither is a defect to fix: a region-wide",
-    "severe-weather advisory spanning ten states, and a law-enforcement",
-    "request that is not a place at all. Pinning either to a mile would be",
-    "actively wrong. They are real information with no home on a map yet, and",
-    "features/ATC_TRAIL_UPDATES.md leaves that an open question rather than",
-    "inventing a screen for it.",
+    "THE REVIEW BOUNDARY, which is the question #945 left open and this is the",
+    "answer. It is NOT an age cutoff. Age is the obvious rule and it is wrong",
+    "here in both directions: the standing notices are deliberately old, and a",
+    "fresh incident report can already be over.",
+    "",
+    "**A row goes in when ATC's latest edit describes a CONDITION that is still",
+    "true. It stays out when that edit describes an INCIDENT that happened.**",
+    "",
+    "  A condition persists until something changes it, and ATC writes it that",
+    "  way: a bridge swept away, a shelter closed, a spigot off, a burn ban with",
+    "  an end date, a camping restriction, a legal requirement. 'remains',",
+    "  'continues', 'no timeline for reopening', 'until further notice', a date",
+    "  in the future.",
+    "",
+    "  An incident is a report of something that already happened, in the past",
+    "  tense, with no ongoing-status language and no later edit: a bear that",
+    "  stole a food bag at a campsite on a date, a car broken into, a person",
+    "  reported missing.",
+    "",
+    "The distinction is ATC's own, not one imposed on their prose, and their",
+    "posting pattern separates the two so cleanly that the boundary needed no",
+    "judgement call at the margin. Measured on the 89 live 2026-08-24: every",
+    "animal notice this review EXCLUDED as a past-season incident was last",
+    "edited 384+ days ago; every one it KEPT was edited within 154 days. A",
+    "230-day gap, with nothing in it. If a future review finds updates landing",
+    "in that gap, this rule is the thing to re-argue.",
+    "",
+    "Three further rules, each of which excluded something real:",
+    "",
+    "  - An all-clear stays out even while ATC keeps it posted. 'NC/TN: Iron Mtn",
+    "    Gap Reopened' is the standing example; this review added the Byron",
+    "    Herbert Reece relocation, complete with no hazard left behind. The",
+    "    counter-example is Andy Layne, ALSO a completed relocation, kept because",
+    "    its edit announces a live road-walk on a road with 'little to no",
+    "    shoulder'. Completed is not the test; whether a hazard survives it is.",
+    "  - A stated date that has passed stays out. Harriman SP's hunting season",
+    "    ends in its own text on 2025-12-31, and ATC has not said it recurs.",
+    "  - A vehicle at a trailhead is not the trail. Break-ins and catalytic-",
+    "    converter thefts are real and are somebody's problem to publish; they",
+    "    are not a condition of the footpath this map draws.",
+    "",
+    "AN UPDATE WITH NO PLACE DOES NOT GO IN THIS FILE, and this is the single",
+    "largest reason a row is missing: 20 of the 89 live on 2026-08-24. The",
+    "2026-08-09 note here used to read 'two of the nine', which was that day's",
+    "page one and not a rate - the share is roughly the same, the count was",
+    "never nine.",
+    "",
+    "None of the 20 is a defect to fix. They are region-wide advisories (a",
+    "severe-weather warning over eleven states, three yearly bear warnings that",
+    "say outright that bears live along the entire trail in that state),",
+    "law-enforcement requests, notices about trailhead car parks, and a handful",
+    "of real conditions ATC simply never gave a mile for. Pinning any of them to",
+    "a mile would be actively wrong. They are real information with no home on a",
+    "map yet, and features/ATC_TRAIL_UPDATES.md leaves that an open question",
+    "rather than inventing a screen for it - see WHAT THIS REVIEW STILL CANNOT",
+    "CARRY below for the three that most deserve one.",
     "",
     "`reviewed_at` IS NOT OPTIONAL AND IS NOT THE BAKE'S DATE. It is the day a",
     "person last checked this file against ATC's page. An empty file with no",
@@ -108,77 +163,63 @@
     "",
     "  curl -sI https://appalachiantrail.org/trail-updates/feed/ | grep -i etag",
     "",
-    "WHAT IS IN HERE NOW, reviewed 2026-08-24 against ATC's live page one.",
-    "Nine updates were on it; eight are here. Every row was re-checked against",
-    "the update's own page rather than against the listing.",
+    "WHAT IS IN HERE NOW, reviewed 2026-08-24 against all ten pages. 89 updates",
+    "were live; 35 are here. Every row was read on its own page, and every",
+    "`updated_at` is that page's JSON-LD `dateModified`.",
     "",
-    "The one on page one that is not here is not an omission:",
+    "The other 54 break down like this, and none of them is an omission:",
     "",
-    "  NC/TN: Iron Mtn Gap Reopened     the trail is OPEN again, and it states",
-    "                                   five different ranges accumulated over",
-    "                                   months of edits. An ingest that only",
-    "                                   ever adds closures would have barred a",
-    "                                   trail people are walking.",
+    "  15  a past-season animal incident      the 384-day rule above",
+    "  20  no place on the A.T.               no mile, region-wide, or off the",
+    "                                         NOBO measure entirely",
+    "   4  a vehicle at a trailhead           not a condition of the footpath",
+    "   3  an all-clear                       the thing it warned about ended",
+    "   2  a stated date that has passed",
+    "   4  a law-enforcement request          missing persons; not the trail",
+    "   1  a duplicate                        Straight Branch's A.T. closure IS",
+    "                                         the Creeper closure, already here",
+    "   5  currency unknown, so left out      see 'omit rather than guess'",
     "",
-    "Two excluded by the 2026-08-12 review are still on page one and still",
-    "excluded, for the reasons given then:",
+    "FOUR ROWS OBSTRUCT THE TRAIL, up from one. Three are new and all three are",
+    "infrastructure that is simply gone, each with an official detour ATC",
+    "publishes:",
     "",
-    "  NC - VT: Severe Weather          eleven states, no mile reference. Real",
-    "                                   information with no place on a map.",
-    "  New York: Help Identifying...    a law-enforcement request. Not a place",
-    "                                   at all, and pinning it to one would be",
-    "                                   actively wrong.",
+    "  Harpers Ferry: Footbridge Closure       1026.7   the way across the Potomac",
+    "  SW Virginia: VA Creeper Closure        476.6-485.8  A.T. closed; reopens",
+    "                                                   2027-03-31 per the USFS",
+    "  Tennessee: Nolichucky River Detour       344.6   Chestoa Bridge swept away",
+    "                                                   by Helene; no ferry in",
+    "                                                   2026, a 3.6-mile road walk",
+    "  Great Gulf: Bridge Closure              1873.8   closed by the USFS, and",
+    "                                                   'hikers may be cited for",
+    "                                                   using the bridge'",
     "",
-    "NEW IN THIS REVIEW, and why each is placed the way it is:",
+    "The Creeper closure is worth naming twice: it is the one",
+    "features/ATC_TRAIL_UPDATES.md quotes throughout as the case this feature",
+    "exists for, it has been live and unpublished this whole time, and the",
+    "2026-08-12 review recorded it as 'gone from ATC's page' when it had only",
+    "moved to page two.",
     "",
-    "  Central VA: War Spur Bridge Closed      NOBO 670.2, obstructs: NO.",
-    "    ATC's own sentence is why: the bridge at War Spur Shelter is closed",
-    "    with a cracked stringer, but `the creek is a relatively simple",
-    "    crossing/rock hop except during extreme rainstorms`. A hiker walks",
-    "    through, so this is a dot and a banner rather than a barrier. The",
-    "    hazard is real in high water, and the banner is what carries it.",
+    "Everything else is a dot and a banner rather than a barrier. Among them,",
+    "the ones a hiker is most likely to want and could not get before: 501",
+    "Shelter and Roan High Knob and Laurel Fork and James Fry all closed with no",
+    "reopening date, Pochuck Mountain Shelter's spigot off 'for the foreseeable",
+    "future' in a section ATC says has no good natural water, Max Patch camping",
+    "shut through June 2029, Roan Mountain's burn ban to 2030, and the Pemi",
+    "Wilderness bear-canister requirement, which is a legal one.",
     "",
-    "  Virginia: Andy Layne Trail Relocation   NOBO 720.6, obstructs: NO.",
-    "    The Andy Layne Trail is a blue-blazed SIDE trail to Tinker Cliffs and",
-    "    not the A.T., so nothing here stops an A.T. hiker. 720.6 is its",
-    "    junction with the A.T., which the relocation did not move - that",
-    "    rebuilt the lower end near the trailhead. ATC's 08/20/2026 edit says",
-    "    the relocation is complete, so the temporary detour has ENDED. The row",
-    "    is here rather than dropped as an all-clear because what the edit",
-    "    announces is still live and still a hazard: the trailhead moved 0.8",
-    "    miles, and Triple Crown backpackers now road-walk that distance on",
-    "    Catawba Road/VA 779, which ATC says has `little to no shoulder`.",
+    "WHAT THIS REVIEW STILL CANNOT CARRY, and it is worth writing down because",
+    "each is a real thing a hiker would want. All are excluded for the same",
+    "reason - ATC published no mile - and inventing one would be exactly the",
+    "confident wrong answer this file exists to prevent:",
     "",
-    "Both miles were resolved against ATC's own half-mile point layer on",
-    "2026-08-24 and land where ATC's prose says they should: 670.2 falls",
-    "between the 670.0 and 670.5 points at ~37.397, -80.473 (War Spur Shelter,",
-    "Jefferson NF), and 720.6 between 720.5 and 721.0 at ~37.4375, -79.998",
-    "(Tinker Cliffs).",
+    "  APPA Water System Closures (x2)   six wells closed across NY and CT",
+    "  Green Mountain NF: Food Storage   a forest order over the whole VT A.T.",
+    "  New York: Bear Mtn Detour         a live reroute running to summer 2027",
     "",
-    "Of the eight rows here, exactly ONE obstructs the trail: the Harpers",
-    "Ferry footbridge. Three animal warnings, a closed shelter, a closed bridge",
-    "with a rock-hop around it, a side-trail relocation, a yearly flooding",
-    "reminder and the Helene advisory are all real, and none of them stops a",
-    "hiker walking through - so they are dots on the map and a banner rather",
-    "than barriers across it.",
-    "",
-    "EVERY `updated_at` HERE IS ATC'S `dateModified`, read from the JSON-LD on",
-    "each update's own page and not from the listing. The listing's `N DAYS",
-    "AGO` is computed from `datePublished`, and on some rows the two differ by",
-    "weeks: Harpers Ferry reads 33 days old on the listing (published 07/21)",
-    "against a `dateModified` of 07/31. All six rows carried over from the",
-    "2026-08-12 review re-verified EXACTLY against `dateModified`, so none was",
-    "corrected. Helene is the odd one, and the oddity is ATC's rather than a",
-    "transcription error: its `dateModified` (2025-09-23) is nearly a year",
-    "BEFORE its `datePublished` (2026-07-29).",
-    "",
-    "The VA Creeper closure that features/ATC_TRAIL_UPDATES.md quotes",
-    "throughout was recorded on 2026-08-12 as gone from ATC's page. It was not.",
-    "It had moved to page two, where it is still live today, and the",
-    "disappearance was the pagination artifact #945 describes. The staleness",
-    "argument that note was making still stands on its own - `reviewed_at` and",
-    "`source_marker` are not decoration - but the evidence offered for it was",
-    "wrong, and is corrected here rather than left to be re-derived."
+    "features/ATC_TRAIL_UPDATES.md's open question about where an unplaceable",
+    "notice goes is now four notices wide rather than two, and three of them are",
+    "water or a legal requirement."
   ],
   "source": {
     "key": "atc_trail_updates",
@@ -189,7 +230,7 @@
     "licence": "Facts and a link only - see sources.json's `atc_trail_updates` entry for the full statement and #458 for how it was settled."
   },
   "reviewed_at": "2026-08-24",
-  "reviewed_by": "Claude Code, against appalachiantrail.org/trail-updates page one - confirmed at merge",
+  "reviewed_by": "Claude Code, against all ten pages of appalachiantrail.org/trail-updates - confirmed at merge",
   "source_marker": "W/\"44a7397c2a3cba9209137bb84f5fc6fc\"",
   "updates": [
     {
@@ -299,6 +340,364 @@
       "obstructs_trail": false,
       "updated_at": "2025-09-23T17:51:09Z",
       "source_url": "https://appalachiantrail.org/trail-updates/helene-storm-damage/"
+    },
+    {
+      "atc_id": "georgia-bear-activity-at-cooper-gap",
+      "title": "Georgia: Bear Activity at Cooper Gap",
+      "category": "Animal",
+      "states": [
+        "GA"
+      ],
+      "start_mile_marker": 12.3,
+      "end_mile_marker": 12.3,
+      "obstructs_trail": false,
+      "updated_at": "2026-03-23T14:43:26Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/georgia-bear-activity-at-cooper-gap/"
+    },
+    {
+      "atc_id": "georgia-bear-activity-at-woods-hole-shelter",
+      "title": "Georgia: Bear Activity at Woods Hole Shelter",
+      "category": "Animal",
+      "states": [
+        "GA"
+      ],
+      "start_mile_marker": 27.7,
+      "end_mile_marker": 27.7,
+      "obstructs_trail": false,
+      "updated_at": "2026-04-20T16:32:28Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/georgia-bear-activity-at-woods-hole-shelter/"
+    },
+    {
+      "atc_id": "georgia-bear-activity-at-swaim-gap",
+      "title": "Georgia: Bear Activity at Swaim Gap",
+      "category": "Animal",
+      "states": [
+        "GA"
+      ],
+      "start_mile_marker": 33.6,
+      "end_mile_marker": 33.6,
+      "obstructs_trail": false,
+      "updated_at": "2026-05-20T14:02:29Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/georgia-bear-activity-at-swaim-gap/"
+    },
+    {
+      "atc_id": "north-carolina-bear-activity-at-muskrat-creek-shelter",
+      "title": "North Carolina: Bear Activity at Muskrat Creek Shelter",
+      "category": "Animal",
+      "states": [
+        "GA",
+        "NC"
+      ],
+      "start_mile_marker": 81.2,
+      "end_mile_marker": 81.2,
+      "obstructs_trail": false,
+      "updated_at": "2026-06-11T14:31:59Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/north-carolina-bear-activity-at-muskrat-creek-shelter/"
+    },
+    {
+      "atc_id": "north-carolina-bear-activity-at-standing-indian-shelter",
+      "title": "North Carolina: Bear Activity at Standing Indian Shelter",
+      "category": "Animal",
+      "states": [
+        "GA",
+        "NC"
+      ],
+      "start_mile_marker": 86.1,
+      "end_mile_marker": 86.1,
+      "obstructs_trail": false,
+      "updated_at": "2026-05-20T13:59:33Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/north-carolina-bear-activity-at-standing-indian-shelter/"
+    },
+    {
+      "atc_id": "stecoah-gap-road-work",
+      "title": "Stecoah Gap: Road Work",
+      "category": "Detour",
+      "states": [
+        "NC"
+      ],
+      "start_mile_marker": 150.5,
+      "end_mile_marker": 150.5,
+      "obstructs_trail": false,
+      "updated_at": "2026-06-08T16:56:39Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/stecoah-gap-road-work/"
+    },
+    {
+      "atc_id": "great-smoky-mtns-np-backcountry-permit-change",
+      "title": "Great Smoky Mtns NP: Backcountry Permit Change",
+      "category": "Permits",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "start_mile_marker": 167.0,
+      "end_mile_marker": 239.4,
+      "obstructs_trail": false,
+      "updated_at": "2026-04-09T19:03:40Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/great-smoky-mtns-np-backcountry-permit-change/"
+    },
+    {
+      "atc_id": "pisgah-nf-max-patch-camping-standing-closure",
+      "title": "NC/TN: No Camping on Max Patch",
+      "category": "Closure",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "start_mile_marker": 255.1,
+      "end_mile_marker": 255.1,
+      "obstructs_trail": false,
+      "updated_at": "2026-06-22T14:28:27Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/pisgah-nf-max-patch-camping-standing-closure/"
+    },
+    {
+      "atc_id": "nolichucky-river-detour",
+      "title": "Tennessee: Nolichucky River Detour",
+      "category": "Detour",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "start_mile_marker": 344.6,
+      "end_mile_marker": 344.6,
+      "obstructs_trail": true,
+      "updated_at": "2025-12-10T21:44:22Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/nolichucky-river-detour/"
+    },
+    {
+      "atc_id": "roan-mountain-five-year-burn-ban",
+      "title": "Roan Mountain: Five Year Burn Ban",
+      "category": "Fire",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "start_mile_marker": 374.1,
+      "end_mile_marker": 392.6,
+      "obstructs_trail": false,
+      "updated_at": "2025-09-11T21:44:37Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/roan-mountain-five-year-burn-ban/"
+    },
+    {
+      "atc_id": "roan-high-knob-shelter-closed",
+      "title": "Roan High Knob: Shelter Closed",
+      "category": "Closure",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "start_mile_marker": 379.3,
+      "end_mile_marker": 379.3,
+      "obstructs_trail": false,
+      "updated_at": "2025-09-23T21:19:47Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/roan-high-knob-shelter-closed/"
+    },
+    {
+      "atc_id": "laurel-fork-shelter-closed",
+      "title": "Laurel Fork: Shelter Closed",
+      "category": "Closure",
+      "states": [
+        "TN"
+      ],
+      "start_mile_marker": 422.2,
+      "end_mile_marker": 422.2,
+      "obstructs_trail": false,
+      "updated_at": "2025-03-24T17:39:40Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/laurel-fork-shelter-closed/"
+    },
+    {
+      "atc_id": "sw-virginia-va-creeper-trail-closure-detour",
+      "title": "SW Virginia: VA Creeper Trail Closure & Detour",
+      "category": "Detour",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 476.6,
+      "end_mile_marker": 485.8,
+      "obstructs_trail": true,
+      "updated_at": "2026-07-17T13:33:24Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/sw-virginia-va-creeper-trail-closure-detour/"
+    },
+    {
+      "atc_id": "sw-virginia-fire-restrictions-for-mt-rogers-high-country",
+      "title": "SW Virginia: Fire Restrictions for Mt Rogers High Country",
+      "category": "Alert",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 489.4,
+      "end_mile_marker": 502.4,
+      "obstructs_trail": false,
+      "updated_at": "2026-05-11T19:49:35Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/sw-virginia-fire-restrictions-for-mt-rogers-high-country/"
+    },
+    {
+      "atc_id": "dickey-gap-comers-creek-high-water-route",
+      "title": "Dickey Gap/Comers Creek: High Water Route",
+      "category": "Detour",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 518.9,
+      "end_mile_marker": 518.9,
+      "obstructs_trail": false,
+      "updated_at": "2021-04-08T18:15:42Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/dickey-gap-comers-creek-high-water-route/"
+    },
+    {
+      "atc_id": "lick-creek-bridge-washout",
+      "title": "Lick Creek: Bridge Washout",
+      "category": "Detour",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 563.8,
+      "end_mile_marker": 563.8,
+      "obstructs_trail": false,
+      "updated_at": "2026-07-20T13:57:19Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/lick-creek-bridge-washout/"
+    },
+    {
+      "atc_id": "central-va-bear-activity-at-wapiti-shelter",
+      "title": "Central VA: Bear Activity near Wapiti Shelter",
+      "category": "Animal",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 620.5,
+      "end_mile_marker": 620.5,
+      "obstructs_trail": false,
+      "updated_at": "2026-04-13T17:10:39Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/central-va-bear-activity-at-wapiti-shelter/"
+    },
+    {
+      "atc_id": "virginia-bear-activity-at-bailey-gap-shelter",
+      "title": "Virginia: Bailey Gap Shelter Closed Due to Bear Activity",
+      "category": "Animal",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 660.9,
+      "end_mile_marker": 660.9,
+      "obstructs_trail": false,
+      "updated_at": "2026-04-21T20:43:11Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/virginia-bear-activity-at-bailey-gap-shelter/"
+    },
+    {
+      "atc_id": "craig-creek-high-water-route",
+      "title": "Craig Creek: High Water Route",
+      "category": "Detour",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 689.5,
+      "end_mile_marker": 689.5,
+      "obstructs_trail": false,
+      "updated_at": "2025-07-31T17:50:58Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/craig-creek-high-water-route/"
+    },
+    {
+      "atc_id": "mcafee-knb-area-ongoing-bear-activity",
+      "title": "McAfee Knob Area: Ongoing Bear Activity",
+      "category": "Animal",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 713.3,
+      "end_mile_marker": 713.3,
+      "obstructs_trail": false,
+      "updated_at": "2026-06-16T20:28:23Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/mcafee-knb-area-ongoing-bear-activity/"
+    },
+    {
+      "atc_id": "pennsylvania-james-fry-shelter-closed",
+      "title": "Pennsylvania: James Fry Shelter Closed",
+      "category": "Closure",
+      "states": [
+        "PA"
+      ],
+      "start_mile_marker": 1113.1,
+      "end_mile_marker": 1113.1,
+      "obstructs_trail": false,
+      "updated_at": "2026-07-14T22:09:28Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/pennsylvania-james-fry-shelter-closed/"
+    },
+    {
+      "atc_id": "pennsylvania-501-shelter-closed",
+      "title": "Pennsylvania: 501 Shelter Closed",
+      "category": "Closure",
+      "states": [
+        "PA"
+      ],
+      "start_mile_marker": 1196.7,
+      "end_mile_marker": 1196.7,
+      "obstructs_trail": false,
+      "updated_at": "2026-01-21T14:13:09Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/pennsylvania-501-shelter-closed/"
+    },
+    {
+      "atc_id": "george-w-outerbridge-shelter-bears-standing-warning",
+      "title": "Pennsylvania: George W. Outerbridge Shelter Yearly Bear Warning",
+      "category": "Animal",
+      "states": [
+        "PA"
+      ],
+      "start_mile_marker": 1260.3,
+      "end_mile_marker": 1260.3,
+      "obstructs_trail": false,
+      "updated_at": "2026-04-30T20:46:35Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/george-w-outerbridge-shelter-bears-standing-warning/"
+    },
+    {
+      "atc_id": "pochuck-mtn-shelter-water-spigot-off",
+      "title": "Pochuck Mtn Shelter: Water Spigot Off",
+      "category": "Water",
+      "states": [
+        "NJ"
+      ],
+      "start_mile_marker": 1340.3,
+      "end_mile_marker": 1340.3,
+      "obstructs_trail": false,
+      "updated_at": "2025-07-11T23:47:57Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/pochuck-mtn-shelter-water-spigot-off/"
+    },
+    {
+      "atc_id": "macedonia-brook-bridge-closure-trail-reroute",
+      "title": "Macedonia Brook: Bridge Closure & Trail Reroute",
+      "category": "Detour",
+      "states": [
+        "CT"
+      ],
+      "start_mile_marker": 1471.6,
+      "end_mile_marker": 1471.6,
+      "obstructs_trail": false,
+      "updated_at": "2025-07-29T20:56:24Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/macedonia-brook-bridge-closure-trail-reroute/"
+    },
+    {
+      "atc_id": "new-hampshire-bear-can-requirement-in-the-pemi-wilderness",
+      "title": "New Hampshire: Bear Can Requirement in the Pemi Wilderness",
+      "category": "Alert",
+      "states": [
+        "NH"
+      ],
+      "start_mile_marker": 1827.5,
+      "end_mile_marker": 1827.5,
+      "obstructs_trail": false,
+      "updated_at": "2026-04-09T14:27:42Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/new-hampshire-bear-can-requirement-in-the-pemi-wilderness/"
+    },
+    {
+      "atc_id": "great-gulf-bridge-closure",
+      "title": "Great Gulf: Bridge Closure",
+      "category": "Detour",
+      "states": [
+        "NH"
+      ],
+      "start_mile_marker": 1873.8,
+      "end_mile_marker": 1873.8,
+      "obstructs_trail": true,
+      "updated_at": "2026-06-04T20:29:12Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/great-gulf-bridge-closure/"
     }
   ]
 }

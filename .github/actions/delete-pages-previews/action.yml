@@ -20,13 +20,26 @@
 # selected only on an exact match against that alias. `pr-28` never selects
 # `pr-281`. Nothing about "which deployments" is inferred from position,
 # recency, or count.
+#
+# WHAT THIS CANNOT PROMISE. That the URL stops answering. Cloudflare accepts
+# the deletion and reports success, and on the one case anybody here has been
+# able to observe the alias went on serving the deleted build for at least 32
+# minutes (#1004, measured 2026-08-25 on `pr-1003`). So the `reachable` output
+# below is a reading taken straight after, and the comment on the pull request
+# says what was measured rather than what was requested. It stays a warning
+# rather than a failure: nothing in this repository can fix a Cloudflare
+# behaviour, and a red check on every close would bury the one this action
+# does have teeth for - a deletion that was refused.
+#
+# It also reaches only one pull request, by construction. Everything orphaned
+# before this action worked at all is `scripts/sweep-pages-previews.sh`.
 
 name: Delete Pages previews
 description: Delete every Cloudflare Pages deployment for one pull request's preview alias.
 
 inputs:
   api-token:
-    description: Cloudflare API token with "Cloudflare Pages: Edit".
+    description: 'Cloudflare API token with "Cloudflare Pages: Edit" permission.'
     required: true
   account-id:
     description: Cloudflare account the project belongs to.
@@ -54,6 +67,14 @@ outputs:
       the step - a cleanup that quietly half-worked leaves previews up while
       reporting that it removed them, which is worse than not having run.
     value: ${{ steps.delete.outputs.failed }}
+  reachable:
+    description: >-
+      What the preview URL answered immediately after the deletions - an HTTP
+      status, `000` if it could not be reached at all, or `unchecked` if the
+      run did not get as far as asking. A measurement at one moment, not a
+      promise about the next hour, and deliberately not something that fails
+      the step. See the note in delete.sh and #1004.
+    value: ${{ steps.delete.outputs.reachable }}
 
 runs:
   using: composite

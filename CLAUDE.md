@@ -131,6 +131,56 @@ Leave that line alone and name the issue in full in the prose above it.
 This governs what you write. It is not a licence to go retitling references in files you are
 not otherwise touching.
 
+## Show what you changed
+
+**Every pull request body carries a `## Screenshot` section**, and the template
+has it. A reviewer who can see the change has already been answered; a reviewer
+reading "adds the legend toggle" has to build the picture in their head and then
+open the branch to check it against yours.
+
+A UI change gets a picture of the thing that changed. A pipeline or backend
+change — the common case here — gets whatever the evidence actually is: a
+before-and-after table of the numbers, a test going red on the defect and green
+on the fix, a render. A change with genuinely nothing to show gets one line
+saying so and why. That line is a real answer and takes ten seconds.
+
+**An unrelated screenshot attached to fill the section is worse than the line.**
+It looks like evidence and is not, which is the failure the standard at the top
+of this file exists to prevent.
+
+**A change a hiker can see points the camera at itself.** The preview comment's
+pictures come from shot recipes — small Playwright drivers in
+`client/preview-shots/`, each reaching one screen — and `pr-preview.yml`
+photographs every recipe your pull request adds or changes, leading the comment
+with those shots (#998). So a UI change is not finished until a recipe reaches
+the screen it changed: add one, or touch the existing recipe for that screen so
+it is re-photographed. The camera runs in CI, where the map data is real and
+the image has somewhere to live — two things an agent sandbox cannot give you.
+The standing two shots, first run and the trail screen, stay automatic; they
+answer "does the app still come up", which was the *only* question the comment
+answered before #998, and a picture of the entry page is not evidence about the
+water card.
+
+You still write the `## Screenshot` section: which shot to look at and what is
+different in it, plus everything a recipe cannot reach — the numbers a pipeline
+change moves, or the line saying there is nothing to show.
+[`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md)
+is the rest: the recipe contract, `cd client && node scripts/screenshot.mjs`
+for a one-off frame by hand, where an image can be hosted at all given that a
+pull request body cannot hold bytes, and the four things that must never appear
+in one — a signed-in account, anybody's reports or photos, a dispersed campsite
+at a readable zoom, a real location fix. A recipe is those rules on a timer: it
+re-photographs whenever touched, so a recipe that drives into somebody's data
+publishes it on every future pull request too.
+
+**No screenshot is ever committed — recipes are, pixels are not.** The captures
+are written into the directory being uploaded to Cloudflare Pages, so each is
+served by the same deployment as the app it shows and is removed with it when
+the pull request closes. That is the trade and it is deliberate: the picture
+lasts exactly as long as review does, and in exchange nothing permanent enters
+a public tree. Committing one costs 79,290 measured bytes that cannot be
+retracted, which is why the first version of this rule was replaced.
+
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up

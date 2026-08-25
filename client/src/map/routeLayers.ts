@@ -22,11 +22,19 @@ export const ROUTE_SOURCE_ID = 'route'
 export const ROUTE_CASING_LAYER_ID = 'route-casing'
 export const ROUTE_LINE_LAYER_ID = 'route-line'
 export const ROUTE_POINT_LAYER_ID = 'route-points'
+export const ROUTE_LABEL_LAYER_ID = 'route-point-labels'
 
 /** Which end of the route a dropped point is, for the paint below. Travels as
  *  a property, not the feature id - MapLibre parseInts string feature ids
  *  (see closureLayers.ts's CLOSURE_ID_PROPERTY). */
 export const ROUTE_POINT_ROLE_PROPERTY = 'route_point_role'
+
+/** The mile a dropped point sits at, already formatted (#973) - the frame's
+ *  `MI 470.8`. Formatted in the shell rather than by a MapLibre expression,
+ *  because the hiker's unit system decides it and `formatDistance` is the one
+ *  place that knows: a label reading "MI 470.8" to somebody whose whole app
+ *  is in kilometres is a second scale nobody asked for. */
+export const ROUTE_POINT_LABEL_PROPERTY = 'route_point_label'
 
 /** What the canvas needs to draw a route: where the line runs and where the
  *  dropped points sit. Coordinates, not miles - turning miles into geometry
@@ -36,7 +44,13 @@ export interface RouteDrawing {
   /** One entry per leg, each multi-part where the centerline is - straight
    *  from trailSlice. */
   legs: Array<Array<Array<[number, number]>>>
-  points: Array<{ lon: number; lat: number; role: 'start' | 'via' | 'end' }>
+  points: Array<{
+    lon: number
+    lat: number
+    role: 'start' | 'via' | 'end'
+    /** Already in the hiker's units - see ROUTE_POINT_LABEL_PROPERTY. */
+    label: string
+  }>
 }
 
 // Fixed ink, both themes, like the closure bands and the warning pins: an
@@ -44,7 +58,10 @@ export interface RouteDrawing {
 // the brand primary's own value; the casing is the paper tone that gives it
 // an edge against both the light sheet and the dark one - the same job the
 // trail casing does for the blaze.
-const ROUTE_INK = '#355c3a'
+// Exported since #978: the day-hike builder shares this ink (the
+// maintainer's call, 2026-08-25) - one colour meaning "your route", however
+// the two builders differ in draw order.
+export const ROUTE_INK = '#355c3a'
 const ROUTE_CASING = '#fffdf7'
 
 export function buildRouteSource(): GeoJSONSourceSpecification {
@@ -101,6 +118,40 @@ export function buildRouteLayers(): LayerSpecification[] {
         'circle-stroke-width': 2.5,
       },
     },
+    {
+      // The frame labels every dropped point with its mile, and the reason is
+      // not decoration: a route is a list of miles everywhere else in this
+      // app - the stop rows, the legs, the plan it becomes - and a map that
+      // draws the same points as unlabelled dots makes the hiker hold the
+      // correspondence in their head.
+      id: ROUTE_LABEL_LAYER_ID,
+      type: 'symbol',
+      source: ROUTE_SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Point'],
+      layout: {
+        'text-field': ['get', ROUTE_POINT_LABEL_PROPERTY] as unknown as string,
+        'text-size': 11,
+        // The one fontstack bundled under public/glyphs (#986). 'Noto Sans
+        // Bold' ships no glyphs, so the label rendered nothing at all - and
+        // offline, where this app lives, there is nowhere to fetch it from.
+        'text-font': ['Noto Sans Regular'],
+        'text-offset': [0, -1.35],
+        'text-anchor': 'bottom',
+        // Never dropped for collision. A route's points are few and every one
+        // of them is a thing the hiker put there deliberately; hiding one
+        // because a trail label got there first would be the map editing the
+        // hiker's own work.
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': ROUTE_INK,
+        // The paper tone as a halo, the same edge the line's casing gives it,
+        // so the label holds on both sheets without a second colour.
+        'text-halo-color': ROUTE_CASING,
+        'text-halo-width': 1.6,
+      },
+    },
   ]
 }
 
@@ -115,7 +166,10 @@ interface RouteFeatureCollection {
     | {
         type: 'Feature'
         geometry: { type: 'Point'; coordinates: [number, number] }
-        properties: { [ROUTE_POINT_ROLE_PROPERTY]: 'start' | 'via' | 'end' }
+        properties: {
+          [ROUTE_POINT_ROLE_PROPERTY]: 'start' | 'via' | 'end'
+          [ROUTE_POINT_LABEL_PROPERTY]: string
+        }
       }
   >
 }
@@ -135,7 +189,10 @@ export function routeFeatureCollection(drawing: RouteDrawing): RouteFeatureColle
           type: 'Point' as const,
           coordinates: [point.lon, point.lat] as [number, number],
         },
-        properties: { [ROUTE_POINT_ROLE_PROPERTY]: point.role },
+        properties: {
+          [ROUTE_POINT_ROLE_PROPERTY]: point.role,
+          [ROUTE_POINT_LABEL_PROPERTY]: point.label,
+        },
       })),
     ],
   }

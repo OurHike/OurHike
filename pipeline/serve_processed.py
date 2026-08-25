@@ -6,7 +6,7 @@ Point the client at this instead of a real bucket:
     cd ../client && VITE_DATA_BASE_URL=http://localhost:8787 npm run build
     npm run preview
 
-Two things this does that http.server does NOT, both of which the client
+Three things this does that http.server does NOT, all of which the client
 depends on:
 
   1. Byte ranges. PMTiles reads an archive by range - a header, then a
@@ -19,11 +19,30 @@ depends on:
      origin and the data from another, which is also true in production, so
      testing without it would pass locally and fail on the first real deploy.
 
+  3. `latest.json`, synthesized. Since #197 the client checks every artifact
+     it draws against its published sha256, and `publish.py` writes that
+     manifest into the BUCKET rather than into data/processed/ - so a local
+     directory has the artifacts and nothing that vouches for them. Most
+     artifacts treat an absent hash as the pre-#197 downgrade and draw
+     anyway, which is why this was survivable; the nearby-trail network
+     (#950) does not, because unverifiable trail lines are a trail drawn
+     where the trail is not. Without this, the one map that most needs
+     looking at before it is published is the one that cannot be looked at.
+
+     Synthesized from the files on disk rather than from the export
+     manifests: the bucket key IS the relative path, so hashing what is here
+     needs no second copy of publish.py's key logic to go stale. It is NOT
+     `collect_artifacts()` and deliberately does not apply its licence gate -
+     that gate decides what reaches a hiker, and this server reaches nobody
+     but the person running it.
+
 This is a development tool. It is single-threaded, does no authentication and
 should not be exposed beyond localhost.
 """
 
 import argparse
+import hashlib
+import json
 import re
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -37,6 +56,56 @@ PROCESSED_DIR = Path(__file__).resolve().parent / "data" / "processed"
 RANGE_PATTERN = re.compile(r"^bytes=(\d+)-(\d*)$")
 
 CHUNK_SIZE = 1 << 20
+
+# The manifest key the client reads (lib/dataManifest.ts's MANIFEST_KEY).
+MANIFEST_KEY = "latest.json"
+
+# Artifacts larger than this are served but not hashed into the synthesized
+# manifest. Hashing a 1.18 GB PMTiles archive on every manifest request would
+# make the dev server unusable, and a raster tier is exactly the artifact
+# whose absent hash is harmless: it is imagery, checked by pmtiles' own
+# directory structure, and not a line anybody navigates by. The client reads a
+# missing entry as "no published hash", which is the state it was already in
+# before this function existed.
+MAX_HASHED_BYTES = 64 << 20
+
+# (path, mtime_ns, size) -> sha256. A re-export changes at least one of the
+# three, so this cannot serve a hash for bytes it no longer holds.
+_HASH_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def _hashed(path: Path) -> str:
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    if key not in _HASH_CACHE:
+        digest = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(CHUNK_SIZE):
+                digest.update(chunk)
+        _HASH_CACHE[key] = digest.hexdigest()
+    return _HASH_CACHE[key]
+
+
+def build_manifest(directory: Path) -> dict:
+    """A `latest.json` describing what is on disk right now.
+
+    Shaped like publish.py's - `{"artifacts": {key: {"sha256": ...}}}` - and
+    keyed by each file's path relative to the served directory, which is what
+    the bucket key is. Skips the manifest itself and the per-export
+    `*_manifest.json` sidecars, which are pipeline bookkeeping rather than
+    artifacts a client fetches.
+    """
+    artifacts = {}
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file():
+            continue
+        name = path.relative_to(directory).as_posix()
+        if name == MANIFEST_KEY or name.endswith("_manifest.json") or name == "manifest.json":
+            continue
+        if path.stat().st_size > MAX_HASHED_BYTES:
+            continue
+        artifacts[name] = {"sha256": _hashed(path)}
+    return {"artifacts": artifacts}
 
 
 class RangeRequestHandler(SimpleHTTPRequestHandler):
@@ -55,6 +124,20 @@ class RangeRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        # A real `latest.json` on disk wins, so that serving a directory
+        # copied out of the bucket behaves exactly as the bucket did.
+        if self.path.lstrip("/").split("?")[0] == MANIFEST_KEY:
+            root = Path(self.translate_path("/"))
+            if not (root / MANIFEST_KEY).is_file():
+                body = json.dumps(build_manifest(root)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
         range_header = self.headers.get("Range")
         if range_header is None:
             super().do_GET()

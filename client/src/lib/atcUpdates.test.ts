@@ -9,6 +9,7 @@ import {
   atcUpdateForBandId,
   atcUpdateLanes,
   isBroadAtcAdvisory,
+  isReviewedByAPerson,
   obstructsTheTrail,
   type AtcUpdate,
 } from './atcUpdates'
@@ -290,5 +291,47 @@ describe('a region-wide ATC advisory', () => {
     })
 
     expect(atcUpdateBanner(shelter, 1503.6, 'NOBO')).toContain('Closure here')
+  })
+})
+
+describe('rows nobody here has read (#963)', () => {
+  // The hourly job publishes ATC notices posted since the last human review,
+  // through a deliberately narrow gate. What follows is about the half of
+  // that which is a UI problem: an unread row must not be rendered in the
+  // same voice as one somebody checked.
+
+  it('treats a row with no review_state as reviewed, because older artifacts had none', () => {
+    // A deployed client meeting an artifact baked before #963. Every row in
+    // one of those was reviewed by definition, so absent has to read as
+    // reviewed rather than as unknown - the other way round would relabel
+    // every existing notice as unchecked overnight.
+    expect(isReviewedByAPerson(update())).toBe(true)
+  })
+
+  it('knows an automatic row from a reviewed one', () => {
+    expect(isReviewedByAPerson(update({ review_state: 'unreviewed' }))).toBe(false)
+    expect(isReviewedByAPerson(update({ review_state: 'reviewed' }))).toBe(true)
+  })
+
+  it('says so on the banner, because the position claim is ours and not ATC’s', () => {
+    // ATC's category, headline and mile are theirs and need no hedge. "here"
+    // is OurHike's, derived from a mile a regex read off their prose.
+    const banner = atcUpdateBanner(update({ review_state: 'unreviewed' }), 480, 'NOBO')
+
+    expect(banner).toContain('not checked by OurHike')
+  })
+
+  it('leaves a reviewed banner alone', () => {
+    expect(atcUpdateBanner(update(), 480, 'NOBO')).not.toContain('not checked')
+  })
+
+  it('marks an automatic notice a hiker has not reached yet', () => {
+    const ahead = update({
+      review_state: 'unreviewed',
+      start_mile_marker: 500,
+      end_mile_marker: 500,
+    })
+
+    expect(atcUpdateBanner(ahead, 480, 'NOBO')).toContain('not checked by OurHike')
   })
 })

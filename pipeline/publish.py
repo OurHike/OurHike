@@ -384,6 +384,12 @@ def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, 
         )
 
 
+# The published key for export_nearby_trails.py's artifact. Named here rather
+# than inline so test_published_key_contract.py and the client's
+# lib/config.ts have one spelling to agree with.
+NEARBY_TRAILS_KEY = "nearby_trails.geojson"
+
+
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
     dict, reading whichever of Export's manifests actually exist (a fresh
@@ -411,6 +417,91 @@ def collect_artifacts() -> dict[str, dict]:
                 "path": manifest["overview"]["path"],
                 "sha256": manifest["overview"]["sha256"],
             }
+
+    # The trail lines other organizations maintain (#950,
+    # export_nearby_trails.py). THE ONLY ARTIFACT IN THIS FUNCTION WITH A
+    # LICENCE GATE IN FRONT OF IT, and the gate is here rather than in the
+    # export for a reason worth stating: the export has to write its file so a
+    # reviewer can look at the map, and "written" and "published" are exactly
+    # the two things sources.json's `reaches_hikers` field exists to keep
+    # apart. NYS OPRHP and NYNJTC have both been asked for terms and neither
+    # has answered (the `oprhp_licence` and `nynjtc_licence` blocks record
+    # both asks), so today every source in that manifest is held back and this
+    # branch uploads nothing.
+    #
+    # It is one field per source, not a switch here: when a licence answer
+    # lands, flipping `reaches_hikers` in the registry and re-running the
+    # export is the whole change. Nothing in this file needs editing, which is
+    # the point - a publish path that needed a second edit is a publish path
+    # somebody eventually forgets to make.
+    #
+    # ALL-OR-NOTHING, deliberately. One artifact holds every source's lines,
+    # so a partial publish would mean re-cutting the file, and a file that
+    # sometimes contains a steward and sometimes does not is worse than one
+    # that waits. If the sources ever answer separately, splitting the
+    # artifact per steward is the change to make - not relaxing this test.
+    nearby_manifest = PROCESSED_DIR / "nearby_trails_manifest.json"
+    if nearby_manifest.exists():
+        manifest = json.loads(nearby_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            # Loud, because silence here is indistinguishable from the export
+            # never having run - and the difference between "we have no data"
+            # and "we have data we may not publish" is the whole subject.
+            print(
+                f"  HELD BACK: {NEARBY_TRAILS_KEY} not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json. "
+                f"See that file's licence blocks for what each steward was asked."
+            )
+        else:
+            artifacts[NEARBY_TRAILS_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The junction graph derived from those same lines (#974,
+    # build_trail_graph.py). It carries the nearby manifest's `sources` forward
+    # so the SAME reaches_hikers check applies: topology of data a steward has
+    # not licensed is still that steward's data, and a graph that published
+    # while its lines were held back would let a phone route over trails it is
+    # not allowed to draw.
+    graph_manifest = PROCESSED_DIR / "trail_graph_manifest.json"
+    if graph_manifest.exists():
+        manifest = json.loads(graph_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: trail_graph.json not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json."
+            )
+        else:
+            artifacts["trail_graph.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+            # The geometry half, gated with its routing half above - one
+            # manifest binds the pair so they cannot publish separately.
+            artifacts["trail_graph_geometry.json"] = {
+                "path": manifest["geometry_path"],
+                "sha256": manifest["geometry_sha256"],
+            }
+
+    # The climb along those same edges (#1011, export_network_elevation.py).
+    # Its own manifest, because a publish can legitimately run without it -
+    # the elevation steps are gated on `include_elevation` in the workflow, and
+    # a run that skipped them ships a graph with no elevation rather than no
+    # graph. The client already treats an absent elevation artifact as "no
+    # figures", never as a failure.
+    #
+    # SAME LICENCE GATE, and for the reason the graph's own comment gives one
+    # level up: climb measured along a steward's line is derived from that
+    # steward's data. export_network_elevation.py copies `sources` out of the
+    # graph manifest precisely so this check has something to read.
+    graph_elevation_manifest = PROCESSED_DIR / "trail_graph_elevation_manifest.json"
+    if graph_elevation_manifest.exists():
+        manifest = json.loads(graph_elevation_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: trail_graph_elevation.json not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json."
+            )
+        else:
+            artifacts["trail_graph_elevation.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { mapCredits, OPENFREEMAP_CREDIT, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
+import {
+  mapCredits,
+  MOHONK_CREDIT,
+  NYNJTC_CREDIT,
+  OPENFREEMAP_CREDIT,
+  OPRHP_CREDIT,
+  OSM_CREDIT,
+  USGS_TOPO_CREDIT,
+} from './credits'
 import { ELEVATION_ATTRIBUTION } from './terrain'
 import { buildMapStyle } from './style'
 
@@ -105,13 +113,42 @@ describe('mapCredits', () => {
     }
   })
 
+  it('credits the trail stewards only when their trails are drawn', () => {
+    // OPRHP's attribution is a CONDITION of using their data - "any maps...
+    // created using OPRHP data must include proper credit" - so its absence
+    // when their lines ARE drawn is a breach, not an untidy corner. NYNJTC's
+    // and Mohonk Preserve's are not conditions (both ship on the maintainer's
+    // authorisation, not stated terms), but the same "say what is drawn" rule
+    // applies to a courtesy as much as to a licence.
+    const drawn = mapCredits({ background: 'usgs_topo_offline', hasNearbyTrails: true })
+
+    expect(drawn).toContain(OPRHP_CREDIT)
+    expect(drawn).toContain(NYNJTC_CREDIT)
+    expect(drawn).toContain(MOHONK_CREDIT)
+  })
+
+  it('names none of the stewards on a phone that has none of their trails', () => {
+    // The failure this module was written to fix, in its licence-shaped form:
+    // a corner claiming OPRHP data is on screen when the artifact 404'd is
+    // false about the one thing a hiker could check. Today this is the
+    // ordinary state on any phone whose release predates the network.
+    const absent = mapCredits({ background: 'usgs_topo_offline' })
+
+    expect(absent).not.toContain(OPRHP_CREDIT)
+    expect(absent).not.toContain(NYNJTC_CREDIT)
+    expect(absent).not.toContain(MOHONK_CREDIT)
+  })
+
   it('says everything the style declares, once a phone is holding all of it', () => {
     // The other direction, and the one that stops a source being added in
     // style.ts and going uncredited in the corner. Asserted with the archive
-    // present, since that is the only state in which every source in the style
-    // is actually drawing.
+    // AND the nearby-trail network present, since "holding all of it" means
+    // every source in the style is actually drawing - #950 added a source and
+    // this flag is the half of it the corner depends on.
     for (const background of ['hiking_topo_live', 'usgs_topo_offline'] as const) {
-      const credits = new Set(mapCredits({ background, hasRasterArchive: true }))
+      const credits = new Set(
+        mapCredits({ background, hasRasterArchive: true, hasNearbyTrails: true }),
+      )
 
       for (const declared of styleCredits(background)) {
         expect(credits).toContain(declared)

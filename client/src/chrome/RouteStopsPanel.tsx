@@ -12,10 +12,24 @@
 // A leg on a download with no profile shows its distance alone - the
 // distance is still a fact, a time with the climbs quietly missing would
 // be an optimistic number wearing an honest one's ≈ - and the bar says why.
+//
+// CLIMB AND DESCENT, BOTH (#973). The frame prints `2,900↑ · 1,750↓` and
+// this panel printed only the first for its whole life, while legFigures
+// computed the second and threw it away. On a surface somebody plans a day
+// on, the descent is the half their knees are asking about - and it is the
+// half Naismith gives no credit for, so a leg that reads as easy on time can
+// still be the one that hurts. Both numbers or neither.
+//
+// ONE POINT IS A START, NOT A ROUTE. Since the editor can be opened empty
+// and filled by tapping, every figure here has to survive a stop list of
+// zero or one - which is why the counts line says what is there rather than
+// printing a total of nothing, and why the bar's break button is absent
+// below two stops instead of present and dead.
 
 import type { HikeDirection } from './Header'
 import { formatNaismithMinutes } from '../lib/naismith'
 import { stopLabel } from '../lib/planDisplay'
+import { MAX_OFF_TRAIL_MILES } from '../lib/trailPosition'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 
 /**
@@ -39,6 +53,11 @@ export interface RouteStopsPanelProps {
   onEditStop: (index: number) => void
   /** Open the stop picker for a new destination. */
   onAddStop: () => void
+  /** Step back one edit, or null when there is nothing to step back to -
+   *  absent rather than disabled, because a dead control is a promise. */
+  onUndo: (() => void) | null
+  /** The last trail tap was refused as too far off the corridor (#973). */
+  refusedTap: boolean
   /** Carry this route into days - the plan flow (#756/#757). */
   onBreakIntoDays: () => void
   /** Keep this stretch as ground already walked (#789) - the same two ends,
@@ -55,6 +74,8 @@ export function RouteStopsPanel({
   units,
   onEditStop,
   onAddStop,
+  onUndo,
+  refusedTap,
   onBreakIntoDays,
   onRecordWalked,
   onClose,
@@ -74,6 +95,27 @@ export function RouteStopsPanel({
           <span className="visually-hidden">Close the route builder</span>
           <span aria-hidden="true">×</span>
         </button>
+
+        <div className="route-stops__head">
+          <span className="route-stops__count">
+            {[
+              direction,
+              `${stops.length} ${stops.length === 1 ? 'point' : 'points'}`,
+              legs.length === 0
+                ? null
+                : `${legs.length} ${legs.length === 1 ? 'leg' : 'legs'}`,
+            ]
+              .filter((part) => part !== null)
+              .join(' · ')}
+          </span>
+          {onUndo !== null && (
+            <button type="button" className="route-stops__undo" onClick={onUndo}>
+              <span className="visually-hidden">Undo the last change</span>
+              <span aria-hidden="true">↺</span>
+            </button>
+          )}
+        </div>
+
         <div className="route-stops__list">
           {stops.map((stop, index) => (
             // Index as key is safe here: rows are derived positionally from
@@ -104,64 +146,106 @@ export function RouteStopsPanel({
                 )}
               </button>
               {index < legs.length && (
-                <span className="route-stops__leg">
-                  {legs[index].ascentFt === null || legs[index].minutes === null
-                    ? formatDistance(legs[index].distanceMi, units)
-                    : `${formatDistance(legs[index].distanceMi, units)} · ${formatElevation(
-                        legs[index].ascentFt as number,
-                        units,
-                      )} ↑ · ${formatNaismithMinutes(legs[index].minutes as number)}`}
-                </span>
+                <span className="route-stops__leg">{legLine(legs[index], units)}</span>
               )}
             </div>
           ))}
         </div>
+        {stops.length < 2 && (
+          <p className="route-stops__hint">
+            {stops.length === 0
+              ? 'Tap the trail to drop a point.'
+              : 'Tap the trail again for where this stretch ends.'}
+          </p>
+        )}
+
         <button type="button" className="route-stops__add" onClick={onAddStop}>
           <span>Add a stop on the way</span>
           <span aria-hidden="true">+</span>
         </button>
+
+        {/* Stated in the UI and not only in the doc, which is what
+            HIKE_PLANNING.md asks for: a hiker whose tap on the road walk into
+            town does nothing is owed the reason, and owed it before they tap
+            rather than after. The refusal message replaces it rather than
+            joining it - one sentence about the same limitation, said in the
+            tense that matches what just happened. */}
+        <p className="route-stops__limit" role={refusedTap ? 'status' : undefined}>
+          {refusedTap
+            ? `That tap is more than ${formatDistance(MAX_OFF_TRAIL_MILES, units, 'trimmed')} from the trail — there’s no honest mile to give it.`
+            : 'Only the A.T. centerline can carry a route. Side trails, alternates and the road walks into town aren’t routable yet.'}
+        </p>
       </div>
 
-      <div className="route-stops-bar">
-        {totalMinutes === null && (
-          <p className="route-stops-bar__note" role="note">
-            No elevation profile in this download &mdash; distance only.
-          </p>
-        )}
-        <div className="route-stops-bar__row">
-          <span className="route-stops-bar__figures">
-            {[
-              direction,
-              formatDistance(totalDistanceMi, units),
-              totalMinutes === null
-                ? null
-                : `${formatNaismithMinutes(totalMinutes)} walking`,
-            ]
-              .filter((part) => part !== null)
-              .join(' · ')}
-          </span>
-          <button
-            type="button"
-            className="route-stops-bar__break"
-            onClick={onBreakIntoDays}
-          >
-            Break into days
-          </button>
-        </div>
-        {/* The same stretch, said in the past tense. A section hiker's own
+      {/* THE WHOLE BAR, or none of it (#973). Below two stops there is no
+          route to total, nothing to break into days and nothing to record as
+          walked - the shell's handlers refuse all three. A bar printing
+          "0.0 mi · ≈0m walking" over two dead buttons states a measurement of
+          nothing and then declines to act on it, which is the failure this
+          panel is otherwise careful about everywhere else. */}
+      {legs.length > 0 && (
+        <div className="route-stops-bar">
+          {totalMinutes === null && (
+            <p className="route-stops-bar__note" role="note">
+              No elevation profile in this download &mdash; distance only.
+            </p>
+          )}
+          <div className="route-stops-bar__row">
+            <span className="route-stops-bar__figures">
+              {[
+                direction,
+                formatDistance(totalDistanceMi, units),
+                totalMinutes === null
+                  ? null
+                  : `${formatNaismithMinutes(totalMinutes)} walking`,
+              ]
+                .filter((part) => part !== null)
+                .join(' · ')}
+            </span>
+            <button
+              type="button"
+              className="route-stops-bar__break"
+              onClick={onBreakIntoDays}
+            >
+              Break into days
+            </button>
+          </div>
+          {/* The same stretch, said in the past tense. A section hiker's own
             history mostly predates this app, and without a door for it the
             roll-up opens on somebody who has walked 600 miles and tells
             them the whole trail is ahead of them (#789). */}
-        <div className="route-stops-bar__row">
-          <button
-            type="button"
-            className="route-stops-bar__recorded"
-            onClick={onRecordWalked}
-          >
-            I already walked this
-          </button>
+          <div className="route-stops-bar__row">
+            <button
+              type="button"
+              className="route-stops-bar__recorded"
+              onClick={onRecordWalked}
+            >
+              I already walked this
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </>
   )
+}
+
+/**
+ * One leg's figures: distance always, then climb, descent and the ≈time
+ * together or not at all.
+ *
+ * They travel as a set because they come from one slice of the profile - a
+ * download with no profile has none of the three, and printing a subset
+ * would leave a reader guessing which of the missing ones was zero.
+ */
+function legLine(leg: RouteLegDisplay, units: UnitSystem): string {
+  const distance = formatDistance(leg.distanceMi, units)
+  if (leg.ascentFt === null || leg.descentFt === null || leg.minutes === null) {
+    return distance
+  }
+  return [
+    distance,
+    `${formatElevation(leg.ascentFt, units)} ↑`,
+    `${formatElevation(leg.descentFt, units)} ↓`,
+    formatNaismithMinutes(leg.minutes),
+  ].join(' · ')
 }

@@ -136,6 +136,15 @@ def is_arcgis_feature_layer(entry: dict) -> bool:
     return source_kind(entry) == ARCGIS_FEATURE_LAYER
 
 
+def is_external_arcgis_layer(entry: dict) -> bool:
+    """Whether this entry is another organization's layer, outside the A.T.
+    build - the predicate `is_arcgis_feature_layer` has always had and this
+    kind lacked. Added for export_trails.py, which needs to ask the negative
+    of it: a source carrying blaze metadata belongs to the A.T. line export
+    only if it is not one of these (see that module's load_line_sources)."""
+    return source_kind(entry) == EXTERNAL_ARCGIS_LAYER
+
+
 def arcgis_sources(registry: dict) -> list[dict]:
     """The entries `fetch_all.py` may fetch, in registry order."""
     return [entry for entry in registry.get("sources", []) if is_arcgis_feature_layer(entry)]
@@ -148,7 +157,7 @@ def club_pdf_sources(registry: dict) -> list[dict]:
 
 def external_arcgis_sources(registry: dict) -> list[dict]:
     """The entries `fetch_external_layers.py` may fetch, in registry order."""
-    return [entry for entry in registry.get("sources", []) if source_kind(entry) == EXTERNAL_ARCGIS_LAYER]
+    return [entry for entry in registry.get("sources", []) if is_external_arcgis_layer(entry)]
 
 
 def find_source(registry: dict, key: str) -> dict | None:

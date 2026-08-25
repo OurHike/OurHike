@@ -197,12 +197,62 @@ class TestAgainstTheRealRegistry:
     def test_names_no_steward_that_is_fetch_and_review_only(self):
         # Measured 2026-08-23: GATC's own licence field says "Nothing from this
         # source reaches a published artifact until GATC answers a
-        # redistribution ask", and all four oprhp_* entries say "Fetched for
-        # REVIEW AND THE #771 SPIKE ONLY".
+        # redistribution ask".
         named = {s["name"] for s in self.real()["stewards"]}
 
         assert not any("Georgia" in n for n in named)
-        assert not any("Parks" in n or "OPRHP" in n for n in named)
+
+    def test_names_the_two_trail_stewards_now_that_their_lines_ship(self):
+        """OPRHP and NYNJTC moved from held-back to shipped on 2026-08-24
+        (#950), and this case is the inverse of the one above rather than an
+        exception to it.
+
+        It used to assert that neither was named. That was right while both
+        were review-only, and became wrong the moment `reaches_hikers` flipped
+        - at which point NOT naming them would have been the failure, because
+        OPRHP's own terms require attribution on any map built from their data.
+        So the assertion turns over rather than being deleted: a steward whose
+        data is on a hiker's phone is named, and one whose data is not is not.
+        """
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert any("Parks" in n for n in named), "OPRHP's attribution is a licence condition"
+        assert any("New York-New Jersey" in n for n in named)
+
+    def test_names_mohonk_preserve_now_that_its_lines_ship(self):
+        """Mohonk Preserve joined OPRHP and NYNJTC on 2026-08-25 (#992), on the
+        maintainer's authorisation rather than stated terms - the same footing
+        NYNJTC shipped on. Not a licence condition the way OPRHP's is, but the
+        same "say what is drawn" rule this exporter exists to hold applies to a
+        courtesy as much as to a condition."""
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert any("Mohonk" in n for n in named)
+
+    def test_still_omits_the_oprhp_layers_nothing_exports(self):
+        """The distinction the licence flip had to keep, and it is not about
+        licensing: a source is held back either because its terms are
+        unresolved OR because nothing is wired to it, and `reaches_hikers`
+        carries both meanings (see reaches_hikers_comment).
+
+        The membership moves as exporters get written - `oprhp_trail_closures`
+        left this group under #964, when export_nearby_trails.py started
+        deriving its areas onto the trail lines - so what is asserted is the
+        DISTINCTION rather than a fixed list. Every held-back oprhp_* layer
+        says in its own licence field that the reason is a missing exporter,
+        because the alternative reading (a licence problem) is the one that
+        would stop somebody wiring it up.
+        """
+        registry = json.loads((ROOT / "sources.json").read_text())
+        oprhp = {s["key"]: s for s in registry["sources"] if s["key"].startswith("oprhp")}
+
+        shipped = {k for k, s in oprhp.items() if s["reaches_hikers"]}
+        held = {k for k, s in oprhp.items() if not s["reaches_hikers"]}
+
+        assert shipped == {"oprhp_trails", "oprhp_trail_closures"}
+        assert held == {"oprhp_facilities", "oprhp_park_polygons"}
+        for key in held:
+            assert "nothing exports this layer" in oprhp[key]["licence"]
 
     def test_names_the_atc_with_its_recorded_licence(self):
         atc = next(s for s in self.real()["stewards"] if s["provider"] == "ATC")
@@ -211,3 +261,36 @@ class TestAgainstTheRealRegistry:
         # And no tier, because the registry does not record one for the eleven
         # A.T. feeds that ship - see the module docstring.
         assert atc["trust"] is None
+
+
+def test_each_steward_lists_the_registry_keys_behind_its_layers():
+    """The join a graph edge's `source` resolves through (#978): the phone has
+    to turn `oprhp_trails` into an organization's name, and the KEY only
+    survived into this artifact where a title was missing. Not index-aligned
+    with `layers` - both are sorted independently, in different vocabularies -
+    which the field's comment states so nobody joins them positionally."""
+    registry = {
+        "sources": [
+            {
+                "key": "oprhp_trails",
+                "title": "NYS Parks Trails",
+                "kind": "external_arcgis_layer",
+                "provider": "NYS OPRHP",
+                "steward": "New York State Office of Parks",
+                "reaches_hikers": True,
+            },
+            {
+                "key": "oprhp_closures",
+                "title": "NYS Parks Closures",
+                "kind": "external_arcgis_layer",
+                "provider": "NYS OPRHP",
+                "steward": "New York State Office of Parks",
+                "reaches_hikers": True,
+            },
+        ]
+    }
+
+    output = export_sources.build_output(registry)
+
+    (steward,) = output["stewards"]
+    assert steward["keys"] == ["oprhp_closures", "oprhp_trails"]

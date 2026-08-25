@@ -26,6 +26,9 @@ import {
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
+import { fetchNearbyTrails } from './nearbyTrailData'
+import { fetchTrailGraph } from './trailGraphData'
+import type { TrailGraphIndex } from './trailGraph'
 import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
 import { NO_TOMBSTONES, type Tombstones } from './poiIdentity'
@@ -112,6 +115,28 @@ export interface TrailData {
    * where the alternative is an empty map for five seconds.
    */
   overviewTrailsUrl: string | null
+  /**
+   * The trail lines other organizations maintain, as an object URL, or null
+   * (#950, lib/nearbyTrailData.ts).
+   *
+   * Null is the ordinary answer today and is not a failure: publish.py holds
+   * that artifact back while NYS OPRHP's or NYNJTC's reuse terms are unstated
+   * (pipeline/sources.json), so the bucket does not have one to fetch.
+   *
+   * Unlike `overviewTrailsUrl` above, this is never withdrawn once set. The
+   * overview is a stand-in for a line that is coming; these are lines of
+   * their own.
+   */
+  nearbyTrailsUrl: string | null
+  /** The junction graph's routing half, indexed - or null while this phone
+   *  has not got one, which PlanKindSheet reads as "no day hikes yet". The
+   *  two heavy halves are NOT here: the edge vertices and the per-edge climb
+   *  (#1011) are fetched lazily when the builder opens
+   *  (lib/trailGraphData.fetchTrailGraphGeometry and
+   *  fetchTrailGraphElevation), because with the whole A.T. in the graph they
+   *  are far heavier than the routing half and a launch that never opens the
+   *  builder should not pay for either. */
+  graphIndex: TrailGraphIndex | null
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
   haveTrailLines: boolean
@@ -180,6 +205,8 @@ export function useTrailData(
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
+  const [nearbyTrailsUrl, setNearbyTrailsUrl] = useState<string | null>(null)
+  const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
   /** Whether the phone has been asked whether it holds trail lines yet.
    *  Distinct from holding none: for the first tick of every launch those two
    *  look the same, and one of them is a reason to spend a hiker's data. */
@@ -449,6 +476,72 @@ export function useTrailData(
     setOverviewUrl(null)
   }, [haveTrailLines, overviewUrl])
 
+  /**
+   * The other organizations' trails (#950), fetched once per launch.
+   *
+   * NOT GATED ON WHAT THE PHONE HOLDS, unlike the overview above, because
+   * there is nothing on the phone for this to race: lib/nearbyTrailData.ts
+   * stores nothing, so a returning hiker has no more of this than a first-run
+   * one does. That is a gap rather than a design, and its home is
+   * **#552 — Decide the unit of offline coverage, and write it down** - see
+   * that module's header for why guessing at a store now would be the wrong
+   * shape to unpick later.
+   *
+   * Runs only when online, and gives up quietly on every failure. Today the
+   * usual outcome is a 404 and a null, which is the licence gate working
+   * rather than anything being wrong.
+   */
+  useEffect(() => {
+    // Once, not once per reconnection. `online` flips whenever the phone
+    // loses and regains signal, which on a trail is often, and without this
+    // guard each flip would spend another 1.7 MB re-fetching lines already on
+    // the map AND drop the previous object URL without revoking it - a leak
+    // the map cannot even see, because MapLibre is still drawing the blob it
+    // was handed. The state itself is the guard, and it is in the dependency
+    // list so that setting it re-runs this and takes the early return.
+    if (!DATA_CONFIGURED || !online || nearbyTrailsUrl !== null) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchNearbyTrails(controller.signal).then((url) => {
+      if (url === null) return
+      // An object URL nothing will draw is a blob the page holds until it is
+      // closed - the same reason the overview revokes an answer it no longer
+      // wants.
+      if (!wanted) {
+        URL.revokeObjectURL(url)
+        return
+      }
+      setNearbyTrailsUrl(url)
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [online, nearbyTrailsUrl])
+
+  // The junction graph's routing half, on the nearby-lines pattern above -
+  // once, not once per reconnection, with the state itself as the guard. No
+  // object URL to revoke: fetchTrailGraph returns a parsed index.
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online || graphIndex !== null) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchTrailGraph(controller.signal).then((index) => {
+      if (index === null || !wanted) return
+      setGraphIndex(index)
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [online, graphIndex])
+
   const ensure = useCallback(async () => {
     setError(null)
     try {
@@ -476,6 +569,8 @@ export function useTrailData(
     // here rather than in the shell means one place decides which line the map
     // is drawing.
     overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
+    nearbyTrailsUrl,
+    graphIndex,
     trailsUrl,
     haveTrailLines,
     error,

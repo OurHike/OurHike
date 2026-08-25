@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useDrawnPoiCounts } from './useDrawnPoiCounts'
 import { POI_ID_PROPERTY, POI_LAYER_ID, POI_PIN_MIN_ZOOM } from '../map/poiLayers'
-import { BLAZE_COLOR_PROPERTY } from '../map/drawnBlazes'
+import { TRAIL_SOURCE_PROPERTY } from '../map/drawnBlazes'
 import { BLAZE_LAYER_ID } from '../map/style'
 import { MockMap } from '../test/mocks/maplibre-gl'
 
@@ -43,9 +43,9 @@ function mapWith(features: unknown[], zoom = 14) {
   }
 }
 
-const trail = (id: number, blaze: string) => ({
+const trail = (id: number, source: string) => ({
   id,
-  properties: { [BLAZE_COLOR_PROPERTY]: blaze },
+  properties: { [TRAIL_SOURCE_PROPERTY]: source },
 })
 
 const pin = (id: string, poi_type: string) => ({
@@ -134,57 +134,52 @@ describe('useDrawnPoiCounts', () => {
   })
 })
 
-describe('the blazes in view (#782)', () => {
-  it('is empty before there is a map, which is what the legend renders as nothing', () => {
-    // Unlike the waypoint counts, empty is the right answer here rather than
-    // undefined: the legend guards its blaze list on `length > 0`, so there
-    // is no "measured and none" state for empty to be confused with.
+describe('the ghosting sentence (#783)', () => {
+  it('is false before there is a map, which is the legend saying nothing', () => {
+    // Not "no other trails are here" - a map that has not drawn yet has not
+    // answered. False is what makes the legend omit the sentence entirely,
+    // which is the honest rendering of an unmeasured cold start.
     const { result } = renderHook(() => useDrawnPoiCounts(null))
 
-    expect(result.current.blazes).toEqual([])
+    expect(result.current.ghostedTrailsDrawn).toBe(false)
   })
 
-  it('reports what the map is drawing, most-drawn first', () => {
+  it('is true as soon as one line from another network is on screen', () => {
     const { map, setLines, fireIdle } = mapWith([])
-    setLines([trail(1, 'Blue'), trail(2, 'Blue'), trail(3, 'White')])
+    setLines([trail(1, 'centerline'), trail(2, 'oprhp_trails')])
 
     const { result } = renderHook(() => useDrawnPoiCounts(map))
     act(() => fireIdle())
 
-    expect(result.current.blazes).toEqual([
-      { blaze: 'Blue', count: 2 },
-      { blaze: 'White', count: 1 },
-    ])
+    expect(result.current.ghostedTrailsDrawn).toBe(true)
   })
 
-  it('orders ties by name, so rows do not reshuffle between frames', () => {
-    // A legend whose rows swap places while a hiker reads them is worse than
-    // one that is merely unsorted.
+  it('is false on a map drawing only the chosen system', () => {
     const { map, setLines, fireIdle } = mapWith([])
-    setLines([trail(1, 'White'), trail(2, 'Aqua'), trail(3, 'Blue')])
+    setLines([trail(1, 'centerline'), trail(2, 'side_trails')])
 
     const { result } = renderHook(() => useDrawnPoiCounts(map))
     act(() => fireIdle())
 
-    expect(result.current.blazes.map((row) => row.blaze)).toEqual([
-      'Aqua',
-      'Blue',
-      'White',
-    ])
+    expect(result.current.ghostedTrailsDrawn).toBe(false)
   })
 
-  it('measures blazes on the same settled frame as the waypoints', () => {
-    // One listener, not two. Two would let the legend show waypoint counts
-    // from this camera beside blaze counts from the last one.
+  it('is decided on the same settled frame as the waypoints', () => {
+    // ONE LISTENER, NOT TWO, and this is the assertion that says so. It used
+    // to be made of the blaze counts, which were the hook's other `idle`
+    // reader until they were removed on 2026-08-25; the guarantee outlived
+    // them, so the test moved rather than going with them. Two listeners
+    // would let the legend show waypoint counts from this camera beside a
+    // ghosting sentence decided at the last one.
     const { map, setFeatures, setLines, fireIdle, idleHandlers } = mapWith([])
 
     const { result } = renderHook(() => useDrawnPoiCounts(map))
     setFeatures([pin('w1', 'water')])
-    setLines([trail(1, 'Aqua')])
+    setLines([trail(1, 'oprhp_trails')])
     act(() => fireIdle())
 
     expect(idleHandlers()).toBe(1)
     expect(result.current.counts?.get('water')).toBe(1)
-    expect(result.current.blazes).toEqual([{ blaze: 'Aqua', count: 1 }])
+    expect(result.current.ghostedTrailsDrawn).toBe(true)
   })
 })

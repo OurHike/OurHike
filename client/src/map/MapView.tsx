@@ -27,6 +27,7 @@ import { readTrailsMerged } from '../lib/trailShape'
 import {
   attachMapAppearance,
   attachTrailData,
+  attachNearbyTrails,
   attachTrailOverview,
   buildMapStyle,
 } from './style'
@@ -62,6 +63,7 @@ import {
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
+import { attachDayHikeData, type DayHikeDrawing } from './dayHikeLayers'
 import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type {
@@ -94,6 +96,17 @@ export interface MapViewProps {
    * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
    */
   overviewTrailsUrl?: string | null
+  /**
+   * The trail lines other organizations maintain, as an object URL (#950,
+   * features/NEARBY_TRAILS.md).
+   *
+   * Drawn ghosted and under the chosen trail, by the same expressions that
+   * draw the chosen trail - see map/style.ts's buildTrailLineLayers. Null is
+   * the ordinary state today, because publish.py holds that artifact back
+   * while NYS OPRHP's and NYNJTC's reuse terms are unstated, and it renders
+   * as the A.T.-only map this app has always drawn.
+   */
+  nearbyTrailsUrl?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -200,6 +213,9 @@ export interface MapViewProps {
    * which the shell holds. Null (or absent) clears the drawing.
    */
   routeDrawing?: RouteDrawing | null
+  /** The day hike being built (#978), drawn as a casing UNDER the trail
+   *  lines - dayHikeLayers.ts owns the argument. Null clears it. */
+  dayHikeDrawing?: DayHikeDrawing | null
   /**
    * When set, the map is in route-building mode: a tap anywhere reports its
    * raw coordinate here, and the POI tap handler is NOT attached - one
@@ -352,6 +368,7 @@ export function MapView({
   trailsUrl,
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
+  nearbyTrailsUrl = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -372,6 +389,7 @@ export function MapView({
   disputes = NO_DISPUTES,
   onSelectWorkday,
   routeDrawing = null,
+  dayHikeDrawing = null,
   onRouteTap,
   onSelectPoi,
   onSelectLine,
@@ -668,6 +686,14 @@ export function MapView({
     return attachTrailOverview(map, overviewTrailsUrl)
   }, [map, overviewTrailsUrl])
 
+  // Its own effect rather than a branch inside the one above, because the two
+  // move on different clocks: the overview is set once early and cleared once,
+  // and this arrives whenever the network answers and then stays.
+  useEffect(() => {
+    if (map === null) return
+    return attachNearbyTrails(map, nearbyTrailsUrl)
+  }, [map, nearbyTrailsUrl])
+
   // Three separate effects rather than one, because they change on different
   // clocks: the pin images are built once and never again, while the source and
   // the filter both move when the hiker taps a legend row. Folding them together
@@ -812,6 +838,13 @@ export function MapView({
     if (map === null) return
     return attachRouteData(map, routeDrawing)
   }, [map, routeDrawing])
+
+  // The day hike's own effect, same pattern - a tap mid-build re-serialises
+  // a few features and nothing else.
+  useEffect(() => {
+    if (map === null) return
+    return attachDayHikeData(map, dayHikeDrawing)
+  }, [map, dayHikeDrawing])
 
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the

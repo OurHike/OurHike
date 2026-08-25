@@ -19,7 +19,7 @@ import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
-import { Legend, type BlazeCount } from './Legend'
+import { Legend } from './Legend'
 import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type RibbonControl } from './ElevationRibbon'
@@ -46,6 +46,7 @@ import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
+import type { DayHikeDrawing } from '../map/dayHikeLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -85,6 +86,9 @@ export interface MapScreenProps {
    *  lib/useTrailData.ts, and a screen that second-guessed it could put both
    *  on at once. */
   overviewTrailsUrl?: string | null
+  /** The trails other organizations maintain (#950), forwarded to MapView -
+   *  see its own prop for what null means and why it is the usual answer. */
+  nearbyTrailsUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -196,6 +200,7 @@ export interface MapScreenProps {
    * POI - see MapViewProps.onRouteTap for the exclusivity.
    */
   routeDrawing?: RouteDrawing | null
+  dayHikeDrawing?: DayHikeDrawing | null
   onRouteTap?: (at: { lon: number; lat: number }) => void
   routeSheet?: ReactNode
   /**
@@ -256,9 +261,8 @@ export interface MapScreenProps {
    * exactly what it used to do.
    */
   viewportPoints: MapPoint[]
-  blazeCounts: BlazeCount[]
   /** Passed straight through to the Legend (#783) - MapScreen decides nothing
-   *  about it, the same as blazeCounts above. */
+   *  about it. */
   ghostedTrailsDrawn?: boolean
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
@@ -462,6 +466,9 @@ export interface MapScreenProps {
    * are actually drawing, not the fact that some download happened.
    */
   hasRasterArchive?: boolean
+  /** Whether the other organizations' trail lines are drawn (#950) - it is
+   *  what puts OPRHP's required attribution in the corner. */
+  hasNearbyTrails?: boolean
   /**
    * Why the background is not on screen, or null when it is
    * (lib/backgroundHealth.ts).
@@ -541,6 +548,7 @@ export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
   overviewTrailsUrl = null,
+  nearbyTrailsUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -570,6 +578,7 @@ export function MapScreen({
   onSelectLine,
   lineSheet,
   routeDrawing = null,
+  dayHikeDrawing = null,
   onRouteTap,
   routeSheet,
   atcNoticeCount = 0,
@@ -590,7 +599,6 @@ export function MapScreen({
   onSelectSearchResult,
   bbox,
   viewportPoints,
-  blazeCounts,
   ghostedTrailsDrawn,
   hiddenTypes,
   onToggleType,
@@ -634,6 +642,7 @@ export function MapScreen({
   hasDownload = false,
   downloadActivity = null,
   hasRasterArchive = false,
+  hasNearbyTrails = false,
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
@@ -988,6 +997,7 @@ export function MapScreen({
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              nearbyTrailsUrl={nearbyTrailsUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}
@@ -1006,6 +1016,7 @@ export function MapScreen({
               disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
+              dayHikeDrawing={dayHikeDrawing}
               onRouteTap={onRouteTap}
               onSelectPoi={onSelectPoi}
               onSelectLine={onSelectLine}
@@ -1044,7 +1055,7 @@ export function MapScreen({
                 on one line - the same `isDesktop` the legend uses, so the two
                 cannot disagree about how much room this layout has. */}
             <MapAttribution
-              credits={mapCredits({ background, hasRasterArchive })}
+              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
               inline={isDesktop}
             />
 
@@ -1108,7 +1119,6 @@ export function MapScreen({
             persistent={isDesktop}
             bbox={bbox}
             points={viewportPoints}
-            blazeCounts={blazeCounts}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}

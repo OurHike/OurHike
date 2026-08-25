@@ -14,10 +14,29 @@
  */
 export function stopLabel(stop: { mile: number; name?: string }): string {
   if (stop.name !== undefined && stop.name !== '') return stop.name
-  return `mi ${stop.mile.toLocaleString('en-US', {
+  return `mi ${mileMarker(stop.mile)}`
+}
+
+/**
+ * A mile on the A.T.'s own axis, as a MARKER rather than a distance (#986).
+ *
+ * NEVER CONVERTED, and that is the whole point of it existing. "Mile 470.8"
+ * is a name for a place - ATC measures the trail in miles, the shelters are
+ * listed by them, and a hiker says "I'm at 470" the way they would say a
+ * street number. Running it through `formatDistance` gives a metric hiker
+ * "757.7 km", which names nothing: there is no kilometre 757.7 on this trail,
+ * and no other surface in the app would agree with it.
+ *
+ * `formatDistance` is for the other kind of mile - how far it is from here to
+ * there - which is a real length and does convert. The two look identical in
+ * a number and are not the same quantity; this function exists so a caller
+ * has to choose between them on purpose.
+ */
+export function mileMarker(mile: number): string {
+  return mile.toLocaleString('en-US', {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
-  })}`
+  })
 }
 
 /** "TUE 12" from an ISO date, in UTC throughout so the label cannot shift a
@@ -28,6 +47,22 @@ export function dayDateLabel(isoDate: string): string {
     .toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
     .toUpperCase()
   return `${weekday} ${date.getUTCDate()}`
+}
+
+/**
+ * "tue 12 may" from an ISO date - the day summary's own header (#966),
+ * lowercase because that card speaks in the hiker's voice rather than the
+ * timeline's gutter voice, and carrying the month because a summary can be
+ * opened weeks later, when "TUE 12" no longer says which twelfth.
+ *
+ * UTC throughout, for dayDateLabel's reason: the label must not shift a day
+ * as a phone crosses a timezone.
+ */
+export function dayLongDateLabel(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+  const month = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+  return `${weekday} ${date.getUTCDate()} ${month}`.toLowerCase()
 }
 
 /**

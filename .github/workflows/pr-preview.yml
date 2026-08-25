@@ -191,6 +191,83 @@ jobs:
           # is the behaviour worth previewing anyway.
         run: npm run build
 
+      # The pictures that go in the comment below (#988, #998).
+      #
+      # Taken from the build this job is about to upload - served locally by
+      # `vite preview`, so it is the same bytes, not a dev-server frame - and
+      # written INTO that build. The images are therefore delivered by the
+      # same Cloudflare deployment as the app they show, and are removed with
+      # it when the pull request closes.
+      #
+      # THAT IS THE TRADE, and it is deliberate rather than overlooked: the
+      # mechanism this replaces committed the PNG (#984), which survived
+      # forever because a commit does, and cost 79,290 measured bytes of
+      # permanent, unretractable image per pull request in a public tree. Here
+      # nothing reaches a commit and the picture lasts exactly as long as the
+      # pull request is open - which is when review happens, and is not when
+      # somebody reads an old pull request to see what a screen used to look
+      # like. The merged diff is the record; this is for the reviewer.
+      - name: Install a browser to photograph it with
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      # Which files this pull request touches, for the camera: every shot
+      # recipe in the list (client/preview-shots/) gets photographed and leads
+      # the comment, so the picture is of the change rather than always of the
+      # entry screens (#998). The same files API .github/actions/changed-paths
+      # reads, with the same failure direction - continue-on-error plus the
+      # runner's tolerance of a missing list means an API hiccup costs the
+      # pull request its own shots, never the standing ones or the preview.
+      #
+      # A list of paths and nothing else: which of them are recipes, what a
+      # deleted one means, when to nudge - those decisions live in
+      # client/scripts/photograph-preview.mjs, where a suite can hold them
+      # (src/test/photographPreview.test.ts), not in workflow YAML where
+      # nothing can.
+      - name: List what this pull request touches
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          LIST: ${{ runner.temp }}/pr-files.txt
+        with:
+          script: |
+            const { writeFileSync } = require('node:fs')
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            })
+            // A rename counts under both names - the runner skips the old
+            // path (nothing is there to photograph) and shoots the new one.
+            const names = files
+              .flatMap((file) => [file.filename, file.previous_filename])
+              .filter(Boolean)
+            writeFileSync(process.env.LIST, names.join('\n') + '\n')
+            core.info(`Listed ${files.length} changed files for the camera.`)
+
+      # continue-on-error because a preview is worth more than a picture of
+      # one. If the browser will not start, the deploy and the link still
+      # happen and the comment simply carries no image - rather than a pull
+      # request losing its testable build over a screenshot.
+      #
+      # The runner shoots the standing two (first run, the trail screen) plus
+      # every recipe the pull request adds or changes, and writes the
+      # comment's whole image block - comment.md, with a placeholder where
+      # the preview URL will go - alongside the PNGs, inside the directory
+      # being uploaded.
+      - name: Photograph the build
+        id: shots
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        continue-on-error: true
+        working-directory: client
+        env:
+          LIST: ${{ runner.temp }}/pr-files.txt
+        run: |
+          node scripts/photograph-preview.mjs --dist --changed="$LIST"
+          echo "taken=true" >> "$GITHUB_OUTPUT"
+
       - name: Publish the preview
         id: deploy
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
@@ -250,6 +327,42 @@ jobs:
             echo "PREVIEW_NOTE_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # The image block comes from the photograph step (comment.md, written
+      # by client/scripts/photograph-preview.mjs next to the PNGs), because
+      # what it says depends on what was photographed - which recipes are the
+      # pull request's own, which failed to drive - and that is the runner's
+      # knowledge, not this workflow's. This step only fills in the one thing
+      # the runner could not know: the preview's URL, which does not exist
+      # until the deploy above mints it, and which the runner therefore left
+      # as the __PREVIEW_BASE__ placeholder.
+      #
+      # The trailing slash matters: the two candidate bases disagree about it
+      # (a wrangler alias URL may carry one, the worked-out URL does not), and
+      # `https://host//__screenshot/x.png` is a 404 on Pages.
+      - name: Name the images
+        id: images
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        env:
+          BASE: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+          TAKEN: ${{ steps.shots.outputs.taken }}
+        run: |
+          BASE="${BASE%/}"
+          BLOCK="client/dist/__screenshot/comment.md"
+          if [ "$TAKEN" != "true" ] || [ ! -f "$BLOCK" ]; then
+            echo "::warning::The preview screenshots could not be taken, so this pull request's comment carries no image. The preview itself is unaffected."
+            {
+              echo "block<<PREVIEW_IMAGES_EOF"
+              echo "_No screenshot this run - see the job log. The link above still works._"
+              echo "PREVIEW_IMAGES_EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "block<<PREVIEW_IMAGES_EOF"
+            sed "s|__PREVIEW_BASE__|$BASE|g" "$BLOCK"
+            echo "PREVIEW_IMAGES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say where the preview is
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
@@ -264,6 +377,8 @@ jobs:
             same as you push - it always serves the latest build of this pull request.
 
             ${{ steps.wait.outputs.note }}
+
+            ${{ steps.images.outputs.block }}
 
             Signing in works. Sending a report does not: a preview is built with no
             backend on purpose, so reports queue in the outbox rather than landing in
@@ -290,6 +405,49 @@ jobs:
           project: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
           alias: ${{ steps.preview.outputs.alias }}
 
+      # THE COMMENT SAYS WHAT WAS MEASURED, NOT WHAT WAS ASKED FOR (#1004).
+      #
+      # It used to assert that `pr-<n>....pages.dev` "no longer serves
+      # anything", posted the instant Cloudflare returned success and checking
+      # nothing. On the first close anybody here could observe, that sentence
+      # was false: run 32847903961 deleted pr-1003's only deployment with
+      # `force=true` and got success, and the alias was still serving that
+      # build 32 minutes later. The deploy path has always had a `Wait for the
+      # preview to answer` step; the teardown path asserted the opposite and
+      # had nothing equivalent, which is why it took a person with curl to
+      # notice.
+      #
+      # The teardown now probes and hands back what it got. Turning that into
+      # a sentence happens here in bash rather than in a nested `${{ }}`
+      # conditional, because there are three cases and they are worth being
+      # able to read.
+      - name: Put what the URL answered into words
+        id: reachability
+        if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
+        env:
+          URL: ${{ steps.preview.outputs.url }}
+          CODE: ${{ steps.teardown.outputs.reachable }}
+        run: |
+          case "$CODE" in
+            200)
+              line="**\`$URL\` was still answering 200** when checked straight after Cloudflare accepted the deletion. Deleted and no longer reachable are two different states here - see #1004." ;;
+            ''|unchecked)
+              line="\`$URL\` was not checked, because the removal did not get that far." ;;
+            000)
+              # NOT "so it is gone". A removed preview answers 404 - measured
+              # 2026-08-25 on pr-100 and pr-99999, both of which return
+              # Cloudflare's own 404 page. A 000 is curl failing to get an
+              # answer at all, which is a fact about the probe.
+              line="\`$URL\` could not be reached at all when checked straight afterwards. That is the probe failing rather than evidence either way - a removed preview answers 404." ;;
+            *)
+              line="\`$URL\` answered $CODE when checked straight afterwards." ;;
+          esac
+          {
+            echo "line<<REACHABILITY_EOF"
+            echo "$line"
+            echo "REACHABILITY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say the pull request is closed
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
@@ -300,15 +458,25 @@ jobs:
 
             This pull request is closed, and its preview deployments have been removed
             (${{ steps.teardown.outputs.deleted || 0 }} of ${{ steps.teardown.outputs.found || 0 }}).
-            `${{ steps.preview.outputs.url }}` no longer serves anything.
+            ${{ steps.reachability.outputs.line }}
 
             ${{ steps.teardown.outputs.failed != '0' && steps.teardown.outputs.failed != '' && '**Some could not be removed and are still reachable** - see the run log for which, and why.' || '' }}
+
+            Previews orphaned before this teardown worked at all are a separate
+            backlog, swept by `scripts/sweep-pages-previews.sh` (#1004).
 
       # Last, so that the comment above is already posted when it runs. A red
       # check on a closed pull request is not something anyone goes looking at,
       # which is why the outcome is on the pull request too - but it still has
       # to be red, or a cleanup that stopped working would look exactly like
       # one that never had anything to do.
+      #
+      # Deliberately NOT red on the alias still answering. That would go red on
+      # every close for as long as Cloudflare behaves the way #1004 measured,
+      # which nothing in this repository can change - and an alarm that is
+      # always on is how a refused deletion, which this can fix, would stop
+      # being noticed. It is a warning in the log and a sentence on the pull
+      # request instead.
       - name: Fail if any preview outlived its pull request
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
         env:

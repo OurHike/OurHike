@@ -254,7 +254,27 @@
   border-color: var(--border-1);
   background: var(--bg-sunken);
   color: var(--fg-2);
-  cursor: default;
+  /* Tappable since #966 - it opens the day's own record. Still visually a
+     record rather than a plan: the grey and the sunken ground are what say
+     "walked", and neither changes. */
+  cursor: pointer;
+}
+
+/* The hiker's own line, on the row. Italic and quoted so it reads as
+   somebody's handwriting rather than another figure the app worked out. */
+.plan__day-note {
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.plan__day-note::before {
+  content: '\201C';
+}
+
+.plan__day-note::after {
+  content: '\201D';
 }
 
 .plan__day-carry--walked {
@@ -1647,4 +1667,455 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--fg-2);
+}
+
+/* ---------- The day summary (#966, wireframe 2c frame 1) ---------- */
+
+/* Docked to the screen's bottom edge, like the call-it-a-day and cascade
+   sheets it arrives beside in the same flow (.plan__actions above). */
+.day-summary {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  margin: 0 calc(-1 * var(--space-4, 16px));
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.day-summary__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+/* Lowercase, in the hiker's voice - the card's whole register, and the one
+   place on the Plan tab that speaks this way. */
+.day-summary__when {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+
+.day-summary__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.day-summary__figures {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+/* The one generated sentence. Warm, and a fact about the ground - never a
+   remark about how the day went. */
+.day-summary__memory {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.day-summary__filed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.day-summary__filed-title {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.day-summary__tiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin: 0;
+}
+
+.day-summary__tile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.day-summary__tile dt {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.day-summary__tile dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* What the figure above rests on. Small, and never optional - the tile it
+   qualifies says "on the map", and this says why that wording is the
+   careful one. */
+.day-summary__caveat {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.day-summary__note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.day-summary__note textarea {
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+/* "What are you planning?" - the door into the builder (#977, frame `1i`).
+   Wears the route entrance's dialog anatomy because the two are consecutive
+   screens of one flow and a hiker should not learn the chrome twice. */
+.plan-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+
+.plan-kind__lede {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.plan-kind__door {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 3px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.plan-kind__door:hover {
+  border-color: var(--border-2);
+}
+
+/* Not pressable, and it must not look it - see PlanKindSheet's header. */
+.plan-kind__door--unavailable {
+  cursor: default;
+  background: var(--bg-sunken);
+}
+
+.plan-kind__door-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.plan-kind__door-note {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.plan-kind__door-note--refused {
+  margin-top: 0.35rem;
+  color: var(--fg-3);
+}
+
+/* Frame `1j`'s builder bar (#978). Wears RouteMapPickBar's anatomy - the two
+   are the same gesture on two kinds of trail. */
+.day-hike-bar {
+  /* Anchored to the canvas bottom like every sheet MapScreen hosts in its
+     routeSheet slot - the same frame the target sheet wears. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 60%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.day-hike-bar__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.day-hike-bar__prompt {
+  margin: 0;
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.day-hike-bar__cancel {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+/* The one thing on this bar a hiker might act on. */
+.day-hike-bar__refusal {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  background: var(--bg-sunken);
+  border-radius: 3px;
+  color: var(--fg-1);
+}
+
+.day-hike-bar__total {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hike-bar__orgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-bar__org {
+  font-size: 0.8125rem;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hike-bar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.day-hike-bar__action {
+  flex: 1;
+  padding: 0.6rem 0.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.day-hike-bar__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.day-hike-bar__action--done {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--fg-on-dark);
+}
+
+/* #931's row: named, not omitted, and with nothing to press. */
+.day-hike-bar__later {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-1);
+  font-size: 0.8125rem;
+  color: var(--fg-3);
+}
+
+.day-hike-bar__later-tag {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+/* The finished day hike (#980, frame `1l`). Wears .day-hike-bar's sheet frame
+   - the card replaces the bar in the same slot, one surface continuing - with
+   the taller ceiling a legs-and-ways-off list needs. */
+.day-hike-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 85%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.day-hike-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-right: 2rem; /* clear of the close button */
+}
+
+.day-hike-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.day-hike-card__when {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--fg-2);
+}
+
+.day-hike-card__badge {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.day-hike-card__figures {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* The climb pair reads as one figure, so it wraps as one: "+1,240 ft /
+   -1,180 ft" broken across the slash is two numbers a hiker has to reassemble. */
+.day-hike-card__climb {
+  white-space: nowrap;
+}
+
+.day-hike-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.day-hike-card__heading {
+  margin: 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.day-hike-card__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.9375rem;
+}
+
+/* A way-off row leads with its mile; the trail name takes the slack. */
+.day-hike-card__row--mile {
+  grid-template-columns: auto 1fr auto;
+}
+
+.day-hike-card__row-mile {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.day-hike-card__row-name {
+  min-width: 0;
+}
+
+.day-hike-card__row-figures,
+.day-hike-card__row-org {
+  font-size: 0.8125rem;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.day-hike-card__note {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.day-hike-card__orgs {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+}
+
+.day-hike-card__quiet {
+  align-self: flex-start;
+  padding: 0.25rem 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.day-hike-card__confirm {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.875rem;
 }

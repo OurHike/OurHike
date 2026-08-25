@@ -66,6 +66,7 @@ from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
+from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 
@@ -94,6 +95,7 @@ class DeletionSummary:
     """
 
     trips_deleted: int = 0
+    day_hikes_deleted: int = 0
     planned_hikes_deleted: int = 0
     hikes_deleted: int = 0
     preferences_deleted: int = 0
@@ -137,6 +139,9 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # --- The rows that were only ever theirs. These go outright. ---
 
     trips = db.query(SyncedTrip).filter(SyncedTrip.profile_id == profile_id).delete(synchronize_session=False)
+    # Same claim as trips, same answer: a synced day hike is the hiker's own
+    # private planning (#976), published to nobody and relied on by nobody.
+    day_hikes = db.query(SyncedDayHike).filter(SyncedDayHike.profile_id == profile_id).delete(synchronize_session=False)
     planned = db.query(SyncedPlannedHike).filter(SyncedPlannedHike.profile_id == profile_id).delete(synchronize_session=False)
     # The wrong-way alert's server-side reference to which direction they are
     # walking. Nobody else reads it and nothing downstream aggregates it.
@@ -187,6 +192,7 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
 
     return DeletionSummary(
         trips_deleted=trips,
+        day_hikes_deleted=day_hikes,
         planned_hikes_deleted=planned,
         hikes_deleted=hikes,
         preferences_deleted=preferences,

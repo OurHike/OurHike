@@ -27,6 +27,7 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | register next — §3 |
 | NYNJTC public extracts (LP, HT, SRT) | ✓ 43 + 12 | | ✓ one live detour | ✓ | **2026-08-04** | register now — §4 |
 | NYNJTC full network | ✓ | ✓ | | org-internal | GIS program alive | **agreement, not a scrape** — §4 |
+| Mohonk Preserve trails/carriage roads | ✓ 304 | | | ✓ (own AGOL org) | **2026-08-24** | **registered, ships** (#992, maintainer authorisation 2026-08-25); §11 |
 | NJDEP State Park Service Trails | ✓ 3,305 | ✓ (Land/62, uncounted) | | ✓ | undated (on-prem) | register after terms read — §5 |
 | NJ Geospatial Forum Statewide Trails | ✓ 13,296 | | | ✓ | 2026-06-09 | the NJ-county answer — §5 |
 | NJ Highlands Council HT copy | ✓ | | | ✓ | unprobed | secondary to NYNJTC's own — §5 |
@@ -150,6 +151,18 @@ the shelf is broader):
 conversation concludes), and treat the fire-detour layer as the first candidate for a
 non-ATC conditions source.
 
+**Acted on 2026-08-24** ([#950](https://github.com/OurHike/OurHike/issues/950)): both are in
+`sources.json` as `nynjtc_long_path` and `nynjtc_highlands_trail`, review-only
+(`reaches_hikers: false`) behind a new `nynjtc_licence` block. Re-probing them that day
+found the shelf exactly as this section left it on 2026-08-18 — 43 sections and 12, the
+same field lists, `dataLastEditDate` still 2026-08-04 and 2025-12-04 — so nothing here
+needed correcting, which is worth recording because a snapshot that is never re-read is a
+snapshot nobody knows the age of. Two things the survey did not say, found on the re-probe
+and now carried in the entries themselves: the Long Path's `Blaze` is a **plain string with
+no coded domain** (all 43 rows read the lowercase `aqua`), and the Highlands Trail layer
+**publishes no blaze field at all**, which is registered as the neutral rather than as the
+teal it wears on the ground. The fire-detour layer is still unregistered.
+
 ## 5. New Jersey — two real layers, and the first stated terms in this survey
 
 - **NJDEP "NJ State Park Service Trails"** (`mapsdep.nj.gov/…/Features/Land/MapServer/63`,
@@ -213,7 +226,7 @@ rule) will have to be argued rather than assumed:
 |---|---|---|
 | Harriman / Bear Mountain | OPRHP (`Unit: Palisades`) | AT (ATC/NPS layers), Long Path (NYNJTC), PIPC administers, NYNJTC maintains |
 | Hudson Highlands SP Preserve | OPRHP (`Taconic`; 24 named trails at Breakneck alone) | NYNJTC maintains most trails, publishes none of them; AT clips Anthony's Nose |
-| Minnewaska / Shawangunks | OPRHP | Long Path + SRT (NYNJTC), and NYNJTC's live fire-detour layer |
+| Minnewaska / Shawangunks | OPRHP | Long Path + SRT (NYNJTC), NYNJTC's live fire-detour layer, and Mohonk Preserve's own carriage-road network (#992, ships) |
 | Catskill Forest Preserve | DEC (`UNIT: CFP`) | Long Path (NYNJTC), NYNJTC's Catskill programs, 314-lean-to layer statewide |
 | NJ Highlands / Ramapos | NJDEP + the statewide compilation | Highlands Trail (NYNJTC), NYNJTC maintains |
 | The AT corridor through NY/NJ | ATC/NPS (already shipping) | crosses OPRHP, PIPC and NJDEP ground registered above |
@@ -228,14 +241,15 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 
 | source | terms | state |
 |---|---|---|
-| NYS OPRHP (4 layers) | Unstated; no-warranty disclaimer on the item | **Ask in motion** — maintainer outreach declared 2026-08-18, recorded in `oprhp_licence` (#769) |
+| NYS OPRHP (4 layers) | **Stated** — reuse permitted, attribution to OPRHP required, *non-commercial purposes*. **Corrected 2026-08-24 (#950):** this row read "Unstated; no-warranty disclaimer" because the item's `licenseInfo` was read through a 200-character truncation that cut off exactly where the disclaimer ends and the terms begin. Full text (1,095 chars) is quoted in `oprhp_licence`. | **Ask still open, on a narrower question** — not "what are the terms" but "is OurHike non-commercial within them", given features/PRICING_MODEL.md's paid passes (#769) |
 | NYS DEC (`dil` layers) | Unstated; no copyright text on service | **NEEDS REVIEW** — bundle with the OPRHP ask; Open-NY listing is precedent |
 | data.ny.gov copies | No licence field on either listing | Not a source: DEC copy last updated **2013**, OPRHP copy **2014-12-24** — proof the State publishes these openly, and proof the AGOL/on-prem services are the copies of record |
-| NYNJTC public extracts | Unstated (`licenseInfo` empty on both items, read 2026-08-18) | Covered by the maintainer's NYNJTC conversation (#768) |
+| NYNJTC public extracts | Unstated — `licenseInfo` AND `accessInformation` both empty on both items, re-verified whole 2026-08-24 against the registered service URLs | Covered by the maintainer's NYNJTC conversation (#768). An absent licence is more restrictive than OPRHP's stated one, not less |
 | NYNJTC full network | Withheld | **An agreement, not a scrape** (SOURCE_SURVEY.md §10, reaffirmed) |
 | NJDEP layers + NJ compilation | **NJDEP Data Distribution Agreement — stated** | **NEEDS REVIEW** — read in full; possibly no ask needed |
 | ATC / NPS | See `atc_licence` in sources.json | In hand |
 | OpenStreetMap | ODbL 1.0 | In hand (basemap + water precedent) |
+| Mohonk Preserve (trails layer) | Unstated — no-warranty disclaimer only, no reuse grant, read whole 2026-08-25 | **Ships on maintainer authorisation, 2026-08-25** (#992) — the same footing NYNJTC's extracts ship on, not a stated grant |
 
 ## 10. What to do with all this, ranked
 
@@ -260,3 +274,53 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
    - (f) **PIPC's NJ section** — expected inside the NJ layers, unverified.
    - (g) Whether DEC's Back Country Features asset types include **water** — raises the
      evidence bar if true (CLAUDE.md's four ways).
+   - (h) **Mohonk Preserve's own stated terms** — still the ideal, per its licence
+     block's open question; ships today on maintainer authorisation (#992). §11.
+
+## 11. Mohonk Preserve — found after this survey, filling a real gap
+
+Not in this survey's original 2026-08-18 pass: Mohonk Preserve is a ~8,200-acre nonprofit
+nature preserve immediately adjacent to and interleaved with Minnewaska (§8's overlap
+table already listed OPRHP and NYNJTC on that ground; Mohonk Preserve, a distinct
+landowner with its own carriage-road network, was never surveyed as its own source).
+Registered 2026-08-25 (#992):
+
+- **Service:** Mohonk Preserve's own public AGOL org (id `cQ05sucxF4UWabFF`), item
+  `88014aef85ef42c397c738154cf7f1dc`, owned directly by their GIS & Land Projects Manager.
+  `Trails_CarriageRoads/FeatureServer/0` — **304 polyline segments**, fields
+  Name/General_Classification/Classification/Use_/Blaze/Mileage/Surface/Owner/Manager.
+  The layer is already a filtered VIEW (`definitionQuery`: classification in Carriage
+  Road/Trail, `Manager = 'Mohonk Preserve'`) — Mohonk's own curated public extract, not
+  their raw internal dataset. 298 of 304 rows carry `Owner: Mohonk Preserve`; six
+  (Marakill Woods) carry `Owner: NYS OPRHP/PIPC` with `Manager` still Mohonk Preserve.
+- **Freshness, measured the way this survey measures it elsewhere:**
+  `editingInfo.dataLastEditDate` read live 2026-08-25 as **2026-08-24T20:52:57Z** —
+  edited the day before. The AGOL item's own container metadata (title/sharing) last
+  changed 2025-07-28, a full year stale by comparison — reading only the item, not the
+  layer, would have understated how current this source actually is.
+- **The candidate actually suggested** (`gis.ny.gov/gisdata/inventories/
+  details.cfm?DSID=295`, the old NYS GIS Clearinghouse listing) **is dead
+  infrastructure**: 404 on the detail page and on the bare inventory path, which
+  301-redirects to `data.gis.ny.gov` — the whole ColdFusion inventory system has moved,
+  with no working listing for this dataset found on the replacement. Worth recording
+  here because it is this survey's own rule 3 in miniature: finding a live,
+  actively-edited service instead of trusting a page's own claim about itself is the
+  discipline every other row in this document was already held to.
+- **Licence — unstated**, the same shape as NYNJTC's extracts before their maintainer
+  authorisation. Read whole rather than through the 200-character truncation that
+  misread OPRHP's once (§9): the item's `licenseInfo` is a no-warranty disclaimer only,
+  no reuse or redistribution grant either way. The maintainer authorised shipping this
+  public extract on 2026-08-25 — `mohonk_licence` in sources.json holds both the
+  verbatim text and that authorisation, on the same footing `nynjtc_licence` already
+  uses.
+
+**Verdict: registered, ships** (`reaches_hikers: true`, maintainer authorisation
+2026-08-25) — fetched by the existing `fetch_external_layers.py` and exported by the
+existing `export_nearby_trails.py` with no code change to either: `blaze_field`/
+`name_field` on the registry entry are all `network_line_sources()` needed to pick it
+up. Verified live 2026-08-25: all 304 features kept (no ring/status/foot filter drops
+anything — Mohonk Preserve is well inside the ring and the entry declares neither a
+status nor a foot-use field), blaze resolution 297 mapped / 7 absent (the null-Blaze
+rows) / zero unmapped against `reference/blaze_mapping.json`'s new `mohonk_trails`
+table, and `client/src/map/credits.ts`'s `MOHONK_CREDIT` joins `OPRHP_CREDIT`/
+`NYNJTC_CREDIT` on the shared `nearby_trails` map source.

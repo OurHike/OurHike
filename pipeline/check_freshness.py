@@ -270,11 +270,24 @@ def upstream_atc_updates_marker(url: str | None = None) -> str | None:
     an ETag nor a Last-Modified, so a marker read from it would be UNKNOWN
     forever.
 
-    That second reason REPLACES the one this docstring gave until 2026-08-24,
-    which was that the listing answers a scripted request with 403 (measured
-    2026-08-12). It no longer does - it answers 200, to a bare `curl` with no
-    User-Agent set. The conclusion is unchanged and the evidence for it is
-    not, so it is restated rather than left to look still-measured.
+    That second reason is an ADDITION to the one this docstring gave until
+    2026-08-24, and the correction that sat here in between was wrong. It read
+    "it no longer 403s - it answers 200, to a bare `curl`", which was measured
+    with curl and does not describe this code. Re-measured the same day
+    against the same URL:
+
+        python-requests/2.32.3   403      <- what this module sends
+        curl/8.5.0               200
+        a named agent            200
+
+    ATC refuses the literal `python-requests/*` User-Agent. So the original
+    2026-08-12 finding - the listing 403s a scripted request - was right about
+    THIS client and is still right today; what was wrong was generalising a
+    curl result onto it. `lib/atc_scrape.py` fetches the listing successfully
+    only because it sets a User-Agent naming the project.
+
+    Both reasons hold, then: this module would be refused, and even a request
+    that is allowed gets no validator back.
 
     The ETag is WEAK (`W/"..."`, measured 2026-08-24) where this said "strong"
     on 2026-08-12. Nothing here depends on the difference - this compares the

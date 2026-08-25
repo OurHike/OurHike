@@ -22,6 +22,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
+import { ROUTE_SOURCE_ID, ROUTE_POINT_LABEL_PROPERTY } from './map/routeLayers'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
 import { PLAN_KEY } from './lib/plan'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
@@ -638,6 +639,94 @@ describe('the planning flow', () => {
       expect(
         within(panel).getByText('Tap the trail again for where this stretch ends.'),
       ).toBeInTheDocument()
+    })
+
+    it('labels each dropped point with its MILE MARKER, never converted (#986)', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+      await tap(map, 3)
+      await tap(map, 22)
+      await screen.findByText('NOBO · 2 points · 1 leg')
+
+      const drawn = MockMap.live[0].sourceData.get(ROUTE_SOURCE_ID) as {
+        features: Array<{
+          geometry: { type: string }
+          properties: Record<string, string>
+        }>
+      }
+      const labels = drawn.features
+        .filter((f) => f.geometry.type === 'Point')
+        .map((f) => f.properties[ROUTE_POINT_LABEL_PROPERTY])
+      // The pipeline miles the stops carry, said the way stopLabel says them.
+      // Not run through formatDistance: mile 3.2 is a NAME, and "5.1 km"
+      // names nothing on a trail ATC measures in miles.
+      expect(labels).toEqual(['mi 3.2', 'mi 22.2'])
+    })
+
+    it('forgets a refused tap when the builder closes (#986)', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+      await tap(map, 10, -81)
+      const panel = await screen.findByRole('dialog', { name: 'Your route' })
+      expect((await within(panel).findByRole('status')).textContent).toMatch(
+        /no honest mile/,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
+
+      // Back in through the OTHER door. It has to be this one: the tap door
+      // clears the flag on its way through, so a test that reopened that way
+      // would pass with the leak still in place - which is exactly what the
+      // first draft of this test did.
+      await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+      await user.click(await screen.findByRole('button', { name: /Start on the map/ }))
+      await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
+      await user.type(await screen.findByLabelText('Search for a stop'), 'front')
+      await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+      await user.click(await screen.findByRole('button', { name: 'Use this stretch' }))
+
+      // A brand new route, greeted by an accusation about somebody else's tap.
+      const fresh = await screen.findByRole('dialog', { name: 'Your route' })
+      expect(within(fresh).queryByRole('status')).toBeNull()
+      expect(
+        within(fresh).getByText(/Only the A.T. centerline can carry a route/),
+      ).toBeInTheDocument()
+    })
+
+    it('spends one undo press per real edit, never on a re-tap (#986)', async () => {
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      await user.click(
+        screen.getByRole('button', { name: /just tap the trail to drop points/ }),
+      )
+      const map = await liveMap()
+      await tap(map, 3)
+      await tap(map, 22)
+      // The same mile again: insertRoutePoint refuses it, so nothing changed
+      // and nothing should have been recorded.
+      await tap(map, 22)
+      expect(await screen.findByText('NOBO · 2 points · 1 leg')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Undo the last change' }))
+      // One press, one real edit back - not a press spent undoing the re-tap.
+      expect(await screen.findByText('1 point')).toBeInTheDocument()
     })
 
     it('carries a tapped route into the day planner', async () => {

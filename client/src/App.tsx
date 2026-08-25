@@ -162,7 +162,6 @@ import {
   routeLegs,
   type MileAnchor,
 } from './lib/route'
-import { formatDistance } from './lib/units'
 import { DEFAULT_WALKING_HOURS, nearestStopBeyond, type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteEntranceSheet, type EntranceEnd } from './chrome/RouteEntranceSheet'
@@ -209,7 +208,7 @@ import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
-import { stopLabel } from './lib/planDisplay'
+import { mileMarker, stopLabel } from './lib/planDisplay'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
 import { useModerator } from './lib/useModerator'
@@ -434,6 +433,12 @@ type RouteDraftState =
       history: RouteDraftStop[][]
     }
 
+/** Whether two stop lists are the same route. Position and mile are what a
+ *  leg is computed from, so they are what "changed" means here. */
+function sameStops(a: readonly RouteDraftStop[], b: readonly RouteDraftStop[]): boolean {
+  return a.length === b.length && a.every((stop, i) => stop.mile === b[i].mile)
+}
+
 /** How many steps back the route builder can go. Deep enough to undo a run
  *  of mis-taps, shallow enough that the stack is never the reason a draft
  *  costs memory. */
@@ -450,7 +455,11 @@ function withStops(
   draft: Extract<RouteDraftState, { phase: 'editor' }>,
   stops: RouteDraftStop[],
 ): RouteDraftState {
-  if (stops === draft.stops) return draft
+  // BY CONTENT, not by reference (#986). insertRoutePoint returns a fresh
+  // array even when it refuses a re-tap on a mile already in the route, so a
+  // reference check recorded a no-op edit - and the hiker's next ↺ press
+  // spent itself undoing nothing, which reads as undo being broken.
+  if (sameStops(stops, draft.stops)) return draft
   return {
     ...draft,
     stops,
@@ -2055,6 +2064,10 @@ function App() {
   const handleRouteCancel = useCallback(() => {
     setRouteDraft(null)
     setStopPick(null)
+    // The refusal belongs to the draft, not to the app (#986). Left set, it
+    // greeted the NEXT route the hiker started with an accusation about a tap
+    // they never made, in a panel with nothing in it to explain.
+    setEditorRefusedTap(false)
   }, [])
 
   // What the canvas draws for the draft: the centerline's own geometry
@@ -2085,19 +2098,15 @@ function App() {
         if (at === null) return []
         const role: 'start' | 'via' | 'end' =
           i === 0 ? 'start' : i === stops.length - 1 ? 'end' : 'via'
-        // The pipeline's mile, in the hiker's own units - the same number the
-        // stop row prints, so the map and the list name one place one way.
-        return [
-          {
-            lon: at[0],
-            lat: at[1],
-            role,
-            label: formatDistance(stop.mile, units, 'tenths'),
-          },
-        ]
+        // A MILE MARKER, never converted (#986). It reads as the same
+        // quantity as a distance and is not one: mile 470.8 is a name for a
+        // place, and `formatDistance` would render it "757.7 km" to a metric
+        // hiker while the stop row beside it still said "mi 470.8". One
+        // place, two numbers, neither of which names it.
+        return [{ lon: at[0], lat: at[1], role, label: `mi ${mileMarker(stop.mile)}` }]
       }),
     }
-  }, [routeDraft, entranceEnd, trailIndex, units])
+  }, [routeDraft, entranceEnd, trailIndex])
 
   // The editor's figures, on the pipeline miles. Null climb and time on a
   // download with no profile: the distance is still a fact, and the surface
@@ -2270,7 +2279,12 @@ function App() {
         ? draft
         : {
             phase: 'editor',
-            stops: draft.start === null ? [] : [draft.start],
+            // Both ends the hiker named, not just the start (#986). Naming an
+            // end on the entrance is the same act as naming a start, and
+            // dropping it silently made the second door cost work.
+            stops: [draft.start, draft.fixedEnd].filter(
+              (stop): stop is RouteDraftStop => stop !== null,
+            ),
             history: [],
           },
     )
@@ -2493,7 +2507,11 @@ function App() {
     setRouteDraft((draft) => {
       if (draft === null) return draft
       if (draft.phase === 'entrance') return { ...draft, south: !draft.south }
-      return { ...draft, stops: [...draft.stops].reverse() }
+      // THROUGH withStops like every other editor edit (#986). Reversing the
+      // stops is exactly the kind of change undo has to see: it was the one
+      // path that mutated them directly, so ↺ after a flip restored a state
+      // from two edits back - the failure withStops' own comment describes.
+      return withStops(draft, [...draft.stops].reverse())
     })
   }, [routeDraft])
 

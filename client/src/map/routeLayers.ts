@@ -128,7 +128,10 @@ export function buildRouteLayers(): LayerSpecification[] {
       layout: {
         'text-field': ['get', ROUTE_POINT_LABEL_PROPERTY] as unknown as string,
         'text-size': 11,
-        'text-font': ['Noto Sans Bold'],
+        // The one fontstack bundled under public/glyphs (#986). 'Noto Sans
+        // Bold' ships no glyphs, so the label rendered nothing at all - and
+        // offline, where this app lives, there is nowhere to fetch it from.
+        'text-font': ['Noto Sans Regular'],
         'text-offset': [0, -1.35],
         'text-anchor': 'bottom',
         // Never dropped for collision. A route's points are few and every one

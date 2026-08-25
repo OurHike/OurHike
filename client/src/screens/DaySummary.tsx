@@ -62,6 +62,13 @@ export interface DaySummaryProps {
   onClose: () => void
 }
 
+/**
+ * KEY THIS BY THE DAY. The two `useState` initialisers below read `day`, so
+ * they are correct only for the day the component mounted on - which is why
+ * Plan.tsx passes `key={day.id}` and why #986 happened before it did. A
+ * caller that renders this for a second day without remounting it will show
+ * the first day's line and count under the second day's header.
+ */
 export function DaySummary({
   day,
   figures,

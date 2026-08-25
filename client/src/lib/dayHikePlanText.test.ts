@@ -129,6 +129,13 @@ describe('the card', () => {
   })
 
   it('NEVER computes a time: no ≈, no clock the hiker did not type', () => {
+    // THE MAINTAINER'S DECISION, 2026-08-25, asked AFTER #1011 had given the
+    // network its climb - so this is not the data being unable to answer. The
+    // builder bar and the finished card both print a ≈time now; this card
+    // still must not. A duration on the artifact somebody decides to worry
+    // from reads as an arrival promise however it is worded, and better data
+    // does not change what the reader does with it. If this test ever fails,
+    // the fix is to stop printing the time, not to update the test.
     const text = dayHikePlanText(hike(), figures(), 'imperial', EMPTY, TODAY)
     expect(text).not.toContain('≈')
     expect(text).not.toMatch(/\d{1,2}:\d{2}/)

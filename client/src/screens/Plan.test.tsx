@@ -15,7 +15,13 @@ import type { Hike } from '../lib/hikes'
 import type { TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { callItADay } from '../lib/cascade'
-import { buildPlan, insertZeroAfter, toggleResupply, type HikePlan } from '../lib/plan'
+import {
+  buildPlan,
+  insertZeroAfter,
+  setDayNote,
+  toggleResupply,
+  type HikePlan,
+} from '../lib/plan'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import type { StoredPoi } from '../lib/trailData'
 
@@ -272,6 +278,42 @@ describe('the cascade (#758)', () => {
     for (const action of [/Call it a day/, /Pin/, /zero day/, /Remove/]) {
       expect(screen.queryByRole('button', { name: action })).toBeNull()
     }
+  })
+
+  it('gives each day its own card, so a line cannot land on the wrong day (#986)', async () => {
+    // The defect this pins is Plan's, not DaySummary's: the card holds
+    // per-day state whose initialisers run on mount, and without a key
+    // "the next day" reused the instance. Day two opened with day one's
+    // line already in the box, and Keep wrote it onto day two - silent, and
+    // indistinguishable from something the hiker had written themselves.
+    const user = userEvent.setup()
+    const twoWalked = callItADay(callItADay(milesPlan(), 0, { mile: 486.2 }), 1, {
+      mile: 503.3,
+    })
+    // Day one carries a line; day two carries none.
+    const withNote = setDayNote(twoWalked, 0, 'the ponies were unbothered')
+    render(<PlanScreen {...PROPS} plan={withNote} pois={POIS} />)
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    const first = screen.getByRole('dialog', { name: 'Your day' })
+    expect((within(first).getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      'the ponies were unbothered',
+    )
+
+    await user.click(within(first).getByRole('button', { name: /the next day/i }))
+    const second = screen.getByRole('dialog', { name: 'Your day' })
+    expect(within(second).getByText(/Lost Mountain Shelter → Atkins/)).toBeInTheDocument()
+    expect((within(second).getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
+
+    // And Keep on the untouched second day clears rather than copying.
+    await user.click(within(second).getByRole('button', { name: 'Keep' }))
+    const calls = PROPS.onReplacePlan.mock.calls
+    if (calls.length > 0) {
+      const kept = calls[calls.length - 1][0] as HikePlan
+      expect(kept.days[1].note).toBeUndefined()
+    }
+    // Day one's line is untouched either way.
+    expect(withNote.days[0].note).toBe('the ponies were unbothered')
   })
 
   it("opens a walked day's summary, and keeps the line written on it (#966)", async () => {

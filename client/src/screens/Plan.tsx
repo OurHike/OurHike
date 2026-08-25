@@ -642,6 +642,13 @@ export function PlanScreen({
       )}
       {summaryDay !== null && views[summaryDay] !== undefined && (
         <DaySummary
+          // KEYED BY THE DAY, and it is load-bearing (#986). The card holds
+          // two pieces of per-day state whose initialisers run only on mount -
+          // the hiker's own line and the photo count. Without a key, "the next
+          // day" changed the `day` prop and reused the instance, so day two
+          // opened with day one's line in the box and Keep wrote it onto day
+          // two. Silent, and indistinguishable from something the hiker wrote.
+          key={views[summaryDay].id}
           day={views[summaryDay]}
           figures={figures.get(summaryDay)}
           pois={pois}

@@ -476,6 +476,27 @@ Each step useful alone, per the house convention:
   corroboration numbers: settled against the first real refresh, not guessed harder in
   advance. The structure (margin + ceiling + mutual-best) is the decision; the constants are
   calibration.
+- **Whether tier 2 should be reachable at all by a POI carrying no name and no fingerprint**,
+  which is a different question from calibrating the constants above, because for those rows
+  the constants do not decide anything. `_score_pair` can award such a pair `SCORE_NEAR` (1.0)
+  and `SCORE_MILE` (0.5) and nothing else, so its **maximum reachable score is 1.5 against
+  `ACCEPT_THRESHOLD` 2.5** — no distance is close enough, and the margin, ceiling and
+  mutual-best conditions are never consulted. Measured against the 2026-08-25 ledger, **3,567
+  of 8,469 live rows are that shape (42.1%)**: 3,370 `nhd_crossing`, 177 `osm_water`, 17
+  `nhd_stream`, 3 `atc_communities`. It bites hardest on exactly those crossings, because their
+  ids are *coordinate-derived* — `nhd_crossing:{lat},{lon}`, with `source_feature_id` the same
+  string — so tier 1's key is minted from geometry this project re-measures itself, and a
+  re-measure is an identity event for a population that has no way to survive one. The
+  2026-08-25 run has an instance: its single retirement, `nhd_crossing:41.40819,-73.87630`,
+  sits 24.7 m from `nhd_crossing:41.40803,-73.87609`, minted new in the same run — same type,
+  both unnamed — while the one crossing that *was* carried, "Beechy Bottom Brook", moved 8 m
+  and survived on the 2.0 its name scored. That reading is proximity and a plausible cause, not
+  a measurement: nobody has checked the two against the raw NHD flowlines, and a second unnamed
+  crossing sits 31.7 m out on the other side.
+  **#1028 — A POI with no name and no fingerprint can never be carried by tier 2, and 42% of
+  the ledger is now that shape** holds the options. Retire-and-create is the recoverable
+  direction and "miss rather than cry wolf" is the stated asymmetry, so accepting this is a
+  legitimate answer — it is just not currently a written-down one.
 - **Whether search indexes `name_was` aliases**, and whether the card ever says "formerly
   Winturri Shelter". The record exists regardless.
 - **Whether tier 2 should ever run cross-`poi_type`.** A campsite upstream reclassifies as a

@@ -1648,3 +1648,61 @@
   font-size: 11px;
   color: var(--fg-2);
 }
+
+/* "What are you planning?" - the door into the builder (#977, frame `1i`).
+   Wears the route entrance's dialog anatomy because the two are consecutive
+   screens of one flow and a hiker should not learn the chrome twice. */
+.plan-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+
+.plan-kind__lede {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-2, #5a5346);
+}
+
+.plan-kind__door {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  text-align: left;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-1, #e4ddca);
+  border-radius: 3px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.plan-kind__door:hover {
+  border-color: var(--border-2, #c3baa4);
+}
+
+/* Not pressable, and it must not look it - see PlanKindSheet's header. */
+.plan-kind__door--unavailable {
+  cursor: default;
+  background: var(--bg-sunken, #e3ecda);
+}
+
+.plan-kind__door-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.plan-kind__door-note {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--fg-2, #5a5346);
+}
+
+.plan-kind__door-note--refused {
+  margin-top: 0.35rem;
+  color: var(--fg-3, #8a8271);
+}

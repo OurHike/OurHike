@@ -23,6 +23,10 @@ SCRIPTS = [
     REPO_ROOT / "scripts" / "test.sh",
     REPO_ROOT / "scripts" / "threads.sh",
     REPO_ROOT / "scripts" / "pick_python.sh",
+    # Its behaviour is held in test_pages_preview_sweep.py; this list is the
+    # blanket "nothing in scripts/ is outside every suite" guard, and leaving
+    # a file off it is how the drift #660 was about started.
+    REPO_ROOT / "scripts" / "sweep-pages-previews.sh",
 ]
 SUITE_SCOPES = REPO_ROOT / "scripts" / "suite_scopes.py"
 

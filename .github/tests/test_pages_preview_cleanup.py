@@ -72,6 +72,17 @@ class FakeState:
     delete_calls: list[tuple[str, dict]] = field(default_factory=list)
     list_calls: list[dict] = field(default_factory=list)
     auth_seen: set[str] = field(default_factory=set)
+    # Which `pr-<n>` hostnames are answering. Separate from `deployments`
+    # because #1004 established that the two can disagree: Cloudflare accepted
+    # the deletion of pr-1003's only deployment on 2026-08-25 and the alias
+    # went on serving that build for at least 32 minutes.
+    live_aliases: set[str] = field(default_factory=set)
+    # Whether deleting the last deployment for an alias takes the alias down
+    # with it. False is what the API's success reply implies; True is what was
+    # measured once. Both are worth being able to run the script against, and
+    # neither is asserted here as the truth about Cloudflare.
+    alias_survives_deletion: bool = False
+    preview_calls: list[str] = field(default_factory=list)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -90,8 +101,34 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _preview(self, alias: str) -> None:
+        """What `https://pr-<n>.<project>.pages.dev/` answers.
+
+        A path on this same stand-in rather than a hostname, because a test
+        cannot mint `pr-281.ourhike-preview.pages.dev` and pointing the script
+        at the real one would either probe somebody's live preview or nothing
+        at all. PREVIEW_URL_TEMPLATE exists for this the way API_BASE does.
+
+        Deliberately unauthenticated and not recorded in `auth_seen` or
+        `list_calls`: a preview URL is a public GET, and treating it as an API
+        call would make the assertions about which API requests go out mean
+        something other than what they say.
+        """
+        self.state.preview_calls.append(alias)
+        live = alias in self.state.live_aliases
+        body = b"<!doctype html><title>a preview</title>" if live else b"not found"
+        self.send_response(200 if live else 404)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/__preview/"):
+            self._preview(parsed.path[len("/__preview/") :].strip("/"))
+            return
+
         query = {key: values[0] for key, values in parse_qs(parsed.query).items()}
         self.state.list_calls.append(query)
         self.state.auth_seen.add(self.headers.get("Authorization", ""))
@@ -148,7 +185,20 @@ class _Handler(BaseHTTPRequestHandler):
         # that tried to delete while paging through it. That is the bug the
         # script's collect-then-delete order exists to avoid, and a test that
         # left the collection intact could not tell the two apart.
+        going = [item for item in self.state.deployments if item["id"] == target]
         self.state.deployments = [item for item in self.state.deployments if item["id"] != target]
+
+        # An alias stops answering once nothing is left behind it - unless the
+        # state says otherwise, which is the case #1004 observed.
+        if not self.state.alias_survives_deletion:
+            for item in going:
+                branch = item.get("deployment_trigger", {}).get("metadata", {}).get("branch")
+                if branch and not any(
+                    other.get("deployment_trigger", {}).get("metadata", {}).get("branch") == branch
+                    for other in self.state.deployments
+                ):
+                    self.state.live_aliases.discard(branch)
+
         self._json({"success": True, "errors": [], "result": None})
 
 
@@ -188,6 +238,7 @@ def run(server, tmp_path: Path, alias: str, *, project: str = PROJECT, output_na
         "PROJECT": project,
         "ALIAS": alias,
         "API_BASE": f"http://{host}:{port}",
+        "PREVIEW_URL_TEMPLATE": f"http://{host}:{port}/__preview/%s",
         "GITHUB_OUTPUT": str(step_output),
         # The sandbox routes outbound HTTPS through a proxy. Without this the
         # loopback stand-in would be reached through it, or not at all.
@@ -420,6 +471,100 @@ class TestTheRequestsItMakes:
         assert all("per_page" not in query for query in cloudflare.state.list_calls)
 
 
+class TestItSaysWhetherTheUrlStoppedServing:
+    """#1004: "deleted" and "no longer reachable" turned out to be two states.
+
+    The action used to report the first and the pull request comment claimed
+    the second. On the first close anybody could observe - pr-1003, 2026-08-25,
+    run 32847903961 - Cloudflare deleted the alias's only deployment with
+    `force=true`, answered `"success": true`, and the URL went on serving that
+    build for at least 32 minutes. So the action asks the URL now, and what it
+    reports is the reading it got rather than the outcome it wanted.
+    """
+
+    def test_it_reports_what_the_url_answered_after_the_deletion(self, cloudflare, tmp_path):
+        cloudflare.state.deployments = [preview(281, "a")]
+        cloudflare.state.live_aliases = {"pr-281"}
+
+        result = run(cloudflare, tmp_path, "pr-281")
+
+        assert result.returncode == 0
+        assert result.outputs["reachable"] == "404"
+        assert cloudflare.state.preview_calls == ["pr-281"]
+
+    def test_a_preview_that_keeps_serving_is_reported_without_failing_the_step(self, cloudflare, tmp_path):
+        """The measured case, and the one the reporting exists for.
+
+        It must not fail: nothing in this repository can change how Cloudflare
+        routes a deleted deployment's alias, and a step that went red on every
+        close would bury the failure this action can actually act on - a
+        deletion Cloudflare refused, which is still `failed` and still red.
+        """
+        cloudflare.state.deployments = [preview(281, "a")]
+        cloudflare.state.live_aliases = {"pr-281"}
+        cloudflare.state.alias_survives_deletion = True
+
+        result = run(cloudflare, tmp_path, "pr-281")
+
+        assert result.returncode == 0
+        assert result.count("deleted") == 1
+        assert result.count("failed") == 0
+        assert result.outputs["reachable"] == "200"
+        assert "::warning::" in result.output
+        assert "#1004" in result.output
+
+    def test_it_asks_even_when_there_was_nothing_to_delete(self, cloudflare, tmp_path):
+        """A serving alias with no deployment behind it is the worse finding.
+
+        `found == 0` has always been reported as "nothing to remove", which is
+        only reassuring if the URL is also quiet. If it is answering, then
+        something is holding it up that this filter does not select - and that
+        is not a tidy-up any more.
+        """
+        cloudflare.state.deployments = [preview(282, "a")]
+        cloudflare.state.live_aliases = {"pr-281"}
+
+        result = run(cloudflare, tmp_path, "pr-281")
+
+        assert result.returncode == 0
+        assert result.count("found") == 0
+        assert result.outputs["reachable"] == "200"
+        assert "does not select" in result.output
+
+    def test_it_does_not_claim_to_have_checked_when_the_listing_failed(self, cloudflare, tmp_path):
+        """`unchecked` rather than a status, so the comment can say so.
+
+        Empty would be indistinguishable from "answered nothing", and 0 would
+        read as a status code. The pull request comment branches on this
+        exact word.
+        """
+        cloudflare.state.list_failure = {
+            "success": False,
+            "errors": [{"message": "Authentication error"}],
+            "result": None,
+        }
+
+        result = run(cloudflare, tmp_path, "pr-281")
+
+        assert result.returncode == 1
+        assert result.outputs["reachable"] == "unchecked"
+        assert cloudflare.state.preview_calls == []
+
+    def test_the_probe_carries_no_credentials(self, cloudflare, tmp_path):
+        """It is a public URL, and the point is what a stranger would get.
+
+        Probing it with the Pages token would answer a question nobody asked
+        and could pass where an anonymous request failed.
+        """
+        cloudflare.state.deployments = [preview(281, "a")]
+        cloudflare.state.live_aliases = {"pr-281"}
+
+        run(cloudflare, tmp_path, "pr-281")
+
+        assert cloudflare.state.preview_calls == ["pr-281"]
+        assert cloudflare.state.auth_seen == {f"Bearer {TOKEN}"}
+
+
 class TestTheWorkflowUsesIt:
     """Static checks, so the wiring cannot quietly come undone."""
 
@@ -454,7 +599,7 @@ class TestTheWorkflowUsesIt:
         # The three the workflow reads back to decide whether anything
         # outlived its pull request. A rename here goes red rather than
         # silently making that check compare empty strings.
-        assert set(manifest["outputs"]) == {"found", "deleted", "failed"}
+        assert set(manifest["outputs"]) == {"found", "deleted", "failed", "reachable"}
         assert set(manifest["inputs"]) == {"api-token", "account-id", "project", "alias"}
 
     def test_the_closed_path_can_resolve_the_local_action_it_runs(self):
@@ -481,6 +626,80 @@ class TestTheWorkflowUsesIt:
         # deletion, so the two cannot come to disagree about which pull
         # request's previews these are.
         assert teardown["with"]["alias"] == "${{ steps.preview.outputs.alias }}"
+
+    def test_the_closed_comment_reports_the_reading_rather_than_asserting(self):
+        """The sentence that was false (#1004).
+
+        It read "`https://pr-<n>....pages.dev` no longer serves anything",
+        posted the moment Cloudflare returned success and checking nothing.
+        What replaces it is whatever the probe measured, composed by a step
+        that runs between the teardown and the comment.
+        """
+        steps = self._steps()
+        comment = next(step for step in steps if step.get("name") == "Say the pull request is closed")
+        body = yaml.safe_dump(comment)
+        assert "no longer serves anything" not in body
+        assert "steps.reachability.outputs.line" in body
+
+        wording = next(step for step in steps if step.get("id") == "reachability")
+        teardown_at = next(i for i, step in enumerate(steps) if step.get("uses") == "./.github/actions/delete-pages-previews")
+        assert teardown_at < steps.index(wording) < steps.index(comment)
+        assert "steps.teardown.outputs.reachable" in yaml.safe_dump(wording)
+
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            ("200", "was still answering 200"),
+            ("404", "answered 404"),
+            ("522", "answered 522"),
+            # A removed preview answers 404 - measured 2026-08-25 on pr-100
+            # and pr-99999, both Cloudflare's own 404 page. So `000` is the
+            # probe failing, and the sentence must not read it as good news.
+            ("000", "probe failing rather than evidence either way"),
+            ("unchecked", "was not checked"),
+            ("", "was not checked"),
+        ],
+    )
+    def test_every_reading_gets_a_sentence_that_is_true_of_it(self, tmp_path, code, expected):
+        """Run the step's own script, because the sentence is the deliverable.
+
+        Every other test here checks wiring. This one checks the thing a
+        person actually reads on a closed pull request, which is where #1004
+        went wrong: the wiring was fine and the sentence was false.
+        """
+        step = next(step for step in self._steps() if step.get("id") == "reachability")
+        output = tmp_path / f"out-{code or 'empty'}"
+        output.write_text("", encoding="utf-8")
+        completed = subprocess.run(
+            ["bash", "-e", "-c", step["run"]],
+            env={
+                **os.environ,
+                "URL": "https://pr-42.ourhike-preview.pages.dev",
+                "CODE": code,
+                "GITHUB_OUTPUT": str(output),
+            },
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+        written = output.read_text(encoding="utf-8")
+        assert expected in written
+        # A heredoc delimiter, so a multi-line or empty value cannot corrupt
+        # the rest of the step outputs.
+        assert written.startswith("line<<REACHABILITY_EOF\n")
+        assert written.rstrip().endswith("REACHABILITY_EOF")
+
+    def test_a_still_reachable_alias_does_not_fail_the_job(self):
+        """Only a refused deletion does.
+
+        Both are "a preview outlived its pull request", and only one of them
+        is something this repository can fix. An alarm that is on for every
+        close is how the other would stop being read.
+        """
+        guard = next(step for step in self._steps() if step.get("name") == "Fail if any preview outlived its pull request")
+        # The output, not the word - the guard's own error message says
+        # "still reachable" about the deletions it does fail on.
+        assert "outputs.reachable" not in yaml.safe_dump(guard)
 
     def test_a_failed_teardown_still_posts_the_comment_and_still_fails_the_job(self):
         """Both, because either alone hides it.

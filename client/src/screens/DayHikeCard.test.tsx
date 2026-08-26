@@ -186,7 +186,11 @@ describe('the honest absences', () => {
 
     // The cache's own numbers, under a sentence saying that is what they are.
     expect(screen.getByText(/5\.0 mi · 1 leg\b/)).toBeInTheDocument()
-    expect(screen.getByText(/hasn.t got the trail network yet/)).toBeInTheDocument()
+    // "no trail network", not "not yet" - #1049. There is no graph coming
+    // on production (#1048), and "yet" was the same false promise the plan
+    // door was making.
+    expect(screen.getByText(/has no trail network/)).toBeInTheDocument()
+    expect(screen.queryByText(/network yet/)).not.toBeInTheDocument()
     // No ways-off section at all: nothing honest to put in it.
     expect(screen.queryByText('If you need to get off')).not.toBeInTheDocument()
   })

@@ -13,7 +13,7 @@
 // calls about what this hook reports, and they stay where the rest of that
 // reasoning is.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DATA_CONFIGURED } from './config'
 import { buildTrailIndex, type TrailIndex } from './trailPosition'
 import {
@@ -27,7 +27,12 @@ import {
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
 import { fetchNearbyTrails } from './nearbyTrailData'
-import { fetchTrailGraph } from './trailGraphData'
+import {
+  isSettledAbsence,
+  loadTrailGraph,
+  type TrailNetworkAbsence,
+  type TrailNetworkState,
+} from './trailGraphData'
 import type { TrailGraphIndex } from './trailGraph'
 import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
@@ -137,6 +142,26 @@ export interface TrailData {
    *  are far heavier than the routing half and a launch that never opens the
    *  builder should not pay for either. */
   graphIndex: TrailGraphIndex | null
+  /**
+   * The same fact with its REASON attached, for the one surface that speaks
+   * to a hiker about it (#1049).
+   *
+   * `graphIndex` above answers "can the router route", which is what almost
+   * everything needs. This answers "what do I tell somebody who just asked
+   * for a day hike", and those are different questions: four of the five ways
+   * to have no graph never resolve by waiting, and the door used to promise
+   * all of them a data sync.
+   */
+  trailNetwork: TrailNetworkState
+  /**
+   * Ask the bucket for the graph again.
+   *
+   * A no-op unless the last answer was one a connection could cure - see
+   * `isSettledAbsence`. A 404 re-requested on a button press is a hammer on a
+   * bucket that has already answered, and the sheet only offers the button
+   * where it is honest to.
+   */
+  retryTrailNetwork: () => void
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
   haveTrailLines: boolean
@@ -207,6 +232,13 @@ export function useTrailData(
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
   const [nearbyTrailsUrl, setNearbyTrailsUrl] = useState<string | null>(null)
   const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
+  /** Why there is no graph, or null while nothing has answered yet. The two
+   *  are different on screen: "looking" is not "there isn't one". */
+  const [graphAbsence, setGraphAbsence] = useState<TrailNetworkAbsence | null>(null)
+  /** Bumped by `retryTrailNetwork` to make the effect below run again. A
+   *  counter rather than a flag because two retries in a row must both fire,
+   *  and re-setting a flag to the same value would not. */
+  const [graphAttempt, setGraphAttempt] = useState(0)
   /** Whether the phone has been asked whether it holds trail lines yet.
    *  Distinct from holding none: for the first tick of every launch those two
    *  look the same, and one of them is a reason to spend a hiker's data. */
@@ -526,21 +558,58 @@ export function useTrailData(
   // once, not once per reconnection, with the state itself as the guard. No
   // object URL to revoke: fetchTrailGraph returns a parsed index.
   useEffect(() => {
-    if (!DATA_CONFIGURED || !online || graphIndex !== null) return
+    if (graphIndex !== null) return
+    if (!DATA_CONFIGURED) {
+      setGraphAbsence('unconfigured')
+      return
+    }
+    // Offline is not a fetch worth making, and it is not a fault either: it
+    // is the one absence a connection cures, so it is recorded as that and
+    // the effect will run again when `online` flips.
+    if (!online) {
+      setGraphAbsence('unreachable')
+      return
+    }
+    // A settled absence is not re-requested. Without this the reason below
+    // becoming a dependency would put the app back on the bucket every time
+    // React re-ran the effect, for an answer that cannot have changed.
+    if (graphAbsence !== null && isSettledAbsence(graphAbsence)) return
 
     const controller = new AbortController()
     let wanted = true
 
-    void fetchTrailGraph(controller.signal).then((index) => {
-      if (index === null || !wanted) return
-      setGraphIndex(index)
+    void loadTrailGraph(controller.signal).then((load) => {
+      if (!wanted) return
+      if (load.kind === 'graph') {
+        setGraphIndex(load.index)
+        setGraphAbsence(null)
+        return
+      }
+      setGraphAbsence(load.because)
     })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [online, graphIndex])
+  }, [online, graphIndex, graphAbsence, graphAttempt])
+
+  const retryTrailNetwork = useCallback(() => {
+    setGraphAttempt((attempt) => attempt + 1)
+  }, [])
+
+  /**
+   * What to SAY about the graph, as against whether there is one.
+   *
+   * Memoised on the two facts it is built from rather than rebuilt per render:
+   * it is a prop, and a fresh object every render is a re-render for whatever
+   * holds it.
+   */
+  const trailNetwork = useMemo<TrailNetworkState>(() => {
+    if (graphIndex !== null) return { kind: 'ready' }
+    if (graphAbsence === null) return { kind: 'looking' }
+    return { kind: 'absent', because: graphAbsence }
+  }, [graphIndex, graphAbsence])
 
   const ensure = useCallback(async () => {
     setError(null)
@@ -571,6 +640,8 @@ export function useTrailData(
     overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
     nearbyTrailsUrl,
     graphIndex,
+    trailNetwork,
+    retryTrailNetwork,
     trailsUrl,
     haveTrailLines,
     error,

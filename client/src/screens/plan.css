@@ -2425,6 +2425,23 @@
   color: var(--fg-3);
 }
 
+/* The one refusal a hiker can act on (#1049): "it needs a connection" is the
+   only absence retrying can cure, so it is the only one that gets a control.
+   Quiet - a link rather than a button shape - because the row it sits in is
+   not a door and must not start looking like one. */
+.plan-kind__retry {
+  align-self: flex-start;
+  min-height: var(--min-touch-target);
+  padding: 0.35rem 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
 /* Frame `1j`'s builder bar (#978). Wears RouteMapPickBar's anatomy - the two
    are the same gesture on two kinds of trail. */
 .day-hike-bar {

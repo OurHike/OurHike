@@ -221,12 +221,18 @@ export function DayHikeCard({
 
       {resolved === null && (
         // Which of the two honest reasons applies changes what a hiker can do
-        // about it: wait for a data sync, or accept the walk has drifted off
-        // the published network.
+        // about it: get the trail network onto this phone, or accept the walk
+        // has drifted off the published network.
+        //
+        // NOT "yet" (#1049). That word promised an arrival on the same
+        // evidence chrome/PlanKindSheet.tsx was promising a data sync, and on
+        // production there is no graph to arrive at all (#1048). This card
+        // does not need to say WHICH absence - it is about which figures you
+        // are reading - so it says the fact and stops.
         <p className="day-hike-card__note" role="note">
           {networkAvailable
             ? 'This phone’s current trail map can’t place this walk, so these are the figures from the day it was saved — and ways off can’t be worked out.'
-            : 'This phone hasn’t got the trail network yet, so these are the figures from the day this hike was saved — and ways off can’t be worked out.'}
+            : 'This phone has no trail network, so these are the figures from the day this hike was saved — and ways off can’t be worked out.'}
         </p>
       )}
 

@@ -801,6 +801,8 @@ function App() {
     overviewTrailsUrl,
     nearbyTrailsUrl,
     graphIndex,
+    trailNetwork,
+    retryTrailNetwork,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
@@ -4305,7 +4307,12 @@ function App() {
                 kindSheet={
                   planKindOpen ? (
                     <PlanKindSheet
-                      networkAvailable={graphIndex !== null}
+                      // The reason, not just the fact (#1049): four of the
+                      // five ways to have no junction graph never resolve by
+                      // waiting, and this door used to promise all of them a
+                      // data sync that was not coming.
+                      network={trailNetwork}
+                      onRetryNetwork={retryTrailNetwork}
                       walkedAvailable={false}
                       onPickDayHike={openDayHike}
                       onPickTrip={() => {
@@ -4340,7 +4347,11 @@ function App() {
                 onStartOnMap={openPlanKind}
                 onNewDayHike={openDayHike}
                 onNewTrip={routeBuilder.openRouteBuilder}
-                networkAvailable={graphIndex !== null}
+                // The state rather than the boolean (#1049): the Plan tab
+                // prints the refusal, and a refusal needs to know which
+                // absence it is refusing for.
+                network={trailNetwork}
+                onRetryNetwork={retryTrailNetwork}
                 gpsAt={gps.status === 'located' ? gps.at : null}
                 mode={effectivePlanMode}
                 onSwitchMode={handleSwitchPlanMode}

@@ -28,6 +28,20 @@
 // button teaches a hiker the app is broken, where a sentence tells them what
 // is missing.
 //
+// WHICH SENTENCE, AND WHY IT USED TO BE THE WRONG ONE (#1049)
+//
+// That paragraph was right and the copy under it was not: one sentence for
+// every way of having no graph, ending "It arrives with the next data sync",
+// when four of the five never resolve by waiting. lib/trailNetworkText.ts
+// holds the reasoning and the five true sentences; screens/PlanHome.tsx
+// prints the same ones from the same place. The DOOR does not change: no
+// graph is no graph, and it stays shut either way.
+//
+// ONLY ONE OF THEM OFFERS A BUTTON, and that is the point of splitting them.
+// "It needs a connection" is a thing a hiker can act on, so it gets "Try
+// again". A release with no graph in it cannot be retried into existence, and
+// a button there would be the same false promise in a new shape.
+//
 // THE THIRD DOOR GOES SOMEWHERE OF ITS OWN
 //
 // "A walk I've already done" is #982, not #968's day-summary card
@@ -37,14 +51,20 @@
 // across a network. Two surfaces that look alike and know different things is
 // the cheaper mistake - decided 2026-08-25.
 
+import type { TrailNetworkState } from '../lib/trailGraphData'
+import { canRetryTrailNetwork, trailNetworkRefusal } from '../lib/trailNetworkText'
 import '../screens/plan.css'
 
 export interface PlanKindSheetProps {
   /**
    * Whether the junction graph is loaded, so a day hike can actually be
-   * routed. False is an ordinary state, not an error - see the header.
+   * routed - and when it is not, why. Absent is an ordinary state, not an
+   * error, and which absence it is decides the sentence (see the header).
    */
-  networkAvailable: boolean
+  network: TrailNetworkState
+  /** Ask the bucket again. Rendered only where waiting could actually
+   *  change the answer. */
+  onRetryNetwork?: () => void
   /** Whether the past-walk flow exists to open. False until #982 builds it -
    *  and false renders a sentence, not a dead control (LineSheet's rule). */
   walkedAvailable: boolean
@@ -55,7 +75,8 @@ export interface PlanKindSheetProps {
 }
 
 export function PlanKindSheet({
-  networkAvailable,
+  network,
+  onRetryNetwork,
   walkedAvailable,
   onPickDayHike,
   onPickTrip,
@@ -77,7 +98,7 @@ export function PlanKindSheet({
         into days.
       </p>
 
-      {networkAvailable ? (
+      {network.kind === 'ready' ? (
         <button type="button" className="plan-kind__door" onClick={onPickDayHike}>
           <span className="plan-kind__door-name">A day hike</span>
           <span className="plan-kind__door-note">
@@ -97,9 +118,14 @@ export function PlanKindSheet({
             className="plan-kind__door-note plan-kind__door-note--refused"
             role="note"
           >
-            This phone hasn&rsquo;t got the trail network yet, so there&rsquo;s nothing to
-            build a day hike on. It arrives with the next data sync.
+            {trailNetworkRefusal(network)}
           </span>
+          {/* The one absence a hiker can do something about. */}
+          {canRetryTrailNetwork(network) && onRetryNetwork !== undefined && (
+            <button type="button" className="plan-kind__retry" onClick={onRetryNetwork}>
+              Try again
+            </button>
+          )}
         </div>
       )}
 

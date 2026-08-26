@@ -730,7 +730,13 @@ describe('the day-hike builder, end to end', () => {
 
     // A sentence, not a dead control - and the other two doors still work.
     expect(screen.queryByRole('button', { name: /A day hike/ })).not.toBeInTheDocument()
-    expect(screen.getByText(/hasn.{0,3}t got the trail network yet/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+
+    // AND THE SENTENCE IS THE TRUE ONE (#1049). `withGraph: false` serves a
+    // 404, which is exactly what production serves today (#1048) - so this is
+    // the end-to-end proof of the bug a hiker reported: the door used to tell
+    // them to wait for a data sync that was never coming.
+    expect(screen.getByText(/does not include the trail network/i)).toBeInTheDocument()
+    expect(screen.queryByText(/data sync/i)).not.toBeInTheDocument()
   })
 })

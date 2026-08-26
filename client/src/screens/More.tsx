@@ -43,7 +43,7 @@ import { mapStyleLabel } from './MapStylePicker'
 import { formatDay } from './DownloadCard'
 import type { DownloadStatus } from './DownloadCard'
 import { facingFullDownload } from '../lib/backgroundStatus'
-import { formatBytes } from '../lib/formatBytes'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import {
   downloadFillPercent,
   downloadPercent,
@@ -191,10 +191,14 @@ function storageFace(
       title,
       size: `${percent}%`,
       fill: downloadFillPercent(activity.doneBytes, activity.totalBytes),
+      // formatBytesLive for the moving figure - the static formatter's
+      // decimal spins on every chunk, the "jumpy and crazy" text the
+      // maintainer reported on first run's panel (2026-08-26), and this
+      // line re-renders on the same ticks.
       meta:
         activity.kind === 'checking'
           ? 'Checking what is already on this phone — nothing is being fetched.'
-          : `${formatBytes(activity.doneBytes)} of ${formatBytes(activity.totalBytes)} · picks up where it left off if you lose signal`,
+          : `${formatBytesLive(activity.doneBytes)} of ${formatBytes(activity.totalBytes)} · picks up where it left off if you lose signal`,
     }
   }
 
@@ -218,7 +222,7 @@ function storageFace(
         title,
         size: `${downloadPercent(status.receivedBytes, status.totalBytes)}%`,
         fill: downloadFillPercent(status.receivedBytes, status.totalBytes),
-        meta: `${formatBytes(status.receivedBytes)} of ${formatBytes(status.totalBytes)}`,
+        meta: `${formatBytesLive(status.receivedBytes)} of ${formatBytes(status.totalBytes)}`,
       }
     case 'checking':
       return {

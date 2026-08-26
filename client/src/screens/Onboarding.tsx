@@ -56,7 +56,7 @@ import {
   downloadPercent,
   type DownloadActivity,
 } from '../lib/downloadActivity'
-import { formatBytes } from '../lib/formatBytes'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import { Tabs } from './Tabs'
 import './onboarding.css'
 
@@ -149,10 +149,24 @@ function DownloadPanel({ activity }: { activity: DownloadActivity }) {
         />
       </div>
       {/* The resume promise is lib/archiveDownload.ts's, surfaced where the
-          worry actually is: someone watching a bar on trailhead wifi. */}
+          worry actually is: someone watching a bar on trailhead wifi.
+
+          formatBytesLive for the moving figure, not formatBytes - this
+          shipped with the static formatter and the maintainer watched the
+          decimal spin: "don't show decimals. That makes the text all jumpy
+          and crazy" (2026-08-26), which is the exact flicker
+          lib/formatBytes.ts built the live variant to stop. The reserved
+          slot is DownloadCard.tsx's trick, sized to the total (the widest
+          the counter gets, exact in ch because the face is mono) so "of
+          1.4 GB" never shuffles sideways as 99 MB becomes 100 MB. */}
       <p className="onboarding__download-meta">
-        {formatBytes(activity.doneBytes)} of {formatBytes(activity.totalBytes)} · picks up
-        where it left off if you lose signal
+        <span
+          className="onboarding__download-received"
+          style={{ minWidth: `${formatBytesLive(activity.totalBytes).length}ch` }}
+        >
+          {formatBytesLive(activity.doneBytes)}
+        </span>
+        {` of ${formatBytes(activity.totalBytes)} · picks up where it left off if you lose signal`}
       </p>
     </div>
   )

@@ -257,6 +257,14 @@
   font-size: 10px;
   color: var(--fg-2);
 }
+
+/* The moving figure's reserved slot (downloads.css's own arrangement): right-
+   aligned inside a width the JSX pins to the total's, so the counter grows
+   into its slot instead of pushing the sentence around. */
+.onboarding__download-received {
+  display: inline-block;
+  text-align: right;
+}
 .onboarding__step {
   display: flex;
   flex-direction: column;

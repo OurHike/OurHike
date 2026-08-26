@@ -98,8 +98,13 @@ export function applyRhythm(plan: HikePlan, pois: readonly StoredPoi[]): HikePla
  * walking PAST tomorrow's stop would not be a rest, it would be tomorrow.
  * With nothing inside the window it is a zero, which is still a rest, and
  * the timeline shows a zero rather than claiming a nearo happened.
+ *
+ * Exported for lib/cascade.ts (#1031), which re-places a rest against the
+ * boundaries a re-plan chose. A rest that was placed by one rule and moved
+ * by another would drift from the rhythm the hiker asked for, so both go
+ * through this one.
  */
-function restLanding(
+export function restLanding(
   kind: 'zero' | 'nearo',
   at: PlanStop,
   next: PlanStop | undefined,

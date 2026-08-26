@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { absorbPlan, callItADay, cascadeChoices, nearestStop, shiftPlan } from './cascade'
+import { applyRhythm } from './restRhythm'
 import {
   buildPlan,
   foodCarries,
@@ -286,6 +287,92 @@ describe('a rest is spent rather than mislabelled (#1031)', () => {
     const zeros = planDayViews(absorbed!.plan).filter((day) => day.zero)
     expect(zeros).toHaveLength(1)
     expect(zeros[0].rest).toBe(true)
+  })
+})
+
+describe('a rest survives a cascade rather than being spent (#1031)', () => {
+  /** Damascus -> Atkins with a nearo rhythm applied, then a short day
+   *  recorded - the path that used to stretch tomorrow's rest. */
+  function rested(): HikePlan {
+    const base: HikePlan = {
+      ...buildPlan(
+        [
+          stop(470.8, 'Damascus'),
+          stop(486.2, 'Lost Mountain Shelter'),
+          stop(503.3, 'Thomas Knob Shelter'),
+          stop(516.1, 'Old Orchard Shelter'),
+          stop(525.7, 'Atkins', true),
+        ],
+        { miles: 15 },
+        '2026-05-12',
+      ),
+      rhythm: { everyDays: 1, kind: 'nearo' },
+    }
+    return applyRhythm(base, POIS)
+  }
+
+  const restsIn = (plan: HikePlan) => planDayViews(plan).filter((day) => day.rest)
+
+  it('keeps every rest a rest, and short, through absorb', () => {
+    const called = callItADay(rested(), 0, { mile: 480 })
+    // Counted AFTER the short day, not before it: recording 480 stretches
+    // tomorrow's 4.2-mile nearo to 10.4 and #1031 correctly drops its badge,
+    // so the plan legitimately holds one fewer rest before absorb even runs.
+    // Measuring from the earlier point would credit this fix with that.
+    const restsBefore = restsIn(called).length
+    expect(restsBefore).toBeGreaterThan(0)
+
+    const absorbed = absorbPlan(called, POIS)
+    expect(absorbed).not.toBeNull()
+
+    const after = restsIn(absorbed!.plan)
+    // Not spent: the same number of rests come out as went in.
+    expect(after).toHaveLength(restsBefore)
+    // And each is still a rest by its own definition, rather than a
+    // fifteen-mile day the generator chose while the badge rode along.
+    for (const rest of after) {
+      expect(Math.abs(rest.end.mile - rest.start.mile)).toBeLessThanOrEqual(NEARO_MAX_MI)
+    }
+    expect(validatePlan(absorbed!.plan)).not.toBeNull()
+  })
+
+  it('keeps every rest a rest, and short, through shift', () => {
+    const called = callItADay(rested(), 0, { mile: 480 })
+    const shifted = shiftPlan(called, POIS, 15)
+    expect(shifted).not.toBeNull()
+
+    const after = restsIn(shifted!.plan)
+    expect(after.length).toBeGreaterThan(0)
+    for (const rest of after) {
+      expect(Math.abs(rest.end.mile - rest.start.mile)).toBeLessThanOrEqual(NEARO_MAX_MI)
+    }
+    expect(validatePlan(shifted!.plan)).not.toBeNull()
+  })
+
+  it('degrades a nearo to a zero rather than inventing somewhere to sleep', () => {
+    // restLanding's own fallback, reached through the cascade: with no
+    // shelter inside the window past the new boundary, the rest is a zero -
+    // still a rest, and the timeline shows a zero rather than claiming a
+    // nearo happened.
+    const called = callItADay(rested(), 0, { mile: 480 })
+    const shifted = shiftPlan(called, POIS, 15)
+
+    const zeros = restsIn(shifted!.plan).filter((day) => day.zero)
+    expect(zeros.length).toBeGreaterThan(0)
+    for (const zero of zeros) {
+      expect(zero.start.mile).toBe(zero.end.mile)
+    }
+  })
+
+  it('does not ask the generator for a day the rest is going to take', () => {
+    // The count's half of the rule. A rest no longer spends a boundary, so
+    // counting one would leave the last day of the stretch short by a whole
+    // day's walk - the stretch still has to reach its barrier.
+    const called = callItADay(rested(), 0, { mile: 480 })
+    const absorbed = absorbPlan(called, POIS)
+    const views = planDayViews(absorbed!.plan)
+
+    expect(views[views.length - 1].end.mile).toBe(525.7)
   })
 })
 

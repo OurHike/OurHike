@@ -3,20 +3,23 @@
 // jsdom does no layout, so - as with appShellLayout.test.ts and
 // siteLayout.test.ts - this asserts the contract rather than the pixels.
 //
-// The contract: the map stays visible behind the entry steps, and nothing else
-// on the map screen does. Every one of the three steps is a claim about the map
-// ("the whole trail's topo map lives on your phone", "pick how much detail",
-// and the location step, which WIREFRAMES.md §5 specified as an overlay over the
-// map so the reason for asking is visible). A stylesheet that covered the map
-// would turn all three back into prose about a thing nobody has seen - which is
-// exactly what the opaque full-page onboarding screen was, and the regression a
-// later `min-height: 100svh` or a page background would quietly reintroduce.
+// Rewritten twice, and the second rewrite reversed the first's premise, so
+// both are worth the history. #721 made the map screen itself the backdrop
+// (one map, hidden down to its canvas by `.map-screen--entering`), on the
+// argument that every step is a claim about the map and covering it would
+// turn the steps into prose about a thing nobody has seen. #1054 put a
+// photograph of the trail in front of that map - the maintainer's own pick,
+// 2026-08-26 - on the counter-argument onboarding.css's header carries: what
+// first run sells is the trail, and an empty corridor map is a weaker
+// picture of it than a white blaze in the woods. The #721 machinery is
+// untouched and still asserted below, because it is what has the map warm
+// and waiting one tap behind the photo.
 //
-// Rewritten for #721. This used to assert `.app__entry` and `.app__entry-map` -
-// a frame holding a SECOND MapView. There is one map now: the map screen itself
-// is the backdrop, hidden down to its canvas by `.map-screen--entering`, with
-// the steps overlaid on top. The guarantees are the same ones; where they live
-// is not.
+// So the contract now: the inert map backdrop keeps its shape (the steps'
+// exit lands on a ready map), the photo is a child of the overlay rather
+// than a page background (so nothing here repaints the frame), and the card
+// stays capped short of the viewport (so the hero band above it survives on
+// any phone).
 //
 // Resolved from the Vitest root (client/), which vite.config.ts pins.
 
@@ -99,9 +102,22 @@ describe('first-run layout contract', () => {
 
   it('never paints a page background over the map', () => {
     // The steps' own container was an opaque `background: var(--bg-page)`
-    // full-page screen, which is the thing that hid the map. Only the card
-    // inside it is allowed to be paper.
+    // full-page screen once, and that is still the regression this guards:
+    // what stands behind the steps is a deliberate child (the hero photo
+    // since #1054, the bare map before it), never a coat of paint on the
+    // overlay itself.
     expect(ruleFor(onboardingCss, '.onboarding')).not.toMatch(/background:/)
+  })
+
+  it('keeps the hero photo out of the pointer’s way and inside the frame', () => {
+    // The photo replaced the map as the backdrop (#1054 - the header carries
+    // the reversal); what it must not replace is the overlay's behaviour. It
+    // takes no taps, and it covers by cropping rather than by stretching -
+    // a squashed ridge line is the kind of wrong nobody files a bug about.
+    expect(ruleFor(onboardingCss, '.onboarding__hero')).toMatch(/pointer-events:\s*none/)
+    expect(ruleFor(onboardingCss, '.onboarding__hero-image')).toMatch(
+      /object-fit:\s*cover/,
+    )
   })
 
   it('caps the card short of the screen, so the map shows above it at any height', () => {

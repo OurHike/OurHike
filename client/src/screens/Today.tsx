@@ -29,6 +29,7 @@
 // renders in every mode - what changes is the order and which card leads.
 
 import type { ReactNode } from 'react'
+import shelterPhoto from '../design-system/assets/photos/section-shelter.jpg'
 import { StatusStrip } from '../chrome/StatusStrip'
 import { ModeSwitch } from '../chrome/ModeSwitch'
 import { ElevationRibbon, type RibbonSubject } from '../chrome/ElevationRibbon'
@@ -400,6 +401,14 @@ export function Today({
       }
       onClick={onOpenVolunteer}
     >
+      {/* A shelter, as the card's thumb (#1054, maintainer's pick
+          2026-08-26). Wikimedia Commons: "Shelter along the Appalachian
+          Trail" by Carol M. Highsmith (LCCN 2011630549), public domain -
+          named here as provenance, not obligation. Decorative to a screen
+          reader; the words beside it carry the card. */}
+      <span className="today__volunteer-photo" aria-hidden="true">
+        <img src={shelterPhoto} alt="" />
+      </span>
       <span className="today__volunteer-text">
         <span className="today__volunteer-eyebrow">Volunteer</span>
         <span className="today__volunteer-title">

@@ -45,6 +45,7 @@
 
 import { useState } from 'react'
 import { Logo } from '../design-system/components'
+import heroPhoto from '../design-system/assets/photos/first-run-hero.jpg'
 import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingSteps'
 import type { HikingDetailLevel } from '../lib/userPreferences'
 import { HIKING_SHEET, offeredSheets, USGS_SHEET } from '../lib/packages'
@@ -238,9 +239,28 @@ export function Onboarding({
 
   return (
     <main className="onboarding">
-      {/* The lockup, over the map's top edge on a gradient that fades to
-          nothing - branding that costs the map a strip it can spare, never a
-          scrim over the terrain the steps are about. */}
+      {/* The trail itself, behind the steps (#1054, maintainer's photo pick
+          2026-08-26). This REVERSES the #721-era rule that the map stays
+          visible behind first run - the reasoning for the change is in
+          onboarding.css's header, and test/entryLayout.test.ts records what
+          the contract became. The map screen still renders inert underneath
+          (that machinery is unchanged, and is why the map is warm the moment
+          the steps finish); the photo simply stands in front of it.
+
+          Wikimedia Commons: "Appalachian Trail to Angels Rest Cluster" by
+          WilderAddict, CC BY-SA 4.0
+          (commons.wikimedia.org/wiki/File:Appalachian_Trail_to_Angels_Rest_Cluster.jpg),
+          resized to 1170px for this build - the visible credit below is the
+          licence's condition, not decoration. Decorative to a screen reader:
+          the steps are the content, the photo is the room they are read in. */}
+      <div className="onboarding__hero" aria-hidden="true">
+        <img className="onboarding__hero-image" src={heroPhoto} alt="" />
+        <p className="onboarding__hero-credit">WilderAddict · CC BY-SA 4.0</p>
+      </div>
+
+      {/* The lockup, over the photo's top edge on a gradient that fades to
+          nothing - a strip the picture can spare, never a scrim over the
+          whole of it. */}
       <div className="onboarding__brand" aria-hidden="true">
         <Logo />
         <p className="onboarding__tagline">

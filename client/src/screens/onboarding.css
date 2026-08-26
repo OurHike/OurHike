@@ -1,20 +1,22 @@
-/* First run, as a card over the map (screens/Onboarding.tsx).
+/* First run, as a card over a photograph of the trail (screens/Onboarding.tsx).
  *
- * The rule this file exists to keep: the map behind the steps stays visible.
- * That is not decoration - every one of the three steps is a claim about the
- * map, so a stylesheet that covered it would quietly undo the reason the map
- * is drawn behind them at all.
+ * WHAT STANDS BEHIND THE STEPS CHANGED WITH #1054, and deliberately. From
+ * #721 to this redesign it was the live map, on the argument that every step
+ * is a claim about the map and covering it would turn the steps back into
+ * prose about a thing nobody has seen. The redesign's call - made in the
+ * design handoff and settled by the maintainer picking the hero photograph
+ * (2026-08-26) - is that what first run has to sell is the TRAIL, and an
+ * empty-viewport map of a corridor you have not walked is a weaker picture of
+ * it than a white blaze in the woods. The map gets its reveal the moment the
+ * steps finish, one tap of "not now" later, and it arrives warm: the #721
+ * machinery is untouched, the map screen still renders inert behind this
+ * overlay, the photo merely stands in front of it.
  *
- * So there is no page background here, and the card is capped short of the
- * viewport rather than sized by its contents. Both are asserted in
- * test/entryLayout.test.ts, because jsdom does no layout and "you can still
- * see the map" is exactly the kind of property that decays under a later
- * well-meaning `min-height: 100svh`.
- *
- * The file header used to say the shell "pays for a whole extra MapLibre build
- * to have it there". It no longer does - #721 made the map screen itself the
- * backdrop, hidden down to its canvas - which is also why the block below is
- * an overlay rather than a child of a frame that no longer exists.
+ * What survives from the old rule, and still matters: there is no page
+ * background here (the hero is a child, not a coat of paint on the overlay),
+ * and the card is capped short of the viewport rather than sized by its
+ * contents. Both are asserted in test/entryLayout.test.ts, whose header
+ * carries the same reversal.
  */
 
 .onboarding {
@@ -91,10 +93,45 @@
   }
 }
 
-/* The lockup over the map's top edge (#1054): a gradient that FADES TO
-   NOTHING a third of the way down, so it is a strip the map can spare and
-   never a scrim - the file header's rule, kept under new branding. On the
-   brand child, not on .onboarding, whose background-lessness is the
+/* The ridge photograph behind the steps (#1054) - see the file header for
+   why it replaced the map here. A child of the overlay rather than a
+   background on it, which keeps .onboarding's background-lessness contract
+   (entryLayout.test.ts) literally true and keeps the image out of the
+   pointer's way. */
+.onboarding__hero {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.onboarding__hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* CC BY-SA 4.0's condition, visibly on the work it licenses. Small like the
+   map's own licence line (.map-attribution) and exempt from the 12px floor
+   for the same reason: legal small print, not trail prose. On a translucent
+   pine pill so it reads on whatever the photograph puts behind it. */
+.onboarding__hero-credit {
+  position: absolute;
+  right: 8px;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  margin: 0;
+  padding: 2px 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-chrome-2);
+  background: color-mix(in srgb, var(--bg-chrome) 55%, transparent);
+  border-radius: var(--radius-pill, 999px);
+}
+
+/* The lockup over the photo's top edge (#1054): a gradient that FADES TO
+   NOTHING a third of the way down, so it is a strip the picture can spare
+   and never a scrim - the old rule's shape, kept under the new backdrop. On
+   the brand child, not on .onboarding, whose background-lessness is the
    contract entryLayout.test.ts pins. */
 .onboarding__brand {
   position: absolute;

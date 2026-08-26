@@ -359,6 +359,24 @@
   outline-offset: -2px;
 }
 
+/* The shelter thumb (#1054): 56px, clipped round like the pin chips above.
+   A fixed box the image covers, so a differently-cropped future photo cannot
+   reshape the card. */
+.today__volunteer-photo {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.today__volunteer-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .today__volunteer-text {
   flex: 1;
   min-width: 0;

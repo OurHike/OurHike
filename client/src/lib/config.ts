@@ -265,3 +265,27 @@ export type PoiType = (typeof POI_TYPES)[number]
 export function poiKey(type: PoiType): string {
   return `poi_${type}.geojson`
 }
+
+/**
+ * Every artifact `downloadTrailData` fetches, and therefore every artifact a
+ * refresh compares and re-fetches (#919).
+ *
+ * Derived from the same constants the download itself uses rather than typed
+ * out again, so a layer added to that download joins the refresh in the same
+ * change. A hardcoded second list is precisely how `poi_privy.geojson` could
+ * come to be downloaded on first run and never updated afterwards, which is
+ * the failure this whole mechanism exists to end.
+ *
+ * The archives are deliberately absent - vector only, the maintainer's
+ * decision (2026-08-21). See lib/dataRefresh.ts.
+ */
+export const REFRESHABLE_KEYS: readonly string[] = [
+  TRAILS_KEY,
+  ...POI_TYPES.map(poiKey),
+  SPURS_KEY,
+  CLUB_SECTIONS_KEY,
+  STEWARDS_KEY,
+  HIGHLIGHTS_KEY,
+  RETIRED_POI_KEY,
+  ELEVATION_KEY,
+]

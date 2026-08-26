@@ -18,7 +18,7 @@ import pytest
 from moto import mock_aws
 
 import publish
-from lib import data_env
+from lib import data_change, data_env
 from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
 
 BUCKET = "ourhike-test-bucket"
@@ -1149,3 +1149,195 @@ def test_collect_treats_an_unbuilt_graph_as_an_absence(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
 
     assert "trail_graph.json" not in publish.collect_artifacts()
+
+
+# ------------------------------------------- what changed, described (#919)
+#
+# `lib/data_change.py` decides what a change IS and is tested there. These are
+# about the wiring publish.py owns: that the diff reads the bytes it is meant
+# to, before they are overwritten; that the manifest says which hop it
+# describes; and that a description failing never costs a release.
+
+
+def _write_fc(path, features):
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+
+
+def _poi_feature(identity, lat=41.0):
+    return {"type": "Feature", "properties": {"id": identity}, "geometry": {"type": "Point", "coordinates": [-74.0, lat]}}
+
+
+@pytest.fixture
+def water_artifact(tmp_path):
+    """One vector artifact whose contents a test can rewrite between publishes."""
+    path = tmp_path / "poi_water.geojson"
+
+    def write(features):
+        _write_fc(path, features)
+        return {"poi_water.geojson": {"path": str(path), "sha256": publish.sha256_file(path)}}
+
+    return write
+
+
+def test_a_first_publication_is_described_as_one(s3_client, water_artifact):
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+
+    assert manifest["artifacts"]["poi_water.geojson"]["change"]["first_publication"] is True
+    assert manifest["previous_version"] is None
+
+
+def test_an_added_point_is_described_against_the_bytes_that_were_live(s3_client, water_artifact):
+    """The ordering this wiring exists to get right: the diff has to read the
+    published copy BEFORE the upload replaces it."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    change = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"][
+        "change"
+    ]
+    assert change == {"severity": data_change.ROUTINE, "added": 1, "removed": 0, "moved": 0, "edited": 0}
+
+
+def test_a_removed_point_is_described_as_consequential(s3_client, water_artifact):
+    publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    change = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"][
+        "change"
+    ]
+    assert change["severity"] == data_change.CONSEQUENTIAL
+    assert change["removed"] == 1
+
+
+def test_the_manifest_names_the_version_its_descriptions_are_relative_to(s3_client, water_artifact):
+    """A phone two releases behind must be able to tell that these descriptions
+    do not cover its own hop."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+    first = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["version"]
+
+    publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert manifest["previous_version"] == first
+    assert manifest["version"] != first
+
+
+def test_an_artifact_that_did_not_change_carries_no_stale_description(s3_client, water_artifact, tmp_path):
+    """A description names a transition. Carrying one forward onto a release it
+    is not about is the confident-and-wrong answer the field exists to avoid."""
+    other = tmp_path / "poi_shelter.geojson"
+    _write_fc(other, [_poi_feature("s1")])
+    shelter = {"poi_shelter.geojson": {"path": str(other), "sha256": publish.sha256_file(other)}}
+
+    publish.publish({**water_artifact([_poi_feature("a")]), **shelter}, s3_client=s3_client, bucket=BUCKET)
+    # Only the water layer changes this time; the shelter bytes are identical.
+    publish.publish({**water_artifact([_poi_feature("a"), _poi_feature("b")]), **shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    artifacts = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]
+    assert "change" in artifacts["poi_water.geojson"]
+    assert "change" not in artifacts["poi_shelter.geojson"]
+
+
+def test_archives_are_not_described(s3_client, tmp_path):
+    """Vector-only, the maintainer's decision (2026-08-21). Reading the previous
+    copy of a 1.18 GB archive to describe it would cost more than the sentence
+    is worth."""
+    archive = tmp_path / "background.pmtiles"
+    archive.write_bytes(b"not really an archive")
+
+    publish.publish(
+        {"background.pmtiles": {"path": str(archive), "sha256": publish.sha256_file(archive)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert "change" not in manifest["artifacts"]["background.pmtiles"]
+
+
+def test_conditions_are_not_described(s3_client, tmp_path):
+    """They already refresh on every launch, and their baked generated_at moves
+    the hash daily - a description there would mean nothing every day."""
+    path = tmp_path / "closures.json"
+    path.write_text(json.dumps({"items": []}))
+
+    publish.publish(
+        {"conditions/closures.json": {"path": str(path), "sha256": publish.sha256_file(path)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert "change" not in manifest["artifacts"]["conditions/closures.json"]
+
+
+def test_a_description_that_cannot_be_produced_never_fails_the_publish(s3_client, water_artifact, monkeypatch):
+    """The data is fine; only the sentence about it is missing. Losing a release
+    over that would be the wrong trade in the obvious direction - and the phone
+    still asks, because an unreadable change is CONSEQUENTIAL."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("bucket had a bad day")
+
+    monkeypatch.setattr(publish, "_published_bytes", explode)
+    result = publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    assert result["uploaded"] == ["poi_water.geojson"]
+    change = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"][
+        "change"
+    ]
+    assert change["severity"] == data_change.CONSEQUENTIAL
+    assert "RuntimeError" in change["unreadable"]
+
+
+def test_the_gzipped_object_is_decompressed_before_it_is_diffed(s3_client, water_artifact):
+    """upload_args stores .geojson gzipped, and boto3 hands back what is stored
+    rather than what a browser would see. Read raw, every release would look
+    like unreadable bytes and every update would be CONSEQUENTIAL."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+    stored = s3_client.get_object(Bucket=BUCKET, Key="poi_water.geojson")
+    assert stored.get("ContentEncoding") == "gzip"
+
+    assert publish._published_bytes(s3_client, BUCKET, "poi_water.geojson").startswith(b'{"type"')
+
+
+def test_the_manifest_carries_what_a_phone_will_actually_transfer(s3_client, water_artifact, tmp_path):
+    """The gzipped size, not the decoded one - `size_bytes` is ~3x larger for
+    the text artifacts, and this figure is shown to a hiker deciding whether to
+    spend it on mobile data."""
+    artifacts = water_artifact([_poi_feature(f"p{i}") for i in range(200)])
+    publish.publish(artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    entry = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"]
+    on_disk = pathlib.Path(artifacts["poi_water.geojson"]["path"]).stat().st_size
+    assert entry["transfer_bytes"] < on_disk
+    assert entry["transfer_bytes"] == s3_client.head_object(Bucket=BUCKET, Key="poi_water.geojson")["ContentLength"]
+
+
+def test_an_unchanged_artifact_keeps_the_transfer_size_an_earlier_run_measured(s3_client, water_artifact, tmp_path):
+    """A skipped artifact is never gzipped, so this run measures nothing for it.
+    Dropping the figure would make a manifest lose sizes the longer nothing
+    changed, which is exactly backwards."""
+    water = water_artifact([_poi_feature("a")])
+    publish.publish(water, s3_client=s3_client, bucket=BUCKET)
+    measured = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"][
+        "poi_water.geojson"
+    ]["transfer_bytes"]
+
+    # A second publish with the water layer untouched, and something else moving
+    # so that publish() has an upload and writes a new manifest at all.
+    other = tmp_path / "spurs.json"
+    other.write_text(json.dumps({"n": 1}))
+    publish.publish(
+        {**water, "spurs.json": {"path": str(other), "sha256": publish.sha256_file(other)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    entry = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"]
+    assert entry["transfer_bytes"] == measured

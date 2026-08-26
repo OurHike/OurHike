@@ -31,6 +31,7 @@ import {
   STEWARDS_KEY,
   HIGHLIGHTS_KEY,
   poiKey,
+  REFRESHABLE_KEYS,
   RETIRED_POI_KEY,
   SPURS_KEY,
   TRAILS_KEY,
@@ -53,7 +54,8 @@ import {
 import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
-import { publishedHashes, type PublishedHashLookup } from './dataManifest'
+import { publishedSnapshot, type PublishedHashLookup } from './dataManifest'
+import { rememberRelease } from './dataRefresh'
 import { sha256Hex } from './sha256'
 import { clearTrailsMerged, sniffMergedChains, writeTrailsMerged } from './trailShape'
 
@@ -893,7 +895,12 @@ export async function downloadTrailData({
   // rather than against whatever the bucket happened to be serving at the
   // moment that particular file finished.
   report('Trail lines')
-  const expected = await publishedHashes({ signal })
+  // The whole snapshot rather than only its lookup, because #919 needs two
+  // more things out of the same read: which version these bytes came from, and
+  // nothing else - one manifest fetch still, for every artifact and for the
+  // record written at the end.
+  const published = await publishedSnapshot({ signal })
+  const expected = published.lookup
 
   // The trail lines first, alone, and awaited before anything else starts.
   // They are the canary (see useTrailData.ts's `ensure`): whatever would stop
@@ -1036,6 +1043,24 @@ export async function downloadTrailData({
   if (!committingCenterlineFirst) {
     writeTrailsMerged(sniffMergedChains(decode(fetchedTrails.bytes)))
   }
+  // WHICH release this phone now holds (#919). Written beside the completion
+  // marker because it is the same claim from the other side: that one says the
+  // bytes are whole, this says whose bytes they are.
+  //
+  // Before it, nothing stored could answer "which release is this", so
+  // `haveTrailData()` could only ever ask whether there was data at all - and
+  // a phone went on drawing a superseded map for as long as it was installed.
+  // The hashes are the ones this attempt verified against, so a later launch
+  // compares like with like rather than re-hashing megabytes to find out.
+  await rememberRelease({
+    version: published.version,
+    hashes: Object.fromEntries(
+      REFRESHABLE_KEYS.map((key) => [key, published.lookup(key)]).filter(
+        (pair): pair is [string, string] => pair[1] !== null,
+      ),
+    ),
+    at: Date.now(),
+  })
   // The release is whole. Last of all, so every earlier line above can fail
   // and leave a phone that knows it has to come back.
   await del(TRAIL_DATA_PARTIAL_KEY)

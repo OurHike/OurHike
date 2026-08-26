@@ -321,7 +321,10 @@ def test_a_conditions_only_change_moves_the_pointer_and_freezes_nothing(s3_clien
     assert second["version_written"] is True
     pointer = read_json(s3_client, "latest.json")
     assert pointer["version"] == second["version"]
-    assert pointer["artifacts"]["conditions/closures.json"] == {"sha256": publish.sha256_file(closures)}
+    # The hash, not the whole entry: an entry gains fields over time
+    # (size_bytes, and #919's transfer_bytes) and what this test is about is
+    # the pointer moving, not the manifest's column set.
+    assert pointer["artifacts"]["conditions/closures.json"]["sha256"] == publish.sha256_file(closures)
     # - and nothing was frozen: no new folder, no new index entry, and the
     # pointer keeps naming the release whose folders hold these bytes.
     assert second["release"] == first["release"]

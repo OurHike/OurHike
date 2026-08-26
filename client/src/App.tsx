@@ -772,6 +772,11 @@ function App() {
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
+    update: trailDataUpdate,
+    updateWarnsAboutData,
+    applyingUpdate,
+    applyUpdate,
+    declineUpdate,
   } = useTrailData(online, { centerlineOnly: entering })
 
   /**
@@ -4286,6 +4291,20 @@ function App() {
           // whole subtree inert, so the steps below are drawn over the map
           // rather than over a second copy of it.
           entering={entering}
+          // The ask before this phone's map is replaced (#919). Undefined
+          // while there is nothing newer published, which is every launch but
+          // the ones after a release - see lib/dataRefresh.ts.
+          trailDataUpdate={
+            trailDataUpdate === null
+              ? undefined
+              : {
+                  update: trailDataUpdate,
+                  warnsAboutData: updateWarnsAboutData,
+                  applying: applyingUpdate,
+                  onApply: () => void applyUpdate(),
+                  onDecline: () => void declineUpdate(),
+                }
+          }
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
           overviewTrailsUrl={overviewTrailsUrl}

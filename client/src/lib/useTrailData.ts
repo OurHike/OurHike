@@ -34,6 +34,15 @@ import type { Highlight } from './highlights'
 import { NO_TOMBSTONES, type Tombstones } from './poiIdentity'
 import type { ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
+import { publishedSnapshot } from './dataManifest'
+import {
+  availableRefresh,
+  dismissRelease,
+  dismissedRelease,
+  recallRelease,
+  warnsAboutData,
+  type AvailableRefresh,
+} from './dataRefresh'
 
 /**
  * What went wrong fetching the trail's own data, in the shape both fetch paths
@@ -76,6 +85,25 @@ function emptyTrailsUrl(): string {
 }
 
 export interface TrailData {
+  /**
+   * The published release this phone does not have, or null (#919).
+   *
+   * Null is the answer for "nothing newer", "nothing downloaded yet" and
+   * "could not ask" alike - none of the three is something to put in front of
+   * anybody, and collapsing them here keeps the shell from having to know
+   * which it is looking at.
+   */
+  update: AvailableRefresh | null
+  /** Whether to caution about what taking it costs: not on wifi, and big
+   *  enough to matter. An unknown size counts as big - see warnsAboutData. */
+  updateWarnsAboutData: boolean
+  /** True while the bytes are coming, so the prompt can say so rather than
+   *  vanishing into a map that has not changed yet. */
+  applyingUpdate: boolean
+  /** Take it. Re-downloads the whole vector set, committed all-or-nothing. */
+  applyUpdate: () => Promise<void>
+  /** Not now, remembered against this version so the next release still asks. */
+  declineUpdate: () => Promise<void>
   /** The centerline index, or null when there is none to build one from - and
    *  null too when the file was there and unreadable, which is best-effort on
    *  purpose (see below). */
@@ -339,6 +367,94 @@ export function useTrailData(
     return attempt
   }, [])
 
+  /**
+   * The published release this phone does not have, or null (#919).
+   *
+   * Null covers three different situations and deliberately renders as one:
+   * nothing downloaded yet, nothing newer published, and a manifest that could
+   * not be read. None of them is something to say to a hiker - the first is the
+   * launch fetch's job, the second is the normal state, and the third is not a
+   * claim about anything.
+   */
+  const [update, setUpdate] = useState<AvailableRefresh | null>(null)
+  const [applyingUpdate, setApplyingUpdate] = useState(false)
+
+  /**
+   * Ask the bucket whether this phone is current, on launch and when signal
+   * returns.
+   *
+   * Beside the `conditions/*` refresh that already works this way
+   * (useConditions.ts) - the maintainer's decision of 2026-08-21 was for this
+   * check to run there, and it costs one `latest.json` read, the same 3.5 KB
+   * the launch fetch pays anyway.
+   *
+   * `releaseAt` is in the deps so that accepting an update re-asks and clears
+   * the prompt from what is now true, rather than from what this code believes
+   * it just did.
+   */
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void (async () => {
+      const stored = await recallRelease()
+      if (stored === null) return
+      const snapshot = await publishedSnapshot({ signal: controller.signal })
+      const found = availableRefresh(stored, snapshot)
+      // A release the hiker has already declined. Silenced by version, so the
+      // next one asks again - see dismissRelease.
+      const declined = found === null ? null : await dismissedRelease()
+      if (!wanted) return
+      setUpdate(found !== null && declined === snapshot.version ? null : found)
+    })().catch(() => {
+      // Never fatal and never reported. A phone that could not ask is a phone
+      // with the data it already had, which is the state it was in a moment
+      // ago - and an error about a check nobody requested would be noise on
+      // top of a map that is working.
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [online, releaseAt])
+
+  /**
+   * Take the update, having been asked.
+   *
+   * Re-downloads the whole vector set rather than the changed artifacts alone,
+   * and that is a choice worth stating: it is 5.78 MB against about 0.67 MB for
+   * a POI-only release (measured 2026-08-21), and it buys the commit
+   * `downloadTrailData` already makes - every artifact verified and stored
+   * together, or none of them. Replacing files one at a time would mean a phone
+   * that could hold half of one release and half of another, which is a state
+   * nothing else in this app has to reason about and nothing should have to.
+   */
+  const applyUpdate = useCallback(async () => {
+    setApplyingUpdate(true)
+    setError(null)
+    try {
+      await downloadTrailData()
+      setReleaseAt((at) => at + 1)
+      setCenterlineAt((at) => at + 1)
+      setUpdate(null)
+    } catch (thrown) {
+      setError(describeTrailDataError(thrown))
+    } finally {
+      setApplyingUpdate(false)
+    }
+  }, [])
+
+  /** Not now. Remembered against the version declined, so this release stops
+   *  asking and the next one does not inherit the answer. */
+  const declineUpdate = useCallback(async () => {
+    const version = update?.version ?? null
+    setUpdate(null)
+    if (version !== null) await dismissRelease(version)
+  }, [update])
+
   // Reading what is already on the phone, and unconditionally. This has to stay
   // independent of the fetch below: an unconfigured build and a phone with no
   // signal both still have whatever was downloaded last time, and gating this
@@ -557,6 +673,18 @@ export function useTrailData(
   }, [fetchOnce])
 
   return {
+    /** The published release this phone does not have, or null (#919). Null is
+     *  the answer for "nothing newer", "nothing downloaded yet" and "could not
+     *  ask" alike - none of the three is something to put in front of anybody. */
+    update,
+    /** Whether to caution about what taking it costs: not on wifi, and big
+     *  enough to matter. An unknown size counts as big - see warnsAboutData. */
+    updateWarnsAboutData: update !== null && warnsAboutData(update),
+    /** True while the bytes are coming. The prompt stays up and says so rather
+     *  than vanishing into a map that has not changed yet. */
+    applyingUpdate,
+    applyUpdate,
+    declineUpdate,
     trailIndex,
     pois,
     spurs,

@@ -73,6 +73,30 @@ describe('OffRouteCard', () => {
     expect(screen.getAllByRole('button')).toHaveLength(2)
   })
 
+  it('does not offer a frame there is no route to frame', () => {
+    // Without the geometry artifact there is no drawn route, and this button
+    // did nothing when pressed - a dead control on the screen a hiker reaches
+    // when they are lost (#1044 review, chrome/LineSheet.tsx's rule).
+    render(<OffRouteCard {...PROPS} onShowRoute={undefined} />)
+
+    expect(
+      screen.queryByRole('button', { name: 'Show the whole route' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop following' })).toBeInTheDocument()
+  })
+
+  it('gives the band and the card one unit rule, on one number', () => {
+    // The two render simultaneously from the same feet. Formatted apart, a
+    // hiker read "2,640 ft from it" under the header and "0.5 mi away" in the
+    // card and had to do arithmetic to tell whether that was one fact or two.
+    const far = { ...OFF, offRouteFeet: 2640, nearest: { ...OFF.nearest, feet: 2640 } }
+    render(<OffRouteBand follow={far} />)
+    render(<OffRouteCard {...PROPS} follow={far} />)
+
+    expect(screen.getAllByText(/0\.5 mi/)).toHaveLength(2)
+    expect(screen.queryByText(/2,640 ft/)).not.toBeInTheDocument()
+  })
+
   it('switches to miles once feet stop being a number to pace out', () => {
     render(
       <OffRouteCard

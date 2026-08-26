@@ -38,12 +38,11 @@
 // Frame `D11` makes that refusal the point of the screen and
 // chrome/OffRouteCard.tsx prints it in words.
 
-import { dayHikeWalk, walkMiles, type WalkStep } from './dayHikeWalk'
+import { dayHikeWalk, stepPolyline, walkMiles, type WalkStep } from './dayHikeWalk'
 import type { ResolvedDayHike } from './dayHikeCard'
 import {
   bearingDegrees,
   metresToMiles,
-  projectOntoEdges,
   sameTrail,
   type LonLat,
   type TrailGraphIndex,
@@ -53,16 +52,31 @@ import { formatDistance, formatShortDistance, type UnitSystem } from './units'
 /**
  * How far off the route a hiker gets before the screen says so.
  *
- * The same 90 ft `lib/wrongWay.ts` uses for `OFF_TRAIL_THRESHOLD_FT`, and
- * deliberately the same number rather than a second one: both answer "am I
- * still on the tread I meant to be on", and two thresholds disagreeing about
- * that would put the off-route banner and the wrong-way cue on screen at
- * different moments for one event.
+ * The same NUMBER `lib/wrongWay.ts` uses for `OFF_TRAIL_THRESHOLD_FT`, and
+ * not the same measurement - which is a correction to what this comment used
+ * to claim.
+ *
+ * It said the two "answer the same question", so sharing the constant kept
+ * the off-route band and the wrong-way cue on screen at the same moment. That
+ * is not true and cannot be made true by choosing the number differently.
+ * `wrongWay.ts` states its input as a CONTRACT: it is fed
+ * `TrailFix.offTreadFeet`, the distance to the nearest mapped tread of ANY
+ * kind, and it says which of the two it must be, because fed the centerline
+ * distance instead it fires at roughly three shelter stops in four. This
+ * module measures to ONE route's own tread. So a hiker who takes the wrong
+ * arm at a fork is 0 ft from mapped tread - silent by that contract, and
+ * correctly so - while walking steadily past this threshold. Two surfaces,
+ * two events, one number.
+ *
+ * The number is still borrowed rather than picked afresh, because 90 ft is
+ * the only figure anybody here has written down for "off the tread you meant
+ * to be on", and inventing a second would be a second unmeasured number.
  *
  * @unvalidated by inheritance, and the inherited caveat travels with it -
  * that constant is a WIREFRAMES.md mock-up placeholder, not a validated
  * HIKER_SAFETY.md figure, and §5 declines to guess pending field testing
- * under tree canopy. What would settle it is the same field test.
+ * under tree canopy. What would settle it is the same field test, run against
+ * a route rather than against the corridor.
  */
 export const OFF_ROUTE_FEET = 90
 
@@ -138,10 +152,20 @@ export interface FollowInputs {
 
 /**
  * Where the hiker is on their route, or null when nothing can be said - no
- * fix, or a walk this graph cannot re-route.
+ * fix, a walk this graph cannot re-route, or an edge of it this phone has no
+ * vertices for.
  *
  * Null rather than a zeroed position: "0.0 mi in" is a claim that somebody is
  * standing at the trailhead.
+ *
+ * THE GEOMETRY IS A REQUIREMENT, not a nicety. Without an edge's own vertices
+ * the only line available is the chord between its two junctions, and across
+ * a switchback that runs far enough from the tread to raise "You are not on
+ * your route" at a hiker standing on it - a false safety alert, which is the
+ * one failure this module exists to prevent. lib/dayHikeTurns.ts withholds a
+ * turn's SIDE in the same state; this withholds the whole answer, because
+ * there is no part of it the chord does not poison. The caller loads the
+ * geometry artifact whenever a hike is being followed.
  */
 export function followDayHike({
   index,
@@ -154,24 +178,48 @@ export function followDayHike({
   if (steps.length === 0) return null
 
   const totalMi = walkMiles(steps)
-  const projections = projectOntoEdges(
-    index,
-    at,
-    steps.map((step) => step.edgeIndex),
-  )
 
   // One candidate per traversal, priced at the miles that traversal is
   // reached at - so the two passes of an out-and-back stay two answers.
-  const candidates = steps.map((step, position) => {
-    const projection = projections[position]
-    const clamped = clampToStep(step, projection.fraction)
-    return {
+  //
+  // EVERY ONE OF THEM MEASURED AGAINST THE GROUND THE HIKER WALKS, not
+  // against the whole edge it is part of. Two faults this replaces, both
+  // found reviewing #1044 and both of them a confident wrong answer:
+  //
+  //  - the distance used to come from a projection onto the ENTIRE edge, so
+  //    a fix beside the unwalked half of a partly-walked edge read as
+  //    on-route at zero feet off;
+  //  - and where no vertices were published it came off the chord between two
+  //    junctions, which across a switchback runs hundreds of metres from the
+  //    tread - raising "You are not on your route" at somebody standing on it.
+  //
+  // A walk with an unmeasured edge is refused whole rather than half-priced,
+  // the same all-or-nothing `ResolvedDayHike.climb` applies one layer down.
+  const candidates: Array<{
+    position: number
+    walkedMi: number
+    feet: number
+    at: LonLat
+  }> = []
+  for (let position = 0; position < steps.length; position += 1) {
+    const step = steps[position]
+    const walked = stepPolyline(index, step)
+    if (walked === null) return null
+    const onIt = nearestOnPolyline(walked, at)
+    candidates.push({
       position,
-      walkedMi: metresToMiles(step.beforeMetres + clamped.metres),
-      feet: projection.offFeet,
-      at: clamped.exact ? projection.point : nodeOr(index, step, clamped.atFraction),
-    }
-  })
+      // Scaled to the metres the pipeline measured for this traversal rather
+      // than to the polyline's own length: `length_m` is EPSG:5070 and these
+      // vertices are lon/lat, and every other mile in this app comes from the
+      // former. One axis, so the header and the turn list agree.
+      walkedMi: metresToMiles(
+        step.beforeMetres +
+          (onIt.alongFraction === 0 ? 0 : onIt.alongFraction * step.metres),
+      ),
+      feet: onIt.feet,
+      at: onIt.at,
+    })
+  }
 
   const threshold =
     previous !== null && previous.kind === 'off-route'
@@ -183,6 +231,20 @@ export function followDayHike({
     const since = previous === null ? 0 : walkedMiOf(previous)
     // Nearest to where the hiker already was, which is continuity rather
     // than a guess: a walk does not teleport between two passes of one edge.
+    //
+    // ON THE FIRST FIX THERE IS NO "ALREADY WAS", and `since` of 0 makes this
+    // pick the EARLIEST pass. That is a guess, and it is the cautious one on
+    // purpose: the earliest pass reports the most walk still to come, so
+    // somebody who pressed Follow half way round an out-and-back is told they
+    // have further to go rather than less. Rounding toward more work left is
+    // the same direction Naismith is left rounding here, and for the same
+    // reason - the other error is the one that gets somebody benighted.
+    //
+    // @unvalidated that a guess is the right answer at all. What would settle
+    // it: two fixes give a direction of travel, which distinguishes the
+    // passes outright, and the shell already holds the previous answer this
+    // would need. Until then the first reading of an out-and-back can be a
+    // whole walk out of date, and nothing on screen says so.
     const chosen = near.reduce((best, candidate) =>
       Math.abs(candidate.walkedMi - since) < Math.abs(best.walkedMi - since)
         ? candidate
@@ -221,42 +283,80 @@ function walkedMiOf(state: FollowState): number {
 }
 
 /**
- * A projection onto the WHOLE edge, cut back to the part of it this traversal
- * actually walks.
+ * The nearest point on one walked stretch, how far off it the fix is, and how
+ * far along that stretch it lands.
  *
- * Without this a fix beside the far half of a partly-walked edge would price
- * as miles the hiker has not covered - the edge is 800 m long and the walk
- * takes 200 m of it, and #934's split-the-segment rule means every tapped end
- * is that shape.
+ * Its own loop rather than `projectOntoEdges`, because the question is
+ * different: that one asks "where on this EDGE", and every consumer here
+ * needs "where on the part of it this walk covers". The arithmetic is
+ * lib/trailGraph.ts's own - equirectangular metres, closest point per span -
+ * over the vertices lib/dayHikeWalk.ts already cut to the walked stretch.
  */
-function clampToStep(
-  step: WalkStep,
-  fraction: number,
-): { metres: number; atFraction: number; exact: boolean } {
-  const low = Math.min(step.startFraction, step.endFraction)
-  const high = Math.max(step.startFraction, step.endFraction)
-  const span = high - low
-  const inside = fraction >= low && fraction <= high
-  const held = Math.min(high, Math.max(low, fraction))
-  // Metres along THIS traversal, measured from where it starts - which may be
-  // the higher fraction, on an edge walked against its published direction.
-  const along =
-    span === 0 ? 0 : (Math.abs(held - step.startFraction) / span) * step.metres
-  return { metres: along, atFraction: held, exact: inside }
+function nearestOnPolyline(
+  coords: ReadonlyArray<[number, number]>,
+  at: LonLat,
+): { feet: number; at: LonLat; alongFraction: number } {
+  let best: { metres: number; at: LonLat; along: number } | null = null
+  let walked = 0
+  let total = 0
+
+  for (let step = 0; step + 1 < coords.length; step += 1) {
+    const start: LonLat = { lon: coords[step][0], lat: coords[step][1] }
+    const end: LonLat = { lon: coords[step + 1][0], lat: coords[step + 1][1] }
+    const span = localSpan(start, end)
+    const length = Math.hypot(span.x, span.y)
+    const offset = localSpan(start, at)
+
+    let along = 0
+    if (length > 0) {
+      along = (offset.x * span.x + offset.y * span.y) / (length * length)
+      along = Math.min(1, Math.max(0, along))
+    }
+    const off = Math.hypot(offset.x - span.x * along, offset.y - span.y * along)
+    if (best === null || off < best.metres) {
+      best = {
+        metres: off,
+        at: {
+          lon: start.lon + (end.lon - start.lon) * along,
+          lat: start.lat + (end.lat - start.lat) * along,
+        },
+        along: walked + length * along,
+      }
+    }
+    walked += length
+    total += length
+  }
+
+  // A degenerate stretch - every vertex on one spot. Real in a graph where a
+  // junction can be metres from the next; the point is still the point.
+  if (best === null || total === 0) {
+    const only: LonLat = { lon: coords[0][0], lat: coords[0][1] }
+    return { feet: metresBetween(only, at) * FEET_PER_METRE, at: only, alongFraction: 0 }
+  }
+  return {
+    feet: best.metres * FEET_PER_METRE,
+    at: best.at,
+    alongFraction: best.along / total,
+  }
 }
 
-/** The clamped point's own coordinate, when the projection landed outside the
- *  walked part and its point cannot be used. Interpolated on the edge's
- *  chord, which is enough for a bearing to a place a few metres away and is
- *  never drawn as a trail. */
-function nodeOr(index: TrailGraphIndex, step: WalkStep, fraction: number): LonLat {
-  const edge = index.graph.edges[step.edgeIndex]
-  const from = index.graph.nodes[edge.from]
-  const to = index.graph.nodes[edge.to]
+const EARTH_RADIUS_M = 6_378_137
+const FEET_PER_METRE = 3.280839895
+
+/** Equirectangular metres between two points, on lib/trailGraph.ts's own
+ *  projection and for its own reason: every comparison here is local, over a
+ *  few hundred metres at most. */
+function localSpan(from: LonLat, to: LonLat): { x: number; y: number } {
+  const meanLatitude = ((from.lat + to.lat) / 2) * (Math.PI / 180)
   return {
-    lon: from[0] + (to[0] - from[0]) * fraction,
-    lat: from[1] + (to[1] - from[1]) * fraction,
+    x: (to.lon - from.lon) * (Math.PI / 180) * EARTH_RADIUS_M * Math.cos(meanLatitude),
+    y: (to.lat - from.lat) * (Math.PI / 180) * EARTH_RADIUS_M,
   }
+}
+
+function metresBetween(from: LonLat, to: LonLat): number {
+  const span = localSpan(from, to)
+  return Math.hypot(span.x, span.y)
 }
 
 /**

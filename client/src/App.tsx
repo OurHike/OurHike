@@ -556,9 +556,32 @@ function App() {
   /** The last answer lib/dayHikeFollow.ts gave, which is one of its own
    *  inputs - see `FollowInputs.previous` for the two jobs it does. */
   const [followState, setFollowState] = useState<FollowState | null>(null)
-  /** Whether the junction card (frame `D10`) is open over the next-turn
-   *  card. Closed on its own × and whenever following stops. */
-  const [turnOpen, setTurnOpen] = useState(false)
+  /**
+   * The last answer that WAS one, kept across a gap in fixes.
+   *
+   * `followState` goes null the moment GPS drops, which is right on screen -
+   * nothing should claim a position nobody has. But it is also the hysteresis
+   * memory and the out-and-back tie-break, and storing the null threw both
+   * away: one lost fix under canopy and the next reading came back at the
+   * loose OFF_ROUTE_FEET threshold with no pass settled, re-enabling exactly
+   * the strobe lib/dayHikeFollow.ts's header says it prevents.
+   *
+   * A ref rather than state because nothing renders from it; it is the
+   * function's own memory, handed back to it.
+   */
+  const lastFollowRef = useRef<FollowState | null>(null)
+  /**
+   * The junction card (frame `D10`) is open over the next-turn card for the
+   * turn at THIS walked mile, or null for none.
+   *
+   * A mile rather than a boolean, and that is what stops it latching (#1044
+   * review). A flag stayed true through an off-route excursion and put the
+   * card back unasked when the hiker rejoined - hiding the two things the
+   * standing card exists for, the blaze line and the Stop control - and once
+   * they walked THROUGH the fork it silently became a diagram of the next
+   * junction instead. Keyed to the turn, it closes itself on both.
+   */
+  const [turnOpenAt, setTurnOpenAt] = useState<number | null>(null)
   /**
    * Which home the Plan tab shows (#1008): the day-hike room or the trips
    * room. Null until the hiker (or the trailhead door) picks one, so the
@@ -1966,6 +1989,20 @@ function App() {
     setDayHikeReview(null)
     setDayHike(null)
     setDayHikeDraftDate(null)
+    // AND FOLLOWING, which is the fifth occupant of the routeSheet slot and
+    // was missed when it was added (#1044 review). It outranks the route
+    // builder in that chain, so leaving it running meant the follow card sat
+    // over a live builder - no end picker, no Cancel, and map taps still
+    // going into a route draft whose bar was invisible. Following is a
+    // surface, and the one-thing-open rule lives here.
+    //
+    // Inlined rather than calling `stopFollowing`, which is declared further
+    // down: naming it in this callback's dependency list would read it before
+    // its own initialiser has run.
+    setFollowingId(null)
+    setFollowState(null)
+    lastFollowRef.current = null
+    setTurnOpenAt(null)
     // A route being built IS the trip room's subject, so the Plan tab is set
     // to it now rather than when the route becomes a trip. Without this the
     // mode a hiker last picked outlives the thing they are actually doing:
@@ -2070,6 +2107,14 @@ function App() {
     // Re-entering the builder puts the review away: the taps are live again,
     // and a card reviewing a snapshot of a draft being edited would lie.
     setDayHikeReview(null)
+    // And stops following, the mirror of sweepForBuilder's own line: while a
+    // hiker taps out a NEW walk, the header would otherwise still read the
+    // old one's "leg 2 of 3" and its position line the old one's miles, with
+    // an off-route alert about a route no longer drawn.
+    setFollowingId(null)
+    setFollowState(null)
+    lastFollowRef.current = null
+    setTurnOpenAt(null)
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
     // The mirror of `sweepForBuilder`'s last line, and for the same reason:
     // the draft a hiker is building is what the Plan tab is about.
@@ -2327,14 +2372,15 @@ function App() {
       setFollowState(null)
       return
     }
-    setFollowState((previous) =>
-      followDayHike({
-        index: graph,
-        resolved: followResolution,
-        at: gps.status === 'located' ? gps.at : null,
-        previous,
-      }),
-    )
+    const next = followDayHike({
+      index: graph,
+      resolved: followResolution,
+      at: gps.status === 'located' ? gps.at : null,
+      // The last real answer, not the last rendered one - see lastFollowRef.
+      previous: lastFollowRef.current,
+    })
+    if (next !== null) lastFollowRef.current = next
+    setFollowState(next)
   }, [followResolution, dayHikeIndex, graphIndex, gps])
 
   const followNext = useMemo(() => {
@@ -2370,7 +2416,8 @@ function App() {
   const stopFollowing = useCallback(() => {
     setFollowingId(null)
     setFollowState(null)
-    setTurnOpen(false)
+    lastFollowRef.current = null
+    setTurnOpenAt(null)
   }, [])
 
   const startFollowing = useCallback(
@@ -2380,7 +2427,8 @@ function App() {
       // the next one (lib/dayHikeFollow.ts), and one walk's last position is
       // not evidence about where somebody is on a different walk.
       setFollowState(null)
-      setTurnOpen(false)
+      lastFollowRef.current = null
+      setTurnOpenAt(null)
       // The card came from the Plan tab and the walk happens on the map, so
       // this puts the card away and goes there - the same one-surface-
       // continuing move the builder's own doors make.
@@ -2422,24 +2470,52 @@ function App() {
   })
 
   const followSheetNode = (() => {
-    if (followingHike === null || followState === null) return null
+    // GATED ON THE MODE, NOT ON THE POSITION (#1044 review). This used to
+    // return null whenever `followState` was null - which is every ordinary
+    // no-fix state: waiting for the first fix, GPS lost under canopy, an edge
+    // with no vertices. The card vanished, and with it the only Stop control
+    // in the app, so a hiker was left in a mode the header still announced
+    // and nothing on screen could leave.
+    if (followingHike === null) return null
+
+    if (followState === null) {
+      return (
+        <NextTurnCard
+          positionKnown={false}
+          turn={null}
+          milesAway={0}
+          onTrail={null}
+          onTrailBlaze={null}
+          toGoMi={0}
+          units={units}
+          onOpenTurn={() => undefined}
+          onStopFollowing={stopFollowing}
+        />
+      )
+    }
     if (followState.kind === 'off-route') {
       return (
         <OffRouteCard
           follow={followState}
           units={units}
-          onShowRoute={showWholeRoute}
+          // Only where there is a route drawn to frame. Without the geometry
+          // artifact `followDrawing` is null and this button did nothing at
+          // all, silently.
+          onShowRoute={followDrawing === null ? undefined : showWholeRoute}
           onStopFollowing={stopFollowing}
         />
       )
     }
-    if (turnOpen && followNext !== null) {
+    // Keyed to the turn it was opened for: walk through that junction, or
+    // leave the route and come back, and it closes itself rather than
+    // reappearing over a different fork.
+    if (followNext !== null && turnOpenAt === followNext.turn.miles) {
       return (
         <TurnCard
           turn={followNext.turn}
           milesAway={followNext.milesAway}
           units={units}
-          onClose={() => setTurnOpen(false)}
+          onClose={() => setTurnOpenAt(null)}
         />
       )
     }
@@ -2451,7 +2527,9 @@ function App() {
         onTrailBlaze={followState.leg.blaze_color}
         toGoMi={followState.toGoMi}
         units={units}
-        onOpenTurn={() => setTurnOpen(true)}
+        onOpenTurn={() =>
+          setTurnOpenAt(followNext === null ? null : followNext.turn.miles)
+        }
         onStopFollowing={stopFollowing}
       />
     )
@@ -2594,14 +2672,22 @@ function App() {
   // elevation the walk still draws and the climb goes unsaid. Both are states
   // the surfaces below already know how to say.
   //
-  // BOTH DOORS, NOT JUST THE BUILDER. A saved card opens from the Plan tab
-  // with no draft in hand, so keying this on `dayHike` alone left the one
-  // surface a hiker returns to resolving against the routing-only graph -
-  // no vertices to draw and, since #1011, no climb to print. Either door
-  // opening is what these are needed for.
+  // BOTH DOORS, NOT JUST THE BUILDER - and since #1044, three. A saved card
+  // opens from the Plan tab with no draft in hand, so keying this on
+  // `dayHike` alone left the one surface a hiker returns to resolving against
+  // the routing-only graph - no vertices to draw and, since #1011, no climb
+  // to print.
+  //
+  // FOLLOWING IS THE THIRD, and it was missed: `startFollowing` closes the
+  // card, so a followed hike put the app in exactly the state this effect
+  // treats as "nobody needs geometry" - and then aborted the in-flight fetch
+  // with no path back to it. The route was never drawn, "Show the whole
+  // route" framed nothing, and lib/dayHikeFollow.ts (which now refuses
+  // without vertices rather than measuring off a chord) could say nothing at
+  // all. Either door opening, or a walk under way, is what these are for.
   useEffect(() => {
     if (
-      (dayHike === null && cardDayHike === null) ||
+      (dayHike === null && cardDayHike === null && followingId === null) ||
       graphIndex === null ||
       dayHikeIndex !== null
     ) {
@@ -2629,7 +2715,7 @@ function App() {
       wanted = false
       controller.abort()
     }
-  }, [dayHike, cardDayHike, graphIndex, dayHikeIndex])
+  }, [dayHike, cardDayHike, followingId, graphIndex, dayHikeIndex])
 
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to

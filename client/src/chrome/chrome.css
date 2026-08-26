@@ -3712,13 +3712,23 @@ a.poi-card__credit::after {
 .off-route {
   position: absolute;
   right: var(--space-2, 8px);
-  /* Clear of the credit strip, which is the last in-flow row of the canvas
-     and measures ~17px (features/MAP_CHROME.md §1). ODbL attribution is a
-     licence condition rather than a nicety, and .map-attribution's own note
-     above records what happens when a control lands on top of it: the
-     condition is met only where the text happens not to be covered. A card
-     that is on screen for a whole walk would cover it for the whole walk. */
-  bottom: calc(var(--space-2, 8px) + 17px);
+  /* Clear of the credit strip AND of the map's own controls.
+   *
+   * The strip is the last in-flow row of the canvas, ~17px
+   * (features/MAP_CHROME.md §1). ODbL attribution is a licence condition
+   * rather than a nicety, and .map-attribution's own note above records what
+   * happens when a control lands on top of it: the condition is met only
+   * where the text happens not to be covered. A card on screen for a whole
+   * walk would cover it for the whole walk.
+   *
+   * The controls are the second half, and were missed first time round
+   * (#1044 review): MapLibre stacks locate and compass bottom-right and the
+   * scale bar bottom-left, in the same band a full-width card at 25px sits
+   * in. Losing the locate button for a whole walk is losing the one control
+   * that answers "where am I" on the screen that exists to answer it. Same
+   * arithmetic .hikes-here--closed already uses, so the two sheets clear the
+   * same stack by the same amount rather than by two guesses. */
+  bottom: calc(15px + 104px + 7px);
   left: var(--space-2, 8px);
   z-index: 2;
   display: flex;
@@ -3737,6 +3747,19 @@ a.poi-card__credit::after {
 /* The whole lead is the tap target for the junction behind it, so it is a
    button rather than text with a link after it: a gloved hand in sun reaching
    for a 15px "›" is the mis-tap #105 measured the touch floor against. */
+/* The same condition `showZoomButtons` is passed under
+   (lib/useFinePointer.ts is this exact query), so the cards rise by exactly
+   the two buttons that appear with it - 188px of stack plus the 15px strip.
+   Copied from .hikes-here--closed deliberately: two surfaces clearing one
+   control stack should clear it by one number. */
+@media (pointer: fine) {
+  .next-turn,
+  .turn-card,
+  .off-route {
+    bottom: calc(15px + 188px + 7px);
+  }
+}
+
 .next-turn__lead {
   display: flex;
   gap: var(--space-2, 8px);

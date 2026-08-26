@@ -37,12 +37,38 @@ import { compassPoint, type OffRoute } from '../lib/dayHikeFollow'
 import { formatDistance, formatShortDistance, type UnitSystem } from '../lib/units'
 import './chrome.css'
 
+/**
+ * How far off the route reads, in one rule for both the band and the card.
+ *
+ * Feet under a tenth of a mile, miles above it: "0.1 mi" and "460 ft" are the
+ * same distance and only one of them is a number somebody can pace out.
+ *
+ * ONE function because the two surfaces render the SAME number at the same
+ * moment - one under the header, one in the lower third - and they were
+ * formatting it differently. "2,640 ft from it" over "0.5 mi away" is a hiker
+ * doing arithmetic to work out whether their phone is telling them one thing
+ * or two, at the moment they are least able to.
+ */
+function offRouteDistance(feet: number, units: UnitSystem): string {
+  return feet < 528
+    ? formatShortDistance(feet, units)
+    : formatDistance(feet / 5280, units)
+}
+
 export interface OffRouteCardProps {
   follow: OffRoute
   units?: UnitSystem
-  /** Frame the whole route on the map - the one navigational thing this
-   *  screen can do without claiming ground. */
-  onShowRoute: () => void
+  /**
+   * Frame the whole route on the map - the one navigational thing this screen
+   * can do without claiming ground.
+   *
+   * Omitted when there is no route drawn to frame, and then the button is not
+   * rendered at all. It used to be offered unconditionally and, without the
+   * geometry artifact, did nothing when pressed: a dead control on the
+   * screen a hiker reaches when they are lost is worse than one fewer
+   * control (#1044 review, and chrome/LineSheet.tsx's rule).
+   */
+  onShowRoute?: () => void
   onStopFollowing: () => void
 }
 
@@ -77,9 +103,11 @@ export function OffRouteCard({
       </div>
 
       <div className="off-route__actions">
-        <button type="button" className="off-route__primary" onClick={onShowRoute}>
-          Show the whole route
-        </button>
+        {onShowRoute !== undefined && (
+          <button type="button" className="off-route__primary" onClick={onShowRoute}>
+            Show the whole route
+          </button>
+        )}
         <button type="button" className="off-route__secondary" onClick={onStopFollowing}>
           Stop following
         </button>
@@ -111,7 +139,7 @@ export function OffRouteBand({ follow, units = 'imperial' }: OffRouteBandProps) 
     <div className="off-route-band" role="alert">
       <p className="off-route-band__head">You are not on your route</p>
       <p className="off-route-band__body">
-        {formatShortDistance(follow.offRouteFeet, units)} from it, at the nearest point.
+        {offRouteDistance(follow.offRouteFeet, units)} from it, at the nearest point.
       </p>
     </div>
   )

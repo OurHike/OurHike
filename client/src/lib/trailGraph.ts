@@ -844,8 +844,15 @@ export function routeGeometry(
   return lines.length > 0 ? lines : null
 }
 
-/** The piece of `coords` between two fractions of its polyline length. */
-function cutPolyline(
+/**
+ * The piece of `coords` between two fractions of its polyline length.
+ *
+ * Exported since #1044: lib/dayHikeWalk.ts needs the same cut to build the
+ * stretch of an edge one traversal actually covers, and a second
+ * implementation of it would be a second opinion about which ground a hiker
+ * walked.
+ */
+export function cutPolyline(
   coords: Array<[number, number]>,
   fromFraction: number,
   toFraction: number,

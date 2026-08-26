@@ -30,6 +30,7 @@
 
 import type { ResolvedDayHike } from './dayHikeCard'
 import {
+  cutPolyline,
   enteredNodes,
   metresToMiles,
   routeBetween,
@@ -158,4 +159,41 @@ export function dayHikeWalk(
 export function walkMiles(steps: readonly WalkStep[]): number {
   const last = steps[steps.length - 1]
   return last === undefined ? 0 : metresToMiles(last.beforeMetres + last.metres)
+}
+
+/**
+ * The stretch of trail one traversal actually covers, as its own vertices in
+ * walking order - or null when this phone's graph carries none for that edge.
+ *
+ * NULL RATHER THAN THE CHORD, and that is the whole reason this exists
+ * (#1044 review). `projectOntoEdge` falls back to the straight line between
+ * two junctions when an edge has no vertices, which is right for accepting a
+ * tap and wrong for everything lib/dayHikeFollow.ts does with it: across a
+ * switchback that chord can run hundreds of metres from the tread, so a hiker
+ * standing squarely on the trail measures as far off it. Refusing is the same
+ * call lib/dayHikeTurns.ts's `armBearing` already makes in the same state.
+ *
+ * Cut to the WALKED span, not handed back whole. #934's rule is that a tap
+ * splits the segment, so the first and last edge of every tapped pair are
+ * partly walked - and a fix beside the unwalked half of one is not near this
+ * walk at all.
+ */
+export function stepPolyline(
+  index: TrailGraphIndex,
+  step: WalkStep,
+): Array<[number, number]> | null {
+  const edge = index.graph.edges[step.edgeIndex]
+  if (edge?.geometry === undefined || edge.geometry.length < 2) return null
+
+  // Oriented so the list runs the way the hiker does. Fractions are measured
+  // from the edge's own `from`, so a backwards traversal flips them with it.
+  const forward = step.forward
+  const coords = forward ? edge.geometry : [...edge.geometry].reverse()
+  const from = forward ? step.startFraction : 1 - step.startFraction
+  const to = forward ? step.endFraction : 1 - step.endFraction
+  const low = Math.min(from, to)
+  const high = Math.max(from, to)
+
+  const cut = low <= 0 && high >= 1 ? coords : cutPolyline(coords, low, high)
+  return cut.length >= 2 ? cut : null
 }

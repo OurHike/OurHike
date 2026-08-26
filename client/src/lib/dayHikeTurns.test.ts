@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { resolveDayHike } from './dayHikeCard'
-import { atJunction, dayHikeTurns, nextTurn } from './dayHikeTurns'
+import { AT_JUNCTION_MILES, atJunction, dayHikeTurns, nextTurn } from './dayHikeTurns'
 import {
   EAST_END,
   NETWORK,
@@ -108,7 +108,22 @@ describe('nextTurn', () => {
 
   it('is null once every turn is behind the hiker', () => {
     const turns = turnsFor(NETWORK)
-    expect(nextTurn(turns, turns[0].miles + 0.01)).toBeNull()
+    expect(nextTurn(turns, turns[0].miles + AT_JUNCTION_MILES + 0.01)).toBeNull()
+  })
+
+  it('holds the turn while the hiker is standing in it', () => {
+    // The junction must not be a boundary the state can oscillate across.
+    // walkedMi is re-projected from a raw fix every second and canopy moves
+    // that fix by about the 90 ft this module's sibling calls "off the
+    // tread", so a hiker STANDING at the fork would otherwise watch the
+    // header alternate between "at a junction" and the next leg's name, with
+    // the junction card swapping to a diagram of somewhere a mile away.
+    const turns = turnsFor(NETWORK)
+    const past = nextTurn(turns, turns[0].miles + AT_JUNCTION_MILES / 2)
+
+    expect(past?.turn).toBe(turns[0])
+    // And it never reports a NEGATIVE distance to a junction behind you.
+    expect(past?.milesAway).toBe(0)
   })
 
   it('is null for a walk that never changes trail', () => {
@@ -122,5 +137,40 @@ describe('atJunction', () => {
     expect(atJunction(nextTurn(turns, turns[0].miles - 0.01))).toBe(true)
     expect(atJunction(nextTurn(turns, turns[0].miles - 0.5))).toBe(false)
     expect(atJunction(null)).toBe(false)
+  })
+})
+
+describe('the bearing an arm leaves on', () => {
+  it('is read at the sample distance, not at whatever vertex comes after it', () => {
+    // A straight run with nothing to digitise: the first vertex past the
+    // junction is most of an edge away. Returning the bearing to THAT vertex
+    // makes ARM_SAMPLE_M decorative and the reading a chord across the whole
+    // edge - the approximation TurnArm.side's own docstring says is withheld
+    // rather than guessed.
+    //
+    // Seven Hills is bent here: due north for ~110 m, then hard east for the
+    // rest. Sampled at 20 m the arm leaves NORTH (a left turn from an
+    // eastbound hiker); read to the far vertex it would average out east,
+    // which is "straight on" - the wrong instruction at a real fork.
+    const bent = {
+      nodes: NETWORK.nodes,
+      edges: NETWORK.edges.map((edge, at) =>
+        at === 2
+          ? {
+              ...edge,
+              geometry: [
+                [-74.09, 41.25],
+                [-74.09, 41.251],
+                [-74.06, 41.251],
+                [-74.09, 41.26],
+              ] as Array<[number, number]>,
+            }
+          : edge,
+      ),
+    }
+
+    const turns = turnsFor(bent)
+    expect(turns[0].onto.side).toBe('left')
+    expect(turns[0].onto.bearingDeg).toBeCloseTo(0, 1)
   })
 })

@@ -32,6 +32,16 @@ import { formatDistance, type UnitSystem } from '../lib/units'
 import './chrome.css'
 
 export interface NextTurnCardProps {
+  /**
+   * Whether this phone can say where the hiker is at all.
+   *
+   * False is an ordinary state and a frequent one: the first seconds of
+   * following, and every time GPS drops under canopy. The card still renders,
+   * because it carries the only way OUT of the mode - a hiker left in a mode
+   * the header announces, with nothing on screen to leave it by, is the bug
+   * this prop exists to have fixed (#1044 review).
+   */
+  positionKnown?: boolean
   /** The turn ahead, or null once every turn is behind the hiker. */
   turn: DayHikeTurn | null
   /** Miles to it. Read only when `turn` is not null. */
@@ -48,6 +58,7 @@ export interface NextTurnCardProps {
 }
 
 export function NextTurnCard({
+  positionKnown = true,
   turn,
   milesAway,
   onTrail,
@@ -59,6 +70,30 @@ export function NextTurnCard({
 }: NextTurnCardProps) {
   const blaze = blazeLabel(onTrailBlaze)
   const nowOn = onTrail === null ? blaze : `${onTrail} · ${blaze.toLowerCase()}`
+
+  if (!positionKnown) {
+    return (
+      <div className="next-turn">
+        {/* No distances, no turn, no trail name. Everything this card
+            normally says is a claim about where somebody is standing, and
+            nothing here knows. What survives is the mode and the way out. */}
+        <p className="next-turn__none">
+          Waiting for GPS. Nothing here knows where you are yet, so no turn is being
+          called.
+        </p>
+        <div className="next-turn__foot">
+          <span className="next-turn__on">Following a day hike</span>
+          <button
+            type="button"
+            className="next-turn__link next-turn__link--stop"
+            onClick={onStopFollowing}
+          >
+            Stop
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="next-turn">

@@ -96,3 +96,27 @@ describe('NextTurnCard', () => {
     expect(screen.getByText('In 640 m')).toBeInTheDocument()
   })
 })
+
+describe('when nothing knows where the hiker is', () => {
+  it('still carries the only way out of the mode', () => {
+    // The card used to disappear entirely for every no-fix state - the first
+    // seconds of following, and every time GPS drops under canopy - taking
+    // the app's only Stop control with it and leaving a hiker in a mode the
+    // header still announced (#1044 review).
+    render(<NextTurnCard {...PROPS} positionKnown={false} />)
+
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+    expect(screen.getByText(/Waiting for GPS/i)).toBeInTheDocument()
+  })
+
+  it('claims nothing about a position it has not got', () => {
+    render(<NextTurnCard {...PROPS} positionKnown={false} />)
+
+    // No distance, no turn, no trail name: every one of those is a claim
+    // about where somebody is standing.
+    expect(screen.queryByText(/In 0.4 mi/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Seven Hills/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Pine Meadow/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'This turn' })).not.toBeInTheDocument()
+  })
+})

@@ -274,6 +274,54 @@ describe('following a day hike, end to end', () => {
     ).toBeInTheDocument()
   })
 
+  it('keeps a way out of the mode when the fix is lost', async () => {
+    // Following with no fix used to render no card at all - and the only
+    // Stop control in the app lives inside these cards, so a hiker whose GPS
+    // dropped under canopy was left in a mode the header still announced with
+    // nothing on screen to leave it by (#1044 review).
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    // No fix has been delivered at all - the ordinary first seconds.
+    expect(await screen.findByText(/Waiting for GPS/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+    // And the header still says which mode this is, so the two agree.
+    expect(screen.getByText(/Day hike/)).toBeInTheDocument()
+  })
+
+  it('stops following when a builder opens, rather than covering it', async () => {
+    // The follow card outranks the route builder in MapScreen's routeSheet
+    // slot, so leaving following on meant the card sat over a live builder -
+    // no end picker, no Cancel - while map taps still went into the draft
+    // underneath (#1044 review). Following is a surface, and the shell's
+    // one-thing-open sweep is where that rule lives.
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    await screen.findByText('turn left onto Seven Hills Trail')
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    // The day room's primary goes straight into the builder (App.tsx wires
+    // onNewDayHike to openDayHike), which is the sweep under test.
+    await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('turn left onto Seven Hills Trail'),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText(/Waiting for GPS/i)).not.toBeInTheDocument()
+  })
+
   it('gives the map back when following stops', async () => {
     const user = userEvent.setup()
     app.onboard({ location_permission_requested: true })

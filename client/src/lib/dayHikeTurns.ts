@@ -226,7 +226,18 @@ export function nextTurn(
   walkedMi: number,
 ): NextTurn | null {
   for (const turn of turns) {
-    if (turn.miles > walkedMi) return { turn, milesAway: turn.miles - walkedMi }
+    // PAST IT BY A MARGIN, not merely past it. A bare `turn.miles > walkedMi`
+    // makes the junction a boundary the state oscillates across: `walkedMi`
+    // is re-projected from a raw fix every second, canopy moves that fix by
+    // about the same 90 ft this module's sibling calls "off the tread", and
+    // a hiker STANDING at the fork would watch the header alternate between
+    // "at a junction" and the next leg's name - with the junction card
+    // swapping to a diagram of somewhere a mile away underneath it. The same
+    // hysteresis lib/dayHikeFollow.ts applies to the off-route boundary, for
+    // the same reason: a boundary read off a noisy number needs a width.
+    if (turn.miles > walkedMi - AT_JUNCTION_MILES) {
+      return { turn, milesAway: Math.max(0, turn.miles - walkedMi) }
+    }
   }
   return null
 }
@@ -277,9 +288,24 @@ function armBearing(
   let previous = start
   for (let step = 1; step < vertices.length; step += 1) {
     const here: LonLat = { lon: vertices[step][0], lat: vertices[step][1] }
-    walked += metresBetween(previous, here)
+    const span = metresBetween(previous, here)
+    if (walked + span >= ARM_SAMPLE_M) {
+      // INTERPOLATED BACK TO EXACTLY ARM_SAMPLE_M rather than read to this
+      // vertex. Returning the bearing to `here` would mean that where the
+      // first vertex past the junction is 300 m out - a straight run with
+      // nothing to digitise - the "bearing the trail leaves on" is the chord
+      // across most of the edge, which is the approximation TurnArm.side's
+      // own docstring says is withheld rather than guessed. Found reviewing
+      // #1044; the constant was doing nothing whenever the vertices were
+      // sparser than it.
+      const share = span === 0 ? 0 : (ARM_SAMPLE_M - walked) / span
+      return bearingDegrees(start, {
+        lon: previous.lon + (here.lon - previous.lon) * share,
+        lat: previous.lat + (here.lat - previous.lat) * share,
+      })
+    }
+    walked += span
     previous = here
-    if (walked >= ARM_SAMPLE_M) return bearingDegrees(start, here)
   }
   // Shorter than the sample distance - a real thing in a graph where a
   // junction can be a few metres from the next. The whole edge is then the

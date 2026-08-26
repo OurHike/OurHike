@@ -29,6 +29,7 @@ import {
 import {
   EAST_END,
   NETWORK,
+  NETWORK_WITHOUT_GEOMETRY,
   NORTH_END,
   WEST_END,
   hikeThrough,
@@ -229,5 +230,70 @@ describe('compassPoint', () => {
     expect(compassPoint(225)).toBe('south-west')
     // Wraps rather than falling off the end of the table.
     expect(compassPoint(359)).toBe('north')
+  })
+})
+
+// The three ways this module used to give a confident wrong answer, found
+// reviewing #1044. Every one of them is the same shape: a measurement taken
+// against ground the hiker is not walking, presented as a measurement of
+// where they are.
+describe('what it measures against', () => {
+  it('refuses outright rather than measure off a chord', () => {
+    // Without an edge's own vertices the only line available is the straight
+    // one between its junctions, and across a switchback that runs far enough
+    // from the tread to raise "You are not on your route" at somebody
+    // standing squarely on it. lib/dayHikeTurns.ts withholds a turn's SIDE in
+    // this state; there is no part of the answer here a chord does not
+    // poison, so the whole answer is withheld.
+    const bare = buildGraphIndex(NETWORK_WITHOUT_GEOMETRY)
+    const resolved = resolveDayHike(bare, hikeThrough([WEST_END, NORTH_END]))
+    expect(resolved).not.toBeNull()
+
+    expect(
+      followDayHike({
+        index: bare,
+        resolved: resolved!,
+        at: { lon: -74.095, lat: 41.25 },
+      }),
+    ).toBeNull()
+  })
+
+  it('measures to the part of an edge the walk covers, not to the whole edge', () => {
+    // The hike runs WEST_END -> the junction, so only the western half of
+    // Pine Meadow is walked; the eastern half is a different edge the route
+    // never touches. A fix beside a route edge's UNWALKED part used to read
+    // as on-route at zero feet off, because the distance came from a
+    // projection onto the entire edge while only the mile was clamped.
+    //
+    // Standing at the east end: on the route's own ground that is ~836 m
+    // away, which is emphatically off it.
+    const resolved = resolvedFor(hikeThrough([WEST_END, NORTH_END]))
+    const state = followDayHike({
+      index: INDEX,
+      resolved,
+      at: { lon: -74.08, lat: 41.25 },
+    })
+
+    expect(state?.kind).toBe('off-route')
+    if (state?.kind !== 'off-route') return
+    expect(state.offRouteFeet).toBeGreaterThan(1000)
+  })
+
+  it('puts the nearest point on the trail, not on the chord between junctions', () => {
+    // The point a bearing is taken to. It used to be interpolated between two
+    // NODES whenever the projection fell outside the walked span, discarding
+    // the vertices the projection itself had just walked - so the app pointed
+    // a lost hiker at somewhere that is not on the trail at all.
+    const resolved = resolvedFor()
+    const state = followDayHike({
+      index: INDEX,
+      resolved,
+      at: northOf(-74.0999, 41.25, 400),
+    })
+
+    expect(state?.kind).toBe('off-route')
+    if (state?.kind !== 'off-route') return
+    // Pine Meadow runs due east along 41.25 here, so every point of it does.
+    expect(state.nearest.at.lat).toBeCloseTo(41.25, 5)
   })
 })

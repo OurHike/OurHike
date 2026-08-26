@@ -261,6 +261,17 @@ Closure
 
 `show_closures` - unlike the other overlays in this doc, **this probably shouldn't be a hideable layer at all.** Letting a hiker turn off known-closure warnings conflicts directly with value #4 (trustworthy above all) - suppressing safety information isn't the same kind of preference as picking a background tile style. Flagged here as a recommendation, not force-decided.
 
+**Force-decided 2026-08-26 ([#1047](https://github.com/OurHike/OurHike/issues/1047)), and the recommendation is half kept.** The maintainer's call: "Alerts should be part of the legend and a user should be able to deselect them. But we shouldnt let the throughhikers just turn that off for many days. The map should always open to the alerts being shown."
+
+So the legend gains an **Alerts** switch over all three of the map's alert marks at once - OurHike's closure bands, the ATC's bands and dots, serious-warning pins - and the sentence above stays true of the only thing that could have made it dangerous. **`show_closures` is still not a preference**, is still absent from `UserPreferences` ([IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)), and is still unreachable from `waypoint_types_shown`. What a hiker can now switch is a flag nothing writes down: `client/src/chrome/alertLayerPanel.ts` holds it in a `useState`, and it resets on a cold start, a reload, and every return to the foreground - which on a phone that keeps the app alive for days is what "opening the map" actually means.
+
+Two things make that a decluttering control rather than a way to switch the safety net off, and both are worth stating because the paragraph above is right that the difference matters:
+
+- **The switch takes ink, never the app's word.** "Trail closed 2.1 mi ahead", the serious-warning line, the advisory line and the `aria-live` sentence above them are all untouched, and structurally so - they reach the map screen as finished strings on their own props, so the flag has no route to them.
+- **The map says it is withholding them.** While alerts are off the status strip carries an "Alerts hidden" flag, because a map with the bands cleared and a map with no closure for forty miles are otherwise the same picture, and *absent means unknown, never zero* is the rule the rest of this app is built on.
+
+What is not built, and is named rather than left to be discovered: an app held in the foreground continuously never fires the visibility event, so a hide lasts as long as the screen stays awake - bounded by the screen timeout, not by anything designed. `@unvalidated`: nobody has watched a hiker use this. What would settle it is field use reporting how long a hide actually wants to last; if the answer is "longer than one look", the fix is an elapsed ceiling in that module and never a stored preference.
+
 ## 5. Map UI chrome: legend, scale, locate-me, zoom
 
 ### What MapLibre already provides for free (checked against the real API, not assumed)
@@ -328,7 +339,7 @@ Each variant carries its own backdrop, trail-casing ink, relief weight and (for 
 
 ## Data model sketch (settings, client-side)
 
-**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside UX Customization's, Onboarding's, and Hiker Safety's settings, rather than five separate small models. This doc still owns *why* each of these settings exists (the reasoning above doesn't move) - only the data model shape now lives in one canonical place: `background_source`, `max_background_zoom`, `show_roads`, `map_style`, `red_light_enabled` (all designed here). `show_closures` deliberately isn't in that model at all - it's always-on, not user-hideable (see "Reroutes / closures" above), a fixed display rule rather than a preference.
+**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside UX Customization's, Onboarding's, and Hiker Safety's settings, rather than five separate small models. This doc still owns *why* each of these settings exists (the reasoning above doesn't move) - only the data model shape now lives in one canonical place: `background_source`, `max_background_zoom`, `show_roads`, `map_style`, `red_light_enabled` (all designed here). `show_closures` deliberately isn't in that model at all - it's a fixed display rule rather than a preference, and #1047's Alerts switch does not change that: what it added is a flag nothing stores, precisely so that nothing about the alert layers can reach an account or survive the next open (see "Reroutes / closures" above).
 
 ## Open questions (for you, not decided here)
 

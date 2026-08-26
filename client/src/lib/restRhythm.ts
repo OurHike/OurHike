@@ -23,26 +23,14 @@
 //    a trip that is half-walked.
 
 import { nearestStopBeyond } from './dayPlanner'
-import { shiftDate, type HikePlan, type PlanDayMeta, type PlanStop } from './plan'
+import {
+  NEARO_MAX_MI,
+  shiftDate,
+  type HikePlan,
+  type PlanDayMeta,
+  type PlanStop,
+} from './plan'
 import type { StoredPoi } from './trailData'
-
-/**
- * How far a nearo is allowed to walk.
- *
- * @unvalidated 6 miles is picked, not measured. A nearo is understood on
- * this trail as a short day into or out of town - most of a rest, with a
- * couple of hours of walking in it - and six miles is the roundest number
- * inside every description of one I could find. Nobody has checked it
- * against what hikers actually walk on those days.
- *
- * What would settle it: the distribution of day lengths that hikers
- * themselves call nearos, which this app will start to have once #789's
- * recorded stretches and the day log accumulate. Until then the window errs
- * SHORT - a window too small falls back to a zero, which is a rest either
- * way, while one too large turns a rest day into an ordinary day of
- * walking and calls it a rest.
- */
-export const NEARO_MAX_MI = 6
 
 /**
  * The plan with its rhythm's rest days inserted.

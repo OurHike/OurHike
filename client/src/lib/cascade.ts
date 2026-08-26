@@ -41,7 +41,13 @@ import {
   type CandidateStop,
   type PlannerOptions,
 } from './dayPlanner'
-import { walkedDayCount, type HikePlan, type PlanDayMeta, type PlanStop } from './plan'
+import {
+  keepingRest,
+  walkedDayCount,
+  type HikePlan,
+  type PlanDayMeta,
+  type PlanStop,
+} from './plan'
 import type { StoredPoi } from './trailData'
 
 /** Where a day actually ended. */
@@ -83,12 +89,20 @@ export function callItADay(plan: HikePlan, index: number, end: CalledEnd): HikeP
           resupply: false,
         }
 
+  // Both days that touch the rewritten boundary change length: the one
+  // being recorded, and tomorrow, which now starts where the hiker actually
+  // is. So both have their rest flag re-examined - a nearo the hiker walked
+  // straight past, or one that swallowed the miles they did not walk today,
+  // is not the rest it still claims to be (#1031).
+  const stops = plan.stops.map((existing, i) => (i === index + 1 ? stop : existing))
   return {
     ...plan,
-    stops: plan.stops.map((existing, i) => (i === index + 1 ? stop : existing)),
-    days: plan.days.map((meta, i) =>
-      i === index ? { ...meta, walked: true, generated: false } : meta,
-    ),
+    stops,
+    days: plan.days.map((meta, i) => {
+      if (i !== index && i !== index + 1) return meta
+      const walked = i === index ? { ...meta, walked: true, generated: false } : meta
+      return keepingRest(walked, stops[i].mile, stops[i + 1].mile)
+    }),
   }
 }
 
@@ -207,11 +221,17 @@ function weave(
     const changed = Math.abs(newDistance - oldDistance) > 0.05
 
     stops.push(nextStop)
-    days.push({
-      ...meta,
-      generated: true,
-      ...(changed ? { wasDistanceMi: oldDistance } : {}),
-    })
+    days.push(
+      keepingRest(
+        {
+          ...meta,
+          generated: true,
+          ...(changed ? { wasDistanceMi: oldDistance } : {}),
+        },
+        boundary.mile,
+        nextStop.mile,
+      ),
+    )
     boundary = nextStop
   }
 
@@ -361,13 +381,19 @@ export function shiftPlan(
       meta.wasDistanceMi !== undefined ? undefined : distanceOfMeta(plan, meta)
     const newDistance = Math.abs(nextStop.mile - boundary.mile)
     stops.push(nextStop)
-    days.push({
-      ...meta,
-      generated: true,
-      ...(oldDistance !== undefined && Math.abs(newDistance - oldDistance) > 0.05
-        ? { wasDistanceMi: oldDistance }
-        : {}),
-    })
+    days.push(
+      keepingRest(
+        {
+          ...meta,
+          generated: true,
+          ...(oldDistance !== undefined && Math.abs(newDistance - oldDistance) > 0.05
+            ? { wasDistanceMi: oldDistance }
+            : {}),
+        },
+        boundary.mile,
+        nextStop.mile,
+      ),
+    )
     boundary = nextStop
   }
   // Zeros that sat at the stretch's very end.

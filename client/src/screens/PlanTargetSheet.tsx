@@ -28,8 +28,14 @@ import {
   type ViaStop,
 } from '../lib/dayPlanner'
 import type { ElevationProfile } from '../lib/elevationProfile'
-import { buildPlan, type HikePlan, type PlanTarget, type RestRhythm } from '../lib/plan'
-import { applyRhythm, NEARO_MAX_MI } from '../lib/restRhythm'
+import {
+  buildPlan,
+  NEARO_MAX_MI,
+  type HikePlan,
+  type PlanTarget,
+  type RestRhythm,
+} from '../lib/plan'
+import { applyRhythm } from '../lib/restRhythm'
 import { legFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import { formatDistance, type UnitSystem } from '../lib/units'

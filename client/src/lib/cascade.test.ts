@@ -7,7 +7,15 @@
 import { describe, expect, it } from 'vitest'
 
 import { absorbPlan, callItADay, cascadeChoices, nearestStop, shiftPlan } from './cascade'
-import { buildPlan, insertZeroAfter, togglePinned, validatePlan } from './plan'
+import {
+  buildPlan,
+  insertZeroAfter,
+  NEARO_MAX_MI,
+  planDayViews,
+  togglePinned,
+  validatePlan,
+  type HikePlan,
+} from './plan'
 import type { StoredPoi } from './trailData'
 
 const stop = (mile: number, name: string, resupply = false) => ({
@@ -189,6 +197,93 @@ describe('shiftPlan - the day sizes hold', () => {
     const pinned = togglePinned(plan(), 3)
     const called = callItADay(pinned, 0, { mile: 480 })
     expect(shiftPlan(called, POIS, 15)).toBeNull()
+  })
+})
+
+describe('a rest is spent rather than mislabelled (#1031)', () => {
+  /** The wireframe plan with a nearo the rhythm placed after day 1 - a
+   *  4.2-mile walk to Wise Shelter, flagged as the hiker's own rest. */
+  function withNearo(): HikePlan {
+    const base = buildPlan(
+      [
+        stop(470.8, 'Damascus'),
+        stop(486.2, 'Lost Mountain Shelter'),
+        stop(490.4, 'Wise Shelter'),
+        stop(503.3, 'Thomas Knob Shelter'),
+        stop(516.1, 'Old Orchard Shelter'),
+        stop(525.7, 'Atkins', true),
+      ],
+      { miles: 15 },
+      '2026-05-12',
+    )
+    return {
+      ...base,
+      days: base.days.map((day, i) => (i === 1 ? { ...day, rest: true } : day)),
+    }
+  }
+
+  /** Every day whose badge would print, with the distance it prints beside.
+   *  The invariant: no row may claim a rest it is too long to be. */
+  const restsAndLengths = (plan: HikePlan) =>
+    planDayViews(plan)
+      .filter((day) => day.rest)
+      .map((day) => Math.abs(day.end.mile - day.start.mile))
+
+  it('shift does not carry the badge onto a re-planned day', () => {
+    const called = callItADay(withNearo(), 0, { mile: 486.2 })
+    const shifted = shiftPlan(called, POIS, 15)
+
+    expect(shifted).not.toBeNull()
+    // Whatever the generator chose, nothing wearing the badge is longer
+    // than a nearo. Before the fix this printed a 17.1-mile "rest day".
+    for (const miles of restsAndLengths(shifted!.plan)) {
+      expect(miles).toBeLessThanOrEqual(NEARO_MAX_MI)
+    }
+    expect(validatePlan(shifted!.plan)).not.toBeNull()
+  })
+
+  it('absorb does not carry the badge onto a re-planned day', () => {
+    const called = callItADay(withNearo(), 0, { mile: 480 })
+    const absorbed = absorbPlan(called, POIS)
+
+    expect(absorbed).not.toBeNull()
+    for (const miles of restsAndLengths(absorbed!.plan)) {
+      expect(miles).toBeLessThanOrEqual(NEARO_MAX_MI)
+    }
+    expect(validatePlan(absorbed!.plan)).not.toBeNull()
+  })
+
+  it('a short day recorded today does not stretch tomorrow’s rest', () => {
+    // The path that needs no cascade at all: rained off, stopped early, and
+    // tomorrow's nearo silently grows by the miles left over.
+    const called = callItADay(withNearo(), 0, { mile: 480 })
+    const tomorrow = planDayViews(called)[1]
+
+    expect(Math.abs(tomorrow.end.mile - tomorrow.start.mile)).toBeCloseTo(10.4, 1)
+    expect(tomorrow.rest).toBe(false)
+  })
+
+  it('leaves the badge where the day is still a rest', () => {
+    // Called exactly at the planned boundary: tomorrow is the 4.2-mile
+    // nearo it always was, and losing the badge would be its own defect.
+    const called = callItADay(withNearo(), 0, { mile: 486.2 })
+    expect(planDayViews(called)[1].rest).toBe(true)
+  })
+
+  it('a zero rest survives every re-plan, badge and all', () => {
+    const base = withNearo()
+    const zeroed = insertZeroAfter(base, 2)
+    const withRest: HikePlan = {
+      ...zeroed,
+      days: zeroed.days.map((day, i) => (i === 3 ? { ...day, rest: true } : day)),
+    }
+    const called = callItADay(withRest, 0, { mile: 480 })
+    const absorbed = absorbPlan(called, POIS)
+
+    expect(absorbed).not.toBeNull()
+    const zeros = planDayViews(absorbed!.plan).filter((day) => day.zero)
+    expect(zeros).toHaveLength(1)
+    expect(zeros[0].rest).toBe(true)
   })
 })
 

@@ -6,8 +6,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { applyRhythm, NEARO_MAX_MI } from './restRhythm'
-import { buildPlan, planDayViews, type HikePlan } from './plan'
+import { applyRhythm } from './restRhythm'
+import { buildPlan, NEARO_MAX_MI, planDayViews, type HikePlan } from './plan'
 import type { StoredPoi } from './trailData'
 
 /** Stops every 10 miles, which the planner would have chosen. */

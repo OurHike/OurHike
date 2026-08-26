@@ -247,6 +247,35 @@ describe('the two modes', () => {
   })
 })
 
+describe('the door onto the ground (#1041)', () => {
+  const FOLLOW = { name: 'Follow this hike on the map' }
+
+  it('offers following once the walk is saved and the graph can place it', async () => {
+    const user = userEvent.setup()
+    const onFollow = vi.fn()
+    renderCard({ onFollow })
+
+    await user.click(screen.getByRole('button', FOLLOW))
+    expect(onFollow).toHaveBeenCalledOnce()
+  })
+
+  it('does not offer it over the stored cache', () => {
+    // Following is a live position against a ROUTE, and with `resolved` null
+    // the card is leaning on a list of figures rather than on ground. Absent
+    // rather than disabled: a greyed control is a promise the app cannot say
+    // why it is not keeping.
+    renderCard({ onFollow: vi.fn(), resolved: null })
+
+    expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
+  })
+
+  it('does not offer it on a review, which has no record to point at', () => {
+    renderCard({ mode: 'review', onSave: vi.fn() })
+
+    expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
+  })
+})
+
 describe('the #1008 additions', () => {
   it('offers the date as a field the hiker sets, and clearing it clears the date', async () => {
     const user = userEvent.setup()

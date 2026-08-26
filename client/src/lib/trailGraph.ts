@@ -151,6 +151,51 @@ export function metresToMiles(metres: number): number {
   return metres / METRES_PER_MILE
 }
 
+/** The two fields that decide whether two pieces of tread are one trail. */
+export interface TrailIdentity {
+  trail_id: string | null
+  name: string | null
+}
+
+/**
+ * Whether two pieces of tread belong to the same trail.
+ *
+ * Extracted rather than written out a fourth time, because FOUR things read
+ * this rule and one of them is new: where a leg ends ({@link legsFromEdges},
+ * `legsFromWalk`, {@link routeThrough}'s merge across a join) and where a TURN
+ * happens (lib/dayHikeTurns.ts). A turn list that disagreed with the leg list
+ * about where Pine Meadow becomes Seven Hills would print "leg 2 of 3" over a
+ * card naming the wrong trail - one predicate makes them agree by
+ * construction rather than by three call sites staying in step.
+ *
+ * BOTH fields, and `trail_id` alone will not do: the artifact carries a null
+ * id for every piece no source numbered, and comparing ids alone would
+ * collapse all of those into one leg spanning four trails. Comparing NAMES
+ * alone has the mirror fault where two sources both publish "Blue Trail".
+ */
+export function sameTrail(a: TrailIdentity, b: TrailIdentity): boolean {
+  return a.trail_id === b.trail_id && a.name === b.name
+}
+
+/**
+ * The compass bearing from one point to another - degrees clockwise from
+ * north, in [0, 360).
+ *
+ * Equirectangular through {@link localMetres}, like every other distance in
+ * this module and for the same reason: the only points a bearing is taken
+ * between here are two vertices of one piece of trail, tens of metres apart,
+ * where the difference from a great-circle bearing is orders of magnitude
+ * below the question being asked of it (which side of a junction a trail
+ * leaves on).
+ */
+export function bearingDegrees(from: LonLat, to: LonLat): number {
+  const span = localMetres(from, to)
+  // atan2(x, y) rather than the usual (y, x): this is a compass bearing, so
+  // it is measured clockwise from north (+y) rather than counter-clockwise
+  // from east.
+  return ((Math.atan2(span.x, span.y) * 180) / Math.PI + 360) % 360
+}
+
 interface Adjacency {
   edgeIndex: number
   to: number
@@ -277,6 +322,52 @@ export function nearestPointOnGraph(
   return best
 }
 
+/**
+ * How far a point is from every piece of a walk, one answer per POSITION in
+ * the edge list rather than per edge.
+ *
+ * The distinction is the whole reason this returns a list instead of a
+ * nearest: a route walks some edges twice - every out-and-back does, and
+ * `closeTheLoop` can - and the two passes are different places in the day,
+ * reached at different miles, with different turns still to come. Handing
+ * back only the nearest projection would make a hiker on the way home read as
+ * being on the way out.
+ *
+ * No threshold and no refusal here, unlike {@link nearestPointOnGraph}: this
+ * is asked "how far off am I", and "very" is a real answer that the caller
+ * needs the number for (lib/dayHikeFollow.ts prints it).
+ */
+export function projectOntoEdges(
+  index: TrailGraphIndex,
+  at: LonLat,
+  edgeIndices: readonly number[],
+): EdgeProjection[] {
+  return edgeIndices.map((edgeIndex, position) => {
+    const projected = projectOntoEdge(index, edgeIndex, at)
+    return {
+      at: position,
+      edgeIndex,
+      fraction: projected.fraction,
+      point: projected.point,
+      offFeet: projected.offMetres * FEET_PER_METRE,
+    }
+  })
+}
+
+/** Where one point falls against one position in an edge list. */
+export interface EdgeProjection {
+  /** Position in the list handed to {@link projectOntoEdges} - not the edge
+   *  index, for the reason that function's own note gives. */
+  at: number
+  edgeIndex: number
+  /** Fraction along the edge, measured from its `from` end. */
+  fraction: number
+  /** The point after being pulled onto the line. */
+  point: LonLat
+  /** How far the point was from the line, in feet. */
+  offFeet: number
+}
+
 interface Reached {
   distance: number
   viaEdge: number
@@ -373,11 +464,7 @@ export function legsFromEdges(graph: TrailGraph, edgeIndices: number[]): RouteLe
   for (const edgeIndex of edgeIndices) {
     const edge = graph.edges[edgeIndex]
     const last = legs[legs.length - 1]
-    if (
-      last !== undefined &&
-      last.trail_id === edge.trail_id &&
-      last.name === edge.name
-    ) {
+    if (last !== undefined && sameTrail(last, edge)) {
       last.miles += metresToMiles(edge.length_m)
       continue
     }
@@ -413,11 +500,7 @@ function legsFromWalk(
   edgeIndices.forEach((edgeIndex, at) => {
     const edge = graph.edges[edgeIndex]
     const last = legs[legs.length - 1]
-    if (
-      last !== undefined &&
-      last.trail_id === edge.trail_id &&
-      last.name === edge.name
-    ) {
+    if (last !== undefined && sameTrail(last, edge)) {
       last.miles += metresToMiles(walkedMetres[at])
       return
     }
@@ -538,11 +621,7 @@ export function routeThrough(
     // re-walked stretch.
     for (const leg of section.legs) {
       const last = legs[legs.length - 1]
-      if (
-        last !== undefined &&
-        last.trail_id === leg.trail_id &&
-        last.name === leg.name
-      ) {
+      if (last !== undefined && sameTrail(last, leg)) {
         last.miles += leg.miles
         continue
       }

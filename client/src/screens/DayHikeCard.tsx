@@ -64,6 +64,15 @@ export interface DayHikeCardProps {
    *  both read it, which is what made a card with no way to write one a
    *  gap rather than a nicety. */
   onSetDate?: (date: string | null) => void
+  /**
+   * Start following this walk on the map (#1041, frames `D9`-`D11`).
+   *
+   * Saved mode only, and omitted when this phone cannot place the hike on
+   * its graph: following is a live position against a ROUTE, and there is no
+   * route to be on when `resolved` is null - the card is leaning on its
+   * stored cache, which is a list of figures rather than ground.
+   */
+  onFollow?: () => void
 }
 
 export function DayHikeCard({
@@ -78,6 +87,7 @@ export function DayHikeCard({
   onClose,
   onDelete,
   onSetDate,
+  onFollow,
 }: DayHikeCardProps) {
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
   // Delete and its neighbour look alike, and one of them has no way back.
@@ -330,6 +340,18 @@ export function DayHikeCard({
           >
             Leave this with someone
           </button>
+          {/* And the door out of the planning room and onto the ground
+              (#1041). Under "Leave this with someone" rather than over it,
+              which is the order of the morning: the card somebody else keeps
+              is written before the walk starts, and following is the walk
+              starting. Absent, not disabled, when the graph cannot place the
+              hike - a greyed control is a promise the app cannot say why it
+              is not keeping. */}
+          {onFollow !== undefined && resolved !== null && (
+            <button type="button" className="day-hike-card__follow" onClick={onFollow}>
+              Follow this hike on the map
+            </button>
+          )}
           {confirmingDelete ? (
             <div className="day-hike-card__confirm">
               <span>Delete this day hike?</span>

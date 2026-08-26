@@ -204,6 +204,21 @@ export interface MapScreenProps {
   onRouteTap?: (at: { lon: number; lat: number }) => void
   routeSheet?: ReactNode
   /**
+   * The band a followed day hike puts directly UNDER the header (#1041,
+   * frame `D11`) - today only "you are not on your route".
+   *
+   * A slot rather than a prop this screen understands, like `routeSheet` and
+   * the sheets below it: what a followed hike knows is the shell's, and a map
+   * screen that learned about day hikes would be the fourth feature to move
+   * into it (#937).
+   *
+   * Under the header, not in `.map-screen__alerts` above it, and
+   * chrome/OffRouteCard.tsx holds the reasoning: that strip is the trail's
+   * condition ahead, true for everyone on that ground, and this is one
+   * hiker's own route.
+   */
+  followBand?: ReactNode
+  /**
    * How many ATC notices the app is holding, for the Legend row that opens
    * all of them (#687 - it used to be a permanent button on this screen; see
    * `newAtcAlertCount` below for what replaced it here). Zero, or the shell
@@ -581,6 +596,7 @@ export function MapScreen({
   dayHikeDrawing = null,
   onRouteTap,
   routeSheet,
+  followBand,
   atcNoticeCount = 0,
   onOpenAtcNotices,
   atcNoticeList,
@@ -957,6 +973,8 @@ export function MapScreen({
           onOpenLegend={onOpenLegend}
           onOpenSearch={onOpenSearch}
         />
+
+        {followBand}
 
         {/* `units` last, so the screen's answer wins over anything the shell
             put in the ribbon's own props. The canvas below and the ribbon over

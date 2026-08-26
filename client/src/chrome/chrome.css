@@ -3695,3 +3695,293 @@ a.poi-card__credit::after {
   font-size: 13px;
   cursor: pointer;
 }
+
+/* Following a day hike (#1041, frames D9-D11).
+ *
+ * Three surfaces, two slots. The band sits in the chrome stack directly under
+ * the header - chrome/OffRouteCard.tsx's own note says why it is not in
+ * .map-screen__alerts above it - and the two cards ride MapScreen's
+ * routeSheet slot, positioning themselves against the canvas the way every
+ * other occupant of that slot does.
+ *
+ * z-index 2 throughout, matching .hikes-here and the waypoint card: 3 is for
+ * surfaces that cover the map outright, and a hiker mid-walk must be able to
+ * tap a spring on the map without the turn card swallowing it. */
+.next-turn,
+.turn-card,
+.off-route {
+  position: absolute;
+  right: var(--space-2, 8px);
+  /* Clear of the credit strip, which is the last in-flow row of the canvas
+     and measures ~17px (features/MAP_CHROME.md §1). ODbL attribution is a
+     licence condition rather than a nicety, and .map-attribution's own note
+     above records what happens when a control lands on top of it: the
+     condition is met only where the text happens not to be covered. A card
+     that is on screen for a whole walk would cover it for the whole walk. */
+  bottom: calc(var(--space-2, 8px) + 17px);
+  left: var(--space-2, 8px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  max-height: 70%;
+  overflow-y: auto;
+  padding: var(--space-3, 12px);
+  color: var(--fg-1);
+  background: var(--surface-over-map);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgb(20 19 15 / 14%);
+}
+
+/* The whole lead is the tap target for the junction behind it, so it is a
+   button rather than text with a link after it: a gloved hand in sun reaching
+   for a 15px "›" is the mis-tap #105 measured the touch floor against. */
+.next-turn__lead {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: baseline;
+  width: 100%;
+  min-height: var(--min-touch-target);
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.next-turn__distance {
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.next-turn__instruction {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.next-turn__none {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.next-turn__foot {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+}
+
+.next-turn__on {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-turn__link {
+  flex: 0 0 auto;
+  min-height: var(--min-touch-target);
+  padding: 0 var(--space-2, 8px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.next-turn__link--stop {
+  color: var(--fg-3);
+}
+
+.turn-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.turn-card__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.turn-card__close {
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--fg-2);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.turn-card__lead {
+  display: flex;
+  gap: var(--space-3, 12px);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.turn-card__instruction {
+  flex: 1;
+  min-width: 0;
+}
+
+.turn-card__heading {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.turn-card__blaze {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.turn-card__arms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2, 8px) 0 0;
+  margin: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-1);
+}
+
+.turn-card__arm {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.turn-card__check {
+  padding: var(--space-2, 8px);
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  background: var(--bg-page);
+  border-radius: 8px;
+}
+
+/* Straight rays at real bearings, rotated so travel points up. NOT a map -
+   chrome/JunctionDiagram.tsx says so at length, and the stroke widths here
+   deliberately do not encode anything: a thicker route arm would read as a
+   wider trail. */
+.junction-diagram {
+  flex: 0 0 auto;
+}
+
+.junction-diagram__arm {
+  stroke: var(--border-2);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.junction-diagram__arm--route {
+  stroke: var(--brand-primary);
+}
+
+.junction-diagram__you {
+  fill: var(--fg-1);
+}
+
+/* The off-route band, in the chrome stack under the header. Amber rather than
+   the alerts strip's danger colour, and quieter than a closure deliberately:
+   a closure is the trail being shut and this is one hiker having wandered,
+   which is recoverable and extremely common on a network. */
+.off-route-band {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--surface-warning);
+  border-bottom: 1px solid var(--danger);
+}
+
+.off-route-band__head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.off-route-band__body {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.off-route {
+  border-color: var(--danger);
+}
+
+.off-route__lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.off-route__refusal {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-page);
+  border-radius: 8px;
+}
+
+.off-route__refusal-head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.off-route__refusal-body {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.off-route__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.off-route__primary,
+.off-route__secondary {
+  flex: 1;
+  min-height: var(--min-touch-target);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.off-route__primary {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+}
+
+.off-route__secondary {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}

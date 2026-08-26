@@ -2688,3 +2688,23 @@
   gap: 0.75rem;
   font-size: 0.875rem;
 }
+
+/* The door out of the planning room and onto the ground (#1041, frame D9).
+   Secondary rather than quiet: "Leave this with someone" above it is the
+   card's one primary and stays that way - what a hiker does on the morning
+   of, before anything else - but following is a real action with a real
+   surface behind it, and a plain underlined link beside Delete would read as
+   the same weight as throwing the walk away. */
+.day-hike-card__follow {
+  align-self: stretch;
+  min-height: var(--min-touch-target);
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}

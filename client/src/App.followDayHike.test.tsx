@@ -20,6 +20,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { DAY_HIKE_SOURCE_ID } from './map/dayHikeLayers'
+import { MockMap } from './test/mocks/maplibre-gl'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
 import { appHarness, MILE_LAT } from './test/appHarness'
@@ -136,6 +138,40 @@ const HIKE = {
             source: 'oprhp_trails',
             blaze_color: 'Blue',
             miles: 1.21,
+          },
+        ],
+      },
+      looped: false,
+      recorded: 'planned',
+    },
+  ],
+  openId: null,
+}
+
+/** Out to the junction and back, over one edge, both ways. The shape
+ *  `route.edgeIndices` cannot describe: deduplicated it is `[0]`, and the
+ *  first and last tap are the same coordinate. */
+const OUT_AND_BACK = {
+  hikes: [
+    {
+      id: 'there-and-back',
+      name: 'Pine Meadow out and back',
+      date: null,
+      segments: [
+        [
+          { coord: [-74.1, 41.25], poiId: null },
+          { coord: [-74.09, 41.25], poiId: null },
+          { coord: [-74.1, 41.25], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 1.04,
+        legs: [
+          {
+            name: 'Pine Meadow Trail',
+            source: 'oprhp_trails',
+            blaze_color: 'Blue',
+            miles: 1.04,
           },
         ],
       },
@@ -343,5 +379,54 @@ describe('following a day hike, end to end', () => {
     // Back to the A.T.'s own header, and to its own honest refusal about a
     // fix two thousand miles off the corridor.
     expect(screen.getByText('Off the trail')).toBeInTheDocument()
+  })
+
+  it('draws the ground walked twice, on a walk that re-uses one edge', async () => {
+    // #1040's defect, on this surface. Following used to hand
+    // `segment.route.edgeIndices` and the outer taps to routeGeometry; that
+    // list is deduplicated across leg joins, so an out-and-back over one edge
+    // is `[0]` trimmed between two taps that are the SAME COORDINATE - a
+    // zero-length span, which routeGeometry refuses, which meant no route on
+    // the map at all. #1040 measured it on the builder at 0.62 mi; the same
+    // call was still here, under a hiker who is out walking the thing.
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, OUT_AND_BACK)
+    await serveGraph()
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Follow this hike on the map' }),
+    )
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    // Waits on the follow state itself, not on a tick: the drawing and this
+    // line come from the same resolution, so a rendered distance proves the
+    // route was resolved before sourceData is read.
+    await screen.findByText(/mi in ·/)
+
+    const drawn = MockMap.live[0].sourceData.get(DAY_HIKE_SOURCE_ID) as {
+      features: Array<{ geometry: { type: string; coordinates: number[][][] } }>
+    }
+    const walked = drawn.features.filter(
+      (feature) => feature.geometry.type === 'MultiLineString',
+    )
+    // Twice, because it was walked twice. Drawn once over itself is what
+    // happened on the ground; drawn not at all is the bug.
+    expect(walked).toHaveLength(1)
+    expect(walked[0].geometry.coordinates).toEqual([
+      [
+        [-74.1, 41.25],
+        [-74.09, 41.25],
+      ],
+      [
+        [-74.09, 41.25],
+        [-74.1, 41.25],
+      ],
+    ])
   })
 })

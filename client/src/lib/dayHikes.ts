@@ -266,11 +266,44 @@ export async function loadDayHikes(): Promise<DayHikeStore> {
   return validateDayHikeStore(stored) ?? EMPTY_DAY_HIKES
 }
 
-/** The raw stored hikes, for the ledger's before/after - guarded so a junk
- *  document costs the record of one save, never the save itself. */
+/** Every hike the stored document holds, readable or not - guarded so a junk
+ *  document costs the record of one save, never the save itself.
+ *
+ *  Used ONLY where the hiker has asked to delete everything, which is an act
+ *  rather than an inference: "forget every day hike" means the ones this
+ *  build cannot read too, and leaving those behind would have them sync back
+ *  afterwards. Every other caller wants `readableHikes` below - see it for
+ *  what went wrong when the two were one function. */
 function storedHikes(stored: unknown): DayHike[] {
   const hikes = (stored as Partial<DayHikeStore> | undefined)?.hikes
   return Array.isArray(hikes) ? hikes : []
+}
+
+/**
+ * What this build could READ before the save, for the ledger's before/after.
+ *
+ * Validated, not raw, and the difference is a hike (#1040). `loadDayHikes`
+ * drops a record this build cannot parse - deliberate, and documented - so
+ * the store written back never contains it. Diffing that against the RAW
+ * document made the validator's refusal look like the hiker's own delete:
+ * the next ordinary save recorded a tombstone for it, and the tombstone
+ * travelled, taking a walk off the account and every other device. A phone
+ * on an older build destroyed what a newer one had made, everywhere, and
+ * nobody performed a delete.
+ *
+ * `lib/dayHikeSyncState.ts` states the rule this restores: a delete travels
+ * only as the hiker's OWN delete, recorded at the moment they perform it,
+ * never inferred. "I could not read it" is an inference.
+ *
+ * What still degrades, said rather than left to be found: the unreadable
+ * record is not written back to this device either, so it lives only on the
+ * account until a build that understands it comes back. That is the same
+ * honest skew `mergeServerDayHikes` already applies to a row from a newer
+ * build - dropped rather than rendered - and it is survivable in a way a
+ * tombstone is not.
+ */
+function readableHikes(stored: unknown): DayHike[] {
+  return validateDayHikeStore(stored)?.hikes ?? []
 }
 
 export async function saveDayHikes(store: DayHikeStore): Promise<void> {
@@ -281,7 +314,7 @@ export async function saveDayHikes(store: DayHikeStore): Promise<void> {
   // lib/dayHikeSyncState.ts.
   const before = await get(DAY_HIKES_KEY)
   await set(DAY_HIKES_KEY, store)
-  await recordDayHikeEdits(storedHikes(before), store.hikes)
+  await recordDayHikeEdits(readableHikes(before), store.hikes)
 }
 
 /**

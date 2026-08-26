@@ -110,11 +110,47 @@ export interface RouteLeg {
   miles: number
 }
 
+/**
+ * One leg of a walk, between two consecutive taps, as the router built it.
+ *
+ * WHAT `edgeIndices` CANNOT SAY (#1040). That list is deduplicated across the
+ * join between legs - the shared edge is drawn once - and an out-and-back
+ * therefore collapses to the edges it used, losing the turnaround entirely.
+ * Right for drawing a line twice over the same ground, and wrong as the ONLY
+ * record of the walk: `routeGeometry` trims the first and last edges to the
+ * tapped fractions, so the whole out-and-back gets trimmed to the span
+ * between its first and last tap.
+ *
+ * Measured on a single edge with taps at fractions 0.2, 0.8 and 0.2: the
+ * route is 0.62 mi and correct, and the drawing was NULL - a bar reading
+ * "1 leg · 0.6 mi · ≈12m walking" over a map with no route on it. Stopping
+ * partway back (0.2, 0.8, 0.5) drew only 0.2→0.5, silently omitting the
+ * stretch the hiker walks twice.
+ *
+ * So each leg keeps its own ends, and {@link routeLines} draws leg by leg.
+ */
+export interface RouteSection {
+  /** This leg's edges alone, in walking order - NOT deduplicated against its
+   *  neighbours, because each leg is drawn on its own. */
+  edgeIndices: number[]
+  from: GraphPoint
+  to: GraphPoint
+}
+
 export interface GraphRoute {
   legs: RouteLeg[]
   miles: number
-  /** Edge indices in walking order, for drawing the highlight. */
+  /**
+   * Every edge the walk touches, in walking order, deduplicated across leg
+   * joins.
+   *
+   * For asking WHICH TRAILS a walk uses - the org tally, the bail-outs, the
+   * climb. NOT for drawing: see {@link RouteSection}, and use
+   * {@link routeLines}.
+   */
   edgeIndices: number[]
+  /** The legs as walked, each with its own ends. What drawing follows. */
+  sections: RouteSection[]
   /** Legs per organization, which frame `1j` tallies while the hiker builds. */
   legsBySource: Array<{ source: string | null; legs: number }>
   /**
@@ -520,17 +556,22 @@ function assemble(
   edgeIndices: number[],
   metres: number,
   walkedMetres: number[],
+  entered: number[],
+  section: RouteSection,
 ): GraphRoute {
   const legs = legsFromWalk(graph, edgeIndices, walkedMetres)
   return {
     legs,
     miles: metresToMiles(metres),
     edgeIndices,
+    // One leg, which is what routeBetween builds. routeThrough concatenates
+    // these across its taps and never merges them.
+    sections: [section],
     legsBySource: tallyBySource(legs),
     // Priced here rather than by the caller, off the SAME walkedMetres the
     // legs are priced from - a second opinion about how much of an edge was
     // walked is the drift #1002 was about.
-    climb: routeClimb(graph, edgeIndices, walkedMetres),
+    climb: routeClimb(graph, edgeIndices, walkedMetres, entered),
   }
 }
 
@@ -557,7 +598,14 @@ export function routeBetween(
     // nothing to search.
     const edge = graph.edges[from.edgeIndex]
     const metres = Math.abs(to.fraction - from.fraction) * edge.length_m
-    return assemble(graph, [from.edgeIndex], metres, [metres])
+    return assemble(
+      graph,
+      [from.edgeIndex],
+      metres,
+      [metres],
+      enteredNodes(graph, [from.edgeIndex], from, to),
+      { edgeIndices: [from.edgeIndex], from, to },
+    )
   }
 
   const fromEdge = graph.edges[from.edgeIndex]
@@ -583,6 +631,8 @@ export function routeBetween(
     edgeIndices,
     found.total,
     walkedMetresPerEdge(graph, edgeIndices, from, to),
+    enteredNodes(graph, edgeIndices, from, to),
+    { edgeIndices, from, to },
   )
 }
 
@@ -600,6 +650,7 @@ export function routeThrough(
   if (points.length < 2) return null
 
   const edgeIndices: number[] = []
+  const sections: RouteSection[] = []
   const legs: RouteLeg[] = []
   const sectionClimbs: Array<RouteClimb | null> = []
   let metres = 0
@@ -608,6 +659,9 @@ export function routeThrough(
     if (section === null) return null
     metres += section.miles * METRES_PER_MILE
     sectionClimbs.push(section.climb)
+    // Kept whole, never deduplicated against its neighbour: this is the walk
+    // as walked, and it is what the drawing follows (#1040).
+    sections.push(...section.sections)
     for (const edgeIndex of section.edgeIndices) {
       // The join between two sections lands on the same edge twice; drawing it
       // once is right and counting it once already happened above.
@@ -632,6 +686,7 @@ export function routeThrough(
     legs,
     miles: metresToMiles(metres),
     edgeIndices,
+    sections,
     legsBySource: tallyBySource(legs),
     // Sections ADD, exactly as their legs do above and for the same reason:
     // the edge shared across a join was deduplicated for DRAWING, but both
@@ -757,11 +812,37 @@ export interface RouteClimb {
  * It is deliberately the SAME share `walkedMetresPerEdge` already computes,
  * rather than a second opinion about how much of an edge was walked - the
  * drift #1002 was about.
+ *
+ * DIRECTION, and the approximation in handling it (#1034). An edge's
+ * `[gain, loss]` is measured along its STORED direction, which
+ * build_trail_graph.py inherits from whichever way the source line was
+ * digitised - unrelated to which way is uphill, and unrelated to which way
+ * anybody walks. `buildGraphIndex` makes the graph undirected, so roughly
+ * half of all edges are walked against that direction, and this used to add
+ * `climb[0]` to gain regardless. A downhill walk reported the ascent of the
+ * climb, and an out-and-back reported gain with no loss at all - a walk
+ * ending where it started, finishing thousands of feet above its own
+ * trailhead.
+ *
+ * Swapping the pair is the closest available answer and NOT the exact one.
+ * Confirmed ascent is walked sample by sample through a dead band
+ * (`elevationGain.ts`), and reversing that run is not the same operation as
+ * exchanging its two totals: a run whose small rises were absorbed by the
+ * band in one direction can have different ones absorbed in the other. Two
+ * scalars per edge cannot carry that, so this is an approximation, and
+ * closing it properly means `export_network_elevation.py` publishing both
+ * directions rather than the client inferring one.
+ *
+ * What is exact either way, and what the test asserts: a walk that returns
+ * to where it started has gain equal to loss. That is arithmetic about the
+ * ground rather than about the dead band, and it is the invariant the old
+ * behaviour broke visibly.
  */
 export function routeClimb(
   graph: TrailGraph,
   edgeIndices: number[],
   walkedMetres: number[],
+  entered: number[],
 ): RouteClimb | null {
   if (edgeIndices.length === 0) return null
   let gainFt = 0
@@ -778,8 +859,13 @@ export function routeClimb(
       edge.length_m > 0 && walked !== undefined
         ? Math.min(Math.max(walked / edge.length_m, 0), 1)
         : 0
-    gainFt += climb[0] * share
-    lossFt += climb[1] * share
+    // Walked against the edge's stored direction, this edge's ascent is its
+    // descent (#1034). `entered` is the same orientation walkedMetresPerEdge
+    // uses to decide which end of a partial edge was covered, so the two
+    // cannot disagree about which way the hiker went.
+    const forward = entered[at] === undefined || entered[at] === edge.from
+    gainFt += (forward ? climb[0] : climb[1]) * share
+    lossFt += (forward ? climb[1] : climb[0]) * share
   }
   return { gainFt, lossFt }
 }
@@ -840,6 +926,40 @@ export function routeGeometry(
       coords = cutPolyline(coords, fromFraction, toFraction)
     }
     if (coords.length >= 2) lines.push(coords)
+  }
+  return lines.length > 0 ? lines : null
+}
+
+/**
+ * The whole walk's drawn shape, leg by leg.
+ *
+ * WHY NOT `routeGeometry(graph, route.edgeIndices, first, last)`, which is
+ * what App.tsx did until #1040. That list is deduplicated across leg joins,
+ * so an out-and-back over one edge collapses to `[edge]` and the two tapped
+ * fractions handed in are the FIRST and LAST tap - which for a walk returning
+ * to where it started are the same point. `routeGeometry` then trims the edge
+ * to a zero-length span and returns null, and the map draws nothing at all
+ * under a bar reading "1 leg · 0.6 mi · ≈12m walking". Stopping partway back
+ * drew the span between the outer taps and silently omitted the ground walked
+ * twice. Both measured on a single 836 m edge.
+ *
+ * Drawing leg by leg is the fix and also the honest picture: a leg re-walked
+ * is drawn again over itself, which is what happened on the ground.
+ *
+ * Null on the same terms `routeGeometry` uses - if ANY leg cannot be drawn,
+ * the whole thing refuses rather than handing back a walk with a hole in it.
+ * A hiker shown four legs of a five-leg walk has been told something false
+ * about the fifth.
+ */
+export function routeLines(
+  graph: TrailGraph,
+  route: GraphRoute,
+): Array<Array<[number, number]>> | null {
+  const lines: Array<Array<[number, number]>> = []
+  for (const section of route.sections) {
+    const drawn = routeGeometry(graph, section.edgeIndices, section.from, section.to)
+    if (drawn === null) return null
+    lines.push(...drawn)
   }
   return lines.length > 0 ? lines : null
 }

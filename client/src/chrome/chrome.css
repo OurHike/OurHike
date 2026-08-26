@@ -1530,6 +1530,16 @@
   color: var(--fg-2);
 }
 
+/* This leg's own baseline (#851/#1040), under the figures it qualifies. The
+   ratio is a property of the walk, not of the hiker, so each leg carries its
+   own - and none carries anything at the standard pace. */
+.route-stops__leg--baseline {
+  padding-top: 0;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
 .route-stops__add {
   display: flex;
   justify-content: space-between;
@@ -1616,6 +1626,17 @@
 .route-stops-bar__note {
   margin: 0;
   font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* The route total's baseline, in the bar's voice rather than the note's:
+   provenance, not a warning (#851/#1040). */
+.route-stops-bar__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 

@@ -4,6 +4,7 @@ import { get } from 'idb-keyval'
 import { buildAccountArchive, archiveFilename, ARCHIVE_FORMAT } from './accountArchive'
 import { ApiNotConfiguredError, NotSignedInError, fetchAccountExport } from './api'
 import { OUTBOX_KEY } from './outbox'
+import { DAY_HIKES_KEY } from './dayHikes'
 import { TRIPS_KEY } from './trips'
 import { WALKED_STORAGE_KEY } from './walkedMiles'
 
@@ -81,6 +82,57 @@ describe('the two halves', () => {
     const archive = await buildAccountArchive(NOW)
 
     expect(archive.this_device.trips).toEqual([])
+  })
+
+  it('carries every collection the hiker owns, not just the trips (#1040)', async () => {
+    // "Everything of yours, in one file" is this module's first line, and it
+    // was short by three: the hikes that group trips (#788), the groups a
+    // hiker named themselves (#800), and every day hike (#976) - which is
+    // where the coordinates somebody tapped live, and the most personal
+    // thing in the store.
+    store.set(TRIPS_KEY, {
+      trips: [],
+      openId: null,
+      hikes: [
+        {
+          id: 'h1',
+          name: 'My thru-hike',
+          type: 'thru',
+          start: { mile: 0, name: 'Springer' },
+          end: { mile: 2197.4, name: 'Katahdin' },
+          tripIds: [],
+        },
+      ],
+      groups: [{ id: 'g1', name: 'Weekends', tripIds: [] }],
+    })
+    store.set(DAY_HIKES_KEY, {
+      hikes: [
+        {
+          id: 'd1',
+          name: 'Pine Meadow loop',
+          date: null,
+          segments: [
+            [
+              { coord: [-74.09, 41.25], poiId: null },
+              { coord: [-74.08, 41.25], poiId: null },
+            ],
+          ],
+          figures: { miles: 6.4, legs: [] },
+          looped: false,
+          recorded: 'planned',
+        },
+      ],
+      openId: null,
+    })
+
+    const archive = await buildAccountArchive(NOW)
+
+    expect(archive.this_device.hikes).toHaveLength(1)
+    expect(archive.this_device.groups).toHaveLength(1)
+    expect(archive.this_device.day_hikes).toHaveLength(1)
+    // And the file says where each came from, so a reader is not guessing.
+    const readFrom = archive.this_device.read_from as Record<string, string>
+    expect(readFrom.day_hikes).toBe(DAY_HIKES_KEY)
   })
 
   it('stamps the format so a future reader knows what they hold', async () => {

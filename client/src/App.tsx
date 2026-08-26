@@ -83,6 +83,7 @@ import {
 import { tripSyncState } from './lib/tripSyncState'
 import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
+import { forgetDayHikeSync } from './lib/dayHikesSync'
 import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
@@ -140,7 +141,6 @@ import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
 import { positionLine } from './lib/positionLine'
-import { naismithMinutes } from './lib/naismith'
 import {
   locateOnTrail,
   mileOnTrail,
@@ -199,7 +199,7 @@ import {
   undoTap,
   type DayHikeDraft,
 } from './lib/dayHikeDraft'
-import { routeGeometry, type TrailGraphIndex } from './lib/trailGraph'
+import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
@@ -287,7 +287,12 @@ import {
 } from './chrome/waypointFiltersPanel'
 import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
-import { readStoredPace, writeStoredPace, type PaceProfile } from './lib/pace'
+import {
+  paceEstimate,
+  readStoredPace,
+  writeStoredPace,
+  type PaceProfile,
+} from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
   readWalked,
@@ -2138,26 +2143,38 @@ function App() {
 
   // What the builder bar prints as ≈time, and the one place it is derived.
   //
-  // Naismith takes ascent and no descent - structurally, so a call site cannot
-  // wire descent in without changing its signature first (lib/naismith.ts).
-  // The climb comes off the route, which priced it from the same walked metres
-  // its legs are priced from, so the time and the miles cannot disagree about
-  // how much of an edge was walked.
+  // AT THE HIKER'S OWN PACE, and with the baseline attached (#880/#851, fixed
+  // as #1040). This used to call `naismithMinutes` - the standard rule - so a
+  // hiker who told this app they walk at 2 mph got their A.T. plan at 2 and
+  // their day hike at 3.1, with nothing on either screen saying which. Both
+  // halves travel in the PaceEstimate: `paceEstimate` applies their
+  // coefficients AND returns the "was ... × standard" line the bar prints
+  // under the figure.
+  //
+  // Descent is in, unlike Naismith's own rule, and deliberately: the route
+  // already measured it from the same walked metres, and #900's control only
+  // ever ADDS time, so the direction is the cautious one. `paceMinutes` is
+  // where that decision lives; naismith.ts keeps `descentFt` structurally
+  // absent and is untouched by this.
   //
   // Null whenever the walk cannot be priced: no elevation on this phone, or an
   // edge of it nobody has measured. The bar supports printing no time, and
   // that is the honest output - an over-read dead band on rolling terrain
   // over-states time, which is the safe direction, but zero would understate
   // it, which is not.
-  const dayHikeWalkingMinutes = useMemo(() => {
+  const dayHikeWalking = useMemo(() => {
     if (dayHikeStatus === null || dayHikeStatus.kind !== 'routed') return null
     const climb = dayHikeStatus.route.climb
     if (climb === null) return null
-    return naismithMinutes({
-      distanceMi: dayHikeStatus.route.miles,
-      ascentFt: climb.gainFt,
-    })
-  }, [dayHikeStatus])
+    return paceEstimate(
+      {
+        distanceMi: dayHikeStatus.route.miles,
+        ascentFt: climb.gainFt,
+        descentFt: climb.lossFt,
+      },
+      pace,
+    )
+  }, [dayHikeStatus, pace])
 
   const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (dayHike === null) return null
@@ -2176,13 +2193,14 @@ function App() {
     ) {
       return { lines: [], points }
     }
-    const first = dayHike.points[0]
-    const last = dayHike.looped
-      ? dayHike.points[0]
-      : dayHike.points[dayHike.points.length - 1]
-    const lines =
-      routeGeometry(dayHikeIndex.graph, dayHikeStatus.route.edgeIndices, first, last) ??
-      []
+    // Leg by leg, off the route's own sections (#1040). Handing
+    // `route.edgeIndices` to routeGeometry with the first and last tap was
+    // wrong for every walk that re-uses ground: that list is deduplicated
+    // across leg joins, so an out-and-back over one edge became one edge
+    // trimmed between two taps - and for a LOOP, whose first and last tap are
+    // the same point, trimmed to nothing. Measured: a 0.62 mi out-and-back
+    // drew null, so the bar priced a walk the map did not show.
+    const lines = routeLines(dayHikeIndex.graph, dayHikeStatus.route) ?? []
     return { lines, points }
   }, [dayHike, dayHikeIndex, dayHikeStatus])
 
@@ -2390,21 +2408,21 @@ function App() {
 
   /** The route on the map while it is being followed. Same drawing shape the
    *  builder produces, so the casing rule (map/dayHikeLayers.ts - UNDER the
-   *  trail lines, so a blaze is never recoloured) holds unchanged. */
+   *  trail lines, so a blaze is never recoloured) holds unchanged.
+   *
+   *  Leg by leg, through routeLines, for #1040's reason and not a second one:
+   *  `segment.route.edgeIndices` is deduplicated across leg joins, so an
+   *  out-and-back over a single edge collapses to one edge trimmed between
+   *  the outer taps - and on a loop, whose ends are the same point, trimmed
+   *  to nothing. #1040 measured that as a 0.62 mi out-and-back drawing null.
+   *  The builder's own drawing hit it first; this surface is the same call on
+   *  the same shapes, being followed, which is the worse place to draw a walk
+   *  that is missing the ground somebody is standing on. */
   const followDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (followResolution === null || dayHikeIndex === null) return null
     const lines: Array<Array<[number, number]>> = []
     for (const segment of followResolution.segments) {
-      const first = segment.points[0]
-      const last = followResolution.looped
-        ? segment.points[0]
-        : segment.points[segment.points.length - 1]
-      const drawn = routeGeometry(
-        dayHikeIndex.graph,
-        segment.route.edgeIndices,
-        first,
-        last,
-      )
+      const drawn = routeLines(dayHikeIndex.graph, segment.route)
       if (drawn === null) return null
       lines.push(...drawn)
     }
@@ -2543,6 +2561,7 @@ function App() {
         bailOuts={cardBailOuts}
         stewards={stewards}
         units={units}
+        pace={pace}
         networkAvailable={graphIndex !== null}
         mode={dayHikeReview !== null ? 'review' : 'saved'}
         // Saved only: a review card's hike is not in the store yet, so there
@@ -3828,6 +3847,7 @@ function App() {
     setAccountDeleted(true)
     await forgetPreferencesSync()
     await forgetTripSync()
+    await forgetDayHikeSync()
     await signOut()
     return receipt
   }, [])
@@ -3847,6 +3867,12 @@ function App() {
     // handset, look like a device that had already synced, and upload one
     // person's plans into another person's account as ordinary edits (#892).
     await forgetTripSync()
+    // And the day hikes' own ledger, for exactly the same reason (#1035).
+    // It landed with its own store (#976) and its own forget function, and
+    // that function was never called from here - so a day hike's segments,
+    // which are the coordinates somebody tapped, were the one thing a shared
+    // handset still carried across a sign-out.
+    await forgetDayHikeSync()
   }, [])
 
   /**
@@ -4738,7 +4764,7 @@ function App() {
                 // phone holds no elevation artifact or the walk crosses an
                 // edge nobody measured: ascentFt: 0 would price a climb in
                 // Harriman at zero, a flat-ground claim on real ground.
-                walkingMinutes={dayHikeWalkingMinutes}
+                walking={dayHikeWalking}
                 onUndo={() =>
                   setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
                 }

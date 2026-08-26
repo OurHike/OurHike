@@ -22,6 +22,7 @@ vi.mock('idb-keyval', () => {
 })
 
 import * as idb from 'idb-keyval'
+import { TRIPS_SYNC_KEY } from './tripSyncState'
 import { PLAN_KEY, buildPlan, type HikePlan } from './plan'
 import {
   EMPTY_STORE,
@@ -227,6 +228,34 @@ describe('the edits', () => {
     expect(
       openTripOf({ trips: one.trips, openId: 'gone', hikes: [], groups: [] }),
     ).toBeNull()
+  })
+})
+
+describe('what a save may record as a delete', () => {
+  it('never tombstones a trip this build simply could not read (#1040)', async () => {
+    // loadTrips drops a plan a newer build wrote - deliberate, and the right
+    // call. The save then diffed the store it wrote against the RAW stored
+    // document, so the validator's refusal read as the hiker's own delete
+    // and travelled as one, taking a plan off the account and every other
+    // device. An older phone destroyed what a newer one had made.
+    const future = {
+      id: 'trip-from-a-newer-build',
+      name: 'Someone else’s section',
+      // A target shape this build has no reader for.
+      plan: { target: { lightYears: 3 }, stops: [], days: [] },
+    }
+    await idb.set(TRIPS_KEY, {
+      trips: [future],
+      openId: null,
+      hikes: [],
+      groups: [],
+    })
+
+    // Any ordinary save by a hiker who never touched it.
+    await saveTrips(addTrip(await loadTrips(), plan(), 'Mine'))
+
+    const ledger = store.get(TRIPS_SYNC_KEY) as { deleted?: string[] } | undefined
+    expect(ledger?.deleted ?? []).toEqual([])
   })
 })
 

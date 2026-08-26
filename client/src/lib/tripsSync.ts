@@ -110,13 +110,27 @@ export function uploadsFor(store: TripStore, state: TripSyncState): TripUpload[]
   return [...edits, ...tombstones]
 }
 
-/** A row the server sent, as a `Trip` this build can hold - or null when it
- *  cannot. A trip written by a newer build is dropped rather than rendered:
- *  `validateTripStore` refuses per trip for exactly this reason, so one
- *  unreadable trip is not every trip. */
+/**
+ * The record a server row carries, identified by the ROW.
+ *
+ * The document carries its own `id` and normally the two agree - an upload
+ * sends `{id, document}` minted together on the phone. They disagree in
+ * exactly one case, and it is the case that matters: a conflict copy, which
+ * the server writes under a fresh row id to keep beside the record it lost
+ * to. A copy whose document still said the original's id landed on top of
+ * the very trip it was created to preserve (#1036).
+ *
+ * The server is the one that mints a copy's identity, so it is fixed there
+ * too - `trip_sync.document_for_copy` now sets both. This is the belt: a
+ * phone talking to a server that has not been redeployed yet still keeps
+ * both records rather than silently collapsing them, and the row id is the
+ * identity the server files the record under either way.
+ */
 function tripFrom(row: SyncedTripRow): Trip | null {
   const store = validateTripStore({ trips: [row.document], openId: null })
-  return store?.trips[0] ?? null
+  const record = store?.trips[0]
+  if (record === undefined) return null
+  return record.id === row.id ? record : { ...record, id: row.id }
 }
 
 /**
@@ -225,9 +239,11 @@ export async function syncTripsWithAccount(): Promise<TripStore | null> {
     const state = await tripSyncState()
     const hike = await loadPlannedHike()
 
+    const uploads = uploadsFor(store, state)
+
     const response = await syncTrips({
       since: state.since,
-      trips: uploadsFor(store, state),
+      trips: uploads,
       // Sent only when this device has something to say, so a device that
       // has never had a planned hike cannot wipe the one the hiker set on
       // another. Omission and "both miles null" are different claims.
@@ -252,11 +268,25 @@ export async function syncTripsWithAccount(): Promise<TripStore | null> {
       response.now,
       stampsAfter(state, response.trips),
       response.hike?.updated_at ?? null,
+      // Only what actually went out (#1040). The hiker keeps using the app
+      // while the request is in the air, and anything they changed since
+      // this snapshot has not been sent by anybody.
+      {
+        dirty: uploads.filter((upload) => !upload.deleted).map((upload) => upload.id),
+        deleted: uploads.filter((upload) => upload.deleted).map((upload) => upload.id),
+      },
     )
     await applyHike(response.hike)
 
-    const merged = mergeServerTrips(store, response.trips)
-    if (merged === store) return null
+    // RE-READ, rather than merging into the snapshot taken before the
+    // request (#1040). `store` is what this device held when the request
+    // left; writing a merge built on it back to disk discarded every edit
+    // made while it was in the air. Measured: with any row at all coming
+    // back, a trip renamed mid-flight reverted to its old name and the
+    // rename was gone from the device as well as from the account.
+    const current = await loadTrips()
+    const merged = mergeServerTrips(current, response.trips)
+    if (merged === current) return null
     await adoptTrips(merged)
     return merged
   } catch (error) {

@@ -22,6 +22,7 @@ import {
   dateOfDay,
   foodCarries,
   insertZeroAfter,
+  keepingRest,
   LONG_CARRY_DAYS,
   loadPlan,
   PLAN_KEY,
@@ -29,8 +30,10 @@ import {
   planDirection,
   planSections,
   removeDay,
+  NEARO_MAX_MI,
   savePlan,
   setDayNote,
+  stillARest,
   togglePinned,
   toggleResupply,
   validatePlan,
@@ -122,6 +125,28 @@ describe('validatePlan', () => {
 
     const prefix = plan.days.map((day, i) => (i <= 1 ? { ...day, walked: true } : day))
     expect(validatePlan({ ...plan, days: prefix })).not.toBeNull()
+  })
+
+  it('drops a rest flag a pre-#1031 build stranded on a long day', () => {
+    // Every plan already on a phone was written by a build whose cascade
+    // could leave this behind, and a plan is not re-planned on load - so
+    // this boundary is the only place one written months ago is met.
+    const plan = wireframePlan()
+    const stranded = plan.days.map((day, i) => (i === 0 ? { ...day, rest: true } : day))
+    const loaded = validatePlan({ ...plan, days: stranded })
+
+    expect(loaded).not.toBeNull()
+    // Day 0 is Damascus → Lost Mountain, 15.4 miles. Nobody rested.
+    expect(loaded!.days[0].rest).toBeUndefined()
+    // And the plan itself survives - a wrong label is never worth the days.
+    expect(loaded!.days).toHaveLength(plan.days.length)
+  })
+
+  it('keeps a rest flag the boundaries still support', () => {
+    const plan = wireframePlan()
+    // Day 2 is the zero at Thomas Knob - a rest by its boundaries alone.
+    const rested = plan.days.map((day, i) => (i === 2 ? { ...day, rest: true } : day))
+    expect(validatePlan({ ...plan, days: rested })!.days[2].rest).toBe(true)
   })
 })
 
@@ -243,11 +268,67 @@ describe('edits', () => {
     expect(togglePinned(pinned, 2).days[2].generated).toBe(false)
   })
 
+  it('drops the rest badge from a day that grew past a nearo (#1031)', () => {
+    // A nearo the rhythm placed, then the day before it removed - so this
+    // day absorbs those miles. Before #1031 the badge rode along, and the
+    // timeline called a 21.8-mile day the hiker's rest day.
+    const withNearo: HikePlan = {
+      ...buildPlan(
+        [stop(470.8), stop(486.2), stop(490.4), stop(516.1)],
+        { miles: 15 },
+        '2026-05-12',
+      ),
+    }
+    withNearo.days[1] = { ...withNearo.days[1], rest: true }
+    expect(planDayViews(withNearo)[1].rest).toBe(true)
+
+    const folded = removeDay(withNearo, 0)
+    const grown = planDayViews(folded)[0]
+    expect(Math.abs(grown.end.mile - grown.start.mile)).toBeCloseTo(19.6, 1)
+    expect(grown.rest).toBe(false)
+    expect(validatePlan(folded)).not.toBeNull()
+  })
+
+  it('keeps the rest badge on a day that is still short enough', () => {
+    const withNearo: HikePlan = {
+      ...buildPlan([stop(470.8), stop(472.8), stop(476.0)], { miles: 15 }),
+    }
+    withNearo.days[1] = { ...withNearo.days[1], rest: true }
+    // Folding day 0 in leaves 5.2 miles, inside the nearo window.
+    const folded = removeDay(withNearo, 0)
+    expect(planDayViews(folded)[0].rest).toBe(true)
+  })
+
   it('flips resupply on the stop, which every day meeting it shares', () => {
     const plan = wireframePlan()
     const flagged = toggleResupply(plan, 3)
     expect(flagged.stops[3].resupply).toBe(true)
     expect(toggleResupply(flagged, 3).stops[3].resupply).toBe(false)
+  })
+})
+
+describe('what a rest still is (#1031)', () => {
+  it('is a zero, or a walk inside the nearo window', () => {
+    expect(stillARest(100, 100)).toBe(true)
+    expect(stillARest(100, 100 + NEARO_MAX_MI)).toBe(true)
+    // Southbound counts the same way - the flag is about a distance.
+    expect(stillARest(100, 100 - NEARO_MAX_MI)).toBe(true)
+    expect(stillARest(100, 100 + NEARO_MAX_MI + 0.1)).toBe(false)
+  })
+
+  it('drops a spent flag and leaves everything else alone', () => {
+    const meta = { id: 'a', pinned: false, generated: true, rest: true, note: 'hi' }
+    const kept = keepingRest(meta, 0, 20)
+    expect(kept.rest).toBeUndefined()
+    expect(kept.note).toBe('hi')
+    expect(kept.generated).toBe(true)
+  })
+
+  it('leaves a meta alone when there is nothing to drop', () => {
+    const noFlag = { id: 'a', pinned: false, generated: true }
+    expect(keepingRest(noFlag, 0, 20)).toBe(noFlag)
+    const stillResting = { id: 'b', pinned: false, generated: true, rest: true }
+    expect(keepingRest(stillResting, 0, 3)).toBe(stillResting)
   })
 })
 

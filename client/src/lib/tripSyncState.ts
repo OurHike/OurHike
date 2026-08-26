@@ -144,20 +144,40 @@ export async function recordHikeEdit(): Promise<void> {
 }
 
 /**
- * Record a completed exchange: this device is level with the account again.
+ * Record a completed exchange: this device is level with the account again,
+ * for everything it actually sent.
  *
  * `keptSeen` replaces the whole stamp map rather than merging into it, so a
  * trip that no longer exists anywhere stops being carried for ever. The
  * caller builds it from what the server just said plus what it already knew.
+ *
+ * `sent` IS THE POINT, and this used to clear the ledger outright (#1040).
+ * A sync is not instant: the request goes out with a snapshot of what was
+ * dirty, and the hiker keeps using the app while it is in the air. Wiping
+ * the whole ledger on the way back marked those later edits as sent when
+ * nothing had sent them - so they sat on one device for ever, never
+ * uploaded, and the other device never saw them. Measured: rename a trip
+ * mid-flight and `dirty` comes back empty with the rename still on disk and
+ * nothing queued to carry it.
+ *
+ * So only what went out is cleared. Anything marked since stays marked, and
+ * goes with the next exchange.
  */
 export async function recordTripSync(
   since: string,
   keptSeen: Record<string, string>,
   hikeSeen: string | null,
+  sent: { dirty: readonly string[]; deleted: readonly string[] },
 ): Promise<void> {
+  // Re-read rather than take the caller's snapshot: the whole point is that
+  // the ledger may have moved while the request was out.
+  const state = await tripSyncState()
+  const sentDirty = new Set(sent.dirty)
+  const sentDeleted = new Set(sent.deleted)
   await write({
-    dirty: [],
-    deleted: [],
+    ...state,
+    dirty: state.dirty.filter((id) => !sentDirty.has(id)),
+    deleted: state.deleted.filter((id) => !sentDeleted.has(id)),
     seen: keptSeen,
     since,
     hikeDirty: false,

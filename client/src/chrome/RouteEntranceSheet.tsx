@@ -29,7 +29,13 @@
 
 import type { UnitSystem } from '../lib/units'
 import { MAX_OFF_TRAIL_MILES } from '../lib/trailPosition'
-import { distanceUnitLabel, formatDistance } from '../lib/units'
+import {
+  displayDistance,
+  distanceUnitLabel,
+  distanceUnitName,
+  formatDistance,
+  milesFromDisplay,
+} from '../lib/units'
 import { stopLabel } from '../lib/planDisplay'
 import { typeLabel } from './legendLabels'
 // The entrance deliberately wears the target sheet's control anatomy - the
@@ -158,6 +164,15 @@ export function RouteEntranceSheet({
 }: RouteEntranceSheetProps) {
   const effectiveAsk = daysUsable ? ask : 'far'
   const milesMax = trailMiles ?? MILES_MAX_FALLBACK
+  // The typed field and the slider both speak the hiker's own unit (#1038);
+  // `miles` stays the storage, because the mile axis is what everything
+  // downstream of this sheet is computed on. The bounds convert too - a
+  // 5-mile step under a "km" label is an 8 km step, and a slider that ran to
+  // 2,197 on a 3,536 km trail was answering a different question.
+  const shownDistance = displayDistance(miles, units)
+  const shownMin = displayDistance(MILES_MIN, units)
+  const shownMax = displayDistance(milesMax, units)
+  const shownStep = displayDistance(MILES_STEP, units)
   // Both ends named: the distance is arithmetic, so asking "how far" would
   // be asking a question the sheet can already answer (#804).
   const bothEnds = start !== null && fixedEnd !== null
@@ -321,9 +336,11 @@ export function RouteEntranceSheet({
                   type="number"
                   className="route-entrance__number-input"
                   min={0}
-                  value={miles}
-                  aria-label="Miles of trail"
-                  onChange={(event) => onMiles(Number(event.target.value))}
+                  value={shownDistance}
+                  aria-label={`Trail distance in ${distanceUnitName(units)}`}
+                  onChange={(event) =>
+                    onMiles(milesFromDisplay(Number(event.target.value), units))
+                  }
                 />
                 <span className="route-entrance__number-unit">
                   {distanceUnitLabel(units)}
@@ -333,12 +350,14 @@ export function RouteEntranceSheet({
               <input
                 type="range"
                 className="plan-target__slider"
-                min={MILES_MIN}
-                max={milesMax}
-                step={MILES_STEP}
-                value={Math.min(miles, milesMax)}
-                aria-label="Miles of trail, slider"
-                onChange={(event) => onMiles(Number(event.target.value))}
+                min={shownMin}
+                max={shownMax}
+                step={shownStep}
+                value={Math.min(shownDistance, shownMax)}
+                aria-label={`Trail distance in ${distanceUnitName(units)}, slider`}
+                onChange={(event) =>
+                  onMiles(milesFromDisplay(Number(event.target.value), units))
+                }
               />
               {miles > milesMax && (
                 <p className="plan-target__note" role="note">

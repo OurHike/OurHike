@@ -824,9 +824,22 @@ export function SafetyPrivacySettings({
         />
       </label>
 
+      {/* WHAT THIS NOTICE PROMISES, AND WHY THE WORDING CHANGED (#1047).
+          It read "Closures and serious warnings are always shown. There is no
+          switch, here or anywhere." The second sentence was true until the
+          legend gained an Alerts switch, and a settings screen that goes on
+          denying a control a hiker can see is worse than one that says
+          nothing.
+
+          What is promised now is what this screen can actually keep: nothing
+          about the alert layers is a setting, nothing about them is saved, and
+          the map opens with them on. That is a stronger claim than it sounds -
+          it is the whole reason chrome/alertLayerPanel.ts holds the flag in a
+          `useState` rather than in the object this screen edits. */}
       <p className="settings__locked" role="note">
-        Closures and serious warnings are always shown. There is no switch, here or
-        anywhere.
+        Closures and serious warnings are not a setting. The legend can take them off the
+        map while you are looking at it — never for longer, and never on your other
+        phones. The map opens with them shown, and tells you what is ahead either way.
       </p>
     </section>
   )

@@ -30,7 +30,11 @@ Ordered top to bottom, today:
    level, which waypoint types show, roads & walkability (*Later*)
 5. **Display** — theme, units
 6. **Safety & privacy** — use-my-location, wrong-way alert (*Later*), hide my name
-   (*Later*), and the locked notice that closures and warnings are never hideable
+   (*Later*), and the locked notice that closures and warnings are not a setting
+   (amended by [#1047](https://github.com/OurHike/OurHike/issues/1047): the notice
+   used to say there was no switch anywhere, and the legend now has one — so it
+   states the part this screen can keep instead, that nothing about the alert
+   layers is ever saved or synced and the map opens with them shown)
 7. **Your data** — last synced + sync, export GPX/GeoJSON, attribution
 8. **About this build** — version, commit, build time, copy-build-details
 9. **Report a bug** — four linked GitHub issue forms, plus the in-app

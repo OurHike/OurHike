@@ -16,12 +16,19 @@ syncing preferences is expected to always know its own current values for
 these, rather than the backend silently substituting a guess for
 something safety/display relevant.
 
-`show_closures` is deliberately not a field anywhere in this module. Map
-Options makes closures always-on, never hideable, so it isn't a preference
-at all - and `model_config = ConfigDict(extra="forbid")` on `PreferencesIn`
-is what turns a client sending it anyway into a real 422 (a rejected,
-visible error) rather than the field being silently dropped and the rest of
-the request quietly succeeding.
+`show_closures` is deliberately not a field anywhere in this module, and
+OurHike/OurHike#1047 sharpened rather than softened that. Map Options used
+to make closures always-on and never hideable; the client's legend now
+carries an Alerts switch that clears the bands from the canvas while a
+hiker is looking at it. What that switch must never be is a *preference* -
+this object syncs, so a field here would put a hiker's one-off tap in
+Virginia onto a new phone in Maine. The client holds it in memory and
+resets it at the next open instead.
+
+`model_config = ConfigDict(extra="forbid")` on `PreferencesIn` is what
+turns a client sending it anyway into a real 422 (a rejected, visible
+error) rather than the field being silently dropped and the rest of the
+request quietly succeeding.
 """
 
 from enum import Enum

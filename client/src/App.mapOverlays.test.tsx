@@ -177,6 +177,73 @@ describe('what the shell draws once the reads land', () => {
   })
 })
 
+// The alerts switch, end to end (#1047).
+//
+// Covered here rather than only in chrome/Legend.test.tsx and
+// chrome/alertLayerPanel.test.ts because the thing worth proving spans all
+// three: a tap in the legend has to reach the two GeoJSON sources on the
+// canvas, and the app has to take the hide back on its own. Either half tested
+// alone would pass with the wiring cut.
+
+describe('taking the alerts off the map, and getting them back (#1047)', () => {
+  async function openLegendAndToggleAlerts(): Promise<void> {
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /alerts/i }))
+  }
+
+  it('clears the bands and the warning pins on one tap', async () => {
+    const map = await renderApp()
+    // Waited on rather than assumed: the closure needs the centerline index
+    // AND the backend read, so the source is empty for a beat at first render
+    // and a test that toggled straight away would pass on the wrong emptiness.
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
+    })
+
+    await openLegendAndToggleAlerts()
+
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
+      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(0)
+    })
+  })
+
+  it('says on the map that it is withholding them', async () => {
+    const map = await renderApp()
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+    })
+
+    await openLegendAndToggleAlerts()
+
+    expect(await screen.findByText('Alerts hidden')).toBeInTheDocument()
+  })
+
+  it('puts them back when the hiker comes back to the app', async () => {
+    // The maintainer's constraint on #1047, at the only level that can show
+    // it: "The map should always open to the alerts being shown." On a phone
+    // that keeps this app alive for days, opening it is this event.
+    const map = await renderApp()
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+    })
+    await openLegendAndToggleAlerts()
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
+    })
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
+    })
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
+  })
+})
+
 // The ATC's notices, end to end (#461 and features/ATC_TRAIL_UPDATES.md).
 //
 // Only this file can catch what is being asserted here, because the gap it

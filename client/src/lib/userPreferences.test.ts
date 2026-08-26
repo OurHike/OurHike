@@ -13,11 +13,15 @@ import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
 // is a weaker claim than "no such preference exists" - the first survives
 // someone adding the control on a different screen, the second does not.
 //
-// Closures and serious warnings are always shown, with no switch here or
-// anywhere (features/MAP_OPTIONS.md, features/HIKER_SAFETY.md). The backend
-// enforces the same thing from its side: backend/app/schemas/preferences.py
-// sets extra="forbid" precisely so a client sending `show_closures` gets a
-// visible 422 rather than having it silently dropped.
+// Narrowed by #1047 and still exactly this test. The legend now has an
+// Alerts switch, so "no switch here or anywhere" is gone; what these
+// assertions defend is the half that could outlive the moment - a key in
+// THIS object syncs, and a synced one would arrive on a second phone with
+// the alerts already off. The backend enforces the same thing from its side:
+// backend/app/schemas/preferences.py sets extra="forbid" precisely so a
+// client sending `show_closures` gets a visible 422 rather than having it
+// silently dropped (features/MAP_OPTIONS.md,
+// features/IDENTITY_AND_PRIVACY.md).
 
 describe('UserPreferences schema', () => {
   it.each([

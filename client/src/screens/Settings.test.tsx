@@ -506,18 +506,26 @@ describe('DisplaySettings', () => {
 })
 
 describe('SafetyPrivacySettings', () => {
-  it('states that closures and serious warnings are always shown', () => {
+  it('states that closures and serious warnings are not a setting', () => {
     render(<SafetyPrivacySettings {...PROPS} />)
 
-    expect(screen.getByText(/always shown/i)).toHaveTextContent(
+    expect(screen.getByText(/not a setting/i)).toHaveTextContent(
       /closures and serious warnings/i,
     )
   })
 
-  it('says the absence of a switch is deliberate, not an oversight', () => {
+  it('says how far the legend\u2019s Alerts switch reaches, rather than denying it', () => {
+    // This notice used to end "There is no switch, here or anywhere", which
+    // was true until #1047 built one. A settings screen that goes on denying a
+    // control the hiker can see teaches them to disbelieve the rest of it - so
+    // what it promises now is the part this screen can actually keep: never
+    // saved, never synced, and gone by the next open.
     render(<SafetyPrivacySettings {...PROPS} />)
 
-    expect(screen.getByText(/no switch, here or anywhere/i)).toBeInTheDocument()
+    const notice = screen.getByText(/not a setting/i)
+    expect(notice).toHaveTextContent(/while you are looking at it/i)
+    expect(notice).toHaveTextContent(/never on your other phones/i)
+    expect(notice).toHaveTextContent(/opens with them shown/i)
   })
 
   it('renders no control at all for closures or warnings', () => {

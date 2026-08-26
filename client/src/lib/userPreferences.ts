@@ -4,12 +4,22 @@
 // account is linked, so the field names here match that contract exactly - a
 // key this file invents becomes a 422 the moment someone signs in.
 //
-// There is deliberately NO key for hiding closures or serious warnings. They
-// are always shown, with no switch here or anywhere (features/MAP_OPTIONS.md,
-// features/HIKER_SAFETY.md). Keeping the invariant at the schema level rather
-// than at the settings screen is what makes it hold: a control nobody can
-// build is stronger than a control nobody has built yet. The backend guards
-// the same line with `extra="forbid"`.
+// There is deliberately NO key for hiding closures or serious warnings, and
+// #1047 is the sharpest argument for that absence rather than a reason to
+// revisit it. The legend now carries an Alerts switch (chrome/Legend.tsx),
+// so the old sentence here - "always shown, with no switch here or anywhere"
+// - is no longer true. What is true, and is the part this file decides, is
+// that the switch is not a PREFERENCE: this object syncs, so a key here
+// would mean a hiker who cleared the bands once in Virginia opening a new
+// phone in Maine with them already gone. The flag is a `useState` in
+// chrome/alertLayerPanel.ts, is written nowhere, and is back on at the next
+// open.
+//
+// Keeping the invariant at the schema level rather than at the settings
+// screen is what makes it hold: a control nobody can build is stronger than
+// a control nobody has built yet, and a control that exists elsewhere cannot
+// creep into this object by accident. The backend guards the same line with
+// `extra="forbid"` (features/MAP_OPTIONS.md, features/IDENTITY_AND_PRIVACY.md).
 
 import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
 

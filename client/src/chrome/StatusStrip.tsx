@@ -100,6 +100,23 @@ export interface StatusStripProps {
    * window, which is also where the retry is.
    */
   trailLinesMissing?: boolean
+  /**
+   * Whether the hiker has taken the alert marks off the canvas (#1047).
+   *
+   * NOT a courtesy readout of a control's state, which is why it is on the
+   * strip that exists for the map to "admit what it doesn't know" rather than
+   * left to the legend that holds the switch. A map with the bands hidden and
+   * a map with no closure on it for forty miles are the SAME PICTURE, and the
+   * rule this whole codebase is built on is that absent means unknown and
+   * never zero. Three words here are what keep an empty screen from reading as
+   * a clear trail.
+   *
+   * The one flag here a hiker put there themselves, and it is worth saying
+   * that the others are conditions and this is a choice: the remedy is the
+   * legend's Alerts switch, and the app undoes it for them at the next open
+   * anyway (chrome/alertLayerPanel.ts).
+   */
+  alertsHidden?: boolean
 }
 
 export function StatusStrip({
@@ -112,6 +129,7 @@ export function StatusStrip({
   backgroundOverride = null,
   belowArchiveZoom = false,
   trailLinesMissing = false,
+  alertsHidden = false,
 }: StatusStripProps) {
   return (
     <div className="status-strip">
@@ -135,6 +153,16 @@ export function StatusStrip({
             hiker told only "No live map" would reasonably conclude the trail
             is under it somewhere. */}
         {trailLinesMissing && <span className="status-strip__flag">No trail line</span>}
+        {/* Beside "No trail line" because they are the same kind of statement -
+            something a hiker would expect on the canvas is not on it - and
+            deliberately not folded into it: that one is the app failing to
+            draw what it has, this one is the app drawing exactly what it was
+            asked to. Never suppressed by any flag above, unlike the two
+            background readings that stand down for each other. Those are two
+            readings of one blank screen; this is a second thing missing from
+            it, and a hiker told only "No live map" would have no reason to
+            doubt an empty trail. */}
+        {alertsHidden && <span className="status-strip__flag">Alerts hidden</span>}
         {/* Silent when the closures are live, which is the ordinary case with
             a reachable backend. It appears exactly when there is something a
             hiker would want to know before trusting a clear header. */}

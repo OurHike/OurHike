@@ -2,8 +2,10 @@
 // WIREFRAMES.md's Legend section - recomputed fresh per viewport (no
 // caching/staleness here, that's the whole point of a legend that reflects
 // "what's on screen right now"), and rows are tappable to hide except
-// closure/serious-warning, which are always shown per Map Options/Hiker
-// Safety (never a hideable safety layer, anywhere in the app).
+// closure/serious-warning, which carry no per-category switch at all per Map
+// Options/Hiker Safety. That used to be stated as "never a hideable safety
+// layer, anywhere in the app"; #1047 narrowed it to what this file can
+// actually enforce, and NEVER_HIDEABLE below carries the whole of it.
 //
 // One row per category. The confidence split this used to carry, and why it
 // went, is on LegendRow.
@@ -84,11 +86,35 @@ export interface LegendRow {
   drawnCount?: number
 }
 
-/** The one guard on the safety layers, exported so lib/waypointVisibility.ts
- *  filters every stored preference through the SAME set rather than a second
- *  copy of it (#530). Closures and serious warnings have no hide affordance
- *  anywhere in the app, and the way that rule is kept is that it is never
- *  built (features/HIKER_SAFETY.md, features/MAP_OPTIONS.md §4). */
+/**
+ * The one guard on the safety layers, exported so lib/waypointVisibility.ts
+ * filters every stored preference through the SAME set rather than a second
+ * copy of it (#530).
+ *
+ * WHAT THIS SET STILL PROMISES, NARROWED BY #1047. It used to be the whole of
+ * "closures and serious warnings have no hide affordance anywhere in the app".
+ * The legend now carries an Alerts switch that takes those marks off the
+ * canvas, so the sentence is no longer true as written - and the half that
+ * matters is the half this set is actually able to enforce.
+ *
+ * The promise now: **no STORED value can produce a map with a closure hidden
+ * on it.** Not a hand-edited preference, not one synced from an older client,
+ * not "only water", not a category a later release adds. That is what every
+ * function in lib/waypointVisibility.ts filtering through this set buys, and
+ * it is exactly the failure the maintainer's constraint on #1047 names - a
+ * thru-hiker whose phone opens with the alerts already off, for days, having
+ * chosen it once.
+ *
+ * What is no longer promised is permanence within a single view. The Alerts
+ * switch is deliberately not routed through here or through
+ * `waypoint_types_shown` at all: it is a `useState` in
+ * chrome/alertLayerPanel.ts that nothing writes down, and it resets whenever
+ * the app is next opened. Two mechanisms, and the reason they are two is that
+ * only one of them can outlive the moment a hiker is looking at the screen.
+ *
+ * features/MAP_OPTIONS.md §"Reroutes / closures" and features/HIKER_SAFETY.md
+ * carry the decision.
+ */
 export const NEVER_HIDEABLE = new Set(['closure', 'serious-warning'])
 
 function isWithin(point: MapPoint, bbox: BoundingBox): boolean {
@@ -121,11 +147,14 @@ export function computeLegendContents(
   for (const point of points) {
     if (!isWithin(point, bbox)) continue
     // Never a safety layer, whatever the toggle says. A closure nobody has
-    // confirmed is still a closure, and "no off switch" has to mean every
-    // switch - a filter that happens to take one off the panel is the same
-    // failure as a button that does, and easier to ship by accident. The map
-    // agrees structurally: closures and warnings are their own layers, so
-    // poiFilter() cannot reach them either.
+    // confirmed is still a closure, and a filter that happens to take one off
+    // the panel is the same failure as a button that does, and easier to ship
+    // by accident. The map agrees structurally: closures and warnings are their
+    // own layers, so poiFilter() cannot reach them either.
+    //
+    // Untouched by #1047's Alerts switch, and deliberately: that flag is not a
+    // filter and is not stored, so it has no business arriving here. What a
+    // panel SAYS is in the rectangle stays a fact about the rectangle.
     if (verifiedOnly && point.confidence !== 'high' && !NEVER_HIDEABLE.has(point.type))
       continue
     // Keyed by type alone, so a verified and an unverified spring are two

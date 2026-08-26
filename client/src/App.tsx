@@ -280,6 +280,7 @@ import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
+import { useAlertLayerPanel } from './chrome/alertLayerPanel'
 import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import { readStoredPace, writeStoredPace, type PaceProfile } from './lib/pace'
@@ -2875,6 +2876,20 @@ function App() {
   })
 
   /**
+   * The legend's fourth switch, and the one thing on this screen that decides
+   * what the map leaves out WITHOUT writing it down (#1047).
+   *
+   * Its own hook rather than a fifth field on the filters above, and the
+   * reason is the whole design: everything that one owns is a preference and
+   * reaches an account, and the alerts flag must never do either. Two files
+   * make that hard to undo by accident - `preferences` and
+   * `updatePreferences` are not in scope inside chrome/alertLayerPanel.ts at
+   * all, so storing the flag would take an import somebody would have to add
+   * on purpose.
+   */
+  const alerts = useAlertLayerPanel()
+
+  /**
    * Opens the download window, and clears whatever else was open over the map.
    *
    * One thing open at a time, the same rule the legend and the waypoint card
@@ -4496,6 +4511,7 @@ function App() {
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
           {...filters.mapScreen}
+          {...alerts.mapScreen}
           selectedPoi={selectedPoi}
           selectedSite={selectedSite}
           removedPoiCard={

@@ -131,10 +131,20 @@ export function PlanTargetSheet({
     return planDaysVia(pois, route, miles)
   }, [pois, route, effectiveUnit, hours, miles, elevation])
 
-  const dayCount = preview === null ? 0 : Math.max(0, preview.length - 1)
-
-  const layOut = () => {
-    if (preview === null || dayCount === 0) return
+  /**
+   * The plan this sheet would actually lay out, built once and both counted
+   * and committed from - rather than counted from the generator's boundaries
+   * and built separately in the handler (#1040).
+   *
+   * The button used to print `preview.length - 1`, which is walking days
+   * only. `layOut` then ran `applyRhythm`, which inserts one more day per
+   * rest - so "Lay out 20 days" laid out 23, and that number is the only
+   * figure on the sheet. Building the plan here makes the count a fact
+   * about the plan rather than about one stage of making it, and removes
+   * the second copy of the pipeline that let the two drift.
+   */
+  const laidOut = useMemo(() => {
+    if (preview === null || preview.length < 2) return null
     const target: PlanTarget =
       effectiveUnit === 'hours' ? { walkingHours: hours } : { miles }
     const plan = buildPlan(
@@ -167,14 +177,15 @@ export function PlanTargetSheet({
     // The rhythm rides on the plan so a re-lay reproduces it, and is applied
     // last - rest days are inserted between boundaries the generator has
     // already chosen, never planned instead of them (#798).
-    onLayOut(
-      restEvery < 1
-        ? pinned
-        : applyRhythm(
-            { ...pinned, rhythm: { everyDays: restEvery, kind: restKind } },
-            pois,
-          ),
-    )
+    return restEvery < 1
+      ? pinned
+      : applyRhythm({ ...pinned, rhythm: { everyDays: restEvery, kind: restKind } }, pois)
+  }, [preview, effectiveUnit, hours, miles, startDate, route, restEvery, restKind, pois])
+
+  const dayCount = laidOut === null ? 0 : laidOut.days.length
+
+  const layOut = () => {
+    if (laidOut !== null) onLayOut(laidOut)
   }
 
   return (

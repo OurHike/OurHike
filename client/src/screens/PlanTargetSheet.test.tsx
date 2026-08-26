@@ -251,6 +251,49 @@ describe('the rest rhythm (#798)', () => {
     expect(plan.days.filter((day) => day.rest === true).length).toBeGreaterThan(0)
   })
 
+  it('counts the rest days it is about to insert (#1040)', () => {
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    // Two walking days over this fixture's 30 flat miles, and the button
+    // says so while no rest is asked for.
+    expect(screen.getByRole('button', { name: /^Lay out/ })).toHaveTextContent(
+      'Lay out 2 days',
+    )
+
+    fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
+      target: { value: '1' },
+    })
+
+    // A rest after the first walking day is a third day in the plan. The
+    // button used to keep saying 2: it counted the generator's boundaries,
+    // and applyRhythm ran afterwards inside the handler - so the only figure
+    // on the sheet described a stage rather than the plan.
+    expect(screen.getByRole('button', { name: /^Lay out/ })).toHaveTextContent(
+      'Lay out 3 days',
+    )
+  })
+
+  it('lays out exactly the number of days it promised', async () => {
+    // The invariant behind the count, rather than a second literal: whatever
+    // the button says, the plan handed over has that many days.
+    const user = userEvent.setup()
+    const onLayOut = vi.fn()
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} onLayOut={onLayOut} />)
+    fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
+      target: { value: '1' },
+    })
+
+    const promised = Number(
+      /Lay out (\d+)/.exec(
+        screen.getByRole('button', { name: /^Lay out/ }).textContent ?? '',
+      )?.[1],
+    )
+    await user.click(screen.getByRole('button', { name: /^Lay out/ }))
+
+    expect(onLayOut).toHaveBeenCalledTimes(1)
+    expect(onLayOut.mock.calls[0][0].days).toHaveLength(promised)
+  })
+
   it('offers the two kinds of rest, and says what a nearo is', async () => {
     const user = userEvent.setup()
     render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)

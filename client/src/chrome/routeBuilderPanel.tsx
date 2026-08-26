@@ -501,7 +501,14 @@ export function useRouteBuilderPanel({
     // The refusal belongs to the draft, not to the app (#986). Left set, it
     // greeted the NEXT route the hiker started with an accusation about a tap
     // they never made, in a panel with nothing in it to explain.
+    //
+    // BOTH FLAGS, and the second is #1040: the entrance's was declared for
+    // the same reason on the next line up and cleared in exactly one place -
+    // a SUCCESSFUL entrance tap. So cancelling after a refused one carried
+    // it into the next route, which is the identical defect #986 named,
+    // fixed on one of the two flags it applied to.
     setEditorRefusedTap(false)
+    setEntranceRefusedTap(false)
   }, [])
 
   // What the canvas draws for the draft: the centerline's own geometry

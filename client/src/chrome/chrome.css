@@ -978,9 +978,42 @@
   flex: 1;
 }
 
+/* The alerts switch (#1047, Legend.tsx). Shaped exactly like .legend__drought
+   above, down to the second line of smaller text, because it is the same kind
+   of thing and a hiker should not have to work out that it is: a map overlay,
+   named, with a sentence under the name and a checkbox at the end. The one
+   place it deliberately differs is the sentence itself, which on the drought
+   row carries numbers and here carries what the switch does NOT take away. */
+.legend__alerts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.legend__alerts-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legend__alerts-detail {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
 /* A safety row spans the grid rather than sitting in one column of it.
-   It carries everything an ordinary row does plus the "Always shown" tag, and
-   in a ~116px column beside a desktop map that tag was clipped mid-word - the
+   It carries everything an ordinary row does plus its tag ("Always shown"
+   where nothing can hide these marks, "Alerts"/"Alerts off" where the switch
+   below the grid can - #1047), and in a ~116px column beside a desktop map
+   that tag was clipped mid-word - the
    one row on the panel that must not look like a rendering accident. Spanning
    also reads correctly: these are not two of the categories, they are the two
    that are different. There are rarely more than a couple in view. */
@@ -1530,6 +1563,16 @@
   color: var(--fg-2);
 }
 
+/* This leg's own baseline (#851/#1040), under the figures it qualifies. The
+   ratio is a property of the walk, not of the hiker, so each leg carries its
+   own - and none carries anything at the standard pace. */
+.route-stops__leg--baseline {
+  padding-top: 0;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
 .route-stops__add {
   display: flex;
   justify-content: space-between;
@@ -1616,6 +1659,17 @@
 .route-stops-bar__note {
   margin: 0;
   font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* The route total's baseline, in the bar's voice rather than the note's:
+   provenance, not a warning (#851/#1040). */
+.route-stops-bar__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 

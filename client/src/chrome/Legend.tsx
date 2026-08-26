@@ -48,13 +48,26 @@
 // where two trail systems overlap and reporting whether the lines are
 // legible without a key.
 //
-// Closure and serious-warning rows render with no hide control whatsoever.
-// Not defaulted-on, not disabled - absent. A safety layer having no off switch
-// is a rule that holds across the whole app (features/MAP_OPTIONS.md,
-// features/HIKER_SAFETY.md), and the surest way to keep it is to never build
-// the affordance. That rule is why the row is not uniformly a button: a
-// hideable row IS one, edge to edge, and a safety row is plain text with an
-// "Always shown" tag beside it.
+// Closure and serious-warning rows still render with no hide control of their
+// own - plain text with a tag beside them, where a hideable row is a button
+// edge to edge. That much is unchanged and is why the row is not uniformly a
+// button.
+//
+// WHAT CHANGED IS THE RULE BEHIND IT (#1047, maintainer's call). "A safety
+// layer has no off switch anywhere in the app" was the whole answer until this
+// panel gained an Alerts switch below the grid, and features/MAP_OPTIONS.md
+// had always flagged that rule as "a recommendation, not force-decided". The
+// half that survives is the half that could have lasted for days: the stored
+// `waypoint_types_shown` filter still cannot reach a closure, which is why
+// these rows are not buttons and why lib/legendContents.ts's NEVER_HIDEABLE is
+// untouched. The half that went is permanence - a hiker can clear the bands
+// off the canvas for as long as they are looking at it, and the app gives them
+// back at the next open (chrome/alertLayerPanel.ts).
+//
+// So these rows now say which of the two states they are in, and grey out with
+// the switch. A row promising "Always shown" over a map a hiker has just
+// cleared would be this panel disagreeing with the screen beside it, which is
+// the one thing a legend may never do.
 //
 // Every row carries the icon the map draws for it, from map/MapIcon.tsx and
 // therefore from the map's own geometry rather than from a second drawing of
@@ -140,6 +153,30 @@ export interface LegendProps {
    */
   verifiedOnly?: boolean
   onToggleVerifiedOnly?: () => void
+  /**
+   * Whether the alert marks are on the canvas (#1047).
+   *
+   * Read twice on this panel and for two different jobs: it is what the Alerts
+   * switch displays, and it is what the closure and serious-warning rows in
+   * the grid say about themselves. A row tagged "Alerts" over a map with no
+   * band on it would be this panel making the exact claim it exists to
+   * prevent - see the header comment.
+   *
+   * Defaults to drawn, like MapScreen's own prop and for the same reason.
+   */
+  alertsShown?: boolean
+  /**
+   * Takes them off, and puts them back.
+   *
+   * Omitted, no switch is drawn, and a panel drawing alerts says "Always
+   * shown" on its safety rows - which is exactly what they are where nothing
+   * here can hide them. The two branches are one fact, not two designs.
+   *
+   * What this does NOT decide is a panel handed `alertsShown={false}` with no
+   * handler: the screen wins, the rows grey, and the tag reads "Alerts off".
+   * A tag is a statement about the map, never about what this panel can offer.
+   */
+  onToggleAlerts?: () => void
   /**
    * The drought wash, and how to turn it off (#720).
    *
@@ -263,6 +300,8 @@ export function Legend({
   onShowAllTypes,
   typesShown,
   verifiedOnly = false,
+  alertsShown = true,
+  onToggleAlerts,
   droughtShown = false,
   onToggleDrought,
   droughtSummary,
@@ -425,7 +464,12 @@ export function Legend({
         <ul className="legend__pins">
           {rows.map((row) => {
             const label = typeLabel(row.type)
-            const hidden = row.hideable && hiddenTypes.has(row.type)
+            // A hideable row is off when the hiker hid its category; a safety
+            // row is off when the alert marks are off, which is a different
+            // switch and the only one that can reach it (#1047). Both end up
+            // greyed by the same class, because to a hiker they are the same
+            // statement: this is not on the map right now.
+            const hidden = row.hideable ? hiddenTypes.has(row.type) : !alertsShown
             // Only where it differs, which keeps the panel quiet at the zooms
             // where nothing is being dropped: `Water 14` and `Water 13/14` are
             // the same row saying as much as is true.
@@ -473,8 +517,8 @@ export function Legend({
                 key={row.type}
                 className={[
                   'legend__row',
-                  // A safety row is wider than a column, because it carries an
-                  // "Always shown" tag on top of what every other row carries.
+                  // A safety row is wider than a column, because it carries a
+                  // tag on top of what every other row carries.
                   row.hideable ? null : 'legend__row--always',
                   hidden ? 'legend__row--hidden' : null,
                 ]
@@ -518,7 +562,33 @@ export function Legend({
                 ) : (
                   <>
                     {face}
-                    <span className="legend__always">Always shown</span>
+                    {/* WHAT THIS TAG SAYS DEPENDS ON WHETHER A SWITCH EXISTS,
+                        and that is one fact rather than two designs. "Always
+                        shown" was the whole truth for as long as nothing in
+                        the app could hide a closure; #1047 built the Alerts
+                        switch below, and a row still promising "always" over a
+                        map a hiker has just cleared would be the panel
+                        disagreeing with the screen.
+
+                        So where the switch is on the panel, the tag names it -
+                        the word is the switch's own visible label, which is
+                        what makes it findable from here - and the row greys
+                        out with it. Where no switch is offered, nothing on
+                        that panel can take these marks off the map and the
+                        original promise is exactly right.
+
+                        WHAT THE MAP IS DOING IS ASKED FIRST, and deliberately.
+                        A panel handed `alertsShown={false}` with no handler -
+                        a shell that draws no alerts and offers no way back -
+                        must not tag a greyed row "Always shown". The screen
+                        wins over the affordance in every branch here. */}
+                    <span className="legend__always">
+                      {!alertsShown
+                        ? 'Alerts off'
+                        : onToggleAlerts === undefined
+                          ? 'Always shown'
+                          : 'Alerts'}
+                    </span>
                   </>
                 )}
               </li>
@@ -611,6 +681,46 @@ export function Legend({
             name="verified_only"
             checked={verifiedOnly}
             onChange={onToggleVerifiedOnly}
+          />
+        </label>
+      )}
+
+      {/* THE ALERTS SWITCH (#1047), the first control this app has ever put
+          over a safety layer.
+
+          Here rather than in the grid above, and that is the decision. The
+          rows are one waypoint CATEGORY each and are toggled through the
+          stored `waypoint_types_shown` preference; alerts are neither - they
+          are three map layers (closure bands, the ATC's bands and dots,
+          serious-warning pins) governed by a flag nothing writes down. Putting
+          them in the grid would have meant either a fourth thing the stored
+          filter can express, which is the one shape #1047 rules out, or a row
+          that looks identical to its neighbours and behaves unlike all of
+          them. It sits with the drought wash instead, which is the honest
+          neighbour: a map overlay, switched here because the moment you want
+          it off is the moment you are looking at it.
+
+          The row states what the switch does NOT take away, in both states
+          rather than only while it is off - the moment that matters is
+          BEFORE the tap, when a hiker is deciding what it will cost them.
+          chrome/alertLayerPanel.ts is what makes the sentence true, and
+          chrome/StatusStrip.tsx is what says so on the map itself once the
+          legend is shut. */}
+      {onToggleAlerts !== undefined && (
+        <label className="legend__alerts">
+          <span className="legend__alerts-name">
+            Alerts
+            <span className="legend__alerts-detail">
+              {alertsShown
+                ? 'Closures and warnings, drawn on the map. What is ahead of you is called out at the top either way.'
+                : 'Hidden until you open the app again. What is ahead of you is still called out at the top.'}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            name="alert_layer"
+            checked={alertsShown}
+            onChange={onToggleAlerts}
           />
         </label>
       )}

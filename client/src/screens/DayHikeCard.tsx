@@ -18,11 +18,13 @@
 // THE FIGURES SAY WHAT THEY ARE, and the note under them carries TWO claims
 // that are easy to mistake for one:
 //
-// - WHAT THE TIME MEASURES. Naismith is moving time. A hiker reading
-//   "≈3h 10m" as when they are back at the car is out by however long they
-//   sat at the view. The storyboard (frame D5) names this sentence as one of
-//   the two reasons that screen exists; #1008 shipped the figure without it,
-//   while the trips side had carried its own all along (PlanTargetSheet).
+// - WHAT THE TIME MEASURES. It is moving time, at whatever pace it was
+//   priced at. A hiker reading "≈3h 10m" as when they are back at the car is
+//   out by however long they sat at the view. The storyboard (frame D5) names
+//   this sentence as one of the two reasons that screen exists; #1008 shipped
+//   the figure without it, while the trips side had carried its own all along
+//   (PlanTargetSheet). #1040 made it more necessary, not less: priced at the
+//   hiker's own pace, the number looks personal and still counts no stops.
 // - HOW PRECISE THE CLIMB IS. A dense sum over a 10 m elevation model is not
 //   the same kind of number as the miles beside it: published figures for one
 //   walk disagree by more than rounding, and the pipeline's own gate reads
@@ -46,7 +48,7 @@ import type { PlanTextLegs } from '../lib/dayHikePlanText'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
-import { formatNaismithMinutes, naismithMinutes } from '../lib/naismith'
+import { paceEstimate, type PaceProfile } from '../lib/pace'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
 import './plan.css'
@@ -62,6 +64,15 @@ export interface DayHikeCardProps {
   bailOuts: BailOut[]
   stewards: Stewards
   units: UnitSystem
+  /**
+   * The hiker's own pace (#880), which this card used to ignore (#1040).
+   *
+   * It priced its walk with `naismithMinutes` - the STANDARD rule - while the
+   * A.T. builder and the plan timeline priced theirs with the hiker's own. A
+   * hiker who told this app they walk at 2 mph read their day hike at 3.1,
+   * and nothing on either screen said which one was which.
+   */
+  pace: PaceProfile
   networkAvailable: boolean
   /** review: Done pressed, nothing stored yet - Save is the primary action.
    *  saved: opened from the Plan tab, where delete lives. */
@@ -81,6 +92,7 @@ export function DayHikeCard({
   bailOuts,
   stewards,
   units,
+  pace,
   networkAvailable,
   mode,
   onSave,
@@ -145,8 +157,17 @@ export function DayHikeCard({
   // would be a display outrunning its source. Null here means the block below
   // is simply absent, which is what it looked like before #1011.
   const climb = resolved?.climb ?? null
-  const walkingMinutes =
-    climb === null ? null : naismithMinutes({ distanceMi: miles, ascentFt: climb.gainFt })
+  // Descent goes in beside the climb (#900): `routeClimb` measured both, and
+  // a hiker who set a descent penalty is asking for it to count on exactly
+  // this kind of walk. `paceEstimate` returns the figure and its baseline in
+  // one object, so the line below cannot print one without the other (#851).
+  const estimate =
+    climb === null
+      ? null
+      : paceEstimate(
+          { distanceMi: miles, ascentFt: climb.gainFt, descentFt: climb.lossFt },
+          pace,
+        )
 
   // The orgs sentence counts organizations somebody actually named - legs the
   // export left unattributed are real trail but no org to credit, and "One
@@ -183,23 +204,34 @@ export function DayHikeCard({
             </span>
           </>
         )}
-        {walkingMinutes !== null && ` · ${formatNaismithMinutes(walkingMinutes)} walking`}
+        {estimate !== null && ` · ${estimate.text} walking`}
       </p>
 
-      {walkingMinutes !== null && (
+      {/* What that time was adjusted from, when it was adjusted at all -
+          absent at the standard pace, which is most hikers (#851). */}
+      {estimate?.relativeLine != null && (
+        <p className="day-hike-card__baseline">{estimate.relativeLine}</p>
+      )}
+
+      {estimate !== null && (
         // TWO DIFFERENT WARNINGS, and neither substitutes for the other.
         //
-        // The first is what the number MEASURES: Naismith is moving time, and
-        // a hiker reading "≈3h 10m" as when they are back at the car is out by
-        // however long they sat at the view. The storyboard (frame D5) names
-        // this sentence as one of the two reasons that screen exists - "the
-        // sentence that stops ≈3h10m being read as a promise" - and #1008
-        // shipped the figure without it. The trips side had carried its own
-        // all along (PlanTargetSheet: "Naismith counts walking - not lunch,
-        // not water, not the forty minutes you'll spend at the shelter"),
-        // which left the asymmetry the wrong way round: the day-hiker is the
-        // persona planning somewhere new, least likely to know what moving
-        // time excludes. #1042.
+        // The first is what the number MEASURES: this is moving time, whatever
+        // pace it was priced at, and a hiker reading "≈3h 10m" as when they are
+        // back at the car is out by however long they sat at the view. The
+        // storyboard (frame D5) names this sentence as one of the two reasons
+        // that screen exists - "the sentence that stops ≈3h10m being read as a
+        // promise" - and #1008 shipped the figure without it. The trips side
+        // had carried its own all along (PlanTargetSheet: "Naismith counts
+        // walking - not lunch, not water, not the forty minutes you'll spend
+        // at the shelter"), which left the asymmetry the wrong way round: the
+        // day-hiker is the persona planning somewhere new, least likely to
+        // know what moving time excludes. #1042.
+        //
+        // #1040 made this MORE necessary rather than less: the figure is now
+        // priced at the hiker's OWN pace, so somebody who told the app they
+        // walk at 2 mph gets a number that looks personal and still counts no
+        // stops at all. A tailored estimate invites more trust, not less.
         //
         // The second is how PRECISE it is - the maintainer's decision,
         // 2026-08-25, in the hiker's own words, and kept here verbatim.
@@ -211,10 +243,12 @@ export function DayHikeCard({
         // A hiker can believe the second and still be an hour late because of
         // the first. ONE note rather than two stacked ones, because two
         // `role="note"` paragraphs in a row read as boilerplate and get
-        // skipped - which is how the sentence that matters gets lost.
+        // skipped - which is how the sentence that matters gets lost. The
+        // baseline line above is a different thing again: what the estimate
+        // was adjusted FROM, not what it leaves out.
         //
-        // Guarded on the TIME, not the climb: `walkingMinutes` is derived from
-        // `climb` a few lines up, so the two are the same condition today, but
+        // Guarded on the ESTIMATE, not the climb: the two are the same
+        // condition today (`estimate` is null exactly when `climb` is), but
         // the time is what makes this note necessary.
         <p className="day-hike-card__note" role="note">
           Moving time — it knows nothing about lunch, a swim, or half an hour at the view.

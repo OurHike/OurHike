@@ -7,10 +7,10 @@ import {
   syncTripsWithAccount,
   uploadsFor,
 } from './tripsSync'
-import { TRIPS_KEY, EMPTY_STORE, type Trip, type TripStore } from './trips'
+import { EMPTY_STORE, removeTrip, TRIPS_KEY, type Trip, type TripStore } from './trips'
 import { buildPlan, type HikePlan } from './plan'
 import { PLANNED_HIKE_KEY } from './plannedHike'
-import { TRIPS_SYNC_KEY, tripSyncState } from './tripSyncState'
+import { recordTripEdits, TRIPS_SYNC_KEY, tripSyncState } from './tripSyncState'
 
 // Trips following the account (#892), from this device's side.
 //
@@ -219,6 +219,79 @@ describe('folding in what the account sent', () => {
   })
 })
 
+// #1036: the backend keeps both sides of a conflict by writing the loser
+// beside the winner. That only works if the copy is a separate record, and
+// the client identifies a record by the id inside its DOCUMENT - so these
+// drive the merge with the row pairs `trip_sync.resolve_upload` emits.
+describe('a conflict copy survives as its own trip (#1036)', () => {
+  /** What the server sends for edit-vs-edit: the winner untouched, and the
+   *  loser beside it under a fresh id - in its row AND in its document. */
+  const editVsEdit = [
+    row('trip-1', 'Grayson Highlands, four days'),
+    {
+      id: 'copy-1',
+      document: trip(
+        'copy-1',
+        'Grayson Highlands, three days (edited on another device)',
+      ),
+      updated_at: NOW,
+      deleted_at: null,
+    },
+  ]
+
+  it('keeps both, under two different ids', () => {
+    const merged = mergeServerTrips(storeWith(trip()), editVsEdit)
+
+    expect(merged.trips.map((t) => t.id).sort()).toEqual(['copy-1', 'trip-1'])
+  })
+
+  it('deleting one afterwards does not take the other with it', () => {
+    // The consequence that made the old shape dangerous rather than untidy:
+    // two records sharing an id meant `removeTrip` deleted both.
+    const merged = mergeServerTrips(storeWith(trip()), editVsEdit)
+    const after = removeTrip(merged, 'trip-1')
+
+    expect(after.trips.map((t) => t.id)).toEqual(['copy-1'])
+  })
+
+  it('keeps both even from a server that has not been redeployed', () => {
+    // The belt: a legacy copy row whose DOCUMENT still carries the original's
+    // id. The row id is the identity the server filed it under, so the merge
+    // takes that and the two records stay two.
+    const legacyCopy = {
+      id: 'copy-1',
+      document: trip('trip-1', 'Grayson Highlands, three days (edited elsewhere)'),
+      updated_at: NOW,
+      deleted_at: null,
+    }
+    const merged = mergeServerTrips(storeWith(trip()), [
+      row('trip-1', 'Grayson Highlands, four days'),
+      legacyCopy,
+    ])
+
+    expect(merged.trips.map((t) => t.id).sort()).toEqual(['copy-1', 'trip-1'])
+    expect(removeTrip(merged, 'trip-1').trips.map((t) => t.id)).toEqual(['copy-1'])
+  })
+
+  it('survives delete-vs-edit whichever order the rows arrive in', () => {
+    // The tombstone is keyed on the original id and the copy is not, so the
+    // outcome no longer depends on an order nothing in the exchange pins.
+    const tombstone = row('trip-1', 'gone', { document: null, deleted_at: NOW })
+    const copy = {
+      id: 'copy-1',
+      document: trip('copy-1', 'Grayson Highlands, four days (edited on another device)'),
+      updated_at: NOW,
+      deleted_at: null,
+    }
+
+    const tombstoneFirst = mergeServerTrips(storeWith(trip()), [tombstone, copy])
+    const copyFirst = mergeServerTrips(storeWith(trip()), [copy, tombstone])
+
+    expect(tombstoneFirst.trips.map((t) => t.id)).toEqual(['copy-1'])
+    expect(copyFirst.trips.map((t) => t.id)).toEqual(['copy-1'])
+  })
+})
+
 describe('the stamps carried forward', () => {
   const state = {
     dirty: [],
@@ -336,6 +409,69 @@ describe('a whole exchange', () => {
 
     expect(store.has(PLANNED_HIKE_KEY)).toBe(false)
     expect((await tripSyncState()).hikeDirty).toBe(false)
+  })
+})
+
+// #1040: a sync is not instant, and the hiker keeps using the app while the
+// request is in the air. Both of these were measured on the shipped code
+// before the fix, and they fail differently, which is why both are here.
+describe('an edit made while the request is in flight', () => {
+  /** A request that does not resolve until the test says so. */
+  function heldRequest(rows: unknown[] = []) {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.mocked(syncTrips).mockReturnValue(
+      held.then(() => ({
+        now: NOW,
+        trips: rows as never,
+        hike: null,
+        conflicts: 0,
+      })) as never,
+    )
+    return () => release()
+  }
+
+  it('stays queued to send, rather than being marked as sent by nobody', async () => {
+    // The half that survives on disk and never travels: the ledger used to
+    // be cleared wholesale, so an edit made mid-flight was recorded as sent
+    // when nothing had sent it - and it sat on this device for ever.
+    store.set(TRIPS_KEY, storeWith(trip()))
+    const release = heldRequest()
+
+    const syncing = syncTripsWithAccount()
+    store.set(TRIPS_KEY, storeWith({ ...trip(), name: 'Renamed mid-flight' }))
+    await recordTripEdits([], [trip()])
+    release()
+    await syncing
+
+    expect((await tripSyncState()).dirty).toContain('trip-1')
+  })
+
+  it('is not overwritten by the store the request was built from', async () => {
+    // The worse half: with any row at all coming back, the merge was built
+    // on the pre-request snapshot and written over the top, so the rename
+    // was gone from the device as well as from the account.
+    store.set(TRIPS_KEY, storeWith(trip()))
+    const release = heldRequest([
+      {
+        id: 'from-the-laptop',
+        document: trip('from-the-laptop', 'Laid out on the laptop'),
+        updated_at: NOW,
+        deleted_at: null,
+      },
+    ])
+
+    const syncing = syncTripsWithAccount()
+    store.set(TRIPS_KEY, storeWith({ ...trip(), name: 'Renamed mid-flight' }))
+    release()
+    await syncing
+
+    const after = store.get(TRIPS_KEY) as TripStore
+    expect(after.trips.find((t) => t.id === 'trip-1')?.name).toBe('Renamed mid-flight')
+    // And the laptop's trip still arrived - the fix must not cost the merge.
+    expect(after.trips.map((t) => t.id).sort()).toEqual(['from-the-laptop', 'trip-1'])
   })
 })
 

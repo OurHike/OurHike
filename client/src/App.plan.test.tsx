@@ -137,9 +137,13 @@ describe('the planning flow', () => {
     // Slide shorter: 5 miles reaches for 8.2, and the end re-snaps to
     // Middle Shelter (10.2) - then back out to 15, Beyond Shelter again
     // (|22.2 - 18.2| = 4 beats |13.2 - 18.2| = 5).
-    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
+      target: { value: '5' },
+    })
     expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '15' } })
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
+      target: { value: '15' },
+    })
     expect(screen.getByText('Beyond Shelter')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
@@ -791,6 +795,37 @@ describe('the planning flow', () => {
       expect(
         within(fresh).getByText(/Only the A.T. centerline can carry a route/),
       ).toBeInTheDocument()
+    })
+
+    it('forgets a refused tap at the ENTRANCE when the builder closes (#1040)', async () => {
+      // The mirror of the test above, on the other flag. #986 named this
+      // exact defect and fixed `editorRefusedTap`; `entranceRefusedTap` was
+      // declared for the same reason on the next line and cleared in exactly
+      // one place - a successful entrance tap - so cancelling after a refused
+      // one carried the accusation into the next route.
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      const map = await liveMap()
+      // Off the corridor: the entrance refuses it and says so.
+      await tap(map, 10, -81)
+      const sheet = await screen.findByRole('dialog', { name: 'Plan a route' })
+      expect(
+        within(sheet).getByText(/off the trail, so nothing moved/),
+      ).toBeInTheDocument()
+
+      await user.click(within(sheet).getByRole('button', { name: /Close/ }))
+
+      // Straight back in, with nothing in between that would clear it.
+      await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+      await user.click(await screen.findByRole('button', { name: /Start on the map/ }))
+      await throughPlanKind(user)
+
+      const fresh = await screen.findByRole('dialog', { name: 'Plan a route' })
+      expect(within(fresh).queryByText(/off the trail, so nothing moved/)).toBeNull()
+      expect(within(fresh).getByText(/just tap the trail on the map/)).toBeInTheDocument()
     })
 
     it('spends one undo press per real edit, never on a re-tap (#986)', async () => {

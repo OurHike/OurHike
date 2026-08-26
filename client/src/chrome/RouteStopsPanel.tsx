@@ -27,7 +27,7 @@
 // below two stops instead of present and dead.
 
 import type { HikeDirection } from './Header'
-import { formatNaismithMinutes } from '../lib/naismith'
+import type { PaceEstimate } from '../lib/pace'
 import { stopLabel } from '../lib/planDisplay'
 import { MAX_OFF_TRAIL_MILES } from '../lib/trailPosition'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
@@ -40,13 +40,35 @@ export interface RouteLegDisplay {
   distanceMi: number
   ascentFt: number | null
   descentFt: number | null
-  minutes: number | null
+  /**
+   * The leg's priced time WITH its baseline, or null when the leg is
+   * unpriced (see the header note).
+   *
+   * A `PaceEstimate` rather than raw minutes, and that is the point: this
+   * panel's times are the hiker's own pace applied to Naismith, and #851's
+   * rule is that such a figure never renders without the line saying what it
+   * was adjusted from. Holding the pair means a row cannot print one and
+   * forget the other. The caller builds it with `priceLeg`.
+   */
+  estimate: PaceEstimate | null
 }
 
 export interface RouteStopsPanelProps {
   stops: readonly { mile: number; name?: string }[]
   /** Per-leg figures, in walk order - one fewer than stops. */
   legs: readonly RouteLegDisplay[]
+  /**
+   * The whole route's priced time, with its baseline - null when any leg is
+   * unpriced, because a total summed around a missing leg silently omits
+   * part of the route.
+   *
+   * Passed in rather than summed here, for two reasons that point the same
+   * way. The baseline needs the STANDARD time for the whole route, which is
+   * not recoverable from formatted leg strings; and pricing the summed terms
+   * once is exactly what lib/route.ts asks callers to do, so this total
+   * cannot drift from the legs above it.
+   */
+  total: PaceEstimate | null
   direction: HikeDirection | null
   units: UnitSystem
   /** Open the stop picker over stop `index`. */
@@ -58,6 +80,15 @@ export interface RouteStopsPanelProps {
   onUndo: (() => void) | null
   /** The last trail tap was refused as too far off the corridor (#973). */
   refusedTap: boolean
+  /**
+   * Why the legs carry no times, when they carry none (#1039).
+   *
+   * The panel cannot tell from the nulls alone, and the two are different
+   * facts: this download has no profile at all, or it has one with a hole in
+   * the ground this route crosses. Saying the first when the second is true
+   * would send somebody looking for a download that is already there.
+   */
+  unpriced?: 'no-profile' | 'unmeasured'
   /** Carry this route into days - the plan flow (#756/#757). */
   onBreakIntoDays: () => void
   /** Keep this stretch as ground already walked (#789) - the same two ends,
@@ -70,8 +101,10 @@ export interface RouteStopsPanelProps {
 export function RouteStopsPanel({
   stops,
   legs,
+  total,
   direction,
   units,
+  unpriced = 'no-profile',
   onEditStop,
   onAddStop,
   onUndo,
@@ -83,10 +116,10 @@ export function RouteStopsPanel({
   const totalDistanceMi = legs.reduce((sum, leg) => sum + leg.distanceMi, 0)
   // A total time exists only when every leg has one - summing around a
   // missing leg would print a whole-route figure that silently omits part
-  // of the route.
-  const totalMinutes = legs.every((leg) => leg.minutes !== null)
-    ? legs.reduce((sum, leg) => sum + (leg.minutes as number), 0)
-    : null
+  // of the route. The caller owes us that null; this re-checks rather than
+  // trusting it, because the two arrive as separate props and a caller that
+  // priced the sum while one leg was unpriced would print the omission.
+  const shownTotal = legs.every((leg) => leg.estimate !== null) ? total : null
 
   return (
     <>
@@ -148,6 +181,18 @@ export function RouteStopsPanel({
               {index < legs.length && (
                 <span className="route-stops__leg">{legLine(legs[index], units)}</span>
               )}
+              {/* This leg's own baseline, and it has to be its own: the two
+                  coefficients scale Naismith's two terms separately, so the
+                  ratio is a property of the walk in front of you, not of the
+                  hiker (lib/pace.ts's header). A flat leg and a staircase
+                  under one profile read different multiples. Absent entirely
+                  at the standard pace, which is most hikers - the line has
+                  to keep its weight for the ones who moved a control. */}
+              {index < legs.length && legs[index].estimate?.relativeLine != null && (
+                <span className="route-stops__leg route-stops__leg--baseline">
+                  {legs[index].estimate?.relativeLine}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -185,9 +230,11 @@ export function RouteStopsPanel({
           panel is otherwise careful about everywhere else. */}
       {legs.length > 0 && (
         <div className="route-stops-bar">
-          {totalMinutes === null && (
+          {shownTotal === null && (
             <p className="route-stops-bar__note" role="note">
-              No elevation profile in this download &mdash; distance only.
+              {unpriced === 'unmeasured'
+                ? 'Part of this route has no elevation measured — distance only.'
+                : 'No elevation profile in this download — distance only.'}
             </p>
           )}
           <div className="route-stops-bar__row">
@@ -195,9 +242,7 @@ export function RouteStopsPanel({
               {[
                 direction,
                 formatDistance(totalDistanceMi, units),
-                totalMinutes === null
-                  ? null
-                  : `${formatNaismithMinutes(totalMinutes)} walking`,
+                shownTotal === null ? null : `${shownTotal.text} walking`,
               ]
                 .filter((part) => part !== null)
                 .join(' · ')}
@@ -210,6 +255,12 @@ export function RouteStopsPanel({
               Break into days
             </button>
           </div>
+          {/* The route's own baseline, priced from the summed terms rather
+              than from the legs' printed times - the same figure, without
+              the rounding each leg already did. */}
+          {shownTotal?.relativeLine != null && (
+            <p className="route-stops-bar__baseline">{shownTotal.relativeLine}</p>
+          )}
           {/* The same stretch, said in the past tense. A section hiker's own
             history mostly predates this app, and without a door for it the
             roll-up opens on somebody who has walked 600 miles and tells
@@ -239,13 +290,13 @@ export function RouteStopsPanel({
  */
 function legLine(leg: RouteLegDisplay, units: UnitSystem): string {
   const distance = formatDistance(leg.distanceMi, units)
-  if (leg.ascentFt === null || leg.descentFt === null || leg.minutes === null) {
+  if (leg.ascentFt === null || leg.descentFt === null || leg.estimate === null) {
     return distance
   }
   return [
     distance,
     `${formatElevation(leg.ascentFt, units)} ↑`,
     `${formatElevation(leg.descentFt, units)} ↓`,
-    formatNaismithMinutes(leg.minutes),
+    leg.estimate.text,
   ].join(' · ')
 }

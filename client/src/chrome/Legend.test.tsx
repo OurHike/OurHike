@@ -20,9 +20,14 @@ import { CLOSURE_COLOR } from '../lib/closureStyle'
 //    prose speaking for categories that are not there - so the empty-state
 //    sentences and the drop summary are still decided by the viewport alone,
 //    and are asserted here to be.
-//  - Closure and serious-warning rows carry "Always shown" and have NO hide
-//    control. Not merely defaulted-on: there is no affordance to turn a safety
-//    layer off, here or anywhere else in the app.
+//  - Closure and serious-warning rows have NO hide control OF THEIR OWN, and
+//    say which of two states they are in. The rule they used to carry - "there
+//    is no affordance to turn a safety layer off, here or anywhere in the app"
+//    - was narrowed by #1047: the panel now has an Alerts switch, and what
+//    survives is that nothing STORED can reach a closure. So a panel with no
+//    switch on it still reads "Always shown", because on that panel it is
+//    simply true; a panel with one names it instead and greys the rows with
+//    it. Both are asserted below, because the pair is the claim.
 
 const BBOX = { west: -78, south: 39, east: -77, north: 40 }
 
@@ -186,7 +191,7 @@ describe('Legend', () => {
   })
 
   it.each(['Closure', 'Serious warning'])(
-    'gives the %s row no hide control at all - a safety layer has no off switch',
+    'gives the %s row no hide control of its own - it is not a category',
     (label) => {
       render(<Legend {...PROPS} />)
       const row = rowFor(label)
@@ -483,6 +488,154 @@ describe('the whole legend row is the hide control', () => {
     render(<Legend {...PROPS} hiddenTypes={new Set(['closure'])} />)
 
     expect(rowFor('Closure')).not.toHaveClass('legend__row--hidden')
+  })
+})
+
+// --- The Alerts switch (#1047) ---------------------------------------------
+//
+// The first control this app has ever put over a safety layer, and the tests
+// that matter are the ones about what it is NOT. It is not stored - that is
+// chrome/alertLayerPanel.test.ts's job. Here: it exists only where a shell
+// offers the handler, it says what it costs before the tap rather than after,
+// and the grid above it never goes on claiming a mark the map is not drawing.
+
+describe('the Alerts switch (#1047)', () => {
+  const ALERTS = { ...PROPS, onToggleAlerts: vi.fn() }
+
+  function alertsSwitch() {
+    return screen.getByRole('checkbox', { name: /alerts/i })
+  }
+
+  it('is not drawn where the shell offers no handler for it', () => {
+    // The rule the verified toggle and the downloads link both keep: a control
+    // that goes nowhere is worse than one that is not there. It matters more
+    // here than anywhere else on the panel, because a switch that appears to
+    // clear the bands and does not is a hiker believing the map is telling
+    // them everything when it is not.
+    render(<Legend {...PROPS} />)
+
+    expect(screen.queryByRole('checkbox', { name: /alerts/i })).toBe(null)
+  })
+
+  it('starts checked - the alerts are on the map', () => {
+    render(<Legend {...ALERTS} />)
+
+    expect(alertsSwitch()).toBeChecked()
+  })
+
+  it('hands the tap back to the shell rather than deciding anything itself', async () => {
+    const user = userEvent.setup()
+    const onToggleAlerts = vi.fn()
+    render(<Legend {...ALERTS} onToggleAlerts={onToggleAlerts} />)
+
+    await user.click(alertsSwitch())
+
+    expect(onToggleAlerts).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads unchecked while the marks are off', () => {
+    render(<Legend {...ALERTS} alertsShown={false} />)
+
+    expect(alertsSwitch()).not.toBeChecked()
+  })
+
+  it('says what it does not take away, BEFORE the tap', () => {
+    // The moment that matters is while a hiker is deciding. A control that
+    // only explains itself once it is off has already let somebody turn it off
+    // believing they were going quiet about a closed trail.
+    render(<Legend {...ALERTS} />)
+
+    expect(alertsSwitch().closest('label')).toHaveTextContent(
+      /what is ahead of you is called out at the top/i,
+    )
+  })
+
+  it('promises the marks back at the next open, once they are off', () => {
+    render(<Legend {...ALERTS} alertsShown={false} />)
+
+    expect(alertsSwitch().closest('label')).toHaveTextContent(
+      /hidden until you open the app again/i,
+    )
+    expect(alertsSwitch().closest('label')).toHaveTextContent(
+      /what is ahead of you is still called out at the top/i,
+    )
+  })
+
+  it.each(['Closure', 'Serious warning'])(
+    'points the %s row at the switch rather than promising "always"',
+    (label) => {
+      // The row and the switch are on the same panel, six lines apart. A row
+      // reading "Always shown" beside a switch that plainly is not always is
+      // the panel contradicting itself in one screenful.
+      render(<Legend {...ALERTS} />)
+
+      expect(rowFor(label)).toHaveTextContent(/alerts/i)
+      expect(rowFor(label)).not.toHaveTextContent(/always shown/i)
+    },
+  )
+
+  it.each(['Closure', 'Serious warning'])(
+    'greys the %s row out when the marks come off the map',
+    (label) => {
+      // The one case the older "never grey a safety row" rule does not cover,
+      // and the reason it does not: that rule is about the stored category
+      // filter, which still cannot reach these. This is the map actually not
+      // drawing them, and a row that stayed lit would be the panel claiming a
+      // band that is not there.
+      render(<Legend {...ALERTS} alertsShown={false} />)
+
+      expect(rowFor(label)).toHaveClass('legend__row--hidden')
+      expect(rowFor(label)).toHaveTextContent(/alerts off/i)
+    },
+  )
+
+  it('leaves the safety rows without a toggle of their own, either way', () => {
+    // These rows are not category switches and must not grow into them: the
+    // stored preference is what could outlive the day, and #1047 keeps it out
+    // of reach on purpose.
+    render(<Legend {...ALERTS} alertsShown={false} />)
+
+    expect(within(rowFor('Closure')).queryByRole('button')).not.toBeInTheDocument()
+    expect(
+      within(rowFor('Serious warning')).queryByRole('button'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps "Always shown" on a panel that genuinely has no switch', () => {
+    // The other half of the pair. Where nothing on the panel can hide these
+    // marks, the original promise is the accurate one and stays.
+    render(<Legend {...PROPS} />)
+
+    expect(rowFor('Closure')).toHaveTextContent(/always shown/i)
+  })
+
+  it('never promises "always" over a map that is not drawing them', () => {
+    // A shell that draws no alerts and offers no way back is not a state this
+    // app produces, and the tag still may not read "Always shown" in it: what
+    // is on the screen decides this word, never what the panel can offer.
+    render(<Legend {...PROPS} alertsShown={false} />)
+
+    expect(rowFor('Closure')).not.toHaveTextContent(/always shown/i)
+    expect(rowFor('Closure')).toHaveClass('legend__row--hidden')
+  })
+
+  it('never offers alerts through the type picker', () => {
+    // The picker writes `waypoint_types_shown`, which syncs to an account. An
+    // "Alerts" entry there would be the one shape #1047 rules out: a phone
+    // that OPENS with the bands already off, days later, on a different
+    // handset.
+    render(
+      <Legend
+        {...ALERTS}
+        onOnlyType={vi.fn()}
+        onShowAllTypes={vi.fn()}
+        typesShown={[]}
+      />,
+    )
+
+    const picker = screen.getByRole('combobox', { name: /showing waypoint types/i })
+    expect(within(picker).queryByRole('option', { name: /alert/i })).toBe(null)
+    expect(within(picker).queryByRole('option', { name: /closure/i })).toBe(null)
   })
 })
 

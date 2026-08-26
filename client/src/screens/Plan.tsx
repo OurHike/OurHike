@@ -32,7 +32,6 @@ import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
 import type { DayHike } from '../lib/dayHikes'
 import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
 import type { TripGroup } from '../lib/tripGroups'
-import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
   foodCarries,
@@ -53,12 +52,12 @@ import {
   stopLabel,
   tripRowHeight,
 } from '../lib/planDisplay'
-import { legFigures, type LegFigures } from '../lib/route'
+import { legFigures, priceLeg, type PricedLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
-import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
@@ -260,15 +259,21 @@ export function PlanScreen({
   // One figures pass for every walking day - heights, terrain and labels all
   // read from it, so they cannot disagree about what a day costs.
   const figures = useMemo(() => {
-    const byIndex = new Map<number, LegFigures>()
+    const byIndex = new Map<number, PricedLeg>()
     if (elevation === null) return byIndex
     for (const day of views) {
       if (!day.zero) {
-        byIndex.set(day.index, legFigures(elevation, day.start.mile, day.end.mile, pace))
+        const walked = legFigures(elevation, day.start.mile, day.end.mile, pace)
+        // The printed time and its baseline together (#851/#1040): a hiker
+        // who moved the pace control sees what they moved it from, and one
+        // who has not sees nothing extra - `paceEstimate` returns no line at
+        // standard pace. The timeline printed the adjusted figure naked for
+        // as long as the guard meant to catch that was skipping every file.
+        byIndex.set(day.index, priceLeg(walked, pace))
       }
     }
     return byIndex
-  }, [views, elevation])
+  }, [views, elevation, pace])
 
   // What the cascade can honestly offer. A walking-hours target on a
   // download with no profile cannot price a shift, so it is not offered -
@@ -856,15 +861,24 @@ function finishLabel(views: PlanDayView[]): string | null {
   return `${date.getUTCDate()} ${month}`
 }
 
+/**
+ * A section's confirmed ascent, or null when it cannot be stated whole.
+ *
+ * All or nothing across the days, and now across the DEM too (#1039): one
+ * day with unmeasured ground makes the roll-up an understatement, and a
+ * section header is the one place a hiker has no way to notice that a single
+ * row was withheld below it.
+ */
 function sectionAscent(
   section: PlanSection,
-  figures: Map<number, LegFigures>,
+  figures: Map<number, PricedLeg>,
 ): number | null {
   let total = 0
   for (const day of section.days) {
     if (day.zero) continue
     const f = figures.get(day.index)
     if (f === undefined) return null
+    if (f.unmeasuredMi > 0) return null
     total += f.ascentFt
   }
   return total
@@ -879,7 +893,7 @@ function targetLabel(plan: HikePlan, units: UnitSystem): string {
 
 interface DayRowProps {
   day: PlanDayView
-  figures: LegFigures | undefined
+  figures: PricedLeg | undefined
   /** Days of food out of this row's resupply stop, or null when the row is
    *  not a resupply (or the plan ends here). */
   carryOut: number | null
@@ -938,6 +952,22 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     )
   }
 
+  // A FLOOR, NOT A FIXED HEIGHT (#1032). `.plan__day` hides its overflow -
+  // it has to, because the terrain silhouette is positioned against the row
+  // box - so an exact height cut the bottom line off whenever the content
+  // outgrew it. Measured at 390 px: a title wrapping to two lines needs
+  // 59 px, and the badges live on that bottom line, so "nearo · your rest
+  // day" rendered as 3 px of a 13 px line on precisely the short days that
+  // are nearos.
+  //
+  // WHAT THIS COSTS THE ENCODING, since row height = walking hours is a
+  // chosen wireframe decision and not an accident: rows between the 44 px
+  // floor and their own content height now all render at content height, so
+  // the proportionality is flat from 0 up to roughly 3.5 walking hours
+  // rather than up to 2. It was already flat below the floor, this widens
+  // that band, and above it every row is still exactly as tall as its hours.
+  // The alternative - keeping the exact height and truncating the stop names
+  // - would trade a label a hiker asked for against one the app added.
   const height = figures === undefined ? MIN_ROW_PX : dayRowHeight(figures.minutes)
 
   return (
@@ -946,7 +976,7 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
       <button
         type="button"
         className={resupply ? 'plan__day plan__day--resupply' : 'plan__day'}
-        style={{ height: `${height}px` }}
+        style={{ minHeight: `${height}px` }}
         onClick={onSelect}
       >
         {!resupply && elevation !== null && (
@@ -978,10 +1008,26 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
           <span className="plan__day-carry">resupply</span>
         )}
         <span className="plan__day-bottom">
-          {figures !== undefined && (
+          {figures !== undefined && figures.unmeasuredMi === 0 && (
             <span className="plan__day-figure">
-              {formatNaismithMinutes(figures.minutes)} ·{' '}
-              {formatElevation(figures.ascentFt, units)} ↑
+              {figures.estimate.text} · {formatElevation(figures.ascentFt, units)} ↑
+            </span>
+          )}
+          {figures?.estimate.relativeLine != null && figures.unmeasuredMi === 0 && (
+            <span className="plan__day-figure plan__day-figure--baseline">
+              {figures.estimate.relativeLine}
+            </span>
+          )}
+          {/* A hole in the DEM prices as flat ground, so the climb and the
+              time are both understated - and understated is the direction
+              that gets somebody caught out after dark. The distance above is
+              still honest and stays; these two are withheld and said to be
+              withheld, which is what the network half already does by
+              returning no time at all (#1039). */}
+          {figures !== undefined && figures.unmeasuredMi > 0 && (
+            <span className="plan__day-figure plan__day-figure--unmeasured">
+              no climb measured for{' '}
+              {formatDistance(figures.unmeasuredMi, units, 'trimmed')} of this day
             </span>
           )}
           {day.wasDistanceMi !== null && (
@@ -1183,13 +1229,12 @@ function CallItADaySheet({
   const describe = (end: CalledEnd) => {
     const distanceMi = Math.abs(end.mile - day.start.mile)
     if (elevation === null) return formatDistance(distanceMi, units)
-    const figures = legFigures(elevation, day.start.mile, end.mile, pace)
-    // paceEstimate rather than formatting these minutes by hand. They are
+    // priceLeg rather than formatting these minutes by hand. They are
     // pace-adjusted, so this line owes its baseline (#851) - and formatting
     // them directly is the one bypass test/paceBaseline.test.ts exists to
     // catch, which is how this call site was found.
-    const estimate = paceEstimate(
-      { distanceMi: figures.distanceMi, ascentFt: figures.ascentFt },
+    const { estimate } = priceLeg(
+      legFigures(elevation, day.start.mile, end.mile, pace),
       pace,
     )
     const shown = `${formatDistance(distanceMi, units)} · ${estimate.text}`

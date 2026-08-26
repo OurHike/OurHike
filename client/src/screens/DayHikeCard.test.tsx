@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DayHikeCard } from './DayHikeCard'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import type { Stewards } from '../lib/stewards'
@@ -109,6 +110,7 @@ function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) 
       bailOuts={BAIL_OUTS}
       stewards={STEWARDS}
       units="imperial"
+      pace={STANDARD_PACE}
       networkAvailable={true}
       mode="saved"
       onClose={vi.fn()}
@@ -344,6 +346,43 @@ describe('the climb, once the phone can price it (#1011)', () => {
     renderCard()
 
     expect(screen.getByText(/≈2h 40m walking/)).toBeInTheDocument()
+  })
+
+  it("walks this day at the hiker's own pace, and says so (#1040)", () => {
+    // The half this card did not have. It priced with naismithMinutes - the
+    // STANDARD rule - so a hiker who told this app they walk at 2 mph read
+    // their A.T. plan at 2 and their day hike at 3.107, with nothing on
+    // either screen saying which was which.
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2 }
+    renderCard({ pace: slow })
+
+    // 6.4 mi at 2 mph is 192 min; 1,240 ft of ascent adds 37.8 at Naismith's
+    // own climb term, which this control does not move; 229.8 -> ≈3h 50m.
+    expect(screen.getByText(/≈3h 50m walking/)).toBeInTheDocument()
+    // And what it was adjusted from, so the figure cannot pass as the rule's
+    // own (#851).
+    expect(screen.getByText('was ≈2h 40m · 1.4× standard')).toBeInTheDocument()
+  })
+
+  it('adds the descent penalty this walk measured, when one is set (#900)', () => {
+    // routeClimb measured 1,180 ft of loss and the card used to throw it
+    // away. A hiker who set the knee penalty is asking for exactly this walk
+    // to cost more; the control only ever ADDS time, so the direction is the
+    // cautious one.
+    const knees: PaceProfile = { ...STANDARD_PACE, descentMinutesPer1000m: 60 }
+    renderCard({ pace: knees })
+
+    // 161.4 standard minutes plus 1,180 ft = 359.7 m of descent at an hour
+    // per 1,000 m: 21.6 more, 183 -> ≈3h 5m.
+    expect(screen.getByText(/≈3h 5m walking/)).toBeInTheDocument()
+  })
+
+  it('says nothing about pace when the hiker never moved a control', () => {
+    // The other half of #851's rule: "1.0× standard" on a fresh install is a
+    // caveat that teaches hikers to stop reading the ones that matter.
+    renderCard()
+
+    expect(screen.queryByText(/standard/)).not.toBeInTheDocument()
   })
 
   it('says the figures are estimates rather than letting them read as surveyed', () => {

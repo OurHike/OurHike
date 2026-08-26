@@ -3,6 +3,9 @@
 // request touches this file, because a branch that breaks the very first
 // screen breaks everybody — scripts/photograph-preview.mjs names it in
 // STANDING rather than waiting for a diff to select it.
+//
+// Also the screen for the "what OurHike is" step's copy (#1059/#1060) - no
+// drive needed, since that step is what loads first.
 export const caption = 'First run'
 export const alt = 'The first-run entry card'
 

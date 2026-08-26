@@ -251,7 +251,7 @@ function storageFace(
         title,
         size: null,
         fill: null,
-        meta: 'The last download did not match what was published, so none of it was kept.',
+        meta: 'The last download didn’t match what was published, so none of it was kept.',
       }
     case 'not-downloaded':
       return {

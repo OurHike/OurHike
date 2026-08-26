@@ -174,7 +174,7 @@ describe('each entry carries everything the artifact holds', () => {
     expect(
       screen.getByText(/says this stops a hiker walking through/),
     ).toBeInTheDocument()
-    expect(screen.getAllByText(/did not report the trail itself blocked/)).toHaveLength(2)
+    expect(screen.getAllByText(/didn’t report the trail itself blocked/)).toHaveLength(2)
   })
 
   it('links every one of them back to ATC’s page', () => {
@@ -236,7 +236,7 @@ describe('and is honest about what it is not', () => {
   it('says it cannot tell, rather than inventing a date', () => {
     renderList({ reviewedAt: null })
 
-    expect(screen.getByText(/cannot tell when it last checked/)).toBeInTheDocument()
+    expect(screen.getByText(/can’t tell when it last checked/)).toBeInTheDocument()
   })
 })
 

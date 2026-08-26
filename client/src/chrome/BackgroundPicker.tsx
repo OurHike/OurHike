@@ -107,7 +107,7 @@ const OVERRIDE_NOTES: Record<BackgroundOverride, string> = {
  * remedy and a hiker staring at blank paper has no way to guess it.
  */
 const BELOW_ARCHIVE_NOTE =
-  'Your download starts closer in than this, so there is no background to draw at this zoom. Zoom in and it appears.'
+  'Your download starts closer in than this, so there’s no background to draw at this zoom. Zoom in and it appears.'
 
 export interface BackgroundPickerProps {
   value: BackgroundSource

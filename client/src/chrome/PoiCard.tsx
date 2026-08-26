@@ -1536,7 +1536,7 @@ export function PoiCard({
                             void reportCommunity(current.community!, 'person')
                           }
                         >
-                          Somebody in it did not agree to this
+                          Somebody in it didn’t agree to this
                         </button>
                         <button
                           type="button"

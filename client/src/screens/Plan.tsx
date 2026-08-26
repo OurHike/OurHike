@@ -1175,7 +1175,7 @@ function DayActions({
         </button>
       )}
       <button type="button" className="plan__action" onClick={onTogglePinned}>
-        {day.pinned ? 'Unpin this day' : 'Pin this day — it does not move'}
+        {day.pinned ? 'Unpin this day' : 'Pin this day — it doesn’t move'}
       </button>
       <button type="button" className="plan__action" onClick={onRemoveDay}>
         {day.zero ? 'Remove this zero' : 'Remove this day'}

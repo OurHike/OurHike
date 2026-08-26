@@ -516,8 +516,8 @@ export function Moderation({ onClose }: ModerationProps) {
 
   const REPORT_WORDS: Record<string, string> = {
     wrong_place: 'reported: not this place',
-    person: 'reported: somebody in it did not agree to this',
-    other: 'reported: should not be public',
+    person: 'reported: somebody in it didn’t agree to this',
+    other: 'reported: shouldn’t be public',
   }
 
   const photoRow = (photo: PoiPhotoQueueEntry) => (

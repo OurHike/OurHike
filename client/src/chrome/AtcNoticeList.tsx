@@ -135,10 +135,10 @@ export function AtcNoticeList({
                     a warning. */}
                 <p className="atc-notices__passability">
                   {!isReviewedByAPerson(update)
-                    ? 'OurHike has not checked this one yet — read the ATC’s page.'
+                    ? 'OurHike hasn’t checked this one yet — read the ATC’s page.'
                     : update.obstructs_trail
                       ? 'The ATC says this stops a hiker walking through.'
-                      : 'The ATC did not report the trail itself blocked here.'}
+                      : 'The ATC didn’t report the trail itself blocked here.'}
                 </p>
 
                 <p className="closure-sheet__meta">
@@ -178,7 +178,7 @@ export function AtcNoticeList({
           needs when something looks wrong. */}
       <p className="closure-sheet__age">
         {reviewedAt === null
-          ? 'OurHike cannot tell when it last checked ATC’s updates.'
+          ? 'OurHike can’t tell when it last checked ATC’s updates.'
           : `OurHike last checked ATC’s updates on ${longDate(reviewedAt)}.`}
       </p>
     </div>

@@ -256,7 +256,7 @@ describe('editing a day', () => {
 
     await user.click(screen.getByRole('button', { name: /Zero · Lost Mountain/ }))
     await user.click(
-      screen.getByRole('button', { name: 'Pin this day — it does not move' }),
+      screen.getByRole('button', { name: 'Pin this day — it doesn’t move' }),
     )
     expect(PROPS.onTogglePinned).toHaveBeenCalledWith(1)
   })

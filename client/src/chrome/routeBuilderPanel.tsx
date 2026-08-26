@@ -548,16 +548,28 @@ export function useRouteBuilderPanel({
   // ignored every climb (see RouteLegDisplay).
   const routeLegDisplays: RouteLegDisplay[] = useMemo(() => {
     if (routeDraft === null || routeDraft.phase !== 'editor') return []
-    return routeLegs(routeDraft.stops).map(({ from, to }) =>
-      elevation === null
-        ? {
-            distanceMi: Math.abs(to.mile - from.mile),
-            ascentFt: null,
-            descentFt: null,
-            minutes: null,
-          }
-        : legFigures(elevation, from.mile, to.mile, pace),
-    )
+    // Distance only, and the panel already renders that state: no profile
+    // downloaded, or a leg the DEM never measured (#1039). The second used
+    // to price the hole as flat ground and hand back a climb and a time that
+    // were both short, which is the direction that gets somebody caught out
+    // after dark - so it takes the same branch the missing profile does.
+    const unpriced = ({
+      from,
+      to,
+    }: {
+      from: { mile: number }
+      to: { mile: number }
+    }) => ({
+      distanceMi: Math.abs(to.mile - from.mile),
+      ascentFt: null,
+      descentFt: null,
+      minutes: null,
+    })
+    return routeLegs(routeDraft.stops).map((leg) => {
+      if (elevation === null) return unpriced(leg)
+      const figures = legFigures(elevation, leg.from.mile, leg.to.mile, pace)
+      return figures.unmeasuredMi > 0 ? unpriced(leg) : figures
+    })
   }, [routeDraft, elevation, pace])
 
   // Opening the builder is a map act: it lands on the trail tab with
@@ -961,6 +973,10 @@ export function useRouteBuilderPanel({
           onAddStop={handleAddStop}
           onUndo={routeDraft.history.length === 0 ? null : handleUndoRoute}
           refusedTap={editorRefusedTap}
+          // Which of the two reasons the legs carry no times (#1039): the
+          // panel cannot tell from the nulls, and the two send a hiker
+          // looking for different things.
+          unpriced={elevation === null ? 'no-profile' : 'unmeasured'}
           onBreakIntoDays={handleBreakIntoDays}
           onRecordWalked={handleRecordWalked}
           onClose={handleRouteCancel}

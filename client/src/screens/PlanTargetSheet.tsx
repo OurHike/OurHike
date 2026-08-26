@@ -101,7 +101,23 @@ export function PlanTargetSheet({
 
   // Planning by hours without a profile would price every climb at zero and
   // wear an honest ≈ while doing it - so hours are simply not offered then.
-  const hoursAvailable = elevation !== null
+  //
+  // A DEM HOLE IS THAT SAME FAULT ON A STRETCH (#1039), which is why it is
+  // the same refusal rather than a warning. Every edge of the planner's DP is
+  // priced by `legFigures(...).minutes`, so unmeasured ground inside the
+  // route understates the effort of any day crossing it - and the planner
+  // answers by making those days LONGER to reach the target. That is the
+  // wrong direction on the one control whose whole job is to keep a day
+  // walkable, and unlike a printed figure nobody would see it happen.
+  const routeMeasured = useMemo(() => {
+    if (elevation === null || route.length < 2) return false
+    const miles = route.map((stop) => stop.mile)
+    return (
+      legFigures(elevation, Math.min(...miles), Math.max(...miles)).unmeasuredMi === 0
+    )
+  }, [elevation, route])
+
+  const hoursAvailable = elevation !== null && routeMeasured
   const effectiveUnit = hoursAvailable ? unit : 'miles'
 
   const preview = useMemo(() => {
@@ -232,10 +248,16 @@ export function PlanTargetSheet({
             </div>
           )}
 
-          {!hoursAvailable && (
+          {elevation === null && (
             <p className="plan-target__note" role="note">
               Planning by hours needs the elevation profile, which this download
               doesn&rsquo;t carry - miles it is.
+            </p>
+          )}
+          {elevation !== null && !routeMeasured && (
+            <p className="plan-target__note" role="note">
+              Part of this stretch has no elevation measured, so an hours target would
+              quietly ask for longer days over it - miles it is.
             </p>
           )}
 

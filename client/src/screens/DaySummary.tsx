@@ -129,13 +129,25 @@ export function DaySummary({
 
       <p className="day-summary__figures">
         {formatDistance(distanceMi, units)}
-        {figures !== undefined && (
+        {figures !== undefined && figures.unmeasuredMi === 0 && (
           <>
             {' · '}
             {formatElevation(figures.ascentFt, units)} ↑{' · '}
             {/* Naismith, and it says so: an estimate for this stretch, not
                 a stopwatch on the hiker's day. */}
             {formatNaismithMinutes(figures.minutes)} walking
+          </>
+        )}
+        {/* A hole in the DEM prices as flat ground, so both figures above
+            would be understated - and this card is read after the walk, where
+            a wrong climb becomes what the hiker remembers doing (#1039). */}
+        {figures !== undefined && figures.unmeasuredMi > 0 && (
+          <>
+            {' · '}
+            <span className="day-summary__unmeasured">
+              no climb measured for{' '}
+              {formatDistance(figures.unmeasuredMi, units, 'trimmed')} of it
+            </span>
           </>
         )}
       </p>

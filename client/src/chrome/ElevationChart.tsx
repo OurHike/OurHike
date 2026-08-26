@@ -494,19 +494,33 @@ export function ElevationChart({
             </span>
             {figures !== null && liveSelection === null && (
               <>
-                <span className="elevation-chart__mono">
-                  ↑ {formatElevation(figures.ascentFt, units)}
-                </span>
-                <span className="elevation-chart__mono">
-                  ↓ {formatElevation(figures.descentFt, units)}
-                </span>
-                <span className="elevation-chart__mono elevation-chart__figure--strong">
-                  {figures.estimate.text} walking
-                </span>
-                {figures.estimate.relativeLine !== null && (
-                  <span className="elevation-chart__pace">
-                    {figures.estimate.relativeLine}
+                {/* A hole in the DEM prices as flat ground, so ascent,
+                    descent and the time it buys would all be short (#1039).
+                    The distance above is untouched by a hole and stays; the
+                    direction control below stays too, because it belongs to
+                    the selection rather than to these figures. */}
+                {figures.unmeasuredMi > 0 ? (
+                  <span className="elevation-chart__mono">
+                    no climb measured for{' '}
+                    {formatDistance(figures.unmeasuredMi, units, 'trimmed')} of this
                   </span>
+                ) : (
+                  <>
+                    <span className="elevation-chart__mono">
+                      ↑ {formatElevation(figures.ascentFt, units)}
+                    </span>
+                    <span className="elevation-chart__mono">
+                      ↓ {formatElevation(figures.descentFt, units)}
+                    </span>
+                    <span className="elevation-chart__mono elevation-chart__figure--strong">
+                      {figures.estimate.text} walking
+                    </span>
+                    {figures.estimate.relativeLine !== null && (
+                      <span className="elevation-chart__pace">
+                        {figures.estimate.relativeLine}
+                      </span>
+                    )}
+                  </>
                 )}
                 <button
                   type="button"

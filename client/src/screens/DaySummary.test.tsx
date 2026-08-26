@@ -101,6 +101,19 @@ describe('DaySummary', () => {
     expect(figures.textContent).not.toContain('moving')
   })
 
+  it('withholds the climb and the time where the DEM has a hole (#1039)', () => {
+    // Read after the walk, where a wrong climb becomes what the hiker
+    // remembers doing. A hole prices as flat, so both figures are short.
+    renderCard({ figures: { ...FIGURES, unmeasuredMi: 2.4 } })
+
+    const figures = screen.getByText(/9\.2 mi/)
+    expect(figures.textContent).toContain('no climb measured for')
+    expect(figures.textContent).not.toContain('3,400 ft')
+    expect(figures.textContent).not.toContain('walking')
+    // The distance is the one figure a hole cannot corrupt, and it stays.
+    expect(figures.textContent).toContain('9.2 mi')
+  })
+
   it('quotes the hiker their own milestone, and nothing about how they walked', async () => {
     mockedPhotos.mockResolvedValue(0)
     renderCard()

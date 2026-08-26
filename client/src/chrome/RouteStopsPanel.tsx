@@ -58,6 +58,15 @@ export interface RouteStopsPanelProps {
   onUndo: (() => void) | null
   /** The last trail tap was refused as too far off the corridor (#973). */
   refusedTap: boolean
+  /**
+   * Why the legs carry no times, when they carry none (#1039).
+   *
+   * The panel cannot tell from the nulls alone, and the two are different
+   * facts: this download has no profile at all, or it has one with a hole in
+   * the ground this route crosses. Saying the first when the second is true
+   * would send somebody looking for a download that is already there.
+   */
+  unpriced?: 'no-profile' | 'unmeasured'
   /** Carry this route into days - the plan flow (#756/#757). */
   onBreakIntoDays: () => void
   /** Keep this stretch as ground already walked (#789) - the same two ends,
@@ -72,6 +81,7 @@ export function RouteStopsPanel({
   legs,
   direction,
   units,
+  unpriced = 'no-profile',
   onEditStop,
   onAddStop,
   onUndo,
@@ -187,7 +197,9 @@ export function RouteStopsPanel({
         <div className="route-stops-bar">
           {totalMinutes === null && (
             <p className="route-stops-bar__note" role="note">
-              No elevation profile in this download &mdash; distance only.
+              {unpriced === 'unmeasured'
+                ? 'Part of this route has no elevation measured — distance only.'
+                : 'No elevation profile in this download — distance only.'}
             </p>
           )}
           <div className="route-stops-bar__row">

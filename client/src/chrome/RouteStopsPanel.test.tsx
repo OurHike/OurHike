@@ -84,6 +84,25 @@ describe('the editable route', () => {
     expect(screen.queryByText(/walking/)).toBeNull()
   })
 
+  it('says which of the two reasons it has no times (#1039)', () => {
+    // "No elevation profile in this download" would send somebody looking
+    // for a download they already have. A hole in the DEM is a different
+    // fact about a route that crosses it.
+    const bare = LEGS.map((leg) => ({
+      ...leg,
+      ascentFt: null,
+      descentFt: null,
+      minutes: null,
+    }))
+    render(<RouteStopsPanel {...PROPS} legs={bare} unpriced="unmeasured" />)
+
+    expect(screen.getByText(/no elevation measured/)).toBeInTheDocument()
+    expect(screen.queryByText(/No elevation profile in this download/)).toBeNull()
+    expect(screen.queryByText(/walking/)).toBeNull()
+    // The distance is untouched by a hole and stays.
+    expect(screen.getByText('NOBO · 32.5 mi')).toBeInTheDocument()
+  })
+
   it('wires editing, adding, breaking into days and closing', async () => {
     const user = userEvent.setup()
     render(<RouteStopsPanel {...PROPS} />)

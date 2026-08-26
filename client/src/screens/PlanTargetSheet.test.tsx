@@ -37,6 +37,17 @@ function flatProfile(): ElevationProfile {
   }
 }
 
+/** The same profile with miles 10-14 never measured by the DEM. */
+function holedProfile(): ElevationProfile {
+  const whole = flatProfile()
+  return {
+    ...whole,
+    elevationFt: Float32Array.from(whole.elevationFt, (feet, at) =>
+      whole.distanceMi[at] >= 10 && whole.distanceMi[at] <= 14 ? NaN : feet,
+    ),
+  }
+}
+
 const PROPS = {
   route: [{ mile: 0 }, { mile: 30 }],
   pois: POIS,
@@ -87,6 +98,28 @@ describe('the target and its unit', () => {
       'true',
     )
     expect(screen.getByText(/needs the elevation profile/)).toBeInTheDocument()
+  })
+
+  it('will not plan by hours over ground the DEM never measured (#1039)', () => {
+    // The same refusal as no profile at all, for the same reason stated one
+    // stretch down: a hole prices that stretch's climb at zero, so an hours
+    // target understates the effort of any day crossing it - and the planner
+    // answers by making those days LONGER. Wrong direction, on the one
+    // control whose job is keeping a day walkable, and invisible if allowed.
+    render(<PlanTargetSheet {...PROPS} elevation={holedProfile()} />)
+
+    expect(screen.getByRole('button', { name: 'Walking hours' })).toBeDisabled()
+    expect(screen.getByText(/no elevation measured/)).toBeInTheDocument()
+    // And it is a different sentence from the no-profile one, because it is
+    // a different fact about a different thing.
+    expect(screen.queryByText(/needs the elevation profile/)).toBeNull()
+  })
+
+  it('still plans by hours over a wholly measured route', () => {
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    expect(screen.getByRole('button', { name: 'Walking hours' })).not.toBeDisabled()
+    expect(screen.queryByText(/no elevation measured/)).toBeNull()
   })
 })
 

@@ -2295,6 +2295,12 @@
   color: var(--fg-2);
 }
 
+/* An honest unknown where the climb would be - quieter than the figure it
+   stands in for, because nothing is wrong with the day (#1039). */
+.day-summary__unmeasured {
+  color: var(--fg-3);
+}
+
 /* The one generated sentence. Warm, and a fact about the ground - never a
    remark about how the day went. */
 .day-summary__memory {

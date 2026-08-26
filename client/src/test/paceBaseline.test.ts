@@ -29,6 +29,21 @@ const ROOT = resolve(process.cwd(), 'src')
  * The files allowed to turn pace minutes into a string, and the file you are
  * reading.
  *
+ * THIS SCAN USED TO OPEN NOTHING (#1040). It skipped any file whose source
+ * did not contain the literal `paceMinutes`, on the reasoning that only a
+ * file touching the personal estimator could offend - but no screen calls
+ * `paceMinutes` by name. They call `legFigures(profile, from, to, pace)`,
+ * which calls it for them, and then format the result. Measured: of the
+ * seven files that call `formatNaismithMinutes`, exactly one mentioned
+ * `paceMinutes`, and that one is `lib/pace.ts` on the list below. The guard
+ * ran green over every file it was written to catch.
+ *
+ * So the filter is gone and the allowlist is the whole of the exemption. A
+ * file that formats a STANDARD time still has to justify itself here, which
+ * is right rather than incidental: a standard time on a surface the hiker's
+ * pace should reach is its own defect, and this list is where somebody has
+ * to say which it is.
+ *
  * `lib/pace.ts` is where the bundle is built. `lib/pace.test.ts` exercises the
  * pieces separately, which is its job. This file names both literals in order
  * to search for them, and flagged ITSELF on the first run - which is the
@@ -41,6 +56,10 @@ const MAY_FORMAT_PACE_MINUTES = [
   'lib/pace.ts',
   'lib/pace.test.ts',
   'test/paceBaseline.test.ts',
+  // Where the formatter is defined and exercised. Neither is a screen, and
+  // a scan that flagged the function's own home would be unanswerable.
+  'lib/naismith.ts',
+  'lib/naismith.test.ts',
 ]
 
 /** The escape hatch and its toll: `pace-baseline-exempt #N`, on the line. */
@@ -65,13 +84,21 @@ describe('the pace baseline standard', () => {
     for (const file of sourceFiles()) {
       const name = relative(ROOT, file)
       if (MAY_FORMAT_PACE_MINUTES.includes(name)) continue
+      // A test is not a screen. It may format whatever it needs to assert
+      // against, and several must in order to check the formatter's output.
+      if (/\.test\.tsx?$/.test(name)) continue
 
       const source = readFileSync(file, 'utf8')
-      // Only files that touch the personal estimator at all can offend.
-      if (!source.includes('paceMinutes')) continue
 
       source.split('\n').forEach((line, index) => {
         if (!line.includes('formatNaismithMinutes')) return
+        // An import is not a call. The rule is about what reaches a screen,
+        // and naming the function to use it elsewhere in the file is already
+        // caught by the line that uses it.
+        if (/^\s*import\b/.test(line) || /^\s*\}? from '/.test(line)) return
+        // A comment mentioning it is prose, and this repository's prose talks
+        // about its own functions constantly.
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return
         const excuse = EXEMPTION.exec(line)
         if (excuse === null) offenders.push(`${name}:${index + 1} — ${line.trim()}`)
         else excused.push(`${name} #${excuse[1]}`)
@@ -104,5 +131,18 @@ describe('the pace baseline standard', () => {
     expect(
       files.filter((f) => readFileSync(f, 'utf8').includes('paceMinutes')).length,
     ).toBeGreaterThan(0)
+
+    // AND that it reaches SCREENS, which is the failure that actually
+    // happened (#1040). Counting files on disk was never the weak link - the
+    // scan walked all of them and then skipped every one before reading a
+    // line, so both assertions above passed throughout. This counts what
+    // survives the skips instead: the working set the test above scans.
+    const inspected = files.filter((file) => {
+      const name = relative(ROOT, file)
+      return !MAY_FORMAT_PACE_MINUTES.includes(name) && !/\.test\.tsx?$/.test(name)
+    })
+    expect(inspected.length).toBeGreaterThan(50)
+    // A screen, specifically. The rule is about what a hiker reads.
+    expect(inspected.some((f) => relative(ROOT, f).endsWith('.tsx'))).toBe(true)
   })
 })

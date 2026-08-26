@@ -23,26 +23,14 @@
 //    a trip that is half-walked.
 
 import { nearestStopBeyond } from './dayPlanner'
-import { shiftDate, type HikePlan, type PlanDayMeta, type PlanStop } from './plan'
+import {
+  NEARO_MAX_MI,
+  shiftDate,
+  type HikePlan,
+  type PlanDayMeta,
+  type PlanStop,
+} from './plan'
 import type { StoredPoi } from './trailData'
-
-/**
- * How far a nearo is allowed to walk.
- *
- * @unvalidated 6 miles is picked, not measured. A nearo is understood on
- * this trail as a short day into or out of town - most of a rest, with a
- * couple of hours of walking in it - and six miles is the roundest number
- * inside every description of one I could find. Nobody has checked it
- * against what hikers actually walk on those days.
- *
- * What would settle it: the distribution of day lengths that hikers
- * themselves call nearos, which this app will start to have once #789's
- * recorded stretches and the day log accumulate. Until then the window errs
- * SHORT - a window too small falls back to a zero, which is a rest either
- * way, while one too large turns a rest day into an ordinary day of
- * walking and calls it a rest.
- */
-export const NEARO_MAX_MI = 6
 
 /**
  * The plan with its rhythm's rest days inserted.
@@ -105,13 +93,40 @@ export function applyRhythm(plan: HikePlan, pois: readonly StoredPoi[]): HikePla
 /**
  * Where a rest day ends.
  *
- * A zero ends where it started. A nearo walks to the first place to sleep
- * inside NEARO_MAX_MI, provided that place is short of the next boundary -
- * walking PAST tomorrow's stop would not be a rest, it would be tomorrow.
- * With nothing inside the window it is a zero, which is still a rest, and
- * the timeline shows a zero rather than claiming a nearo happened.
+ * A zero ends where it started. A nearo walks to a place to sleep inside
+ * NEARO_MAX_MI, provided that place is short of the next boundary - walking
+ * PAST tomorrow's stop would not be a rest, it would be tomorrow. With
+ * nothing inside the window it is a zero, which is still a rest, and the
+ * timeline shows a zero rather than claiming a nearo happened.
+ *
+ * THE CANDIDATE SET IS THE WINDOW, which it was not (#1040). This asked
+ * `nearestStopBeyond` for the stop nearest the window's far EDGE and then
+ * rejected it if it fell outside - and that function's contract, stated in
+ * its own docstring, is "nearest to the asked-for mile HOWEVER FAR". Right
+ * for its other callers, which show the real mile and let the hiker see the
+ * drift; wrong for a bounded window, because a shelter just past the edge
+ * out-competes every reachable one and then fails the bound.
+ *
+ * Measured on a boundary at mile 100 walking to 115: with one shelter at
+ * 104.5 the rest is a 4.5-mile nearo. Add a second at 106.4 - 0.4 mi outside
+ * the window, a place this hiker cannot use - and the nearo collapses to a
+ * zero at 100. A hiker's own standing instruction, overruled by a shelter
+ * they will never reach, silently.
+ *
+ * WHICH of the in-window stops wins is unchanged and is not obviously right:
+ * aiming at the far edge picks the LONGEST nearo the window allows, while
+ * this docstring used to say "the first place to sleep inside NEARO_MAX_MI"
+ * - the shortest. The two disagreed here for as long as both existed. Left
+ * as the code has always behaved rather than resolved in passing: it moves
+ * where hikers sleep, and plan.ts's own note that the window "errs SHORT"
+ * argues for the other one. Filed as #1053, with what would settle it.
+ *
+ * Exported for lib/cascade.ts (#1031), which re-places a rest against the
+ * boundaries a re-plan chose. A rest that was placed by one rule and moved
+ * by another would drift from the rhythm the hiker asked for, so both go
+ * through this one.
  */
-function restLanding(
+export function restLanding(
   kind: 'zero' | 'nearo',
   at: PlanStop,
   next: PlanStop | undefined,
@@ -122,9 +137,15 @@ function restLanding(
 
   const forward = next.mile > at.mile
   const window = at.mile + (forward ? NEARO_MAX_MI : -NEARO_MAX_MI)
-  const candidate = nearestStopBeyond(pois, at.mile, window)
+  // Only what a rest day could actually walk to. The bound has to be applied
+  // to the CANDIDATES, not to the winner - see the note above.
+  // Only what a rest day could actually walk to. The bound has to be applied
+  // to the CANDIDATES, not to the winner - see the note above.
+  const reachable = pois.filter(
+    (poi) => poi.mile !== undefined && Math.abs(poi.mile - at.mile) <= NEARO_MAX_MI,
+  )
+  const candidate = nearestStopBeyond(reachable, at.mile, window)
   if (candidate === null) return zero
-  if (Math.abs(candidate.mile - at.mile) > NEARO_MAX_MI) return zero
   if (forward ? candidate.mile >= next.mile : candidate.mile <= next.mile) return zero
 
   return {

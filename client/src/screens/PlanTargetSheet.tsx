@@ -28,8 +28,14 @@ import {
   type ViaStop,
 } from '../lib/dayPlanner'
 import type { ElevationProfile } from '../lib/elevationProfile'
-import { buildPlan, type HikePlan, type PlanTarget, type RestRhythm } from '../lib/plan'
-import { applyRhythm, NEARO_MAX_MI } from '../lib/restRhythm'
+import {
+  buildPlan,
+  NEARO_MAX_MI,
+  type HikePlan,
+  type PlanTarget,
+  type RestRhythm,
+} from '../lib/plan'
+import { applyRhythm } from '../lib/restRhythm'
 import { legFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -95,24 +101,87 @@ export function PlanTargetSheet({
 
   // Planning by hours without a profile would price every climb at zero and
   // wear an honest ≈ while doing it - so hours are simply not offered then.
-  const hoursAvailable = elevation !== null
+  //
+  // A DEM HOLE IS THAT SAME FAULT ON A STRETCH (#1039), which is why it is
+  // the same refusal rather than a warning. Every edge of the planner's DP is
+  // priced by `legFigures(...).minutes`, so unmeasured ground inside the
+  // route understates the effort of any day crossing it - and the planner
+  // answers by making those days LONGER to reach the target. That is the
+  // wrong direction on the one control whose whole job is to keep a day
+  // walkable, and unlike a printed figure nobody would see it happen.
+  const routeMeasured = useMemo(() => {
+    if (elevation === null || route.length < 2) return false
+    const miles = route.map((stop) => stop.mile)
+    return (
+      legFigures(elevation, Math.min(...miles), Math.max(...miles)).unmeasuredMi === 0
+    )
+  }, [elevation, route])
+
+  const hoursAvailable = elevation !== null && routeMeasured
   const effectiveUnit = hoursAvailable ? unit : 'miles'
 
+  /**
+   * What a stretch costs in walking hours, priced once per pair of stops.
+   *
+   * WHY A CACHE (#1040). The planner's DP asks this for every pair of stops
+   * within the day cap, and each answer walks every elevation sample between
+   * them - the profile is ~141,000 samples over the trail. Measured on this
+   * container, one recompute in hours mode: 13 ms over a 50-mile route,
+   * 19 ms over 200, 45 ms over 500, and 166 ms over the whole trail from
+   * 2,545 `legFigures` calls. That last is ten frames, per slider step, on
+   * hardware faster than any phone - the control stutters, and the stutter
+   * gets worse the longer the hike.
+   *
+   * The DP's question does not depend on the target: `effort(a, b)` is a
+   * property of the ground. So the same pairs are re-priced on every step of
+   * a slider that cannot change any of their answers. Caching by mile pair
+   * makes every step after the first nearly free, and the cache is thrown
+   * away when the profile or the pace changes - the only two things that can
+   * move an answer.
+   *
+   * Bounded by the DP itself: it asks about pairs within DEFAULT_CAP_MI, so
+   * the map holds thousands of numbers at most, not the square of the stops.
+   */
+  const effort = useMemo(() => {
+    if (elevation === null) return null
+    const profile = elevation
+    const priced = new Map<string, number>()
+    return (from: CandidateStop, to: CandidateStop) => {
+      const key = `${from.mile}:${to.mile}`
+      const known = priced.get(key)
+      if (known !== undefined) return known
+      const hours = legFigures(profile, from.mile, to.mile, pace).minutes / 60
+      priced.set(key, hours)
+      return hours
+    }
+  }, [elevation, pace])
+
   const preview = useMemo(() => {
-    if (effectiveUnit === 'hours') {
-      const profile = elevation as ElevationProfile
-      return planDaysVia(pois, route, hours, {
-        effort: (from: CandidateStop, to: CandidateStop) =>
-          legFigures(profile, from.mile, to.mile, pace).minutes / 60,
-      })
+    // `effort` rather than a closure built here, so `pace` reaches this. It
+    // was missing from these dependencies while the closure read it (#1040):
+    // a hiker who changed their pace with this sheet open kept planning at
+    // the old one, silently. Depending on the function makes that
+    // impossible - its identity moves when the pace does.
+    if (effectiveUnit === 'hours' && effort !== null) {
+      return planDaysVia(pois, route, hours, { effort })
     }
     return planDaysVia(pois, route, miles)
-  }, [pois, route, effectiveUnit, hours, miles, elevation])
+  }, [pois, route, effectiveUnit, hours, miles, effort])
 
-  const dayCount = preview === null ? 0 : Math.max(0, preview.length - 1)
-
-  const layOut = () => {
-    if (preview === null || dayCount === 0) return
+  /**
+   * The plan this sheet would actually lay out, built once and both counted
+   * and committed from - rather than counted from the generator's boundaries
+   * and built separately in the handler (#1040).
+   *
+   * The button used to print `preview.length - 1`, which is walking days
+   * only. `layOut` then ran `applyRhythm`, which inserts one more day per
+   * rest - so "Lay out 20 days" laid out 23, and that number is the only
+   * figure on the sheet. Building the plan here makes the count a fact
+   * about the plan rather than about one stage of making it, and removes
+   * the second copy of the pipeline that let the two drift.
+   */
+  const laidOut = useMemo(() => {
+    if (preview === null || preview.length < 2) return null
     const target: PlanTarget =
       effectiveUnit === 'hours' ? { walkingHours: hours } : { miles }
     const plan = buildPlan(
@@ -145,14 +214,15 @@ export function PlanTargetSheet({
     // The rhythm rides on the plan so a re-lay reproduces it, and is applied
     // last - rest days are inserted between boundaries the generator has
     // already chosen, never planned instead of them (#798).
-    onLayOut(
-      restEvery < 1
-        ? pinned
-        : applyRhythm(
-            { ...pinned, rhythm: { everyDays: restEvery, kind: restKind } },
-            pois,
-          ),
-    )
+    return restEvery < 1
+      ? pinned
+      : applyRhythm({ ...pinned, rhythm: { everyDays: restEvery, kind: restKind } }, pois)
+  }, [preview, effectiveUnit, hours, miles, startDate, route, restEvery, restKind, pois])
+
+  const dayCount = laidOut === null ? 0 : laidOut.days.length
+
+  const layOut = () => {
+    if (laidOut !== null) onLayOut(laidOut)
   }
 
   return (
@@ -226,10 +296,16 @@ export function PlanTargetSheet({
             </div>
           )}
 
-          {!hoursAvailable && (
+          {elevation === null && (
             <p className="plan-target__note" role="note">
               Planning by hours needs the elevation profile, which this download
               doesn&rsquo;t carry - miles it is.
+            </p>
+          )}
+          {elevation !== null && !routeMeasured && (
+            <p className="plan-target__note" role="note">
+              Part of this stretch has no elevation measured, so an hours target would
+              quietly ask for longer days over it - miles it is.
             </p>
           )}
 

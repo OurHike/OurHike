@@ -32,7 +32,7 @@
 // close.
 
 import type { DayHikeDraft, DraftStatus } from '../lib/dayHikeDraft'
-import { formatNaismithMinutes } from '../lib/naismith'
+import type { PaceEstimate } from '../lib/pace'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
 
@@ -42,9 +42,17 @@ export interface DayHikePickBarProps {
   units: UnitSystem
   /** Display name per source key, from the steward records. */
   orgLabel: (source: string | null) => string
-  /** Naismith minutes for the routed distance and its climb, or null when
-   *  there is no elevation profile to price the climb from. */
-  walkingMinutes: number | null
+  /**
+   * The routed walk's time WITH its baseline, or null when there is no
+   * elevation profile to price the climb from.
+   *
+   * A `PaceEstimate` rather than raw minutes (#1040): this bar priced its
+   * walk at the standard rule while the A.T. builder beside it used the
+   * hiker's own, and printed the figure with nothing saying which. Both
+   * halves are the same fix - the caller prices at the hiker's pace, and the
+   * pair travels together so the bar cannot show one without the other.
+   */
+  walking: PaceEstimate | null
   onUndo: () => void
   onCloseLoop: () => void
   onDone: () => void
@@ -53,15 +61,21 @@ export interface DayHikePickBarProps {
 }
 
 /**
- * lib/naismith.ts's own display rule, with the one word this surface adds.
+ * lib/pace.ts's already-formatted figure, with the one word this surface adds.
  *
  * Delegating rather than re-rounding is the point: the A.T. builder and this
  * one must print the same minutes the same way, and two copies of a rounding
- * rule is how they stop doing that without anybody deciding it.
+ * rule is how they stop doing that without anybody deciding it. `paceEstimate`
+ * has already applied naismith.ts's ≈ and five-minute step to `text`.
+ *
+ * A walk of no length still prints nothing. That guard predates the estimate
+ * and is kept: a zero or non-finite time is not a fact about the ground, it is
+ * a routing result that has not landed yet.
  */
-export function walkingTime(minutes: number | null): string | null {
-  if (minutes === null || !Number.isFinite(minutes) || minutes <= 0) return null
-  return `${formatNaismithMinutes(minutes)} walking`
+export function walkingTime(estimate: PaceEstimate | null): string | null {
+  if (estimate === null) return null
+  if (!Number.isFinite(estimate.minutes) || estimate.minutes <= 0) return null
+  return `${estimate.text} walking`
 }
 
 export function DayHikePickBar({
@@ -69,7 +83,7 @@ export function DayHikePickBar({
   status,
   units,
   orgLabel,
-  walkingMinutes,
+  walking,
   onUndo,
   onCloseLoop,
   onDone,
@@ -77,7 +91,7 @@ export function DayHikePickBar({
   canCloseLoop,
 }: DayHikePickBarProps) {
   const route = status.kind === 'routed' ? status.route : null
-  const time = walkingTime(walkingMinutes)
+  const time = walkingTime(walking)
 
   return (
     <div className="day-hike-bar" role="region" aria-label="Build a day hike">
@@ -110,6 +124,12 @@ export function DayHikePickBar({
             {formatDistance(route.miles, units)}
             {time !== null && <> · {time}</>}
           </p>
+          {/* Whose pace that time is, when it is not the standard one (#851).
+              Absent for a hiker who never moved a control, which is most of
+              them - the line has to keep its weight for the ones who did. */}
+          {time !== null && walking?.relativeLine != null && (
+            <p className="day-hike-bar__baseline">{walking.relativeLine}</p>
+          )}
           <ul className="day-hike-bar__orgs">
             {route.legsBySource.map((tally) => (
               <li key={tally.source ?? 'unattributed'} className="day-hike-bar__org">

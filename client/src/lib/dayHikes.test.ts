@@ -339,6 +339,32 @@ describe('the ledger a save writes, and the one it must never touch', () => {
     expect(state.dirty).not.toContain('b')
   })
 
+  it('never tombstones a hike this build simply could not read (#1040)', async () => {
+    // The failure this pins is total and silent: loadDayHikes drops a record
+    // a newer build wrote, the save diffed that against the RAW document,
+    // and the difference travelled as a delete - taking somebody's walk off
+    // the account and every other device. Nobody performed a delete; an
+    // older phone just could not parse one.
+    const future = {
+      id: 'from-a-newer-build',
+      name: 'Someone else’s walk',
+      date: null,
+      // A segment shape this build has no reader for.
+      segments: [[{ waypointRef: 'atlas:7', poiId: null }]],
+      figures: { miles: 9.1, legs: [] },
+      looped: false,
+      recorded: 'planned',
+    }
+    await idb.set(DAY_HIKES_KEY, { hikes: [hike('a'), future], openId: null })
+
+    // Any ordinary save, by a hiker who never touched the unreadable one.
+    await saveDayHikes(storeWith(hike('a')))
+
+    const state = await dayHikeSyncState()
+    expect(state.deleted).toEqual([])
+    expect(state.deleted).not.toContain('from-a-newer-build')
+  })
+
   it('never records a deletion off a read that came back empty', async () => {
     // The store was never written, so there is no before - and an absent
     // document must not read as "everything was deleted".

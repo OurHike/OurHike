@@ -25,6 +25,7 @@ import {
   nearestPointOnGraph,
   routeBetween,
   routeGeometry,
+  routeLines,
   routeThrough,
   type TrailGraph,
 } from './trailGraph'
@@ -401,6 +402,83 @@ describe('routeGeometry, which is what the casing draws', () => {
     expect(span(backward!)).toBeCloseTo(0.005, 5)
   })
 
+  it('draws an out-and-back over one edge rather than nothing (#1040)', () => {
+    // The defect: `route.edgeIndices` is deduplicated across leg joins, so
+    // walking out and back over one edge collapses to `[1]` - and the caller
+    // then handed routeGeometry the FIRST and LAST tap, which for a walk
+    // returning to its start are the same point. The edge got trimmed to a
+    // zero-length span and the whole drawing came back null, under a bar
+    // reading "1 leg · 0.6 mi · ≈12m walking".
+    const index = buildGraphIndex(DRAWN)
+    const out = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const turn = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    expect(out).not.toBeNull()
+    expect(turn).not.toBeNull()
+
+    const route = routeThrough(index, [out!, turn!, out!])
+    expect(route).not.toBeNull()
+    // The route itself was always right - it counts both directions.
+    expect(route!.edgeIndices).toEqual([1])
+    expect(route!.miles).toBeCloseTo(0.623, 2)
+
+    const naive = routeGeometry(index.graph, route!.edgeIndices, out!, out!)
+    expect(naive).toBeNull()
+
+    const lines = routeLines(index.graph, route!)
+    expect(lines).not.toBeNull()
+    // One line per leg: out, and back over the same ground.
+    expect(lines).toHaveLength(2)
+    const span = (line: Array<[number, number]>) =>
+      Math.abs(line[line.length - 1][0] - line[0][0])
+    expect(span(lines![0])).toBeCloseTo(0.006, 5)
+    expect(span(lines![1])).toBeCloseTo(0.006, 5)
+    // And drawn in opposite directions, which is what walking back is.
+    expect(lines![0][0]).toEqual(lines![1][lines![1].length - 1])
+  })
+
+  it('draws the ground walked twice, not just the span between the taps', () => {
+    // Out to 0.8, turn, stop at 0.5. The stretch from 0.5 to 0.8 is walked
+    // twice and was drawn zero times: the old call trimmed the deduplicated
+    // edge to the span between the first and last tap.
+    const index = buildGraphIndex(DRAWN)
+    const start = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const turn = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    const stop = nearestPointOnGraph(index, { lon: -74.085, lat: 41.25 })
+
+    const route = routeThrough(index, [start!, turn!, stop!])
+    expect(route).not.toBeNull()
+
+    const lines = routeLines(index.graph, route!)
+    expect(lines).toHaveLength(2)
+    // The far leg reaches the turnaround, which the single-call drawing
+    // never did. East is the larger longitude here, and the turnaround is
+    // the eastmost point of the walk.
+    const reached = Math.max(...lines!.flat().map(([lon]) => lon))
+    expect(reached).toBeCloseTo(-74.082, 3)
+    // The old call stopped at the last tap instead.
+    const naive = routeGeometry(index.graph, route!.edgeIndices, start!, stop!)
+    expect(Math.max(...naive!.flat().map(([lon]) => lon))).toBeCloseTo(-74.085, 3)
+  })
+
+  it('refuses the whole drawing when one leg cannot be drawn', () => {
+    // The same asymmetry routeGeometry states per edge, one level up: four
+    // legs of a five-leg walk is a picture that lies about the fifth.
+    const index = buildGraphIndex(DRAWN)
+    const a = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const b = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    const route = routeThrough(index, [a!, b!])
+    expect(route).not.toBeNull()
+
+    // Strip the geometry from the one edge the route uses.
+    const stripped = {
+      ...index.graph,
+      edges: index.graph.edges.map((edge, at) =>
+        at === route!.edgeIndices[0] ? { ...edge, geometry: undefined } : edge,
+      ),
+    }
+    expect(routeLines(stripped, route!)).toBeNull()
+  })
+
   it('refuses to draw chords when an edge has no geometry', () => {
     // GRAPH's edges carry no geometry at all - an older artifact. No drawing
     // beats drawing a straight line across a switchback.
@@ -488,14 +566,47 @@ describe('pricing the climb of a walk', () => {
     expect(route?.climb).toBeNull()
   })
 
-  it('counts a re-walked stretch once per pass, as its legs already do', () => {
+  it('counts a re-walked stretch once per pass, in the direction of each pass', () => {
     // The out-and-back half of #1002, applied to climb: walking edge 0 out
-    // and back is two passes of real ground and two passes of real ascent.
+    // and back is two passes of real ground - and the second pass climbs
+    // what the first descended, which is the half #1034 was about. This
+    // asserted `{ gainFt: 200, lossFt: 40 }` until then: two passes counted
+    // in the same direction, describing a walk that ends 200 ft above the
+    // trailhead it returns to.
     const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10] }))
     const there = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
     const andBack = routeThrough(priced, [pointOn(0, 0), pointOn(0, 1), pointOn(0, 0)])
+
     expect(there?.climb).toEqual({ gainFt: 100, lossFt: 20 })
-    expect(andBack?.climb).toEqual({ gainFt: 200, lossFt: 40 })
+    // Both passes of real ground: 100 + 20 up, 20 + 100 down.
+    expect(andBack?.climb).toEqual({ gainFt: 120, lossFt: 120 })
+  })
+
+  it('a walk that ends where it started gains exactly what it loses', () => {
+    // The invariant worth pinning rather than a pair of literals: it is
+    // arithmetic about the ground, true of every closed walk on every
+    // profile, and it is what the old behaviour broke visibly.
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: [70, 5] }))
+    const outAndBack = routeThrough(priced, [
+      pointOn(0, 0.25),
+      pointOn(1, 1),
+      pointOn(0, 0.25),
+    ])
+    expect(outAndBack?.climb).not.toBeNull()
+    expect(outAndBack?.climb?.gainFt).toBeCloseTo(outAndBack?.climb?.lossFt as number, 6)
+    expect(outAndBack?.climb?.gainFt).toBeGreaterThan(0)
+  })
+
+  it('walking an edge backwards climbs what walking it forwards descended', () => {
+    // The plainest statement of the defect. Edge 0 rises 500 ft from node 0
+    // to node 1, so walking 1 -> 0 is 500 ft of descent and no ascent - and
+    // the ascent figure is the only input the day-hike card's ≈time has.
+    const priced = buildGraphIndex(withClimb({ 0: [500, 0] }))
+    const uphill = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
+    const downhill = routeBetween(priced, pointOn(0, 1), pointOn(0, 0))
+
+    expect(uphill?.climb).toEqual({ gainFt: 500, lossFt: 0 })
+    expect(downhill?.climb).toEqual({ gainFt: 0, lossFt: 500 })
   })
 
   it('prices a closed loop over every edge the loop walks', () => {

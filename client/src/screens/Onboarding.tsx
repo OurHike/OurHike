@@ -44,8 +44,8 @@
 // and priced here and never configured - see SHEET_TABS.
 
 import { useState } from 'react'
-import { Logo } from '../design-system/components'
-import heroPhoto from '../design-system/assets/photos/first-run-hero.jpg'
+import logoIcon from '../design-system/assets/logo-icon.svg'
+import { pickHero } from '../lib/heroPhotos'
 import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingSteps'
 import type { HikingDetailLevel } from '../lib/userPreferences'
 import { HIKING_SHEET, offeredSheets, USGS_SHEET } from '../lib/packages'
@@ -174,6 +174,12 @@ export function Onboarding({
   // hiker backing through browser history, must not start a second transfer
   // (useArchiveDownloads dedups too - this is the cheap first line).
   const [downloadStarted, setDownloadStarted] = useState(false)
+
+  // Drawn once per first run, held in state so the backdrop does not
+  // reshuffle as the steps advance - the card remounts per step (keyed
+  // below); this component does not. lib/heroPhotos.ts is the pool and the
+  // reasoning; the credit rendered on the frame belongs to this draw.
+  const [hero] = useState(() => pickHero())
   // So a level this phone cannot hold is greyed before it is chosen, rather
   // than refused after the newcomer has committed to it (#555).
   const { bytes: availableBytes } = useAvailableBytes()
@@ -239,33 +245,53 @@ export function Onboarding({
 
   return (
     <main className="onboarding">
-      {/* The trail itself, behind the steps (#1054, maintainer's photo pick
-          2026-08-26). This REVERSES the #721-era rule that the map stays
-          visible behind first run - the reasoning for the change is in
-          onboarding.css's header, and test/entryLayout.test.ts records what
-          the contract became. The map screen still renders inert underneath
-          (that machinery is unchanged, and is why the map is warm the moment
-          the steps finish); the photo simply stands in front of it.
+      {/* The trail itself, behind the steps (#1054). This REVERSES the
+          #721-era rule that the map stays visible behind first run - the
+          reasoning is in onboarding.css's header, and test/entryLayout.test.ts
+          records what the contract became. The map screen still renders inert
+          underneath (that machinery is unchanged, and is why the map is warm
+          the moment the steps finish); the photo simply stands in front of it.
 
-          Wikimedia Commons: "Appalachian Trail to Angels Rest Cluster" by
-          WilderAddict, CC BY-SA 4.0
-          (commons.wikimedia.org/wiki/File:Appalachian_Trail_to_Angels_Rest_Cluster.jpg),
-          resized to 1170px for this build - the visible credit below is the
-          licence's condition, not decoration. Decorative to a screen reader:
-          the steps are the content, the photo is the room they are read in. */}
+          WHICH photo changed the same day it shipped: one fixed pick went to
+          the maintainer, came back "too bright green and too busy", and the
+          answer was the whole gallery - lib/heroPhotos.ts is the pool, the
+          licence bookkeeping, and the reasoning; the credit pill below
+          belongs to whichever photo this run drew. Decorative to a screen
+          reader either way: the steps are the content, the photo is the room
+          they are read in. */}
       <div className="onboarding__hero" aria-hidden="true">
-        <img className="onboarding__hero-image" src={heroPhoto} alt="" />
-        <p className="onboarding__hero-credit">WilderAddict · CC BY-SA 4.0</p>
+        <img className="onboarding__hero-image" src={hero.src} alt="" />
       </div>
 
-      {/* The lockup, over the photo's top edge on a gradient that fades to
-          nothing - a strip the picture can spare, never a scrim over the
-          whole of it. */}
+      {/* The lockup, on a solid plate rather than loose over the photo. It
+          began as ink on a fading gradient and the maintainer could not read
+          it ("the grey is too light... add a grey background to that area
+          and make the text white", 2026-08-26) - a fixed treatment cannot
+          chase seventeen possible backdrops, so the plate is opaque enough
+          to not care what loads behind it, the same trick the map's own
+          identity plate pulls over arbitrary terrain (chrome.css .map-plate).
+
+          The icon asset plus this file's own wordmark span, not <Logo />:
+          the component inks its wordmark var(--stone-900) inline, which is
+          unoverridable from a stylesheet and unreadable on a dark plate -
+          the same reason chrome/TabBar.tsx composes the mark itself, and
+          the same cost, recorded there: this is no longer the design
+          system's fixed-ratio lockup. */}
       <div className="onboarding__brand" aria-hidden="true">
-        <Logo />
+        <span className="onboarding__brand-lockup">
+          <img className="onboarding__brand-icon" src={logoIcon} alt="" />
+          <span className="onboarding__brand-wordmark">OurHike</span>
+        </span>
         <p className="onboarding__tagline">
           Hike your own hike, and keep the trail in good hands.
         </p>
+        {/* The photo's credit, at the plate's foot rather than loose on the
+            frame: a floating pill collided with the plate on a 390px phone
+            once the credits got as long as some of them are, and on the
+            plate it is legible over all seventeen possible backdrops. The
+            "Photo:" prefix keeps a photographer's name from reading as the
+            app's. */}
+        <p className="onboarding__hero-credit">Photo: {hero.credit}</p>
       </div>
 
       {/* Keyed by step, so React rebuilds this subtree when the step changes

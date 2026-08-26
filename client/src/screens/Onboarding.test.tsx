@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { Onboarding } from './Onboarding'
 import { ONBOARDING_STEPS } from '../lib/onboardingSteps'
 import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
+import { HERO_PHOTOS } from '../lib/heroPhotos'
 
 // WIREFRAMES.md §5, plus TESTING.md item 11 (first run).
 //
@@ -328,5 +329,31 @@ describe('Onboarding', () => {
     expect(PROPS.onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ hikingDetailLevel: 'standard' }),
     )
+  })
+})
+
+// --- The backdrop draw (#1054, lib/heroPhotos.ts) ---------------------------
+
+describe('the photo behind the steps', () => {
+  it('credits the photographer of whichever backdrop this run drew', () => {
+    // The pool is random per mount, so what is pinned is the contract, not
+    // the draw: some pool member's credit is on the plate, prefixed so the
+    // photographer's name cannot read as the app's.
+    render(<Onboarding {...PROPS} />)
+
+    const credit = screen.getByText(/^Photo: /)
+    expect(
+      HERO_PHOTOS.some((photo) => credit.textContent === `Photo: ${photo.credit}`),
+    ).toBe(true)
+  })
+
+  it('keeps the backdrop decorative to a screen reader', () => {
+    // The steps are the content; the photo is the room they are read in.
+    const { container } = render(<Onboarding {...PROPS} />)
+
+    const hero = container.querySelector('.onboarding__hero')
+    expect(hero).not.toBeNull()
+    expect(hero).toHaveAttribute('aria-hidden', 'true')
+    expect(hero?.querySelector('img')).toHaveAttribute('alt', '')
   })
 })

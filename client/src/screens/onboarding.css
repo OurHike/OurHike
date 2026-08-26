@@ -111,46 +111,64 @@
   object-fit: cover;
 }
 
-/* CC BY-SA 4.0's condition, visibly on the work it licenses. Small like the
-   map's own licence line (.map-attribution) and exempt from the 12px floor
-   for the same reason: legal small print, not trail prose. On a translucent
-   pine pill so it reads on whatever the photograph puts behind it. */
+/* The licence's credit, visibly on the work - at the plate's foot since the
+   plate exists (see .onboarding__brand): a floating pill collided with it on
+   narrow phones, and the plate is the one surface guaranteed legible over
+   every photo in the pool. Small like the map's own licence line
+   (.map-attribution) and exempt from the 12px floor for the same reason:
+   legal small print, not trail prose. */
 .onboarding__hero-credit {
-  position: absolute;
-  right: 8px;
-  top: max(8px, env(safe-area-inset-top, 0px));
-  margin: 0;
-  padding: 2px 8px;
+  margin: 10px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
-  color: var(--fg-chrome-2);
-  background: color-mix(in srgb, var(--bg-chrome) 55%, transparent);
-  border-radius: var(--radius-pill, 999px);
+  color: var(--fg-chrome-3);
 }
 
-/* The lockup over the photo's top edge (#1054): a gradient that FADES TO
-   NOTHING a third of the way down, so it is a strip the picture can spare
-   and never a scrim - the old rule's shape, kept under the new backdrop. On
+/* The lockup on a solid plate (#1054, revised the day it shipped). It was a
+   gradient scrim first, strengthened once, and the maintainer still could
+   not read the wordmark over the photograph - and now that the backdrop is
+   a random draw from seventeen photos (lib/heroPhotos.ts), no tuned-to-one-
+   picture treatment can be right. So the plate is opaque enough not to care
+   what loads behind it: the same answer the map's identity plate gives to
+   arbitrary terrain (chrome.css .map-plate), in the same chrome family. On
    the brand child, not on .onboarding, whose background-lessness is the
    contract entryLayout.test.ts pins. */
 .onboarding__brand {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: 22px 20px 48px;
-  padding-top: max(22px, env(safe-area-inset-top, 0px));
-  /* Holds to 88% past the tagline before letting go: the backdrop is a
-     photograph now, and sunlit foliage behind sage type was measured
-     unreadable on the first capture - the scrim is what the words stand on,
-     so it has to outlast them. */
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--bg-chrome) 88%, transparent) 0%,
-    color-mix(in srgb, var(--bg-chrome) 72%, transparent) 55%,
-    transparent 100%
-  );
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: 14px;
+  max-width: min(320px, calc(100% - 28px));
+  padding: 12px 16px 14px;
+  background: color-mix(in srgb, var(--bg-chrome) 94%, transparent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-raised, 0 6px 20px rgb(0 0 0 / 25%));
   pointer-events: none;
+}
+
+.onboarding__brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.onboarding__brand-icon {
+  width: 34px;
+  height: 34px;
+  /* The artwork's own 20/96 corner at this size. */
+  border-radius: 7px;
+}
+
+/* White on the plate - the ask, verbatim ("make the text white"), and what
+   --fg-chrome-1 already is on pine in both themes. Type mirrors the design
+   system's wordmark styling the way .tab-bar__brand-wordmark does, so the
+   two hand-rolled lockups cannot drift into different brands. */
+.onboarding__brand-wordmark {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--fg-chrome-1);
 }
 
 .onboarding__tagline {
@@ -158,7 +176,7 @@
   max-width: 26ch;
   font-size: 14px;
   line-height: 1.45;
-  color: var(--fg-chrome-1);
+  color: var(--fg-chrome-2);
 }
 
 .onboarding__progress {

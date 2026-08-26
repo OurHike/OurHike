@@ -278,3 +278,18 @@ class TestDownloadWithRetry:
         # them - each attempt truncates the .part rather than resuming it.
         assert dest.read_bytes() == b"osm-pbf-bytes"
         assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
+
+    def test_headers_ride_every_attempt(self, requests_mock, naps, tmp_path):
+        """The second caller (#1066): fetch_trail_water.py's NHD downloads
+        identify themselves with a User-Agent, and moving them onto this
+        retry must not cost USGS that courtesy - on the retry either."""
+        requests_mock.get(
+            self.PBF,
+            [{"status_code": 503}, {"content": b"osm-pbf-bytes"}],
+        )
+        dest = tmp_path / "new-york-latest.osm.pbf"
+
+        download_with_retry(self.PBF, dest, headers={"User-Agent": "OurHike-pipeline"}, sleep=naps.append)
+
+        sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
+        assert sent == ["OurHike-pipeline", "OurHike-pipeline"]

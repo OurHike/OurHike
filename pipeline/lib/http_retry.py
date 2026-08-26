@@ -140,11 +140,17 @@ def download_with_retry(
     timeout: int = 600,
     backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
     retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
+    headers: dict | None = None,
     chunk_bytes: int = 1 << 20,
     label: str | None = None,
     sleep=None,
 ) -> Path:
     """Stream a large file to `dest`, retrying the WHOLE transfer.
+
+    `headers` rides every attempt unchanged. It exists for the second caller
+    (#1066): fetch_trail_water.py's NHD downloads identify themselves with a
+    User-Agent, and moving them onto this retry must not cost USGS that
+    courtesy.
 
     THE FAULT THIS EXISTS FOR (#1063): a 600-second read timeout against
     download.geofabrik.de, ten minutes into a 3.5 GB state extract, which
@@ -191,7 +197,7 @@ def download_with_retry(
     try:
         for attempt, delay in enumerate((*backoff, None)):
             try:
-                with requests.get(url, stream=True, timeout=timeout) as response:
+                with requests.get(url, stream=True, timeout=timeout, headers=headers) as response:
                     if response.status_code in retryable_statuses and delay is not None:
                         wait = retry_after_seconds(response) or delay
                         print(

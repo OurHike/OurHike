@@ -18,73 +18,16 @@
 // inclusive direction that question already leans.
 import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
+import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
 
 const title = 'OurHike — The whole Appalachian Trail, offline'
 const description =
   'A free, open-source offline map of the Appalachian Trail: topo, water, shelters and elevation, working with no bars and no data plan.'
 
-// Every organization whose trail/path LINE geometry OurHike ships to a
-// hiker's phone today - not water points, not conditions, not photo
-// credit-only sources. Read from pipeline/sources.json 2026-08-26: the
-// `reaches_hikers: true` entries whose export carries trail geometry rather
-// than points -  `centerline` + `side_trails` (ATC), `oprhp_trails`,
-// `nynjtc_long_path` + `nynjtc_highlands_trail` (one organization, two
-// layers), `mohonk_trails`, `dec_hiking_trails`. Update this list, and the
-// count it produces below, if that roster changes.
-//
-// Each carries two candidate lines rather than one - both written, both
-// shipped, rather than picking a favorite - so the rotation still varies
-// even while sitting on one organization's turn.
-//
-// `lat`/`lon` are each organization's approximate headquarters or main
-// office, from public knowledge rather than a geocoder - not surveyed, never
-// rendered, and used for exactly one thing client-side: a rough sort of
-// these five organizations by estimated distance from the visitor. Precision
-// here would be spurious - the point is "which club is roughly closest", not
-// a real distance.
-const ORGS = [
-  {
-    lines: [
-      'The whole Appalachian Trail, offline.',
-      '2,197 miles of Appalachian Trail. Zero bars required.',
-    ],
-    lat: 39.3253,
-    lon: -77.7386, // ATC, Harpers Ferry, WV
-  },
-  {
-    lines: [
-      'All of the NY-NJ Trail Conference’s trails, in your pocket.',
-      'Every mile the NY-NJ Trail Conference blazes, yours to download.',
-    ],
-    lat: 41.0898,
-    lon: -74.1447, // NYNJTC, Mahwah, NJ
-  },
-  {
-    lines: [
-      'Every trail NY State Parks maintains, offline in your pocket.',
-      'All of NY State Parks’ trails. None of the parking-lot wifi.',
-    ],
-    lat: 42.6525,
-    lon: -73.7572, // NYS OPRHP, Albany, NY
-  },
-  {
-    lines: [
-      'The Shawangunks’ cliffs and carriage roads, mapped by Mohonk Preserve.',
-      'Mohonk Preserve’s trails, minus the gift-shop line.',
-    ],
-    lat: 41.7626,
-    lon: -74.1071, // Mohonk Preserve, Gardiner, NY
-  },
-  {
-    lines: [
-      'Catskills to Adirondacks: every trail NYS DEC blazes.',
-      'All of DEC’s hiking trails, no ranger station required.',
-    ],
-    lat: 42.6551,
-    lon: -73.7472, // NYS DEC, Albany, NY
-  },
-]
-const ORG_COUNT_LINE = `${ORGS.length} organizations sharing all their trails and paths`
+// The organization roster and its copy live in lib/heroOrgs.mjs, imported
+// rather than inlined here, so heroOrgs.test.mjs can hold the rotation to
+// "every organization's lines show up" without needing to render this page.
+const ORG_COUNT_LINE = orgCountLine(ORGS)
 ---
 
 <Base title={title} description={description}>

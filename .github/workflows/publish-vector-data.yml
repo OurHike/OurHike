@@ -48,11 +48,11 @@ on:
         type: boolean
         default: true
       include_osm_water:
-        description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min). Untick to publish with opentrail's water alone."
+        description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min; a cached scan whose receipt verifies is reused without re-fetching). Untick to publish with opentrail's water alone."
         type: boolean
         default: true
       include_trail_water:
-        description: "Derive trail crossings and reachable site water (adds ~5.7 GB of USGS subregions / ~30 min). Untick to reuse the last run's."
+        description: "Derive trail crossings and reachable site water (~5.7 GB of USGS subregions / ~30 min, plus the ~3.5 GB OSM extracts when this run has not already fetched them). Untick to reuse the last run's."
         type: boolean
         default: false
       regenerate_identity_ledger:
@@ -411,6 +411,11 @@ jobs:
       # last ticked run found, the same way photos ride the cache between
       # runs. Untick to skip the download; export_poi.py ships opentrail's
       # points alone, as every release before this source did.
+      #
+      # A ticked run whose cache already restored a receipted scan skips the
+      # download too - the script's own early-out (#1065), added after run
+      # 33005545820 re-downloaded 3.5 GB to recompute a file the restore had
+      # just reported present, and lost a production publish doing it.
       - name: Fetch OSM water points
         if: inputs.include_osm_water
         run: python fetch_osm_water.py
@@ -455,6 +460,11 @@ jobs:
       # than none, exactly as the photo fetches behave. Its elevation cache
       # rides along too, so a re-run after a threshold change pays for the
       # hydrography and not for several hundred more EPQS round trips.
+      #
+      # It fetches the OSM state extracts itself when they are not on disk
+      # (#1066): they are its stream input as much as the step above's, and
+      # run 33009118830 - this input ticked, include_osm_water unticked -
+      # died two minutes in on their absence and lost a production publish.
       - name: Derive trail water
         if: inputs.include_trail_water
         run: python fetch_trail_water.py

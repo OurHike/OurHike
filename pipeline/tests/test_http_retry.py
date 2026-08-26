@@ -20,6 +20,7 @@ from lib.http_retry import (
     DEFAULT_BACKOFF_SECONDS,
     DEFAULT_RETRYABLE_STATUSES,
     MAX_RETRY_AFTER_SECONDS,
+    download_with_retry,
     request_with_retry,
     retry_after_seconds,
 )
@@ -157,3 +158,130 @@ class TestItSaysWhatItIsDoing:
         assert "TNM cell -84.73,34.20" in printed
         assert "504" in printed
         assert "1/3" in printed
+
+
+class StreamedResponse:
+    """A response whose BODY can fail, which requests_mock cannot stage: the
+    faults download_with_retry exists for land inside iter_content, after the
+    request call already returned (#1063)."""
+
+    def __init__(self, *, status=200, chunks=(b"",), fail_after=None):
+        self.status_code = status
+        self.headers = {}
+        self._chunks = chunks
+        self._fail_after = fail_after
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def iter_content(self, chunk_size):
+        for index, chunk in enumerate(self._chunks):
+            if index == self._fail_after:
+                raise requests.exceptions.ChunkedEncodingError("connection reset mid-body")
+            yield chunk
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(str(self.status_code))
+
+
+class ScriptedSession:
+    """One scripted answer per attempt - a response, or an exception to raise
+    from the request call itself (a handshake that never completed)."""
+
+    def __init__(self, script):
+        self.script = list(script)
+
+    def request(self, method, url, **kwargs):
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+class TestDownloadWithRetry:
+    def test_the_reset_that_killed_run_33005545820_is_survived(self, tmp_path, naps):
+        """Attempt 1 of that run: ConnectionResetError mid-body on the seventh
+        state extract, ~1.7 GB in. The transfer should have been re-pulled -
+        the same mirror served the file whole on the next day's run."""
+        dest = tmp_path / "pennsylvania-latest.osm.pbf"
+        session = ScriptedSession(
+            [
+                StreamedResponse(chunks=(b"first-", b"half"), fail_after=1),
+                StreamedResponse(chunks=(b"whole-", b"file")),
+            ]
+        )
+
+        result = download_with_retry("https://geofabrik.example/pa.pbf", dest, session=session, sleep=naps.append)
+
+        assert result == dest
+        assert dest.read_bytes() == b"whole-file"
+        assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
+        assert not dest.with_suffix(".part").exists()
+
+    def test_a_handshake_that_never_completed_is_retried(self, tmp_path, naps):
+        """Attempt 2 of the same run: the TLS handshake timed out and surfaced
+        as a ReadTimeout before any byte arrived."""
+        dest = tmp_path / "north-carolina-latest.osm.pbf"
+        session = ScriptedSession(
+            [
+                requests.exceptions.ReadTimeout("Read timed out. (read timeout=600)"),
+                StreamedResponse(chunks=(b"extract",)),
+            ]
+        )
+
+        download_with_retry("https://geofabrik.example/nc.pbf", dest, session=session, sleep=naps.append)
+
+        assert dest.read_bytes() == b"extract"
+        assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
+
+    def test_the_budget_spent_leaves_no_file_at_all(self, tmp_path, naps):
+        """dest is only ever a completed transfer: a caller that finds it on
+        disk must be able to trust it, so a spent budget leaves neither dest
+        nor a .part for skip-if-present to mistake for one."""
+        dest = tmp_path / "vermont-latest.osm.pbf"
+        session = ScriptedSession(
+            [StreamedResponse(chunks=(b"x",), fail_after=0) for _ in range(len(DEFAULT_BACKOFF_SECONDS) + 1)]
+        )
+
+        with pytest.raises(requests.exceptions.ChunkedEncodingError):
+            download_with_retry("https://geofabrik.example/vt.pbf", dest, session=session, sleep=naps.append)
+
+        assert not dest.exists()
+        assert not dest.with_suffix(".part").exists()
+        assert naps == list(DEFAULT_BACKOFF_SECONDS)
+
+    def test_a_retryable_status_waits_and_asks_again(self, tmp_path, naps):
+        dest = tmp_path / "maine-latest.osm.pbf"
+        session = ScriptedSession([StreamedResponse(status=503), StreamedResponse(chunks=(b"data",))])
+
+        download_with_retry("https://geofabrik.example/me.pbf", dest, session=session, sleep=naps.append)
+
+        assert dest.read_bytes() == b"data"
+        assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
+
+    def test_a_refusal_raises_immediately_and_writes_nothing(self, tmp_path, naps):
+        dest = tmp_path / "georgia-latest.osm.pbf"
+        session = ScriptedSession([StreamedResponse(status=404)])
+
+        with pytest.raises(requests.HTTPError):
+            download_with_retry("https://geofabrik.example/ga.pbf", dest, session=session, sleep=naps.append)
+
+        assert naps == []
+        assert not dest.exists()
+
+    def test_an_orphaned_part_is_truncated_never_resumed(self, tmp_path, naps):
+        """#1063's own scoping: no Range resume. Against a source that
+        republishes daily, a resume straddling a republish would splice two
+        different files into one archive - so a stale .part is overwritten,
+        never appended to."""
+        dest = tmp_path / "georgia-latest.osm.pbf"
+        dest.with_suffix(".part").write_bytes(b"stale-half-of-yesterdays-file")
+        session = ScriptedSession([StreamedResponse(chunks=(b"fresh",))])
+
+        download_with_retry("https://geofabrik.example/ga.pbf", dest, session=session, sleep=naps.append)
+
+        assert dest.read_bytes() == b"fresh"

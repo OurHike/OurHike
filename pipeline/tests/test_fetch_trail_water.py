@@ -714,3 +714,39 @@ def test_a_review_only_organizations_lines_get_no_crossings(tmp_path, monkeypatc
         con.close()
 
     assert crossings == []
+
+
+# --- fetching its own input (#1066) ----------------------------------------
+
+
+def test_missing_extracts_are_fetched_rather_than_instructed_about(tmp_path, monkeypatch):
+    """#1066: run 33009118830 ticked include_trail_water without
+    include_osm_water and died two minutes in on a FileNotFoundError telling
+    a human to run another script - dead advice mid-CI. The missing extracts
+    are this derivation's input, so it fetches them itself."""
+    monkeypatch.setattr(trail_water, "AT_STATES", ["georgia", "vermont", "maine"])
+    monkeypatch.setattr(trail_water, "OSM_RAW_DIR", tmp_path)
+    (tmp_path / "georgia-latest.osm.pbf").write_bytes(b"present")
+    (tmp_path / "maine-latest.osm.pbf").write_bytes(b"present")
+
+    fetched = []
+    monkeypatch.setattr(trail_water, "fetch_states", lambda states, dest: fetched.append((states, dest)))
+
+    trail_water.ensure_state_extracts()
+
+    assert fetched == [(["vermont"], tmp_path)]
+
+
+def test_extracts_already_on_disk_cost_nothing(tmp_path, monkeypatch):
+    """The run where the OSM water step already downloaded them - the normal
+    ticked-both dispatch - pays one stat call per state, no network."""
+    monkeypatch.setattr(trail_water, "AT_STATES", ["georgia"])
+    monkeypatch.setattr(trail_water, "OSM_RAW_DIR", tmp_path)
+    (tmp_path / "georgia-latest.osm.pbf").write_bytes(b"present")
+
+    def boom(*args, **kwargs):
+        raise AssertionError("nothing was missing, so nothing may be fetched")
+
+    monkeypatch.setattr(trail_water, "fetch_states", boom)
+
+    trail_water.ensure_state_extracts()

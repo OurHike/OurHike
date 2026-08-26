@@ -40,11 +40,11 @@ import subprocess
 from pathlib import Path
 
 import duckdb
-import requests
 from pmtiles.reader import all_tiles
 from shapely.geometry import shape
 
 from lib.corridor import build_corridor
+from lib.http_retry import download_with_retry
 from lib.poly import clip_shape, to_poly
 
 ROOT = Path(__file__).parent
@@ -100,13 +100,14 @@ def fetch_states(states: list[str], dest_dir: Path, refetch: bool = False) -> li
             print(f"  {state}: already present ({dest.stat().st_size / 1e6:.0f} MB), skipping")
             continue
         print(f"  {state}: fetching {url}")
-        with requests.get(url, stream=True, timeout=600) as resp:
-            resp.raise_for_status()
-            tmp = dest.with_suffix(".part")
-            with open(tmp, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1 << 20):
-                    f.write(chunk)
-            tmp.rename(dest)
+        # Retried whole rather than resumed, and streamed to a .part that only
+        # a completed transfer renames into place - download_with_retry's
+        # docstring holds the reasoning, and #1063 the failure that demanded
+        # it: one mid-body connection reset from Geofabrik ended an entire
+        # production publish, twice in one evening. The granularity is right
+        # because this loop already persists per state - a retry re-pulls one
+        # extract, never the fourteen.
+        download_with_retry(url, dest, timeout=600, label=state)
         print(f"  {state}: {dest.stat().st_size / 1e6:.0f} MB")
     return paths
 

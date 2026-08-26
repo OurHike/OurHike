@@ -37,7 +37,9 @@ given caller should be.
 
 from __future__ import annotations
 
+import os
 import time
+from pathlib import Path
 
 import requests
 
@@ -128,5 +130,79 @@ def request_with_retry(
         if throttle_seconds:
             sleep(throttle_seconds)
         return response
+
+    raise AssertionError("unreachable")
+
+
+def download_with_retry(
+    url: str,
+    dest: Path,
+    *,
+    session: requests.Session | None = None,
+    timeout: int = 600,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
+    headers: dict | None = None,
+    chunk_bytes: int = 1 << 20,
+    label: str | None = None,
+    sleep=None,
+) -> Path:
+    """One large download, streamed to `dest` and retried whole on the same
+    faults `request_with_retry` retries.
+
+    Why `request_with_retry` cannot do this job (#1063): it wraps the request
+    call, and on a multi-gigabyte body the fault usually lands MID-STREAM,
+    inside `iter_content`, after `requests.get` has already returned - the
+    `ConnectionResetError` that killed run 33005545820 attempt 1 arrived
+    mid-body on the seventh state extract. So the retry here wraps the whole
+    transfer, headers to last byte.
+
+    Each attempt streams to `dest.with_suffix(".part")` and only a completed
+    transfer is renamed into place, so `dest` is never half-written - a caller
+    that finds it on disk is holding a file some finished transfer produced.
+    Opening the `.part` with "wb" also truncates any orphan a killed process
+    left behind, which is the only cleanup that file needs on the happy path;
+    the failure paths unlink it rather than leaving dead weight.
+
+    Deliberately no HTTP Range resume, per #1063's own scoping: it would turn
+    a retry from "re-pull one file" into "finish one file", but it depends on
+    the server honouring `Range` and on detecting when it silently does not -
+    and against a source like Geofabrik that republishes daily, a resume that
+    straddles a republish would splice two different files into one. A
+    half-resumed archive is a worse failure than a slow one.
+    """
+    if sleep is None:
+        sleep = time.sleep
+    requester = session or requests
+    attempts = len(backoff) + 1
+    name = label or url
+    tmp = dest.with_suffix(".part")
+
+    for attempt, delay in enumerate((*backoff, None)):
+        try:
+            with requester.request("get", url, stream=True, timeout=timeout, headers=headers) as response:
+                if response.status_code in retryable_statuses and delay is not None:
+                    wait = retry_after_seconds(response) or delay
+                    print(f"  {name} answered {response.status_code} on attempt {attempt + 1}/{attempts}, retrying in {wait}s")
+                    sleep(wait)
+                    continue
+                try:
+                    response.raise_for_status()
+                except requests.HTTPError:
+                    tmp.unlink(missing_ok=True)
+                    raise
+                with open(tmp, "wb") as handle:
+                    for chunk in response.iter_content(chunk_size=chunk_bytes):
+                        handle.write(chunk)
+        except TRANSIENT_EXCEPTIONS as error:
+            if delay is None:
+                tmp.unlink(missing_ok=True)
+                raise
+            print(f"  {name}: {type(error).__name__} on attempt {attempt + 1}/{attempts}, retrying in {delay}s")
+            sleep(delay)
+            continue
+
+        os.replace(tmp, dest)
+        return dest
 
     raise AssertionError("unreachable")

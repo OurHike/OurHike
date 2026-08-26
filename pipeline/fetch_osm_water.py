@@ -30,7 +30,12 @@ Fetching is skip-if-present rather than conditional-request change-aware,
 exactly as export_basemap.py's docstring reasons: Geofabrik republishes
 state extracts daily, so "has it changed" is always "yes" and an ETag check
 buys nothing. --refetch forces current extracts; CI runners start empty
-anyway. That is also why this source has no check_freshness.py entry - a
+anyway. Since #1065 skip-if-present covers the OUTPUT too: a scan already
+on disk whose fetch receipt verifies is reused rather than re-derived,
+because the run most likely to hold one is the retry of a failed publish,
+and re-paying the 3.5 GB of extracts to recompute a held file is what lost
+run 33005545820. --refetch forces that too.
+That is also why this source has no check_freshness.py entry - a
 source whose upstream moves daily by definition would report "changed" at
 every check, which is noise, not freshness. What guards the output instead
 is the drop-ratio gate below, the same shape fetch_opentrail.py uses.
@@ -186,6 +191,32 @@ def main(argv: list[str] | None = None) -> int:
         help="Geofabrik state names (default: the 14 AT states)",
     )
     args = parser.parse_args(argv)
+
+    # An output already on disk, standing behind a verifying receipt, is not
+    # re-derived (#1065). Run 33005545820 attempt 2 measured why: the scan
+    # output rode the Actions cache back onto the runner, and this script
+    # re-downloaded the 3.5 GB of extracts anyway - solely to recompute a
+    # file it held - and the production publish died with the download.
+    #
+    # The receipt is the condition, not a nicety. A copy the workflow
+    # restored from the published bucket carries no receipt, and reusing it
+    # here would leave check_output_quality's `--fetched fetch_osm_water`
+    # failing on the absence - rightly, since no finished fetch stands
+    # behind that copy. So a receiptless or drifted copy still gets a real
+    # fetch, and the skip path records NO new receipt: writing one would
+    # claim a fetch that never happened, and the standing receipt already
+    # describes the file, age and all.
+    if not args.refetch and OUT_PATH.exists():
+        receipt = fetch_receipts.load("fetch_osm_water")
+        if receipt is not None and not fetch_receipts.verify(receipt):
+            days = fetch_receipts.age_days(receipt)
+            age = "of unknown age" if days is None else f"{days:.1f} days old"
+            print(
+                f"{OUT_PATH.name} is already on disk ({existing_feature_count(OUT_PATH)} features, "
+                f"{age}) and its receipt verifies - skipping the ~3.5 GB extract fetch. "
+                "--refetch forces a fresh scan."
+            )
+            return 0
 
     print(f"Fetching {len(args.states)} state extracts into {OSM_RAW_DIR} ...")
     paths = fetch_states(args.states, OSM_RAW_DIR, refetch=args.refetch)

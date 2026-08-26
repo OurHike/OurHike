@@ -136,9 +136,10 @@ import duckdb
 import requests
 
 from build_water_distance import fetch_atc_features
-from export_basemap import AT_STATES, OSM_RAW_DIR
+from export_basemap import AT_STATES, OSM_RAW_DIR, fetch_states
 from lib import fetch_receipts
 from lib.corridor import count_features
+from lib.http_retry import download_with_retry
 from lib.source_registry import load_registry
 
 ROOT = Path(__file__).parent
@@ -601,6 +602,30 @@ def state_site_candidates(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict
     return candidates
 
 
+def ensure_state_extracts() -> None:
+    """Fetch whichever of the fourteen OSM state extracts are not on disk.
+
+    The extracts are this derivation's input, and until #1066 the loop below
+    answered their absence with an instruction to go run another script -
+    reasonable at a keyboard, dead in CI, where nobody can intervene mid-run.
+    Run 33009118830 measured the cost: a production dispatch that ticked
+    include_trail_water without include_osm_water reached the old
+    FileNotFoundError two minutes in on a fresh runner, and the whole publish
+    died with it. This was the recovery path #1063's Geofabrik outage pointed
+    operators at, so the failure sat exactly where a retry was most likely.
+
+    fetch_states skips extracts already present, so on a run where the OSM
+    water step downloaded them this costs one stat call per state. When it
+    does download, the cost is the ~3.5 GB the workflow's input description
+    now owns up to - the extracts are the input either way, and the only
+    question is whether the run says so up front or fails an hour in.
+    """
+    missing = [state for state in AT_STATES if not (OSM_RAW_DIR / f"{state}-latest.osm.pbf").exists()]
+    if missing:
+        print(f"  fetching {len(missing)} OSM state extracts not on disk ...", flush=True)
+        fetch_states(missing, OSM_RAW_DIR)
+
+
 def collect_streams(sites: list[dict]) -> tuple[list[dict], dict[str, list[dict]]]:
     """Walk both hydrographies once, collecting crossings and site candidates.
 
@@ -610,6 +635,7 @@ def collect_streams(sites: list[dict]) -> tuple[list[dict], dict[str, list[dict]
     downloaded, read and deleted in the same loop, so the peak cost on disk
     is one 270 MB archive rather than 3.1 GB of them.
     """
+    ensure_state_extracts()
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     network_lines = build_routes(con)
@@ -659,11 +685,11 @@ def fetch_nhd_subregion(huc4: str) -> Path:
     NHD_TMP_DIR.mkdir(parents=True, exist_ok=True)
     archive = NHD_TMP_DIR / f"NHD_H_{huc4}_HU4_GPKG.zip"
     url = NHD_GPKG_URL.format(huc4=huc4)
-    with requests.get(url, stream=True, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as response:
-        response.raise_for_status()
-        with open(archive, "wb") as handle:
-            for chunk in response.iter_content(chunk_size=1 << 20):
-                handle.write(chunk)
+    # The same mid-stream faults #1063 measured against Geofabrik, and a
+    # worse blast radius: collect_streams deletes each GeoPackage after
+    # reading it, so an unretried fault on subregion twenty re-pays the
+    # nineteen before it (#1066).
+    download_with_retry(url, archive, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, label=f"nhd/{huc4}")
     with zipfile.ZipFile(archive) as bundle:
         names = [name for name in bundle.namelist() if name.endswith(".gpkg")]
         if not names:

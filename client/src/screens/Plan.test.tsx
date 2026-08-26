@@ -165,7 +165,7 @@ describe('the timeline', () => {
     // one. Read off the style attribute, since jsdom does no layout.
     const heights = Array.from(
       container.querySelectorAll<HTMLButtonElement>('.plan__day:not(.plan__day--zero)'),
-    ).map((row) => Number.parseInt(row.style.height, 10))
+    ).map((row) => Number.parseInt(row.style.minHeight, 10))
     expect(heights[1]).toBeGreaterThan(heights[0])
   })
 

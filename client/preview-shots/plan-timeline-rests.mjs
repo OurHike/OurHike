@@ -22,13 +22,14 @@
 // empty VITE_DATA_BASE_URL (#1024), so the rows here print distance and the
 // badge and nothing priced. That is the whole of what this change touches.
 //
-// AND THE BADGE THAT SURVIVES IS CLIPPED IN THIS SHOT, which is a second
-// defect rather than a flaw in the fixture: `.plan__day` sets an exact
-// height and hides its overflow, so a row whose title wraps to two lines
-// cuts its bottom line off - measured here at 3 of 13 px. That is #1032, and
-// it is not fixed on this branch. Read the shot for the ABSENCE on the
-// 12.8-mile row, which is what this recipe is for; the sliver on the
-// 4.2-mile row is #1032 showing through.
+// THE SURVIVING BADGE IS NOW LEGIBLE, which it was not when this recipe was
+// written: `.plan__day` set an exact height over hidden overflow, so a row
+// whose title wrapped to two lines cut its bottom line off and rendered
+// "nearo · your rest day" as 3 px of a 13 px line - on precisely the short
+// days that are nearos. Fixed on this branch as #1032, measured in the same
+// frame: every row's overflow is 0 and the badge reads 13 of 13 px. So this
+// one shot is evidence for both halves - the ABSENCE on the 12.8-mile row,
+// and the presence, in full, on the 4.2-mile one.
 //
 // Fixtures are nobody's data: real A.T. place names off the published
 // centerline, no account, no location fix (the skill's never-photograph

@@ -947,6 +947,22 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     )
   }
 
+  // A FLOOR, NOT A FIXED HEIGHT (#1032). `.plan__day` hides its overflow -
+  // it has to, because the terrain silhouette is positioned against the row
+  // box - so an exact height cut the bottom line off whenever the content
+  // outgrew it. Measured at 390 px: a title wrapping to two lines needs
+  // 59 px, and the badges live on that bottom line, so "nearo · your rest
+  // day" rendered as 3 px of a 13 px line on precisely the short days that
+  // are nearos.
+  //
+  // WHAT THIS COSTS THE ENCODING, since row height = walking hours is a
+  // chosen wireframe decision and not an accident: rows between the 44 px
+  // floor and their own content height now all render at content height, so
+  // the proportionality is flat from 0 up to roughly 3.5 walking hours
+  // rather than up to 2. It was already flat below the floor, this widens
+  // that band, and above it every row is still exactly as tall as its hours.
+  // The alternative - keeping the exact height and truncating the stop names
+  // - would trade a label a hiker asked for against one the app added.
   const height = figures === undefined ? MIN_ROW_PX : dayRowHeight(figures.minutes)
 
   return (
@@ -955,7 +971,7 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
       <button
         type="button"
         className={resupply ? 'plan__day plan__day--resupply' : 'plan__day'}
-        style={{ height: `${height}px` }}
+        style={{ minHeight: `${height}px` }}
         onClick={onSelect}
       >
         {!resupply && elevation !== null && (

@@ -21,8 +21,8 @@
 // (vite.config.ts), the same deliberate exclusion the share screen's
 // detector model rides. An install pays for ZERO of these; a first run
 // fetches exactly the one it drew, through the ordinary HTTP cache. Offline
-// first run gets no photo and the inert map backdrop shows instead - the
-// pre-#1054 backdrop, as the fallback.
+// first run gets no photo and opens on the overlay's own pine ground
+// (onboarding.css .onboarding__hero) - calm, and never a broken image.
 //
 // Files are resized/recompressed from the Commons originals (a modification,
 // noted here as the licences ask). Four are natively small or panoramic and

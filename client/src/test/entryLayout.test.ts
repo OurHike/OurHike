@@ -120,6 +120,23 @@ describe('first-run layout contract', () => {
     )
   })
 
+  it('draws the photo as a band, never a full-bleed fill', () => {
+    // The pool is landscape frames on a portrait screen: full-bleed cover
+    // scaled each ~2.4x and showed a blurred vertical sliver of its middle -
+    // the maintainer's "doesn't look great on mobile", 2026-08-26. Half a
+    // screen tall they render near-native and keep their compositions, so
+    // the regression to catch is a well-meaning `height: 100%` coming back.
+    const image = ruleFor(onboardingCss, '.onboarding__hero-image')
+    expect(image).not.toMatch(/height:\s*100%/)
+    expect(image).toMatch(/height:\s*min\(/)
+    // The band's foot dissolves into the pine ground instead of ending on a
+    // hard line the card may or may not reach, step to step.
+    expect(image).toMatch(/mask-image:\s*linear-gradient/)
+    expect(ruleFor(onboardingCss, '.onboarding__hero')).toMatch(
+      /background:\s*var\(--bg-chrome\)/,
+    )
+  })
+
   it('caps the card short of the screen, so the map shows above it at any height', () => {
     const rule = ruleFor(onboardingCss, '.onboarding__card')
     const capped = /max-height:\s*(\d+)%/.exec(rule)

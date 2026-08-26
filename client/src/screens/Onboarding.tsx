@@ -264,7 +264,9 @@ export function Onboarding({
           reasoning is in onboarding.css's header, and test/entryLayout.test.ts
           records what the contract became. The map screen still renders inert
           underneath (that machinery is unchanged, and is why the map is warm
-          the moment the steps finish); the photo simply stands in front of it.
+          the moment the steps finish); this overlay simply stands in front of
+          it - the photo as a top band, pine ground below (see the CSS for
+          why a band).
 
           WHICH photo changed the same day it shipped: one fixed pick went to
           the maintainer, came back "too bright green and too busy", and the

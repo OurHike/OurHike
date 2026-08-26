@@ -205,6 +205,21 @@ export interface MapScreenProps {
   onRouteTap?: (at: { lon: number; lat: number }) => void
   routeSheet?: ReactNode
   /**
+   * The band a followed day hike puts directly UNDER the header (#1041,
+   * frame `D11`) - today only "you are not on your route".
+   *
+   * A slot rather than a prop this screen understands, like `routeSheet` and
+   * the sheets below it: what a followed hike knows is the shell's, and a map
+   * screen that learned about day hikes would be the fourth feature to move
+   * into it (#937).
+   *
+   * Under the header, not in `.map-screen__alerts` above it, and
+   * chrome/OffRouteCard.tsx holds the reasoning: that strip is the trail's
+   * condition ahead, true for everyone on that ground, and this is one
+   * hiker's own route.
+   */
+  followBand?: ReactNode
+  /**
    * How many ATC notices the app is holding, for the Legend row that opens
    * all of them (#687 - it used to be a permanent button on this screen; see
    * `newAtcAlertCount` below for what replaced it here). Zero, or the shell
@@ -245,6 +260,32 @@ export interface MapScreenProps {
    */
   trailDataUpdate?: TrailDataUpdateProps
   warnings?: readonly WarningPoint[]
+
+  /**
+   * Whether the alert marks are drawn at all (#1047).
+   *
+   * One flag over `closures`, `atcUpdates`, `atcUpdatePoints` and `warnings` -
+   * chrome/alertLayerPanel.ts has why those four are one control and why the
+   * flag it comes from is never stored.
+   *
+   * IT WITHHOLDS AT ONE PLACE, the `<MapView>` call site, and that is the
+   * property worth keeping rather than a detail of where the ternaries went.
+   * Two other things read it and neither takes anything away: the status strip
+   * SAYS the marks are off, and the legend DISPLAYS the switch's own state.
+   * `closureAhead`, `advisoryAhead` and `warningsAhead` arrive here as
+   * finished sentences on their own props, so this flag has no route to them
+   * at all: a hiker who takes the bands off the canvas is still told what is
+   * in front of them, and that stays true by construction rather than by
+   * anyone remembering it.
+   *
+   * Defaults to drawn. A MapScreen rendered without a shell to hold the flag
+   * shows every alert it was given, which is the only default a safety layer
+   * may have.
+   */
+  alertsShown?: boolean
+  /** Flips it. Omitted, the legend draws no alert control - a switch that
+   *  goes nowhere is worse than no switch. */
+  onToggleAlerts?: () => void
 
   activeTab: TabId
   onSelectTab: (id: TabId) => void
@@ -588,6 +629,7 @@ export function MapScreen({
   dayHikeDrawing = null,
   onRouteTap,
   routeSheet,
+  followBand,
   atcNoticeCount = 0,
   onOpenAtcNotices,
   atcNoticeList,
@@ -595,6 +637,8 @@ export function MapScreen({
   onSilenceNewAtcAlerts,
   trailDataUpdate,
   warnings,
+  alertsShown = true,
+  onToggleAlerts,
   activeTab,
   onSelectTab,
   onOpenLegend,
@@ -850,6 +894,39 @@ export function MapScreen({
     hiddenTypes,
   )
 
+  // THE FOUR ALERT COLLECTIONS, AND THE ONLY PLACE #1047'S FLAG TAKES ANYTHING
+  // AWAY. (Two places below read it to describe what is happening - the status
+  // strip's "Alerts hidden" and the legend's own switch - and neither of those
+  // can withhold a mark.)
+  //
+  // Kept together here rather than as four ternaries down in the JSX, so that
+  // "what the Alerts switch withholds" is a list somebody can check against
+  // the map's own layer modules in one glance - and so that a fifth alert
+  // layer added later is a line in this block rather than a prop somewhere in
+  // a hundred-line element that nobody notices is ungated.
+  //
+  // `undefined` rather than a `[]` written here: MapView keeps a stable empty
+  // for each of these (NO_CLOSURES and friends) precisely so a fresh array per
+  // render cannot re-push a source every frame, and handing the prop away uses
+  // those rather than making a second set that behaves the same until it does
+  // not.
+  //
+  // WITHHOLDING THE DATA RATHER THAN HIDING THE LAYERS is the decision. An
+  // emptied source cannot be hit by `queryRenderedFeatures`, so a tap where a
+  // band used to be opens nothing at all - where a layer set to `visibility:
+  // none` would still answer taps and put a closure sheet over a map drawing
+  // no closure.
+  //
+  // Nothing in this block can reach `closureAhead`, `advisoryAhead` or
+  // `warningsAhead`: those arrive as finished sentences on their own props and
+  // are rendered above the map untouched. That is the guarantee the whole
+  // control rests on, and it is structural here rather than a rule anybody has
+  // to keep.
+  const drawnClosures = alertsShown ? closures : undefined
+  const drawnAtcUpdates = alertsShown ? atcUpdates : undefined
+  const drawnAtcUpdatePoints = alertsShown ? atcUpdatePoints : undefined
+  const drawnWarnings = alertsShown ? warnings : undefined
+
   return (
     // `inert` is what makes hiding the chrome safe rather than cosmetic: it
     // takes the whole subtree out of the tab order and the accessibility tree,
@@ -881,6 +958,7 @@ export function MapScreen({
           backgroundOverride={backgroundOverride}
           belowArchiveZoom={belowArchiveZoom}
           trailLinesMissing={trailLinesMissing}
+          alertsHidden={!alertsShown}
         />
 
         {/* Between the status strip and the header, and that placement is the
@@ -966,6 +1044,8 @@ export function MapScreen({
           onOpenSearch={onOpenSearch}
         />
 
+        {followBand}
+
         {/* `units` last, so the screen's answer wins over anything the shell
             put in the ribbon's own props. The canvas below and the ribbon over
             it read the same preference, and a map in metres under a profile in
@@ -1013,16 +1093,16 @@ export function MapScreen({
               verifiedOnly={verifiedOnly}
               drought={drought}
               showDrought={droughtShown}
-              closures={closures}
+              closures={drawnClosures}
               corridor={corridor}
               onSelectHighlight={onSelectHighlight}
-              atcUpdates={atcUpdates}
-              atcUpdatePoints={atcUpdatePoints}
+              atcUpdates={drawnAtcUpdates}
+              atcUpdatePoints={drawnAtcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
               disputes={disputes}
-              warnings={warnings}
+              warnings={drawnWarnings}
               routeDrawing={routeDrawing}
               dayHikeDrawing={dayHikeDrawing}
               onRouteTap={onRouteTap}
@@ -1135,6 +1215,8 @@ export function MapScreen({
             typesShown={typesShown}
             verifiedOnly={verifiedOnly}
             onToggleVerifiedOnly={onToggleVerifiedOnly}
+            alertsShown={alertsShown}
+            onToggleAlerts={onToggleAlerts}
             droughtShown={droughtShown}
             onToggleDrought={onToggleDrought}
             units={units}

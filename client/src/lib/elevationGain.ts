@@ -123,6 +123,46 @@ export function cumulativeGainOverGaps(
 }
 
 /**
+ * How much of a window the DEM never measured, in miles (#1039).
+ *
+ * The figure `cumulativeGainOverProfile` cannot report and callers cannot
+ * infer. That function breaks its run at a hole and adds nothing across it,
+ * which is right - inventing a slope there would be worse - but it returns a
+ * plain number either way, so "1,000 ft over ten measured miles" and "80 ft
+ * over one measured mile and nine unmeasured ones" come back
+ * indistinguishable. The second understates, always, because a hole can only
+ * remove ascent; and an understated ascent is an understated walking time,
+ * which is the direction that gets somebody caught out after dark.
+ *
+ * NULLS ONLY, NEVER `partStart`. The two look alike in that function and are
+ * opposites here, in its own words: a null elevation is a hole in the DEM
+ * where the trail is continuous and the measurement is not, while a seam is
+ * measurement that is fine across trail that is not. Ground on the far side
+ * of a seam IS measured, so counting seams here would refuse a figure on
+ * most days of a plan to describe an approximation the pipeline already
+ * bounds and logs.
+ *
+ * A span counts as unmeasured when EITHER of its endpoints is unknown: the
+ * ground between a good sample and a bad one is ground nobody has a height
+ * for at one end, and half-counting it would be a precision claim about
+ * where exactly the coverage stopped.
+ */
+export function unmeasuredMiles(samples: ProfileSample[]): number {
+  let total = 0
+  for (let at = 1; at < samples.length; at += 1) {
+    const before = samples[at - 1]
+    const after = samples[at]
+    const known = (sample: ProfileSample) =>
+      sample.elevationFt !== null &&
+      sample.elevationFt !== undefined &&
+      !Number.isNaN(sample.elevationFt)
+    if (known(before) && known(after)) continue
+    total += Math.abs(after.distanceMi - before.distanceMi)
+  }
+  return total
+}
+
+/**
  * Total confirmed ascent over a profile, breaking at DEM gaps AND at
  * centerline part boundaries.
  *

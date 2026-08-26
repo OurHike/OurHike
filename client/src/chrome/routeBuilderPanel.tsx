@@ -40,9 +40,11 @@ import {
   insertRoutePoint,
   legFigures,
   mileAtWalkingMinutes,
+  priceLeg,
   restretchStops,
   routeDirection,
   routeLegs,
+  totalFigures,
   type MileAnchor,
 } from '../lib/route'
 import { DEFAULT_WALKING_HOURS, nearestStopBeyond } from '../lib/dayPlanner'
@@ -501,7 +503,14 @@ export function useRouteBuilderPanel({
     // The refusal belongs to the draft, not to the app (#986). Left set, it
     // greeted the NEXT route the hiker started with an accusation about a tap
     // they never made, in a panel with nothing in it to explain.
+    //
+    // BOTH FLAGS, and the second is #1040: the entrance's was declared for
+    // the same reason on the next line up and cleared in exactly one place -
+    // a SUCCESSFUL entrance tap. So cancelling after a refused one carried
+    // it into the next route, which is the identical defect #986 named,
+    // fixed on one of the two flags it applied to.
     setEditorRefusedTap(false)
+    setEntranceRefusedTap(false)
   }, [])
 
   // What the canvas draws for the draft: the centerline's own geometry
@@ -548,17 +557,58 @@ export function useRouteBuilderPanel({
   // ignored every climb (see RouteLegDisplay).
   const routeLegDisplays: RouteLegDisplay[] = useMemo(() => {
     if (routeDraft === null || routeDraft.phase !== 'editor') return []
-    return routeLegs(routeDraft.stops).map(({ from, to }) =>
-      elevation === null
-        ? {
-            distanceMi: Math.abs(to.mile - from.mile),
-            ascentFt: null,
-            descentFt: null,
-            minutes: null,
-          }
-        : legFigures(elevation, from.mile, to.mile, pace),
-    )
+    // Distance only, and the panel already renders that state: no profile
+    // downloaded, or a leg the DEM never measured (#1039). The second used
+    // to price the hole as flat ground and hand back a climb and a time that
+    // were both short, which is the direction that gets somebody caught out
+    // after dark - so it takes the same branch the missing profile does.
+    const unpriced = ({
+      from,
+      to,
+    }: {
+      from: { mile: number }
+      to: { mile: number }
+    }): RouteLegDisplay => ({
+      distanceMi: Math.abs(to.mile - from.mile),
+      ascentFt: null,
+      descentFt: null,
+      estimate: null,
+    })
+    return routeLegs(routeDraft.stops).map((leg): RouteLegDisplay => {
+      if (elevation === null) return unpriced(leg)
+      const figures = legFigures(elevation, leg.from.mile, leg.to.mile, pace)
+      if (figures.unmeasuredMi > 0) return unpriced(leg)
+      // priceLeg, so the panel gets the ≈time and the line saying what it was
+      // adjusted from in one object (#851/#1040). This used to hand over raw
+      // `minutes` and the panel formatted them naked, which is the bypass
+      // test/paceBaseline.test.ts exists to catch and was not catching.
+      return { ...figures, estimate: priceLeg(figures, pace).estimate }
+    })
   }, [routeDraft, elevation, pace])
+
+  /**
+   * The whole route's time, priced ONCE from the summed terms.
+   *
+   * Not a sum of the legs' printed strings, and not a sum of their minutes
+   * either: the baseline needs the standard time for the whole route, which
+   * only exists if the standard rule is applied to the total. `paceMinutes`
+   * is linear in all three terms, so this is exactly the sum of the legs'
+   * unrounded minutes - the two cannot drift.
+   *
+   * Null when any leg is unpriced, for the panel's own reason: a total summed
+   * around a missing leg is a whole-route figure that omits part of the route.
+   */
+  const routeTotal = useMemo(() => {
+    if (routeLegDisplays.length === 0) return null
+    if (routeDraft === null || routeDraft.phase !== 'editor' || elevation === null) {
+      return null
+    }
+    if (routeLegDisplays.some((leg) => leg.estimate === null)) return null
+    const legs = routeLegs(routeDraft.stops).map((leg) =>
+      legFigures(elevation, leg.from.mile, leg.to.mile, pace),
+    )
+    return priceLeg(totalFigures(legs), pace).estimate
+  }, [routeLegDisplays, routeDraft, elevation, pace])
 
   // Opening the builder is a map act: it lands on the trail tab with
   // everything else closed - the same one-thing-open-at-a-time rule the
@@ -955,12 +1005,17 @@ export function useRouteBuilderPanel({
         <RouteStopsPanel
           stops={routeDraft.stops}
           legs={routeLegDisplays}
+          total={routeTotal}
           direction={routeDirection(routeDraft.stops)}
           units={units}
           onEditStop={handleEditStop}
           onAddStop={handleAddStop}
           onUndo={routeDraft.history.length === 0 ? null : handleUndoRoute}
           refusedTap={editorRefusedTap}
+          // Which of the two reasons the legs carry no times (#1039): the
+          // panel cannot tell from the nulls, and the two send a hiker
+          // looking for different things.
+          unpriced={elevation === null ? 'no-profile' : 'unmeasured'}
           onBreakIntoDays={handleBreakIntoDays}
           onRecordWalked={handleRecordWalked}
           onClose={handleRouteCancel}

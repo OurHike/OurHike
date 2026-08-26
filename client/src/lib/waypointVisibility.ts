@@ -22,13 +22,20 @@
 // becomes `11 shown`. Control that visibly buys something gets used; a checklist
 // of categories does not.
 //
-// THE SAFETY RULE IS STRUCTURAL, NOT A CHECK ANYONE HAS TO REMEMBER. Closures
-// and serious warnings have no hide affordance anywhere in the app
-// (features/HIKER_SAFETY.md, features/MAP_OPTIONS.md §4), and `NEVER_HIDEABLE`
-// in lib/legendContents.ts stays the only guard. Every function here filters
-// through it, so no stored value - not a hand-edited preference, not one synced
-// from an older client, not "only water" - can produce a map with a closure
-// hidden on it.
+// THE SAFETY RULE IS STRUCTURAL, NOT A CHECK ANYONE HAS TO REMEMBER. Every
+// function here filters through `NEVER_HIDEABLE` in lib/legendContents.ts, so
+// no stored value - not a hand-edited preference, not one synced from an older
+// client, not "only water" - can produce a map with a closure hidden on it.
+//
+// NARROWED BY #1047, AND THIS FILE IS WHY THE NARROWING IS SAFE. The legend
+// now offers an Alerts switch that does take those marks off the canvas, so
+// "no hide affordance anywhere in the app" is no longer the rule. What is
+// still true, and is the part a stored preference could have broken, is that
+// nothing anybody can SAVE reaches a closure. The switch lives in a
+// `useState` in chrome/alertLayerPanel.ts, is never written here or anywhere
+// else, and is gone by the next time the map opens. A file that syncs to an
+// account is exactly the wrong home for it, which is why it is not in this
+// one.
 
 import { POI_TYPES } from './config'
 import { NEVER_HIDEABLE } from './legendContents'

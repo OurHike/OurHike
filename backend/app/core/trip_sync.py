@@ -117,6 +117,26 @@ def name_for_copy(document: dict | None, at: datetime) -> str:
     return f"{name} {CONFLICT_SUFFIX.format(date=at.date().isoformat())}"
 
 
+def document_for_copy(document: dict | None, at: datetime, copy_id: str) -> dict:
+    """The kept-beside copy's document: renamed, and RE-IDENTIFIED (#1036).
+
+    The re-id is the load-bearing half and it was missing. A document carries
+    its own ``id``, and the client stores that rather than the row id it
+    arrived under (``tripsSync.tripFrom``), so a copy built as
+    ``{**document, "name": ...}`` landed in the device's store under the very
+    id it was created to sit beside. Edit-vs-edit produced two records sharing
+    one id, and a later delete of that id took both; delete-vs-edit lost the
+    copy outright whenever the client applied the tombstone last, which
+    nothing in the exchange orders.
+
+    So the copy's document id is the copy's row id - the same value, minted
+    once - and the two branches below pass it in rather than each rebuilding
+    the dict. The original keeps its id, which is what leaves ``openId`` and
+    any group membership pointing at the record that survives.
+    """
+    return {**(document or {}), "id": copy_id, "name": name_for_copy(document, at)}
+
+
 def resolve_upload(
     uploaded: UploadedTrip,
     stored: StoredTrip | None,
@@ -159,20 +179,22 @@ def resolve_upload(
     # see the module docstring on why the copy is the survivor rather than
     # the casualty.
     if uploaded.deleted:
+        copy_id = new_id()
         return [
             TripWrite(id=uploaded.id, document=None, deleted=True),
             TripWrite(
-                id=new_id(),
-                document={**(stored.document or {}), "name": name_for_copy(stored.document, now)},
+                id=copy_id,
+                document=document_for_copy(stored.document, now, copy_id),
                 deleted=False,
                 is_conflict_copy=True,
             ),
         ]
 
+    copy_id = new_id()
     return [
         TripWrite(
-            id=new_id(),
-            document={**(uploaded.document or {}), "name": name_for_copy(uploaded.document, now)},
+            id=copy_id,
+            document=document_for_copy(uploaded.document, now, copy_id),
             deleted=False,
             is_conflict_copy=True,
         )

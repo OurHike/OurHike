@@ -420,6 +420,11 @@ confirmations. Under two ranks that is a promotion rule — dot to pin — rathe
 claim on a scarce slot, which is a considerably easier thing to design. It is Post-MVP either way.
 
 [HIKER_SAFETY.md](HIKER_SAFETY.md) and [MAP_OPTIONS.md](MAP_OPTIONS.md) §4 own the rule this
-inherits without restating: closures and serious warnings have no hide affordance anywhere, and
-the way that rule is kept is that the affordance is never built. `NEVER_HIDEABLE` in
-`legendContents.ts` is the existing guard and stays the only one.
+inherits without restating. It used to read "closures and serious warnings have no hide
+affordance anywhere, and the way that rule is kept is that the affordance is never built", and
+[#1047](https://github.com/OurHike/OurHike/issues/1047) narrowed it to the half that bears on
+*this* document: **`waypoint_types_shown` cannot reach them.** `NEVER_HIDEABLE` in
+`legendContents.ts` is the existing guard, stays the only one, and now guards exactly that — no
+value anybody can save produces a phone that opens with the alerts off. The legend's Alerts
+switch does take those marks off the canvas and is deliberately not a category, not stored, and
+not routed through anything in this document.

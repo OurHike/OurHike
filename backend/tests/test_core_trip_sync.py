@@ -137,6 +137,63 @@ class TestTheRuleThatIsNotNegotiable:
         assert "four days" in writes[1].document["name"]
 
 
+class TestTheCopyIsItsOwnRecord:
+    """#1036: a copy that keeps the original's document id is not a copy.
+
+    The client stores a row's DOCUMENT, and the document carries its own
+    ``id`` (``tripsSync.tripFrom``). So a copy built as ``{**document}``
+    landed in the device's store under the very id it was created to sit
+    beside: edit-vs-edit gave two records sharing one id, and delete-vs-edit
+    lost the copy whenever the tombstone was applied last - an order nothing
+    in the exchange pins.
+    """
+
+    def test_the_copys_document_is_identified_as_the_copy(self):
+        stored = _stored(_doc("Grayson Highlands, four days"), updated_at=LATER)
+        uploaded = _upload(_doc("Grayson Highlands, three days"), base_updated_at=EARLIER)
+
+        writes = resolve_upload(uploaded, stored, NOW, _counter())
+
+        # Row id and document id are the same value, and neither is the
+        # original's - which is what makes it a second record rather than a
+        # second copy of the first one's name.
+        assert writes[0].id == "copy-1"
+        assert writes[0].document["id"] == "copy-1"
+        assert writes[0].document["id"] != "trip-1"
+
+    def test_the_delete_branch_re_identifies_its_copy_too(self):
+        # The branch where getting this wrong costs everything: the tombstone
+        # is keyed on the original id, so a copy still wearing that id is
+        # deleted by the very write it ships beside.
+        stored = _stored(_doc("Grayson Highlands, four days"), updated_at=LATER)
+
+        writes = resolve_upload(_upload(None, base_updated_at=EARLIER, deleted=True), stored, NOW, _counter())
+
+        tombstone, copy = writes
+        assert tombstone.id == "trip-1"
+        assert copy.document["id"] == copy.id
+        assert copy.document["id"] != tombstone.id
+
+    def test_only_the_identity_and_the_name_change(self):
+        # A copy that quietly dropped the plan would be worse than the
+        # collision it fixes. Edit-vs-edit keeps the UPLOADED document beside
+        # the stored one, so the copy carries what the losing device sent.
+        uploaded_doc = _doc("Three days", plan={"stops": ["damascus", "atkins"]})
+        writes = resolve_upload(
+            _upload(uploaded_doc, base_updated_at=EARLIER),
+            _stored(_doc("Four days"), updated_at=LATER),
+            NOW,
+            _counter(),
+        )
+
+        copy = writes[0].document
+        assert copy["plan"] == {"stops": ["damascus", "atkins"]}
+        assert copy["name"].startswith("Three days")
+        # Everything the upload had, plus an id it did not: name and id are
+        # the only two keys the copy is allowed to differ on.
+        assert set(copy) - set(uploaded_doc) == {"id"}
+
+
 class TestWhatIsNotAConflict:
     def test_the_same_delete_arriving_twice_does_not_resurrect_anything(self):
         # Deleted on both devices while neither had heard from the other.

@@ -20,11 +20,18 @@
 import type { HikeDirection } from '../chrome/Header'
 import {
   cumulativeGainOverProfile,
+  unmeasuredMiles,
   cumulativeLossOverProfile,
   reverseProfileWindow,
 } from './elevationGain'
 import { profileSamples, type ElevationProfile } from './elevationProfile'
-import { STANDARD_PACE, paceMinutes, type PaceProfile } from './pace'
+import {
+  STANDARD_PACE,
+  paceEstimate,
+  paceMinutes,
+  type PaceEstimate,
+  type PaceProfile,
+} from './pace'
 
 /** A point somewhere along the trail, on the pipeline's mile axis. */
 export interface RouteMile {
@@ -145,6 +152,18 @@ export interface LegFigures {
   /** Naismith moving minutes. Moving time only - no lunch, no water stops,
    *  no forty minutes at the shelter - and the UI's job is to say so. */
   minutes: number
+  /**
+   * How much of this stretch the DEM never measured, in miles (#1039).
+   *
+   * Zero on a wholly measured window, which is the ordinary case. Above zero,
+   * `ascentFt` and therefore `minutes` are UNDERSTATED - a hole can only
+   * remove ascent, never add it - so a surface printing a time from these
+   * figures has to refuse rather than round. `lib/trailGraph.ts`'s
+   * `routeClimb` makes the same refusal on the network half by returning
+   * null; this side cannot, because the distance is still honest and worth
+   * printing when the climb is not.
+   */
+  unmeasuredMi: number
 }
 
 /**
@@ -178,6 +197,53 @@ export function legFigures(
     // had the figure, and a day plan that ignored it would disagree with the
     // highlight sheet about the same ground.
     minutes: paceMinutes({ distanceMi, ascentFt, descentFt }, pace),
+    // Reported rather than corrected. Nothing here can fill a hole in the
+    // DEM; what it can do is stop the two figures above from passing as
+    // whole when they are not (#1039).
+    unmeasuredMi: unmeasuredMiles(walked),
+  }
+}
+
+/**
+ * One leg's figures with its priced time and that time's baseline attached.
+ *
+ * `LegFigures` above is deliberately raw - its own comment says display rules
+ * apply at the edge, never here, so totals summed from legs cannot drift from
+ * their parts. This is that edge, named: a surface holds one of these when it
+ * is about to PRINT, and holding one means holding `relativeLine` too, which
+ * is #851's rule made structural rather than remembered.
+ */
+export interface PricedLeg extends LegFigures {
+  estimate: PaceEstimate
+}
+
+/**
+ * Price a measured leg, at the hiker's own pace, with the baseline attached.
+ *
+ * PASSES ALL THREE TERMS, which is the whole reason this is a function rather
+ * than a `paceEstimate` call at each surface. Every site that hand-rolled that
+ * call passed distance and ascent and dropped `descentFt`, so #900's descent
+ * penalty vanished from the printed figure while `legFigures().minutes` - the
+ * same module, the same walk - still carried it. Measured on a 1 mi / 1,000 ft
+ * descent at the control's maximum (60 min/1,000 m): legFigures said 37.6 min
+ * and the printed estimate said 19.3, an understatement of nearly half on the
+ * number a hiker uses to decide whether they beat the dark.
+ *
+ * `route.test.ts` pins the property this exists to hold - the estimate's
+ * minutes ARE `figures.minutes`, for any pace - so the two can no longer be
+ * derived apart.
+ */
+export function priceLeg(figures: LegFigures, pace: PaceProfile): PricedLeg {
+  return {
+    ...figures,
+    estimate: paceEstimate(
+      {
+        distanceMi: figures.distanceMi,
+        ascentFt: figures.ascentFt,
+        descentFt: figures.descentFt,
+      },
+      pace,
+    ),
   }
 }
 
@@ -189,8 +255,11 @@ export function totalFigures(legs: readonly LegFigures[]): LegFigures {
       ascentFt: sum.ascentFt + leg.ascentFt,
       descentFt: sum.descentFt + leg.descentFt,
       minutes: sum.minutes + leg.minutes,
+      // A total is as unmeasured as its legs put together: one leg with a
+      // hole in it makes the whole route's climb an understatement.
+      unmeasuredMi: sum.unmeasuredMi + leg.unmeasuredMi,
     }),
-    { distanceMi: 0, ascentFt: 0, descentFt: 0, minutes: 0 },
+    { distanceMi: 0, ascentFt: 0, descentFt: 0, minutes: 0, unmeasuredMi: 0 },
   )
 }
 

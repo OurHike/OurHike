@@ -83,6 +83,8 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
 
 **Deliberately excluded:** `show_closures` isn't a preference at all - Map Options already recommends it stay always-on, not user-hideable, since suppressing known safety information isn't the same kind of choice as picking a background tile style. It's a fixed display rule, not a setting.
 
+**Still excluded after [#1047](https://github.com/OurHike/OurHike/issues/1047), and that issue is the sharpest argument for the exclusion this model has.** The legend now carries an Alerts switch that takes the closure bands, the ATC's marks and the serious-warning pins off the canvas — so there *is* a hiker-facing control, and the question of whether it belongs in this object came up and was answered no. A field here syncs, which means a hiker who cleared the bands once in Virginia would open a new phone in Maine with them already gone. The flag lives in a `useState` in `client/src/chrome/alertLayerPanel.ts` instead, is written nowhere, and is back on at the next open. **A control existing is not a reason for this model to learn about it**; whether the state may outlive the moment is.
+
 ### What this replaces
 
 | Old model | Doc it lived in | Now |

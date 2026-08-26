@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DayHikeCard } from './DayHikeCard'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import type { Stewards } from '../lib/stewards'
@@ -109,6 +110,7 @@ function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) 
       bailOuts={BAIL_OUTS}
       stewards={STEWARDS}
       units="imperial"
+      pace={STANDARD_PACE}
       networkAvailable={true}
       mode="saved"
       onClose={vi.fn()}
@@ -186,7 +188,11 @@ describe('the honest absences', () => {
 
     // The cache's own numbers, under a sentence saying that is what they are.
     expect(screen.getByText(/5\.0 mi · 1 leg\b/)).toBeInTheDocument()
-    expect(screen.getByText(/hasn.t got the trail network yet/)).toBeInTheDocument()
+    // "no trail network", not "not yet" - #1049. There is no graph coming
+    // on production (#1048), and "yet" was the same false promise the plan
+    // door was making.
+    expect(screen.getByText(/has no trail network/)).toBeInTheDocument()
+    expect(screen.queryByText(/network yet/)).not.toBeInTheDocument()
     // No ways-off section at all: nothing honest to put in it.
     expect(screen.queryByText('If you need to get off')).not.toBeInTheDocument()
   })
@@ -244,6 +250,35 @@ describe('the two modes', () => {
     await user.click(screen.getByRole('button', { name: 'Delete this day hike' }))
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the door onto the ground (#1041)', () => {
+  const FOLLOW = { name: 'Follow this hike on the map' }
+
+  it('offers following once the walk is saved and the graph can place it', async () => {
+    const user = userEvent.setup()
+    const onFollow = vi.fn()
+    renderCard({ onFollow })
+
+    await user.click(screen.getByRole('button', FOLLOW))
+    expect(onFollow).toHaveBeenCalledOnce()
+  })
+
+  it('does not offer it over the stored cache', () => {
+    // Following is a live position against a ROUTE, and with `resolved` null
+    // the card is leaning on a list of figures rather than on ground. Absent
+    // rather than disabled: a greyed control is a promise the app cannot say
+    // why it is not keeping.
+    renderCard({ onFollow: vi.fn(), resolved: null })
+
+    expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
+  })
+
+  it('does not offer it on a review, which has no record to point at', () => {
+    renderCard({ mode: 'review', onSave: vi.fn() })
+
+    expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
   })
 })
 
@@ -346,6 +381,43 @@ describe('the climb, once the phone can price it (#1011)', () => {
     expect(screen.getByText(/≈2h 40m walking/)).toBeInTheDocument()
   })
 
+  it("walks this day at the hiker's own pace, and says so (#1040)", () => {
+    // The half this card did not have. It priced with naismithMinutes - the
+    // STANDARD rule - so a hiker who told this app they walk at 2 mph read
+    // their A.T. plan at 2 and their day hike at 3.107, with nothing on
+    // either screen saying which was which.
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2 }
+    renderCard({ pace: slow })
+
+    // 6.4 mi at 2 mph is 192 min; 1,240 ft of ascent adds 37.8 at Naismith's
+    // own climb term, which this control does not move; 229.8 -> ≈3h 50m.
+    expect(screen.getByText(/≈3h 50m walking/)).toBeInTheDocument()
+    // And what it was adjusted from, so the figure cannot pass as the rule's
+    // own (#851).
+    expect(screen.getByText('was ≈2h 40m · 1.4× standard')).toBeInTheDocument()
+  })
+
+  it('adds the descent penalty this walk measured, when one is set (#900)', () => {
+    // routeClimb measured 1,180 ft of loss and the card used to throw it
+    // away. A hiker who set the knee penalty is asking for exactly this walk
+    // to cost more; the control only ever ADDS time, so the direction is the
+    // cautious one.
+    const knees: PaceProfile = { ...STANDARD_PACE, descentMinutesPer1000m: 60 }
+    renderCard({ pace: knees })
+
+    // 161.4 standard minutes plus 1,180 ft = 359.7 m of descent at an hour
+    // per 1,000 m: 21.6 more, 183 -> ≈3h 5m.
+    expect(screen.getByText(/≈3h 5m walking/)).toBeInTheDocument()
+  })
+
+  it('says nothing about pace when the hiker never moved a control', () => {
+    // The other half of #851's rule: "1.0× standard" on a fresh install is a
+    // caveat that teaches hikers to stop reading the ones that matter.
+    renderCard()
+
+    expect(screen.queryByText(/standard/)).not.toBeInTheDocument()
+  })
+
   it('says the figures are estimates rather than letting them read as surveyed', () => {
     // The maintainer's call, 2026-08-25. The pipeline's own gate reads +18.8%
     // against a maintaining club on terrain like this, so a hiker comparing
@@ -355,6 +427,45 @@ describe('the climb, once the phone can price it (#1011)', () => {
     expect(
       screen.getByText(/estimates from the best elevation data available/),
     ).toBeInTheDocument()
+  })
+
+  it('says the time is moving time, which is what stops it reading as a promise', () => {
+    // #1042. The storyboard names this sentence as one of the two reasons
+    // frame D5 exists, and #1008 shipped the ≈time without it. It is a
+    // DIFFERENT claim from the estimates note beside it: that one is about how
+    // precise the figure is, this one about what it measures at all. A hiker
+    // can believe the first and still be an hour late because of the second.
+    renderCard()
+
+    expect(
+      screen.getByText(/knows nothing about lunch, a swim, or half an hour/),
+    ).toBeInTheDocument()
+  })
+
+  it('warns about both things at once, or a reader skips the pair', () => {
+    // Two `role="note"` paragraphs in a row read as boilerplate. One note, and
+    // the sentence that matters is not the one that gets skipped.
+    renderCard()
+
+    const notes = screen
+      .getAllByRole('note')
+      .filter((node) =>
+        /Moving time|estimates from the best/.test(node.textContent ?? ''),
+      )
+    expect(notes).toHaveLength(1)
+    expect(notes[0].textContent).toMatch(/Moving time/)
+    expect(notes[0].textContent).toMatch(/estimates from the best elevation data/)
+  })
+
+  it('says neither thing when there is no time to qualify', () => {
+    // A caveat about a number that is not on the screen is noise, and the
+    // absence is the honest output - not a degraded one.
+    renderCard({ resolved: { ...RESOLVED, climb: null } })
+
+    expect(screen.queryByText(/knows nothing about lunch/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/estimates from the best elevation data/),
+    ).not.toBeInTheDocument()
   })
 
   it('never prints a climb over the stored cache, which has none', () => {

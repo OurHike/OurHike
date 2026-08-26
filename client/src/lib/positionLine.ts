@@ -28,6 +28,8 @@
 
 import type { GeolocationState } from './useGeolocation'
 import type { HikeDirection } from '../chrome/Header'
+import { followPosition, type FollowState } from './dayHikeFollow'
+import type { UnitSystem } from './units'
 
 export interface PositionLineInputs {
   /** What the watch is actually doing (lib/useGeolocation.ts). */
@@ -55,6 +57,25 @@ export interface PositionLineInputs {
    * this line exists to answer.
    */
   trailReady: boolean
+  /**
+   * The day hike being followed, when there is one (lib/dayHikeFollow.ts).
+   *
+   * It outranks the mile because on that ground the mile is not an answer:
+   * #928's finding is that a park has no single axis to number, so
+   * `locateOnTrail` either refuses the fix outright - printing "Off the
+   * trail" at somebody walking a blazed loop - or, in the corridor where the
+   * A.T. and a park network overlap, prints a Springer mile at somebody who
+   * is not walking to Springer. Both are worse than saying nothing.
+   *
+   * It does NOT outrank the GPS states above it. Every one of those is a
+   * reason the position is unknown, and following a route does not make a
+   * denied permission or a lost fix any less true.
+   */
+  follow?: FollowState | null
+  /** Which units the follow reading converts to. Defaulted like every other
+   *  units prop here, and read ONLY by that reading - see followPosition for
+   *  why the A.T. mile stays a mile. */
+  units?: UnitSystem
 }
 
 /**
@@ -76,6 +97,8 @@ export function positionLine({
   mile,
   direction,
   trailReady,
+  follow = null,
+  units = 'imperial',
 }: PositionLineInputs): string {
   // First, because it is the only one of these the hiker chose, and the only
   // one with a fix that is one tap away in Settings. It also outranks the
@@ -101,6 +124,12 @@ export function positionLine({
     case 'located':
       break
   }
+
+  // A fix on a route the hiker chose, which is a better answer than any mile
+  // - and reachable even where the centerline index below has not loaded,
+  // because a day hike routes over the junction graph and needs no
+  // centerline at all.
+  if (follow !== null) return followPosition(follow, units)
 
   // A fix, and nowhere to put it. Two different reasons, and they are not
   // interchangeable: one is the app missing data, the other is a claim about

@@ -124,10 +124,20 @@ export async function recordDayHikeEdits(
 export async function recordDayHikeSync(
   since: string,
   keptSeen: Record<string, string>,
+  sent: { dirty: readonly string[]; deleted: readonly string[] },
 ): Promise<void> {
+  // Only what actually went out (#1040), for `recordTripSync`'s reason and
+  // measured the same way: a hiker who edits while the request is in the air
+  // had that edit marked as sent by a wholesale clear, so it stayed on one
+  // device for ever with nothing queued to carry it. Re-read rather than
+  // taking a snapshot, because the ledger is exactly what may have moved.
+  const state = await dayHikeSyncState()
+  const sentDirty = new Set(sent.dirty)
+  const sentDeleted = new Set(sent.deleted)
   await write({
-    dirty: [],
-    deleted: [],
+    ...state,
+    dirty: state.dirty.filter((id) => !sentDirty.has(id)),
+    deleted: state.deleted.filter((id) => !sentDeleted.has(id)),
     seen: keptSeen,
     since,
   })

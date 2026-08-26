@@ -12,13 +12,24 @@
 // It is read, indexed and searched, so it is parsed here - and the hash is
 // still checked against the BYTES first, before anything is parsed out of them.
 //
-// A 404 IS AN ORDINARY ANSWER
+// A 404 IS AN ORDINARY ANSWER, AND IT IS NOT THE ONLY ONE (#1049)
 //
 // A release older than the artifact, a bucket a publish has not reached, a
-// reviewer pointing the app at a local serve_processed.py, or no signal at all.
-// All of them end the same way: no graph, so no day hikes, which
-// chrome/PlanKindSheet.tsx states in a sentence rather than by offering a
-// control that cannot work. Nothing about the chosen trail changes.
+// reviewer pointing the app at a local serve_processed.py, or no signal at
+// all. All of them end the same way for the ROUTER - no graph, so no day
+// hikes - and they are emphatically not the same answer for the HIKER, which
+// is what this module used to get wrong.
+//
+// It returned bare `null` for six different situations under a comment saying
+// none of them was worth a word, and chrome/PlanKindSheet.tsx then told all
+// six "It arrives with the next data sync." Four of the six never resolve by
+// waiting: a build with no bucket, a release with no graph in it, a manifest
+// that names no hash, and bytes that fail it. #1048 is the fifth - the graph
+// published to UA and never promoted - and a hiker was told to wait for a
+// sync that was never coming, which is #312's bug one surface over.
+//
+// So {@link loadTrailGraph} carries the REASON, and the sheet says the true
+// sentence for each. What the router does is unchanged: no graph is no graph.
 //
 // IT IS HELD TO ITS PUBLISHED HASH (#197)
 //
@@ -71,39 +82,133 @@ function isTrailGraph(value: unknown): value is TrailGraph {
 }
 
 /**
- * The junction graph, indexed and ready to route on, or null when this phone
- * has not got one.
+ * Why this phone has no junction graph.
  *
- * Null is an ordinary state, not a failure - see the header. Every caller
- * treats it as "no day hikes yet" rather than as an error to report.
+ * The distinction that matters to a hiker is not which of these it is; it is
+ * whether WAITING FIXES IT. Exactly one of them resolves on its own, and
+ * {@link isSettledAbsence} is the single place that says which - so the copy,
+ * the retry and the tests all read one rule rather than three copies of it.
  */
-export async function fetchTrailGraph(
-  signal?: AbortSignal,
-): Promise<TrailGraphIndex | null> {
-  if (!DATA_CONFIGURED) return null
+export type TrailNetworkAbsence =
+  /** This build names no bucket at all (`DATA_CONFIGURED` false). A
+   *  developer's checkout without a .env; never a hiker's phone. */
+  | 'unconfigured'
+  /** The request did not complete - no signal, DNS, a reset, an abort. The
+   *  one absence a connection cures. */
+  | 'unreachable'
+  /** The bucket answered, and this release has no graph in it. A fact about
+   *  the release, not about the device: #1048 is this, on production, today. */
+  | 'not-in-release'
+  /** The manifest names no hash for the key, or the bytes do not match the one
+   *  it names. Unverifiable topology does not get routed on - see the header. */
+  | 'unverifiable'
+  /** Verified bytes that are not a graph. A manifest and an artifact can be
+   *  right about each other and still be the wrong file. */
+  | 'not-a-graph'
+  /**
+   * A real, valid graph with no routable trail in it.
+   *
+   * A ring with nothing maintained inside it publishes empty, and the loader
+   * accepts that deliberately - it is a fact about the ground, not a broken
+   * file, and the test pinning it says so. But `graphIndex !== null` then
+   * means "holds a file shaped like a graph", not "can route", so the door
+   * opened onto a builder that could find no route for any tap (#1044
+   * review). An enabled control that answers nothing is strictly worse for a
+   * hiker than an honest refusal, and harder to recognise as a data problem.
+   */
+  | 'empty'
+
+/**
+ * What a surface that SPEAKS about the graph needs to know.
+ *
+ * Three states rather than two, because "nothing has answered yet" and "there
+ * isn't one" are different sentences and a launch spends its first moments in
+ * the first. Collapsing them is how a door that is about to open reads as a
+ * door that never will.
+ */
+export type TrailNetworkState =
+  | { kind: 'ready' }
+  | { kind: 'looking' }
+  | { kind: 'absent'; because: TrailNetworkAbsence }
+
+/** The graph, or why there isn't one. */
+export type TrailGraphLoad =
+  | { kind: 'graph'; index: TrailGraphIndex }
+  | { kind: 'absent'; because: TrailNetworkAbsence }
+
+/**
+ * Whether an absence is one that waiting will not cure.
+ *
+ * Load-bearing twice over: it decides whether the sheet may say "it needs a
+ * connection", and it decides whether the shell asks the bucket again. A
+ * settled absence re-requested on every render is a hammer on a bucket that
+ * has already answered.
+ */
+export function isSettledAbsence(because: TrailNetworkAbsence): boolean {
+  return because !== 'unreachable'
+}
+
+/**
+ * The junction graph, indexed and ready to route on - or the reason there is
+ * none.
+ *
+ * An absence is an ordinary state, not an error to report. What is new (#1049)
+ * is that it is a DIFFERENT ordinary state each time, and the caller is told
+ * which.
+ */
+export async function loadTrailGraph(signal?: AbortSignal): Promise<TrailGraphLoad> {
+  if (!DATA_CONFIGURED) return { kind: 'absent', because: 'unconfigured' }
 
   try {
     const response = await fetch(dataUrl(TRAIL_GRAPH_KEY), { signal })
-    if (!response.ok) return null
+    // Any non-2xx, not only 404. A 403 on a misconfigured bucket and a 500
+    // from the edge are both "this bucket is not serving a graph", and
+    // neither is cured by waiting for a connection the phone already has.
+    if (!response.ok) return { kind: 'absent', because: 'not-in-release' }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     const expected = await publishedHash(TRAIL_GRAPH_KEY, { signal })
     // No hash, no routing. There is no lesser use of a graph to fall back to.
-    if (expected === null) return null
-    if ((await sha256Of(bytes)) !== expected) return null
+    if (expected === null) return { kind: 'absent', because: 'unverifiable' }
+    if ((await sha256Of(bytes)) !== expected) {
+      return { kind: 'absent', because: 'unverifiable' }
+    }
 
     const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
     // The hash proves the bytes are the published ones. This proves the
     // published ones are a graph - a manifest and an artifact can be right
     // about each other and still be the wrong file.
-    if (!isTrailGraph(parsed)) return null
+    if (!isTrailGraph(parsed)) return { kind: 'absent', because: 'not-a-graph' }
 
-    return buildGraphIndex(parsed)
+    return { kind: 'graph', index: buildGraphIndex(parsed) }
   } catch {
-    // Every way a fetch, a decode or a parse can fail, the abort included.
-    // None of them is worth a word to the hiker.
-    return null
+    // Every way a fetch can fail to complete, the abort included. Reported as
+    // reachability rather than as a fault, because that is the honest reading
+    // of a request that never got an answer - and it is the one absence the
+    // shell will try again.
+    //
+    // A JSON.parse throw lands here too and is NOT reachability. It is
+    // unreachable in practice: the bytes matched a published hash one line
+    // above, so a release whose graph does not parse is one whose manifest
+    // signed off on it. Rather than a second try/catch for a case nobody can
+    // produce, it costs one retry on reconnect and then settles.
+    return { kind: 'absent', because: 'unreachable' }
   }
+}
+
+/**
+ * The graph or null - {@link loadTrailGraph} for a caller that only needs to
+ * know whether it has one.
+ *
+ * Kept because most of them genuinely do not care why: the router either has
+ * topology to walk or it has not. Only the surfaces that SPEAK to a hiker
+ * about the absence need the reason.
+ */
+export async function fetchTrailGraph(
+  signal?: AbortSignal,
+): Promise<TrailGraphIndex | null> {
+  const load = await loadTrailGraph(signal)
+  return load.kind === 'graph' ? load.index : null
 }
 
 /** Whether the parsed JSON is one coordinate list per edge. */

@@ -138,9 +138,10 @@ describe('the "Verified?" filter', () => {
   it.each(['closure', 'serious-warning'])(
     'never filters a %s, however unverified it is',
     (type) => {
-      // "No off switch for a safety layer" has to mean every switch. A filter
-      // that happens to take a closure off the panel is the same failure as a
-      // button that does, and easier to ship without noticing.
+      // A filter that happens to take a closure off the panel is the same
+      // failure as a button that does, and easier to ship without noticing.
+      // Untouched by #1047: the Alerts switch is not a filter, is not stored,
+      // and never reaches this arithmetic.
       const rows = computeLegendContents(BBOX, [point({ type, confidence: 'low' })], true)
 
       expect(rows.find((r) => r.type === type)?.count).toBe(1)
@@ -298,8 +299,9 @@ describe('withEveryType', () => {
 
   it('cannot be made to build a switch for a safety layer', () => {
     // The guard is NEVER_HIDEABLE rather than the caller's list, so a caller
-    // handing this the wrong array gets a row it cannot toggle rather than an
-    // off switch for a closure.
+    // handing this the wrong array gets a row it cannot toggle rather than a
+    // stored, syncing switch for a closure - which is the one shape #1047
+    // still rules out.
     expect(withEveryType([], ['closure'])[0].hideable).toBe(false)
   })
 })

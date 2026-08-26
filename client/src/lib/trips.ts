@@ -210,7 +210,15 @@ export async function saveTrips(store: TripStore): Promise<void> {
   // hiker's OWN delete. Recorded here, at the moment they perform it, it
   // never has to be inferred from a store that came back empty - see
   // lib/tripSyncState.ts on why that distinction is the whole design.
-  const before = (await get(TRIPS_KEY)) as TripStore | undefined
+  //
+  // VALIDATED, NOT RAW (#1040). `loadTrips` drops a trip this build cannot
+  // parse, so the store written back never holds it - and diffing that
+  // against the raw document made the validator's refusal look like a
+  // delete the hiker performed. The tombstone travelled, and a phone on an
+  // older build took somebody's plan off the account and every other
+  // device. `validateTripStore` is what this build could actually read, and
+  // that is the only honest thing to compare against.
+  const before = validateTripStore(await get(TRIPS_KEY))
   await set(TRIPS_KEY, store)
   await recordTripEdits(before?.trips ?? [], store.trips)
 }

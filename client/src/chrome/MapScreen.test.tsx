@@ -12,6 +12,7 @@ import {
 } from '../map/credits'
 import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayers'
 import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
+import { ATC_UPDATE_SOURCE_ID } from '../map/atcUpdateLayers'
 import { HEALTHY, type SourceReport } from '../map/liveSourceHealth'
 
 /** The visible safety band. No longer `role="alert"` (#315) — its text ends
@@ -708,6 +709,127 @@ describe('MapScreen safety overlays', () => {
     expect(
       (map.sourceData.get(CLOSURE_SOURCE_ID) as { features: unknown[] }).features,
     ).toHaveLength(1)
+  })
+})
+
+// --- Taking the alerts off the canvas (#1047) -------------------------------
+//
+// The first switch this app has ever offered over a safety layer, and every
+// test here is about the LINE it draws. What the switch may take is ink. What
+// it may never take is the app's word about what is in front of this hiker -
+// so the four banner assertions below are not a nicety, they are the condition
+// on which the control is allowed to exist at all.
+
+describe('the alerts switch, at the canvas (#1047)', () => {
+  const CLOSURES = [{ id: 'c1', lines: [[[-77.1, 39.3] as [number, number]]] }]
+  const ATC_BANDS = [{ id: 'atc:helene', lines: [[[-77.3, 39.1] as [number, number]]] }]
+  const ATC_POINTS = [{ id: 'atc:iron-mtn', at: [-77.4, 39.2] as [number, number] }]
+  const WARNINGS = [{ id: 'r1', lon: -77.2, lat: 39.4 }]
+
+  const ALERTED = {
+    ...PROPS,
+    closures: CLOSURES,
+    atcUpdates: ATC_BANDS,
+    atcUpdatePoints: ATC_POINTS,
+    warnings: WARNINGS,
+  }
+
+  function loadStyle(map: MockMap): void {
+    map.sourceIds = [CLOSURE_SOURCE_ID, WARNING_SOURCE_ID, ATC_UPDATE_SOURCE_ID]
+    map.emit('load')
+  }
+
+  function featureCount(map: MockMap, sourceId: string): number {
+    const data = map.sourceData.get(sourceId) as { features: unknown[] } | undefined
+    return data?.features.length ?? 0
+  }
+
+  it('draws every alert when nothing says otherwise', () => {
+    // The default a safety layer is allowed to have, asserted rather than
+    // assumed: a MapScreen handed no flag at all draws what it was given.
+    render(<MapScreen {...ALERTED} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(featureCount(map, CLOSURE_SOURCE_ID)).toBe(1)
+    expect(featureCount(map, WARNING_SOURCE_ID)).toBe(1)
+    // One source, two geometries - a band and a dot (map/atcUpdateLayers.ts).
+    expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(2)
+  })
+
+  it('takes all three kinds of mark off at once', () => {
+    // All three or none. lib/atcUpdateStyle.ts draws an ATC band in the
+    // closure's exact colour and weight on purpose, so a switch that cleared
+    // one and left the other would leave a hiker looking at a barrier the
+    // legend claims is gone.
+    render(<MapScreen {...ALERTED} alertsShown={false} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(featureCount(map, CLOSURE_SOURCE_ID)).toBe(0)
+    expect(featureCount(map, WARNING_SOURCE_ID)).toBe(0)
+    expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(0)
+  })
+
+  it('still tells the hiker what is in front of them', () => {
+    // THE WHOLE JUSTIFICATION FOR THE SWITCH. Hiding the bands is a
+    // decluttering of the canvas; it is not permission to go quiet about a
+    // closed trail three miles ahead. If this test ever has to change, the
+    // control should be removed rather than the assertion.
+    const { container } = render(
+      <MapScreen
+        {...ALERTED}
+        alertsShown={false}
+        closureAhead="Trail closed 2.1 mi ahead · Storm damage · mi 1,409.3 – 1,412.0"
+        warningsAhead="2 serious warnings on your route"
+        advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
+      />,
+    )
+
+    expect(alertBand(container)).toHaveTextContent('Trail closed 2.1 mi ahead')
+    expect(alertBand(container)).toHaveTextContent('2 serious warnings on your route')
+    expect(alertBand(container)).toHaveTextContent('Advisory along 398 mi of trail')
+  })
+
+  it('still announces them to a screen reader', () => {
+    // The hidden `aria-live` line, which is what a hiker walking with the
+    // screen off actually gets. Asserted separately from the visible band for
+    // the reason the top of this file gives: they are two surfaces and only
+    // one of them is read aloud.
+    const { container } = render(
+      <MapScreen
+        {...ALERTED}
+        alertsShown={false}
+        closureAhead="Trail closed 2.1 mi ahead"
+        warningsAhead="2 serious warnings on your route"
+      />,
+    )
+
+    const live = container.querySelector('.visually-hidden[aria-live="polite"]')
+    expect(live).toHaveTextContent('Trail closure ahead. Serious warning ahead.')
+  })
+
+  it('says on the map itself that it is withholding them', () => {
+    // A map with the bands off and a map with no closure for forty miles are
+    // the same picture. The status strip is what separates them once the
+    // legend is shut - and it is shut whenever a hiker is actually walking.
+    render(<MapScreen {...ALERTED} alertsShown={false} />)
+
+    expect(screen.getByText('Alerts hidden')).toBeInTheDocument()
+  })
+
+  it('says nothing while they are drawn', () => {
+    render(<MapScreen {...ALERTED} />)
+
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
+  })
+
+  it('puts the switch in the legend, where the hiker can reach it', () => {
+    const onToggleAlerts = vi.fn()
+    render(<MapScreen {...ALERTED} legendOpen onToggleAlerts={onToggleAlerts} />)
+
+    const legend = screen.getByRole('dialog', { name: /legend/i })
+    expect(within(legend).getByRole('checkbox', { name: /alerts/i })).toBeChecked()
   })
 })
 

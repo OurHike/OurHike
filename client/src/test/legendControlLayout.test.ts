@@ -188,3 +188,52 @@ describe('the legend sheet scrolls a list longer than itself', () => {
     expect(sheet).toMatch(/padding-bottom:.*env\(safe-area-inset-bottom/)
   })
 })
+
+// THE ALERTS SWITCH (#1047), which is the fourth control on this panel and the
+// first over a safety layer.
+//
+// The reason it is pinned here rather than left to review is the reason the
+// picker above is: this panel's controls are read at 272px beside a desktop map
+// and at 390px on a phone, and every previous control that grew a second line
+// of text got that second line by accident. This one carries a sentence on
+// purpose - what the switch does NOT take away - so the row has to be the shape
+// that can hold one.
+describe('the alerts switch sits on a row like the overlay switch above it', () => {
+  it('is laid out as the drought row is, because it is the same kind of thing', () => {
+    // A map overlay with a name, a sentence under the name and a checkbox at
+    // the end. Two vocabularies for one shape is how a panel comes to look
+    // assembled rather than designed.
+    const alerts = rule('.legend__alerts')
+    const drought = rule('.legend__drought')
+
+    for (const declaration of [
+      /display:\s*flex/,
+      /align-items:\s*center/,
+      /justify-content:\s*space-between/,
+      /min-height:\s*var\(--min-touch-target\)/,
+      /border-top:\s*1px solid var\(--border-1\)/,
+    ]) {
+      expect(alerts).toMatch(declaration)
+      expect(drought).toMatch(declaration)
+    }
+  })
+
+  it('stacks the name over its sentence rather than running them together', () => {
+    // Without the column direction the sentence sits beside the word "Alerts"
+    // on one line and the checkbox is pushed off the row's end at 272px. The
+    // sentence is the part a hiker reads before deciding to turn a safety layer
+    // off, so it is not the part allowed to fall off the panel.
+    const name = rule('.legend__alerts-name')
+
+    expect(name).toMatch(/display:\s*flex/)
+    expect(name).toMatch(/flex-direction:\s*column/)
+    expect(name).toMatch(/flex:\s*1/)
+  })
+
+  it('draws that sentence quieter than the switch it explains', () => {
+    // Same treatment as the drought row's own detail line: smaller, secondary
+    // colour. The switch is the control; the sentence is the caveat on it.
+    expect(rule('.legend__alerts-detail')).toMatch(/font-size:\s*11px/)
+    expect(rule('.legend__alerts-detail')).toMatch(/color:\s*var\(--text-2\)/)
+  })
+})

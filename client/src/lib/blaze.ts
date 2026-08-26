@@ -163,3 +163,25 @@ export const BLAZE_MATCH_EXPRESSION = [
   NEUTRAL_FALLBACK,
   NEUTRAL_FALLBACK, // fallback for anything else (Unknown, Gold, etc.)
 ] as const
+
+/**
+ * How each `blaze_color` is NAMED, wherever a surface says one out loud.
+ *
+ * The pipeline's contract above is what makes this more than a capitalisation
+ * helper: "None" is a CONFIRMED unblazed trail while "Unknown" is a value
+ * that failed to decode, and the two are different claims. WIREFRAMES.md §3
+ * requires saying plainly when a blaze is unknown, and "Unblazed" in that
+ * slot would be a confident statement nobody made.
+ *
+ * Lifted here from lib/lineDetail.ts when the turn card (#1041) became the
+ * second surface naming a blaze. It is the same rule in both places by
+ * construction now: a hiker who reads "Blaze not recorded" on a tapped line
+ * and "Unblazed" at the junction it leads to has been told two different
+ * things about one piece of tread.
+ */
+export function blazeLabel(blazeColor: string | null): string {
+  if (blazeColor === null || blazeColor === 'Unknown') return 'Blaze not recorded'
+  if (blazeColor === 'None') return 'Unblazed'
+  if (blazeColor === 'Other') return 'Other blaze'
+  return `${blazeColor} blaze`
+}

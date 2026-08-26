@@ -96,6 +96,11 @@ export default async function drive(page) {
 
   await page.getByRole('tab', { name: 'Plan' }).click()
   await page.getByRole('button', { name: /Pine Meadow loop/ }).click()
-  // The card is up once its legs print - true in both of the states above.
-  await page.getByText('Legs').waitFor()
+  // The card is up once its legs heading prints - true in all three states
+  // above. The HEADING and not the bare text, which was this drive's own
+  // latent break: once the graph resolves, the figures line reads "6.4 mi ·
+  // 2 legs" and `getByText('Legs')` matches that AND the heading, which is a
+  // strict-mode violation rather than a wait. Nothing had reached that state
+  // to find out until #1041 drove this flow against a fixture data bucket.
+  await page.getByRole('heading', { name: 'Legs' }).waitFor()
 }

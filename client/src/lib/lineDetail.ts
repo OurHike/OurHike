@@ -27,6 +27,7 @@
 // - The round trip is ONE figure, not two legs - splitting it needs the
 //   spur's own elevation profile, which does not exist.
 
+import { blazeLabel } from './blaze'
 import { describeSpur, type SpurRecord } from './spurDestination'
 import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
@@ -114,20 +115,6 @@ export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
  * that tapping this trail will not switch to it.
  */
 export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_trails']
-
-/**
- * How each blaze_color is named. The pipeline's contract (lib/blaze.ts)
- * says "None" is CONFIRMED unblazed while "Unknown" is a value that failed
- * to decode - different claims, and the sheet keeps them apart: WIREFRAMES
- * requires saying plainly when the blaze is unknown, and "Unblazed" would
- * be a confident statement nobody made.
- */
-function blazeLabel(blazeColor: string | null): string {
-  if (blazeColor === null || blazeColor === 'Unknown') return 'Blaze not recorded'
-  if (blazeColor === 'None') return 'Unblazed'
-  if (blazeColor === 'Other') return 'Other blaze'
-  return `${blazeColor} blaze`
-}
 
 /**
  * One registered source's own words about itself, as the pipeline publishes

@@ -234,6 +234,11 @@ describe('the alerts switch sits on a row like the overlay switch above it', () 
     // Same treatment as the drought row's own detail line: smaller, secondary
     // colour. The switch is the control; the sentence is the caveat on it.
     expect(rule('.legend__alerts-detail')).toMatch(/font-size:\s*11px/)
-    expect(rule('.legend__alerts-detail')).toMatch(/color:\s*var\(--text-2\)/)
+    // --fg-2, not --text-2 (#1057): the --text-* family is typography, and
+    // --text-2 was never declared anywhere in the repo. An undefined custom
+    // property with no fallback is invalid at computed-value time, so the
+    // rule inherited body colour instead of demoting the line - and this
+    // assertion pinned the typo as the contract.
+    expect(rule('.legend__alerts-detail')).toMatch(/color:\s*var\(--fg-2\)/)
   })
 })

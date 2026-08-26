@@ -131,12 +131,28 @@ export interface OffRouteBandProps {
  * which nobody else on that trail is on, and frame `D11` places it under the
  * header for the same reason: it belongs with the mode signal it qualifies.
  *
- * `role="alert"` because it is one, and because it may appear while the phone
- * is in a pocket and be read minutes later.
+ * NO LIVE ROLE ON THIS BAND (#1055), for the reason chrome/MapScreen.tsx
+ * gives 46 lines above the slot it renders into. It carried `role="alert"`,
+ * and the body below ends in a distance that App.tsx recomputes on every GPS
+ * fix - `offRouteFeet` is an unrounded float printed as whole feet, so under
+ * canopy the string inside the region changed while the hiker stood still. A
+ * live region re-announces on any mutation inside it, and `role="alert"` is
+ * the assertive one: it cuts off whatever a screen reader was mid-sentence
+ * through. That is #315's defect exactly, at 528x the step - #315's number
+ * was tenths of a mile and this one was Math.round(feet).
+ *
+ * What is announced instead is MapScreen's own polite line, via
+ * `followAnnouncement`: one sentence, no number, changing only when the
+ * hiker crosses the threshold rather than when the fix wobbles. So it fires
+ * once per event, which is what the hysteresis in lib/dayHikeFollow.ts
+ * already exists to make true.
+ *
+ * The distance stays here, visible and reachable by navigating to it. It is
+ * worth reading; it is not worth being interrupted for forty times an hour.
  */
 export function OffRouteBand({ follow, units = 'imperial' }: OffRouteBandProps) {
   return (
-    <div className="off-route-band" role="alert">
+    <div className="off-route-band">
       <p className="off-route-band__head">You are not on your route</p>
       <p className="off-route-band__body">
         {offRouteDistance(follow.offRouteFeet, units)} from it, at the nearest point.

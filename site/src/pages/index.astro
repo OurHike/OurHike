@@ -32,35 +32,54 @@ const description =
 // layers), `mohonk_trails`, `dec_hiking_trails`. Update this list, and the
 // count it produces below, if that roster changes.
 //
+// Each carries two candidate lines rather than one - both written, both
+// shipped, rather than picking a favorite - so the rotation still varies
+// even while sitting on one organization's turn.
+//
 // `lat`/`lon` are each organization's approximate headquarters or main
 // office, from public knowledge rather than a geocoder - not surveyed, never
 // rendered, and used for exactly one thing client-side: a rough sort of
-// these five slides by estimated distance from the visitor. Precision here
-// would be spurious - the point is "which club is roughly closest", not a
-// real distance.
+// these five organizations by estimated distance from the visitor. Precision
+// here would be spurious - the point is "which club is roughly closest", not
+// a real distance.
 const ORGS = [
   {
-    line: 'The whole Appalachian Trail, offline.',
+    lines: [
+      'The whole Appalachian Trail, offline.',
+      '2,197 miles of Appalachian Trail. Zero bars required.',
+    ],
     lat: 39.3253,
     lon: -77.7386, // ATC, Harpers Ferry, WV
   },
   {
-    line: 'All of the NY-NJ Trail Conference’s trails, in your pocket.',
+    lines: [
+      'All of the NY-NJ Trail Conference’s trails, in your pocket.',
+      'Every mile the NY-NJ Trail Conference blazes, yours to download.',
+    ],
     lat: 41.0898,
     lon: -74.1447, // NYNJTC, Mahwah, NJ
   },
   {
-    line: 'Every trail NY State Parks maintains, offline in your pocket.',
+    lines: [
+      'Every trail NY State Parks maintains, offline in your pocket.',
+      'All of NY State Parks’ trails. None of the parking-lot wifi.',
+    ],
     lat: 42.6525,
     lon: -73.7572, // NYS OPRHP, Albany, NY
   },
   {
-    line: 'The Shawangunks’ cliffs and carriage roads, mapped by Mohonk Preserve.',
+    lines: [
+      'The Shawangunks’ cliffs and carriage roads, mapped by Mohonk Preserve.',
+      'Mohonk Preserve’s trails, minus the gift-shop line.',
+    ],
     lat: 41.7626,
     lon: -74.1071, // Mohonk Preserve, Gardiner, NY
   },
   {
-    line: 'Catskills to Adirondacks: every trail NYS DEC blazes.',
+    lines: [
+      'Catskills to Adirondacks: every trail NYS DEC blazes.',
+      'All of DEC’s hiking trails, no ranger station required.',
+    ],
     lat: 42.6551,
     lon: -73.7472, // NYS DEC, Albany, NY
   },
@@ -244,8 +263,8 @@ const ORG_COUNT_LINE = `${ORGS.length} organizations sharing all their trails an
 
       function slidesFrom(list) {
         return [countLine].concat(
-          list.map(function (o) {
-            return o.line
+          list.flatMap(function (o) {
+            return o.lines
           })
         )
       }

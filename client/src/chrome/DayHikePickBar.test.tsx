@@ -70,6 +70,15 @@ const ROUTE: GraphRoute = {
   ],
   miles: 4.8,
   edgeIndices: [0, 1, 2],
+  // One leg over all three edges. The bar never draws, so this only has to
+  // be a valid shape; lib/trailGraph.test.ts is where sections are exercised.
+  sections: [
+    {
+      edgeIndices: [0, 1, 2],
+      from: { edgeIndex: 0, fraction: 0, at: { lon: 0, lat: 0 }, offNetworkFeet: 0 },
+      to: { edgeIndex: 2, fraction: 1, at: { lon: 0, lat: 0 }, offNetworkFeet: 0 },
+    },
+  ],
   legsBySource: [
     { source: 'nynjtc_long_path', legs: 2 },
     { source: 'oprhp_trails', legs: 1 },

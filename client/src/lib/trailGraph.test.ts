@@ -25,6 +25,7 @@ import {
   nearestPointOnGraph,
   routeBetween,
   routeGeometry,
+  routeLines,
   routeThrough,
   type TrailGraph,
 } from './trailGraph'
@@ -399,6 +400,83 @@ describe('routeGeometry, which is what the casing draws', () => {
     // Both cover the same half of the 0.01-degree edge.
     expect(span(forward!)).toBeCloseTo(0.005, 5)
     expect(span(backward!)).toBeCloseTo(0.005, 5)
+  })
+
+  it('draws an out-and-back over one edge rather than nothing (#1040)', () => {
+    // The defect: `route.edgeIndices` is deduplicated across leg joins, so
+    // walking out and back over one edge collapses to `[1]` - and the caller
+    // then handed routeGeometry the FIRST and LAST tap, which for a walk
+    // returning to its start are the same point. The edge got trimmed to a
+    // zero-length span and the whole drawing came back null, under a bar
+    // reading "1 leg · 0.6 mi · ≈12m walking".
+    const index = buildGraphIndex(DRAWN)
+    const out = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const turn = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    expect(out).not.toBeNull()
+    expect(turn).not.toBeNull()
+
+    const route = routeThrough(index, [out!, turn!, out!])
+    expect(route).not.toBeNull()
+    // The route itself was always right - it counts both directions.
+    expect(route!.edgeIndices).toEqual([1])
+    expect(route!.miles).toBeCloseTo(0.623, 2)
+
+    const naive = routeGeometry(index.graph, route!.edgeIndices, out!, out!)
+    expect(naive).toBeNull()
+
+    const lines = routeLines(index.graph, route!)
+    expect(lines).not.toBeNull()
+    // One line per leg: out, and back over the same ground.
+    expect(lines).toHaveLength(2)
+    const span = (line: Array<[number, number]>) =>
+      Math.abs(line[line.length - 1][0] - line[0][0])
+    expect(span(lines![0])).toBeCloseTo(0.006, 5)
+    expect(span(lines![1])).toBeCloseTo(0.006, 5)
+    // And drawn in opposite directions, which is what walking back is.
+    expect(lines![0][0]).toEqual(lines![1][lines![1].length - 1])
+  })
+
+  it('draws the ground walked twice, not just the span between the taps', () => {
+    // Out to 0.8, turn, stop at 0.5. The stretch from 0.5 to 0.8 is walked
+    // twice and was drawn zero times: the old call trimmed the deduplicated
+    // edge to the span between the first and last tap.
+    const index = buildGraphIndex(DRAWN)
+    const start = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const turn = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    const stop = nearestPointOnGraph(index, { lon: -74.085, lat: 41.25 })
+
+    const route = routeThrough(index, [start!, turn!, stop!])
+    expect(route).not.toBeNull()
+
+    const lines = routeLines(index.graph, route!)
+    expect(lines).toHaveLength(2)
+    // The far leg reaches the turnaround, which the single-call drawing
+    // never did. East is the larger longitude here, and the turnaround is
+    // the eastmost point of the walk.
+    const reached = Math.max(...lines!.flat().map(([lon]) => lon))
+    expect(reached).toBeCloseTo(-74.082, 3)
+    // The old call stopped at the last tap instead.
+    const naive = routeGeometry(index.graph, route!.edgeIndices, start!, stop!)
+    expect(Math.max(...naive!.flat().map(([lon]) => lon))).toBeCloseTo(-74.085, 3)
+  })
+
+  it('refuses the whole drawing when one leg cannot be drawn', () => {
+    // The same asymmetry routeGeometry states per edge, one level up: four
+    // legs of a five-leg walk is a picture that lies about the fifth.
+    const index = buildGraphIndex(DRAWN)
+    const a = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const b = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    const route = routeThrough(index, [a!, b!])
+    expect(route).not.toBeNull()
+
+    // Strip the geometry from the one edge the route uses.
+    const stripped = {
+      ...index.graph,
+      edges: index.graph.edges.map((edge, at) =>
+        at === route!.edgeIndices[0] ? { ...edge, geometry: undefined } : edge,
+      ),
+    }
+    expect(routeLines(stripped, route!)).toBeNull()
   })
 
   it('refuses to draw chords when an edge has no geometry', () => {

@@ -199,7 +199,7 @@ import {
   undoTap,
   type DayHikeDraft,
 } from './lib/dayHikeDraft'
-import { routeGeometry, type TrailGraphIndex } from './lib/trailGraph'
+import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
@@ -2114,13 +2114,14 @@ function App() {
     ) {
       return { lines: [], points }
     }
-    const first = dayHike.points[0]
-    const last = dayHike.looped
-      ? dayHike.points[0]
-      : dayHike.points[dayHike.points.length - 1]
-    const lines =
-      routeGeometry(dayHikeIndex.graph, dayHikeStatus.route.edgeIndices, first, last) ??
-      []
+    // Leg by leg, off the route's own sections (#1040). Handing
+    // `route.edgeIndices` to routeGeometry with the first and last tap was
+    // wrong for every walk that re-uses ground: that list is deduplicated
+    // across leg joins, so an out-and-back over one edge became one edge
+    // trimmed between two taps - and for a LOOP, whose first and last tap are
+    // the same point, trimmed to nothing. Measured: a 0.62 mi out-and-back
+    // drew null, so the bar priced a walk the map did not show.
+    const lines = routeLines(dayHikeIndex.graph, dayHikeStatus.route) ?? []
     return { lines, points }
   }, [dayHike, dayHikeIndex, dayHikeStatus])
 

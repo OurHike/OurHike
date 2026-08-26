@@ -98,6 +98,16 @@ describe('applyRhythm', () => {
     // A shelter 4 miles on is inside the window, but this plan's days are
     // only 3 miles long - walking to it would not be a rest, it would be
     // tomorrow.
+    //
+    // The POI list is this test's own rather than the shared one, and that
+    // is the point of #1040's fix. The rest lands at mile 23 with tomorrow
+    // at 26, so the shared list's shelter at 24 is a real 1-mile nearo short
+    // of tomorrow - a legitimate rest this test used to read as a zero. It
+    // passed only because the old search reached PAST the window, picked the
+    // shelter at 31 and then rejected it for being out of range: the right
+    // answer for the wrong reason, and it hid the shelter at 24 entirely.
+    // Mile 27 is what the comment above actually describes - inside the
+    // six-mile window, past tomorrow's stop.
     const short = buildPlan(
       [
         { mile: 20, resupply: false },
@@ -107,8 +117,32 @@ describe('applyRhythm', () => {
       ],
       { miles: 3 },
     )
-    const after = applyRhythm({ ...short, rhythm: { everyDays: 1, kind: 'nearo' } }, POIS)
+    const after = applyRhythm({ ...short, rhythm: { everyDays: 1, kind: 'nearo' } }, [
+      poi(27, 'Past Tomorrow'),
+    ])
     expect(planDayViews(after)[1].zero).toBe(true)
+  })
+
+  it('is not talked out of a nearo by a shelter it cannot reach (#1040)', () => {
+    // The defect: `nearestStopBeyond` returns the stop nearest the mile it
+    // was AIMED at, however far away - its own documented contract - so this
+    // asked for the stop nearest the window's far edge and then rejected it
+    // for being outside. A shelter just past the edge therefore out-competed
+    // every reachable one and took the whole nearo down with it.
+    const reachable = poi(24, 'Reachable')
+    const justOutside = poi(20 + NEARO_MAX_MI + 0.4, 'Just Out Of Reach')
+
+    const alone = applyRhythm(plan(4, { everyDays: 2, kind: 'nearo' }), [reachable])
+    expect(planDayViews(alone)[2].end.name).toBe('Reachable')
+
+    // Adding a place this hiker cannot walk to must not change where they
+    // sleep. Before the fix this printed a zero at mile 20.
+    const both = applyRhythm(plan(4, { everyDays: 2, kind: 'nearo' }), [
+      reachable,
+      justOutside,
+    ])
+    expect(planDayViews(both)[2].zero).toBe(false)
+    expect(planDayViews(both)[2].end.name).toBe('Reachable')
   })
 
   it('keeps a nearo inside its own window', () => {

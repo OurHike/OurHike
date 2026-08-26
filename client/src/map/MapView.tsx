@@ -411,6 +411,10 @@ export function MapView({
   onLiveSourceHealth,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  /** Whether the current map instance opened on `bounds` - see the note at
+   *  construction, and the zoom-floor effect that reads it. Cleared by the
+   *  first gesture, after which the camera is the hiker's. */
+  const openedOnBounds = useRef(false)
   const [map, setMap] = useState<MapLibreMap | null>(null)
 
   /**
@@ -533,6 +537,14 @@ export function MapView({
       // change. Cleared on teardown so the next map is seeded and recorded
       // together, and a rebuild can never inherit the previous map's answer.
       drawnTrailsUrl.current = trailsUrl
+      // Whether THIS map opened on the shell's fitted box - latched at
+      // construction because the prop does not stay: the initial camera
+      // report below hands the shell a camera, and from the next render on
+      // it passes centre and zoom instead of bounds. The zoom-floor effect
+      // reads this latch rather than the live prop, or the report racing
+      // the archive header's read decides whether the clamp ever fires -
+      // which is #1062's CI failure, not a hypothesis.
+      openedOnBounds.current = bounds !== undefined
       built = created
       setMap(created)
     }
@@ -605,16 +617,24 @@ export function MapView({
   // (Harpers Ferry was removed for precisely that), and moving the scale in
   // without moving the centre claims nothing new.
   //
-  // Gated on `bounds`, which the shell supplies only for the very first view -
-  // once there is a remembered camera it passes centre and zoom instead. So
-  // this cannot fight a hiker who has deliberately zoomed out to look at the
+  // Gated on the LATCH, not the live `bounds` prop, and the difference is a
+  // race this shipped with and CI caught (#1062). The shell supplies bounds
+  // only while it has no camera - but the initial viewport report below
+  // HANDS it one, so by the time a slow archive-header read resolved, the
+  // prop this effect used to check was already gone and the clamp never
+  // fired: the map sat at the fitted zoom under a "Zoomed out past your
+  // download" flag. The latch records the fact that actually matters - this
+  // map instance OPENED on the shell's box - and survives the prop swap.
+  // The first gesture clears it (the report handler below), so this still
+  // cannot fight a hiker who has deliberately zoomed out to look at the
   // whole trail; it only decides where they start.
   useEffect(() => {
-    if (map === null || bounds === undefined || background !== 'usgs_topo_offline') return
+    if (map === null || !openedOnBounds.current || background !== 'usgs_topo_offline')
+      return
 
     const floor = openingZoomFloor(archiveZooms, map.getZoom())
     if (floor !== null) map.setZoom(floor)
-  }, [map, bounds, background, archiveZooms])
+  }, [map, background, archiveZooms])
 
   // Chrome lives in its own effect so that a preference which only affects the
   // controls - the scale bar's units, the zoom buttons - re-attaches three
@@ -894,6 +914,10 @@ export function MapView({
     // Whites should retune the ribbon, while the shell re-framing the camera
     // after a download should not take the ribbon off the hiker.
     const report = (event?: { originalEvent?: unknown }) => {
+      // A gesture ends the opening: from here the camera is the hiker's, and
+      // the zoom-floor effect above must not move it under them.
+      if (event?.originalEvent != null) openedOnBounds.current = false
+
       const bounds = map.getBounds()
       onViewportChange(
         {

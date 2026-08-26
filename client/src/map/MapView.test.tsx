@@ -971,4 +971,77 @@ describe('keeping the opening camera inside what the download covers', () => {
     expect(MockMap.live[0].getZoom()).toBe(4)
     expect(MockMap.live[0].cameraMoves).toHaveLength(0)
   })
+
+  it('still clamps when the archive header lands after the props stopped saying bounds', async () => {
+    // #1062's CI failure, replayed deterministically. The shell's very first
+    // viewport report hands it a camera, so from the next render on it
+    // passes centre and zoom - and on a slow disk the archive header's read
+    // resolves AFTER that swap. The clamp used to check the live `bounds`
+    // prop, which by then was gone: the map sat at the fitted zoom under a
+    // "Zoomed out past your download" flag, forever. What decides the clamp
+    // is whether THIS map opened on the shell's box, which is latched at
+    // construction and survives the prop swap.
+    const onViewportChange = vi.fn()
+    const { rerender } = render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        bounds={CORRIDOR}
+        onViewportChange={onViewportChange}
+      />,
+    )
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    // The initial report has fired - in the shell this is the moment the
+    // camera exists and bounds stops being passed.
+    expect(onViewportChange).toHaveBeenCalled()
+
+    rerender(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        center={[-77, 39]}
+        zoom={0}
+        onViewportChange={onViewportChange}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(5))
+  })
+
+  it('lets a gesture end the opening, even against a late archive header', async () => {
+    // The other half of the latch: a hiker who zoomed out on purpose in the
+    // beat before the header read finished owns the camera, and the late
+    // header must not yank it. `originalEvent` is how MapLibre marks a move
+    // as a pointer's rather than the app's.
+    const onViewportChange = vi.fn()
+    const { rerender } = render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        bounds={CORRIDOR}
+        onViewportChange={onViewportChange}
+      />,
+    )
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    const live = MockMap.live[0]
+    act(() => live.emit('moveend', { originalEvent: {} }))
+
+    rerender(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        center={[-77, 39]}
+        zoom={0}
+        onViewportChange={onViewportChange}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    // Nothing to wait FOR - the assertion is an absence - so give the effect
+    // the same beat the positive test above needed to fire.
+    await waitFor(() => expect(onViewportChange).toHaveBeenCalled())
+    expect(live.getZoom()).toBe(0)
+    expect(live.cameraMoves).toHaveLength(0)
+  })
 })

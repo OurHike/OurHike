@@ -82,6 +82,19 @@ import type { SearchablePoi } from '../lib/searchPoi'
 import './chrome.css'
 
 export interface MapScreenProps {
+  /**
+   * The Today journal, docked beside the map as the desktop's planning
+   * station (#1054). A slot rather than this screen knowing Today's props:
+   * the shell owns both screens and passes the very element the phone's
+   * Today tab renders, so the two layouts cannot drift apart. Passed ONLY
+   * above the breakpoint and only while the Today tab is active - on a phone
+   * this is always undefined and nothing here changes, which is WEBSITE.md
+   * §8's constraint made structural.
+   */
+  journal?: ReactNode
+  /** The sidebar's "today I'm…" control, handed through to the TabBar this
+   *  screen renders - see TabBarProps.modeSwitch for the contract. */
+  modeSwitch?: ReactNode
   topoArchiveUrl: string
   trailsUrl: string
   /** The corridor-view centerline, while there is no real one to draw (#869).
@@ -654,6 +667,8 @@ export function MapScreen({
   onToggleAlerts,
   activeTab,
   onSelectTab,
+  journal,
+  modeSwitch,
   onOpenLegend,
   onOpenSearch,
   legendOpen,
@@ -958,6 +973,13 @@ export function MapScreen({
       // over focusable content would otherwise be the classic trap.
       aria-hidden={entering || undefined}
     >
+      {/* The desktop's journal column (#1054): the Today screen the shell
+          hands over, reading beside the map instead of over it. Before
+          __main in the row, so it sits between the sidebar and the map -
+          src/desktop.css sizes and re-inks it. Never rendered on a phone,
+          because the shell never passes it there. */}
+      {journal !== undefined && <div className="map-screen__journal">{journal}</div>}
+
       {/* Everything that is not the navigation. On a phone this is a plain
           column and changes nothing; on a desktop the tab bar becomes a
           sidebar beside it (src/desktop.css). */}
@@ -1344,7 +1366,7 @@ export function MapScreen({
         )}
       </div>
 
-      <TabBar active={activeTab} onSelect={onSelectTab} />
+      <TabBar active={activeTab} onSelect={onSelectTab} modeSwitch={modeSwitch} />
     </div>
   )
 }

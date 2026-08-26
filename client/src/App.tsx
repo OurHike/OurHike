@@ -130,6 +130,8 @@ import {
 import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { activeDownload } from './lib/downloadActivity'
 import { useClock } from './lib/useClock'
+import { useDesktop } from './lib/useDesktop'
+import { ModeSwitch } from './chrome/ModeSwitch'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
@@ -777,6 +779,11 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+  // Which layout this viewport gets (lib/useDesktop.ts). Read here as well
+  // as inside MapScreen because two of the shell's own decisions turn on it
+  // since #1054: whether the Today tab is its own screen or the map's
+  // journal column, and whether the sidebar carries the mode switch.
+  const isDesktop = useDesktop()
 
   // What the trail is like right now - closures, reports, the ATC's own
   // notices - and when something last reached the server. See
@@ -4400,10 +4407,74 @@ function App() {
     units,
   })
 
+  // The journal, built once for its two rooms (#1054): the phone's Today tab
+  // below, and the desktop's planning station, where the map branch docks
+  // this same element beside the canvas. One element rather than two JSX
+  // copies, so the forty-odd props feeding it cannot drift between layouts.
+  const todayScreen = (
+    <Today
+      now={now}
+      position={position}
+      online={online}
+      hasGpsFix={gps.status === 'located'}
+      lastSyncedAt={lastSyncedAt}
+      conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
+      backgroundProblem={backgroundProblem({
+        sources: notDrawing,
+        online,
+        rasterArchiveDownloaded: archiveDownloaded,
+        hikingSheetDownloaded,
+      })}
+      backgroundOverride={backgroundOverride(
+        preferences.background_source,
+        saveData,
+        archiveDownloaded,
+      )}
+      trailLinesMissing={!haveTrailLines && dataError !== null}
+      mode={hikerMode}
+      onChangeMode={handleChangeMode}
+      pois={searchablePois}
+      currentMile={fix?.mile}
+      direction={direction?.direction}
+      stalenessFor={laneStaleness}
+      onOpenPoi={handleOpenPassedPlace}
+      closureAhead={closureAhead}
+      warningsAhead={warningsAhead}
+      advisoryAhead={advisoryAhead}
+      onShowOnMap={() => setActiveTab('map')}
+      elevation={ribbon}
+      units={units}
+      pace={pace}
+      opportunities={workProjects}
+      opportunitiesAsOf={workProjectsGeneratedAt}
+      onOpenVolunteer={() => {
+        setActiveTab('more')
+        setMorePage('volunteer')
+      }}
+      passedPlaces={passedPlacesToday}
+      queuedReportCount={queuedCount}
+      onStartReport={() => setReporting({ step: 'pick' })}
+      dayHikes={dayHikeStore.hikes}
+      onOpenDayHike={handleOpenDayHike}
+      hasDownload={anySheetDownloaded}
+      onOpenDownloads={openDownloads}
+    />
+  )
+
+  // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
+  // for it, and only the desktop needs it there - the phone carries the same
+  // control on the Today header. Undefined below the breakpoint, so TabBar
+  // draws nothing extra on a phone.
+  const sidebarModeSwitch = isDesktop ? (
+    <ModeSwitch mode={hikerMode} onChange={handleChangeMode} />
+  ) : undefined
+
   // Every tab branch below is skipped during first run: `entering` needs the
   // map screen rendered as the steps' backdrop (#721), whatever tab the
-  // default names.
-  if (!entering && activeTab === 'today') {
+  // default names. The Today branch is also skipped on a desktop, where the
+  // journal reads beside the map instead of replacing it - the map branch
+  // at the bottom of this component docks `todayScreen` there.
+  if (!entering && activeTab === 'today' && !isDesktop) {
     return (
       <>
         <div className="app__screen">
@@ -4412,65 +4483,19 @@ function App() {
                 reason: a throw here must not cost the map, and the tab bar
                 underneath is the way back. */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              <Today
-                now={now}
-                position={position}
-                online={online}
-                hasGpsFix={gps.status === 'located'}
-                lastSyncedAt={lastSyncedAt}
-                conditionsAge={conditionsAgeLabel(
-                  worstOf(closureState, reportState),
-                  now,
-                )}
-                backgroundProblem={backgroundProblem({
-                  sources: notDrawing,
-                  online,
-                  rasterArchiveDownloaded: archiveDownloaded,
-                  hikingSheetDownloaded,
-                })}
-                backgroundOverride={backgroundOverride(
-                  preferences.background_source,
-                  saveData,
-                  archiveDownloaded,
-                )}
-                trailLinesMissing={!haveTrailLines && dataError !== null}
-                mode={hikerMode}
-                onChangeMode={handleChangeMode}
-                pois={searchablePois}
-                currentMile={fix?.mile}
-                direction={direction?.direction}
-                stalenessFor={laneStaleness}
-                onOpenPoi={handleOpenPassedPlace}
-                closureAhead={closureAhead}
-                warningsAhead={warningsAhead}
-                advisoryAhead={advisoryAhead}
-                onShowOnMap={() => setActiveTab('map')}
-                elevation={ribbon}
-                units={units}
-                pace={pace}
-                opportunities={workProjects}
-                opportunitiesAsOf={workProjectsGeneratedAt}
-                onOpenVolunteer={() => {
-                  setActiveTab('more')
-                  setMorePage('volunteer')
-                }}
-                passedPlaces={passedPlacesToday}
-                queuedReportCount={queuedCount}
-                onStartReport={() => setReporting({ step: 'pick' })}
-                dayHikes={dayHikeStore.hikes}
-                onOpenDayHike={handleOpenDayHike}
-                hasDownload={anySheetDownloaded}
-                onOpenDownloads={openDownloads}
-              />
+              {todayScreen}
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            modeSwitch={sidebarModeSwitch}
+          />
         </div>
         {downloadsWindow}
       </>
     )
   }
-
   if (!entering && activeTab === 'more') {
     // Its own boundary for the same reason the map has one, with the roles
     // reversed: a throw anywhere in Settings used to escape to the ROOT
@@ -4573,7 +4598,11 @@ function App() {
               )}
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            modeSwitch={sidebarModeSwitch}
+          />
         </div>
         {downloadsWindow}
       </>
@@ -4727,7 +4756,11 @@ function App() {
               />
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            modeSwitch={sidebarModeSwitch}
+          />
         </div>
         {downloadsWindow}
       </>
@@ -4761,6 +4794,14 @@ function App() {
           // whole subtree inert, so the steps below are drawn over the map
           // rather than over a second copy of it.
           entering={entering}
+          // The desktop planning station (#1054): with Today active above the
+          // breakpoint, this branch is the one rendering - the Today branch
+          // stands aside - and the journal reads beside the map. Never during
+          // first run, whose backdrop must stay bare down to the canvas.
+          journal={
+            !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
+          }
+          modeSwitch={sidebarModeSwitch}
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
           overviewTrailsUrl={overviewTrailsUrl}

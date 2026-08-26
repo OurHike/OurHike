@@ -1242,3 +1242,25 @@ describe('the desktop chart (#135)', () => {
     }
   })
 })
+
+// The desktop planning station's slot (#1054): the shell docks the Today
+// journal beside the map. Which viewport gets one is App's decision and
+// App.test.tsx's assertion; what is pinned here is that the slot renders
+// what it is given, where the stylesheet expects it.
+describe('the journal slot', () => {
+  it('docks the journal it is handed', () => {
+    const { container } = render(
+      <MapScreen {...PROPS} journal={<div data-testid="journal" />} />,
+    )
+
+    expect(
+      container.querySelector('.map-screen__journal [data-testid="journal"]'),
+    ).not.toBeNull()
+  })
+
+  it('draws no journal column at all when none is handed over', () => {
+    const { container } = render(<MapScreen {...PROPS} />)
+
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
+  })
+})

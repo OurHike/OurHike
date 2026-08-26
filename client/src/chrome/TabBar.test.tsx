@@ -117,3 +117,24 @@ describe('TabBar', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(TABS.length)
   })
 })
+
+// The sidebar's mode block (#1054). A slot, so the bar stays ignorant of
+// hiker modes - what is asserted here is that the slot renders where it is
+// given and costs the phone nothing when it is not.
+describe('the mode slot', () => {
+  it('renders nothing extra when no switch is handed over, which is the phone', () => {
+    const { container } = render(<TabBar {...PROPS} />)
+
+    expect(container.querySelector('.tab-bar__mode')).toBeNull()
+  })
+
+  it('carries the switch it is handed, outside the tablist', () => {
+    render(<TabBar {...PROPS} modeSwitch={<div data-testid="mode-switch" />} />)
+
+    expect(screen.getByTestId('mode-switch')).toBeInTheDocument()
+    // Not inside the tablist: role="tablist" may own tabs and nothing else.
+    expect(
+      screen.getByRole('tablist').querySelector('[data-testid="mode-switch"]'),
+    ).toBeNull()
+  })
+})

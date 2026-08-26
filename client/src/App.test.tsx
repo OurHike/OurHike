@@ -13,6 +13,7 @@ import { liveMap } from './test/liveMap'
 // front door when Today became the home tab (#1054).
 import { openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
@@ -1330,5 +1331,77 @@ describe('a storage read that fails', () => {
     render(<App />)
 
     expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
+  })
+})
+
+// --- The desktop planning station (#1054) ----------------------------------
+//
+// Above the breakpoint the Today tab stops being its own screen: the map
+// branch renders, with the journal docked beside the canvas and the mode
+// switch in the sidebar. What is asserted here is the wiring - which branch
+// renders, that both surfaces are present, and that the sidebar's switch
+// writes through to the same store the Today header's does. How the column
+// LOOKS is desktop.css, under test/desktopLayout.test.ts's contract.
+
+describe('the desktop planning station (#1054)', () => {
+  it('reads the journal beside the map on the Today tab', async () => {
+    onADesktop()
+    returningHiker()
+    const { container } = render(<App />)
+
+    // The map screen is what renders - Today is the active tab, not a
+    // separate screen replacing the canvas.
+    expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Today', selected: true })).toBeInTheDocument()
+    expect(container.querySelector('.map-screen__journal .today')).not.toBeNull()
+  })
+
+  it('keeps the journal off the Map tab, which is the map alone', async () => {
+    onADesktop()
+    returningHiker()
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
+    expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
+  })
+
+  it('keeps the phone as it was: Today is its own screen, no journal column', async () => {
+    returningHiker()
+    const { container } = render(<App />)
+
+    // The Today screen renders directly - no map region behind it.
+    expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+  })
+
+  it('offers the mode switch in the sidebar, writing through to the phone store', async () => {
+    onADesktop()
+    returningHiker()
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Scoped to the navigation: the journal's own (CSS-hidden) copy of the
+    // switch is still in the tree under jsdom, and the sidebar's is the one
+    // this test is about.
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    const group = within(nav).getByRole('radiogroup', { name: /today i/i })
+    await user.click(within(group).getByRole('radio', { name: 'Volunteer' }))
+
+    await waitFor(() => expect(store.get(HIKER_MODE_KEY)).toBe('volunteer'))
+  })
+
+  it('keeps the mode switch out of the phone bar, which has no room for it', async () => {
+    returningHiker()
+    render(<App />)
+    await screen.findByText(/location is off/i)
+
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByRole('radiogroup')).toBe(null)
   })
 })

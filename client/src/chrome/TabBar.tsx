@@ -34,15 +34,26 @@
 // mark off it would make the brand one more member of the set - which is
 // exactly what a screen reader would then announce.
 
+import type { ReactNode } from 'react'
 import { TABS, type TabId } from './tabs'
 import logoIcon from '../design-system/assets/logo-icon.svg'
 
 export interface TabBarProps {
   active: TabId
   onSelect: (id: TabId) => void
+  /**
+   * The sidebar's mode block (#1054): the "today I'm…" control, rendered
+   * between the tabs and the brand mark. The shell passes it only above the
+   * breakpoint - the phone's bar is a strip of thumb targets with no room
+   * for a second control, and the phone already carries the switch on the
+   * Today header. A slot rather than this bar owning ModeSwitch, so the bar
+   * stays ignorant of hiker modes and every home renders the one component
+   * (chrome/ModeSwitch.tsx).
+   */
+  modeSwitch?: ReactNode
 }
 
-export function TabBar({ active, onSelect }: TabBarProps) {
+export function TabBar({ active, onSelect, modeSwitch }: TabBarProps) {
   return (
     <nav className="tab-bar" aria-label="Main">
       <div className="tab-bar__tabs" role="tablist">
@@ -61,6 +72,19 @@ export function TabBar({ active, onSelect }: TabBarProps) {
           </button>
         ))}
       </div>
+
+      {/* Above the brand mark, so the tab list's flex growth carries both to
+          the foot of the sidebar together. The eyebrow is aria-hidden because
+          the control inside already names itself "Today I'm" - a visible
+          label AND an aria-label would announce the question twice. */}
+      {modeSwitch !== undefined && (
+        <div className="tab-bar__mode">
+          <p className="tab-bar__mode-label" aria-hidden="true">
+            Today I’m
+          </p>
+          {modeSwitch}
+        </div>
+      )}
 
       {/* Rendered on every screen, not only the map: the sidebar is one shared
           piece of chrome, and a mark that appeared under Trail and vanished

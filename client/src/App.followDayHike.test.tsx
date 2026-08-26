@@ -301,8 +301,16 @@ describe('following a day hike, end to end', () => {
     await app.reportFixAtMile(mileAtLatitude(41.2516), -74.095)
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('You are not on your route')
+      expect(screen.getByText('You are not on your route')).toBeInTheDocument()
     })
+    // What is SAID, end to end: one polite sentence with no figure in it, on
+    // the screen's single live region (#1055). The band keeps the distance
+    // for the eye; a live region holding a per-fix number re-announces on
+    // every fix, which is #315's defect and was this band's until #1055.
+    const live = document.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('You are off your route.')
+    expect(live).not.toHaveTextContent(/\d/)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByText('We will not draw you a line back')).toBeInTheDocument()
     // The one navigational thing this screen can honestly offer.
     expect(

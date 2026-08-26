@@ -7,9 +7,11 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "astro": "^5.7.0"
+    "astro": "^5.7.0",
+    "vitest": "^4.1.10"
   }
 }

@@ -4770,6 +4770,17 @@ function App() {
               <OffRouteBand follow={followState} units={units} />
             ) : undefined
           }
+          // The same condition, said once, with no distance in it (#1055).
+          // followState is rebuilt on every fix, so anything carrying
+          // `offRouteFeet` into a live region announces on every fix; this
+          // string has only two values, and lib/dayHikeFollow.ts's hysteresis
+          // (90 ft out, 45 ft back) is what keeps it from flipping between
+          // them while somebody stands at the edge of the threshold.
+          followAnnouncement={
+            followState !== null && followState.kind === 'off-route'
+              ? 'You are off your route.'
+              : null
+          }
           // Two things sit OVER the builder's own surface, and both are the
           // shell's: the break-into-days sheet, and the day-hike builder.
           // The precedence between them is unchanged - target, then day

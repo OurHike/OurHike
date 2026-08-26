@@ -56,10 +56,12 @@ describe('Onboarding', () => {
     expect(screen.getByText(/no account\. nothing to sign up for\./i)).toBeInTheDocument()
   })
 
-  it('says memberships fund the ATC and the volunteer clubs', () => {
+  it('says memberships fund the ATC and the other organizations, not the ATC alone', () => {
     render(<Onboarding {...PROPS} />)
 
-    expect(screen.getByText(/fund/i)).toHaveTextContent(/ATC|club/i)
+    const fundingNote = screen.getByText(/fund/i)
+    expect(fundingNote).toHaveTextContent(/ATC/i)
+    expect(fundingNote).toHaveTextContent(/other organizations/i)
   })
 
   it('offers the hiking sheet\u2019s two levels on the map-size step, with the real figures', async () => {

@@ -577,6 +577,60 @@ describe('MapScreen safety alerts', () => {
     expect(alertBand(container)).not.toHaveAttribute('role', 'alert')
   })
 
+  it('has no assertive region ANYWHERE on the screen, slots included', () => {
+    // The guard above resolves its subject with
+    // `container.querySelector('.map-screen__alerts')`, so it could only ever
+    // see one band. #1044 put a second one in the followBand slot carrying
+    // `role="alert"` and a per-fix distance, and this suite stayed green
+    // through the whole review (#1055). Scoped to the screen rather than to a
+    // class, so the next band added to a slot cannot inherit the blind spot.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        followBand={<div className="off-route-band">440 ft from it</div>}
+      />,
+    )
+
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(0)
+    expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(0)
+  })
+
+  it('announces the followed walk on the one polite line, with no number in it', () => {
+    // The other half of #1055's fix: the band keeps the distance for the eye,
+    // and what is SAID carries no figure, so it changes when the hiker
+    // crosses the threshold rather than when the fix wobbles.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        followBand={<div className="off-route-band">440 ft from it</div>}
+        followAnnouncement="You are off your route."
+      />,
+    )
+
+    const live = container.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('You are off your route.')
+    expect(live).not.toHaveTextContent('440')
+    // One region, not two - a second would be a second thing that can
+    // interrupt, which is what the role="status" note above argues against.
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1)
+  })
+
+  it('says the ground ahead before the hiker s own route', () => {
+    // Order matters on a line read aloud: a closure is true for everyone on
+    // that trail, and being off your own route is not.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead"
+        followAnnouncement="You are off your route."
+      />,
+    )
+
+    const live = container.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('Trail closure ahead. You are off your route.')
+  })
+
   it('names each lane that has something in it, and only those', () => {
     const { container } = render(
       <MapScreen

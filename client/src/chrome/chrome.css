@@ -958,7 +958,7 @@
 
 .legend__drought-detail {
   font-size: 11px;
-  color: var(--text-2);
+  color: var(--fg-2);
 }
 
 .legend__verified {
@@ -1006,7 +1006,7 @@
 
 .legend__alerts-detail {
   font-size: 11px;
-  color: var(--text-2);
+  color: var(--fg-2);
 }
 
 /* A safety row spans the grid rather than sitting in one column of it.

@@ -120,16 +120,53 @@ export function PlanTargetSheet({
   const hoursAvailable = elevation !== null && routeMeasured
   const effectiveUnit = hoursAvailable ? unit : 'miles'
 
+  /**
+   * What a stretch costs in walking hours, priced once per pair of stops.
+   *
+   * WHY A CACHE (#1040). The planner's DP asks this for every pair of stops
+   * within the day cap, and each answer walks every elevation sample between
+   * them - the profile is ~141,000 samples over the trail. Measured on this
+   * container, one recompute in hours mode: 13 ms over a 50-mile route,
+   * 19 ms over 200, 45 ms over 500, and 166 ms over the whole trail from
+   * 2,545 `legFigures` calls. That last is ten frames, per slider step, on
+   * hardware faster than any phone - the control stutters, and the stutter
+   * gets worse the longer the hike.
+   *
+   * The DP's question does not depend on the target: `effort(a, b)` is a
+   * property of the ground. So the same pairs are re-priced on every step of
+   * a slider that cannot change any of their answers. Caching by mile pair
+   * makes every step after the first nearly free, and the cache is thrown
+   * away when the profile or the pace changes - the only two things that can
+   * move an answer.
+   *
+   * Bounded by the DP itself: it asks about pairs within DEFAULT_CAP_MI, so
+   * the map holds thousands of numbers at most, not the square of the stops.
+   */
+  const effort = useMemo(() => {
+    if (elevation === null) return null
+    const profile = elevation
+    const priced = new Map<string, number>()
+    return (from: CandidateStop, to: CandidateStop) => {
+      const key = `${from.mile}:${to.mile}`
+      const known = priced.get(key)
+      if (known !== undefined) return known
+      const hours = legFigures(profile, from.mile, to.mile, pace).minutes / 60
+      priced.set(key, hours)
+      return hours
+    }
+  }, [elevation, pace])
+
   const preview = useMemo(() => {
-    if (effectiveUnit === 'hours') {
-      const profile = elevation as ElevationProfile
-      return planDaysVia(pois, route, hours, {
-        effort: (from: CandidateStop, to: CandidateStop) =>
-          legFigures(profile, from.mile, to.mile, pace).minutes / 60,
-      })
+    // `effort` rather than a closure built here, so `pace` reaches this. It
+    // was missing from these dependencies while the closure read it (#1040):
+    // a hiker who changed their pace with this sheet open kept planning at
+    // the old one, silently. Depending on the function makes that
+    // impossible - its identity moves when the pace does.
+    if (effectiveUnit === 'hours' && effort !== null) {
+      return planDaysVia(pois, route, hours, { effort })
     }
     return planDaysVia(pois, route, miles)
-  }, [pois, route, effectiveUnit, hours, miles, elevation])
+  }, [pois, route, effectiveUnit, hours, miles, effort])
 
   /**
    * The plan this sheet would actually lay out, built once and both counted

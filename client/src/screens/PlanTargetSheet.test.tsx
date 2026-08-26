@@ -10,6 +10,7 @@ import { PlanTargetSheet } from './PlanTargetSheet'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import type { HikePlan } from '../lib/plan'
 import type { StoredPoi } from '../lib/trailData'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 
 const poi = (id: string, type: string, mile?: number): StoredPoi => ({
   id,
@@ -120,6 +121,74 @@ describe('the target and its unit', () => {
 
     expect(screen.getByRole('button', { name: 'Walking hours' })).not.toBeDisabled()
     expect(screen.queryByText(/no elevation measured/)).toBeNull()
+  })
+})
+
+describe("the hiker's own pace, on a sheet that is already open", () => {
+  it('re-plans when the pace changes under it (#1040)', () => {
+    // The stale closure this pins: `preview` read `pace` from its enclosing
+    // scope and did not list it as a dependency, so a hiker who changed
+    // their pace with this sheet mounted kept planning at the old one -
+    // silently, on the control whose whole job is to keep a day walkable.
+    //
+    // A rerender rather than a fresh render is the whole point: a remount
+    // would rebuild the memo and pass whether or not the dependency was
+    // ever declared.
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 1.5 }
+    // ONE profile object across both renders, and that is load-bearing.
+    // Written as `elevation={flatProfile()}` this test passed against the
+    // defect: a fresh object per render changes `elevation`'s identity, so the
+    // memo re-ran for that reason and the missing `pace` never showed.
+    const profile = flatProfile()
+    const { rerender } = render(
+      <PlanTargetSheet {...PROPS} elevation={profile} pace={STANDARD_PACE} />,
+    )
+
+    const dayCount = () =>
+      Number(
+        /Lay out (\d+) days?/.exec(
+          screen.getByRole('button', { name: /Lay out \d+ days?/ }).textContent ?? '',
+        )?.[1],
+      )
+
+    const atStandard = dayCount()
+    rerender(<PlanTargetSheet {...PROPS} elevation={profile} pace={slow} />)
+    const atSlow = dayCount()
+
+    // Same ground, same target in HOURS, half the speed - so more days.
+    expect(atSlow).toBeGreaterThan(atStandard)
+  })
+
+  it('answers for a target the same however the hiker got there', () => {
+    // The cache `effort` keeps. It prices each stretch by mile pair so a
+    // slider step does not re-walk the profile - measured at 1,242 ms for
+    // ten steps over a full-trail route before, 147 ms after, same plan.
+    //
+    // What a cache can break is that "same plan": a key that collided
+    // across pairs, or one that outlived what it was priced from, would
+    // move day boundaries depending on which targets the hiker dragged
+    // through first. So the answer at nine hours has to be the answer at
+    // nine hours, whether it is asked cold or after a detour through five.
+    const hoursSlider = () => screen.getByLabelText('Walking hours per day')
+    const dayCount = () =>
+      Number(
+        /Lay out (\d+) days?/.exec(
+          screen.getByRole('button', { name: /Lay out \d+ days?/ }).textContent ?? '',
+        )?.[1],
+      )
+
+    const cold = render(
+      <PlanTargetSheet {...PROPS} elevation={flatProfile()} pace={STANDARD_PACE} />,
+    )
+    fireEvent.change(hoursSlider(), { target: { value: '9' } })
+    const asked = dayCount()
+    cold.unmount()
+
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} pace={STANDARD_PACE} />)
+    for (const value of ['5', '11', '6', '9']) {
+      fireEvent.change(hoursSlider(), { target: { value } })
+    }
+    expect(dayCount()).toBe(asked)
   })
 })
 

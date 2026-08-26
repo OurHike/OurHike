@@ -7,7 +7,7 @@ import {
   syncTripsWithAccount,
   uploadsFor,
 } from './tripsSync'
-import { TRIPS_KEY, EMPTY_STORE, type Trip, type TripStore } from './trips'
+import { EMPTY_STORE, removeTrip, TRIPS_KEY, type Trip, type TripStore } from './trips'
 import { buildPlan, type HikePlan } from './plan'
 import { PLANNED_HIKE_KEY } from './plannedHike'
 import { TRIPS_SYNC_KEY, tripSyncState } from './tripSyncState'
@@ -216,6 +216,79 @@ describe('folding in what the account sent', () => {
     const before = storeWith(trip())
 
     expect(mergeServerTrips(before, [])).toBe(before)
+  })
+})
+
+// #1036: the backend keeps both sides of a conflict by writing the loser
+// beside the winner. That only works if the copy is a separate record, and
+// the client identifies a record by the id inside its DOCUMENT - so these
+// drive the merge with the row pairs `trip_sync.resolve_upload` emits.
+describe('a conflict copy survives as its own trip (#1036)', () => {
+  /** What the server sends for edit-vs-edit: the winner untouched, and the
+   *  loser beside it under a fresh id - in its row AND in its document. */
+  const editVsEdit = [
+    row('trip-1', 'Grayson Highlands, four days'),
+    {
+      id: 'copy-1',
+      document: trip(
+        'copy-1',
+        'Grayson Highlands, three days (edited on another device)',
+      ),
+      updated_at: NOW,
+      deleted_at: null,
+    },
+  ]
+
+  it('keeps both, under two different ids', () => {
+    const merged = mergeServerTrips(storeWith(trip()), editVsEdit)
+
+    expect(merged.trips.map((t) => t.id).sort()).toEqual(['copy-1', 'trip-1'])
+  })
+
+  it('deleting one afterwards does not take the other with it', () => {
+    // The consequence that made the old shape dangerous rather than untidy:
+    // two records sharing an id meant `removeTrip` deleted both.
+    const merged = mergeServerTrips(storeWith(trip()), editVsEdit)
+    const after = removeTrip(merged, 'trip-1')
+
+    expect(after.trips.map((t) => t.id)).toEqual(['copy-1'])
+  })
+
+  it('keeps both even from a server that has not been redeployed', () => {
+    // The belt: a legacy copy row whose DOCUMENT still carries the original's
+    // id. The row id is the identity the server filed it under, so the merge
+    // takes that and the two records stay two.
+    const legacyCopy = {
+      id: 'copy-1',
+      document: trip('trip-1', 'Grayson Highlands, three days (edited elsewhere)'),
+      updated_at: NOW,
+      deleted_at: null,
+    }
+    const merged = mergeServerTrips(storeWith(trip()), [
+      row('trip-1', 'Grayson Highlands, four days'),
+      legacyCopy,
+    ])
+
+    expect(merged.trips.map((t) => t.id).sort()).toEqual(['copy-1', 'trip-1'])
+    expect(removeTrip(merged, 'trip-1').trips.map((t) => t.id)).toEqual(['copy-1'])
+  })
+
+  it('survives delete-vs-edit whichever order the rows arrive in', () => {
+    // The tombstone is keyed on the original id and the copy is not, so the
+    // outcome no longer depends on an order nothing in the exchange pins.
+    const tombstone = row('trip-1', 'gone', { document: null, deleted_at: NOW })
+    const copy = {
+      id: 'copy-1',
+      document: trip('copy-1', 'Grayson Highlands, four days (edited on another device)'),
+      updated_at: NOW,
+      deleted_at: null,
+    }
+
+    const tombstoneFirst = mergeServerTrips(storeWith(trip()), [tombstone, copy])
+    const copyFirst = mergeServerTrips(storeWith(trip()), [copy, tombstone])
+
+    expect(tombstoneFirst.trips.map((t) => t.id)).toEqual(['copy-1'])
+    expect(copyFirst.trips.map((t) => t.id)).toEqual(['copy-1'])
   })
 })
 

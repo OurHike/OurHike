@@ -97,13 +97,27 @@ export function uploadsFor(
   return [...edits, ...tombstones]
 }
 
-/** A row the server sent, as a `DayHike` this build can hold - or null when
- *  it cannot. A hike written by a newer build is dropped rather than
- *  rendered; `validateDayHikeStore` refuses per hike for exactly this
- *  reason, so one unreadable hike is not every hike. */
+/**
+ * The record a server row carries, identified by the ROW.
+ *
+ * The document carries its own `id` and normally the two agree - an upload
+ * sends `{id, document}` minted together on the phone. They disagree in
+ * exactly one case, and it is the case that matters: a conflict copy, which
+ * the server writes under a fresh row id to keep beside the record it lost
+ * to. A copy whose document still said the original's id landed on top of
+ * the very trip it was created to preserve (#1036).
+ *
+ * The server is the one that mints a copy's identity, so it is fixed there
+ * too - `trip_sync.document_for_copy` now sets both. This is the belt: a
+ * phone talking to a server that has not been redeployed yet still keeps
+ * both records rather than silently collapsing them, and the row id is the
+ * identity the server files the record under either way.
+ */
 function dayHikeFrom(row: SyncedDayHikeRow): DayHike | null {
   const store = validateDayHikeStore({ hikes: [row.document], openId: null })
-  return store?.hikes[0] ?? null
+  const record = store?.hikes[0]
+  if (record === undefined) return null
+  return record.id === row.id ? record : { ...record, id: row.id }
 }
 
 /**

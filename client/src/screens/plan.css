@@ -333,6 +333,14 @@
   white-space: nowrap;
 }
 
+/* An honest unknown, not a warning: the DEM has a hole here and the day's
+   climb cannot be stated. Quieter than a figure rather than louder, because
+   nothing is wrong with the plan - only with what we can say about it. */
+.plan__day-figure--unmeasured {
+  color: var(--fg-3);
+  white-space: normal;
+}
+
 .plan__day-carry {
   position: relative;
   font-family: var(--font-mono, ui-monospace, monospace);

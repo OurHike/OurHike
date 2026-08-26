@@ -178,6 +178,42 @@ describe('the timeline', () => {
     expect(screen.getByText(/3 days food/)).toBeInTheDocument()
   })
 
+  it('withholds the climb and the time where the DEM has a hole (#1039)', () => {
+    // A gap prices as flat ground, so both figures come back short - and
+    // short is the direction that gets somebody caught out after dark. The
+    // distance stays, because a hole cannot corrupt it.
+    const gapped = profile()
+    const holed = {
+      ...gapped,
+      elevationFt: Float32Array.from(gapped.elevationFt, (feet, at) =>
+        gapped.distanceMi[at] >= 488 && gapped.distanceMi[at] <= 494 ? NaN : feet,
+      ),
+    }
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={holed} />)
+
+    expect(screen.getByText(/no climb measured for/i)).toBeInTheDocument()
+    // The day that spans the hole prints no ≈time; the whole one still does.
+    expect(screen.getByText(/15\.4 mi/)).toBeInTheDocument()
+  })
+
+  it('states a section’s ascent only when every day of it was measured', () => {
+    const whole = profile()
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={whole} />)
+    const stated = screen.getAllByText(/↑/).length
+    cleanup()
+
+    const holed = {
+      ...whole,
+      elevationFt: Float32Array.from(whole.elevationFt, (feet, at) =>
+        whole.distanceMi[at] >= 488 && whole.distanceMi[at] <= 494 ? NaN : feet,
+      ),
+    }
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={holed} />)
+    // A section header is the one place a hiker cannot see that a row below
+    // it was withheld, so the roll-up is all-or-nothing across its days.
+    expect(screen.queryAllByText(/↑/).length).toBeLessThan(stated)
+  })
+
   it('never scores a hiker against their plan', () => {
     const { container } = render(
       <PlanScreen {...PROPS} plan={smallPlan()} elevation={profile()} />,

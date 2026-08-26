@@ -856,6 +856,14 @@ function finishLabel(views: PlanDayView[]): string | null {
   return `${date.getUTCDate()} ${month}`
 }
 
+/**
+ * A section's confirmed ascent, or null when it cannot be stated whole.
+ *
+ * All or nothing across the days, and now across the DEM too (#1039): one
+ * day with unmeasured ground makes the roll-up an understatement, and a
+ * section header is the one place a hiker has no way to notice that a single
+ * row was withheld below it.
+ */
 function sectionAscent(
   section: PlanSection,
   figures: Map<number, LegFigures>,
@@ -865,6 +873,7 @@ function sectionAscent(
     if (day.zero) continue
     const f = figures.get(day.index)
     if (f === undefined) return null
+    if (f.unmeasuredMi > 0) return null
     total += f.ascentFt
   }
   return total
@@ -978,10 +987,22 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
           <span className="plan__day-carry">resupply</span>
         )}
         <span className="plan__day-bottom">
-          {figures !== undefined && (
+          {figures !== undefined && figures.unmeasuredMi === 0 && (
             <span className="plan__day-figure">
               {formatNaismithMinutes(figures.minutes)} ·{' '}
               {formatElevation(figures.ascentFt, units)} ↑
+            </span>
+          )}
+          {/* A hole in the DEM prices as flat ground, so the climb and the
+              time are both understated - and understated is the direction
+              that gets somebody caught out after dark. The distance above is
+              still honest and stays; these two are withheld and said to be
+              withheld, which is what the network half already does by
+              returning no time at all (#1039). */}
+          {figures !== undefined && figures.unmeasuredMi > 0 && (
+            <span className="plan__day-figure plan__day-figure--unmeasured">
+              no climb measured for{' '}
+              {formatDistance(figures.unmeasuredMi, units, 'trimmed')} of this day
             </span>
           )}
           {day.wasDistanceMi !== null && (

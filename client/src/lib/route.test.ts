@@ -169,11 +169,102 @@ describe('legFigures', () => {
   })
 })
 
+describe('a DEM gap is reported rather than priced as flat (#1039)', () => {
+  /** A 10-mile sawtooth sampled every 0.1 mi: 1,000 ft of honest ascent,
+   *  and `gapFrom`..`gapTo` blanked the way a DEM coverage hole blanks it. */
+  function sawtooth(gapFrom?: number, gapTo?: number): ElevationProfile {
+    const distanceMi: number[] = []
+    const elevationFt: number[] = []
+    for (let i = 0; i <= 100; i += 1) {
+      const mile = i * 0.1
+      const phase = Math.floor(i / 5) % 2
+      const within = i % 5
+      distanceMi.push(mile)
+      const height = phase === 0 ? 1000 + within * 20 : 1100 - within * 20
+      const blanked =
+        gapFrom !== undefined && gapTo !== undefined && mile >= gapFrom && mile <= gapTo
+      elevationFt.push(blanked ? NaN : height)
+    }
+    return {
+      distanceMi: Float32Array.from(distanceMi),
+      elevationFt: Float32Array.from(elevationFt),
+    }
+  }
+
+  it('measures nothing unmeasured on a whole profile', () => {
+    const whole = legFigures(sawtooth(), 0, 10)
+    expect(whole.unmeasuredMi).toBe(0)
+    expect(whole.ascentFt).toBeCloseTo(1000, 0)
+  })
+
+  it('reports the hole, and the figures beside it are still short', () => {
+    const gapped = legFigures(sawtooth(2, 8), 0, 10)
+
+    // The defect: this used to come back as a plain 380 ft with a walking
+    // time to match, indistinguishable from six honest miles of flat.
+    // Samples at mile 2.0 through 8.0 are blanked, so every span touching
+    // one of them counts: 6.2 miles, a tenth either side of the hole.
+    expect(gapped.unmeasuredMi).toBeCloseTo(6.2, 1)
+    expect(gapped.ascentFt).toBeLessThan(1000)
+    // Distance is untouched - it is the one figure a hole cannot corrupt,
+    // which is why the timeline keeps printing it.
+    expect(gapped.distanceMi).toBeCloseTo(10)
+  })
+
+  it('always errs short, which is why the surface must refuse', () => {
+    // A hole can only remove ascent, never add it, so the error has one
+    // direction and it is the optimistic one.
+    const whole = legFigures(sawtooth(), 0, 10)
+    for (const [from, to] of [
+      [4, 6],
+      [2, 8],
+      [0.5, 9.5],
+    ] as const) {
+      const gapped = legFigures(sawtooth(from, to), 0, 10)
+      expect(gapped.ascentFt).toBeLessThanOrEqual(whole.ascentFt)
+      expect(gapped.minutes).toBeLessThanOrEqual(whole.minutes)
+      expect(gapped.unmeasuredMi).toBeGreaterThan(0)
+    }
+  })
+
+  it('does not count a part seam, where the ground IS measured', () => {
+    // The distinction cumulativeGainOverProfile's own docstring draws: a null
+    // is a hole in the DEM, a seam is measurement that is fine across trail
+    // that is not continuous. Counting seams would withhold a figure on most
+    // days of a plan to describe an approximation the pipeline bounds and
+    // logs upstream.
+    const seamed = sawtooth()
+    const partStart = new Uint8Array(seamed.distanceMi.length)
+    partStart[50] = 1
+    expect(legFigures({ ...seamed, partStart }, 0, 10).unmeasuredMi).toBe(0)
+  })
+
+  it('a total is as unmeasured as its legs put together', () => {
+    const total = totalFigures([
+      legFigures(sawtooth(2, 3), 0, 10),
+      legFigures(sawtooth(5, 6), 0, 10),
+    ])
+    expect(total.unmeasuredMi).toBeGreaterThan(2)
+  })
+})
+
 describe('totalFigures', () => {
   it('sums legs before any display rounding', () => {
     const total = totalFigures([
-      { distanceMi: 15.4, ascentFt: 2900, descentFt: 1750, minutes: 425.2 },
-      { distanceMi: 17.2, ascentFt: 4100, descentFt: 2200, minutes: 500.3 },
+      {
+        distanceMi: 15.4,
+        ascentFt: 2900,
+        descentFt: 1750,
+        minutes: 425.2,
+        unmeasuredMi: 0,
+      },
+      {
+        distanceMi: 17.2,
+        ascentFt: 4100,
+        descentFt: 2200,
+        minutes: 500.3,
+        unmeasuredMi: 0,
+      },
     ])
     expect(total.distanceMi).toBeCloseTo(32.6)
     expect(total.ascentFt).toBeCloseTo(7000)
@@ -187,6 +278,7 @@ describe('totalFigures', () => {
       ascentFt: 0,
       descentFt: 0,
       minutes: 0,
+      unmeasuredMi: 0,
     })
   })
 })

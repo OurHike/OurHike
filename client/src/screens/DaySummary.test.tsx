@@ -58,6 +58,7 @@ const FIGURES: LegFigures = {
   ascentFt: 3400,
   descentFt: 1200,
   minutes: 520,
+  unmeasuredMi: 0,
 }
 
 function renderCard(props: Partial<Parameters<typeof DaySummary>[0]> = {}) {

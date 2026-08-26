@@ -13,6 +13,8 @@ two minutes.
 
 from __future__ import annotations
 
+import io
+
 import pytest
 import requests
 
@@ -160,128 +162,134 @@ class TestItSaysWhatItIsDoing:
         assert "1/3" in printed
 
 
-class StreamedResponse:
-    """A response whose BODY can fail, which requests_mock cannot stage: the
-    faults download_with_retry exists for land inside iter_content, after the
-    request call already returned (#1063)."""
-
-    def __init__(self, *, status=200, chunks=(b"",), fail_after=None):
-        self.status_code = status
-        self.headers = {}
-        self._chunks = chunks
-        self._fail_after = fail_after
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def iter_content(self, chunk_size):
-        for index, chunk in enumerate(self._chunks):
-            if index == self._fail_after:
-                raise requests.exceptions.ChunkedEncodingError("connection reset mid-body")
-            yield chunk
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise requests.HTTPError(str(self.status_code))
-
-
-class ScriptedSession:
-    """One scripted answer per attempt - a response, or an exception to raise
-    from the request call itself (a handshake that never completed)."""
-
-    def __init__(self, script):
-        self.script = list(script)
-
-    def request(self, method, url, **kwargs):
-        step = self.script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        return step
-
-
 class TestDownloadWithRetry:
-    def test_the_reset_that_killed_run_33005545820_is_survived(self, tmp_path, naps):
-        """Attempt 1 of that run: ConnectionResetError mid-body on the seventh
-        state extract, ~1.7 GB in. The transfer should have been re-pulled -
-        the same mirror served the file whole on the next day's run."""
-        dest = tmp_path / "pennsylvania-latest.osm.pbf"
-        session = ScriptedSession(
+    """`download_with_retry`, added for #1063.
+
+    The failure it exists for: a 600-second read timeout against
+    download.geofabrik.de, ten minutes into a 3.5 GB state extract, which
+    ended a production publish at step 15 of 39 with nothing uploaded
+    (run 33005545820).
+    """
+
+    PBF = "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf"
+
+    def test_the_read_timeout_that_threw_away_a_publish_is_survived(self, requests_mock, naps, tmp_path):
+        requests_mock.get(
+            self.PBF,
             [
-                StreamedResponse(chunks=(b"first-", b"half"), fail_after=1),
-                StreamedResponse(chunks=(b"whole-", b"file")),
-            ]
+                {"exc": requests.exceptions.ReadTimeout},
+                {"content": b"osm-pbf-bytes"},
+            ],
         )
+        dest = tmp_path / "new-york-latest.osm.pbf"
 
-        result = download_with_retry("https://geofabrik.example/pa.pbf", dest, session=session, sleep=naps.append)
-
-        assert result == dest
-        assert dest.read_bytes() == b"whole-file"
-        assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
-        assert not dest.with_suffix(".part").exists()
-
-    def test_a_handshake_that_never_completed_is_retried(self, tmp_path, naps):
-        """Attempt 2 of the same run: the TLS handshake timed out and surfaced
-        as a ReadTimeout before any byte arrived."""
-        dest = tmp_path / "north-carolina-latest.osm.pbf"
-        session = ScriptedSession(
-            [
-                requests.exceptions.ReadTimeout("Read timed out. (read timeout=600)"),
-                StreamedResponse(chunks=(b"extract",)),
-            ]
-        )
-
-        download_with_retry("https://geofabrik.example/nc.pbf", dest, session=session, sleep=naps.append)
-
-        assert dest.read_bytes() == b"extract"
+        assert download_with_retry(self.PBF, dest, sleep=naps.append) == dest
+        assert dest.read_bytes() == b"osm-pbf-bytes"
         assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
 
-    def test_the_budget_spent_leaves_no_file_at_all(self, tmp_path, naps):
-        """dest is only ever a completed transfer: a caller that finds it on
-        disk must be able to trust it, so a spent budget leaves neither dest
-        nor a .part for skip-if-present to mistake for one."""
-        dest = tmp_path / "vermont-latest.osm.pbf"
-        session = ScriptedSession(
-            [StreamedResponse(chunks=(b"x",), fail_after=0) for _ in range(len(DEFAULT_BACKOFF_SECONDS) + 1)]
-        )
+    def test_a_flake_on_every_attempt_still_raises(self, requests_mock, naps, tmp_path):
+        """Same posture as request_with_retry: retrying is not pretending. A
+        run that carried on would clip and merge an extract it never got."""
+        requests_mock.get(self.PBF, exc=requests.exceptions.ReadTimeout)
+        dest = tmp_path / "new-york-latest.osm.pbf"
 
-        with pytest.raises(requests.exceptions.ChunkedEncodingError):
-            download_with_retry("https://geofabrik.example/vt.pbf", dest, session=session, sleep=naps.append)
-
-        assert not dest.exists()
-        assert not dest.with_suffix(".part").exists()
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            download_with_retry(self.PBF, dest, sleep=naps.append)
         assert naps == list(DEFAULT_BACKOFF_SECONDS)
 
-    def test_a_retryable_status_waits_and_asks_again(self, tmp_path, naps):
-        dest = tmp_path / "maine-latest.osm.pbf"
-        session = ScriptedSession([StreamedResponse(status=503), StreamedResponse(chunks=(b"data",))])
+    def test_a_failed_transfer_leaves_neither_the_file_nor_a_part(self, requests_mock, naps, tmp_path):
+        """The half-written-file rule, and the leak the hand-written loop had.
 
-        download_with_retry("https://geofabrik.example/me.pbf", dest, session=session, sleep=naps.append)
+        fetch_states skips a state when `dest.exists()`, so a truncated file
+        left at `dest` would be read as a complete extract on the next run.
+        And the old loop's `.part` was orphaned on every failure - harmless,
+        but nobody cleaned it up.
+        """
+        requests_mock.get(self.PBF, exc=requests.exceptions.ReadTimeout)
+        dest = tmp_path / "new-york-latest.osm.pbf"
 
-        assert dest.read_bytes() == b"data"
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            download_with_retry(self.PBF, dest, sleep=naps.append)
+
+        assert not dest.exists()
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_retryable_status_waits_and_asks_again(self, requests_mock, naps, tmp_path):
+        requests_mock.get(
+            self.PBF,
+            [{"status_code": 503}, {"content": b"osm-pbf-bytes"}],
+        )
+        dest = tmp_path / "new-york-latest.osm.pbf"
+
+        download_with_retry(self.PBF, dest, sleep=naps.append)
+
+        assert dest.read_bytes() == b"osm-pbf-bytes"
         assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
 
-    def test_a_refusal_raises_immediately_and_writes_nothing(self, tmp_path, naps):
-        dest = tmp_path / "georgia-latest.osm.pbf"
-        session = ScriptedSession([StreamedResponse(status=404)])
+    def test_a_404_is_an_answer_and_is_not_retried(self, requests_mock, naps, tmp_path):
+        """Geofabrik renaming an extract is not a flake, and asking twice
+        will not change its mind - so the budget is not spent on it."""
+        assert 404 not in DEFAULT_RETRYABLE_STATUSES
+        requests_mock.get(self.PBF, status_code=404)
+        dest = tmp_path / "new-york-latest.osm.pbf"
 
-        with pytest.raises(requests.HTTPError):
-            download_with_retry("https://geofabrik.example/ga.pbf", dest, session=session, sleep=naps.append)
-
+        with pytest.raises(requests.exceptions.HTTPError):
+            download_with_retry(self.PBF, dest, sleep=naps.append)
         assert naps == []
         assert not dest.exists()
 
-    def test_an_orphaned_part_is_truncated_never_resumed(self, tmp_path, naps):
-        """#1063's own scoping: no Range resume. Against a source that
-        republishes daily, a resume straddling a republish would splice two
-        different files into one archive - so a stale .part is overwritten,
-        never appended to."""
-        dest = tmp_path / "georgia-latest.osm.pbf"
-        dest.with_suffix(".part").write_bytes(b"stale-half-of-yesterdays-file")
-        session = ScriptedSession([StreamedResponse(chunks=(b"fresh",))])
+    def test_a_fault_partway_through_the_body_is_survived_too(self, requests_mock, naps, tmp_path):
+        """The case a request-only retry cannot reach, and the reason the
+        retry unit is the whole transfer rather than the call.
 
-        download_with_retry("https://geofabrik.example/ga.pbf", dest, session=session, sleep=naps.append)
+        The measured Geofabrik failure was NOT this - its traceback came out
+        of `requests.get` via `adapters.send`, with no `iter_content` frame.
+        This is the other half of the argument, so it is tested rather than
+        asserted: here the headers arrive, iteration starts, and the body
+        dies partway. `request_with_retry` has already returned by this
+        point and could do nothing about it.
+        """
 
-        assert dest.read_bytes() == b"fresh"
+        class DiesPartway(io.IOBase):
+            def __init__(self):
+                self.reads = 0
+
+            def read(self, size=-1):
+                self.reads += 1
+                if self.reads == 1:
+                    return b"first-chunk"
+                raise requests.exceptions.ChunkedEncodingError("connection broken")
+
+        body = DiesPartway()
+        requests_mock.get(
+            self.PBF,
+            [{"body": body}, {"content": b"osm-pbf-bytes"}],
+        )
+        dest = tmp_path / "new-york-latest.osm.pbf"
+
+        download_with_retry(self.PBF, dest, sleep=naps.append)
+
+        # Pins this as the mid-body case rather than the request-time one:
+        # the first attempt got a chunk out before it died. Without this the
+        # test passes either way and proves nothing the test above did not.
+        assert body.reads >= 2
+
+        # The retry's bytes, not the dead attempt's partial ones appended to
+        # them - each attempt truncates the .part rather than resuming it.
+        assert dest.read_bytes() == b"osm-pbf-bytes"
+        assert naps == [DEFAULT_BACKOFF_SECONDS[0]]
+
+    def test_headers_ride_every_attempt(self, requests_mock, naps, tmp_path):
+        """The second caller (#1066): fetch_trail_water.py's NHD downloads
+        identify themselves with a User-Agent, and moving them onto this
+        retry must not cost USGS that courtesy - on the retry either."""
+        requests_mock.get(
+            self.PBF,
+            [{"status_code": 503}, {"content": b"osm-pbf-bytes"}],
+        )
+        dest = tmp_path / "new-york-latest.osm.pbf"
+
+        download_with_retry(self.PBF, dest, headers={"User-Agent": "OurHike-pipeline"}, sleep=naps.append)
+
+        sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
+        assert sent == ["OurHike-pipeline", "OurHike-pipeline"]

@@ -90,7 +90,24 @@ def state_urls(states: list[str]) -> list[tuple[str, str]]:
 
 def fetch_states(states: list[str], dest_dir: Path, refetch: bool = False) -> list[Path]:
     """Download each state's PBF into dest_dir, skipping files already present
-    unless refetch. Returns the local paths in the order given."""
+    unless refetch. Returns the local paths in the order given.
+
+    RETRIED, BECAUSE THIS IS THE STEP THAT KILLS PUBLISHES (#1063). It used
+    to be a bare `requests.get(url, stream=True, timeout=600)` with no
+    retry of any kind, and on 2026-08-26 a single read timeout against
+    Geofabrik - ten minutes into a 3.5 GB pull - ended a production publish
+    at step 15 of 39, taking the junction graph and every export after it
+    down with it. Nothing was uploaded. That is #536's failure exactly, in
+    the one fetcher lib/http_retry.py had not reached.
+
+    THE RETRY UNIT IS ONE STATE, which is what makes this cheap enough to be
+    the whole fix. `dest.exists()` above skips a state already pulled, so a
+    retry re-pulls the file that flaked and not the other thirteen - the
+    same argument fetch_topo_quads.py makes for persisting each quad as it
+    lands. Worth knowing that this holds WITHIN a run and not across one:
+    OSM_RAW_DIR is not in publish-vector-data.yml's FETCH_OUTPUTS, so a
+    fresh runner starts cold whatever happened last time.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for state, url in state_urls(states):
@@ -100,13 +117,6 @@ def fetch_states(states: list[str], dest_dir: Path, refetch: bool = False) -> li
             print(f"  {state}: already present ({dest.stat().st_size / 1e6:.0f} MB), skipping")
             continue
         print(f"  {state}: fetching {url}")
-        # Retried whole rather than resumed, and streamed to a .part that only
-        # a completed transfer renames into place - download_with_retry's
-        # docstring holds the reasoning, and #1063 the failure that demanded
-        # it: one mid-body connection reset from Geofabrik ended an entire
-        # production publish, twice in one evening. The granularity is right
-        # because this loop already persists per state - a retry re-pulls one
-        # extract, never the fourteen.
         download_with_retry(url, dest, timeout=600, label=state)
         print(f"  {state}: {dest.stat().st_size / 1e6:.0f} MB")
     return paths

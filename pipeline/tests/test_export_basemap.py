@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import requests
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
 
@@ -27,6 +28,7 @@ from export_basemap import (
     report_archive,
     state_urls,
 )
+from lib import http_retry
 
 
 def test_the_default_state_list_is_the_fourteen_at_states_with_no_duplicates():
@@ -89,6 +91,32 @@ def test_fetch_states_skips_files_already_present(tmp_path, requests_mock):
     assert (tmp_path / "georgia-latest.osm.pbf").read_bytes() == b"already here"
     assert (tmp_path / "maine-latest.osm.pbf").read_bytes() == b"maine bytes"
     assert requests_mock.call_count == 1, "the present file must not be re-fetched"
+
+
+def test_fetch_states_survives_the_timeout_that_killed_a_publish(tmp_path, requests_mock, monkeypatch):
+    """#1063: one read timeout from Geofabrik used to end the whole publish.
+
+    The retry unit is ONE STATE, which is what keeps this affordable - the
+    state that flaked is re-pulled and the ones already on disk are not
+    touched. Sleeps are stubbed out so the ladder is not actually waited.
+    """
+    monkeypatch.setattr(http_retry.time, "sleep", lambda _: None)
+    (tmp_path / "georgia-latest.osm.pbf").write_bytes(b"already here")
+    requests_mock.get(
+        "https://download.geofabrik.de/north-america/us/maine-latest.osm.pbf",
+        [
+            {"exc": requests.exceptions.ReadTimeout},
+            {"content": b"maine bytes"},
+        ],
+    )
+
+    paths = fetch_states(["georgia", "maine"], tmp_path)
+
+    assert [p.name for p in paths] == ["georgia-latest.osm.pbf", "maine-latest.osm.pbf"]
+    assert (tmp_path / "maine-latest.osm.pbf").read_bytes() == b"maine bytes"
+    # The state already on disk was never asked for, flake or no flake.
+    assert (tmp_path / "georgia-latest.osm.pbf").read_bytes() == b"already here"
+    assert list(tmp_path.glob("*.part")) == []
 
 
 def test_report_archive_counts_tiles_and_bytes_per_zoom(tmp_path, capsys):

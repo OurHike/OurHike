@@ -79,6 +79,7 @@ import {
   type MapPoint,
 } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
+import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -235,6 +236,18 @@ export interface MapScreenProps {
    */
   followBand?: ReactNode
   /**
+   * One sentence about the followed walk, for the polite line below - not for
+   * the eye, which reads {@link followBand}.
+   *
+   * A STRING RATHER THAN A NODE, and that is the whole point (#1055). The
+   * band is a node this screen renders without reading; an announcement has
+   * to be something this screen can put INSIDE its one live region, because
+   * the alternative is the band carrying its own live role and re-announcing
+   * a distance on every fix. Keep it free of numbers: the value here should
+   * change when the hiker crosses a threshold, never when a fix wobbles.
+   */
+  followAnnouncement?: string | null
+  /**
    * How many ATC notices the app is holding, for the Legend row that opens
    * all of them (#687 - it used to be a permanent button on this screen; see
    * `newAtcAlertCount` below for what replaced it here). Zero, or the shell
@@ -268,6 +281,12 @@ export interface MapScreenProps {
    *  now" beside `onOpenAtcNotices`'s "show me". Omitted, no silence control
    *  is drawn. */
   onSilenceNewAtcAlerts?: () => void
+  /**
+   * The published trail data this phone does not have, and the two answers to
+   * it (#919). Undefined renders nothing, which is the state on every launch
+   * where the map is current - see chrome/TrailDataUpdate.tsx.
+   */
+  trailDataUpdate?: TrailDataUpdateProps
   warnings?: readonly WarningPoint[]
 
   /**
@@ -657,11 +676,13 @@ export function MapScreen({
   onRouteTap,
   routeSheet,
   followBand,
+  followAnnouncement = null,
   atcNoticeCount = 0,
   onOpenAtcNotices,
   atcNoticeList,
   newAtcAlertCount = 0,
   onSilenceNewAtcAlerts,
+  trailDataUpdate,
   warnings,
   alertsShown = true,
   onToggleAlerts,
@@ -1002,6 +1023,12 @@ export function MapScreen({
             closureAhead !== null ? 'Trail closure ahead.' : '',
             warningsAhead !== null ? 'Serious warning ahead.' : '',
             advisoryAhead !== null ? 'An advisory covers where you are.' : '',
+            // The hiker's OWN route, last, because the three above are the
+            // ground itself and true for everyone on it (#1055). One region
+            // rather than a second one beside it, for the reason the comment
+            // above gives about `role="status"`: two live regions on one
+            // screen is two things that can interrupt each other.
+            followAnnouncement ?? '',
           ]
             .filter((sentence) => sentence !== '')
             .join(' ')}
@@ -1341,6 +1368,10 @@ export function MapScreen({
             the credit strip sharing that corner, by hand-tuned offsets that
             drift the moment either changes size. A row in flow needs none of
             that, on a phone or the desktop sidebar layout alike. */}
+        {/* Beneath the alert row rather than above it, on the one occasion
+            both are up: an ATC closure changes what a hiker does next, and
+            newer waypoint data does not. The order is the ranking. */}
+        {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
         {newAtcAlertCount > 0 && onOpenAtcNotices !== undefined && (
           <div className="map-screen__new-alerts" aria-live="polite">
             <button

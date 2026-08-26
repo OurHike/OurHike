@@ -4,16 +4,30 @@
 // mechanics live at /get-the-app/, where somebody who has already decided
 // goes next.
 //
-// The H1 and tagline are the original landing page's own lines, kept on
-// purpose: §4 called the writing the best thing about that page, and a
-// redesign that throws away proven copy to feel new is spending the wrong
-// thing.
+// The tagline is the original landing page's own line, kept on purpose: §4
+// called the writing the best thing about that page, and a redesign that
+// throws away proven copy to feel new is spending the wrong thing.
+//
+// The H1 used to be static ATC-only copy - "The whole Appalachian Trail,
+// offline." - which is exactly the line §4 praised, but it is also no longer
+// an accurate description of what the map draws (#1059). It is now one slide
+// in a rotation naming every organization whose trail/path lines OurHike
+// actually ships, so the proven line survives without implying an A.T.-only
+// product. This still does not answer WEBSITE.md §10.4's open question -
+// "whose site is this, in the copy" - it is a smaller, additive step in the
+// inclusive direction that question already leans.
 import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
+import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
 
 const title = 'OurHike — The whole Appalachian Trail, offline'
 const description =
   'A free, open-source offline map of the Appalachian Trail: topo, water, shelters and elevation, working with no bars and no data plan.'
+
+// The organization roster and its copy live in lib/heroOrgs.mjs, imported
+// rather than inlined here, so heroOrgs.test.mjs can hold the rotation to
+// "every organization's lines show up" without needing to render this page.
+const ORG_COUNT_LINE = orgCountLine(ORGS)
 ---
 
 <Base title={title} description={description}>
@@ -22,7 +36,7 @@ const description =
     <div class="wrap">
       <div class="hero__inner">
         <span class="eyebrow"><span class="blaze"></span>HIKE YOUR OWN HIKE</span>
-        <h1>The whole Appalachian&nbsp;Trail, offline.</h1>
+        <h1><span id="hero-rotator">{ORG_COUNT_LINE}</span></h1>
         <p class="hero__tagline">
           Download it once over wifi. After that the map works with no bars and
           no data plan — the way the trail actually is. Free, open source, and
@@ -165,9 +179,117 @@ const description =
       </div>
     </div>
   </section>
+
+  <script define:vars={{ orgs: ORGS, countLine: ORG_COUNT_LINE }} is:inline>
+    // Rotates the H1 through the count line and one line per organization,
+    // every few seconds, ordered by a rough client-side location estimate.
+    //
+    // No navigator.geolocation, ever - a permission prompt is not worth
+    // asking for hero-text ordering. Instead, a best-effort, silent IP
+    // lookup: nothing is stored, nothing blocks the page (the count line
+    // above is already the real first paint before this runs), and any
+    // failure - blocked, offline, slow, rate-limited - just leaves the fixed
+    // order defined in the frontmatter above in place. This only ever
+    // changes which club's line comes up first; it is cosmetic copy, not
+    // anything safety-relevant.
+    (function () {
+      var ROTATE_MS = 4000
+      var FADE_MS = 180
+      var GEO_TIMEOUT_MS = 2500
+
+      var el = document.getElementById('hero-rotator')
+      if (!el) return
+
+      var reduceMotion = window.matchMedia(
+        '(prefers-reduced-motion: reduce)'
+      ).matches
+
+      function slidesFrom(list) {
+        return [countLine].concat(
+          list.flatMap(function (o) {
+            return o.lines
+          })
+        )
+      }
+
+      // Flat-earth approximation of squared distance - fine at this scale,
+      // where the only question is "which of five nearby points is
+      // closest", not an actual distance, and never displayed.
+      function roughDistance(lat1, lon1, lat2, lon2) {
+        var dLat = lat1 - lat2
+        var dLon = (lon1 - lon2) * Math.cos((lat1 * Math.PI) / 180)
+        return dLat * dLat + dLon * dLon
+      }
+
+      var slides = slidesFrom(orgs)
+      var index = 0 // matches the count line Astro already rendered server-side
+
+      function advance() {
+        index = (index + 1) % slides.length
+        if (reduceMotion) {
+          el.textContent = slides[index]
+          return
+        }
+        el.style.opacity = '0'
+        window.setTimeout(function () {
+          el.textContent = slides[index]
+          el.style.opacity = '1'
+        }, FADE_MS)
+      }
+
+      // WCAG 2.2.2: auto-updating content needs a way to stop it. The
+      // simplest honest one here is to not start it for anyone who has
+      // already told their OS they don't want automatic motion.
+      if (!reduceMotion) {
+        window.setInterval(advance, ROTATE_MS)
+      }
+
+      if (window.fetch && typeof AbortController !== 'undefined') {
+        var controller = new AbortController()
+        var timer = window.setTimeout(function () {
+          controller.abort()
+        }, GEO_TIMEOUT_MS)
+
+        fetch('https://get.geojs.io/v1/ip/geo.json', {
+          signal: controller.signal,
+        })
+          .then(function (r) {
+            return r.json()
+          })
+          .then(function (loc) {
+            window.clearTimeout(timer)
+            var lat = parseFloat(loc.latitude)
+            var lon = parseFloat(loc.longitude)
+            if (!isFinite(lat) || !isFinite(lon)) return
+
+            var sorted = orgs.slice().sort(function (a, b) {
+              return (
+                roughDistance(lat, lon, a.lat, a.lon) -
+                roughDistance(lat, lon, b.lat, b.lon)
+              )
+            })
+            var current = slides[index]
+            slides = slidesFrom(sorted)
+            // Re-sorting must not visibly jump the slide on screen - land on
+            // wherever the current text now sits in the reordered list.
+            var found = slides.indexOf(current)
+            index = found === -1 ? 0 : found
+          })
+          .catch(function () {
+            window.clearTimeout(timer)
+            // No estimate, no problem: the fixed order already on screen stands.
+          })
+      }
+    })()
+  </script>
 </Base>
 
 <style>
+  #hero-rotator {
+    display: inline-block;
+    transition: opacity 180ms ease;
+  }
+
   .register svg,
   .card svg {
     stroke: var(--fg-2);

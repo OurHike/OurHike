@@ -304,8 +304,8 @@ export function Onboarding({
               and no data plan &mdash; the way the trail actually is.
             </p>
             <p>
-              Paid memberships fund the ATC and the volunteer clubs who keep the trail
-              open.
+              Paid memberships and public support fund the ATC and the other organizations
+              who keep these trails open.
             </p>
             <p className="onboarding__reassurance">No account. Nothing to sign up for.</p>
           </section>

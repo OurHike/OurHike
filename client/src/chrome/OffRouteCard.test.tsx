@@ -33,12 +33,26 @@ afterEach(() => {
 })
 
 describe('OffRouteBand', () => {
-  it('is an alert, and says which way it is wrong', () => {
+  it('says which way it is wrong, and how far', () => {
     render(<OffRouteBand follow={OFF} />)
 
-    const band = screen.getByRole('alert')
+    const band = screen.getByText('You are not on your route').parentElement!
     expect(band).toHaveTextContent('You are not on your route')
     expect(band).toHaveTextContent('300 ft')
+  })
+
+  it('is not a live region, because the distance inside it moves (#1055)', () => {
+    // This test replaces one that asserted `getByRole('alert')` - it pinned
+    // the defect as the contract. The band's body is a distance App.tsx
+    // recomputes on every GPS fix, so a live role here re-announces on every
+    // fix; #315 removed exactly this from the closure band one element up.
+    // What announces instead is MapScreen's polite line, asserted in
+    // MapScreen.test.tsx because that is where the region lives.
+    const { container } = render(<OffRouteBand follow={OFF} />)
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(container.querySelector('[aria-live]')).toBeNull()
   })
 })
 

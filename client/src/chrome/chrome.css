@@ -1113,8 +1113,10 @@
 }
 
 .legend__drought-detail {
+  /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
+     --text-2 was never declared, so the line inherited body colour. */
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--fg-2);
 }
 
 .legend__verified {
@@ -1161,8 +1163,10 @@
 }
 
 .legend__alerts-detail {
+  /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
+     --text-2 was never declared, so the line inherited body colour. */
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--fg-2);
 }
 
 /* A safety row spans the grid rather than sitting in one column of it.
@@ -3916,6 +3920,86 @@ a.poi-card__credit::after {
   color: var(--fg-2);
   font-size: 13px;
   cursor: pointer;
+}
+
+/* The ask before a hiker's map is replaced (#919, chrome/TrailDataUpdate.tsx).
+ *
+ * Sits at the foot of the main column beside the ATC new-alerts row and
+ * borrows its geometry deliberately - same padding, same top rule, same
+ * full-width buttons - because they are the same kind of thing: a quiet row
+ * that appears when there is something to say and is otherwise absent.
+ *
+ * The neutral palette is the difference, and it is the point. New data is not
+ * a hazard, so this does not borrow the alert row's --danger. The serious
+ * modifier below is what raises its voice, and only for a release that removed
+ * or moved something a hiker may have been walking to. */
+.trail-data-update {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-2, rgb(0 0 0 / 4%));
+  border-top: 1px solid var(--border, rgb(0 0 0 / 12%));
+}
+
+/* Removed or moved - something a hiker had, that is no longer where it was.
+ * A left rule rather than a fill: enough to separate it from a routine
+ * release at a glance, not enough to read as an emergency, which it is not. */
+.trail-data-update--serious {
+  border-left: 3px solid var(--warning, #b26a00);
+}
+
+.trail-data-update__what {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
+.trail-data-update__cost {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.trail-data-update__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+/* Both are real touch targets rather than text links. A cold thumb on a ridge
+ * is the same argument .legend__close makes, and this one decides whether
+ * several megabytes leave somebody's allowance. */
+.trail-data-update__apply {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trail-data-update__apply:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.trail-data-update__decline {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-strong, rgb(0 0 0 / 30%));
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trail-data-update__decline:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 /* Following a day hike (#1041, frames D9-D11).

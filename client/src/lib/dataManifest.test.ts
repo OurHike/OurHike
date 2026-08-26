@@ -142,3 +142,103 @@ describe('publishedHash', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('publishedSnapshot (#919)', () => {
+  const HASH = 'B'.repeat(64)
+
+  const manifest = {
+    version: 'v2',
+    previous_version: 'v1',
+    artifacts: {
+      'poi_water.geojson': {
+        sha256: HASH,
+        size_bytes: 300_000,
+        transfer_bytes: 100_000,
+        change: { severity: 'consequential', added: 1, removed: 2, moved: 3, edited: 4 },
+      },
+    },
+  }
+
+  it('reads the version and the hop its descriptions cover', async () => {
+    mockManifestResponse(manifest)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    const snapshot = await publishedSnapshot()
+
+    expect(snapshot.version).toBe('v2')
+    expect(snapshot.previousVersion).toBe('v1')
+  })
+
+  it('takes the wire cost and not the decoded size', async () => {
+    // publish.py measures both. `size_bytes` is decoded and about 3x larger
+    // for the gzipped text artifacts, and this figure is shown to a hiker
+    // deciding whether to spend it - so the bigger one is wrong, not cautious.
+    mockManifestResponse(manifest)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    expect((await publishedSnapshot()).sizes['poi_water.geojson']).toBe(100_000)
+  })
+
+  it('has no size for an artifact published before the wire cost was measured', async () => {
+    mockManifestResponse({
+      version: 'v2',
+      artifacts: { 'poi_water.geojson': { sha256: HASH, size_bytes: 300_000 } },
+    })
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    // Absent rather than the decoded fallback: dataRefresh renders an unknown
+    // size as "cannot say", which cautions. The fallback would print a number.
+    expect((await publishedSnapshot()).sizes).toEqual({})
+  })
+
+  it('carries a well-formed change grade', async () => {
+    mockManifestResponse(manifest)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    expect((await publishedSnapshot()).changes['poi_water.geojson']).toEqual({
+      severity: 'consequential',
+      added: 1,
+      removed: 2,
+      moved: 3,
+      edited: 4,
+    })
+  })
+
+  it('drops a grade that is not the shape the publisher writes', async () => {
+    // A published document is no more trustworthy than a fetched one. A
+    // malformed grade rendered into a prompt would be this app telling a hiker
+    // something nobody computed - and dataRefresh reads a missing grade as
+    // "cannot describe", never as routine.
+    mockManifestResponse({
+      version: 'v2',
+      artifacts: {
+        a: {
+          sha256: HASH,
+          change: { severity: 'mild', added: 1, removed: 0, moved: 0, edited: 0 },
+        },
+        b: { sha256: HASH, change: { severity: 'routine', added: 'lots' } },
+      },
+    })
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    expect((await publishedSnapshot()).changes).toEqual({})
+  })
+
+  it('knows nothing when the manifest cannot be read', async () => {
+    mockManifestResponse('not json at all')
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    const snapshot = await publishedSnapshot()
+
+    expect(snapshot.version).toBeNull()
+    expect(snapshot.hashes).toEqual({})
+  })
+
+  it('knows nothing when no bucket is configured', async () => {
+    const fetched = mockManifestResponse(manifest)
+    const { publishedSnapshot } = await loadWithBase(undefined)
+
+    expect((await publishedSnapshot()).version).toBeNull()
+    expect(fetched).not.toHaveBeenCalled()
+  })
+})

@@ -23,9 +23,22 @@
 // states, one recipe" shape day-hike-card.mjs already ships, and it becomes
 // the picture this change is about on the day #1024 lands.
 
-export const caption = 'Following a saved day hike'
+// THE CAPTION NAMES BOTH FRAMES, because a static string cannot know which
+// one landed (#1058). photograph-preview.mjs reads `caption` and `alt` off
+// the module (scripts/photograph-preview.mjs:188-190) before the drive runs,
+// so they cannot be decided by what the drive reached - and the drive reaches
+// the followed map only where the graph resolved the fixture, which is no
+// preview build today (#1024).
+//
+// It used to say "Following a saved day hike ... with the next turn in the
+// lower third" unconditionally, over a picture of the CARD - the same frame
+// day-hike-card.mjs publishes, under a caption describing a screen the
+// reviewer was not being shown. CLAUDE.md's own words for that: it "looks
+// like evidence and is not". The alt matters most of the two, because a
+// screen-reader user gets that sentence and no picture to correct it with.
+export const caption = 'Following a day hike, or the card it starts from'
 export const alt =
-  'The map screen while a saved day hike is being followed, with the next turn in the lower third'
+  'Either the map screen while a saved day hike is being followed, with the next turn in the lower third, or - where this build has no trail network to resolve the hike against - the saved hike card that carries the Follow door'
 
 /** The same fixture the finished-hike card's recipe plants. */
 const DAY_HIKES = {
@@ -113,7 +126,13 @@ export default async function drive(page) {
   const follow = page.getByRole('button', { name: 'Follow this hike on the map' })
   // Present only where the graph resolved the fixture. Where it did not, the
   // card IS the frame, and it is the true one for a build with no data
-  // source - see the header.
+  // source - see the header, and the caption, which says so rather than
+  // leaving the picture to be read as the followed map (#1058).
+  //
+  // Not thrown, deliberately. A throw lands an error row in the preview
+  // comment (photograph-preview.mjs:338-339), and filling that row with an
+  // expected, filed condition is how a row that should mean "this recipe
+  // broke" stops being read.
   if ((await follow.count()) === 0) return
   await follow.click()
   await page.getByRole('region', { name: /trail map/i }).waitFor()

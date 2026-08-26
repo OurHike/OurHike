@@ -48,7 +48,77 @@ export const MANIFEST_KEY = 'latest.json'
 
 interface DataManifest {
   version?: string
-  artifacts?: Record<string, { sha256?: unknown } | undefined>
+  previous_version?: unknown
+  artifacts?: Record<string, ArtifactEntry | undefined>
+}
+
+interface ArtifactEntry {
+  sha256?: unknown
+  size_bytes?: unknown
+  transfer_bytes?: unknown
+  change?: unknown
+}
+
+/**
+ * How one artifact changed, as `pipeline/lib/data_change.py` graded it (#919).
+ *
+ * Deliberately not re-derived here: the phone holds one side of the diff and
+ * would have to keep the other to work this out, which is twice the storage to
+ * answer a question the publisher already had both sides of.
+ */
+export interface ArtifactChange {
+  severity: 'routine' | 'consequential'
+  added: number
+  removed: number
+  moved: number
+  edited: number
+}
+
+/** The publisher's two grades, spelled as `data_change.py` spells them. */
+export const ROUTINE = 'routine'
+export const CONSEQUENTIAL = 'consequential'
+
+/**
+ * One read of `latest.json`, as everything a caller can learn from it.
+ *
+ * `publishedHashes` is this minus the parts only #919's refresh needs, and is
+ * kept because eight callers want exactly that and nothing more.
+ */
+export interface PublishedSnapshot {
+  /** The published version, or null where nothing could be read. */
+  version: string | null
+  /**
+   * The version every `change` below is relative to.
+   *
+   * A release describes exactly one hop. A phone further back than that is
+   * looking at a description of somebody else's transition, and this is what
+   * lets it know rather than being told a caveat it cannot check - see
+   * `dataRefresh.ts`, which refuses to describe a change when this does not
+   * match what the phone stored.
+   */
+  previousVersion: string | null
+  lookup: PublishedHashLookup
+  /** Every artifact's published hash, by key. */
+  hashes: Record<string, string>
+  /**
+   * What each artifact costs to fetch, in bytes on the wire, where the
+   * manifest carries a figure.
+   *
+   * `transfer_bytes` and never `size_bytes`, and the difference is the whole
+   * reason publish.py measures both: `size_bytes` is the DECODED size, and the
+   * text artifacts are served gzipped, so it is about 3x what a phone actually
+   * spends (trails.geojson is 12 MB decoded and 4.1 MB on the wire, measured
+   * 2026-08-21). This number is shown to a hiker deciding whether to spend it
+   * on mobile data, so the decoded size is not a cautious version of it - it is
+   * a wrong one.
+   *
+   * Absent for an artifact published before #919 measured it. A caller adding
+   * these up is adding up what it knows and must say so rather than falling
+   * back to the figure that overstates.
+   */
+  sizes: Record<string, number>
+  /** Every artifact's change grade, where this release describes one. */
+  changes: Record<string, ArtifactChange>
 }
 
 /** What a manifest snapshot answers: the published hash for a key, or null
@@ -68,6 +138,92 @@ function lookupInto(manifest: DataManifest): PublishedHashLookup {
     // but a hand-edited manifest is a plausible field-test artifact and a
     // case difference is not a corrupted archive.
     return typeof hash === 'string' && hash !== '' ? hash.toLowerCase() : null
+  }
+}
+
+/** Nothing readable - the snapshot equivalent of NOTHING_PUBLISHED. */
+const NOTHING_READABLE: PublishedSnapshot = {
+  version: null,
+  previousVersion: null,
+  lookup: NOTHING_PUBLISHED,
+  hashes: {},
+  sizes: {},
+  changes: {},
+}
+
+const isCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+/**
+ * One artifact's `change` block, or null where the manifest has none or it is
+ * not the shape `data_change.py` writes.
+ *
+ * Validated field by field rather than cast, for the reason `conditionsCache`
+ * gives about a stored document: a published document is no more trustworthy
+ * than a fetched one, and a malformed grade rendered into a prompt would be
+ * this app telling a hiker something nobody computed. An unreadable block is
+ * dropped, and `dataRefresh` treats a missing grade as one it cannot describe -
+ * never as `routine`.
+ */
+function changeIn(entry: ArtifactEntry | undefined): ArtifactChange | null {
+  const raw = entry?.change
+  if (typeof raw !== 'object' || raw === null) return null
+  const record = raw as Record<string, unknown>
+  const severity = record.severity
+  if (severity !== ROUTINE && severity !== CONSEQUENTIAL) return null
+  const counts = (['added', 'removed', 'moved', 'edited'] as const).map(
+    (field) => record[field],
+  )
+  if (!counts.every(isCount)) return null
+  const [added, removed, moved, edited] = counts as number[]
+  return { severity, added, removed, moved, edited }
+}
+
+function snapshotInto(manifest: DataManifest): PublishedSnapshot {
+  const hashes: Record<string, string> = {}
+  const sizes: Record<string, number> = {}
+  const changes: Record<string, ArtifactChange> = {}
+  const lookup = lookupInto(manifest)
+
+  for (const [key, entry] of Object.entries(manifest?.artifacts ?? {})) {
+    const hash = lookup(key)
+    if (hash !== null) hashes[key] = hash
+    if (isCount(entry?.transfer_bytes)) sizes[key] = entry.transfer_bytes
+    const change = changeIn(entry)
+    if (change !== null) changes[key] = change
+  }
+
+  const version = manifest?.version
+  const previous = manifest?.previous_version
+  return {
+    version: typeof version === 'string' && version !== '' ? version : null,
+    previousVersion: typeof previous === 'string' && previous !== '' ? previous : null,
+    lookup,
+    hashes,
+    sizes,
+    changes,
+  }
+}
+
+/**
+ * The whole of one `latest.json` read.
+ *
+ * Never fatal, on exactly the terms {@link publishedHashes} is not: anything
+ * that cannot be read becomes a snapshot that knows nothing, and a caller that
+ * knows nothing offers no update rather than a wrong one.
+ */
+export async function publishedSnapshot({
+  signal,
+}: { signal?: AbortSignal } = {}): Promise<PublishedSnapshot> {
+  if (DATA_BASE_URL === '') return NOTHING_READABLE
+
+  try {
+    const response = await fetch(dataUrl(MANIFEST_KEY), { signal })
+    if (!response.ok) return NOTHING_READABLE
+    return snapshotInto((await response.json()) as DataManifest)
+  } catch (error) {
+    if ((error as { name?: string } | null)?.name === 'AbortError') throw error
+    return NOTHING_READABLE
   }
 }
 

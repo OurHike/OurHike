@@ -945,8 +945,9 @@ export function DataSettings({
         </div>
       )}
       <p className="settings__note">
-        Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, OpenFreeMap ©
-        OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
+        Map data: USGS US Topo, ATC GIS, NYNJTC, NY State Parks, Mohonk Preserve, NYS DEC,
+        © OpenStreetMap contributors, OpenFreeMap © OpenMapTiles, USGS 3DEP via AWS
+        Terrain Tiles.
       </p>
       {/* NDMC's credit, in their own words and unabridged (#720).
           droughtmonitor.unl.edu/About/Permission.aspx asks for this exact

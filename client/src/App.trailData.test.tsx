@@ -40,6 +40,8 @@ vi.mock('./lib/config', async (importOriginal) => ({
   archiveUrl: () => 'https://data.example/corridor.pmtiles',
 }))
 
+import { RELEASE_KEY } from './lib/dataRefresh'
+
 const TRAILS = '{"type":"FeatureCollection","features":[]}'
 
 // jsdom's own navigator, not a stub: three tests below spy on `onLine`'s
@@ -521,5 +523,116 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     expect(notice).toHaveTextContent(/fresh copy from the start/i)
     // Nothing was stored, exactly as the sentence claims.
     expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+})
+
+describe('a phone holding a superseded release (#919)', () => {
+  // The failure these are about: #749's water gate shipped, the bucket served
+  // the corrected layer, and every phone that already had data went on drawing
+  // 1,535 ungated OSM water points. The pipeline was fixed and the hiker still
+  // had the old answer, because the download asked whether there was trail
+  // data and never which.
+
+  /** A phone that finished a download of release `version`. */
+  function holding(version: string | null, hashes: Record<string, string>) {
+    store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
+    store.set('ourhike:pois', [])
+    store.set(RELEASE_KEY, { version, hashes, at: 1_700_000_000_000 })
+  }
+
+  /** `latest.json` as the bucket serves it, and every artifact fetch after it. */
+  function publishing(manifest: unknown) {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.endsWith('/latest.json') ? JSON.stringify(manifest) : TRAILS
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode(body).buffer),
+        blob: () => Promise.resolve(new Blob([body])),
+        text: () => Promise.resolve(body),
+        json: () => Promise.resolve(JSON.parse(body)),
+      } as unknown as Response)
+    })
+  }
+
+  const WATER_REMOVED = {
+    version: 'v2',
+    previous_version: 'v1',
+    artifacts: {
+      'poi_water.geojson': {
+        sha256: 'newhash',
+        size_bytes: 300_000,
+        transfer_bytes: 100_000,
+        change: { severity: 'consequential', added: 0, removed: 3, moved: 0, edited: 0 },
+      },
+    },
+  }
+
+  it('asks before replacing a map somebody may be walking with', async () => {
+    holding('v1', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+
+    expect(await screen.findByRole('button', { name: 'Update' })).toBeInTheDocument()
+    expect(screen.getByText(/3 removed/)).toBeInTheDocument()
+  })
+
+  it('does not replace anything until it is told to', async () => {
+    // The decision this guards (2026-08-21): nothing is applied unasked. A
+    // phone that merely NOTICED an update must not have spent the bytes.
+    holding('v1', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+    await screen.findByRole('button', { name: 'Update' })
+
+    expect(requested().some(isTrailsRequest)).toBe(false)
+  })
+
+  it('fetches the release when the hiker takes it', async () => {
+    holding('v1', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+    await renderApp()
+
+    const { default: userEvent } = await import('@testing-library/user-event')
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Update' }))
+
+    await waitFor(() => expect(requested().some(isTrailsRequest)).toBe(true))
+  })
+
+  it('says nothing when this phone already holds the published release', async () => {
+    holding('v2', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+    await waitFor(() =>
+      expect(requested().some((url) => url.endsWith('/latest.json'))).toBe(true),
+    )
+
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
+  })
+
+  it('says nothing to a phone that has never downloaded, which is the launch fetch’s job', async () => {
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
+  })
+
+  it('refuses to describe a hop the release does not cover', async () => {
+    // Two releases behind. Repeating counts from somebody else's transition
+    // would be the plausible sentence rather than the true one.
+    holding('v0', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+
+    await screen.findByRole('button', { name: 'Update' })
+    expect(screen.getByText(/has changed since this was downloaded/)).toBeInTheDocument()
+    expect(screen.queryByText(/3 removed/)).not.toBeInTheDocument()
   })
 })

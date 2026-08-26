@@ -873,6 +873,11 @@ function App() {
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
+    update: trailDataUpdate,
+    updateWarnsAboutData,
+    applyingUpdate,
+    applyUpdate,
+    declineUpdate,
   } = useTrailData(online, { centerlineOnly: entering })
 
   /**
@@ -4802,6 +4807,20 @@ function App() {
             !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
           }
           modeSwitch={sidebarModeSwitch}
+          // The ask before this phone's map is replaced (#919). Undefined
+          // while there is nothing newer published, which is every launch but
+          // the ones after a release - see lib/dataRefresh.ts.
+          trailDataUpdate={
+            trailDataUpdate === null
+              ? undefined
+              : {
+                  update: trailDataUpdate,
+                  warnsAboutData: updateWarnsAboutData,
+                  applying: applyingUpdate,
+                  onApply: () => void applyUpdate(),
+                  onDecline: () => void declineUpdate(),
+                }
+          }
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
           overviewTrailsUrl={overviewTrailsUrl}
@@ -4911,6 +4930,17 @@ function App() {
             followState !== null && followState.kind === 'off-route' ? (
               <OffRouteBand follow={followState} units={units} />
             ) : undefined
+          }
+          // The same condition, said once, with no distance in it (#1055).
+          // followState is rebuilt on every fix, so anything carrying
+          // `offRouteFeet` into a live region announces on every fix; this
+          // string has only two values, and lib/dayHikeFollow.ts's hysteresis
+          // (90 ft out, 45 ft back) is what keeps it from flipping between
+          // them while somebody stands at the edge of the threshold.
+          followAnnouncement={
+            followState !== null && followState.kind === 'off-route'
+              ? 'You are off your route.'
+              : null
           }
           // Two things sit OVER the builder's own surface, and both are the
           // shell's: the break-into-days sheet, and the day-hike builder.

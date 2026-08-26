@@ -3,6 +3,10 @@
 // request touches this file, because a branch that breaks the very first
 // screen breaks everybody — scripts/photograph-preview.mjs names it in
 // STANDING rather than waiting for a diff to select it.
+//
+// Also the screen for the "what OurHike is" step's copy (#1059/#1060) - no
+// drive needed, since that step is what loads first.
+//
 // Re-pointed 2026-08-26 (#1054): the backdrop is the ridge photograph now -
 // the maintainer's pick, credit on the frame - with the brand lockup over
 // its top edge and the step card carrying progress bars. The recipe itself

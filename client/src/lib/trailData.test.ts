@@ -33,7 +33,7 @@ import {
   writeTrailsMerged,
 } from './trailShape'
 import type { ElevationProfile } from './elevationProfile'
-import { publishedHashes } from './dataManifest'
+import { publishedSnapshot } from './dataManifest'
 import { sha256Hex } from './sha256'
 
 vi.mock('idb-keyval', () => ({
@@ -51,9 +51,13 @@ vi.mock('idb-keyval', () => ({
 // The published-hash lookup, mocked the same way archiveDownload.test.ts
 // mocks it: what latest.json says is dataManifest.ts's own subject, and what
 // matters here is only whether these artifacts are held to it.
-vi.mock('./dataManifest', () => ({ publishedHash: vi.fn(), publishedHashes: vi.fn() }))
+vi.mock('./dataManifest', () => ({
+  publishedHash: vi.fn(),
+  publishedHashes: vi.fn(),
+  publishedSnapshot: vi.fn(),
+}))
 
-const mockedPublishedHashes = vi.mocked(publishedHashes)
+const mockedPublishedSnapshot = vi.mocked(publishedSnapshot)
 
 /**
  * What `latest.json` publishes, in the shape the download now reads it: ONE
@@ -61,8 +65,18 @@ const mockedPublishedHashes = vi.mocked(publishedHashes)
  * be re-fetched per artifact, so these tests set a per-key async mock; the
  * expectations are unchanged, only where the answer comes from.
  */
-function publishing(lookup: (key: string) => string | null) {
-  mockedPublishedHashes.mockResolvedValue(lookup)
+function publishing(
+  lookup: (key: string) => string | null,
+  version: string | null = 'v1',
+) {
+  mockedPublishedSnapshot.mockResolvedValue({
+    version,
+    previousVersion: null,
+    lookup,
+    hashes: {},
+    sizes: {},
+    changes: {},
+  })
 }
 
 const store = new Map<string, unknown>()
@@ -1455,7 +1469,7 @@ describe('holding the trail data to its published hash (#197)', () => {
 
     await downloadTrailData()
 
-    expect(mockedPublishedHashes).toHaveBeenCalledTimes(1)
+    expect(mockedPublishedSnapshot).toHaveBeenCalledTimes(1)
   })
 
   it('stores what arrived when nothing published a hash for it', async () => {

@@ -193,8 +193,8 @@ export function PoiShareSheet({
             <p>
               <strong>This is not a refusal.</strong> Nothing is being blocked, and
               nothing left your phone to work it out. The check ran here and it only
-              answers <em>is there a face</em>. It does not know whether anyone is
-              recognisable, and it did not ask them. It will also miss some.
+              answers <em>is there a face</em>. It doesn’t know whether anyone is
+              recognisable, and it didn’t ask them. It will also miss some.
             </p>
             <div className="share-sheet__actions">
               <button

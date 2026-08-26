@@ -30,6 +30,8 @@ import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
 import { typeLabel } from '../chrome/legendLabels'
+import { ModeSwitch } from '../chrome/ModeSwitch'
+import type { HikerMode } from '../lib/hikerMode'
 import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisibility'
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
@@ -47,6 +49,9 @@ export interface SettingsProps {
   onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /** The "today I'm…" mode, reflected under You - see YouSettingsProps. */
+  mode?: HikerMode
+  onChangeMode?: (mode: HikerMode) => void
   /**
    * The background, written through its own callback rather than `onChange`.
    *
@@ -143,6 +148,18 @@ export interface YouSettingsProps {
   onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /**
+   * The "today I'm…" mode and its setter (#1054, lib/hikerMode.ts).
+   *
+   * Reflected here so the state is discoverable from the place people look
+   * for preferences, but it is NOT a UserPreferences key and must not become
+   * one - the blob syncs at a schema with extra="forbid", and a mode is a
+   * statement about today on this phone (the module's header has the whole
+   * argument). Optional so a caller without the state renders no row rather
+   * than a dead control.
+   */
+  mode?: HikerMode
+  onChangeMode?: (mode: HikerMode) => void
 }
 
 // The account row (Phase E5) states plainly that signing out keeps
@@ -157,10 +174,22 @@ export function YouSettings({
   onSignOut,
   preferences,
   onChange,
+  mode,
+  onChangeMode,
 }: YouSettingsProps) {
   return (
     <section className="settings__group">
       <h2 className="settings__heading">You</h2>
+
+      {/* The same state the Today header's switch writes - one control in
+          two homes, never two states (chrome/ModeSwitch.tsx renders all
+          three segments always, and why is its comment to keep). */}
+      {mode !== undefined && onChangeMode !== undefined && (
+        <div className="settings__row settings__row--mode">
+          <span className="settings__label">Today I&rsquo;m</span>
+          <ModeSwitch mode={mode} onChange={onChangeMode} variant="paper" />
+        </div>
+      )}
 
       <p className="settings__row">
         <span className="settings__label">Trail name</span>

@@ -137,6 +137,46 @@
     color: var(--fg-chrome-1);
   }
 
+  /* ---------- The sidebar's mode block (#1054) ---------- */
+
+  /* "Today I'm…" between the tabs and the brand mark. The element exists only
+     on a desktop - App passes the slot to TabBar solely above the breakpoint -
+     so these rules are dressing, not gating; the media query is belt and
+     braces in the file's own style. */
+  .tab-bar__mode {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    /* No margin-top: the tab list above already grows (chrome.css), which is
+       what carries this block and the brand mark under it to the foot. */
+    padding: var(--space-4, 16px);
+    border-top: 1px solid var(--border-chrome);
+  }
+
+  .tab-bar__mode-label {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: var(--tracking-eyebrow, 0.1em);
+    text-transform: uppercase;
+    color: var(--fg-chrome-3);
+  }
+
+  /* Stacked, not the Today header's row: three chips across a 13rem column
+     would crush every label. 38px like the prototype draws - these are mouse
+     targets here, the same relaxation the pointer-keyed block at the foot of
+     this file already makes for every control. */
+  .tab-bar__mode .mode-switch {
+    flex-direction: column;
+  }
+
+  .tab-bar__mode .mode-switch__segment {
+    flex: 0 0 auto;
+    min-height: 38px;
+    text-align: left;
+    padding: 0 14px;
+  }
+
   .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],
   .map-screen > .tab-bar .tab-bar__tab[aria-selected='true'] {
     border-top-color: transparent;
@@ -168,52 +208,17 @@
      it is its own decision with its own thumb-zone stakes, not something to
      smuggle in with the desktop's. */
 
-  .map-screen .status-strip {
-    background: var(--bg-chrome);
-    color: var(--fg-chrome-3);
-  }
-
-  /* The light theme's --danger is blaze-orange-dark: 2.2:1 on pine, a
-     closure flag nobody sees. The on-chrome danger is the one the dark theme
-     already uses for the same job. */
-  .map-screen .status-strip__flag {
-    color: var(--danger-on-chrome);
-  }
-
-  .map-screen .map-header {
-    background: var(--bg-chrome);
-    border-bottom-color: var(--border-chrome);
-  }
-
-  .map-screen .map-header__eyebrow {
-    color: var(--fg-chrome-2);
-  }
-
-  .map-screen .map-header__position {
-    color: var(--fg-chrome-1);
-  }
-
-  /* chrome.css fills these with --bg-surface - the brightest possible square
-     on the darkest surface in the app. An outline drawn from the chrome's own
-     foreground holds its shape on pine and on ink alike. */
-  .map-screen .map-header__button {
-    color: var(--fg-chrome-2);
-    background: transparent;
-    border-color: color-mix(in srgb, var(--fg-chrome-2) 40%, transparent);
-  }
-
-  .map-screen .map-header__button:hover {
-    background: color-mix(in srgb, var(--fg-chrome-1) 10%, transparent);
-    color: var(--fg-chrome-1);
-  }
+  /* The identity band this section used to repaint pine is the floating
+     plate now (#1054, chrome.css) - already the chrome colour at every
+     width, buttons already white cards over the map. What remains desktop's
+     to restyle here is nothing; the sidebar rules above still are. */
 
   /* The global focus ring at the bottom of this file is --brand-primary:
      forest on pine is 1.9:1, a ring that cannot be seen on exactly the
      surfaces this section darkens. Outline colour only - width, offset and
      everywhere else on the page stay the global rule's. */
   .app__screen > .tab-bar :focus-visible,
-  .map-screen > .tab-bar :focus-visible,
-  .map-screen .map-header :focus-visible {
+  .map-screen > .tab-bar :focus-visible {
     outline-color: var(--fg-chrome-1);
   }
 
@@ -223,6 +228,62 @@
      shrink pushes the sidebar off the side instead of scrolling. */
   .app__screen > :first-child {
     min-width: 0;
+  }
+
+  /* ---------- The planning station (#1054): the journal beside the map ---------- */
+
+  /* The Today screen, docked as a column between the sidebar and the canvas
+     while the Today tab is active (MapScreen's `journal` slot). 404px is the
+     prototype's column - wide enough for the entry cards at their phone
+     proportions, narrow enough that a 1240px screen keeps most of itself for
+     terrain. */
+  .map-screen__journal {
+    flex: 0 0 25.25rem;
+    min-width: 0;
+    overflow-y: auto;
+    background: var(--bg-page);
+    border-right: 1px solid var(--border-1);
+  }
+
+  /* The journal re-inked for this room. On a phone the Today header is a
+     pine block because it IS the screen's chrome; here the chrome is the
+     sidebar, so the same markup reads as ink on the journal's own paper -
+     the prototype's reasoning, kept: a second pine slab beside the sidebar
+     would put the frame inside the picture. Colour and background only;
+     the component is untouched. */
+  .map-screen__journal .today__chrome {
+    background: none;
+  }
+
+  /* The strip and the switch are not re-inked but withdrawn, each because
+     this layout already has it: the floating plate carries the status strip
+     over the canvas, and the sidebar carries the mode switch. Twice on one
+     screen, the strip announces every flag twice and the switch is a control
+     with two live copies. */
+  .map-screen__journal .today__chrome .status-strip,
+  .map-screen__journal .today__chrome .mode-switch {
+    display: none;
+  }
+
+  .map-screen__journal .today__eyebrow,
+  .map-screen__journal .today__mile-unit,
+  .map-screen__journal .today__pace-line {
+    color: var(--fg-3);
+  }
+
+  .map-screen__journal .today__mile {
+    /* 44px against the phone's 52: the readout no longer has a whole screen
+       to anchor, only a column. */
+    font-size: 44px;
+    color: var(--fg-1);
+  }
+
+  .map-screen__journal .today__position-sentence {
+    color: var(--fg-1);
+  }
+
+  .map-screen__journal .today__greeting {
+    color: var(--fg-2);
   }
 
   /* ---------- Map screen: chrome down the side, map in the middle ---------- */

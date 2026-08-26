@@ -83,7 +83,7 @@ describe('both dates, because there are two', () => {
   it('says it cannot tell rather than inventing a review date', () => {
     render(<AtcUpdateSheet update={UPDATE} reviewedAt={null} onClose={vi.fn()} />)
 
-    expect(screen.getByText(/cannot tell when it last checked/)).toBeInTheDocument()
+    expect(screen.getByText(/can’t tell when it last checked/)).toBeInTheDocument()
   })
 
   it('drops ATC’s date rather than rendering an unparseable one', () => {

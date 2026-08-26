@@ -111,4 +111,8 @@ export default async function drive(page) {
   // the app wakes holding a release the bucket has moved past, exactly as a
   // phone reopening after a publish would.
   await page.reload({ waitUntil: 'load' })
+
+  // The map, where the row lives: the app opens on Today since #1054, and
+  // MapScreen is the screen that renders TrailDataUpdate.
+  await page.getByRole('tab', { name: 'Map' }).click()
 }

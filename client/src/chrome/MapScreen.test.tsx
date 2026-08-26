@@ -48,7 +48,7 @@ const PROPS = {
   online: false,
   hasGpsFix: true,
   lastSyncedAt: new Date('2026-07-29T09:00:00'),
-  activeTab: 'trail' as const,
+  activeTab: 'map' as const,
   onSelectTab: vi.fn(),
   onOpenLegend: vi.fn(),
   onOpenSearch: vi.fn(),
@@ -177,16 +177,27 @@ describe('MapScreen', () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
     expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })
 
-  it('slots the elevation ribbon and waypoint lanes above the canvas', () => {
-    render(<MapScreen {...PROPS} />)
+  it('slots the ribbon and the next-up cards into the rail below the canvas', () => {
+    render(<MapScreen {...PROPS} direction="NOBO" />)
 
     expect(screen.getByRole('img', { name: /elevation profile/i })).toBeInTheDocument()
-    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    // The lanes became cards (#1054): same window, same tap-through to the
+    // waypoint card, walked as a list instead of plotted by percentage.
+    expect(screen.getByText('NEXT UP')).toBeInTheDocument()
+  })
+
+  it('will not claim NEXT UP while the direction is unsettled', () => {
+    // The ribbon's own subject honesty, one surface over: "next up" is a
+    // claim about which way somebody is walking (chrome/NextUpRail.tsx).
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.getByText('NEARBY')).toBeInTheDocument()
+    expect(screen.queryByText('NEXT UP')).not.toBeInTheDocument()
   })
 
   // #619. One preference, one prop, two consumers. The failure this guards is
@@ -1131,13 +1142,13 @@ describe('the desktop chart (#135)', () => {
     }
   })
 
-  it('keeps the phone exactly as it was: ribbon and lanes, no chart', () => {
-    render(<MapScreen {...PROPS} chart={chartProps()} />)
+  it('keeps the phone on the rail: ribbon and cards, no chart', () => {
+    render(<MapScreen {...PROPS} direction="NOBO" chart={chartProps()} />)
 
     expect(
       screen.getByRole('img', { name: 'Elevation profile ahead' }),
     ).toBeInTheDocument()
-    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    expect(screen.getByText('NEXT UP')).toBeInTheDocument()
     expect(screen.queryByTestId('elevation-chart')).not.toBeInTheDocument()
   })
 
@@ -1283,5 +1294,27 @@ describe('the desktop chart (#135)', () => {
     } finally {
       restore()
     }
+  })
+})
+
+// The desktop planning station's slot (#1054): the shell docks the Today
+// journal beside the map. Which viewport gets one is App's decision and
+// App.test.tsx's assertion; what is pinned here is that the slot renders
+// what it is given, where the stylesheet expects it.
+describe('the journal slot', () => {
+  it('docks the journal it is handed', () => {
+    const { container } = render(
+      <MapScreen {...PROPS} journal={<div data-testid="journal" />} />,
+    )
+
+    expect(
+      container.querySelector('.map-screen__journal [data-testid="journal"]'),
+    ).not.toBeNull()
+  })
+
+  it('draws no journal column at all when none is handed over', () => {
+    const { container } = render(<MapScreen {...PROPS} />)
+
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
   })
 })

@@ -107,8 +107,10 @@ export default async function drive(page) {
   // seeded `location_permission_requested` is gone by the time the app reads
   // it. The switch is also the door a hiker uses, which makes this drive one
   // a person could repeat.
-  await page.getByRole('tab', { name: 'Settings' }).click()
-  await page.getByRole('tab', { name: 'Safety & Privacy' }).click()
+  // Through More's destination rows since #1054 - the tab is "More" again
+  // and Safety & privacy is a sub-page behind a row, not an inner tab.
+  await page.getByRole('tab', { name: 'More' }).click()
+  await page.getByRole('button', { name: /^Safety & privacy/ }).click()
   await page.getByRole('checkbox', { name: 'Use my location' }).check()
 
   await page.getByRole('tab', { name: 'Plan' }).click()

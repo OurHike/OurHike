@@ -1,20 +1,22 @@
-/* First run, as a card over the map (screens/Onboarding.tsx).
+/* First run, as a card over a photograph of the trail (screens/Onboarding.tsx).
  *
- * The rule this file exists to keep: the map behind the steps stays visible.
- * That is not decoration - every one of the three steps is a claim about the
- * map, so a stylesheet that covered it would quietly undo the reason the map
- * is drawn behind them at all.
+ * WHAT STANDS BEHIND THE STEPS CHANGED WITH #1054, and deliberately. From
+ * #721 to this redesign it was the live map, on the argument that every step
+ * is a claim about the map and covering it would turn the steps back into
+ * prose about a thing nobody has seen. The redesign's call - made in the
+ * design handoff and settled by the maintainer picking the hero photograph
+ * (2026-08-26) - is that what first run has to sell is the TRAIL, and an
+ * empty-viewport map of a corridor you have not walked is a weaker picture of
+ * it than a white blaze in the woods. The map gets its reveal the moment the
+ * steps finish, one tap of "not now" later, and it arrives warm: the #721
+ * machinery is untouched, the map screen still renders inert behind this
+ * overlay, the photo merely stands in front of it.
  *
- * So there is no page background here, and the card is capped short of the
- * viewport rather than sized by its contents. Both are asserted in
- * test/entryLayout.test.ts, because jsdom does no layout and "you can still
- * see the map" is exactly the kind of property that decays under a later
- * well-meaning `min-height: 100svh`.
- *
- * The file header used to say the shell "pays for a whole extra MapLibre build
- * to have it there". It no longer does - #721 made the map screen itself the
- * backdrop, hidden down to its canvas - which is also why the block below is
- * an overlay rather than a child of a frame that no longer exists.
+ * What survives from the old rule, and still matters: there is no page
+ * background here (the hero is a child, not a coat of paint on the overlay),
+ * and the card is capped short of the viewport rather than sized by its
+ * contents. Both are asserted in test/entryLayout.test.ts, whose header
+ * carries the same reversal.
  */
 
 .onboarding {
@@ -91,11 +93,197 @@
   }
 }
 
+/* The ridge photograph behind the steps (#1054) - see the file header for
+   why it replaced the map here. A child of the overlay rather than a
+   background on it, which keeps .onboarding's background-lessness contract
+   (entryLayout.test.ts) literally true and keeps the image out of the
+   pointer's way. */
+/* A BAND, not a full-bleed fill, and the difference is the whole fix
+   (maintainer, 2026-08-26: the full-bleed pool "doesn't look great on
+   mobile"). Sixteen of the seventeen pool photos are landscape frames; on a
+   portrait phone, covering the viewport scaled each ~2.4x and showed a
+   narrow vertical sliver of its middle - blur plus accidental framing,
+   because the composition lives in the width that crop threw away. Half a
+   screen tall, the same photos render near-native and keep their subjects.
+   The pine ground beneath the fade is what the rest of the overlay stands
+   on - it also means an OFFLINE first run (the drawn photo is not precached,
+   lib/heroPhotos.ts) opens on calm pine rather than a broken image. */
+.onboarding__hero {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg-chrome);
+}
+
+.onboarding__hero-image {
+  width: 100%;
+  height: min(52svh, 480px);
+  object-fit: cover;
+  /* Slightly above centre: these are trail scenics, and the band that keeps
+     a horizon or a blaze is the upper-middle of the frame, not the ground at
+     its foot. */
+  object-position: center 38%;
+  display: block;
+  /* The photo's foot dissolves into the pine ground rather than ending on a
+     hard line the card may or may not reach, step to step. */
+  mask-image: linear-gradient(180deg, black 68%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, black 68%, transparent 100%);
+}
+
+/* The licence's credit, visibly on the work - at the plate's foot since the
+   plate exists (see .onboarding__brand): a floating pill collided with it on
+   narrow phones, and the plate is the one surface guaranteed legible over
+   every photo in the pool. Small like the map's own licence line
+   (.map-attribution) and exempt from the 12px floor for the same reason:
+   legal small print, not trail prose. */
+.onboarding__hero-credit {
+  margin: 10px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-chrome-3);
+}
+
+/* The lockup on a solid plate (#1054, revised the day it shipped). It was a
+   gradient scrim first, strengthened once, and the maintainer still could
+   not read the wordmark over the photograph - and now that the backdrop is
+   a random draw from seventeen photos (lib/heroPhotos.ts), no tuned-to-one-
+   picture treatment can be right. So the plate is opaque enough not to care
+   what loads behind it: the same answer the map's identity plate gives to
+   arbitrary terrain (chrome.css .map-plate), in the same chrome family. On
+   the brand child, not on .onboarding, whose background-lessness is the
+   contract entryLayout.test.ts pins. */
+.onboarding__brand {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: 14px;
+  max-width: min(320px, calc(100% - 28px));
+  padding: 12px 16px 14px;
+  background: color-mix(in srgb, var(--bg-chrome) 94%, transparent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-raised, 0 6px 20px rgb(0 0 0 / 25%));
+  pointer-events: none;
+}
+
+.onboarding__brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.onboarding__brand-icon {
+  width: 34px;
+  height: 34px;
+  /* The artwork's own 20/96 corner at this size. */
+  border-radius: 7px;
+}
+
+/* White on the plate - the ask, verbatim ("make the text white"), and what
+   --fg-chrome-1 already is on pine in both themes. Type mirrors the design
+   system's wordmark styling the way .tab-bar__brand-wordmark does, so the
+   two hand-rolled lockups cannot drift into different brands. */
+.onboarding__brand-wordmark {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--fg-chrome-1);
+}
+
+.onboarding__tagline {
+  margin: 8px 0 0;
+  max-width: 26ch;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+}
+
 .onboarding__progress {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.onboarding__progress-bars {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+
+.onboarding__progress-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--border-1);
+}
+
+.onboarding__progress-bar--done {
+  background: var(--brand-primary);
+}
+
+/* The transfer the size step started (#1054), stated inline: label,
+   percentage, an 8px bar, and the resume promise in mono. */
+.onboarding__download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-3, 12px) var(--space-4, 14px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.onboarding__download-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+.onboarding__download-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.onboarding__download-percent {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
-  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-primary);
+}
+
+.onboarding__download-bar {
+  height: 8px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.onboarding__download-fill {
+  height: 100%;
+  background: var(--brand-primary);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.onboarding__download-meta {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-2);
+}
+
+/* The moving figure's reserved slot (downloads.css's own arrangement): right-
+   aligned inside a width the JSX pins to the total's, so the counter grows
+   into its slot instead of pushing the sentence around. */
+.onboarding__download-received {
+  display: inline-block;
+  text-align: right;
 }
 .onboarding__step {
   display: flex;
@@ -103,6 +291,7 @@
   gap: var(--space-3, 12px);
 }
 .onboarding__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 24px;
   color: var(--fg-1);

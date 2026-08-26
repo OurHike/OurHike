@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { get } from 'idb-keyval'
 import { MockMap } from './test/mocks/maplibre-gl'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { liveMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { PREFERENCES_KEY } from './lib/preferences'
@@ -80,6 +80,7 @@ afterEach(() => {
 async function renderApp() {
   const { default: App } = await import('./App')
   render(<App />)
+  await openMapTab()
   await screen.findByRole('region', { name: /trail map/i })
 }
 

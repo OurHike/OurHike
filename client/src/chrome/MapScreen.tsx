@@ -33,7 +33,10 @@ import {
   type ChartFocusHandle,
   type StretchRuns,
 } from '../map/chartFocusLayers'
-import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
+import { NextUpRail } from './NextUpRail'
+import type { Waypoint } from '../lib/ribbonView'
+import type { StalenessTreatment } from '../lib/stalenessDisplay'
+import type { HikeDirection } from './Header'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { FieldNoteContext } from './FieldNoteSection'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -80,6 +83,19 @@ import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
 import './chrome.css'
 
 export interface MapScreenProps {
+  /**
+   * The Today journal, docked beside the map as the desktop's planning
+   * station (#1054). A slot rather than this screen knowing Today's props:
+   * the shell owns both screens and passes the very element the phone's
+   * Today tab renders, so the two layouts cannot drift apart. Passed ONLY
+   * above the breakpoint and only while the Today tab is active - on a phone
+   * this is always undefined and nothing here changes, which is WEBSITE.md
+   * §8's constraint made structural.
+   */
+  journal?: ReactNode
+  /** The sidebar's "today I'm…" control, handed through to the TabBar this
+   *  screen renders - see TabBarProps.modeSwitch for the contract. */
+  modeSwitch?: ReactNode
   topoArchiveUrl: string
   trailsUrl: string
   /** The corridor-view centerline, while there is no real one to draw (#869).
@@ -442,10 +458,28 @@ export interface MapScreenProps {
   /**
    * `onSelectPoi` omitted deliberately, the way `units` is left off the ribbon
    * above: this screen already holds the handler a pin tap goes through, so it
-   * supplies that one rather than letting the shell pass a second. A ribbon pill
-   * and a map pin opening different cards is the disagreement one prop prevents.
+   * supplies that one rather than letting the shell pass a second. A rail card
+   * and a map pin opening different cards is the disagreement one prop
+   * prevents. The shape is lib/ribbonView.ts's RibbonLanes plus the staleness
+   * lookup - the same window the ribbon settled on (#913), walked as cards
+   * instead of plotted as lanes since #1054.
    */
-  waypoints?: Omit<WaypointLanesProps, 'onSelectPoi'>
+  waypoints?: {
+    points: Waypoint[]
+    startMile: number
+    endMile: number
+    stalenessFor?: (
+      poiId: string,
+      poiType: string,
+    ) => { treatment: StalenessTreatment; words: string } | null
+  }
+  /**
+   * The settled walking direction, or undefined while the tracker has not
+   * committed - which is exactly when the rail's heading must not say
+   * "NEXT UP" (chrome/NextUpRail.tsx). The position line already embeds it
+   * as text; the rail needs it as data.
+   */
+  direction?: HikeDirection
 
   showZoomButtons?: boolean
   /**
@@ -654,6 +688,8 @@ export function MapScreen({
   onToggleAlerts,
   activeTab,
   onSelectTab,
+  journal,
+  modeSwitch,
   onOpenLegend,
   onOpenSearch,
   legendOpen,
@@ -685,6 +721,7 @@ export function MapScreen({
   onRibbonBackToMe,
   chart,
   waypoints,
+  direction,
   position,
   locationEnabled = false,
   showZoomButtons = false,
@@ -957,52 +994,19 @@ export function MapScreen({
       // over focusable content would otherwise be the classic trap.
       aria-hidden={entering || undefined}
     >
+      {/* The desktop's journal column (#1054): the Today screen the shell
+          hands over, reading beside the map instead of over it. Before
+          __main in the row, so it sits between the sidebar and the map -
+          src/desktop.css sizes and re-inks it. Never rendered on a phone,
+          because the shell never passes it there. */}
+      {journal !== undefined && <div className="map-screen__journal">{journal}</div>}
+
       {/* Everything that is not the navigation. On a phone this is a plain
           column and changes nothing; on a desktop the tab bar becomes a
           sidebar beside it (src/desktop.css). */}
       <div className="map-screen__main">
-        <StatusStrip
-          time={time}
-          online={online}
-          hasGpsFix={hasGpsFix}
-          lastSyncedAt={lastSyncedAt}
-          conditionsAge={conditionsAge}
-          backgroundProblem={backgroundProblem}
-          backgroundOverride={backgroundOverride}
-          belowArchiveZoom={belowArchiveZoom}
-          trailLinesMissing={trailLinesMissing}
-          alertsHidden={!alertsShown}
-        />
-
-        {/* Between the status strip and the header, and that placement is the
-            decision rather than a layout accident (#232).
-
-            Above the map because a hiker who is walking has not opened
-            anything - a closure that only appears on tapping a red band is a
-            closure they walk into. Below the sync age because these two are
-            read together: the age is what says whether this line is current,
-            and an empty space here means "clear" only as far as that age.
-
-            NO LIVE ROLE ON THE VISIBLE BAND (#315), which is a correction
-            rather than a downgrade. It carried `role="alert"`, and the text
-            inside it ends in a distance - "Trail closed 2.1 mi ahead" - that
-            App.tsx recomputes on every `fix.mile` change. A live region
-            re-announces on any mutation inside it, so GPS jitter meant an
-            ASSERTIVE interruption every time the tenths ticked: the one
-            treatment that cuts off whatever a screen reader was mid-sentence
-            through, fired by a number that had not meaningfully changed.
-            That is the cry-wolf failure HIKER_SAFETY.md's own asymmetry
-            argues against, arriving through the accessibility layer.
-
-            What is announced instead is the visually-hidden line below,
-            which says only WHETHER each lane has something in it. That text
-            changes when a closure appears or clears and not when the hiker
-            drifts three metres, so it announces once per event. The detail
-            stays here, on screen and reachable by navigating to it - a
-            distance is worth reading, and it is not worth being interrupted
-            for forty times an hour. */}
         {/* One line, polite, and stable across jitter.
-   
+
             `aria-live="polite"` rather than `role="status"`, which is the
             convention this screen already keeps and the ATC banner's own
             test spells out: StatusStrip.tsx owns `role="status"` here, and a
@@ -1010,7 +1014,10 @@ export function MapScreen({
             screen reader and to a role query alike. Polite rather than
             assertive because this is announced once when something appears,
             and queueing behind whatever is being read is the right trade for
-            somebody who is walking rather than reading. */}
+            somebody who is walking rather than reading. (#315 is why the
+            visible cards below carry no live role: their text ends in a
+            distance App.tsx recomputes per fix, and a live region there
+            re-announced on every tick of the tenths.) */}
         <p className="visually-hidden" aria-live="polite">
           {[
             closureAhead !== null ? 'Trail closure ahead.' : '',
@@ -1027,70 +1034,7 @@ export function MapScreen({
             .join(' ')}
         </p>
 
-        {(closureAhead !== null || advisoryAhead !== null || warningsAhead !== null) && (
-          <div className="map-screen__alerts">
-            {closureAhead !== null && (
-              <p className="map-screen__alert map-screen__alert--closure">
-                {closureAhead}
-              </p>
-            )}
-            {warningsAhead !== null && (
-              <p className="map-screen__alert map-screen__alert--warning">
-                {warningsAhead}
-              </p>
-            )}
-            {/* Last, and quieter than both, because it is the only one of the
-                three that is not about the next few miles (#485). A hiker inside
-                ATC's Helene advisory is inside it for 398 miles; whatever is
-                three miles ahead has to be read first. Still inside the same
-                alert region rather than demoted to the status strip - that strip
-                is narrow flags about connectivity, GPS and data age, and a
-                warning about the trail is not app status. */}
-            {advisoryAhead !== null && (
-              <p className="map-screen__alert map-screen__alert--advisory">
-                {advisoryAhead}
-              </p>
-            )}
-          </div>
-        )}
-
-        <Header
-          trailName={trailName}
-          trailLogo={trailLogo}
-          state={state}
-          position={position}
-          onOpenLegend={onOpenLegend}
-          onOpenSearch={onOpenSearch}
-        />
-
         {followBand}
-
-        {/* `units` last, so the screen's answer wins over anything the shell
-            put in the ribbon's own props. The canvas below and the ribbon over
-            it read the same preference, and a map in metres under a profile in
-            feet is exactly the disagreement one prop exists to prevent.
-
-            Phone only: above the breakpoint the full chart (rendered after
-            the body, across the bottom - WEBSITE.md §6) replaces this whole
-            block - including while a route is being planned, where the chart
-            already bands the draft's stretch and the phone now draws it (#910).
-
-            The LANES go with the ribbon rather than riding the chart,
-            deliberately: they position pins in the ribbon's window-percentage
-            space, and pins re-anchored onto the chart's own zoomable axis is
-            work #135 defers - drawing them misaligned would be worse than
-            not drawing them (the exact trap that issue names). */}
-        {!isDesktop && elevation && (
-          <ElevationRibbon
-            {...elevation}
-            subject={elevation.source}
-            units={units}
-            controls={ribbonControls}
-          />
-        )}
-        {!isDesktop && waypoints && (
-          <WaypointLanes {...waypoints} onSelectPoi={onSelectPoi} />
-        )}
 
         {/* The map and the legend. Separated from the chrome above so the two
             can sit side by side on a desktop, where the legend is a panel
@@ -1100,6 +1044,69 @@ export function MapScreen({
             it - the one thing WEBSITE.md §8 rules out. */}
         <div className="map-screen__body">
           <div className="map-screen__canvas">
+            {/* The floating chrome (#1054): the identity plate and whatever
+                stacks under it, in one column so a taller plate pushes the
+                alerts down rather than overlapping them. Inside the canvas
+                so the .map-screen--entering rules hide all of it during
+                first run without a list of names (chrome.css). */}
+            <div className="map-screen__float">
+              <Header
+                trailName={trailName}
+                trailLogo={trailLogo}
+                state={state}
+                position={position}
+                onOpenLegend={onOpenLegend}
+                onOpenSearch={onOpenSearch}
+                strip={
+                  <StatusStrip
+                    time={time}
+                    online={online}
+                    hasGpsFix={hasGpsFix}
+                    lastSyncedAt={lastSyncedAt}
+                    conditionsAge={conditionsAge}
+                    backgroundProblem={backgroundProblem}
+                    backgroundOverride={backgroundOverride}
+                    belowArchiveZoom={belowArchiveZoom}
+                    trailLinesMissing={trailLinesMissing}
+                    alertsHidden={!alertsShown}
+                  />
+                }
+              />
+
+              {/* Under the plate, and that placement is still #232's
+                  decision in the new shape: above the map because a hiker
+                  who is walking has not opened anything - a closure that
+                  only appears on tapping a red band is a closure they walk
+                  into - and directly under the strip's sync age, because the
+                  two are read together: the age is what says whether this
+                  line is current. No live role on the visible cards (#315);
+                  the visually-hidden line above announces once per event. */}
+              {(closureAhead !== null ||
+                advisoryAhead !== null ||
+                warningsAhead !== null) && (
+                <div className="map-screen__alerts">
+                  {closureAhead !== null && (
+                    <p className="map-screen__alert map-screen__alert--closure">
+                      {closureAhead}
+                    </p>
+                  )}
+                  {warningsAhead !== null && (
+                    <p className="map-screen__alert map-screen__alert--warning">
+                      {warningsAhead}
+                    </p>
+                  )}
+                  {/* Last, and quieter than both, because it is the only one
+                      of the three that is not about the next few miles
+                      (#485). */}
+                  {advisoryAhead !== null && (
+                    <p className="map-screen__alert map-screen__alert--advisory">
+                      {advisoryAhead}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             <MapView
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
@@ -1160,11 +1167,20 @@ export function MapScreen({
 
             {/* Inline above the desktop breakpoint, where the whole list fits
                 on one line - the same `isDesktop` the legend uses, so the two
-                cannot disagree about how much room this layout has. */}
-            <MapAttribution
-              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
-              inline={isDesktop}
-            />
+                cannot disagree about how much room this layout has.
+
+                ON A PHONE THE CREDIT LIVES IN THE RAIL below since #1054 -
+                except during first run, when the rail is hidden with the rest
+                of the chrome and this canvas copy is what keeps a drawn map
+                credited (the .map-screen--entering rules exempt
+                .map-attribution by name for exactly this - chrome.css). One
+                instance renders at a time. */}
+            {(isDesktop || entering) && (
+              <MapAttribution
+                credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
+                inline={isDesktop}
+              />
+            )}
 
             {/* Inside the canvas, and not one wrapper further out: the card
                 positions itself in canvas pixels (poiCardPlacement.ts), so it
@@ -1264,6 +1280,51 @@ export function MapScreen({
           />
         </div>
 
+        {/* The next-up rail (#1054): the phone's band between the map and
+            the tab bar, replacing the ribbon-and-lanes strip that used to
+            sit ABOVE the canvas. Cards first, then the ribbon as a bordered
+            card, then the attribution line - which stays on screen because
+            ODbL is a licence condition, not chrome. `units` last on the
+            ribbon, so the screen's answer wins, exactly as before.
+
+            Phone only: above the breakpoint the full chart below replaces
+            the ribbon, and the rail's cards would double the chart's own
+            annotations. Hidden during first run by the entering rules like
+            the rest of the chrome; the canvas then renders the credit
+            itself (see MapAttribution above). */}
+        {!isDesktop && (
+          // Unconditional on a phone - with no ribbon and no cards to draw,
+          // the band is the attribution line alone, because the credit may
+          // not depend on whether a profile happened to download.
+          <div className="next-up-band">
+            {waypoints !== undefined && elevation !== undefined && (
+              <NextUpRail
+                points={waypoints.points}
+                subject={elevation.source}
+                currentMile={elevation.currentMile}
+                direction={direction}
+                onSelectPoi={(id) => onSelectPoi(id)}
+                units={units}
+                stalenessFor={waypoints.stalenessFor}
+              />
+            )}
+            {elevation !== undefined && (
+              <div className="next-up__ribbon-card">
+                <ElevationRibbon
+                  {...elevation}
+                  subject={elevation.source}
+                  units={units}
+                  controls={ribbonControls}
+                />
+              </div>
+            )}
+            <MapAttribution
+              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
+              inline={false}
+            />
+          </div>
+        )}
+
         {/* The full chart, across the bottom of the frame (#135): the desk's
             answer to the ribbon, needing no fix. Rendered below the body so
             the map and the legend keep their whole height until the profile
@@ -1336,7 +1397,7 @@ export function MapScreen({
         )}
       </div>
 
-      <TabBar active={activeTab} onSelect={onSelectTab} />
+      <TabBar active={activeTab} onSelect={onSelectTab} modeSwitch={modeSwitch} />
     </div>
   )
 }

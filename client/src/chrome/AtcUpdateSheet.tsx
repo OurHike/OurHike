@@ -98,7 +98,7 @@ export function AtcUpdateSheet({ update, reviewedAt, onClose }: AtcUpdateSheetPr
           one a hiker only needs when something looks wrong. */}
       <p className="closure-sheet__age">
         {reviewedAt === null
-          ? 'OurHike cannot tell when it last checked ATC’s updates.'
+          ? 'OurHike can’t tell when it last checked ATC’s updates.'
           : `OurHike last checked ATC’s updates on ${longDate(reviewedAt)}.`}
       </p>
     </div>

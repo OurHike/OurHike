@@ -61,8 +61,10 @@ beforeEach(() => app.onboard())
 /** Settings → the About tab → the app-failure form, as a hiker reaches it. */
 async function openTheForm(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
-  await user.click(await screen.findByRole('tab', { name: 'Settings' }))
-  await user.click(await screen.findByRole('tab', { name: 'About' }))
+  await user.click(await screen.findByRole('tab', { name: 'More' }))
+  await user.click(
+    await screen.findByRole('button', { name: /where this map comes from/i }),
+  )
   await user.click(
     await screen.findByRole('button', { name: /broke while I was out there/i }),
   )
@@ -137,6 +139,6 @@ describe('reporting that the app failed on the trail, signed out', () => {
 
     await user.click(await screen.findByRole('button', { name: /done/i }))
 
-    expect(await screen.findByRole('tab', { name: 'Settings' })).toBeInTheDocument()
+    expect(await screen.findByRole('tab', { name: 'More' })).toBeInTheDocument()
   })
 })

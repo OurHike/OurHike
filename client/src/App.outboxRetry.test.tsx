@@ -45,6 +45,9 @@ vi.mock('./lib/api', () => ({
   // The role read (#235). Same reason as the two above: App asks once per
   // sign-in, and a mock without it makes the whole screen throw on mount.
   fetchMyProfile: vi.fn(async () => ({ id: 'p-1', role: 'hiker', display_name: null })),
+  // Fetched when the volunteer page is looked at, which openMore now does on
+  // its way to the stuck-report alert (#1054).
+  fetchMyVolunteerHours: vi.fn(async () => []),
 }))
 vi.mock('./lib/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./lib/auth')>()),
@@ -83,7 +86,10 @@ beforeEach(() => app.onboard())
 
 async function openMore(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
-  await user.click(await screen.findByRole('tab', { name: 'Settings' }))
+  await user.click(await screen.findByRole('tab', { name: 'More' }))
+  // The stuck-report alert lives on the volunteer page since More became
+  // five destinations (#1054).
+  await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
 }
 
 describe('Try again, on a report the server refused', () => {
@@ -134,10 +140,11 @@ describe('Try again, on a report the server refused', () => {
     // have come from the submit itself.
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByRole('tab', { name: 'Settings' })
+    await screen.findByRole('tab', { name: 'More' })
     expect(mockedSend).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /^send$/i }))

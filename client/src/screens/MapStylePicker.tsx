@@ -51,6 +51,16 @@ const DESCRIPTIONS: Record<MapStyle, string> = {
     'Terrain does the talking — relief carried strong, contours promoted, colour saved for water and blazes. For judging a climb before committing.',
 }
 
+/**
+ * The label above, for surfaces that name the chosen style without offering
+ * the choice - More's home row says "Field · Feet" so a hiker knows what a
+ * trip into "The map" would find. From OPTIONS rather than a second record,
+ * so a renamed style can never be summarised under its old name.
+ */
+export function mapStyleLabel(value: MapStyle): string {
+  return OPTIONS.find((option) => option.value === value)?.label ?? value
+}
+
 export interface MapStylePickerProps {
   value: MapStyle
   onChange: (next: MapStyle) => void

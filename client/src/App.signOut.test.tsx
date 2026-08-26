@@ -22,7 +22,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { DAY_HIKES_SYNC_KEY } from './lib/dayHikeSyncState'
 import { TRIPS_SYNC_KEY } from './lib/tripSyncState'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
@@ -80,7 +80,8 @@ beforeEach(() => {
 })
 
 async function signOut(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Settings' }))
+  await user.click(screen.getByRole('tab', { name: 'More' }))
+  await user.click(await screen.findByRole('button', { name: /^you/i }))
   await user.click(await screen.findByRole('button', { name: /sign out/i }))
 }
 
@@ -98,6 +99,7 @@ describe('signing out on a shared handset', () => {
   it('forgets the day-hike ledger, which nothing used to clear (#1035)', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await signOut(user)
@@ -111,6 +113,7 @@ describe('signing out on a shared handset', () => {
   it('forgets the trip ledger too, which it always did', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await signOut(user)
@@ -121,6 +124,7 @@ describe('signing out on a shared handset', () => {
   it('keeps the walks themselves - they are this phone’s, not the account’s', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await signOut(user)
@@ -137,6 +141,7 @@ describe('signing out on a shared handset', () => {
     // and a test naming them one by one would not have said so.
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await signOut(user)

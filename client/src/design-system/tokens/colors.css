@@ -117,6 +117,10 @@ color-scheme:light;
    dark-block re-point on purpose - it IS the dark theme's own danger colour,
    legible on pine and ink alike. */
 --bg-chrome:var(--pine-900);
+/* A card RAISED off the chrome - the Today screen's volunteer card (#1054)
+   and anything else that sits on pine as a surface of its own. One step
+   lighter than the chrome, the way --surface-card sits off --bg-page. */
+--surface-chrome-raised:var(--pine-800);
 --fg-chrome-1:var(--paper-0);
 --fg-chrome-2:var(--sage-200);
 --fg-chrome-3:var(--moss-300);
@@ -195,6 +199,8 @@ color-scheme:dark;
    settles a shade behind the ink-850 canvas instead of matching it - the map
    stays the lighter thing in the dark theme too. */
 --bg-chrome:var(--ink-900);
+/* One step lighter than the ink chrome, as pine-800 is off pine-900. */
+--surface-chrome-raised:var(--ink-800);
 --fg-chrome-1:var(--bone-100);
 --fg-chrome-2:var(--bone-300);
 --fg-chrome-3:var(--bone-500);

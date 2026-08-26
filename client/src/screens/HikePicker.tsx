@@ -156,7 +156,7 @@ export function HikePicker({
             under the person typing and is the confirmation they are after. */}
         <p className="settings__note" role="status">
           {parsed === null
-            ? 'Two different mile markers describe a hike; the same one twice does not.'
+            ? 'Two different mile markers describe a hike; the same one twice doesn’t.'
             : `${directionLabel(plannedDirection(parsed))} · ${formatDistance(
                 Math.abs(parsed.endMile - parsed.startMile),
                 units,

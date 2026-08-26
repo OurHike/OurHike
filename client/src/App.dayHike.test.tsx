@@ -23,7 +23,7 @@ import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
 import { TRIPS_KEY } from './lib/trips'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
-import { appHarness, latOfMile } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -617,6 +617,7 @@ describe('the day-hike builder, end to end', () => {
     })
 
     render(<App />)
+    await openMapTab()
     // No door before a fix: the map cannot know where anybody parked.
     expect(
       screen.queryByRole('button', { name: /day hikes? starts? here/ }),
@@ -692,6 +693,7 @@ describe('the day-hike builder, end to end', () => {
     })
 
     render(<App />)
+    await openMapTab()
     await app.reportFixAtMile(5)
     expect(
       await screen.findByRole('button', { name: 'A day hike starts here' }),

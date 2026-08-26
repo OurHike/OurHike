@@ -27,6 +27,10 @@ export const alt =
   'The map attribution strip expanded over the trail screen, listing the background credits only: OpenStreetMap, OpenFreeMap and the elevation source'
 
 export default async function drive(page) {
+  // The map first: the app opens on Today since #1054, and the credits
+  // live on the map screen's corner.
+  await page.getByRole('tab', { name: 'Map' }).click()
+
   // The <summary> of chrome/MapAttribution.tsx's <details>. Clicked by class
   // rather than by role: a summary's implicit role is not stable across
   // engines, and its accessible name is the first credit plus a count, which

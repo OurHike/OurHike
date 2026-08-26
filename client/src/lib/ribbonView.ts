@@ -47,7 +47,22 @@ import type { ElevationProfile, MileWindow } from './elevationProfile'
 import { ribbonSamples } from './elevationProfile'
 import { envelopeSamples, type ChartDomain } from './chartProfile'
 import { upcomingClimb } from './upcomingClimb'
-import { COLLAPSE_THRESHOLD_PCT, type Waypoint } from './waypointLanes'
+/**
+ * One waypoint as the next-up rail takes it (chrome/NextUpRail.tsx, #1054).
+ *
+ * This shape used to live in lib/waypointLanes.ts and gained `name` when the
+ * three lanes became the rail: a lane pin was a glyph positioned by
+ * percentage and never needed one, while a rail card names the place. The
+ * name is optional because both source lists can hold a POI whose name is
+ * empty upstream - the card falls back to the type's label rather than a
+ * blank.
+ */
+export interface Waypoint {
+  id: string
+  type: string
+  mile: number
+  name?: string
+}
 
 /**
  * Which of the four the ribbon settled on. Carried out so the screen can say
@@ -220,6 +235,7 @@ function stretchView(
  */
 export interface LanePoi {
   id: string
+  name?: string
   type: string
   mile?: number
 }
@@ -256,7 +272,7 @@ export interface RibbonLanes {
  * measures it off the published POI export (`export_poi.py`'s `attach_miles`,
  * #753) this is deliberately the generous end.
  */
-export const MAX_LANE_SPAN_MI = 8 / (COLLAPSE_THRESHOLD_PCT / 100)
+export const MAX_LANE_SPAN_MI = 8 / 0.015
 
 /**
  * The POIs along whatever the ribbon settled on, for the three lanes beneath
@@ -315,7 +331,7 @@ export function ribbonLanes(
     if (poi.mile === undefined) continue
     anyPlaced = true
     if (poi.mile < startMile || poi.mile > endMile) continue
-    points.push({ id: poi.id, type: poi.type, mile: poi.mile })
+    points.push({ id: poi.id, type: poi.type, mile: poi.mile, name: poi.name })
   }
 
   return anyPlaced ? { points, startMile, endMile } : undefined

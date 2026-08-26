@@ -50,7 +50,7 @@ import {
   rasterDetailOptions,
 } from './screens/DetailPicker'
 import { DownloadsDialog } from './screens/DownloadsDialog'
-import { More, type StuckReport } from './screens/More'
+import { More, type MorePage, type StuckReport } from './screens/More'
 import { Moderation } from './screens/Moderation'
 import { InstallPrompt } from './screens/InstallPrompt'
 import {
@@ -130,12 +130,13 @@ import {
 import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { activeDownload } from './lib/downloadActivity'
 import { useClock } from './lib/useClock'
+import { useDesktop } from './lib/useDesktop'
+import { ModeSwitch } from './chrome/ModeSwitch'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useTheme } from './lib/useTheme'
-import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
@@ -273,6 +274,13 @@ import {
 import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
 import { Volunteer } from './screens/Volunteer'
 import { VolunteerHours } from './screens/VolunteerHours'
+import { Today } from './screens/Today'
+import {
+  DEFAULT_HIKER_MODE,
+  loadHikerMode,
+  saveHikerMode,
+  type HikerMode,
+} from './lib/hikerMode'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
@@ -434,7 +442,15 @@ function App() {
   // back to exactly these defaults.
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabId>('trail')
+  // The "today I'm…" mode (#1054, lib/hikerMode.ts) - loaded in the same
+  // bootstrap gate as the preferences, saved on every change. It re-ranks
+  // the Today screen and never gates anything.
+  const [hikerMode, setHikerMode] = useState<HikerMode>(DEFAULT_HIKER_MODE)
+  // Today is the home (#1054): the default tab, and where finishing first run
+  // lands. During first run the tab branches below are skipped entirely -
+  // `entering` renders the map screen as the steps' backdrop whatever this
+  // says - so the default only takes effect once onboarding is done.
+  const [activeTab, setActiveTab] = useState<TabId>('today')
   // The download window (screens/DownloadsDialog.tsx), which replaced the tab
   // it used to be. Held here rather than on either screen because it opens
   // over both of them, from the one background picker they share.
@@ -726,6 +742,23 @@ function App() {
   // entry point exists - the backend gates every call regardless (#235).
   const [moderating, setModerating] = useState(false)
   const isModerator = useModerator(account !== null)
+  /**
+   * Which of More's pages is showing (screens/More.tsx). Shell state rather
+   * than More's own useState so the Today column's volunteer card can land a
+   * hiker directly on the volunteer page (#1054) - the deep link is one
+   * setState here, where a page held inside More could only be reached
+   * through More's home.
+   *
+   * Volunteer left the tab bar with #1054 (chrome/tabs.ts records why, and
+   * that the removal was approved rather than drifted into). The surface
+   * itself is unchanged; what changed is the doors: the "Volunteer & report"
+   * row, and the Today column's volunteer card.
+   *
+   * Deliberately NOT reset when the tab changes: a hiker who steps out to
+   * the map mid-form comes back to the page they left, which is the same
+   * courtesy every tab's own state already keeps.
+   */
+  const [morePage, setMorePage] = useState<MorePage>('home')
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -746,6 +779,11 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+  // Which layout this viewport gets (lib/useDesktop.ts). Read here as well
+  // as inside MapScreen because two of the shell's own decisions turn on it
+  // since #1054: whether the Today tab is its own screen or the map's
+  // journal column, and whether the sidebar carries the mode switch.
+  const isDesktop = useDesktop()
 
   // What the trail is like right now - closures, reports, the ATC's own
   // notices - and when something last reached the server. See
@@ -915,14 +953,16 @@ function App() {
   }, [])
 
   const resolvedTheme = useTheme(preferences.theme)
-  // Whether this is the big-screen layout - and, for the download, whether the
-  // machine is one that goes up a mountain. See handleOnboardingComplete.
-  const isDesktop = useDesktop()
   const install = useInstallPrompt()
   useEffect(() => {
-    void loadPreferences().then(
-      (stored) => {
+    // The mode rides the same gate as the preferences (lib/hikerMode.ts's
+    // "read once, no flash"): the Today header renders the switch on first
+    // paint, and a default that flips a tick later is exactly the flash the
+    // gate exists to prevent.
+    void Promise.all([loadPreferences(), loadHikerMode()]).then(
+      ([stored, mode]) => {
         setPreferences(stored)
+        setHikerMode(mode)
         setPreferencesLoaded(true)
       },
       // A storage read that rejects - private browsing, an evicted database -
@@ -933,6 +973,14 @@ function App() {
       // either way.
       () => setPreferencesLoaded(true),
     )
+  }, [])
+
+  // The mode is saved as it changes - there is no form to submit, and a mode
+  // that survived the session but not the relaunch would make the switch a
+  // label rather than a setting.
+  const handleChangeMode = useCallback((mode: HikerMode) => {
+    setHikerMode(mode)
+    void saveHikerMode(mode)
   }, [])
 
   // Nothing waits on this. A hike changes what the banners can say and
@@ -1989,7 +2037,7 @@ function App() {
    * decision; #997 records it.
    */
   const sweepForBuilder = useCallback(() => {
-    setActiveTab('trail')
+    setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
@@ -2107,7 +2155,7 @@ function App() {
   // which this door is creating. Merging them would need a parameter, and a
   // sweep with a mode flag is not a shared rule.
   const openDayHike = useCallback(() => {
-    setActiveTab('trail')
+    setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
@@ -2457,7 +2505,7 @@ function App() {
       // this puts the card away and goes there - the same one-surface-
       // continuing move the builder's own doors make.
       handleDayHikeCardClose()
-      setActiveTab('trail')
+      setActiveTab('map')
     },
     [handleDayHikeCardClose],
   )
@@ -2747,7 +2795,7 @@ function App() {
   // your own route (openRouteBuilderFrom's rule, kept here for both modes).
   const openPlanKind = useCallback(() => {
     if (dayHike !== null) {
-      setActiveTab('trail')
+      setActiveTab('map')
       return
     }
     if (routeBuilder.draftLive) {
@@ -2868,7 +2916,7 @@ function App() {
     // THE sweep, not a copy of it (#997). This handler used to repeat four
     // of its five lines inline, which is how the day-hike clear could have
     // been added to one opener and missed here. The one line it did not
-    // repeat - setActiveTab('trail') - is a no-op on this path rather than a
+    // repeat - setActiveTab('map') - is a no-op on this path rather than a
     // difference: the chart is a MapScreen prop, and App returns early for
     // every other tab, so nothing reaches here from anywhere else.
     sweepForBuilder()
@@ -3277,28 +3325,16 @@ function App() {
         location_permission_requested: locationRequested,
         hiking_detail_level: hikingDetailLevel,
       })
-      // The download window, over the map rather than instead of it. The
-      // choice just made is a download that has not started, so the window is
-      // still what someone leaving onboarding needs; what has changed is that
-      // it no longer costs them the first sight of the map to see it.
-      //
-      // NOT ON A DESKTOP (WEBSITE.md §6, "Download UX"). A laptop has signal,
-      // and the assumption worth making about it is the one it is almost
-      // always right about: this connection is not being metered by the mile.
-      // The live sheet is already the default background, so a browser that
-      // never opens this window still gets the whole trail drawn - the
-      // download buys it nothing it does not already have, and 314 MB is a
-      // real cost to put in front of someone before they have seen the map.
-      //
-      // It is withheld, not removed, and that distinction is the whole of the
-      // rule. The legend is a permanent panel above 900px, and DownloadsLink
-      // sits in it, so "Choose what to download" is on screen the entire time
-      // - more visible than the phone's, where the legend has to be opened
-      // first. Someone setting up a cabin machine, or a laptop that is coming
-      // along, is one click away and was never told no.
-      if (!isDesktop) openDownloads()
+      // No window opens here any more (#1054). The download starts on the
+      // size step itself - the step that asks the question - through
+      // handleOnboardingDownload below, and keeps running behind the last
+      // step and past it; the window is the MANAGE surface, reachable from
+      // the legend and from More. A hiker who chose "Decide this later"
+      // gets the door held open on the Today screen instead of a takeover
+      // they just declined. (The old desktop carve-out went with it: with
+      // nothing auto-opening, there is nothing to withhold from a laptop.)
     },
-    [updatePreferences, openDownloads, isDesktop],
+    [updatePreferences],
   )
 
   /** One sheet: every archive it is made of, in one tap. Archives already on
@@ -3335,6 +3371,19 @@ function App() {
     },
     [archiveStatusFor, ensureTrailData, startPackages],
   )
+
+  /**
+   * The size step's own download start (#1054). The level preference is
+   * already written - Onboarding writes it through onChangeLevel as the
+   * radio moves, which is what points `downloadRequests` at the right
+   * artifact BEFORE this fires - so what is left is marking the choice made
+   * and starting the sheet through the same path the window's button takes,
+   * canary and all.
+   */
+  const handleOnboardingDownload = useCallback(() => {
+    updatePreferences({ download_choice_made: true })
+    void handleDownloadSheet(HIKING_SHEET)
+  }, [updatePreferences, handleDownloadSheet])
 
   /** Resume, which skips the trail-data step: those bytes are already here,
    *  and the point of resuming is not to spend signal twice. */
@@ -3685,7 +3734,15 @@ function App() {
   const [localHours, setLocalHours] = useState<readonly VolunteerHoursSummary[]>([])
 
   useEffect(() => {
-    if (!online || account === null || activeTab !== 'volunteer') return
+    // "Open" means the volunteer surface itself since #1054, not a tab: the
+    // fetch-when-looked-at rule is the point, and where the looking happens
+    // moved - it is More's volunteer page now.
+    if (
+      !online ||
+      account === null ||
+      !(activeTab === 'more' && morePage === 'volunteer')
+    )
+      return
     let cancelled = false
     fetchMyVolunteerHours().then(
       (records) => {
@@ -3698,7 +3755,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [online, account, activeTab])
+  }, [online, account, activeTab, morePage])
 
   const hoursRecords = useMemo(() => {
     if (myHours === null && localHours.length === 0) return null
@@ -3776,7 +3833,7 @@ function App() {
    */
   const handleOpenPassedPlace = useCallback(
     (id: string) => {
-      setActiveTab('trail')
+      setActiveTab('map')
       handleSelectPoi(id)
       const found = pois.find((candidate) => candidate.id === id)
       if (found !== undefined && map !== null) {
@@ -4340,7 +4397,111 @@ function App() {
     </DownloadsDialog>
   )
 
-  if (activeTab === 'more') {
+  // The one line the map plate and the Today header both read - decided once
+  // (lib/positionLine.ts), never twice, so the two screens cannot disagree
+  // about where the hiker is.
+  const position = positionLine({
+    gps,
+    enabled: locationAllowed,
+    mile: fix?.mile,
+    direction: direction?.direction,
+    trailReady: trailIndex !== null,
+    // A park has no mile axis (#928), so a followed hike replaces the
+    // Springer mile with distance along the hiker's own walk.
+    follow: followState,
+    units,
+  })
+
+  // The journal, built once for its two rooms (#1054): the phone's Today tab
+  // below, and the desktop's planning station, where the map branch docks
+  // this same element beside the canvas. One element rather than two JSX
+  // copies, so the forty-odd props feeding it cannot drift between layouts.
+  const todayScreen = (
+    <Today
+      now={now}
+      position={position}
+      online={online}
+      hasGpsFix={gps.status === 'located'}
+      lastSyncedAt={lastSyncedAt}
+      conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
+      backgroundProblem={backgroundProblem({
+        sources: notDrawing,
+        online,
+        rasterArchiveDownloaded: archiveDownloaded,
+        hikingSheetDownloaded,
+      })}
+      backgroundOverride={backgroundOverride(
+        preferences.background_source,
+        saveData,
+        archiveDownloaded,
+      )}
+      trailLinesMissing={!haveTrailLines && dataError !== null}
+      mode={hikerMode}
+      onChangeMode={handleChangeMode}
+      pois={searchablePois}
+      currentMile={fix?.mile}
+      direction={direction?.direction}
+      stalenessFor={laneStaleness}
+      onOpenPoi={handleOpenPassedPlace}
+      closureAhead={closureAhead}
+      warningsAhead={warningsAhead}
+      advisoryAhead={advisoryAhead}
+      onShowOnMap={() => setActiveTab('map')}
+      elevation={ribbon}
+      units={units}
+      pace={pace}
+      opportunities={workProjects}
+      opportunitiesAsOf={workProjectsGeneratedAt}
+      onOpenVolunteer={() => {
+        setActiveTab('more')
+        setMorePage('volunteer')
+      }}
+      passedPlaces={passedPlacesToday}
+      queuedReportCount={queuedCount}
+      onStartReport={() => setReporting({ step: 'pick' })}
+      dayHikes={dayHikeStore.hikes}
+      onOpenDayHike={handleOpenDayHike}
+      hasDownload={anySheetDownloaded}
+      onOpenDownloads={openDownloads}
+    />
+  )
+
+  // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
+  // for it, and only the desktop needs it there - the phone carries the same
+  // control on the Today header. Undefined below the breakpoint, so TabBar
+  // draws nothing extra on a phone.
+  const sidebarModeSwitch = isDesktop ? (
+    <ModeSwitch mode={hikerMode} onChange={handleChangeMode} />
+  ) : undefined
+
+  // Every tab branch below is skipped during first run: `entering` needs the
+  // map screen rendered as the steps' backdrop (#721), whatever tab the
+  // default names. The Today branch is also skipped on a desktop, where the
+  // journal reads beside the map instead of replacing it - the map branch
+  // at the bottom of this component docks `todayScreen` there.
+  if (!entering && activeTab === 'today' && !isDesktop) {
+    return (
+      <>
+        <div className="app__screen">
+          <div>
+            {/* Its own boundary like More's and Plan's, for their shared
+                reason: a throw here must not cost the map, and the tab bar
+                underneath is the way back. */}
+            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
+              {todayScreen}
+            </ErrorBoundary>
+          </div>
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            modeSwitch={sidebarModeSwitch}
+          />
+        </div>
+        {downloadsWindow}
+      </>
+    )
+  }
+  if (!entering && activeTab === 'more') {
     // Its own boundary for the same reason the map has one, with the roles
     // reversed: a throw anywhere in Settings used to escape to the ROOT
     // boundary, which has no tab bar and no reset - one bad stored value
@@ -4382,8 +4543,12 @@ function App() {
                 // the standard the same file already keeps for "Roads &
                 // walkability".
                 <More
+                  page={morePage}
+                  onNavigate={setMorePage}
                   stewards={stewards}
                   account={account}
+                  mode={hikerMode}
+                  onChangeMode={handleChangeMode}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
                   onSignOut={() => void handleSignOut()}
                   preferences={preferences}
@@ -4401,7 +4566,7 @@ function App() {
                   now={now}
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}
-                  hasDownload={anySheetDownloaded}
+                  hikingStatus={sheetStatus(HIKING_SHEET)}
                   downloadActivity={downloadActivity}
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
@@ -4413,18 +4578,43 @@ function App() {
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
+                  volunteerScreen={
+                    <Volunteer
+                      contributeConditions={preferences.contribute_conditions}
+                      onToggleContribute={(next) =>
+                        updatePreferences({ contribute_conditions: next })
+                      }
+                      passedToday={passedPlacesToday}
+                      onOpenPlace={handleOpenPassedPlace}
+                      units={units}
+                      opportunities={workProjects}
+                      opportunitiesAsOf={workProjectsGeneratedAt}
+                      gpsMile={fix?.mile ?? null}
+                      now={now}
+                    >
+                      <VolunteerHours
+                        records={hoursRecords}
+                        onLog={(draft) => void handleLogHours(draft)}
+                        now={now}
+                      />
+                    </Volunteer>
+                  }
                 />
               )}
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            modeSwitch={sidebarModeSwitch}
+          />
         </div>
         {downloadsWindow}
       </>
     )
   }
 
-  if (activeTab === 'plan') {
+  if (!entering && activeTab === 'plan') {
     return (
       <>
         <div className="app__screen">
@@ -4571,44 +4761,11 @@ function App() {
               />
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
-        </div>
-        {downloadsWindow}
-      </>
-    )
-  }
-
-  if (activeTab === 'volunteer') {
-    return (
-      <>
-        <div className="app__screen">
-          <div>
-            {/* Its own boundary like More's and Plan's, for their shared
-                reason: a throw here must not cost the map, and the tab bar
-                underneath is the way back. */}
-            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              <Volunteer
-                contributeConditions={preferences.contribute_conditions}
-                onToggleContribute={(next) =>
-                  updatePreferences({ contribute_conditions: next })
-                }
-                passedToday={passedPlacesToday}
-                onOpenPlace={handleOpenPassedPlace}
-                units={units}
-                opportunities={workProjects}
-                opportunitiesAsOf={workProjectsGeneratedAt}
-                gpsMile={fix?.mile ?? null}
-                now={now}
-              >
-                <VolunteerHours
-                  records={hoursRecords}
-                  onLog={(draft) => void handleLogHours(draft)}
-                  now={now}
-                />
-              </Volunteer>
-            </ErrorBoundary>
-          </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            modeSwitch={sidebarModeSwitch}
+          />
         </div>
         {downloadsWindow}
       </>
@@ -4642,6 +4799,14 @@ function App() {
           // whole subtree inert, so the steps below are drawn over the map
           // rather than over a second copy of it.
           entering={entering}
+          // The desktop planning station (#1054): with Today active above the
+          // breakpoint, this branch is the one rendering - the Today branch
+          // stands aside - and the journal reads beside the map. Never during
+          // first run, whose backdrop must stay bare down to the canvas.
+          journal={
+            !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
+          }
+          modeSwitch={sidebarModeSwitch}
           // The ask before this phone's map is replaced (#919). Undefined
           // while there is nothing newer published, which is every launch but
           // the ones after a release - see lib/dataRefresh.ts.
@@ -4732,17 +4897,13 @@ function App() {
           // One sentence rather than a number, decided in one place
           // (lib/positionLine.ts): the header used to say "Looking for GPS…"
           // for six different situations, three of which never resolve (#312).
-          position={positionLine({
-            gps,
-            enabled: locationAllowed,
-            mile: fix?.mile,
-            direction: direction?.direction,
-            trailReady: trailIndex !== null,
-            // A park has no mile axis (#928), so a followed hike replaces the
-            // Springer mile with distance along the hiker's own walk.
-            follow: followState,
-            units,
-          })}
+          // Computed above the tab branches since #1054, because the Today
+          // header reads the same line.
+          position={position}
+          // As data too, for the next-up rail's heading: "NEXT UP" is a
+          // direction claim and the rail refuses to make it unsettled
+          // (chrome/NextUpRail.tsx).
+          direction={direction?.direction}
           // Which also decides whether the map offers its locate control -
           // attaching it regardless was a second high-accuracy watch and a
           // permission prompt behind this preference's back.
@@ -4959,7 +5120,14 @@ function App() {
           hidden the chrome and made the whole screen inert - and the download
           window below cannot be open yet, because the only thing that opens it
           is finishing these steps. */}
-      {entering && <Onboarding onComplete={handleOnboardingComplete} />}
+      {entering && (
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          onChangeLevel={(level) => updatePreferences({ hiking_detail_level: level })}
+          onStartDownload={handleOnboardingDownload}
+          downloadActivity={downloadActivity}
+        />
+      )}
       {downloadsWindow}
     </>
   )

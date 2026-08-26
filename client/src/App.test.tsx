@@ -355,7 +355,7 @@ describe('App shell', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'More' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Map' }))
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
@@ -489,10 +489,7 @@ describe('App shell', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('tab', { name: 'About' }))
-    await user.click(
-      await screen.findByRole('button', { name: /choose what to download/i }),
-    )
+    await user.click(await screen.findByRole('button', { name: /download/i }))
 
     expect(
       await screen.findByRole('dialog', { name: /offline map/i }),
@@ -521,7 +518,7 @@ describe('App shell', () => {
     act(() => opening.emit('moveend'))
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await screen.findByRole('heading', { name: 'You' })
+    await screen.findByRole('heading', { name: 'More' })
     await user.click(screen.getByRole('tab', { name: 'Map' }))
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
@@ -693,6 +690,7 @@ describe('App shell', () => {
 
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
 
     expect(
@@ -712,10 +710,11 @@ describe('App shell', () => {
 
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
 
-    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
   })
 
@@ -728,6 +727,7 @@ describe('App shell', () => {
 
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -751,6 +751,7 @@ describe('App shell', () => {
 
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -1150,7 +1151,7 @@ describe('Data Saver', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/map stopped working/i)
     // And the way out is still there, which is the whole point.
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'More' })).toBeInTheDocument()
   })
 
   it('can still reach the download when the map has fallen over', async () => {
@@ -1170,10 +1171,7 @@ describe('Data Saver', () => {
     await screen.findByRole('alert')
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('tab', { name: 'About' }))
-    await user.click(
-      await screen.findByRole('button', { name: /choose what to download/i }),
-    )
+    await user.click(await screen.findByRole('button', { name: /download/i }))
 
     expect(
       await screen.findByRole('dialog', { name: /offline map/i }),

@@ -39,6 +39,14 @@ beforeEach(() => {
 
 async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('tab', { name: 'More' }))
+  // More keeps its page across trips (App holds it), so this may land on
+  // home, on the volunteer page, or wherever the last trip ended - walk to
+  // the report button from any of them.
+  if (!screen.queryByRole('button', { name: /report a problem/i })) {
+    const back = screen.queryByRole('button', { name: 'More' })
+    if (back !== null) await user.click(back)
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
+  }
   await user.click(await screen.findByRole('button', { name: /report a problem/i }))
   await user.click(await screen.findByRole('button', { name: /blow down/i }))
   await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))

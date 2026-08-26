@@ -62,7 +62,9 @@ beforeEach(() => app.onboard())
 async function openTheForm(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
   await user.click(await screen.findByRole('tab', { name: 'More' }))
-  await user.click(await screen.findByRole('tab', { name: 'About' }))
+  await user.click(
+    await screen.findByRole('button', { name: /where this map comes from/i }),
+  )
   await user.click(
     await screen.findByRole('button', { name: /broke while I was out there/i }),
   )

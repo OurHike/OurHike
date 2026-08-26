@@ -512,3 +512,222 @@
   line-height: 1.45;
   color: var(--fg-3);
 }
+
+/* ---------- More's own frame (#1054): five destinations over a storage card.
+ *
+ * The screen leads with a pine header - the same chrome family the Today
+ * column opens with (today.css), so the app's two non-map screens share one
+ * roof - then a paper list of cards. Every colour is a semantic alias;
+ * themeTokens.test.ts fails this file the moment it names a base colour.
+ * ---------- */
+
+.more {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+}
+
+.more__header {
+  background: var(--bg-chrome);
+  padding: 16px 18px 18px;
+  padding-left: max(18px, env(safe-area-inset-left, 0px));
+  padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+
+.more__title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--fg-chrome-1);
+}
+
+.more__tagline {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-chrome-3);
+}
+
+.more__home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+}
+
+/* The storage card: what is on this phone, said before anything is tapped.
+   A summary and a door - the one pill opens the download window, which stays
+   the only surface that starts, resumes or deletes anything. */
+.more__storage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 14px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+}
+
+.more__storage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+.more__storage-eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.1em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.more__storage-size {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+.more__storage-title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+.more__storage-bar {
+  height: 8px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.more__storage-fill {
+  height: 100%;
+  background: var(--brand-primary);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.more__storage-meta {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.more__storage-actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-top: 2px;
+}
+
+.more__pill {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 16px;
+  background: transparent;
+  color: var(--brand-primary);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* A destination row: the name, the state behind it in one line, and the
+   chevron that says it goes somewhere. A button rather than a link because
+   the pages are this screen's own state, not the router's. */
+.more__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-4, 14px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  cursor: pointer;
+}
+
+.more__row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.more__row-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.more__row-sub {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.more__row-chevron {
+  font-size: 16px;
+  color: var(--fg-3);
+}
+
+/* The volunteer row while something is stuck (#243): the same danger
+   treatment .settings__locked, .more__stuck and .settings__link--urgent
+   already wear, because it is the same class of news - this will not resolve
+   itself. Worn ONLY for stuck reports: "waiting to send" is the ordinary
+   state of an offline-first outbox and stays in the quiet grey above. */
+.more__row--alert {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.more__row--alert .more__row-sub {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.more__row--alert .more__row-chevron {
+  color: var(--danger);
+}
+
+.more__footer {
+  margin: var(--space-2, 8px) 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* The way home from a sub-page. Left-aligned where a thumb starting a
+   back-swipe already is, and named for where it goes rather than what it
+   does. */
+.more__pagebar {
+  padding: var(--space-2, 8px) var(--space-5, 20px) 0;
+}
+
+.more__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--brand-primary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}

@@ -50,7 +50,7 @@ import {
   rasterDetailOptions,
 } from './screens/DetailPicker'
 import { DownloadsDialog } from './screens/DownloadsDialog'
-import { More, type StuckReport } from './screens/More'
+import { More, type MorePage, type StuckReport } from './screens/More'
 import { Moderation } from './screens/Moderation'
 import { InstallPrompt } from './screens/InstallPrompt'
 import {
@@ -741,15 +741,22 @@ function App() {
   const [moderating, setModerating] = useState(false)
   const isModerator = useModerator(account !== null)
   /**
-   * Whether the volunteer surface is open, over the More tab - the same
-   * replace-rather-than-cover shape `moderating` takes, for the same reason.
+   * Which of More's pages is showing (screens/More.tsx). Shell state rather
+   * than More's own useState so the Today column's volunteer card can land a
+   * hiker directly on the volunteer page (#1054) - the deep link is one
+   * setState here, where a page held inside More could only be reached
+   * through More's home.
    *
    * Volunteer left the tab bar with #1054 (chrome/tabs.ts records why, and
    * that the removal was approved rather than drifted into). The surface
-   * itself is unchanged; what changed is the doors: this flag, opened from
-   * More, and the Today column's volunteer card once it lands.
+   * itself is unchanged; what changed is the doors: the "Volunteer & report"
+   * row, and the Today column's volunteer card.
+   *
+   * Deliberately NOT reset when the tab changes: a hiker who steps out to
+   * the map mid-form comes back to the page they left, which is the same
+   * courtesy every tab's own state already keeps.
    */
-  const [volunteering, setVolunteering] = useState(false)
+  const [morePage, setMorePage] = useState<MorePage>('home')
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -3717,8 +3724,13 @@ function App() {
   useEffect(() => {
     // "Open" means the volunteer surface itself since #1054, not a tab: the
     // fetch-when-looked-at rule is the point, and where the looking happens
-    // moved.
-    if (!online || account === null || !(activeTab === 'more' && volunteering)) return
+    // moved - it is More's volunteer page now.
+    if (
+      !online ||
+      account === null ||
+      !(activeTab === 'more' && morePage === 'volunteer')
+    )
+      return
     let cancelled = false
     fetchMyVolunteerHours().then(
       (records) => {
@@ -3731,7 +3743,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [online, account, activeTab, volunteering])
+  }, [online, account, activeTab, morePage])
 
   const hoursRecords = useMemo(() => {
     if (myHours === null && localHours.length === 0) return null
@@ -4440,7 +4452,7 @@ function App() {
                 opportunitiesAsOf={workProjectsGeneratedAt}
                 onOpenVolunteer={() => {
                   setActiveTab('more')
-                  setVolunteering(true)
+                  setMorePage('volunteer')
                 }}
                 passedPlaces={passedPlacesToday}
                 queuedReportCount={queuedCount}
@@ -4480,41 +4492,6 @@ function App() {
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
                 <Moderation onClose={() => setModerating(false)} />
-              ) : volunteering ? (
-                // Replaces More rather than covering it, exactly as the
-                // moderation queue above does. The volunteer surface itself
-                // is unchanged by #1054 - only its doors moved when the tab
-                // went (chrome/tabs.ts). The back row is scaffolding until
-                // More's five-destination shape lands and gives every
-                // sub-page the same way home.
-                <div className="settings">
-                  <button
-                    type="button"
-                    className="settings__action"
-                    onClick={() => setVolunteering(false)}
-                  >
-                    Back
-                  </button>
-                  <Volunteer
-                    contributeConditions={preferences.contribute_conditions}
-                    onToggleContribute={(next) =>
-                      updatePreferences({ contribute_conditions: next })
-                    }
-                    passedToday={passedPlacesToday}
-                    onOpenPlace={handleOpenPassedPlace}
-                    units={units}
-                    opportunities={workProjects}
-                    opportunitiesAsOf={workProjectsGeneratedAt}
-                    gpsMile={fix?.mile ?? null}
-                    now={now}
-                  >
-                    <VolunteerHours
-                      records={hoursRecords}
-                      onLog={(draft) => void handleLogHours(draft)}
-                      now={now}
-                    />
-                  </Volunteer>
-                </div>
               ) : pickingHike ? (
                 // Replaces More rather than covering it. The picker is reached
                 // from here and nowhere else, so there is nothing behind it
@@ -4536,6 +4513,8 @@ function App() {
                 // the standard the same file already keeps for "Roads &
                 // walkability".
                 <More
+                  page={morePage}
+                  onNavigate={setMorePage}
                   stewards={stewards}
                   account={account}
                   mode={hikerMode}
@@ -4557,19 +4536,39 @@ function App() {
                   now={now}
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}
-                  hasDownload={anySheetDownloaded}
+                  hikingStatus={sheetStatus(HIKING_SHEET)}
                   downloadActivity={downloadActivity}
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   onEditHike={() => setPickingHike(true)}
                   onStartReport={() => setReporting({ step: 'pick' })}
                   onReportFailure={() => setReportingFailure(true)}
-                  onOpenVolunteer={() => setVolunteering(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
+                  volunteerScreen={
+                    <Volunteer
+                      contributeConditions={preferences.contribute_conditions}
+                      onToggleContribute={(next) =>
+                        updatePreferences({ contribute_conditions: next })
+                      }
+                      passedToday={passedPlacesToday}
+                      onOpenPlace={handleOpenPassedPlace}
+                      units={units}
+                      opportunities={workProjects}
+                      opportunitiesAsOf={workProjectsGeneratedAt}
+                      gpsMile={fix?.mile ?? null}
+                      now={now}
+                    >
+                      <VolunteerHours
+                        records={hoursRecords}
+                        onLog={(draft) => void handleLogHours(draft)}
+                        now={now}
+                      />
+                    </Volunteer>
+                  }
                 />
               )}
             </ErrorBoundary>

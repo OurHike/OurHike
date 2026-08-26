@@ -896,7 +896,7 @@ describe('the planning flow', () => {
       // Settings → Map & Display → the slowest flat pace. The route is
       // untouched; only the hiker's own speed moved.
       await user.click(screen.getByRole('tab', { name: 'More' }))
-      await user.click(await screen.findByRole('tab', { name: 'Map & Display' }))
+      await user.click(await screen.findByRole('button', { name: /^the map/i }))
       fireEvent.change(await screen.findByLabelText('Flat pace'), {
         target: { value: String(MIN_FLAT_PACE_MPH) },
       })

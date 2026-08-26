@@ -76,6 +76,7 @@ import {
   type MapPoint,
 } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
+import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -264,6 +265,12 @@ export interface MapScreenProps {
    *  now" beside `onOpenAtcNotices`'s "show me". Omitted, no silence control
    *  is drawn. */
   onSilenceNewAtcAlerts?: () => void
+  /**
+   * The published trail data this phone does not have, and the two answers to
+   * it (#919). Undefined renders nothing, which is the state on every launch
+   * where the map is current - see chrome/TrailDataUpdate.tsx.
+   */
+  trailDataUpdate?: TrailDataUpdateProps
   warnings?: readonly WarningPoint[]
 
   /**
@@ -641,6 +648,7 @@ export function MapScreen({
   atcNoticeList,
   newAtcAlertCount = 0,
   onSilenceNewAtcAlerts,
+  trailDataUpdate,
   warnings,
   alertsShown = true,
   onToggleAlerts,
@@ -1299,6 +1307,10 @@ export function MapScreen({
             the credit strip sharing that corner, by hand-tuned offsets that
             drift the moment either changes size. A row in flow needs none of
             that, on a phone or the desktop sidebar layout alike. */}
+        {/* Beneath the alert row rather than above it, on the one occasion
+            both are up: an ATC closure changes what a hiker does next, and
+            newer waypoint data does not. The order is the ranking. */}
+        {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
         {newAtcAlertCount > 0 && onOpenAtcNotices !== undefined && (
           <div className="map-screen__new-alerts" aria-live="polite">
             <button

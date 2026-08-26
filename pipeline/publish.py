@@ -51,7 +51,7 @@ from pathlib import Path
 
 import boto3
 
-from lib import data_env, releases
+from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
 from lib.photo_screen import load_decisions, unpublishable_digests
@@ -255,6 +255,81 @@ def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, di
         shutil.copyfileobj(raw, out)
     extra["ContentEncoding"] = "gzip"
     return str(compressed), extra
+
+
+# Which artifacts get their change described in the manifest (#919).
+#
+# The set a phone re-downloads when a hiker accepts an update, defined by shape
+# rather than by name so a new vector artifact is covered the day it publishes -
+# the same rule #94 insists on for smoke_published.py, and for the same reason.
+#
+# What the two exclusions are doing:
+#   `.pmtiles`/`.fgb`  the archives, deliberately out of scope - 2.89 GB across
+#                      six tiers, and reading the previous copy of one to
+#                      describe it would cost more than the description is
+#                      worth. The maintainer's decision (2026-08-21): the
+#                      refresh is vector-only.
+#   `conditions/`      already refreshed on every launch by the client
+#                      (useConditions.ts), rewritten daily in place, and its
+#                      baked `generated_at` moves the hash even when no row
+#                      changed. Describing it would produce a "changed" every
+#                      day that means nothing.
+DESCRIBED_SUFFIXES = (".geojson", ".json")
+UNDESCRIBED_PREFIXES = ("conditions/",)
+
+
+def describes_change(name: str) -> bool:
+    """Whether this artifact's change is described for the phone. See
+    DESCRIBED_SUFFIXES."""
+    if any(name.startswith(prefix) for prefix in UNDESCRIBED_PREFIXES):
+        return False
+    return name.endswith(DESCRIBED_SUFFIXES)
+
+
+def _published_bytes(s3_client, bucket: str, key: str) -> bytes | None:
+    """The bytes currently published at `key`, decompressed, or None if there
+    are none to read.
+
+    `upload_args` stores the compressible types gzipped with
+    `ContentEncoding: gzip`, and boto3 hands back exactly what is stored rather
+    than what a browser would see - so this has to undo that itself, keyed on
+    what the object says about itself rather than on a guess from the suffix.
+    """
+    try:
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        body = response["Body"].read()
+    except Exception as exc:
+        if "NoSuchKey" not in str(exc) and "404" not in str(exc):
+            raise
+        return None
+    if str(response.get("ContentEncoding", "")).lower() == "gzip":
+        return gzip.decompress(body)
+    return body
+
+
+def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dict]) -> dict[str, dict]:
+    """`{name: change}` for every artifact in `changed` this describes (#919).
+
+    `changed` is the artifacts whose sha256 already differs from what is live -
+    publish() has worked that out for its own upload decision, so this asks the
+    bucket only about files that are really being replaced.
+
+    **A failure here never fails the publish.** The data is fine; only its
+    description is missing, and `data_change.unreadable` grades a description
+    nobody could produce as CONSEQUENTIAL - so the phone still asks the hiker,
+    it just cannot say what changed. Losing a release over a sentence would be
+    the wrong trade in the obvious direction.
+    """
+    described: dict[str, dict] = {}
+    for name, entry in changed.items():
+        if not describes_change(name):
+            continue
+        try:
+            previous = _published_bytes(s3_client, bucket, f"{prefix}{name}")
+            described[name] = data_change.classify(previous, Path(entry["path"]).read_bytes())
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            described[name] = data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
+    return described
 
 
 def collect_sidecars() -> dict[str, dict]:
@@ -826,14 +901,31 @@ def publish(
     # loud half of #465's trust-the-record design; see verify_photo_promises.
     verify_photo_promises(s3_client, bucket, prefix, artifacts, photos)
 
+    skipped = sorted(
+        name
+        for name, entry in artifacts.items()
+        if (remote := remote_artifacts.get(name)) is not None and remote["sha256"] == entry["sha256"]
+    )
+    changed = {name: entry for name, entry in artifacts.items() if name not in set(skipped)}
+
+    # BEFORE the uploads below, and that ordering is the whole of it: these
+    # descriptions are a diff against the bytes currently published, and the
+    # first `upload_file` overwrites the side being diffed against (#919).
+    changes = describe_changes(s3_client, bucket, prefix, changed)
+
     uploaded: list[str] = []
-    skipped: list[str] = []
-    for name, entry in artifacts.items():
-        remote_entry = remote_artifacts.get(name)
-        if remote_entry is not None and remote_entry["sha256"] == entry["sha256"]:
-            skipped.append(name)
-            continue
+    for name, entry in changed.items():
         upload_path, extra = upload_args(name, entry["path"])
+        # What a phone actually spends on this artifact, as against `size_bytes`
+        # above, which is the DECODED size (#919).
+        #
+        # The two differ by about 3x for the text artifacts - trails.geojson is
+        # 12 MB decoded and 4.1 MB on the wire, measured 2026-08-21 - and the
+        # difference matters because this number is shown to a hiker deciding
+        # whether to spend it on mobile data. Rounding up to the decoded size
+        # would be the cautious direction for a threshold and a plainly wrong
+        # figure to print, and `dataRefresh.ts` prints it.
+        entry["transfer_bytes"] = Path(upload_path).stat().st_size
         s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
         uploaded.append(name)
 
@@ -866,13 +958,42 @@ def publish(
     # with no local counterpart this run is preserved as-is.
     new_manifest = {
         "version": new_version,
+        # WHICH VERSION THE `change` BLOCKS BELOW ARE RELATIVE TO (#919).
+        #
+        # They describe exactly one hop: this publish, against what was live
+        # when it started. A phone two releases behind would otherwise read a
+        # description of the last hop as if it covered both, which is the
+        # confident-and-wrong answer - so it is given the means to tell,
+        # rather than a caveat it cannot check. `dataRefresh.ts` compares what
+        # it stored against this and treats anything else as a change it
+        # cannot describe.
+        "previous_version": remote_manifest["version"] if remote_manifest else None,
         "artifacts": {
-            **remote_artifacts,
+            # Carried-forward remote entries lose any `change` they had: that
+            # block described a transition this manifest does not name, and a
+            # stale description is worse than none for the same reason the
+            # field exists at all.
+            **{name: {key: value for key, value in entry.items() if key != "change"} for name, entry in remote_artifacts.items()},
             # size_bytes rides beside the hash when this run measured one
             # (#505/#556); a remote entry from before sizes were published
             # survives without one rather than gaining a guess.
             **{
-                name: {"sha256": entry["sha256"], **({"size_bytes": entry["size_bytes"]} if "size_bytes" in entry else {})}
+                name: {
+                    "sha256": entry["sha256"],
+                    **({"size_bytes": entry["size_bytes"]} if "size_bytes" in entry else {}),
+                    # Only this run's UPLOADS measured one - a skipped artifact
+                    # was never gzipped this time - so an unchanged entry keeps
+                    # the figure the run that did upload it published. Dropping
+                    # it would make a manifest lose sizes the longer nothing
+                    # changed, which is exactly backwards.
+                    **(
+                        {"transfer_bytes": transfer}
+                        if (transfer := entry.get("transfer_bytes", remote_artifacts.get(name, {}).get("transfer_bytes")))
+                        is not None
+                        else {}
+                    ),
+                    **({"change": changes[name]} if name in changes else {}),
+                }
                 for name, entry in artifacts.items()
             },
         },

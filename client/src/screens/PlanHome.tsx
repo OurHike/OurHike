@@ -35,6 +35,8 @@ import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews } from '../lib/plan'
 import { dayLongDateLabel, tripDateRange } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
+import type { TrailNetworkState } from '../lib/trailGraphData'
+import { canRetryTrailNetwork, trailNetworkRefusal } from '../lib/trailNetworkText'
 import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -74,6 +76,10 @@ export interface PlanHomeProps {
   /** Open the day-hike builder, or null when this phone has no junction
    *  graph - null renders the sentence, never a dead button. */
   onNewDayHike: (() => void) | null
+  /** Why there is no junction graph, for the sentence that replaces the
+   *  button (#1049). */
+  network: TrailNetworkState
+  onRetryNetwork?: () => void
   /** Open the route builder. */
   onNewTrip: () => void
   /** Back to whichever builder holds the live draft (the shell knows which,
@@ -105,6 +111,8 @@ export function PlanHome({
   onNewDayHike,
   onNewTrip,
   onResumeDraft,
+  network,
+  onRetryNetwork,
 }: PlanHomeProps) {
   return mode === 'day' ? (
     <DayHikesHome
@@ -116,6 +124,8 @@ export function PlanHome({
       onAllDayHikes={onAllDayHikes}
       onNewDayHike={onNewDayHike}
       onResumeDraft={onResumeDraft}
+      network={network}
+      onRetryNetwork={onRetryNetwork}
     />
   ) : (
     <TripsHome
@@ -174,6 +184,12 @@ interface DayHikesHomeProps {
   onAllDayHikes: () => void
   onNewDayHike: (() => void) | null
   onResumeDraft: () => void
+  /** Why there is no junction graph, when there is none - so the refusal
+   *  below says which absence it is rather than one sentence for five
+   *  (#1049). `onNewDayHike` still decides WHETHER to refuse; this decides
+   *  what the refusal says. */
+  network: TrailNetworkState
+  onRetryNetwork?: () => void
 }
 
 function DayHikesHome({
@@ -185,6 +201,8 @@ function DayHikesHome({
   onAllDayHikes,
   onNewDayHike,
   onResumeDraft,
+  network,
+  onRetryNetwork,
 }: DayHikesHomeProps) {
   const shelf = splitDayHikes(dayHikes)
   const recent = [...shelf.toWalk, ...shelf.walked]
@@ -257,16 +275,30 @@ function DayHikesHome({
             Plan a day hike
           </button>
         </>
-      ) : (
-        // PlanKindSheet's sentence, verbatim - the same claim about the same
-        // missing artifact, and a test pins the two copies together so one
-        // cannot be reworded without the other. A sentence, never a dead
-        // button (LineSheet's rule).
-        <p className="plan-home__refused" role="note">
-          This phone hasn&rsquo;t got the trail network yet, so there&rsquo;s nothing to
-          build a day hike on. It arrives with the next data sync.
-        </p>
-      )}
+      ) : network.kind !== 'ready' ? (
+        // PlanKindSheet's sentence, from the same place rather than copied
+        // beside it (#1049): both read lib/trailNetworkText.ts, so the two
+        // cannot drift and neither can go back to promising a data sync that
+        // is not coming. A sentence, never a dead button (LineSheet's rule).
+        //
+        // Guarded on the network rather than inferred from `onNewDayHike`
+        // being null, though today its call site nulls it for exactly this
+        // reason. An invariant a screen ASSUMES is one that breaks the day
+        // somebody adds a second reason to withhold the door - and the
+        // failure would be this sentence, about the network, over a phone
+        // whose network is fine.
+        <>
+          <p className="plan-home__refused" role="note">
+            {trailNetworkRefusal(network)}
+          </p>
+          {/* The one absence a hiker can act on. */}
+          {canRetryTrailNetwork(network) && onRetryNetwork !== undefined && (
+            <button type="button" className="plan-kind__retry" onClick={onRetryNetwork}>
+              Try again
+            </button>
+          )}
+        </>
+      ) : null}
     </div>
   )
 }

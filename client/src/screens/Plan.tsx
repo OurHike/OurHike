@@ -54,6 +54,7 @@ import {
 } from '../lib/planDisplay'
 import { legFigures, priceLeg, type PricedLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
+import type { TrailNetworkState } from '../lib/trailGraphData'
 import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
@@ -115,7 +116,14 @@ export interface PlanScreenProps {
   onNewTrip: () => void
   /** Whether the junction graph is loaded, so the day home can offer its
    *  action or the sentence instead (PlanKindSheet's rule). */
-  networkAvailable: boolean
+  /** Whether a day hike can be routed, and when it cannot, why - so the
+   *  refusal PlanHome prints says which absence it is (#1049). Replaces the
+   *  boolean this used to take: two facts derived from one state cannot
+   *  disagree, and a boolean beside a reason can. */
+  network: TrailNetworkState
+  /** Ask the bucket for the graph again. Only ever offered where waiting
+   *  could change the answer - see lib/trailNetworkText.ts. */
+  onRetryNetwork?: () => void
   /** The GPS fix, or null - the day-hike list's "nearest me" sort exists
    *  only while this does. */
   gpsAt: LonLat | null
@@ -193,7 +201,8 @@ export function PlanScreen({
   onStartOnMap,
   onNewDayHike,
   onNewTrip,
-  networkAvailable,
+  network,
+  onRetryNetwork,
   gpsAt,
   mode,
   onSwitchMode,
@@ -313,7 +322,9 @@ export function PlanScreen({
             // TRIP draft is not this screen's business, and a live day draft
             // is reached from the home's "Back to your route" rather than
             // offered again here.
-            onNewDayHike={networkAvailable && draftKind === null ? onNewDayHike : null}
+            onNewDayHike={
+              network.kind === 'ready' && draftKind === null ? onNewDayHike : null
+            }
           />
           {targetSheet}
           {kindSheet}
@@ -347,7 +358,9 @@ export function PlanScreen({
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
           onAllDayHikes={() => onDayListOpen(true)}
-          onNewDayHike={networkAvailable ? onNewDayHike : null}
+          onNewDayHike={network.kind === 'ready' ? onNewDayHike : null}
+          network={network}
+          onRetryNetwork={onRetryNetwork}
           onNewTrip={onNewTrip}
           draftKind={draftKind}
           onResumeDraft={onStartOnMap}

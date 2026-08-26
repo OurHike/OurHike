@@ -280,7 +280,17 @@ So frame `1l`'s parking block is an annotation on a start that happens to be nea
 
 **The one real limit, stated rather than implied:** an end must sit on a trail one of the three organizations maintains — the #935 rule below, not a parking rule. A tap on open ground, a road shoulder or a herd path is refused in words, and widening *that* is [#931](https://github.com/OurHike/OurHike/issues/931)'s to do.
 
-**Left open, and not ruled on:** frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. But it is also not what was decided, and it wants settling before the turn list is built rather than during.
+**Left open, and then answered from the other end (#1041).** Frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. It is still not what was decided, and it is still the option on the table if a junction-relative list is ever wanted.
+
+The storyboard's on-trail frames sidestep it. `D10` names no junction at all — it names the **arms**:
+
+> **Turn left** onto *Seven Hills Trail*, white blaze
+> Straight on is **Pine Meadow Trail**, blue blaze — not your route
+> Behind you is **Pine Meadow Trail**, blue blaze — the way you came
+
+Every one of those is an edge attribute the published graph already carries, and the mid-segment first leg stops being a problem because **the start of a walk is not a turn** — it never appears in the list. What a hiker checks against the blaze in front of them is the trail's own name and colour, not a junction's name, which is the one thing they cannot see from where they are standing. `client/src/lib/dayHikeTurns.ts` builds the list on that rule; a turn is exactly a leg boundary, tested against the same `sameTrail` predicate the leg list uses, so the two cannot disagree about where Pine Meadow becomes Seven Hills.
+
+This unblocks the list without settling the naming question it was blocked on. A junction-relative *list* — the whole walk, read at the kitchen table — still wants the named-feature answer above for its first row.
 
 **A drawn line snaps only to a marked path, and a day hike may be more than one segment (#935).** Verbatim:
 
@@ -309,7 +319,7 @@ The fork above ("What are you planning?", #977) asked its question once and then
 
 - **≈ walking time and ± elevation arrived from the other side.** This branch built a corridor-profile pricing module for the day-hike surfaces; **#1011 — Give the network's trails their climb** landed on `main` first and did it better, so the module was deleted rather than kept beside it. The graph carries per-edge climb now, `routeClimb` scales it by the metres actually walked, and both the builder bar and the finished card price Naismith from `route.climb` — on *every* trail in the network, not just the A.T. centerline the corridor profile covered. The two implementations agreed on the rule that matters and that rule is the one that survived: **null is all or nothing**. A walk with one unmeasured edge prints no time at all, because pricing that edge at zero ascent is a flat-ground claim about real ground and pricing only the measured edges understates by the same amount with a number attached. Both fail *short*, which is the direction that gets somebody caught by the dark.
 
-**What the storyboard drew that deliberately did not ship, and what each waits on:** starter hikes ("laid out by the clubs that maintain them" — no club-laid route dataset exists anywhere in this repository; the storyboard itself calls the work editorial, related to #981's parking lots); ≈ time on the day-hike **list** and the trailhead door (both read the stored cache, and pricing needs the routing graph a list must not load); the turn list (#934's first-leg naming question, above); recording a finished walk (#982); freehand drawing (#983).
+**What the storyboard drew that deliberately did not ship, and what each waits on:** starter hikes ("laid out by the clubs that maintain them" — no club-laid route dataset exists anywhere in this repository; the storyboard itself calls the work editorial, related to #981's parking lots); ≈ time on the day-hike **list** and the trailhead door (both read the stored cache, and pricing needs the routing graph a list must not load); the whole-walk turn list (#934's first-leg naming question, above — the *next* turn and the junction card ship with #1041, which needs no junction name at all); recording a finished walk (#982); freehand drawing (#983).
 
 **The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
@@ -345,7 +355,7 @@ That work also fixed a real defect in the zero question this document leaves ope
 - **Whether "absorb" is allowed to change where a resupply happens.** Re-balancing days is safe; silently moving which town someone buys food in is not obviously safe, and the pin mechanism may need resupply stops pinned by default.
 - **Whether generated days should be visibly marked as generated.** The `generated` flag is in the model above so the option exists; whether the timeline shows it is a UX call about how much the app should admit it guessed.
 - **How side trails become routable**, which is the real blocker on this being a plan someone keeps rather than a sketch. Related to [SPUR_TRAILS.md](SPUR_TRAILS.md)'s spur-destination work and to [MAP_OPTIONS.md](MAP_OPTIONS.md)'s snap-to-segment.
-- **How a first leg that starts mid-segment is described**, now that a tap splits the segment rather than snapping to a junction (#934). The turn list's vocabulary is junction-relative and has no phrase for it; see "The day hike on a network" above for the option that looks right and was not decided.
+- **How a first leg that starts mid-segment is described**, now that a tap splits the segment rather than snapping to a junction (#934). Still open, and narrower than it was: the on-trail cards (#1041) need no junction name, so what is left is the whole-walk turn list somebody reads before they go. See "The day hike on a network" above for the option that looks right and was not decided.
 
 ## Suggested build order
 

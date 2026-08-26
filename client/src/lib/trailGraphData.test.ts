@@ -27,6 +27,8 @@ const {
   fetchTrailGraph,
   fetchTrailGraphElevation,
   fetchTrailGraphGeometry,
+  isSettledAbsence,
+  loadTrailGraph,
 } = await import('./trailGraphData')
 const { TRAIL_GRAPH_KEY, TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_ELEVATION_KEY } =
   await import('./config')
@@ -182,8 +184,12 @@ describe('bytes that pass the hash and are still not a graph', () => {
   })
 
   it('accepts an empty graph, which is a real state rather than a broken file', async () => {
-    // A ring with no routable trail in it publishes empty. The app then finds
-    // no route for any tap, which is correct and is not the same as no file.
+    // A ring with no routable trail in it publishes empty. The LOADER accepts
+    // it - that is a fact about the ground, not a broken file. What must not
+    // happen is the day-hike door opening on it: lib/useTrailData.ts reads a
+    // zero-edge index as the 'empty' absence, because "holds a file shaped
+    // like a graph" is not "can route" and a builder that answers no tap
+    // reads as a broken app (#1044 review). See the test below.
     const empty = JSON.stringify({ nodes: [], edges: [] })
     serve({
       body: empty,
@@ -379,5 +385,101 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
     })
     const bare = await fetchTrailGraph()
     expect(attachTrailGraphElevation(bare!, [])).toBe(bare)
+  })
+})
+
+// Why there is no graph, which is a different question from whether there is
+// one (#1049).
+//
+// The reason exists so that chrome/PlanKindSheet.tsx can say something TRUE
+// to a hiker. Before it, one sentence covered every case and ended "It
+// arrives with the next data sync" - which on production, where the graph is
+// simply not in the release (#1048), was a promise nothing was going to keep.
+//
+// The distinction each case is really pinning is `isSettledAbsence`: whether
+// waiting fixes it. Exactly one of these five is curable by a connection, and
+// getting that wrong in either direction is a lie in one direction or a
+// hammer on the bucket in the other.
+describe('why there is no graph', () => {
+  it('separates a release with no graph in it from a request that never landed', async () => {
+    serve({ body: 'missing' })
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'not-in-release',
+    })
+
+    // A request that never completed at all. This is the ONLY one a hiker can
+    // act on, and the only one the shell will ask again.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+    )
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'unreachable',
+    })
+  })
+
+  it('calls unverifiable bytes unverifiable, rather than not-downloaded', async () => {
+    // A manifest that names no hash for the key...
+    serve({ manifest: { artifacts: {} } })
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'unverifiable',
+    })
+
+    // ...and bytes that fail the hash it does name. Different faults, one
+    // honest sentence: this is not being used, rather than not here yet.
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf('other') } } },
+    })
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'unverifiable',
+    })
+  })
+
+  it('separates verified bytes that are not a graph from bytes it could not verify', async () => {
+    // A manifest and an artifact can be right about each other and still be
+    // the wrong file.
+    const notAGraph = JSON.stringify({ nodes: 'no', edges: [] })
+    serve({
+      body: notAGraph,
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(notAGraph) } },
+      },
+    })
+
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'not-a-graph',
+    })
+  })
+
+  it('hands back the index itself when there is one', async () => {
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } } },
+    })
+
+    const load = await loadTrailGraph()
+
+    expect(load.kind).toBe('graph')
+    if (load.kind !== 'graph') return
+    expect(load.index.graph.edges).toHaveLength(1)
+  })
+
+  it('marks exactly one absence as curable by waiting', () => {
+    // The rule the copy and the retry both read. If this ever says a 404 is
+    // curable, the sheet starts promising a sync again and the shell starts
+    // re-requesting an answer the bucket has already given.
+    expect(isSettledAbsence('unreachable')).toBe(false)
+    for (const because of [
+      'unconfigured',
+      'not-in-release',
+      'unverifiable',
+      'not-a-graph',
+    ] as const) {
+      expect(isSettledAbsence(because)).toBe(true)
+    }
   })
 })

@@ -18,6 +18,16 @@
 // CHANGES, so a contrast fix with no recipe touched ships with no picture of
 // the thing it fixed.
 
+// 2026-08-26: re-photographed again, for #1049. This home's refusal is the
+// screen that changed - the preview build carries no data source (#1024), so
+// the day-hike action is withheld and the sentence under it is what a
+// reviewer sees. It used to read "This phone hasn't got the trail network
+// yet ... It arrives with the next data sync" for every way of having no
+// graph, four of which never resolve by waiting. In THIS build the true one
+// is "This build has no data source"; on production it is "This release does
+// not include the trail network" (#1048). Same code, different sentence,
+// which is the whole change.
+
 export const caption = 'The day-hikes home, with its mode band'
 export const alt = 'The Plan tab in day-hike mode: forest band, switch chip, saved hikes'
 

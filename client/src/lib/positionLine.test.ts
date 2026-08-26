@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { positionLine, type PositionLineInputs } from './positionLine'
 import type { GeolocationState } from './useGeolocation'
+import type { FollowState } from './dayHikeFollow'
 
 const LOCATED: GeolocationState = {
   status: 'located',
@@ -97,5 +98,50 @@ describe('positionLine', () => {
 
   it('says off the trail when a real fix cannot be placed on it', () => {
     expect(positionLine({ ...WALKING, mile: undefined })).toBe('Off the trail')
+  })
+
+  // Following a day hike (#1041). A park has no mile axis to number (#928),
+  // so on that ground the A.T. reading is not a weaker answer - it is the
+  // wrong question, answered confidently.
+  const FOLLOWING: FollowState = {
+    kind: 'on-route',
+    walkedMi: 2.4,
+    toGoMi: 3.8,
+    totalMi: 6.2,
+    offRouteFeet: 12,
+    leg: {
+      at: 2,
+      of: 3,
+      name: 'Pine Meadow Trail',
+      blaze_color: 'Blue',
+      source: 'oprhp_trails',
+    },
+    at: { lon: -74.09, lat: 41.25 },
+  }
+
+  it('gives a followed hike its own distances instead of a Springer mile', () => {
+    expect(positionLine({ ...WALKING, follow: FOLLOWING })).toBe(
+      '2.4 mi in · 3.8 mi to go',
+    )
+  })
+
+  it('answers even where there is no centerline to place a mile on', () => {
+    // A day hike routes over the junction graph and needs no centerline at
+    // all, so "No trail data" here would be the header reporting a download
+    // the hiker does not need.
+    expect(
+      positionLine({ ...WALKING, follow: FOLLOWING, trailReady: false, mile: undefined }),
+    ).toBe('2.4 mi in · 3.8 mi to go')
+  })
+
+  it('still lets every GPS state outrank it', () => {
+    // Following a route does not make a denied permission any less true, and
+    // a distance printed over a dead fix is the stalest thing on the screen.
+    expect(
+      positionLine({ ...WALKING, follow: FOLLOWING, gps: { status: 'denied' } }),
+    ).toBe('Location blocked')
+    expect(positionLine({ ...WALKING, follow: FOLLOWING, enabled: false })).toBe(
+      'Location is off',
+    )
   })
 })

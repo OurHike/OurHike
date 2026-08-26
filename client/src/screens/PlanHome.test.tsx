@@ -45,6 +45,7 @@ function trip(id: string): Trip {
 }
 
 const PROPS: PlanHomeProps = {
+  network: { kind: 'ready' },
   mode: 'day',
   onSwitchMode: vi.fn(),
   trips: [],
@@ -145,22 +146,34 @@ describe('the day room', () => {
   })
 
   it('without the graph, the action is a sentence and never a dead button', () => {
-    render(<PlanHome {...PROPS} mode="day" onNewDayHike={null} />)
+    render(
+      <PlanHome
+        {...PROPS}
+        mode="day"
+        onNewDayHike={null}
+        network={{ kind: 'absent', because: 'not-in-release' }}
+      />,
+    )
     expect(
       screen.queryByRole('button', { name: 'Plan a day hike' }),
     ).not.toBeInTheDocument()
-    expect(screen.getByText(/hasn.{0,3}t got the trail network yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/does not include the trail network/i)).toBeInTheDocument()
   })
 
   it('says exactly PlanKindSheet’s sentence for the missing network - two surfaces, one claim', () => {
-    // The pin that keeps the two copies from drifting: reword one and this
-    // fails until the other matches.
-    render(<PlanHome {...PROPS} mode="day" onNewDayHike={null} />)
-    const home = screen.getByText(/trail network yet/i).textContent
+    // This used to be a pin against two hand-written copies drifting. Since
+    // #1049 both screens read lib/trailNetworkText.ts, so they cannot drift -
+    // and the test stays, because what it really guards is that a hiker sees
+    // ONE claim about one missing artifact wherever they meet it.
+    const network = { kind: 'absent', because: 'not-in-release' } as const
+    render(<PlanHome {...PROPS} mode="day" onNewDayHike={null} network={network} />)
+    const home = screen.getByRole('note').textContent
     cleanup()
+    // The sheet carries a SECOND note - the walked door's "isn't built yet" -
+    // so this one is found by its own sentence rather than by the role.
     render(
       <PlanKindSheet
-        networkAvailable={false}
+        network={network}
         walkedAvailable={false}
         onPickDayHike={vi.fn()}
         onPickTrip={vi.fn()}
@@ -168,8 +181,42 @@ describe('the day room', () => {
         onClose={vi.fn()}
       />,
     )
-    const sheet = screen.getByText(/trail network yet/i).textContent
+    const sheet = screen.getByText(/trail network/i).textContent
     expect(home).toBe(sheet)
+  })
+
+  it('never tells anybody to wait for a data sync (#1049)', () => {
+    // The string this issue is about. On production the graph is simply not
+    // in the release (#1048), so "It arrives with the next data sync" was a
+    // promise nothing was going to keep.
+    for (const because of [
+      'unconfigured',
+      'unreachable',
+      'not-in-release',
+      'unverifiable',
+      'not-a-graph',
+    ] as const) {
+      cleanup()
+      render(
+        <PlanHome
+          {...PROPS}
+          mode="day"
+          onNewDayHike={null}
+          network={{ kind: 'absent', because }}
+        />,
+      )
+      expect(screen.getByRole('note')).not.toHaveTextContent(/data sync/i)
+    }
+  })
+
+  it('says nothing about the network when the door is shut for another reason', () => {
+    // Today the call site only withholds the door when the network is absent,
+    // so this is a guard rather than a bug fix - but a screen that INFERRED
+    // the reason would start blaming the network the day a second reason
+    // exists, on a phone whose network is fine.
+    render(<PlanHome {...PROPS} mode="day" onNewDayHike={null} />)
+
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
   it('a live draft turns the action into the way back to it', async () => {

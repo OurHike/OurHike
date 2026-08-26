@@ -57,7 +57,7 @@ const PROPS = {
   draftKind: null,
   onNewDayHike: vi.fn(),
   onNewTrip: vi.fn(),
-  networkAvailable: true,
+  network: { kind: 'ready' } as const,
   gpsAt: null,
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),

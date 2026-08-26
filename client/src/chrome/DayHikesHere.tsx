@@ -17,10 +17,13 @@
 // generous enough to linger mid-walk and a door nobody asked for needs a
 // way off the screen.
 //
-// "OPEN", NOT "FOLLOW". The frame's button says "Follow this one", and
-// following - a live position against the route - is not built for network
-// hikes. The row opens the hike's card: the legs, the ways off, the plan.
-// The weaker true word over the stronger plausible one.
+// "OPEN", NOT "FOLLOW", AND STILL. The frame's button says "Follow this one".
+// Following - a live position against the route - now exists (#1041), and
+// this row deliberately does not start it: the door is offered because a
+// phone is NEAR a saved start, which is a much weaker fact than a hiker
+// having decided to walk it. The row opens the hike's card - the legs, the
+// ways off, the plan - and the card carries the Follow button, one tap
+// further on and after the hiker has seen what they are agreeing to.
 
 import { useState } from 'react'
 

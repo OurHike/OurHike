@@ -581,6 +581,15 @@ export function useTrailData(
     void loadTrailGraph(controller.signal).then((load) => {
       if (!wanted) return
       if (load.kind === 'graph') {
+        // A VALID GRAPH IS NOT THE SAME AS A ROUTABLE ONE (#1044 review). An
+        // empty one is a real published state - a ring with no maintained
+        // trail in it - and the loader accepts it on purpose. Treating it as
+        // "ready" opened the day-hike door onto a builder that could answer
+        // no tap, which reads as a broken app rather than as empty ground.
+        if (load.index.graph.edges.length === 0) {
+          setGraphAbsence('empty')
+          return
+        }
         setGraphIndex(load.index)
         setGraphAbsence(null)
         return

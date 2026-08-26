@@ -58,6 +58,11 @@ export function trailNetworkRefusal(
       // NO PROMISE ABOUT WHEN. The graph arrives when somebody publishes one,
       // which is not something this phone can wait for (#1048).
       return 'This release does not include the trail network, so there is nothing to build a day hike on.'
+    case 'empty':
+      // The one absence that is a fact about the GROUND rather than about
+      // this phone or this release, so it says so. No promise either way:
+      // trails arrive when a steward publishes them.
+      return 'There are no mapped trails here yet to build a day hike from.'
     case 'unverifiable':
     case 'not-a-graph':
       // A refusal, said as one. lib/trailGraphData.ts will not route on

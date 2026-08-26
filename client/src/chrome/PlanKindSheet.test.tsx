@@ -27,7 +27,12 @@ import type { TrailNetworkState } from '../lib/trailGraphData'
 const READY: TrailNetworkState = { kind: 'ready' }
 const absent = (
   because:
-    'unconfigured' | 'unreachable' | 'not-in-release' | 'unverifiable' | 'not-a-graph',
+    | 'unconfigured'
+    | 'unreachable'
+    | 'not-in-release'
+    | 'unverifiable'
+    | 'not-a-graph'
+    | 'empty',
 ): TrailNetworkState => ({ kind: 'absent', because })
 
 // This suite renders the same sheet many times; the repo's convention is an
@@ -141,6 +146,17 @@ describe('the sentence is true of the absence it is about (#1049)', () => {
     }
   })
 
+  it('blames the ground, not the phone, when the release simply has no trails here', () => {
+    // A valid graph with nothing routable in it. The loader accepts it on
+    // purpose; the door must not open on it, and the sentence must not read
+    // as a download problem (#1044 review).
+    renderSheet({ network: absent('empty') })
+
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent(/no mapped trails here/i)
+    expect(note).not.toHaveTextContent(/download|connection|release does not/i)
+  })
+
   it('names a build with no data source as that, rather than as a hiker state', () => {
     renderSheet({ network: absent('unconfigured') })
 
@@ -166,6 +182,7 @@ describe('the sentence is true of the absence it is about (#1049)', () => {
       absent('not-in-release'),
       absent('unverifiable'),
       absent('not-a-graph'),
+      absent('empty'),
     ]) {
       cleanup()
       renderSheet({ network })
@@ -191,6 +208,7 @@ describe('the one absence a hiker can act on', () => {
       absent('not-in-release'),
       absent('unverifiable'),
       absent('not-a-graph'),
+      absent('empty'),
       { kind: 'looking' } as const,
     ]) {
       cleanup()

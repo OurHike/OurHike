@@ -184,8 +184,12 @@ describe('bytes that pass the hash and are still not a graph', () => {
   })
 
   it('accepts an empty graph, which is a real state rather than a broken file', async () => {
-    // A ring with no routable trail in it publishes empty. The app then finds
-    // no route for any tap, which is correct and is not the same as no file.
+    // A ring with no routable trail in it publishes empty. The LOADER accepts
+    // it - that is a fact about the ground, not a broken file. What must not
+    // happen is the day-hike door opening on it: lib/useTrailData.ts reads a
+    // zero-edge index as the 'empty' absence, because "holds a file shaped
+    // like a graph" is not "can route" and a builder that answers no tap
+    // reads as a broken app (#1044 review). See the test below.
     const empty = JSON.stringify({ nodes: [], edges: [] })
     serve({
       body: empty,

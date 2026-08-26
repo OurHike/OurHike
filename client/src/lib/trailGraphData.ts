@@ -105,6 +105,18 @@ export type TrailNetworkAbsence =
   /** Verified bytes that are not a graph. A manifest and an artifact can be
    *  right about each other and still be the wrong file. */
   | 'not-a-graph'
+  /**
+   * A real, valid graph with no routable trail in it.
+   *
+   * A ring with nothing maintained inside it publishes empty, and the loader
+   * accepts that deliberately - it is a fact about the ground, not a broken
+   * file, and the test pinning it says so. But `graphIndex !== null` then
+   * means "holds a file shaped like a graph", not "can route", so the door
+   * opened onto a builder that could find no route for any tap (#1044
+   * review). An enabled control that answers nothing is strictly worse for a
+   * hiker than an honest refusal, and harder to recognise as a data problem.
+   */
+  | 'empty'
 
 /**
  * What a surface that SPEAKS about the graph needs to know.

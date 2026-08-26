@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Settings' }))
+  await user.click(screen.getByRole('tab', { name: 'More' }))
   await user.click(await screen.findByRole('button', { name: /report a problem/i }))
   await user.click(await screen.findByRole('button', { name: /blow down/i }))
   await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
@@ -54,6 +54,7 @@ describe('asking who is reporting', () => {
   it('mounts the screen the flow has always routed to', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)
@@ -66,6 +67,7 @@ describe('asking who is reporting', () => {
   it('signs the next report with the answer, and remembers it', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)
@@ -89,6 +91,7 @@ describe('asking who is reporting', () => {
     // without the guard the screen returns on the very next report.
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)
@@ -107,6 +110,7 @@ describe('asking who is reporting', () => {
     app.onboard({ reporter_type: 'maintainer' })
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)

@@ -1,0 +1,60 @@
+/* The Today screen (#1054): a pine chrome block over a paper journal column.
+ *
+ * Every colour here is a semantic alias (tokens/colors.css) - the chrome
+ * reads the --*-chrome family, which is dark under both themes on purpose,
+ * and themeTokens.test.ts fails this file the moment it names a base colour.
+ */
+
+.today {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.today__chrome {
+  background: var(--bg-chrome);
+  padding: 8px 18px 14px;
+  /* The top of the screen, so in the edge-to-edge WebViews the Capacitor
+     shells run (#101) this is what sits under the notch and the clock - the
+     same inset pattern .status-strip carries, for the same reason. */
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  padding-left: max(18px, env(safe-area-inset-left, 0px));
+  padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+
+.today__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  color: var(--fg-chrome-3);
+}
+
+.today__position {
+  margin: 6px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--fg-chrome-1);
+}
+
+.today__paper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg-page);
+  padding: 16px 16px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.today__footer {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+  text-align: center;
+}

@@ -30,7 +30,7 @@ import userEvent from '@testing-library/user-event'
 import { get } from 'idb-keyval'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import {
@@ -184,6 +184,7 @@ describe('what a cold start costs', () => {
     // Each of the last two used to be worth a whole map.
     await land(isPreferences)
     await land(isArchive)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     expect(MockMap.instances).toHaveLength(1)
 
@@ -213,6 +214,7 @@ describe('what a cold start costs', () => {
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
 
     await land(isArchive)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     expect(MockMap.instances).toHaveLength(1)
   })
@@ -234,6 +236,7 @@ describe('what a cold start costs', () => {
     await land(isPreferences)
     await land(isArchive)
     await landEverything()
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     expect(everySourceAskedFor()).not.toContain(OSM_SOURCE_ID)
@@ -250,6 +253,11 @@ describe('what a cold start costs', () => {
 
     await land(isPreferences)
     await land(isArchive)
+    // The home is Today (#1054), so the map only starts building once the
+    // hiker opens its tab - after the two reads the shell's render gate
+    // waits on, and before the trail data lands, which keeps the order this
+    // test is about: a map first, its lines after.
+    await openMapTab()
     const map = MockMap.live[0]
     expect(map).toBeDefined()
     const seeded = trailsSourceOf(map)
@@ -281,6 +289,7 @@ describe('what a cold start costs', () => {
     await land(isTrailData)
     await land(isArchive)
     await landEverything()
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     const map = MockMap.live[0]
@@ -404,25 +413,34 @@ describe('what the first-run steps cost', () => {
     aReleaseOnThePhone()
     const user = userEvent.setup()
 
-    const map = await launch()
+    await launch()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('button', { name: /not now/i }))
     await landEverything()
 
-    await waitFor(() =>
-      expect(
-        (map.sourceData.get(POI_SOURCE_ID) as { features: unknown[] }).features,
-      ).toHaveLength(1),
-    )
-    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(
-      expect.objectContaining({
-        features: expect.arrayContaining([
-          expect.objectContaining({
-            properties: expect.objectContaining({ poi_id: 'atc_water:1' }),
-          }),
-        ]),
-      }),
-    )
+    // The steps land on Today now (#1054), which unmounts the backdrop map -
+    // so the proof the hold released is the map the hiker opens next: built
+    // (or filled) already knowing the waypoint the steps went without. The
+    // read itself still runs the moment the steps end, whichever tab is up.
+    await openMapTab()
+    await landEverything()
+
+    await waitFor(() => {
+      const opened = MockMap.live[0]
+      expect(opened).toBeDefined()
+      const pushed = opened.sourceData.get(POI_SOURCE_ID) as
+        { features: Array<{ properties?: { poi_id?: string } }> } | undefined
+      const style = opened.options.style as {
+        sources: Record<
+          string,
+          { data?: { features?: Array<{ properties?: { poi_id?: string } }> } }
+        >
+      }
+      const features =
+        pushed?.features ?? style.sources[POI_SOURCE_ID]?.data?.features ?? []
+      expect(features).toHaveLength(1)
+      expect(features[0]?.properties?.poi_id).toBe('atc_water:1')
+    })
   })
 })

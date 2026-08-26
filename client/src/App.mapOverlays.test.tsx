@@ -16,7 +16,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
 
@@ -120,6 +120,7 @@ afterEach(() => vi.restoreAllMocks())
 async function renderApp(): Promise<MockMap> {
   const { default: App } = await import('./App')
   render(<App />)
+  await openMapTab()
 
   // `renderedMap`, not `findByRole` then `MockMap.live[0]`. The container div
   // commits before the effect that builds the map runs, so reading the array

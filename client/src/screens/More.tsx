@@ -48,6 +48,13 @@ export interface StuckReport {
 export interface MoreProps extends SettingsProps {
   onStartReport: () => void
   /**
+   * Opens the volunteer surface, which lost its tab with #1054 and gained
+   * this door (chrome/tabs.ts records the decision). Optional like
+   * `onOpenModeration`, and for the same shape of reason: absent means the
+   * shell has nowhere to send it, and no row is drawn.
+   */
+  onOpenVolunteer?: () => void
+  /**
    * Opens the moderation queue, and present ONLY for a moderator (#235).
    *
    * An optional callback rather than an `isModerator` flag, deliberately:
@@ -111,6 +118,7 @@ type MoreTabId = (typeof TABS)[number]['id']
 
 export function More({
   onStartReport,
+  onOpenVolunteer,
   onOpenModeration,
   hikeSummary = null,
   onEditHike,
@@ -158,6 +166,14 @@ export function More({
           <button type="button" className="settings__action" onClick={onStartReport}>
             Report a problem
           </button>
+          {/* The volunteer surface's door while the tab is gone (#1054) -
+              scaffolding until this screen's five-destination shape gives
+              volunteering a destination row of its own. */}
+          {onOpenVolunteer !== undefined && (
+            <button type="button" className="settings__action" onClick={onOpenVolunteer}>
+              Volunteer
+            </button>
+          )}
           {onOpenModeration !== undefined && (
             <button type="button" className="settings__action" onClick={onOpenModeration}>
               Moderation queue

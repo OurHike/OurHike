@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 
 // A throw anywhere in the More screen used to escape to the ROOT boundary -
 // the one with no tab bar and no reset - so one bad render of Settings was a
@@ -38,22 +38,24 @@ describe('a More screen that throws', () => {
   it('keeps the tab bar, so the map stays one tap away', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/stopped working/i)
-    expect(screen.getByRole('tab', { name: 'Trail' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
   })
 
   it('still reaches the map from the fallback', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
     await screen.findByRole('alert')
-    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
 
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })

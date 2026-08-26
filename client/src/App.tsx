@@ -273,6 +273,7 @@ import {
 import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
 import { Volunteer } from './screens/Volunteer'
 import { VolunteerHours } from './screens/VolunteerHours'
+import { Today } from './screens/Today'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
@@ -434,7 +435,11 @@ function App() {
   // back to exactly these defaults.
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabId>('trail')
+  // Today is the home (#1054): the default tab, and where finishing first run
+  // lands. During first run the tab branches below are skipped entirely -
+  // `entering` renders the map screen as the steps' backdrop whatever this
+  // says - so the default only takes effect once onboarding is done.
+  const [activeTab, setActiveTab] = useState<TabId>('today')
   // The download window (screens/DownloadsDialog.tsx), which replaced the tab
   // it used to be. Held here rather than on either screen because it opens
   // over both of them, from the one background picker they share.
@@ -726,6 +731,16 @@ function App() {
   // entry point exists - the backend gates every call regardless (#235).
   const [moderating, setModerating] = useState(false)
   const isModerator = useModerator(account !== null)
+  /**
+   * Whether the volunteer surface is open, over the More tab - the same
+   * replace-rather-than-cover shape `moderating` takes, for the same reason.
+   *
+   * Volunteer left the tab bar with #1054 (chrome/tabs.ts records why, and
+   * that the removal was approved rather than drifted into). The surface
+   * itself is unchanged; what changed is the doors: this flag, opened from
+   * More, and the Today column's volunteer card once it lands.
+   */
+  const [volunteering, setVolunteering] = useState(false)
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -1984,7 +1999,7 @@ function App() {
    * decision; #997 records it.
    */
   const sweepForBuilder = useCallback(() => {
-    setActiveTab('trail')
+    setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
@@ -2102,7 +2117,7 @@ function App() {
   // which this door is creating. Merging them would need a parameter, and a
   // sweep with a mode flag is not a shared rule.
   const openDayHike = useCallback(() => {
-    setActiveTab('trail')
+    setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
@@ -2452,7 +2467,7 @@ function App() {
       // this puts the card away and goes there - the same one-surface-
       // continuing move the builder's own doors make.
       handleDayHikeCardClose()
-      setActiveTab('trail')
+      setActiveTab('map')
     },
     [handleDayHikeCardClose],
   )
@@ -2742,7 +2757,7 @@ function App() {
   // your own route (openRouteBuilderFrom's rule, kept here for both modes).
   const openPlanKind = useCallback(() => {
     if (dayHike !== null) {
-      setActiveTab('trail')
+      setActiveTab('map')
       return
     }
     if (routeBuilder.draftLive) {
@@ -2863,7 +2878,7 @@ function App() {
     // THE sweep, not a copy of it (#997). This handler used to repeat four
     // of its five lines inline, which is how the day-hike clear could have
     // been added to one opener and missed here. The one line it did not
-    // repeat - setActiveTab('trail') - is a no-op on this path rather than a
+    // repeat - setActiveTab('map') - is a no-op on this path rather than a
     // difference: the chart is a MapScreen prop, and App returns early for
     // every other tab, so nothing reaches here from anywhere else.
     sweepForBuilder()
@@ -3680,7 +3695,10 @@ function App() {
   const [localHours, setLocalHours] = useState<readonly VolunteerHoursSummary[]>([])
 
   useEffect(() => {
-    if (!online || account === null || activeTab !== 'volunteer') return
+    // "Open" means the volunteer surface itself since #1054, not a tab: the
+    // fetch-when-looked-at rule is the point, and where the looking happens
+    // moved.
+    if (!online || account === null || !(activeTab === 'more' && volunteering)) return
     let cancelled = false
     fetchMyVolunteerHours().then(
       (records) => {
@@ -3693,7 +3711,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [online, account, activeTab])
+  }, [online, account, activeTab, volunteering])
 
   const hoursRecords = useMemo(() => {
     if (myHours === null && localHours.length === 0) return null
@@ -3771,7 +3789,7 @@ function App() {
    */
   const handleOpenPassedPlace = useCallback(
     (id: string) => {
-      setActiveTab('trail')
+      setActiveTab('map')
       handleSelectPoi(id)
       const found = pois.find((candidate) => candidate.id === id)
       if (found !== undefined && map !== null) {
@@ -4335,7 +4353,44 @@ function App() {
     </DownloadsDialog>
   )
 
-  if (activeTab === 'more') {
+  // The one line the map plate and the Today header both read - decided once
+  // (lib/positionLine.ts), never twice, so the two screens cannot disagree
+  // about where the hiker is.
+  const position = positionLine({
+    gps,
+    enabled: locationAllowed,
+    mile: fix?.mile,
+    direction: direction?.direction,
+    trailReady: trailIndex !== null,
+    // A park has no mile axis (#928), so a followed hike replaces the
+    // Springer mile with distance along the hiker's own walk.
+    follow: followState,
+    units,
+  })
+
+  // Every tab branch below is skipped during first run: `entering` needs the
+  // map screen rendered as the steps' backdrop (#721), whatever tab the
+  // default names.
+  if (!entering && activeTab === 'today') {
+    return (
+      <>
+        <div className="app__screen">
+          <div>
+            {/* Its own boundary like More's and Plan's, for their shared
+                reason: a throw here must not cost the map, and the tab bar
+                underneath is the way back. */}
+            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
+              <Today now={now} position={position} />
+            </ErrorBoundary>
+          </div>
+          <TabBar active={activeTab} onSelect={setActiveTab} />
+        </div>
+        {downloadsWindow}
+      </>
+    )
+  }
+
+  if (!entering && activeTab === 'more') {
     // Its own boundary for the same reason the map has one, with the roles
     // reversed: a throw anywhere in Settings used to escape to the ROOT
     // boundary, which has no tab bar and no reset - one bad stored value
@@ -4356,6 +4411,41 @@ function App() {
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
                 <Moderation onClose={() => setModerating(false)} />
+              ) : volunteering ? (
+                // Replaces More rather than covering it, exactly as the
+                // moderation queue above does. The volunteer surface itself
+                // is unchanged by #1054 - only its doors moved when the tab
+                // went (chrome/tabs.ts). The back row is scaffolding until
+                // More's five-destination shape lands and gives every
+                // sub-page the same way home.
+                <div className="settings">
+                  <button
+                    type="button"
+                    className="settings__action"
+                    onClick={() => setVolunteering(false)}
+                  >
+                    Back
+                  </button>
+                  <Volunteer
+                    contributeConditions={preferences.contribute_conditions}
+                    onToggleContribute={(next) =>
+                      updatePreferences({ contribute_conditions: next })
+                    }
+                    passedToday={passedPlacesToday}
+                    onOpenPlace={handleOpenPassedPlace}
+                    units={units}
+                    opportunities={workProjects}
+                    opportunitiesAsOf={workProjectsGeneratedAt}
+                    gpsMile={fix?.mile ?? null}
+                    now={now}
+                  >
+                    <VolunteerHours
+                      records={hoursRecords}
+                      onLog={(draft) => void handleLogHours(draft)}
+                      now={now}
+                    />
+                  </Volunteer>
+                </div>
               ) : pickingHike ? (
                 // Replaces More rather than covering it. The picker is reached
                 // from here and nowhere else, so there is nothing behind it
@@ -4403,6 +4493,7 @@ function App() {
                   onEditHike={() => setPickingHike(true)}
                   onStartReport={() => setReporting({ step: 'pick' })}
                   onReportFailure={() => setReportingFailure(true)}
+                  onOpenVolunteer={() => setVolunteering(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
@@ -4419,7 +4510,7 @@ function App() {
     )
   }
 
-  if (activeTab === 'plan') {
+  if (!entering && activeTab === 'plan') {
     return (
       <>
         <div className="app__screen">
@@ -4573,43 +4664,6 @@ function App() {
     )
   }
 
-  if (activeTab === 'volunteer') {
-    return (
-      <>
-        <div className="app__screen">
-          <div>
-            {/* Its own boundary like More's and Plan's, for their shared
-                reason: a throw here must not cost the map, and the tab bar
-                underneath is the way back. */}
-            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              <Volunteer
-                contributeConditions={preferences.contribute_conditions}
-                onToggleContribute={(next) =>
-                  updatePreferences({ contribute_conditions: next })
-                }
-                passedToday={passedPlacesToday}
-                onOpenPlace={handleOpenPassedPlace}
-                units={units}
-                opportunities={workProjects}
-                opportunitiesAsOf={workProjectsGeneratedAt}
-                gpsMile={fix?.mile ?? null}
-                now={now}
-              >
-                <VolunteerHours
-                  records={hoursRecords}
-                  onLog={(draft) => void handleLogHours(draft)}
-                  now={now}
-                />
-              </Volunteer>
-            </ErrorBoundary>
-          </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
-        </div>
-        {downloadsWindow}
-      </>
-    )
-  }
-
   // The map is both the likeliest thing in this app to throw - WebGL, a GPS
   // watcher, byte-range reads against an archive that can be 1.18 GB, and a
   // pile of MapLibre attach/detach lifecycle - and the worst thing to lose,
@@ -4713,17 +4767,9 @@ function App() {
           // One sentence rather than a number, decided in one place
           // (lib/positionLine.ts): the header used to say "Looking for GPS…"
           // for six different situations, three of which never resolve (#312).
-          position={positionLine({
-            gps,
-            enabled: locationAllowed,
-            mile: fix?.mile,
-            direction: direction?.direction,
-            trailReady: trailIndex !== null,
-            // A park has no mile axis (#928), so a followed hike replaces the
-            // Springer mile with distance along the hiker's own walk.
-            follow: followState,
-            units,
-          })}
+          // Computed above the tab branches since #1054, because the Today
+          // header reads the same line.
+          position={position}
           // Which also decides whether the map offers its locate control -
           // attaching it regardless was a second high-accuracy watch and a
           // permission prompt behind this preference's back.

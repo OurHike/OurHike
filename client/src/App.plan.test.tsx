@@ -20,7 +20,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { appHarness, latOfMile } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { ROUTE_SOURCE_ID, ROUTE_POINT_LABEL_PROPERTY } from './map/routeLayers'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
@@ -248,7 +248,7 @@ describe('the planning flow', () => {
     expect(await screen.findByText('Ready to walk')).toBeInTheDocument()
 
     // Back to the half-built route, and finish it.
-    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
     await user.click(await screen.findByRole('button', { name: 'Break into days' }))
     fireEvent.change(await screen.findByLabelText('Miles per day'), {
       target: { value: '8' },
@@ -890,12 +890,12 @@ describe('the planning flow', () => {
 
       // Settings → Map & Display → the slowest flat pace. The route is
       // untouched; only the hiker's own speed moved.
-      await user.click(screen.getByRole('tab', { name: 'Settings' }))
+      await user.click(screen.getByRole('tab', { name: 'More' }))
       await user.click(await screen.findByRole('tab', { name: 'Map & Display' }))
       fireEvent.change(await screen.findByLabelText('Flat pace'), {
         target: { value: String(MIN_FLAT_PACE_MPH) },
       })
-      await user.click(screen.getByRole('tab', { name: 'Trail' }))
+      await user.click(screen.getByRole('tab', { name: 'Map' }))
 
       // The same walk at a slower pace is a longer time. Before #996's fix the
       // figures memo did not list pace, and this panel re-opened on the memo's
@@ -993,6 +993,7 @@ describe('the ribbon while a trip is being planned', () => {
     app.store.set(ELEVATION_STORE_KEY, profile())
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await app.reportFixAtMile(5)
 
@@ -1048,6 +1049,7 @@ describe('the ribbon while a trip is being planned', () => {
     app.store.set(ELEVATION_STORE_KEY, profile())
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await app.reportFixAtMile(5)
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
@@ -1107,6 +1109,7 @@ describe('the ribbon while a trip is being planned', () => {
     app.store.set(ELEVATION_STORE_KEY, profile())
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // Resting on the whole trail: "Whole trail" would do nothing, and neither

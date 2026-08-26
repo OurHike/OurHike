@@ -20,7 +20,7 @@
 // file's own - which is the order the seeding needs.
 
 import { afterEach, beforeEach, expect, vi } from 'vitest'
-import { act, cleanup, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { del, get, set, update } from 'idb-keyval'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
@@ -115,6 +115,19 @@ export interface AppHarness {
    * going to arrive.
    */
   reportFixAtMile(mile: number, lon?: number): Promise<void>
+}
+
+/**
+ * Land on the map screen after rendering <App />.
+ *
+ * The home tab is Today since #1054, and most of these files were written
+ * when the map WAS the front door: they render, reach for the trail-map
+ * region, and go to work. One shared click here rather than a copy in every
+ * file, so the day the navigation changes again there is one place that
+ * knows how a test gets to the map.
+ */
+export async function openMapTab(): Promise<void> {
+  fireEvent.click(await screen.findByRole('tab', { name: 'Map' }))
 }
 
 export function appHarness(options: HarnessOptions = {}): AppHarness {

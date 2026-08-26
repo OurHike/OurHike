@@ -48,7 +48,7 @@ const PROPS = {
   online: false,
   hasGpsFix: true,
   lastSyncedAt: new Date('2026-07-29T09:00:00'),
-  activeTab: 'trail' as const,
+  activeTab: 'map' as const,
   onSelectTab: vi.fn(),
   onOpenLegend: vi.fn(),
   onOpenSearch: vi.fn(),
@@ -177,7 +177,7 @@ describe('MapScreen', () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
     expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })

@@ -41,7 +41,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get } from 'idb-keyval'
 import App from './App'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { buildPoiIcons } from './map/poiIcons'
@@ -147,6 +147,7 @@ describe('what a launch does once, and must not do twice', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('button', { name: /not now/i }))
+    await openMapTab()
     await renderedMap()
 
     await waitFor(() => expect(readsOf(POIS_KEY)).toBe(1))
@@ -160,6 +161,7 @@ describe('what a launch does once, and must not do twice', () => {
     app.onboard()
     app.putTrailData({ pois: POIS })
     render(<App />)
+    await openMapTab()
 
     await renderedMap()
 
@@ -176,10 +178,11 @@ describe('what a launch does once, and must not do twice', () => {
     app.putTrailData({ pois: POIS })
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await renderedMap()
 
-    await user.click(await screen.findByRole('tab', { name: /settings/i }))
-    await user.click(await screen.findByRole('tab', { name: /^trail$/i }))
+    await user.click(await screen.findByRole('tab', { name: /more/i }))
+    await user.click(await screen.findByRole('tab', { name: /^map$/i }))
     await renderedMap()
 
     expect(vi.mocked(buildPoiIcons).mock.calls.length).toBeLessThanOrEqual(1)

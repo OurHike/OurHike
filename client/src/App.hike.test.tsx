@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { PLANNED_HIKE_KEY } from './lib/plannedHike'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -79,6 +79,7 @@ const reportOneFix = () => app.reportFixAtMile(5)
 
 async function renderApp() {
   render(<App />)
+  await openMapTab()
   await screen.findByRole('region', { name: /trail map/i })
 }
 
@@ -170,7 +171,7 @@ describe('setting one', () => {
     const user = userEvent.setup()
     await renderApp()
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(
       await screen.findByRole('button', { name: /say where you are walking/i }),
     )
@@ -188,7 +189,7 @@ describe('setting one', () => {
     const user = userEvent.setup()
     await renderApp()
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(
       await screen.findByRole('button', { name: /say where you are walking/i }),
     )
@@ -212,7 +213,7 @@ describe('setting one', () => {
 
     await renderApp()
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /northbound · mi/i }))
     await user.click(await screen.findByRole('button', { name: /clear this hike/i }))
 

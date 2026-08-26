@@ -437,6 +437,7 @@ function assemble(
   edgeIndices: number[],
   metres: number,
   walkedMetres: number[],
+  entered: number[],
 ): GraphRoute {
   const legs = legsFromWalk(graph, edgeIndices, walkedMetres)
   return {
@@ -447,7 +448,7 @@ function assemble(
     // Priced here rather than by the caller, off the SAME walkedMetres the
     // legs are priced from - a second opinion about how much of an edge was
     // walked is the drift #1002 was about.
-    climb: routeClimb(graph, edgeIndices, walkedMetres),
+    climb: routeClimb(graph, edgeIndices, walkedMetres, entered),
   }
 }
 
@@ -474,7 +475,13 @@ export function routeBetween(
     // nothing to search.
     const edge = graph.edges[from.edgeIndex]
     const metres = Math.abs(to.fraction - from.fraction) * edge.length_m
-    return assemble(graph, [from.edgeIndex], metres, [metres])
+    return assemble(
+      graph,
+      [from.edgeIndex],
+      metres,
+      [metres],
+      enteredNodes(graph, [from.edgeIndex], from, to),
+    )
   }
 
   const fromEdge = graph.edges[from.edgeIndex]
@@ -500,6 +507,7 @@ export function routeBetween(
     edgeIndices,
     found.total,
     walkedMetresPerEdge(graph, edgeIndices, from, to),
+    enteredNodes(graph, edgeIndices, from, to),
   )
 }
 
@@ -678,11 +686,37 @@ export interface RouteClimb {
  * It is deliberately the SAME share `walkedMetresPerEdge` already computes,
  * rather than a second opinion about how much of an edge was walked - the
  * drift #1002 was about.
+ *
+ * DIRECTION, and the approximation in handling it (#1034). An edge's
+ * `[gain, loss]` is measured along its STORED direction, which
+ * build_trail_graph.py inherits from whichever way the source line was
+ * digitised - unrelated to which way is uphill, and unrelated to which way
+ * anybody walks. `buildGraphIndex` makes the graph undirected, so roughly
+ * half of all edges are walked against that direction, and this used to add
+ * `climb[0]` to gain regardless. A downhill walk reported the ascent of the
+ * climb, and an out-and-back reported gain with no loss at all - a walk
+ * ending where it started, finishing thousands of feet above its own
+ * trailhead.
+ *
+ * Swapping the pair is the closest available answer and NOT the exact one.
+ * Confirmed ascent is walked sample by sample through a dead band
+ * (`elevationGain.ts`), and reversing that run is not the same operation as
+ * exchanging its two totals: a run whose small rises were absorbed by the
+ * band in one direction can have different ones absorbed in the other. Two
+ * scalars per edge cannot carry that, so this is an approximation, and
+ * closing it properly means `export_network_elevation.py` publishing both
+ * directions rather than the client inferring one.
+ *
+ * What is exact either way, and what the test asserts: a walk that returns
+ * to where it started has gain equal to loss. That is arithmetic about the
+ * ground rather than about the dead band, and it is the invariant the old
+ * behaviour broke visibly.
  */
 export function routeClimb(
   graph: TrailGraph,
   edgeIndices: number[],
   walkedMetres: number[],
+  entered: number[],
 ): RouteClimb | null {
   if (edgeIndices.length === 0) return null
   let gainFt = 0
@@ -699,8 +733,13 @@ export function routeClimb(
       edge.length_m > 0 && walked !== undefined
         ? Math.min(Math.max(walked / edge.length_m, 0), 1)
         : 0
-    gainFt += climb[0] * share
-    lossFt += climb[1] * share
+    // Walked against the edge's stored direction, this edge's ascent is its
+    // descent (#1034). `entered` is the same orientation walkedMetresPerEdge
+    // uses to decide which end of a partial edge was covered, so the two
+    // cannot disagree about which way the hiker went.
+    const forward = entered[at] === undefined || entered[at] === edge.from
+    gainFt += (forward ? climb[0] : climb[1]) * share
+    lossFt += (forward ? climb[1] : climb[0]) * share
   }
   return { gainFt, lossFt }
 }

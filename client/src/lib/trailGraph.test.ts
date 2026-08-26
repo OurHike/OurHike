@@ -488,14 +488,47 @@ describe('pricing the climb of a walk', () => {
     expect(route?.climb).toBeNull()
   })
 
-  it('counts a re-walked stretch once per pass, as its legs already do', () => {
+  it('counts a re-walked stretch once per pass, in the direction of each pass', () => {
     // The out-and-back half of #1002, applied to climb: walking edge 0 out
-    // and back is two passes of real ground and two passes of real ascent.
+    // and back is two passes of real ground - and the second pass climbs
+    // what the first descended, which is the half #1034 was about. This
+    // asserted `{ gainFt: 200, lossFt: 40 }` until then: two passes counted
+    // in the same direction, describing a walk that ends 200 ft above the
+    // trailhead it returns to.
     const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10] }))
     const there = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
     const andBack = routeThrough(priced, [pointOn(0, 0), pointOn(0, 1), pointOn(0, 0)])
+
     expect(there?.climb).toEqual({ gainFt: 100, lossFt: 20 })
-    expect(andBack?.climb).toEqual({ gainFt: 200, lossFt: 40 })
+    // Both passes of real ground: 100 + 20 up, 20 + 100 down.
+    expect(andBack?.climb).toEqual({ gainFt: 120, lossFt: 120 })
+  })
+
+  it('a walk that ends where it started gains exactly what it loses', () => {
+    // The invariant worth pinning rather than a pair of literals: it is
+    // arithmetic about the ground, true of every closed walk on every
+    // profile, and it is what the old behaviour broke visibly.
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: [70, 5] }))
+    const outAndBack = routeThrough(priced, [
+      pointOn(0, 0.25),
+      pointOn(1, 1),
+      pointOn(0, 0.25),
+    ])
+    expect(outAndBack?.climb).not.toBeNull()
+    expect(outAndBack?.climb?.gainFt).toBeCloseTo(outAndBack?.climb?.lossFt as number, 6)
+    expect(outAndBack?.climb?.gainFt).toBeGreaterThan(0)
+  })
+
+  it('walking an edge backwards climbs what walking it forwards descended', () => {
+    // The plainest statement of the defect. Edge 0 rises 500 ft from node 0
+    // to node 1, so walking 1 -> 0 is 500 ft of descent and no ascent - and
+    // the ascent figure is the only input the day-hike card's ≈time has.
+    const priced = buildGraphIndex(withClimb({ 0: [500, 0] }))
+    const uphill = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
+    const downhill = routeBetween(priced, pointOn(0, 1), pointOn(0, 0))
+
+    expect(uphill?.climb).toEqual({ gainFt: 500, lossFt: 0 })
+    expect(downhill?.climb).toEqual({ gainFt: 0, lossFt: 500 })
   })
 
   it('prices a closed loop over every edge the loop walks', () => {

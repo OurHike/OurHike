@@ -233,7 +233,12 @@ describe('the alerts switch sits on a row like the overlay switch above it', () 
   it('draws that sentence quieter than the switch it explains', () => {
     // Same treatment as the drought row's own detail line: smaller, secondary
     // colour. The switch is the control; the sentence is the caveat on it.
-    expect(rule('.legend__alerts-detail')).toMatch(/font-size:\s*11px/)
+    // 12px, not the 11px this first shipped at: the #1054 typography pass set
+    // a 12px floor under prose a hiker reads in sun, and the sentence a hiker
+    // reads before switching a safety layer off is squarely that. Quieter
+    // survives the bump - the row's own label inherits the panel's larger
+    // size, and the secondary colour is the other half of the treatment.
+    expect(rule('.legend__alerts-detail')).toMatch(/font-size:\s*12px/)
     expect(rule('.legend__alerts-detail')).toMatch(/color:\s*var\(--text-2\)/)
   })
 })

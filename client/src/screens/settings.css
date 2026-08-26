@@ -145,7 +145,7 @@
 }
 
 .settings__link-hint {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--fg-3);
 }
@@ -262,7 +262,7 @@
 .map-style-picker__hint,
 .map-detail-picker__hint,
 .unit-picker__hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 .theme-picker__description,

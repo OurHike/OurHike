@@ -853,6 +853,7 @@
 }
 
 .legend__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 15px;
 }
@@ -996,7 +997,7 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
   color: var(--fg-2);
-  font-size: 11px;
+  font-size: 12px;
   pointer-events: none;
 }
 
@@ -1112,7 +1113,7 @@
 }
 
 .legend__drought-detail {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
 }
 
@@ -1160,7 +1161,7 @@
 }
 
 .legend__alerts-detail {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
 }
 
@@ -1268,7 +1269,7 @@
 }
 
 .legend__always {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1343,6 +1344,7 @@
 }
 
 .search__result-name {
+  font-family: var(--font-display, Georgia, serif);
   font-size: 15px;
   color: var(--fg-1);
 }
@@ -1886,6 +1888,7 @@
 }
 
 .stop-picker__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -2099,6 +2102,7 @@
 }
 
 .atc-notices__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 14px;
   font-weight: 600;
@@ -2584,6 +2588,7 @@ a.poi-card__credit::after {
 }
 
 .poi-card__name {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 15px;
   color: var(--fg-1);
@@ -2877,7 +2882,7 @@ a.poi-card__credit::after {
 }
 
 .poi-card__note-when {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -3033,7 +3038,7 @@ a.poi-card__credit::after {
 
 .poi-card__own-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--fg-2);
 }
@@ -3088,7 +3093,7 @@ a.poi-card__credit::after {
 
 .poi-card__photo-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--fg-2);
 }
@@ -3149,6 +3154,7 @@ a.poi-card__credit::after {
 }
 
 .share-sheet__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 16px;
   color: var(--fg-1);
@@ -3260,7 +3266,7 @@ a.poi-card__credit::after {
 
 .share-sheet__footnote {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--fg-3);
 }
@@ -3402,6 +3408,7 @@ a.poi-card__credit::after {
 }
 
 .screen-failed__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
@@ -3507,7 +3514,7 @@ a.poi-card__credit::after {
 }
 
 .bg-picker__hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -3759,7 +3766,7 @@ a.poi-card__credit::after {
 
 .poi-card__note-photo-status {
   margin: var(--space-1, 4px) 0 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -3855,6 +3862,7 @@ a.poi-card__credit::after {
 }
 
 .removed-poi__name {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   /* Room for the close button, which overlaps this line. */
   padding-right: 32px;
@@ -4083,6 +4091,7 @@ a.poi-card__credit::after {
 }
 
 .turn-card__heading {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 21px;
   line-height: 1.15;

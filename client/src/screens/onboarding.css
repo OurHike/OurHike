@@ -203,6 +203,7 @@
   gap: var(--space-3, 12px);
 }
 .onboarding__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 24px;
   color: var(--fg-1);

@@ -654,6 +654,7 @@
 }
 
 .trip-list__name {
+  font-family: var(--font-display, Georgia, serif);
   font-size: 14px;
   font-weight: 600;
   color: var(--fg-1);
@@ -1333,7 +1334,7 @@
 }
 
 .plan__food-note--quiet {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -1996,6 +1997,7 @@
 }
 
 .hikes-here__title {
+  font-family: var(--font-display, Georgia, serif);
   font-size: 15px;
   font-weight: 600;
 }
@@ -2293,6 +2295,7 @@
 }
 
 .day-summary__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 17px;
   font-weight: 600;
@@ -2645,6 +2648,7 @@
 }
 
 .day-hike-card__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 1.05rem;
 }

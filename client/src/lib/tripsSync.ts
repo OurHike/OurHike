@@ -239,9 +239,11 @@ export async function syncTripsWithAccount(): Promise<TripStore | null> {
     const state = await tripSyncState()
     const hike = await loadPlannedHike()
 
+    const uploads = uploadsFor(store, state)
+
     const response = await syncTrips({
       since: state.since,
-      trips: uploadsFor(store, state),
+      trips: uploads,
       // Sent only when this device has something to say, so a device that
       // has never had a planned hike cannot wipe the one the hiker set on
       // another. Omission and "both miles null" are different claims.
@@ -266,11 +268,25 @@ export async function syncTripsWithAccount(): Promise<TripStore | null> {
       response.now,
       stampsAfter(state, response.trips),
       response.hike?.updated_at ?? null,
+      // Only what actually went out (#1040). The hiker keeps using the app
+      // while the request is in the air, and anything they changed since
+      // this snapshot has not been sent by anybody.
+      {
+        dirty: uploads.filter((upload) => !upload.deleted).map((upload) => upload.id),
+        deleted: uploads.filter((upload) => upload.deleted).map((upload) => upload.id),
+      },
     )
     await applyHike(response.hike)
 
-    const merged = mergeServerTrips(store, response.trips)
-    if (merged === store) return null
+    // RE-READ, rather than merging into the snapshot taken before the
+    // request (#1040). `store` is what this device held when the request
+    // left; writing a merge built on it back to disk discarded every edit
+    // made while it was in the air. Measured: with any row at all coming
+    // back, a trip renamed mid-flight reverted to its old name and the
+    // rename was gone from the device as well as from the account.
+    const current = await loadTrips()
+    const merged = mergeServerTrips(current, response.trips)
+    if (merged === current) return null
     await adoptTrips(merged)
     return merged
   } catch (error) {

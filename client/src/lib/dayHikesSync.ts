@@ -193,19 +193,29 @@ export async function syncDayHikesWithAccount(): Promise<DayHikeStore | null> {
     const store = await loadDayHikes()
     const state = await dayHikeSyncState()
 
+    const uploads = uploadsFor(store, state)
+
     const response = await syncDayHikes({
       since: state.since,
-      day_hikes: uploadsFor(store, state),
+      day_hikes: uploads,
     })
 
     // The ledger is cleared BEFORE the store is written, and the order is
     // deliberate - `syncTripsWithAccount` states it: a crash between the two
     // re-sends what the server recognises as identical and drops; the other
     // order uploads stale local claims over what was just adopted.
-    await recordDayHikeSync(response.now, stampsAfter(state, response.day_hikes))
+    await recordDayHikeSync(response.now, stampsAfter(state, response.day_hikes), {
+      dirty: uploads.filter((upload) => !upload.deleted).map((upload) => upload.id),
+      deleted: uploads.filter((upload) => upload.deleted).map((upload) => upload.id),
+    })
 
-    const merged = mergeServerDayHikes(store, response.day_hikes)
-    if (merged === store) return null
+    // Re-read rather than merging into the snapshot taken before the request
+    // (#1040) - `syncTripsWithAccount` states it at length. `store` is what
+    // this device held when the request left, and writing a merge built on
+    // it back discarded every edit made while it was in the air.
+    const current = await loadDayHikes()
+    const merged = mergeServerDayHikes(current, response.day_hikes)
+    if (merged === current) return null
     await adoptDayHikes(merged)
     return merged
   } catch (error) {

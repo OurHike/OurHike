@@ -10,7 +10,7 @@ import {
 import { EMPTY_STORE, removeTrip, TRIPS_KEY, type Trip, type TripStore } from './trips'
 import { buildPlan, type HikePlan } from './plan'
 import { PLANNED_HIKE_KEY } from './plannedHike'
-import { TRIPS_SYNC_KEY, tripSyncState } from './tripSyncState'
+import { recordTripEdits, TRIPS_SYNC_KEY, tripSyncState } from './tripSyncState'
 
 // Trips following the account (#892), from this device's side.
 //
@@ -409,6 +409,69 @@ describe('a whole exchange', () => {
 
     expect(store.has(PLANNED_HIKE_KEY)).toBe(false)
     expect((await tripSyncState()).hikeDirty).toBe(false)
+  })
+})
+
+// #1040: a sync is not instant, and the hiker keeps using the app while the
+// request is in the air. Both of these were measured on the shipped code
+// before the fix, and they fail differently, which is why both are here.
+describe('an edit made while the request is in flight', () => {
+  /** A request that does not resolve until the test says so. */
+  function heldRequest(rows: unknown[] = []) {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.mocked(syncTrips).mockReturnValue(
+      held.then(() => ({
+        now: NOW,
+        trips: rows as never,
+        hike: null,
+        conflicts: 0,
+      })) as never,
+    )
+    return () => release()
+  }
+
+  it('stays queued to send, rather than being marked as sent by nobody', async () => {
+    // The half that survives on disk and never travels: the ledger used to
+    // be cleared wholesale, so an edit made mid-flight was recorded as sent
+    // when nothing had sent it - and it sat on this device for ever.
+    store.set(TRIPS_KEY, storeWith(trip()))
+    const release = heldRequest()
+
+    const syncing = syncTripsWithAccount()
+    store.set(TRIPS_KEY, storeWith({ ...trip(), name: 'Renamed mid-flight' }))
+    await recordTripEdits([], [trip()])
+    release()
+    await syncing
+
+    expect((await tripSyncState()).dirty).toContain('trip-1')
+  })
+
+  it('is not overwritten by the store the request was built from', async () => {
+    // The worse half: with any row at all coming back, the merge was built
+    // on the pre-request snapshot and written over the top, so the rename
+    // was gone from the device as well as from the account.
+    store.set(TRIPS_KEY, storeWith(trip()))
+    const release = heldRequest([
+      {
+        id: 'from-the-laptop',
+        document: trip('from-the-laptop', 'Laid out on the laptop'),
+        updated_at: NOW,
+        deleted_at: null,
+      },
+    ])
+
+    const syncing = syncTripsWithAccount()
+    store.set(TRIPS_KEY, storeWith({ ...trip(), name: 'Renamed mid-flight' }))
+    release()
+    await syncing
+
+    const after = store.get(TRIPS_KEY) as TripStore
+    expect(after.trips.find((t) => t.id === 'trip-1')?.name).toBe('Renamed mid-flight')
+    // And the laptop's trip still arrived - the fix must not cost the merge.
+    expect(after.trips.map((t) => t.id).sort()).toEqual(['from-the-laptop', 'trip-1'])
   })
 })
 

@@ -33,7 +33,7 @@ numpy==2.5.2
     #   opencv-python-headless
     #   rasterio
     #   shapely
-opencv-python-headless==4.14.0.94
+opencv-python-headless==5.0.0.93
     # via -r requirements.in
 pillow==12.3.0
     # via -r requirements.in

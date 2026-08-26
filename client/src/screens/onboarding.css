@@ -91,11 +91,111 @@
   }
 }
 
+/* The lockup over the map's top edge (#1054): a gradient that FADES TO
+   NOTHING a third of the way down, so it is a strip the map can spare and
+   never a scrim - the file header's rule, kept under new branding. On the
+   brand child, not on .onboarding, whose background-lessness is the
+   contract entryLayout.test.ts pins. */
+.onboarding__brand {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 22px 20px 40px;
+  padding-top: max(22px, env(safe-area-inset-top, 0px));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-chrome) 82%, transparent) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.onboarding__tagline {
+  margin: 8px 0 0;
+  max-width: 26ch;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+}
+
 .onboarding__progress {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.onboarding__progress-bars {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+
+.onboarding__progress-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--border-1);
+}
+
+.onboarding__progress-bar--done {
+  background: var(--brand-primary);
+}
+
+/* The transfer the size step started (#1054), stated inline: label,
+   percentage, an 8px bar, and the resume promise in mono. */
+.onboarding__download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-3, 12px) var(--space-4, 14px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.onboarding__download-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+.onboarding__download-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.onboarding__download-percent {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
-  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-primary);
+}
+
+.onboarding__download-bar {
+  height: 8px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.onboarding__download-fill {
+  height: 100%;
+  background: var(--brand-primary);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.onboarding__download-meta {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-2);
 }
 .onboarding__step {
   display: flex;

@@ -29,13 +29,18 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-/** Moves forward via "Continue". The location step is answered explicitly with
+/** Moves forward via each step's own primary - "Continue", or the size
+ *  step's "Keep going" (#1054). The location step is answered explicitly with
  *  Allow / Not now, since which one is pressed is the thing under test. */
 async function advance(user: ReturnType<typeof userEvent.setup>, times: number) {
   for (let i = 0; i < times; i++) {
-    await user.click(screen.getByRole('button', { name: /^continue$/i }))
+    await user.click(screen.getByRole('button', { name: /^continue$|^keep going$/i }))
   }
 }
+
+/** The step's decline control - "Skip", or the size step's "Decide this
+ *  later", which is the same promise in the words of what it declines. */
+const SKIP = /^skip$|^decide this later$/i
 
 describe('Onboarding', () => {
   it('starts on the value-proposition step', () => {
@@ -47,7 +52,7 @@ describe('Onboarding', () => {
   it('counts steps from the live step list, not a hardcoded total', () => {
     render(<Onboarding {...PROPS} />)
 
-    expect(screen.getByText(`1 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
+    expect(screen.getByText(`Step 1 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
   it('says plainly on the first screen that nothing needs signing up for', () => {
@@ -189,7 +194,7 @@ describe('Onboarding', () => {
     render(<Onboarding {...PROPS} />)
 
     for (let step = 0; step < ONBOARDING_STEPS.length; step++) {
-      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: SKIP })).toBeInTheDocument()
       if (step < ONBOARDING_STEPS.length - 1) await advance(user, 1)
     }
   })
@@ -198,9 +203,9 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
-    await user.click(screen.getByRole('button', { name: /skip/i }))
+    await user.click(screen.getByRole('button', { name: SKIP }))
 
-    expect(screen.getByText(`2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
+    expect(screen.getByText(`Step 2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
   it('finishes with the chosen level', async () => {
@@ -229,12 +234,92 @@ describe('Onboarding', () => {
     )
   })
 
+  it('starts the download from the size step, exactly once', async () => {
+    // #1054: the download happens on the step that asks for it. Once, however
+    // the flow is walked - a second transfer for one choice would spend
+    // trailhead signal twice.
+    const onStartDownload = vi.fn()
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} onStartDownload={onStartDownload} />)
+
+    await advance(user, 2)
+
+    expect(onStartDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts nothing when the size step is declined', async () => {
+    // "Decide this later" means later: the Today screen holds the door open,
+    // and nothing here spends a byte someone declined to spend.
+    const onStartDownload = vi.fn()
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} onStartDownload={onStartDownload} />)
+
+    await advance(user, 1)
+    await user.click(screen.getByRole('button', { name: /decide this later/i }))
+
+    expect(onStartDownload).not.toHaveBeenCalled()
+  })
+
+  it('writes the level through as it changes, before any download starts', async () => {
+    // The shell's download requests derive their URL from the stored
+    // preference, so the write must land ahead of "Keep going" - a level
+    // written at completion would download the wrong artifact.
+    const onChangeLevel = vi.fn()
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} onChangeLevel={onChangeLevel} />)
+
+    await advance(user, 1)
+    await user.click(screen.getByRole('radio', { name: /fine/i }))
+
+    expect(onChangeLevel).toHaveBeenCalledWith('fine')
+  })
+
+  it('shows the transfer honestly while the last step is asked', async () => {
+    const user = userEvent.setup()
+    render(
+      <Onboarding
+        {...PROPS}
+        downloadActivity={{
+          kind: 'downloading',
+          doneBytes: 480_000_000,
+          totalBytes: 1_400_000_000,
+        }}
+      />,
+    )
+    await advance(user, 2)
+
+    expect(screen.getByText(/downloading while you finish up/i)).toBeInTheDocument()
+    expect(screen.getByText('34%')).toBeInTheDocument()
+    expect(
+      screen.getByText(/picks up where it left off if you lose signal/i),
+    ).toBeInTheDocument()
+  })
+
+  it('tells a stalled phone from a stalled connection, in the panel too', async () => {
+    // The checking state exists so someone in a dead spot knows whether to
+    // wait or walk (#197) - the panel keeps that distinction.
+    render(
+      <Onboarding
+        {...PROPS}
+        downloadActivity={{
+          kind: 'checking',
+          doneBytes: 200_000_000,
+          totalBytes: 1_400_000_000,
+        }}
+      />,
+    )
+
+    expect(
+      screen.getByText(/checking what is already on this phone/i),
+    ).toBeInTheDocument()
+  })
+
   it('still completes with a usable default when every step is skipped', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
     for (let step = 0; step < ONBOARDING_STEPS.length; step++) {
-      await user.click(screen.getByRole('button', { name: /skip/i }))
+      await user.click(screen.getByRole('button', { name: SKIP }))
     }
 
     // Skipping must not leave the app with no map to download.

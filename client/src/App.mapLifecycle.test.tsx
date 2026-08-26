@@ -419,7 +419,8 @@ describe('what the first-run steps cost', () => {
 
     await launch()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    // Declined: this file counts maps and reads, not downloads (#1054).
+    await user.click(screen.getByRole('button', { name: 'Decide this later' }))
     await user.click(screen.getByRole('button', { name: /not now/i }))
     await landEverything()
 

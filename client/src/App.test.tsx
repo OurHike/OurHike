@@ -137,7 +137,9 @@ function withDownloadedArchive() {
 async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText('What OurHike is')
   await user.click(screen.getByRole('button', { name: 'Continue' }))
-  await user.click(screen.getByRole('button', { name: 'Continue' }))
+  // The size step's own primary since #1054 - it also starts the download,
+  // which these shell tests let run into their stubbed fetch.
+  await user.click(screen.getByRole('button', { name: 'Keep going' }))
   await user.click(screen.getByRole('button', { name: /not now/i }))
 }
 
@@ -254,46 +256,28 @@ describe('App shell', () => {
     expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
   })
 
-  it('opens the download when onboarding finishes, over the home rather than instead of it', async () => {
-    // The choice just made is a download that has not started, so this is
-    // still what someone leaving onboarding needs. What changed on 2026-08-05
-    // is that it no longer costs them the first sight of the app to see it -
-    // and since #1054 the screen behind it is Today, the new home.
+  it('opens no window when the steps finish - the download already started on the step that asked', async () => {
+    // #1054: "Keep going" on the size step starts the transfer through the
+    // shell's own machinery, so the window that used to open here would be a
+    // takeover restating a decision already in motion. It is the manage
+    // surface now, reachable from the legend and from More - on a phone and
+    // a desktop alike, which is why the old desktop carve-out went with it.
     const user = userEvent.setup()
     render(<App />)
 
     await completeOnboarding(user)
 
-    expect(
-      await screen.findByRole('dialog', { name: /offline map/i }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Today', selected: true })).toBeInTheDocument()
-  })
-
-  it('leaves a desktop on the map instead, where the download buys nothing yet', async () => {
-    // WEBSITE.md §6: a laptop has signal, and the live sheet is the default
-    // background, so this browser already draws the whole trail. Opening a
-    // 314 MB decision over it is asking someone to spend a phone's worth of
-    // storage on a machine that is not going up a mountain.
-    onADesktop()
-    const user = userEvent.setup()
-    render(<App />)
-
-    await completeOnboarding(user)
-
-    // Waiting on the preference write rather than on the absence of a dialog:
-    // it is the observable half of the same callback that would have opened
-    // the window, and it lands after it. A bare `queryByRole` here would pass
-    // just as readily against a window that was about to open.
+    // The preference write is the observable half of the completion callback
+    // and lands after anything that would have opened a window - a bare
+    // queryByRole would pass just as readily against one about to open.
     await waitFor(() => {
       const saved = store.get(PREFERENCES_KEY) as
-        { onboarding_completed: boolean } | undefined
+        { onboarding_completed: boolean; download_choice_made: boolean } | undefined
       expect(saved?.onboarding_completed).toBe(true)
+      expect(saved?.download_choice_made).toBe(true)
     })
 
-    expect(
-      await screen.findByRole('tab', { name: 'Today', selected: true }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Today', selected: true })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: /offline map/i })).not.toBeInTheDocument()
   })
 

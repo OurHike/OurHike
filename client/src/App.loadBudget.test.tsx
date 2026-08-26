@@ -145,7 +145,9 @@ describe('what a launch does once, and must not do twice', () => {
 
     await screen.findByText('What OurHike is')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    // Declined, deliberately: this file counts what a LAUNCH costs, and
+    // "Keep going" would start the download machinery on top of it (#1054).
+    await user.click(screen.getByRole('button', { name: 'Decide this later' }))
     await user.click(screen.getByRole('button', { name: /not now/i }))
     await openMapTab()
     await renderedMap()

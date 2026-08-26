@@ -135,7 +135,6 @@ import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useTheme } from './lib/useTheme'
-import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
@@ -935,9 +934,6 @@ function App() {
   }, [])
 
   const resolvedTheme = useTheme(preferences.theme)
-  // Whether this is the big-screen layout - and, for the download, whether the
-  // machine is one that goes up a mountain. See handleOnboardingComplete.
-  const isDesktop = useDesktop()
   const install = useInstallPrompt()
   useEffect(() => {
     // The mode rides the same gate as the preferences (lib/hikerMode.ts's
@@ -3310,28 +3306,16 @@ function App() {
         location_permission_requested: locationRequested,
         hiking_detail_level: hikingDetailLevel,
       })
-      // The download window, over the map rather than instead of it. The
-      // choice just made is a download that has not started, so the window is
-      // still what someone leaving onboarding needs; what has changed is that
-      // it no longer costs them the first sight of the map to see it.
-      //
-      // NOT ON A DESKTOP (WEBSITE.md §6, "Download UX"). A laptop has signal,
-      // and the assumption worth making about it is the one it is almost
-      // always right about: this connection is not being metered by the mile.
-      // The live sheet is already the default background, so a browser that
-      // never opens this window still gets the whole trail drawn - the
-      // download buys it nothing it does not already have, and 314 MB is a
-      // real cost to put in front of someone before they have seen the map.
-      //
-      // It is withheld, not removed, and that distinction is the whole of the
-      // rule. The legend is a permanent panel above 900px, and DownloadsLink
-      // sits in it, so "Choose what to download" is on screen the entire time
-      // - more visible than the phone's, where the legend has to be opened
-      // first. Someone setting up a cabin machine, or a laptop that is coming
-      // along, is one click away and was never told no.
-      if (!isDesktop) openDownloads()
+      // No window opens here any more (#1054). The download starts on the
+      // size step itself - the step that asks the question - through
+      // handleOnboardingDownload below, and keeps running behind the last
+      // step and past it; the window is the MANAGE surface, reachable from
+      // the legend and from More. A hiker who chose "Decide this later"
+      // gets the door held open on the Today screen instead of a takeover
+      // they just declined. (The old desktop carve-out went with it: with
+      // nothing auto-opening, there is nothing to withhold from a laptop.)
     },
-    [updatePreferences, openDownloads, isDesktop],
+    [updatePreferences],
   )
 
   /** One sheet: every archive it is made of, in one tap. Archives already on
@@ -3368,6 +3352,19 @@ function App() {
     },
     [archiveStatusFor, ensureTrailData, startPackages],
   )
+
+  /**
+   * The size step's own download start (#1054). The level preference is
+   * already written - Onboarding writes it through onChangeLevel as the
+   * radio moves, which is what points `downloadRequests` at the right
+   * artifact BEFORE this fires - so what is left is marking the choice made
+   * and starting the sheet through the same path the window's button takes,
+   * canary and all.
+   */
+  const handleOnboardingDownload = useCallback(() => {
+    updatePreferences({ download_choice_made: true })
+    void handleDownloadSheet(HIKING_SHEET)
+  }, [updatePreferences, handleDownloadSheet])
 
   /** Resume, which skips the trail-data step: those bytes are already here,
    *  and the point of resuming is not to spend signal twice. */
@@ -5053,7 +5050,14 @@ function App() {
           hidden the chrome and made the whole screen inert - and the download
           window below cannot be open yet, because the only thing that opens it
           is finishing these steps. */}
-      {entering && <Onboarding onComplete={handleOnboardingComplete} />}
+      {entering && (
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          onChangeLevel={(level) => updatePreferences({ hiking_detail_level: level })}
+          onStartDownload={handleOnboardingDownload}
+          downloadActivity={downloadActivity}
+        />
+      )}
       {downloadsWindow}
     </>
   )

@@ -1,18 +1,15 @@
-// First run (WIREFRAMES.md §5). Three steps, each skippable.
+// First run (WIREFRAMES.md §5, reshaped by #1054). Three steps, each skippable.
 //
 // A card over the live map, not a page instead of it. The shell puts the map
 // behind these steps (App.tsx's onboarding branch) and this file is the half
 // of that which leaves room to see it: the card is anchored to the bottom of
 // the screen, capped well short of filling it, and scrolls its own contents if
 // they outgrow that - so the map is visible above the steps on every screen
-// size rather than only on tall ones.
-//
-// Every step says something about a thing that is now on screen. "The whole
-// trail's topo map lives on your phone" is drawn behind that sentence; "pick
-// how much detail" is a choice about the map being looked at; and the location
-// step was always specified as an overlay over the map (§5), so the reason for
-// asking is visible. Showing the claim is the argument here - a screenshot of
-// a map, or a page of prose about one, is the thing this replaces.
+// size rather than only on tall ones. The brand lockup at the top rides a
+// gradient that fades to nothing, never a scrim: dimming the map to introduce
+// the map is still a strange way to introduce it. (#1054's design drew a
+// full-bleed photograph here instead; that lands with the photograph itself,
+// as its own recorded reversal of this file's rule, not as a side effect.)
 //
 // What is NOT here matters as much as what is:
 //
@@ -26,35 +23,25 @@
 // The step counter comes from lib/onboardingSteps.ts, so a skipped step still
 // counts and the total cannot grow mid-flow.
 //
-// THE MAP-SIZE STEP IS THE DOWNLOAD WINDOW'S QUESTION, IN THE DOWNLOAD
-// WINDOW'S SHAPE (#298).
+// THE DOWNLOAD STARTS ON THE STEP THAT ASKS FOR IT (#1054).
 //
-// First run ends by opening the download window (App.tsx), so this step and
-// that window are two consecutive views of one decision - and they looked
-// like two different decisions. Here, one flat list of levels; there, a
-// sheet per tab, each with its own sizes. Same tabs now, same level ladder,
-// same greying, from the same builders (screens/DetailPicker.tsx).
+// This file used to argue the opposite - "no progress, no buttons, nothing on
+// the phone to delete... duplicating it would mean starting a download inside
+// a flow whose last step has not been asked yet" - and first run ended by
+// opening the download window over the map. That was two consecutive views of
+// one decision (#298 closed most of the gap by making them the same shape),
+// and the newcomer still had to re-answer it. The redesign takes the last
+// step: "Keep going" on the size step starts the transfer through the shell's
+// own machinery (lib/archiveDownload.ts's resume semantics included), the
+// location step is asked while the bytes arrive, and the panel below says so
+// honestly. The old worry - a download racing a flow that is not finished -
+// is answered by what #553 built since: the transfer is the shell's, survives
+// this component unmounting, checkpoints to disk as it arrives, and "Decide
+// this later" still starts nothing. The download window is the MANAGE surface
+// now; App.tsx no longer opens it at completion.
 //
-// WHAT THE USGS TAB DOES NOT DO IS CONFIGURE ANYTHING.
-//
-// #277 took the raster's tiers out of first run deliberately: offering the
-// levels of a map the newcomer is not downloading, in place of the one they
-// are, sized the wrong decision. That still holds, and the tab does not undo
-// it - the USGS sheet is named and priced here, and its levels render
-// greyed, pointing at Downloads. Showing what the optional map costs is not
-// the same as asking a newcomer to configure it.
-//
-// That tab is ABSENT for v2, and the paragraph above is kept whole for when
-// it returns. The USGS sheet is withdrawn (lib/packages.ts, #855), and a
-// first-run step that prices a map the Downloads window will not sell would
-// be worse than one that never mentions it. SHEET_TABS reads the catalog
-// rather than listing the sheets, so nothing here had to learn about the
-// withdrawal to stop showing it.
-//
-// What this step does NOT have at all is the download itself - no progress,
-// no buttons, nothing on the phone to delete. That is the window's, one
-// screen later; duplicating it would mean starting a download inside a flow
-// whose last step has not been asked yet.
+// #277 still holds: the USGS tab, when a second sheet is on offer, is named
+// and priced here and never configured - see SHEET_TABS.
 
 import { useState } from 'react'
 import { Logo } from '../design-system/components'
@@ -63,6 +50,12 @@ import type { HikingDetailLevel } from '../lib/userPreferences'
 import { HIKING_SHEET, offeredSheets, USGS_SHEET } from '../lib/packages'
 import { DetailPicker, hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 import { useAvailableBytes } from '../lib/useAvailableBytes'
+import {
+  downloadFillPercent,
+  downloadPercent,
+  type DownloadActivity,
+} from '../lib/downloadActivity'
+import { formatBytes } from '../lib/formatBytes'
 import { Tabs } from './Tabs'
 import './onboarding.css'
 
@@ -88,6 +81,23 @@ export interface OnboardingResult {
 
 export interface OnboardingProps {
   onComplete: (result: OnboardingResult) => void
+  /**
+   * The level choice, written through as it changes (#1054) - the shell's
+   * download requests derive their URLs from the stored preference, so the
+   * write has to land before "Keep going" starts the transfer, not at the
+   * end of the flow. Omitted, the choice still lands via onComplete.
+   */
+  onChangeLevel?: (level: HikingDetailLevel) => void
+  /**
+   * Start the hiking sheet's download, from the size step itself (#1054).
+   * The transfer is the shell's - it outlives these steps, checkpoints as it
+   * arrives (lib/archiveDownload.ts), and resumes if the signal goes.
+   * Omitted, the button still advances and nothing is fetched.
+   */
+  onStartDownload?: () => void
+  /** What is moving right now (lib/downloadActivity.ts), for the inline
+   *  panel - null while nothing is. */
+  downloadActivity?: DownloadActivity | null
 }
 
 /**
@@ -105,13 +115,64 @@ export interface OnboardingProps {
  */
 const SHEET_TABS = offeredSheets().map((sheet) => ({ id: sheet.id, label: sheet.title }))
 
-export function Onboarding({ onComplete }: OnboardingProps) {
+/** The inline progress panel: the transfer the size step started, stated
+ *  honestly in each of its three states (lib/downloadActivity.ts). */
+function DownloadPanel({ activity }: { activity: DownloadActivity }) {
+  if (activity.kind === 'preparing') {
+    return (
+      <div className="onboarding__download" role="status">
+        <p className="onboarding__download-label">
+          Getting the trail&rsquo;s own data first &mdash; the map follows.
+        </p>
+      </div>
+    )
+  }
+
+  const percent = downloadPercent(activity.doneBytes, activity.totalBytes)
+  return (
+    <div className="onboarding__download" role="status">
+      <div className="onboarding__download-head">
+        <p className="onboarding__download-label">
+          {activity.kind === 'checking'
+            ? 'Checking what is already on this phone'
+            : 'Downloading while you finish up'}
+        </p>
+        <span className="onboarding__download-percent">{percent}%</span>
+      </div>
+      <div className="onboarding__download-bar" aria-hidden="true">
+        <div
+          className="onboarding__download-fill"
+          style={{
+            width: `${downloadFillPercent(activity.doneBytes, activity.totalBytes)}%`,
+          }}
+        />
+      </div>
+      {/* The resume promise is lib/archiveDownload.ts's, surfaced where the
+          worry actually is: someone watching a bar on trailhead wifi. */}
+      <p className="onboarding__download-meta">
+        {formatBytes(activity.doneBytes)} of {formatBytes(activity.totalBytes)} · picks up
+        where it left off if you lose signal
+      </p>
+    </div>
+  )
+}
+
+export function Onboarding({
+  onComplete,
+  onChangeLevel,
+  onStartDownload,
+  downloadActivity = null,
+}: OnboardingProps) {
   const [stepIndex, setStepIndex] = useState(0)
   // Standard is pre-selected, so skipping every step still leaves a usable
   // map to download rather than no choice at all.
   const [hikingLevel, setHikingLevel] = useState<HikingDetailLevel>('standard')
   // Opens on the sheet this step is actually sizing (#277).
   const [openSheetId, setOpenSheetId] = useState(HIKING_SHEET.id)
+  // Once, however the steps are walked: "Keep going" tapped twice, or a
+  // hiker backing through browser history, must not start a second transfer
+  // (useArchiveDownloads dedups too - this is the cheap first line).
+  const [downloadStarted, setDownloadStarted] = useState(false)
   // So a level this phone cannot hold is greyed before it is chosen, rather
   // than refused after the newcomer has committed to it (#555).
   const { bytes: availableBytes } = useAvailableBytes()
@@ -133,7 +194,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <DetailPicker
           options={hikingDetailOptions()}
           value={hikingLevel}
-          onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
+          onChange={(level) => {
+            setHikingLevel(level as HikingDetailLevel)
+            onChangeLevel?.(level as HikingDetailLevel)
+          }}
           name="onboarding-detail"
           availableBytes={availableBytes}
         />
@@ -164,19 +228,56 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     else finish(false)
   }
 
+  const startDownloadAndGo = () => {
+    if (onStartDownload !== undefined && !downloadStarted) {
+      setDownloadStarted(true)
+      onStartDownload()
+    }
+    next()
+  }
+
   return (
     <main className="onboarding">
+      {/* The lockup, over the map's top edge on a gradient that fades to
+          nothing - branding that costs the map a strip it can spare, never a
+          scrim over the terrain the steps are about. */}
+      <div className="onboarding__brand" aria-hidden="true">
+        <Logo />
+        <p className="onboarding__tagline">
+          Hike your own hike, and keep the trail in good hands.
+        </p>
+      </div>
+
       {/* Keyed by step, so React rebuilds this subtree when the step changes
           and the card's entry animation runs again for each one (onboarding.css
           reduces it to nothing under prefers-reduced-motion). The steps rise
           over the map one at a time rather than the copy inside a static panel
           being swapped out underneath the reader. */}
       <div key={step.id} className="onboarding__card">
-        <p className="onboarding__progress">{progress.label}</p>
+        {/* Three bars and a mono fraction rather than prose; the sentence
+            stays for a screen reader, which a row of coloured divs tells
+            nothing. */}
+        <div className="onboarding__progress">
+          <span className="visually-hidden">{`Step ${progress.label}`}</span>
+          <span className="onboarding__progress-bars" aria-hidden="true">
+            {ONBOARDING_STEPS.map((s, index) => (
+              <span
+                key={s.id}
+                className={
+                  index <= stepIndex
+                    ? 'onboarding__progress-bar onboarding__progress-bar--done'
+                    : 'onboarding__progress-bar'
+                }
+              />
+            ))}
+          </span>
+          <span className="onboarding__progress-count" aria-hidden="true">
+            {progress.position} / {progress.total}
+          </span>
+        </div>
 
         {step.id === 'what-ourhike-is' && (
           <section className="onboarding__step">
-            <Logo />
             <h1 className="onboarding__title">What OurHike is</h1>
             <p>
               The whole trail&rsquo;s topo map lives on your phone. It works with no bars
@@ -192,10 +293,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
         {step.id === 'map-size' && (
           <section className="onboarding__step">
-            <h1 className="onboarding__title">Map size</h1>
+            <h1 className="onboarding__title">Take the whole trail with you</h1>
             <p>
-              The map you&rsquo;ll navigate by &mdash; the whole trail, in one download.
-              Pick how much detail you want; you can change this later.
+              One download and the map is yours &mdash; no bars, no data plan, no
+              surprises at the trailhead. Pick how much detail you want; you can change
+              this later.
             </p>
 
             {SHEET_TABS.length > 1 ? (
@@ -240,15 +342,38 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           </section>
         )}
 
+        {downloadActivity !== null && <DownloadPanel activity={downloadActivity} />}
+
         <div className="onboarding__nav">
-          {step.id !== 'location-permission' && (
-            <button type="button" className="onboarding__primary" onClick={next}>
-              Continue
-            </button>
+          {step.id === 'map-size' ? (
+            <>
+              {/* The step's own pair (#1054): the primary starts the
+                  transfer it has just sized, the ghost declines it without
+                  ceremony - and the Today screen holds the door open for a
+                  phone that decided later. */}
+              <button
+                type="button"
+                className="onboarding__primary"
+                onClick={startDownloadAndGo}
+              >
+                Keep going
+              </button>
+              <button type="button" className="onboarding__skip" onClick={next}>
+                Decide this later
+              </button>
+            </>
+          ) : (
+            <>
+              {step.id !== 'location-permission' && (
+                <button type="button" className="onboarding__primary" onClick={next}>
+                  Continue
+                </button>
+              )}
+              <button type="button" className="onboarding__skip" onClick={next}>
+                Skip
+              </button>
+            </>
           )}
-          <button type="button" className="onboarding__skip" onClick={next}>
-            Skip
-          </button>
         </div>
       </div>
     </main>

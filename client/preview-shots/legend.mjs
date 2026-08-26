@@ -25,6 +25,10 @@ export const alt =
   'The legend sheet over the trail screen, scrolled to the switches under the waypoint grid: Showing, Verified?, and an Alerts checkbox with a line under it saying what is ahead of you is still called out at the top'
 
 export default async function drive(page) {
+  // The map first: the app opens on Today since #1054, and the legend's
+  // button floats over the map screen.
+  await page.getByRole('tab', { name: 'Map' }).click()
+
   // The header's icon button. Its accessible name is the visually-hidden
   // span inside it (chrome/Header.tsx), which is what a screen reader — and
   // therefore this locator — sees.

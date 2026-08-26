@@ -733,7 +733,25 @@ should wait rather than be written against a system nobody can observe.
 
 ---
 
-## Sequencing, in one paragraph
+## Y. The v2 redesign — Today, and the map given back its viewport
+
+**#1054 — v2 redesign: a dated journal called Today, and the map given back its whole
+viewport**
+
+**Why alone:** one issue by the maintainer's own instruction ("file an issue — only 1"),
+carrying the whole of Claude Design's handoff: the `today | map | plan | more` tab set, the
+Today journal, the map's floating plate and next-up rail, first run downloading on the step
+that asks, More's five destinations, the desktop planning station, and the typography and
+copy passes. It is one branch deliberately — the nine steps each rewrite chrome the next
+step stands on, so slicing them across sessions would put every pair in conflict inside
+`client/src/App.tsx` and `chrome/chrome.css`.
+
+**Where this collides: everywhere the client is.** This group touches `App.tsx`, the map
+chrome, More/Settings, onboarding and the tab bar at once — which is groups **L**, **W**
+and **X**'s territory in a single branch. Do not stack client work beside it; land it
+first and rebase the others. Group **W** in particular (the More tab's reorganization) is
+substantially delivered by this redesign — read its issues against what landed before
+starting them.
 
 **A, B and C first** — they set data and identity that D, E, F, G and Q anchor to.
 **#320, #395 and #750 are urgent for reasons unrelated to sequencing** (a table-dropping

@@ -38,6 +38,7 @@ given caller should be.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import requests
 
@@ -128,5 +129,92 @@ def request_with_retry(
         if throttle_seconds:
             sleep(throttle_seconds)
         return response
+
+    raise AssertionError("unreachable")
+
+
+def download_with_retry(
+    url: str,
+    dest: Path,
+    *,
+    timeout: int = 600,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
+    chunk_bytes: int = 1 << 20,
+    label: str | None = None,
+    sleep=None,
+) -> Path:
+    """Stream a large file to `dest`, retrying the WHOLE transfer.
+
+    THE FAULT THIS EXISTS FOR (#1063): a 600-second read timeout against
+    download.geofabrik.de, ten minutes into a 3.5 GB state extract, which
+    ended a production publish at step 15 of 39 with nothing uploaded
+    (run 33005545820). Being precise about where it landed, because it
+    decides how much of this function is measurement and how much is
+    design: the traceback carries no `iter_content` frame - it came out of
+    `requests.get` itself, via `adapters.send`. So that ONE failure would
+    have been survived by retrying the request alone.
+
+    WHY THE RETRY UNIT IS THE TRANSFER ANYWAY, which is the part that is
+    reasoned rather than measured. `request_with_retry` has no streaming
+    path at all - it reads the whole body into memory, which 3.5 GB may not
+    do - and a streamed body can also fault mid-iteration, minutes after
+    the headers arrived, where a request-only retry has already returned
+    and cannot help. Retrying the whole transfer covers both, and the only
+    thing it costs is re-pulling bytes that had already landed. The
+    mid-body case is tested rather than assumed; see
+    tests/test_http_retry.py.
+
+    NO RANGE RESUME, which is the obvious next thought and is deliberately
+    not here. Resuming would turn a retry from "re-pull this file" into
+    "finish this file", and it depends on the server honouring `Range` AND
+    on noticing when it silently does not - a server that ignores the header
+    and replays from byte zero appends a second copy onto the first, and the
+    result is a corrupt archive that looks like a complete one. A slow retry
+    is a worse trade than a fast one and a better trade than that. What
+    would settle it: a `HEAD` establishing `Accept-Ranges`, plus a length
+    check against `Content-Length` before the rename.
+
+    `dest` IS NEVER HALF-WRITTEN. Bytes land in a sibling `.part` and are
+    renamed into place only once the body is complete, so a caller's
+    `dest.exists()` skip - which is how fetch_states avoids re-pulling the
+    states it already has - can never be satisfied by a truncated file. The
+    `.part` is removed on the way out whether or not the transfer worked,
+    which the hand-written loop this replaces did not do.
+    """
+    if sleep is None:
+        sleep = time.sleep
+    attempts = len(backoff) + 1
+    name = label or url
+    part = dest.with_name(dest.name + ".part")
+
+    try:
+        for attempt, delay in enumerate((*backoff, None)):
+            try:
+                with requests.get(url, stream=True, timeout=timeout) as response:
+                    if response.status_code in retryable_statuses and delay is not None:
+                        wait = retry_after_seconds(response) or delay
+                        print(
+                            f"  {name} answered {response.status_code} on attempt {attempt + 1}/{attempts}, retrying in {wait}s"
+                        )
+                        sleep(wait)
+                        continue
+                    response.raise_for_status()
+                    # Truncates rather than appends, so a retry after a
+                    # part-written attempt starts from an empty file.
+                    with open(part, "wb") as handle:
+                        for chunk in response.iter_content(chunk_size=chunk_bytes):
+                            handle.write(chunk)
+            except TRANSIENT_EXCEPTIONS as error:
+                if delay is None:
+                    raise
+                print(f"  {name}: {type(error).__name__} on attempt {attempt + 1}/{attempts}, retrying in {delay}s")
+                sleep(delay)
+                continue
+
+            part.replace(dest)
+            return dest
+    finally:
+        part.unlink(missing_ok=True)
 
     raise AssertionError("unreachable")

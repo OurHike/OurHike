@@ -40,11 +40,11 @@ import subprocess
 from pathlib import Path
 
 import duckdb
-import requests
 from pmtiles.reader import all_tiles
 from shapely.geometry import shape
 
 from lib.corridor import build_corridor
+from lib.http_retry import download_with_retry
 from lib.poly import clip_shape, to_poly
 
 ROOT = Path(__file__).parent
@@ -90,7 +90,24 @@ def state_urls(states: list[str]) -> list[tuple[str, str]]:
 
 def fetch_states(states: list[str], dest_dir: Path, refetch: bool = False) -> list[Path]:
     """Download each state's PBF into dest_dir, skipping files already present
-    unless refetch. Returns the local paths in the order given."""
+    unless refetch. Returns the local paths in the order given.
+
+    RETRIED, BECAUSE THIS IS THE STEP THAT KILLS PUBLISHES (#1063). It used
+    to be a bare `requests.get(url, stream=True, timeout=600)` with no
+    retry of any kind, and on 2026-08-26 a single read timeout against
+    Geofabrik - ten minutes into a 3.5 GB pull - ended a production publish
+    at step 15 of 39, taking the junction graph and every export after it
+    down with it. Nothing was uploaded. That is #536's failure exactly, in
+    the one fetcher lib/http_retry.py had not reached.
+
+    THE RETRY UNIT IS ONE STATE, which is what makes this cheap enough to be
+    the whole fix. `dest.exists()` above skips a state already pulled, so a
+    retry re-pulls the file that flaked and not the other thirteen - the
+    same argument fetch_topo_quads.py makes for persisting each quad as it
+    lands. Worth knowing that this holds WITHIN a run and not across one:
+    OSM_RAW_DIR is not in publish-vector-data.yml's FETCH_OUTPUTS, so a
+    fresh runner starts cold whatever happened last time.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for state, url in state_urls(states):
@@ -100,13 +117,7 @@ def fetch_states(states: list[str], dest_dir: Path, refetch: bool = False) -> li
             print(f"  {state}: already present ({dest.stat().st_size / 1e6:.0f} MB), skipping")
             continue
         print(f"  {state}: fetching {url}")
-        with requests.get(url, stream=True, timeout=600) as resp:
-            resp.raise_for_status()
-            tmp = dest.with_suffix(".part")
-            with open(tmp, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1 << 20):
-                    f.write(chunk)
-            tmp.rename(dest)
+        download_with_retry(url, dest, timeout=600, label=state)
         print(f"  {state}: {dest.stat().st_size / 1e6:.0f} MB")
     return paths
 

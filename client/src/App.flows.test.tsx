@@ -1135,13 +1135,11 @@ describe('resuming an interrupted download', () => {
   })
 })
 
-// WIREFRAMES.md §1.3 and §1.4. Both components were built, tested and accepted
-// by MapScreen as optional props long before anything downloaded a profile to
-// pass them, so they could never appear on any device in any state. What is
-// worth testing here is the wiring and the three conditions it is gated on -
-// not the drawing, which ElevationRibbon.test.tsx and WaypointLanes.test.tsx
-// already cover.
-describe('the elevation ribbon and the waypoint lanes', () => {
+// WIREFRAMES.md §1.3, and the next-up rail that replaced §1.4's lanes
+// (#1054). What is worth testing here is the wiring and the conditions it is
+// gated on - not the drawing, which ElevationRibbon.test.tsx and
+// NextUpRail.test.tsx already cover.
+describe('the elevation ribbon and the next-up rail', () => {
   /** Flat to mile 8, a 1,000 ft climb to mile 10, back down by mile 12, flat
    *  to the end of the synthetic centerline. */
   function profileWithAClimb() {
@@ -1184,7 +1182,7 @@ describe('the elevation ribbon and the waypoint lanes', () => {
     await waitFor(() => expect(ribbon()).toBeInTheDocument())
   })
 
-  it('draws the three waypoint lanes beside it', async () => {
+  it('draws the rail of coming waypoints beside it', async () => {
     hikerOnTrail()
     store.set(ELEVATION_STORE_KEY, profileWithAClimb())
     render(<App />)
@@ -1193,12 +1191,12 @@ describe('the elevation ribbon and the waypoint lanes', () => {
 
     await reportFix()
 
-    await waitFor(() => expect(screen.getByTestId('lane-water')).toBeInTheDocument())
-    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
-    expect(screen.getByTestId('lane-else')).toBeInTheDocument()
+    // One fix, no direction yet: the rail may not claim NEXT UP, and says
+    // the honest word instead (chrome/NextUpRail.tsx).
+    await waitFor(() => expect(screen.getByText('NEARBY')).toBeInTheDocument())
   })
 
-  it('puts a POI the index can place into its lane', async () => {
+  it('puts a POI the index can place onto a card that opens it', async () => {
     // The shelter sits at mile 5 on the synthetic centerline, inside the window
     // around a hiker standing at mile 5.
     hikerOnTrail()
@@ -1211,7 +1209,7 @@ describe('the elevation ribbon and the waypoint lanes', () => {
 
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getByRole('button'),
+        screen.getByRole('button', { name: /chairback gap lean-to/i }),
       ).toBeInTheDocument(),
     )
   })
@@ -1227,7 +1225,7 @@ describe('the elevation ribbon and the waypoint lanes', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     expect(ribbon()).not.toBeInTheDocument()
-    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+    expect(screen.queryByText('NEARBY')).not.toBeInTheDocument()
   })
 
   it('shows nothing when the release published no profile', async () => {
@@ -1242,7 +1240,7 @@ describe('the elevation ribbon and the waypoint lanes', () => {
 
     await screen.findByText(/mi 5\./)
     expect(ribbon()).not.toBeInTheDocument()
-    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+    expect(screen.queryByText('NEARBY')).not.toBeInTheDocument()
   })
 
   it('waits for the direction before captioning a climb', async () => {

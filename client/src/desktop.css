@@ -168,52 +168,17 @@
      it is its own decision with its own thumb-zone stakes, not something to
      smuggle in with the desktop's. */
 
-  .map-screen .status-strip {
-    background: var(--bg-chrome);
-    color: var(--fg-chrome-3);
-  }
-
-  /* The light theme's --danger is blaze-orange-dark: 2.2:1 on pine, a
-     closure flag nobody sees. The on-chrome danger is the one the dark theme
-     already uses for the same job. */
-  .map-screen .status-strip__flag {
-    color: var(--danger-on-chrome);
-  }
-
-  .map-screen .map-header {
-    background: var(--bg-chrome);
-    border-bottom-color: var(--border-chrome);
-  }
-
-  .map-screen .map-header__eyebrow {
-    color: var(--fg-chrome-2);
-  }
-
-  .map-screen .map-header__position {
-    color: var(--fg-chrome-1);
-  }
-
-  /* chrome.css fills these with --bg-surface - the brightest possible square
-     on the darkest surface in the app. An outline drawn from the chrome's own
-     foreground holds its shape on pine and on ink alike. */
-  .map-screen .map-header__button {
-    color: var(--fg-chrome-2);
-    background: transparent;
-    border-color: color-mix(in srgb, var(--fg-chrome-2) 40%, transparent);
-  }
-
-  .map-screen .map-header__button:hover {
-    background: color-mix(in srgb, var(--fg-chrome-1) 10%, transparent);
-    color: var(--fg-chrome-1);
-  }
+  /* The identity band this section used to repaint pine is the floating
+     plate now (#1054, chrome.css) - already the chrome colour at every
+     width, buttons already white cards over the map. What remains desktop's
+     to restyle here is nothing; the sidebar rules above still are. */
 
   /* The global focus ring at the bottom of this file is --brand-primary:
      forest on pine is 1.9:1, a ring that cannot be seen on exactly the
      surfaces this section darkens. Outline colour only - width, offset and
      everywhere else on the page stay the global rule's. */
   .app__screen > .tab-bar :focus-visible,
-  .map-screen > .tab-bar :focus-visible,
-  .map-screen .map-header :focus-visible {
+  .map-screen > .tab-bar :focus-visible {
     outline-color: var(--fg-chrome-1);
   }
 

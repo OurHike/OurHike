@@ -1,10 +1,20 @@
-// The map screen's header - a read-only zone (WIREFRAMES.md §2).
+// The map's identity plate and its two icon buttons - a read-only zone,
+// floating since #1054.
 //
-// Trail + state eyebrow, current mile + direction in mono, and on the right
-// exactly two icon buttons: legend, then search. WIREFRAMES.md's words are
-// "Nothing else lives here." That is worth honouring literally: this is the
-// most valuable strip on the screen and the obvious place for scope to creep,
-// so the component takes no children and exposes no slot.
+// This used to be a band across the top of the screen (WIREFRAMES.md §2);
+// the redesign gives the map the whole viewport and floats only what must be
+// legible at a glance: trail + state, the mile, and the strip of flags where
+// the map admits what it doesn't know. WIREFRAMES.md's words were "Nothing
+// else lives here," and that is still honoured literally in the new shape -
+// the plate takes exactly one slot, typed to one thing, and the reasoning
+// for THAT is below rather than gone.
+//
+// Two absolutely-positioned pieces, one component: the plate top-left, the
+// legend and search buttons top-right. They render inside the map canvas so
+// the .map-screen--entering rules hide them structurally during first run,
+// the way every other canvas overlay is hidden (chrome.css).
+
+import type { ReactNode } from 'react'
 
 export type HikeDirection = 'NOBO' | 'SOBO'
 
@@ -31,6 +41,16 @@ export interface HeaderProps {
    * mile goes is the same silence with better manners.
    */
   position: string
+  /**
+   * The status strip, rendered into the plate - the ONE slot this component
+   * has, and it is typed by intent rather than left open: the strip is the
+   * single owner of the flag logic and its suppression rules
+   * (chrome/StatusStrip.tsx), moving it here is #1054's change, and dropping
+   * any flag it renders is the regression that strip exists to prevent. This
+   * is not an invitation to hang other chrome off the plate - the old "takes
+   * no children and exposes no slot" rule survives as "takes exactly this".
+   */
+  strip: ReactNode
   onOpenLegend: () => void
   onOpenSearch: () => void
 }
@@ -40,27 +60,31 @@ export function Header({
   trailLogo,
   state,
   position,
+  strip,
   onOpenLegend,
   onOpenSearch,
 }: HeaderProps) {
   return (
-    <header className="map-header">
-      <div className="map-header__identity">
-        {trailLogo !== undefined && (
-          <img
-            className="map-header__trail-logo"
-            src={trailLogo}
-            alt=""
-            aria-hidden="true"
-          />
-        )}
-        <div className="map-header__read">
-          <p className="map-header__eyebrow">
-            {state === undefined ? trailName : `${trailName} · ${state}`}
-          </p>
-          <p className="map-header__position">{position}</p>
+    <>
+      <header className="map-plate">
+        <div className="map-plate__identity">
+          {trailLogo !== undefined && (
+            <img
+              className="map-plate__trail-logo"
+              src={trailLogo}
+              alt=""
+              aria-hidden="true"
+            />
+          )}
+          <div className="map-plate__read">
+            <p className="map-plate__eyebrow">
+              {state === undefined ? trailName : `${trailName} · ${state}`}
+            </p>
+            <p className="map-plate__position">{position}</p>
+          </div>
         </div>
-      </div>
+        {strip}
+      </header>
 
       <div className="map-header__actions">
         {/* --legend so the desktop layout can hide it: at that width the
@@ -104,6 +128,6 @@ export function Header({
           </svg>
         </button>
       </div>
-    </header>
+    </>
   )
 }

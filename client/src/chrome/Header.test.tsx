@@ -3,11 +3,12 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Header } from './Header'
 
-// WIREFRAMES.md, map screen §2 - the header is a READ-ONLY zone. Trail + state
-// eyebrow, current mile + direction in mono, and on the right exactly two 38px
-// icon buttons: legend then search. The doc's words are "Nothing else lives
-// here," which is a real constraint worth a regression test - the header is
-// prime screen space and the obvious place for scope to creep.
+// The floating identity plate (#1054), still a READ-ONLY zone: trail + state
+// eyebrow, current mile + direction in mono, the status strip in its one
+// typed slot, and exactly two 38px icon buttons - legend then search.
+// WIREFRAMES.md's words were "Nothing else lives here," and the constraint
+// survives the shape change - the plate is prime screen space and the
+// obvious place for scope to creep.
 
 const PROPS = {
   trailName: 'Appalachian Trail',
@@ -16,6 +17,9 @@ const PROPS = {
   // of eight situations it is saying it about, is lib/positionLine.ts's job
   // and is tested there. What is left here is that the header renders it.
   position: 'mi 1,407.2 · NOBO',
+  // The slot is typed to the status strip; a marker is enough to assert the
+  // plate renders what it is handed, and StatusStrip.test.tsx owns the rest.
+  strip: <span data-testid="strip-stand-in" />,
   onOpenLegend: vi.fn(),
   onOpenSearch: vi.fn(),
 }
@@ -52,16 +56,22 @@ describe('Header', () => {
     expect(screen.queryByText(/Looking for GPS/)).not.toBeInTheDocument()
   })
 
+  it('renders the strip into its one typed slot', () => {
+    render(<Header {...PROPS} />)
+
+    expect(screen.getByTestId('strip-stand-in')).toBeInTheDocument()
+  })
+
   it('has no trail logo when none is given', () => {
     const { container } = render(<Header {...PROPS} />)
 
-    expect(container.querySelector('.map-header__trail-logo')).toBeNull()
+    expect(container.querySelector('.map-plate__trail-logo')).toBeNull()
   })
 
   it("renders the trail's own mark to the left of its name when one is given", () => {
     const { container } = render(<Header {...PROPS} trailLogo="/at-logo.svg" />)
 
-    const logo = container.querySelector('.map-header__trail-logo')
+    const logo = container.querySelector('.map-plate__trail-logo')
     expect(logo).toHaveAttribute('src', '/at-logo.svg')
     // Decorative - the eyebrow text already names the trail in words.
     expect(logo).toHaveAttribute('alt', '')

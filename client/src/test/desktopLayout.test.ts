@@ -190,9 +190,11 @@ describe('desktop layout contract', () => {
     // themeTokens.test.ts is what keeps base palette names out of this file,
     // and this is what keeps these rules from quietly going back to
     // --bg-surface, which would put the white sidebar back.
+    // The status strip and the identity band left this file with #1054: they
+    // render inside the floating plate now (chrome.css's .map-plate), which
+    // reads the chrome aliases at every width - so the sidebar is what is
+    // left here to hold to them.
     expect(declarationsOf('.map-screen > .tab-bar')).toMatch(/var\(--bg-chrome\)/)
-    expect(declarationsOf('.map-screen .status-strip')).toMatch(/var\(--bg-chrome\)/)
-    expect(declarationsOf('.map-screen .map-header')).toMatch(/var\(--bg-chrome\)/)
     expect(
       declarationsOf(".map-screen > .tab-bar .tab-bar__tab[aria-selected='true']"),
     ).toMatch(/var\(--accent-chrome\)/)
@@ -201,9 +203,10 @@ describe('desktop layout contract', () => {
   it('restates the focus ring on the chrome, where the global ring is invisible', () => {
     // The unguarded rule at the foot of desktop.css draws --brand-primary
     // rings: forest on pine is 1.9:1. The chrome zones restate the colour -
-    // and only the colour - in their own foreground. Guarded like every other
-    // rule that mentions the chrome; test one above already proves that.
-    expect(css).toMatch(/\.map-header :focus-visible/)
+    // and only the colour - in their own foreground. The plate needs no
+    // restatement since #1054: it holds nothing focusable (the two icon
+    // buttons float beside it on white cards, where the global ring reads).
+    expect(css).toMatch(/\.tab-bar :focus-visible/)
     expect(css).toMatch(/outline-color: var\(--fg-chrome-1\)/)
   })
 })

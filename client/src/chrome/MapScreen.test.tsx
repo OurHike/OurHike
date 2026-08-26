@@ -182,11 +182,22 @@ describe('MapScreen', () => {
     expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })
 
-  it('slots the elevation ribbon and waypoint lanes above the canvas', () => {
-    render(<MapScreen {...PROPS} />)
+  it('slots the ribbon and the next-up cards into the rail below the canvas', () => {
+    render(<MapScreen {...PROPS} direction="NOBO" />)
 
     expect(screen.getByRole('img', { name: /elevation profile/i })).toBeInTheDocument()
-    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    // The lanes became cards (#1054): same window, same tap-through to the
+    // waypoint card, walked as a list instead of plotted by percentage.
+    expect(screen.getByText('NEXT UP')).toBeInTheDocument()
+  })
+
+  it('will not claim NEXT UP while the direction is unsettled', () => {
+    // The ribbon's own subject honesty, one surface over: "next up" is a
+    // claim about which way somebody is walking (chrome/NextUpRail.tsx).
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.getByText('NEARBY')).toBeInTheDocument()
+    expect(screen.queryByText('NEXT UP')).not.toBeInTheDocument()
   })
 
   // #619. One preference, one prop, two consumers. The failure this guards is
@@ -1077,13 +1088,13 @@ describe('the desktop chart (#135)', () => {
     }
   })
 
-  it('keeps the phone exactly as it was: ribbon and lanes, no chart', () => {
-    render(<MapScreen {...PROPS} chart={chartProps()} />)
+  it('keeps the phone on the rail: ribbon and cards, no chart', () => {
+    render(<MapScreen {...PROPS} direction="NOBO" chart={chartProps()} />)
 
     expect(
       screen.getByRole('img', { name: 'Elevation profile ahead' }),
     ).toBeInTheDocument()
-    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    expect(screen.getByText('NEXT UP')).toBeInTheDocument()
     expect(screen.queryByTestId('elevation-chart')).not.toBeInTheDocument()
   })
 

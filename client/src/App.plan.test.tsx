@@ -123,7 +123,12 @@ describe('the planning flow', () => {
     const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
     expect(picker).toBeInTheDocument()
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
 
     // The start field carries the PIPELINE mile the plan will run on.
     expect(await screen.findByText('Front Shelter')).toBeInTheDocument()
@@ -971,10 +976,19 @@ describe('the ribbon while a trip is being planned', () => {
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    // Scoped to the picker: the next-up rail can hold a card named for the
+    // same shelter (#1054), and the click means the dialog's row.
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
 
-    // Front Shelter (3.2) to the resolved end, Beyond Shelter (22.2).
-    expect(await screen.findByText('Beyond Shelter')).toBeInTheDocument()
+    // Front Shelter (3.2) to the resolved end, Beyond Shelter (22.2). The
+    // rail names the same shelter on a card (#1054), so the assertion aims
+    // at the entrance's own row.
+    expect(await screen.findAllByText('Beyond Shelter')).not.toHaveLength(0)
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
 
     // Nothing on it claims anything about a hiker: there is no fix in this
@@ -997,9 +1011,9 @@ describe('the ribbon while a trip is being planned', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await app.reportFixAtMile(5)
 
-    // The field instrument first: ten miles around the fix, with its lanes.
+    // The field instrument first: ten miles around the fix, with its rail.
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
-    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    expect(screen.getByTestId('next-up-cards')).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
@@ -1008,9 +1022,14 @@ describe('the ribbon while a trip is being planned', () => {
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
 
-    // The swap. The lanes are re-windowed onto the planned stretch rather than
+    // The swap. The rail is re-windowed onto the planned stretch rather than
     // dropped (#913) - and onto the PIPELINE's axis, which is what the count
     // proves: Front Shelter (3.2) to Beyond Shelter (22.2) holds all four,
     // where reading the client index's own miles would put the 3.0 that starts
@@ -1019,15 +1038,15 @@ describe('the ribbon while a trip is being planned', () => {
     expect(fixRibbon()).not.toBeInTheDocument()
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+        within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
       ).toHaveLength(4),
     )
 
-    // And the first of them sits exactly at the ribbon's left edge, because
-    // the stretch starts at that shelter's published mile.
+    // Walked in the stretch's own order, so the first card is the shelter
+    // the stretch starts at.
     expect(
-      within(screen.getByTestId('lane-sleep')).getAllByRole('button')[0],
-    ).toHaveStyle({ left: '0%' })
+      within(screen.getByTestId('next-up-cards')).getAllByRole('button')[0],
+    ).toHaveAccessibleName(/front shelter/i)
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
 
@@ -1035,7 +1054,7 @@ describe('the ribbon while a trip is being planned', () => {
     expect(planRibbon()).not.toBeInTheDocument()
     // Back to the ten miles around the fix, which hold fewer of them.
     expect(
-      within(screen.getByTestId('lane-sleep')).getAllByRole('button').length,
+      within(screen.getByTestId('next-up-cards')).getAllByRole('button').length,
     ).toBeLessThan(4)
   })
 
@@ -1054,10 +1073,10 @@ describe('the ribbon while a trip is being planned', () => {
     await app.reportFixAtMile(5)
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
     // One shelter is inside the ten-mile fix window; the pan below puts four
-    // on screen, which is what makes the lane counts tell the domains apart.
-    expect(within(screen.getByTestId('lane-sleep')).getAllByRole('button')).toHaveLength(
-      1,
-    )
+    // on screen, which is what makes the card counts tell the domains apart.
+    expect(
+      within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
+    ).toHaveLength(1)
 
     const map = MockMap.live[0]
 
@@ -1084,11 +1103,11 @@ describe('the ribbon while a trip is being planned', () => {
     })
     expect(mapRibbon).toBeInTheDocument()
     expect(fixRibbon()).not.toBeInTheDocument()
-    // The lanes go where the ribbon goes (#913): the mapped stretch holds all
-    // four shelters, where the fix window held one.
+    // The rail goes where the ribbon goes (#913): the mapped stretch holds
+    // all four shelters, where the fix window held one.
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+        within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
       ).toHaveLength(4),
     )
 
@@ -1097,7 +1116,7 @@ describe('the ribbon while a trip is being planned', () => {
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+        within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
       ).toHaveLength(1),
     )
   })
@@ -1129,7 +1148,12 @@ describe('the ribbon while a trip is being planned', () => {
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
 
     const before = MockMap.live[0].cameraMoves.length

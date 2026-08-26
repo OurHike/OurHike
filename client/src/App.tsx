@@ -4844,6 +4844,10 @@ function App() {
           // Computed above the tab branches since #1054, because the Today
           // header reads the same line.
           position={position}
+          // As data too, for the next-up rail's heading: "NEXT UP" is a
+          // direction claim and the rail refuses to make it unsettled
+          // (chrome/NextUpRail.tsx).
+          direction={direction?.direction}
           // Which also decides whether the map offers its locate control -
           // attaching it regardless was a second high-accuracy watch and a
           // permission prompt behind this preference's back.

@@ -7,6 +7,22 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { RouteStopsPanel, type RouteLegDisplay } from './RouteStopsPanel'
+import { formatNaismithMinutes } from '../lib/naismith'
+import type { PaceEstimate } from '../lib/pace'
+
+/**
+ * An estimate at the standard pace: the figure, and no baseline.
+ *
+ * This panel is pure display - it prints `text` and `relativeLine` and derives
+ * neither - so a fixture states them rather than pricing a profile. `text` goes
+ * through the real formatter so the assertions below stay pinned to Naismith's
+ * own ≈ and five-minute step rather than to a string typed out here.
+ */
+const at = (minutes: number): PaceEstimate => ({
+  minutes,
+  text: formatNaismithMinutes(minutes),
+  relativeLine: null,
+})
 
 const STOPS = [
   { mile: 470.8, name: 'Damascus' },
@@ -15,13 +31,14 @@ const STOPS = [
 ]
 
 const LEGS: RouteLegDisplay[] = [
-  { distanceMi: 19.6, ascentFt: 4200, descentFt: 2900, minutes: 800 },
-  { distanceMi: 12.9, ascentFt: 2300, descentFt: 2500, minutes: 470 },
+  { distanceMi: 19.6, ascentFt: 4200, descentFt: 2900, estimate: at(800) },
+  { distanceMi: 12.9, ascentFt: 2300, descentFt: 2500, estimate: at(470) },
 ]
 
 const PROPS = {
   stops: STOPS,
   legs: LEGS,
+  total: at(1270),
   direction: 'NOBO' as const,
   units: 'imperial' as const,
   onEditStop: vi.fn(),
@@ -74,9 +91,9 @@ describe('the editable route', () => {
       ...leg,
       ascentFt: null,
       descentFt: null,
-      minutes: null,
+      estimate: null,
     }))
-    render(<RouteStopsPanel {...PROPS} legs={bare} />)
+    render(<RouteStopsPanel {...PROPS} legs={bare} total={null} />)
 
     expect(screen.getByText('NOBO · 32.5 mi')).toBeInTheDocument()
     expect(screen.getByText('19.6 mi')).toBeInTheDocument()
@@ -92,9 +109,9 @@ describe('the editable route', () => {
       ...leg,
       ascentFt: null,
       descentFt: null,
-      minutes: null,
+      estimate: null,
     }))
-    render(<RouteStopsPanel {...PROPS} legs={bare} unpriced="unmeasured" />)
+    render(<RouteStopsPanel {...PROPS} legs={bare} total={null} unpriced="unmeasured" />)
 
     expect(screen.getByText(/no elevation measured/)).toBeInTheDocument()
     expect(screen.queryByText(/No elevation profile in this download/)).toBeNull()

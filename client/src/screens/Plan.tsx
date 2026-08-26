@@ -32,7 +32,6 @@ import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
 import type { DayHike } from '../lib/dayHikes'
 import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
 import type { TripGroup } from '../lib/tripGroups'
-import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
   foodCarries,
@@ -53,12 +52,12 @@ import {
   stopLabel,
   tripRowHeight,
 } from '../lib/planDisplay'
-import { legFigures, type LegFigures } from '../lib/route'
+import { legFigures, priceLeg, type PricedLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
-import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
@@ -260,15 +259,21 @@ export function PlanScreen({
   // One figures pass for every walking day - heights, terrain and labels all
   // read from it, so they cannot disagree about what a day costs.
   const figures = useMemo(() => {
-    const byIndex = new Map<number, LegFigures>()
+    const byIndex = new Map<number, PricedLeg>()
     if (elevation === null) return byIndex
     for (const day of views) {
       if (!day.zero) {
-        byIndex.set(day.index, legFigures(elevation, day.start.mile, day.end.mile, pace))
+        const walked = legFigures(elevation, day.start.mile, day.end.mile, pace)
+        // The printed time and its baseline together (#851/#1040): a hiker
+        // who moved the pace control sees what they moved it from, and one
+        // who has not sees nothing extra - `paceEstimate` returns no line at
+        // standard pace. The timeline printed the adjusted figure naked for
+        // as long as the guard meant to catch that was skipping every file.
+        byIndex.set(day.index, priceLeg(walked, pace))
       }
     }
     return byIndex
-  }, [views, elevation])
+  }, [views, elevation, pace])
 
   // What the cascade can honestly offer. A walking-hours target on a
   // download with no profile cannot price a shift, so it is not offered -
@@ -866,7 +871,7 @@ function finishLabel(views: PlanDayView[]): string | null {
  */
 function sectionAscent(
   section: PlanSection,
-  figures: Map<number, LegFigures>,
+  figures: Map<number, PricedLeg>,
 ): number | null {
   let total = 0
   for (const day of section.days) {
@@ -888,7 +893,7 @@ function targetLabel(plan: HikePlan, units: UnitSystem): string {
 
 interface DayRowProps {
   day: PlanDayView
-  figures: LegFigures | undefined
+  figures: PricedLeg | undefined
   /** Days of food out of this row's resupply stop, or null when the row is
    *  not a resupply (or the plan ends here). */
   carryOut: number | null
@@ -1005,8 +1010,12 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
         <span className="plan__day-bottom">
           {figures !== undefined && figures.unmeasuredMi === 0 && (
             <span className="plan__day-figure">
-              {formatNaismithMinutes(figures.minutes)} ·{' '}
-              {formatElevation(figures.ascentFt, units)} ↑
+              {figures.estimate.text} · {formatElevation(figures.ascentFt, units)} ↑
+            </span>
+          )}
+          {figures?.estimate.relativeLine != null && figures.unmeasuredMi === 0 && (
+            <span className="plan__day-figure plan__day-figure--baseline">
+              {figures.estimate.relativeLine}
             </span>
           )}
           {/* A hole in the DEM prices as flat ground, so the climb and the
@@ -1220,13 +1229,12 @@ function CallItADaySheet({
   const describe = (end: CalledEnd) => {
     const distanceMi = Math.abs(end.mile - day.start.mile)
     if (elevation === null) return formatDistance(distanceMi, units)
-    const figures = legFigures(elevation, day.start.mile, end.mile, pace)
-    // paceEstimate rather than formatting these minutes by hand. They are
+    // priceLeg rather than formatting these minutes by hand. They are
     // pace-adjusted, so this line owes its baseline (#851) - and formatting
     // them directly is the one bypass test/paceBaseline.test.ts exists to
     // catch, which is how this call site was found.
-    const estimate = paceEstimate(
-      { distanceMi: figures.distanceMi, ascentFt: figures.ascentFt },
+    const { estimate } = priceLeg(
+      legFigures(elevation, day.start.mile, end.mile, pace),
       pace,
     )
     const shown = `${formatDistance(distanceMi, units)} · ${estimate.text}`

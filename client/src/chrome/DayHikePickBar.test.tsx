@@ -20,6 +20,18 @@ import { OFF_NETWORK_REFUSAL, type DayHikeDraft } from '../lib/dayHikeDraft'
 import type { DraftStatus } from '../lib/dayHikeDraft'
 import type { GraphRoute } from '../lib/trailGraph'
 import { DayHikePickBar, walkingTime } from './DayHikePickBar'
+import { paceEstimate, STANDARD_PACE, type PaceProfile } from '../lib/pace'
+
+/**
+ * An estimate for a walk that takes `minutes` at the standard pace.
+ *
+ * Priced through paceEstimate rather than written out, so what these tests
+ * pin is the real formatter's ≈ and five-minute step. The distance is a
+ * flat-ground one: at the standard 5 km/h it is exactly the minutes asked
+ * for, and no ascent means no second term to reason about.
+ */
+const flatWalk = (minutes: number, pace: PaceProfile = STANDARD_PACE) =>
+  paceEstimate({ distanceMi: (minutes / 60) * (5 / 1.609344), ascentFt: 0 }, pace)
 
 afterEach(() => {
   cleanup()
@@ -76,7 +88,7 @@ function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}
     status: { kind: 'routed', route: ROUTE } as DraftStatus,
     units: 'imperial' as const,
     orgLabel,
-    walkingMinutes: 135,
+    walking: flatWalk(135),
     onUndo: vi.fn(),
     onCloseLoop: vi.fn(),
     onDone: vi.fn(),
@@ -105,7 +117,7 @@ describe('the running total', () => {
   it('says nothing about time at all when nothing can price the climb', () => {
     // No elevation profile means no honest Naismith figure. Omitting it beats
     // printing a number that prices every climb at zero.
-    renderBar({ walkingMinutes: null })
+    renderBar({ walking: null })
 
     expect(screen.queryByText(/walking/)).not.toBeInTheDocument()
     expect(screen.getByText(/3 legs/)).toBeInTheDocument()
@@ -244,24 +256,36 @@ describe('what it must never print', () => {
 
 describe('walkingTime', () => {
   it('rounds to five minutes', () => {
-    expect(walkingTime(133)).toBe('≈2h 15m walking')
-    expect(walkingTime(137)).toBe('≈2h 15m walking')
-    // Delegates to lib/naismith.ts's formatNaismithMinutes, so the two
-    // builders cannot round or print the same minutes differently.
-    expect(walkingTime(63)).toBe('≈1h 5m walking')
+    expect(walkingTime(flatWalk(133))).toBe('≈2h 15m walking')
+    expect(walkingTime(flatWalk(137))).toBe('≈2h 15m walking')
+    // Delegates to lib/naismith.ts's formatNaismithMinutes through
+    // paceEstimate, so the two builders cannot round or print the same
+    // minutes differently.
+    expect(walkingTime(flatWalk(63))).toBe('≈1h 5m walking')
   })
 
   it('drops the hour when there is not one', () => {
-    expect(walkingTime(43)).toBe('≈45m walking')
+    expect(walkingTime(flatWalk(43))).toBe('≈45m walking')
   })
 
   it('drops the minutes when they round away', () => {
-    expect(walkingTime(119)).toBe('≈2h walking')
+    expect(walkingTime(flatWalk(119))).toBe('≈2h walking')
   })
 
   it('has nothing to say about a duration nothing computed', () => {
     expect(walkingTime(null)).toBeNull()
-    expect(walkingTime(0)).toBeNull()
-    expect(walkingTime(Number.NaN)).toBeNull()
+    expect(walkingTime({ minutes: 0, text: '', relativeLine: null })).toBeNull()
+    expect(walkingTime({ minutes: Number.NaN, text: '', relativeLine: null })).toBeNull()
+  })
+
+  // The half this bar did not have (#1040). It priced with naismithMinutes,
+  // so a hiker's own pace moved every A.T. screen and left this one alone.
+  it("prints the hiker's own pace, and says what it was adjusted from", () => {
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2 }
+    const walk = flatWalk(120, slow)
+
+    // 120 standard minutes of flat ground at 2 mph rather than 3.107.
+    expect(walkingTime(walk)).toBe('≈3h 5m walking')
+    expect(walk.relativeLine).toBe('was ≈2h · 1.6× standard')
   })
 })

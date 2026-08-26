@@ -40,9 +40,11 @@ import {
   insertRoutePoint,
   legFigures,
   mileAtWalkingMinutes,
+  priceLeg,
   restretchStops,
   routeDirection,
   routeLegs,
+  totalFigures,
   type MileAnchor,
 } from '../lib/route'
 import { DEFAULT_WALKING_HOURS, nearestStopBeyond } from '../lib/dayPlanner'
@@ -566,18 +568,47 @@ export function useRouteBuilderPanel({
     }: {
       from: { mile: number }
       to: { mile: number }
-    }) => ({
+    }): RouteLegDisplay => ({
       distanceMi: Math.abs(to.mile - from.mile),
       ascentFt: null,
       descentFt: null,
-      minutes: null,
+      estimate: null,
     })
-    return routeLegs(routeDraft.stops).map((leg) => {
+    return routeLegs(routeDraft.stops).map((leg): RouteLegDisplay => {
       if (elevation === null) return unpriced(leg)
       const figures = legFigures(elevation, leg.from.mile, leg.to.mile, pace)
-      return figures.unmeasuredMi > 0 ? unpriced(leg) : figures
+      if (figures.unmeasuredMi > 0) return unpriced(leg)
+      // priceLeg, so the panel gets the ≈time and the line saying what it was
+      // adjusted from in one object (#851/#1040). This used to hand over raw
+      // `minutes` and the panel formatted them naked, which is the bypass
+      // test/paceBaseline.test.ts exists to catch and was not catching.
+      return { ...figures, estimate: priceLeg(figures, pace).estimate }
     })
   }, [routeDraft, elevation, pace])
+
+  /**
+   * The whole route's time, priced ONCE from the summed terms.
+   *
+   * Not a sum of the legs' printed strings, and not a sum of their minutes
+   * either: the baseline needs the standard time for the whole route, which
+   * only exists if the standard rule is applied to the total. `paceMinutes`
+   * is linear in all three terms, so this is exactly the sum of the legs'
+   * unrounded minutes - the two cannot drift.
+   *
+   * Null when any leg is unpriced, for the panel's own reason: a total summed
+   * around a missing leg is a whole-route figure that omits part of the route.
+   */
+  const routeTotal = useMemo(() => {
+    if (routeLegDisplays.length === 0) return null
+    if (routeDraft === null || routeDraft.phase !== 'editor' || elevation === null) {
+      return null
+    }
+    if (routeLegDisplays.some((leg) => leg.estimate === null)) return null
+    const legs = routeLegs(routeDraft.stops).map((leg) =>
+      legFigures(elevation, leg.from.mile, leg.to.mile, pace),
+    )
+    return priceLeg(totalFigures(legs), pace).estimate
+  }, [routeLegDisplays, routeDraft, elevation, pace])
 
   // Opening the builder is a map act: it lands on the trail tab with
   // everything else closed - the same one-thing-open-at-a-time rule the
@@ -974,6 +1005,7 @@ export function useRouteBuilderPanel({
         <RouteStopsPanel
           stops={routeDraft.stops}
           legs={routeLegDisplays}
+          total={routeTotal}
           direction={routeDirection(routeDraft.stops)}
           units={units}
           onEditStop={handleEditStop}

@@ -341,6 +341,17 @@
   white-space: normal;
 }
 
+/* Whose estimate the ≈time beside it is (#851/#1040): quiet provenance, never
+   a warning, in the same voice elevation-chart__pace and closure-sheet__pace
+   already use. Absent entirely at the standard pace, so it keeps its weight
+   for the hikers who moved a control. */
+.plan__day-figure--baseline {
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+  white-space: normal;
+}
+
 .plan__day-carry {
   position: relative;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -2301,6 +2312,14 @@
   color: var(--fg-3);
 }
 
+/* The same quiet provenance the timeline row carries, on the card read after
+   the walk: what the printed ≈time was adjusted from (#851/#1040). */
+.day-summary__baseline {
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
 /* The one generated sentence. Warm, and a fact about the ground - never a
    remark about how the day went. */
 .day-summary__memory {
@@ -2504,6 +2523,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Whose pace the ≈time above is (#851/#1040), in the quiet voice the rest of
+   the app uses for provenance - never a warning, and absent entirely at the
+   standard pace. */
+.day-hike-bar__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
 .day-hike-bar__orgs {
   display: flex;
   flex-wrap: wrap;
@@ -2620,6 +2651,16 @@
 .day-hike-card__figures {
   margin: 0;
   font-weight: 600;
+}
+
+/* The same provenance on the saved card as on the live bar. */
+.day-hike-card__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
 }
 
 /* The climb pair reads as one figure, so it wraps as one: "+1,240 ft /

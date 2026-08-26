@@ -25,7 +25,13 @@ import {
   reverseProfileWindow,
 } from './elevationGain'
 import { profileSamples, type ElevationProfile } from './elevationProfile'
-import { STANDARD_PACE, paceMinutes, type PaceProfile } from './pace'
+import {
+  STANDARD_PACE,
+  paceEstimate,
+  paceMinutes,
+  type PaceEstimate,
+  type PaceProfile,
+} from './pace'
 
 /** A point somewhere along the trail, on the pipeline's mile axis. */
 export interface RouteMile {
@@ -195,6 +201,49 @@ export function legFigures(
     // DEM; what it can do is stop the two figures above from passing as
     // whole when they are not (#1039).
     unmeasuredMi: unmeasuredMiles(walked),
+  }
+}
+
+/**
+ * One leg's figures with its priced time and that time's baseline attached.
+ *
+ * `LegFigures` above is deliberately raw - its own comment says display rules
+ * apply at the edge, never here, so totals summed from legs cannot drift from
+ * their parts. This is that edge, named: a surface holds one of these when it
+ * is about to PRINT, and holding one means holding `relativeLine` too, which
+ * is #851's rule made structural rather than remembered.
+ */
+export interface PricedLeg extends LegFigures {
+  estimate: PaceEstimate
+}
+
+/**
+ * Price a measured leg, at the hiker's own pace, with the baseline attached.
+ *
+ * PASSES ALL THREE TERMS, which is the whole reason this is a function rather
+ * than a `paceEstimate` call at each surface. Every site that hand-rolled that
+ * call passed distance and ascent and dropped `descentFt`, so #900's descent
+ * penalty vanished from the printed figure while `legFigures().minutes` - the
+ * same module, the same walk - still carried it. Measured on a 1 mi / 1,000 ft
+ * descent at the control's maximum (60 min/1,000 m): legFigures said 37.6 min
+ * and the printed estimate said 19.3, an understatement of nearly half on the
+ * number a hiker uses to decide whether they beat the dark.
+ *
+ * `route.test.ts` pins the property this exists to hold - the estimate's
+ * minutes ARE `figures.minutes`, for any pace - so the two can no longer be
+ * derived apart.
+ */
+export function priceLeg(figures: LegFigures, pace: PaceProfile): PricedLeg {
+  return {
+    ...figures,
+    estimate: paceEstimate(
+      {
+        distanceMi: figures.distanceMi,
+        ascentFt: figures.ascentFt,
+        descentFt: figures.descentFt,
+      },
+      pace,
+    ),
   }
 }
 

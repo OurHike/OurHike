@@ -3,7 +3,8 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { DaySummary } from './DaySummary'
 import { ownPhotosOn } from '../lib/poiPhotos'
 import { buildPlan, planDayViews, type PlanDayView } from '../lib/plan'
-import type { LegFigures } from '../lib/route'
+import { priceLeg, type PricedLeg } from '../lib/route'
+import { paceMinutes, STANDARD_PACE } from '../lib/pace'
 import type { StoredPoi } from '../lib/trailData'
 
 // The day summary (#966, wireframe 2c frame 1).
@@ -53,13 +54,20 @@ function walkedDay(overrides: Partial<PlanDayView> = {}): PlanDayView {
   return { ...planDayViews(plan)[0], walked: true, ...overrides }
 }
 
-const FIGURES: LegFigures = {
-  distanceMi: 9.2,
-  ascentFt: 3400,
-  descentFt: 1200,
-  minutes: 520,
-  unmeasuredMi: 0,
-}
+// Priced through priceLeg rather than written out, so the estimate the card
+// prints is derived from these figures by the same function the screens use -
+// a fixture that stated its own `estimate.text` could agree with nothing.
+//
+// `minutes` comes from paceMinutes for the same reason, and it is a
+// correction: this fixture used to state 520 against a 9.2 mi / 3,400 ft day
+// that Naismith prices at 281, and the card's assertion pinned the 520. The
+// number was nobody's - the card now derives its time from the three terms,
+// so an inconsistent fixture would have asserted an impossible screen.
+const WALKED = { distanceMi: 9.2, ascentFt: 3400, descentFt: 1200, unmeasuredMi: 0 }
+const FIGURES: PricedLeg = priceLeg(
+  { ...WALKED, minutes: paceMinutes(WALKED, STANDARD_PACE) },
+  STANDARD_PACE,
+)
 
 function renderCard(props: Partial<Parameters<typeof DaySummary>[0]> = {}) {
   const onKeepNote = vi.fn()
@@ -97,7 +105,7 @@ describe('DaySummary', () => {
     expect(figures.textContent).toContain('3,400 ft')
     // Naismith's own marks: the ≈ and the word "walking". Not "moving",
     // which would read as a stopwatch on the hiker's actual day.
-    expect(figures.textContent).toContain('≈8h 40m walking')
+    expect(figures.textContent).toContain('≈4h 40m walking')
     expect(figures.textContent).not.toContain('moving')
   })
 

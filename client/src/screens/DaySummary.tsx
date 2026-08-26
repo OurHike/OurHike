@@ -38,9 +38,8 @@ import { useEffect, useState } from 'react'
 import { longestDryRun, milestoneCrossed } from '../lib/daySummary'
 import { DAY_NOTE_MAX_CHARS, type PlanDayView } from '../lib/plan'
 import { dayLongDateLabel, stopLabel } from '../lib/planDisplay'
-import { formatNaismithMinutes } from '../lib/naismith'
 import { ownPhotosOn } from '../lib/poiPhotos'
-import type { LegFigures } from '../lib/route'
+import type { PricedLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import './plan.css'
@@ -49,8 +48,13 @@ export interface DaySummaryProps {
   day: PlanDayView
   /** The day's stretch, from the published profile - undefined on a
    *  download with no profile, which drops the climb and the estimate
-   *  rather than printing either at zero. */
-  figures: LegFigures | undefined
+   *  rather than printing either at zero.
+   *
+   *  PRICED, not raw: the card prints a pace-adjusted time, so it needs that
+   *  time's baseline in the same hand (#851). Plan.tsx prices every day once
+   *  and passes the result down, so this card and the timeline row above it
+   *  cannot disagree about what the day cost. */
+  figures: PricedLeg | undefined
   pois: readonly StoredPoi[]
   units: UnitSystem
   /** Whether the next day is also a record, so the card can offer it. Days
@@ -134,8 +138,15 @@ export function DaySummary({
             {' · '}
             {formatElevation(figures.ascentFt, units)} ↑{' · '}
             {/* Naismith, and it says so: an estimate for this stretch, not
-                a stopwatch on the hiker's day. */}
-            {formatNaismithMinutes(figures.minutes)} walking
+                a stopwatch on the hiker's day. Priced at the hiker's own
+                pace, so it owes the baseline printed below it (#851). */}
+            {figures.estimate.text} walking
+          </>
+        )}
+        {figures?.estimate.relativeLine != null && figures.unmeasuredMi === 0 && (
+          <>
+            {' · '}
+            <span className="day-summary__baseline">{figures.estimate.relativeLine}</span>
           </>
         )}
         {/* A hole in the DEM prices as flat ground, so both figures above

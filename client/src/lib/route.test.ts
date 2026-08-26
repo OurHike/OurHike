@@ -6,7 +6,7 @@
 // fall out of it rather than be special-cased.
 
 import { describe, expect, it } from 'vitest'
-import { STANDARD_PACE, type PaceProfile } from './pace'
+import { paceEstimate, STANDARD_PACE, type PaceProfile } from './pace'
 
 import type { ElevationProfile } from './elevationProfile'
 import { naismithMinutes } from './naismith'
@@ -16,6 +16,7 @@ import {
   insertRoutePoint,
   legFigures,
   mileAtWalkingMinutes,
+  priceLeg,
   restretchStops,
   routeDirection,
   routeLegs,
@@ -397,6 +398,64 @@ describe("a route measured at the hiker's own pace", () => {
     expect(legFigures(rising, 0, 5, SLOWER).minutes).toBeGreaterThan(
       legFigures(rising, 0, 5, STANDARD_PACE).minutes,
     )
+  })
+
+  describe('priceLeg', () => {
+    // Sixteen hundred feet of descent over ten miles, so the term below has
+    // something real to be dropped from.
+    const falling = profile(
+      Array.from({ length: 11 }, (_, i) => [i, 1600 - i * 160] as [number, number]),
+    )
+    const KNEES: PaceProfile = { ...STANDARD_PACE, descentMinutesPer1000m: 60 }
+
+    it('prices the SAME minutes legFigures measured, for any pace', () => {
+      // The property the helper exists to hold. Every screen that used to
+      // build its own paceEstimate passed distance and ascent and dropped
+      // descentFt, so the printed figure and figures.minutes - the same
+      // module, the same walk - disagreed for anybody with a descent penalty
+      // set. Deriving both from one function is what makes that unsayable.
+      for (const pace of [STANDARD_PACE, SLOWER, FASTER, KNEES]) {
+        for (const [from, to] of [
+          [0, 10],
+          [10, 0],
+          [2.5, 7.5],
+        ] as const) {
+          const figures = legFigures(falling, from, to, pace)
+          expect(priceLeg(figures, pace).estimate.minutes).toBeCloseTo(figures.minutes, 9)
+        }
+      }
+    })
+
+    it('carries the descent penalty that a hand-built estimate dropped (#900)', () => {
+      const figures = legFigures(falling, 0, 10, KNEES)
+      expect(figures.descentFt).toBeGreaterThan(0)
+
+      // Measured against the omission itself: the same call without descentFt
+      // is what every surface used to do, and it is the faster answer.
+      const dropped = paceEstimate(
+        { distanceMi: figures.distanceMi, ascentFt: figures.ascentFt },
+        KNEES,
+      )
+      expect(priceLeg(figures, KNEES).estimate.minutes).toBeGreaterThan(dropped.minutes)
+    })
+
+    it('says nothing about pace for a hiker who never moved a control', () => {
+      // #851's other half: "1.0× standard" on a fresh install is a caveat
+      // that teaches hikers to stop reading the ones that matter.
+      const priced = priceLeg(legFigures(falling, 0, 10), STANDARD_PACE)
+      expect(priced.estimate.relativeLine).toBeNull()
+    })
+
+    it('keeps the raw figures untouched beside the priced one', () => {
+      // LegFigures stays unrounded working numbers - its own docstring's
+      // rule - so a caller can still sum legs before formatting once.
+      const figures = legFigures(falling, 0, 10, SLOWER)
+      const priced = priceLeg(figures, SLOWER)
+      expect(priced.distanceMi).toBe(figures.distanceMi)
+      expect(priced.ascentFt).toBe(figures.ascentFt)
+      expect(priced.descentFt).toBe(figures.descentFt)
+      expect(priced.unmeasuredMi).toBe(figures.unmeasuredMi)
+    })
   })
 
   it('lets a faster hiker reach FURTHER in the same walking minutes', () => {

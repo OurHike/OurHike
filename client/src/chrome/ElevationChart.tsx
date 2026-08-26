@@ -55,8 +55,8 @@ import {
   ticks,
   type ChartDomain,
 } from '../lib/chartProfile'
-import { legFigures } from '../lib/route'
-import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { legFigures, priceLeg } from '../lib/route'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 
 const VIEW_W = 1000
@@ -438,16 +438,13 @@ export function ElevationChart({
     const walked = sobo
       ? legFigures(profile, endMile, startMile, pace)
       : legFigures(profile, startMile, endMile, pace)
-    // The printed time and its baseline, welded together (#886): the same
-    // distance and ascent legFigures just measured, priced by paceEstimate so
-    // a non-standard pace cannot render without its "was ... × standard".
-    return {
-      ...walked,
-      estimate: paceEstimate(
-        { distanceMi: walked.distanceMi, ascentFt: walked.ascentFt },
-        pace,
-      ),
-    }
+    // The printed time and its baseline, welded together (#886) - and now
+    // through priceLeg, which is where the descent term lives. This site
+    // built the estimate from distance and ascent alone, so a hiker with a
+    // descent penalty set (#900) read a figure legFigures did not agree with:
+    // 19.3 min against 37.6 on a 1 mi / 1,000 ft drop at the control's
+    // maximum, measured on the fixture route.test.ts now pins (#1040).
+    return priceLeg(walked, pace)
   }, [settled, sobo, profile, pace])
 
   if (domain === null || drawn === null) return null

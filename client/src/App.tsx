@@ -83,6 +83,7 @@ import {
 import { tripSyncState } from './lib/tripSyncState'
 import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
+import { forgetDayHikeSync } from './lib/dayHikesSync'
 import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
@@ -3527,6 +3528,7 @@ function App() {
     setAccountDeleted(true)
     await forgetPreferencesSync()
     await forgetTripSync()
+    await forgetDayHikeSync()
     await signOut()
     return receipt
   }, [])
@@ -3546,6 +3548,12 @@ function App() {
     // handset, look like a device that had already synced, and upload one
     // person's plans into another person's account as ordinary edits (#892).
     await forgetTripSync()
+    // And the day hikes' own ledger, for exactly the same reason (#1035).
+    // It landed with its own store (#976) and its own forget function, and
+    // that function was never called from here - so a day hike's segments,
+    // which are the coordinates somebody tapped, were the one thing a shared
+    // handset still carried across a sign-out.
+    await forgetDayHikeSync()
   }, [])
 
   /**

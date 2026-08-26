@@ -180,6 +180,25 @@ function replanStretch(plan: HikePlan): Stretch | null {
   }
 }
 
+/**
+ * A zero day's own boundary: the stop the hiker is standing at, repeated.
+ *
+ * NEVER CARRYING THE RESUPPLY FLAG (#1037), which is the whole reason this
+ * is a function rather than a spread. A rebuilt stretch runs TO its barrier,
+ * and a barrier is frequently a resupply town - so a plain `{ ...boundary }`
+ * gives that town a second stop at the same mile. `planSections` closes a
+ * span at every resupply, so the zero is then cut out into a food carry of
+ * its own and the day walking into town under-reports what to buy.
+ *
+ * `plan.ts`'s `insertZeroAfter` already refuses this for the same reason and
+ * says so at length (#799); the cascade's three copies of the operation never
+ * got the rule. Supplies are picked up once, at the stop the hiker walked
+ * into.
+ */
+function zeroAt(boundary: PlanStop): PlanStop {
+  return { ...boundary, resupply: false }
+}
+
 /** Rebuild the stretch's days over new walking boundaries, weaving each
  *  zero back at its original position and keeping every meta's identity and
  *  date. `wasDistanceMi` records what a re-planned walking day used to
@@ -199,7 +218,7 @@ function weave(
     const meta = plan.days[day]
     const zero = plan.stops[day].mile === plan.stops[day + 1].mile
     if (zero) {
-      stops.push({ ...boundary })
+      stops.push(zeroAt(boundary))
       days.push(meta)
       continue
     }
@@ -275,8 +294,13 @@ export function absorbPlan(
     ...plan,
     stops: [
       ...plan.stops.slice(0, stretch.firstDay + 1),
-      ...woven.stops.slice(0, -1),
-      ...plan.stops.slice(stretch.endBoundary),
+      // The same correction as shiftPlan's below, for the same reason: keep
+      // every woven stop and take the tail from strictly past the barrier.
+      // `weave` already ends its last walking day on `endStop`, so identity
+      // is preserved without dropping whatever a trailing zero put after it
+      // (#1037).
+      ...woven.stops,
+      ...plan.stops.slice(stretch.endBoundary + 1),
     ],
     days: [
       ...plan.days.slice(0, stretch.firstDay),
@@ -363,7 +387,7 @@ export function shiftPlan(
   for (let walk = 1; walk <= newWalking; walk++) {
     while (zeros.length > 0 && zeros[0] === walk - 1) {
       zeros.shift()
-      stops.push({ ...boundary })
+      stops.push(zeroAt(boundary))
       days.push(takeMeta())
     }
     const next = chosen[walk]
@@ -399,7 +423,7 @@ export function shiftPlan(
   // Zeros that sat at the stretch's very end.
   while (zeros.length > 0) {
     zeros.shift()
-    stops.push({ ...boundary })
+    stops.push(zeroAt(boundary))
     days.push(takeMeta())
   }
 
@@ -408,8 +432,14 @@ export function shiftPlan(
     ...plan,
     stops: [
       ...plan.stops.slice(0, stretch.firstDay + 1),
-      ...stops.slice(0, -1),
-      to,
+      // Every rebuilt stop, INCLUDING a zero that trails the barrier. This
+      // used to drop the last one and append `to` in its place, to guarantee
+      // the stretch ended on the barrier's own stop - but the loop above
+      // already pushes `to` itself for the last walking day, so the append
+      // was redundant when nothing trailed and wrong when something did: a
+      // zero sitting after the last walking day had its flag-free copy
+      // replaced by the town, resupply flag and all (#1037).
+      ...stops,
       ...plan.stops.slice(stretch.endBoundary + 1),
     ],
     days: [...plan.days.slice(0, stretch.firstDay), ...days, ...tail],

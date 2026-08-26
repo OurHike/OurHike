@@ -9,9 +9,11 @@ import { describe, expect, it } from 'vitest'
 import { absorbPlan, callItADay, cascadeChoices, nearestStop, shiftPlan } from './cascade'
 import {
   buildPlan,
+  foodCarries,
   insertZeroAfter,
   NEARO_MAX_MI,
   planDayViews,
+  planSections,
   togglePinned,
   validatePlan,
   type HikePlan,
@@ -284,6 +286,88 @@ describe('a rest is spent rather than mislabelled (#1031)', () => {
     const zeros = planDayViews(absorbed!.plan).filter((day) => day.zero)
     expect(zeros).toHaveLength(1)
     expect(zeros[0].rest).toBe(true)
+  })
+})
+
+describe('a rebuilt zero never becomes a second resupply (#1037)', () => {
+  /** POIs for a plain 0-45 mile stretch, so the re-plan has somewhere to
+   *  choose boundaries from. */
+  const STOPS: StoredPoi[] = [
+    shelter('a', 12, 'Shelter A'),
+    shelter('b', 22, 'Shelter B'),
+    shelter('c', 30, 'Camp C'),
+    shelter('d', 38, 'Shelter D'),
+  ]
+
+  /** A zero at mile 30, and the town the stretch runs to at mile 45. The
+   *  zero sits INSIDE the stretch, after the last walking day - which is
+   *  what puts it through shiftPlan's trailing-zeros loop. */
+  function withZeroBeforeTown(): HikePlan {
+    return buildPlan(
+      [
+        stop(0, 'Start'),
+        stop(15, 'B'),
+        stop(30, 'C'),
+        stop(30, 'C'),
+        stop(45, 'Town', true),
+      ],
+      { miles: 15 },
+      '2026-05-12',
+    )
+  }
+
+  const carries = (plan: HikePlan) => foodCarries(planSections(planDayViews(plan)))
+
+  it('never claims a second restock at a town already restocked at', () => {
+    const before = withZeroBeforeTown()
+    // One stretch, one load of food: four days out of Start, restocking at
+    // the town at the end.
+    expect(carries(before)).toHaveLength(1)
+    expect(carries(before)[0].days).toBe(4)
+
+    const shifted = shiftPlan(before, STOPS, 25)
+    expect(shifted).not.toBeNull()
+    const after = carries(shifted!.plan)
+
+    // THE DEFECT, stated as the invariant rather than as a shape: supplies
+    // are picked up once per place. Before the fix this read
+    // "0->45 2d restock=true | 45->45 1d restock=true" - the same town,
+    // restocked twice, because the rebuilt zero was handed the town's own
+    // flagged stop.
+    const restockMiles = after.filter((c) => c.restockAtEnd).map((c) => c.to.mile)
+    expect(restockMiles).toEqual([...new Set(restockMiles)])
+    expect(restockMiles).toEqual([45])
+
+    // WHAT THIS TEST DELIBERATELY DOES NOT ASSERT: that the carry stays a
+    // single span. The re-plan covers 45 miles in two days where it took
+    // three, so the zero has no walking ordinal left to sit on and lands at
+    // the stretch's end - past the town rather than before it. That is the
+    // trailing-zeros branch working as designed, and whether a rest should
+    // survive at its PLACE rather than its ordinal is a separate question
+    // this fix does not answer.
+    expect(after.map((c) => c.days)).toEqual([2, 1])
+  })
+
+  it('leaves exactly one stop carrying the resupply flag', () => {
+    const shifted = shiftPlan(withZeroBeforeTown(), STOPS, 25)
+    expect(shifted).not.toBeNull()
+
+    // The invariant worth pinning, because it is the one that broke: supplies
+    // are picked up once, at the stop the hiker walked into. A second flag on
+    // the same mile is the town duplicated.
+    const flagged = shifted!.plan.stops.filter((s) => s.resupply)
+    expect(flagged).toHaveLength(1)
+    expect(flagged[0].mile).toBe(45)
+    expect(validatePlan(shifted!.plan)).not.toBeNull()
+  })
+
+  it('still ends the stretch at the town, zero and all', () => {
+    // The fix must not cost the zero its place or the town its flag - only
+    // the duplicate goes.
+    const shifted = shiftPlan(withZeroBeforeTown(), STOPS, 25)
+    const views = planDayViews(shifted!.plan)
+    expect(views.filter((day) => day.zero)).toHaveLength(1)
+    expect(views[views.length - 1].end.mile).toBe(45)
   })
 })
 

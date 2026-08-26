@@ -136,6 +136,45 @@ export function distanceUnitLabel(units: UnitSystem): string {
   return units === 'metric' ? 'km' : 'mi'
 }
 
+/**
+ * A distance as the BARE NUMBER to put beside that label, and back again.
+ *
+ * The other half of `distanceUnitLabel`, and it exists because shipping the
+ * label alone was not enough (#1038): the route entrance rendered a raw mile
+ * count next to "km" and fed it back onto the mile axis unconverted, so a
+ * metric hiker who asked for 45 was handed 45 miles - 72 km, a day and a
+ * half more trail than they typed. The same sheet printed the same stretch
+ * as "72.4 km" three rows away, because that figure went through
+ * `formatDistance`, which does convert.
+ *
+ * So a control that splits the number from its unit needs BOTH halves, and
+ * they live next to each other now rather than one being the documented
+ * exception to the other. Rounded to `digits` because these feed a numeric
+ * input, where 27.961 km is not a thing anybody typed or wants to arrow
+ * through; miles are the storage and the round-trip is lossy by design.
+ */
+export function displayDistance(miles: number, units: UnitSystem, digits = 1): number {
+  const value = units === 'metric' ? miles * KM_PER_MILE : miles
+  const scale = 10 ** digits
+  return Math.round(value * scale) / scale
+}
+
+/**
+ * The unit's spoken name, for a label a screen reader reads aloud.
+ *
+ * "mi" is right on screen beside a number and wrong in an accessible name,
+ * where it is read as a word. Separate from `distanceUnitLabel` for that
+ * reason alone - same fact, two audiences.
+ */
+export function distanceUnitName(units: UnitSystem): string {
+  return units === 'metric' ? 'kilometres' : 'miles'
+}
+
+/** The inverse of {@link displayDistance}: what the hiker typed, as miles. */
+export function milesFromDisplay(value: number, units: UnitSystem): number {
+  return units === 'metric' ? value / KM_PER_MILE : value
+}
+
 export function formatDistanceRange(
   lowMi: number,
   highMi: number,

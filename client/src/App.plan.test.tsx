@@ -137,9 +137,13 @@ describe('the planning flow', () => {
     // Slide shorter: 5 miles reaches for 8.2, and the end re-snaps to
     // Middle Shelter (10.2) - then back out to 15, Beyond Shelter again
     // (|22.2 - 18.2| = 4 beats |13.2 - 18.2| = 5).
-    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
+      target: { value: '5' },
+    })
     expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '15' } })
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
+      target: { value: '15' },
+    })
     expect(screen.getByText('Beyond Shelter')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Use this stretch' }))

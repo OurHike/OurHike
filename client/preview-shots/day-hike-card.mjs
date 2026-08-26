@@ -32,6 +32,13 @@
 // Touched by #1008 so the camera re-takes the card it changed: the date
 // field, the gap rows, and the "Leave this with someone" primary all landed
 // on this screen (leave-with-someone.mjs photographs that sheet itself).
+//
+// Touched again by #1042, which adds the moving-time sentence to the note
+// under the figures. That sentence rides the THIRD state above, so a preview
+// without `trail_graph_elevation.json` photographs the first state and shows
+// none of it - correctly. Say so rather than reading the shot as a missing
+// feature: DayHikeCard.test.tsx is where that sentence is actually pinned,
+// and the camera is here for the states it can reach.
 export const caption = 'The finished day hike’s card'
 export const alt = 'A saved day hike’s card, opened from the Plan tab'
 

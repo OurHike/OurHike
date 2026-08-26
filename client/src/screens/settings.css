@@ -33,6 +33,18 @@
 .settings__row--later {
   opacity: 0.55;
 }
+/* The "today I'm…" row (#1054): the three segments need the row's width, so
+   the label sits above them rather than beside. */
+.settings__row--mode {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-3, 12px);
+  padding-bottom: var(--space-3, 12px);
+}
+.settings__row--mode .settings__label {
+  flex: none;
+}
 .settings__label {
   flex: 1;
   color: var(--fg-1);

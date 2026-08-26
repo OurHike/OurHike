@@ -1,0 +1,56 @@
+/* The "today I'm…" segments (chrome/ModeSwitch.tsx, #1054).
+ *
+ * Semantic tokens only - themeTokens.test.ts fails this file the moment it
+ * names a base colour. The chrome variant reads the --*-chrome family (dark
+ * under both themes, deliberately); the selected pill is the chrome's own
+ * foreground used as a surface, which is what "a light pill on the frame"
+ * means in both themes - paper-0 on pine by day, bone on ink at night.
+ */
+
+.mode-switch {
+  display: flex;
+  gap: 6px;
+}
+
+.mode-switch__segment {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  /* border-box, stated because the prototype shipped the opposite and its
+     cards overflowed their rail - the same trap, one control over. */
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard),
+    color var(--duration-fast, 120ms) var(--ease-standard);
+}
+
+.mode-switch--chrome .mode-switch__segment {
+  background: transparent;
+  border: 1px solid var(--border-chrome);
+  color: var(--fg-chrome-2);
+}
+
+.mode-switch--chrome .mode-switch__segment--selected {
+  background: var(--fg-chrome-1);
+  border-color: var(--fg-chrome-1);
+  color: var(--bg-chrome);
+  font-weight: 700;
+}
+
+.mode-switch--paper .mode-switch__segment {
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--fg-2);
+}
+
+.mode-switch--paper .mode-switch__segment--selected {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-weight: 700;
+}

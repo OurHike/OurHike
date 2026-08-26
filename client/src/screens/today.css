@@ -1,8 +1,13 @@
 /* The Today screen (#1054): a pine chrome block over a paper journal column.
  *
- * Every colour here is a semantic alias (tokens/colors.css) - the chrome
- * reads the --*-chrome family, which is dark under both themes on purpose,
- * and themeTokens.test.ts fails this file the moment it names a base colour.
+ * Every colour is a semantic alias (tokens/colors.css) - the chrome reads the
+ * --*-chrome family, which is dark under both themes on purpose, and
+ * themeTokens.test.ts fails this file the moment it names a base colour. The
+ * three staleness dot colours are the deliberate exception, as literals: they
+ * are the SAME literals the lane pins (chrome.css) and the map paint
+ * (map/poiLayers.ts) already carry, three parallel implementations #256's
+ * review keeps in agreement - minting a token for two of the three homes
+ * would be a fourth home, not a cleanup.
  */
 
 .today {
@@ -12,32 +17,98 @@
   height: 100%;
 }
 
+/* ---------- The pine chrome block ---------- */
+
 .today__chrome {
   background: var(--bg-chrome);
-  padding: 8px 18px 14px;
-  /* The top of the screen, so in the edge-to-edge WebViews the Capacitor
-     shells run (#101) this is what sits under the notch and the clock - the
-     same inset pattern .status-strip carries, for the same reason. */
-  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  padding: 0 18px 14px;
   padding-left: max(18px, env(safe-area-inset-left, 0px));
   padding-right: max(18px, env(safe-area-inset-right, 0px));
 }
 
+/* The status row is StatusStrip itself, restyled for pine - the same move
+   desktop.css already makes for the map screen's strip, so the flags keep one
+   component and one set of suppression rules wherever they appear. */
+.today__chrome .status-strip {
+  background: transparent;
+  color: var(--fg-chrome-3);
+  padding-left: 0;
+  padding-right: 0;
+  /* The top of the screen: the same notch inset .status-strip carries on the
+     map screen (#101), restated because the horizontal padding is reset. */
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+}
+
+/* The light theme's --danger is 2.2:1 on pine - the on-chrome danger is the
+   one the dark theme already uses for this job (tokens/colors.css). */
+.today__chrome .status-strip__flag {
+  color: var(--danger-on-chrome);
+}
+
 .today__eyebrow {
-  margin: 0;
+  margin: 10px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   letter-spacing: var(--tracking-eyebrow, 0.12em);
   color: var(--fg-chrome-3);
 }
 
-.today__position {
+.today__readout {
+  margin: 2px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.today__mile {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-bold, 700);
+  font-size: 52px;
+  line-height: 0.92;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--fg-chrome-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.today__mile-unit {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-chrome-3);
+}
+
+/* The no-mile states, in the same slot at a size the sentences deserve -
+   "Location is off" at 52px would read as a headline about a failure. */
+.today__position-sentence {
   margin: 6px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 19px;
   font-weight: 500;
   color: var(--fg-chrome-1);
 }
+
+.today__greeting {
+  margin: 10px 0 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+  text-wrap: pretty;
+}
+
+/* #851's provenance line, quiet mono under the sentence it qualifies. */
+.today__pace-line {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-chrome-3);
+}
+
+.today__chrome .mode-switch {
+  margin-top: 12px;
+}
+
+/* ---------- The paper journal column ---------- */
 
 .today__paper {
   flex: 1;
@@ -50,6 +121,300 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.today__section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* An empty slot costs no gap. */
+.today__section:empty {
+  display: none;
+}
+
+.today__rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.today__rule-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.today__rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-1);
+}
+
+.today__row {
+  display: flex;
+  gap: 10px;
+}
+
+.today__gutter {
+  flex: none;
+  width: 42px;
+  padding-top: 14px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+  text-align: right;
+}
+
+.today__card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.today__card--entry {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+/* The category chip: the pin's own accent at ~22% over the card, holding the
+   real silhouette (map/poiIcons.ts) at chip scale. The accent arrives as an
+   inline custom property from POI_COLORS - the registry the map itself
+   paints from - so the chip and the pin cannot disagree. */
+.today__chip {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-m, 8px);
+  background: color-mix(in srgb, var(--chip-accent) 22%, var(--surface-card));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.today__chip svg {
+  width: 22px;
+  height: 22px;
+  fill: var(--chip-accent);
+}
+
+.today__entry-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.today__entry-name {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 16px;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+.today__entry-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+/* The freshness dot: the lanes' three visible states at journal scale
+   (lib/stalenessDisplay.ts). Literals shared with chrome.css's lane block
+   and map/poiLayers.ts - see the head of this file. */
+.today__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill, 999px);
+}
+
+.today__dot--fresh {
+  background: #2e7d32;
+}
+
+.today__dot--stale {
+  background: transparent;
+  border: 1px dotted #757575;
+}
+
+.today__dot--no-word {
+  background: transparent;
+  border: 1px solid #1c6ea455;
+}
+
+/* ---------- Alert entries ---------- */
+
+.today__alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.today__card--closure {
+  border-color: var(--accent-blaze-orange);
+}
+
+.today__card--warning {
+  border-color: var(--danger-strong);
+}
+
+.today__card--advisory {
+  border-color: var(--border-2);
+}
+
+.today__alert-line {
+  margin: 0 0 10px;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--danger);
+}
+
+.today__card--advisory .today__alert-line {
+  color: var(--fg-2);
+  font-weight: var(--weight-regular, 400);
+  font-family: var(--font-body, sans-serif);
+  font-size: 13px;
+}
+
+.today__action {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 16px;
+  background: transparent;
+  color: var(--brand-primary);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-body, sans-serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+/* ---------- The climb card ---------- */
+
+.today__card--climb {
+  margin-left: 52px;
+  padding: 12px 12px 4px;
+}
+
+.today__climb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.today__climb-figure {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-blaze-orange);
+}
+
+/* The embedded ribbon keeps its own paints; only its band chrome goes. */
+.today__card--climb .elevation-ribbon {
+  border-bottom: 0;
+  background: transparent;
+}
+
+/* ---------- The volunteer card ---------- */
+
+.today__card--volunteer {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface-chrome-raised);
+  border-color: var(--border-chrome);
+  box-shadow: var(--shadow-raised);
+  padding: 14px;
+}
+
+/* In volunteer mode the card leads and says so - emphasis, not new chrome. */
+.today__card--volunteer-lead {
+  outline: 2px solid var(--accent-chrome);
+  outline-offset: -2px;
+}
+
+.today__volunteer-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* The chrome's own foregrounds: legible on pine by day and on ink at night,
+   which is the whole point of the --*-chrome family. */
+.today__volunteer-eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.today__volunteer-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 15px;
+  color: var(--fg-chrome-1);
+}
+
+.today__volunteer-meta {
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-chrome-2);
+}
+
+.today__volunteer-chevron {
+  flex: none;
+  font-size: 16px;
+  color: var(--fg-chrome-3);
+}
+
+/* ---------- Notes, download card, footer ---------- */
+
+.today__note {
+  margin: 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.today__card--download {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today__card--download .today__entry-name {
+  margin: 0;
 }
 
 .today__footer {

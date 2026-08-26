@@ -260,6 +260,8 @@ export function More({
           onSignOut={settings.onSignOut}
           preferences={settings.preferences}
           onChange={settings.onChange}
+          mode={settings.mode}
+          onChangeMode={settings.onChangeMode}
         />
         {/* Under the account it depends on, and above nothing (#894). Only
             when signed in and only when the shell actually has a sync to

@@ -274,6 +274,12 @@ import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
 import { Volunteer } from './screens/Volunteer'
 import { VolunteerHours } from './screens/VolunteerHours'
 import { Today } from './screens/Today'
+import {
+  DEFAULT_HIKER_MODE,
+  loadHikerMode,
+  saveHikerMode,
+  type HikerMode,
+} from './lib/hikerMode'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
@@ -435,6 +441,10 @@ function App() {
   // back to exactly these defaults.
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
+  // The "today I'm…" mode (#1054, lib/hikerMode.ts) - loaded in the same
+  // bootstrap gate as the preferences, saved on every change. It re-ranks
+  // the Today screen and never gates anything.
+  const [hikerMode, setHikerMode] = useState<HikerMode>(DEFAULT_HIKER_MODE)
   // Today is the home (#1054): the default tab, and where finishing first run
   // lands. During first run the tab branches below are skipped entirely -
   // `entering` renders the map screen as the steps' backdrop whatever this
@@ -930,9 +940,14 @@ function App() {
   const isDesktop = useDesktop()
   const install = useInstallPrompt()
   useEffect(() => {
-    void loadPreferences().then(
-      (stored) => {
+    // The mode rides the same gate as the preferences (lib/hikerMode.ts's
+    // "read once, no flash"): the Today header renders the switch on first
+    // paint, and a default that flips a tick later is exactly the flash the
+    // gate exists to prevent.
+    void Promise.all([loadPreferences(), loadHikerMode()]).then(
+      ([stored, mode]) => {
         setPreferences(stored)
+        setHikerMode(mode)
         setPreferencesLoaded(true)
       },
       // A storage read that rejects - private browsing, an evicted database -
@@ -943,6 +958,14 @@ function App() {
       // either way.
       () => setPreferencesLoaded(true),
     )
+  }, [])
+
+  // The mode is saved as it changes - there is no form to submit, and a mode
+  // that survived the session but not the relaunch would make the switch a
+  // label rather than a setting.
+  const handleChangeMode = useCallback((mode: HikerMode) => {
+    setHikerMode(mode)
+    void saveHikerMode(mode)
   }, [])
 
   // Nothing waits on this. A hike changes what the banners can say and
@@ -4380,7 +4403,56 @@ function App() {
                 reason: a throw here must not cost the map, and the tab bar
                 underneath is the way back. */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              <Today now={now} position={position} />
+              <Today
+                now={now}
+                position={position}
+                online={online}
+                hasGpsFix={gps.status === 'located'}
+                lastSyncedAt={lastSyncedAt}
+                conditionsAge={conditionsAgeLabel(
+                  worstOf(closureState, reportState),
+                  now,
+                )}
+                backgroundProblem={backgroundProblem({
+                  sources: notDrawing,
+                  online,
+                  rasterArchiveDownloaded: archiveDownloaded,
+                  hikingSheetDownloaded,
+                })}
+                backgroundOverride={backgroundOverride(
+                  preferences.background_source,
+                  saveData,
+                  archiveDownloaded,
+                )}
+                trailLinesMissing={!haveTrailLines && dataError !== null}
+                mode={hikerMode}
+                onChangeMode={handleChangeMode}
+                pois={searchablePois}
+                currentMile={fix?.mile}
+                direction={direction?.direction}
+                stalenessFor={laneStaleness}
+                onOpenPoi={handleOpenPassedPlace}
+                closureAhead={closureAhead}
+                warningsAhead={warningsAhead}
+                advisoryAhead={advisoryAhead}
+                onShowOnMap={() => setActiveTab('map')}
+                elevation={ribbon}
+                units={units}
+                pace={pace}
+                opportunities={workProjects}
+                opportunitiesAsOf={workProjectsGeneratedAt}
+                onOpenVolunteer={() => {
+                  setActiveTab('more')
+                  setVolunteering(true)
+                }}
+                passedPlaces={passedPlacesToday}
+                queuedReportCount={queuedCount}
+                onStartReport={() => setReporting({ step: 'pick' })}
+                dayHikes={dayHikeStore.hikes}
+                onOpenDayHike={handleOpenDayHike}
+                hasDownload={anySheetDownloaded}
+                onOpenDownloads={openDownloads}
+              />
             </ErrorBoundary>
           </div>
           <TabBar active={activeTab} onSelect={setActiveTab} />
@@ -4469,6 +4541,8 @@ function App() {
                 <More
                   stewards={stewards}
                   account={account}
+                  mode={hikerMode}
+                  onChangeMode={handleChangeMode}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
                   onSignOut={() => void handleSignOut()}
                   preferences={preferences}

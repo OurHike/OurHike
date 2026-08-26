@@ -119,7 +119,7 @@ export function applyRhythm(plan: HikePlan, pois: readonly StoredPoi[]): HikePla
  * - the shortest. The two disagreed here for as long as both existed. Left
  * as the code has always behaved rather than resolved in passing: it moves
  * where hikers sleep, and plan.ts's own note that the window "errs SHORT"
- * argues for the other one. Worth an issue, not a drive-by.
+ * argues for the other one. Filed as #1053, with what would settle it.
  *
  * Exported for lib/cascade.ts (#1031), which re-places a rest against the
  * boundaries a re-plan chose. A rest that was placed by one rule and moved

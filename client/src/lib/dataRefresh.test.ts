@@ -173,6 +173,19 @@ describe('what it says changed', () => {
 })
 
 describe('what it costs', () => {
+  it('reads the wire cost and never the decoded size', () => {
+    // The bug this guards, found while pointing a preview recipe at the row:
+    // the publisher measures both and the client was reading `size_bytes`,
+    // which is ~3x what a phone spends. A cautious overstatement of a figure
+    // shown to somebody deciding whether to pay it is just a wrong figure.
+    const current = stored('v1', { a: '1' })
+    const found = availableRefresh(current, {
+      ...snapshot({ hashes: { a: '2' } }),
+      sizes: {},
+    })
+    expect(found?.bytes).toBeNull()
+  })
+
   it('adds up the published sizes of the changed artifacts only', () => {
     const current = stored('v1', { a: '1', b: '1' })
     const found = availableRefresh(

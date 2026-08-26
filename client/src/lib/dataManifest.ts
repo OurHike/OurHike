@@ -55,6 +55,7 @@ interface DataManifest {
 interface ArtifactEntry {
   sha256?: unknown
   size_bytes?: unknown
+  transfer_bytes?: unknown
   change?: unknown
 }
 
@@ -99,9 +100,22 @@ export interface PublishedSnapshot {
   lookup: PublishedHashLookup
   /** Every artifact's published hash, by key. */
   hashes: Record<string, string>
-  /** Every artifact's published size in bytes, where the manifest carries one.
-   *  It does not for entries published before #505/#556, so a caller adding
-   *  these up is adding up what it knows and must say so. */
+  /**
+   * What each artifact costs to fetch, in bytes on the wire, where the
+   * manifest carries a figure.
+   *
+   * `transfer_bytes` and never `size_bytes`, and the difference is the whole
+   * reason publish.py measures both: `size_bytes` is the DECODED size, and the
+   * text artifacts are served gzipped, so it is about 3x what a phone actually
+   * spends (trails.geojson is 12 MB decoded and 4.1 MB on the wire, measured
+   * 2026-08-21). This number is shown to a hiker deciding whether to spend it
+   * on mobile data, so the decoded size is not a cautious version of it - it is
+   * a wrong one.
+   *
+   * Absent for an artifact published before #919 measured it. A caller adding
+   * these up is adding up what it knows and must say so rather than falling
+   * back to the figure that overstates.
+   */
   sizes: Record<string, number>
   /** Every artifact's change grade, where this release describes one. */
   changes: Record<string, ArtifactChange>
@@ -174,7 +188,7 @@ function snapshotInto(manifest: DataManifest): PublishedSnapshot {
   for (const [key, entry] of Object.entries(manifest?.artifacts ?? {})) {
     const hash = lookup(key)
     if (hash !== null) hashes[key] = hash
-    if (isCount(entry?.size_bytes)) sizes[key] = entry.size_bytes
+    if (isCount(entry?.transfer_bytes)) sizes[key] = entry.transfer_bytes
     const change = changeIn(entry)
     if (change !== null) changes[key] = change
   }

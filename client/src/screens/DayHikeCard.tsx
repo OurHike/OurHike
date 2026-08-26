@@ -15,13 +15,24 @@
 // stewards export to speak with, and inventing one would be this app putting
 // words in a steward's mouth).
 //
-// THE CLIMB SAYS WHAT IT IS. It is a dense sum over a 10 m elevation model,
-// which is not the same kind of number as the miles beside it: published
-// figures for one walk disagree with each other by more than rounding, and the
-// pipeline's own gate reads +18.8% against a maintaining club on exactly the
-// rolling terrain this network is. The note under the figures is the
-// maintainer's call (2026-08-25) and is not decoration - a hiker comparing
-// this against a guidebook should know which way to read the difference.
+// THE FIGURES SAY WHAT THEY ARE, and the note under them carries TWO claims
+// that are easy to mistake for one:
+//
+// - WHAT THE TIME MEASURES. It is moving time, at whatever pace it was
+//   priced at. A hiker reading "≈3h 10m" as when they are back at the car is
+//   out by however long they sat at the view. The storyboard (frame D5) names
+//   this sentence as one of the two reasons that screen exists; #1008 shipped
+//   the figure without it, while the trips side had carried its own all along
+//   (PlanTargetSheet). #1040 made it more necessary, not less: priced at the
+//   hiker's own pace, the number looks personal and still counts no stops.
+// - HOW PRECISE THE CLIMB IS. A dense sum over a 10 m elevation model is not
+//   the same kind of number as the miles beside it: published figures for one
+//   walk disagree by more than rounding, and the pipeline's own gate reads
+//   +18.8% against a maintaining club on exactly this rolling terrain. That
+//   half is the maintainer's call (2026-08-25) and is kept verbatim.
+//
+// Neither substitutes for the other: a hiker can believe the second and still
+// be an hour late because of the first. Neither is decoration.
 //
 // The figures prefer the LIVE resolution and fall back to the stored cache
 // with a sentence saying so - never silently. lib/dayHikes.ts's provenance
@@ -212,16 +223,45 @@ export function DayHikeCard({
         <p className="day-hike-card__baseline">{estimate.relativeLine}</p>
       )}
 
-      {climb !== null && (
-        // The maintainer's decision, 2026-08-25, in the hiker's own words:
-        // ship the figure and say what it is. Cumulative gain from a 10 m
-        // elevation model is not precise - published guidebook figures for the
-        // same walk routinely differ, and on rolling ground like this the
-        // pipeline's own check reads +18.8% against one maintaining club's
-        // number (pipeline/reference/published_gain.json). Saying so is what
-        // keeps the display from outrunning its source; a hiker who compares
-        // this against a guidebook should not conclude one of them is broken.
+      {estimate !== null && (
+        // TWO DIFFERENT WARNINGS, and neither substitutes for the other.
+        //
+        // The first is what the number MEASURES: this is moving time, whatever
+        // pace it was priced at, and a hiker reading "≈3h 10m" as when they are
+        // back at the car is out by however long they sat at the view. The
+        // storyboard (frame D5) names this sentence as one of the two reasons
+        // that screen exists - "the sentence that stops ≈3h10m being read as a
+        // promise" - and #1008 shipped the figure without it. The trips side
+        // had carried its own all along (PlanTargetSheet: "Naismith counts
+        // walking - not lunch, not water, not the forty minutes you'll spend
+        // at the shelter"), which left the asymmetry the wrong way round: the
+        // day-hiker is the persona planning somewhere new, least likely to
+        // know what moving time excludes. #1042.
+        //
+        // #1040 made this MORE necessary rather than less: the figure is now
+        // priced at the hiker's OWN pace, so somebody who told the app they
+        // walk at 2 mph gets a number that looks personal and still counts no
+        // stops at all. A tailored estimate invites more trust, not less.
+        //
+        // The second is how PRECISE it is - the maintainer's decision,
+        // 2026-08-25, in the hiker's own words, and kept here verbatim.
+        // Cumulative gain from a 10 m elevation model is not exact; published
+        // guidebook figures for one walk routinely differ, and on rolling
+        // ground like this the pipeline's own check reads +18.8% against a
+        // maintaining club (pipeline/reference/published_gain.json).
+        //
+        // A hiker can believe the second and still be an hour late because of
+        // the first. ONE note rather than two stacked ones, because two
+        // `role="note"` paragraphs in a row read as boilerplate and get
+        // skipped - which is how the sentence that matters gets lost. The
+        // baseline line above is a different thing again: what the estimate
+        // was adjusted FROM, not what it leaves out.
+        //
+        // Guarded on the ESTIMATE, not the climb: the two are the same
+        // condition today (`estimate` is null exactly when `climb` is), but
+        // the time is what makes this note necessary.
         <p className="day-hike-card__note" role="note">
+          Moving time — it knows nothing about lunch, a swim, or half an hour at the view.
           Climb and time are estimates from the best elevation data available — expect
           other sources to differ.
         </p>

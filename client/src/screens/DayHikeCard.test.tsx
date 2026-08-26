@@ -429,6 +429,45 @@ describe('the climb, once the phone can price it (#1011)', () => {
     ).toBeInTheDocument()
   })
 
+  it('says the time is moving time, which is what stops it reading as a promise', () => {
+    // #1042. The storyboard names this sentence as one of the two reasons
+    // frame D5 exists, and #1008 shipped the ≈time without it. It is a
+    // DIFFERENT claim from the estimates note beside it: that one is about how
+    // precise the figure is, this one about what it measures at all. A hiker
+    // can believe the first and still be an hour late because of the second.
+    renderCard()
+
+    expect(
+      screen.getByText(/knows nothing about lunch, a swim, or half an hour/),
+    ).toBeInTheDocument()
+  })
+
+  it('warns about both things at once, or a reader skips the pair', () => {
+    // Two `role="note"` paragraphs in a row read as boilerplate. One note, and
+    // the sentence that matters is not the one that gets skipped.
+    renderCard()
+
+    const notes = screen
+      .getAllByRole('note')
+      .filter((node) =>
+        /Moving time|estimates from the best/.test(node.textContent ?? ''),
+      )
+    expect(notes).toHaveLength(1)
+    expect(notes[0].textContent).toMatch(/Moving time/)
+    expect(notes[0].textContent).toMatch(/estimates from the best elevation data/)
+  })
+
+  it('says neither thing when there is no time to qualify', () => {
+    // A caveat about a number that is not on the screen is noise, and the
+    // absence is the honest output - not a degraded one.
+    renderCard({ resolved: { ...RESOLVED, climb: null } })
+
+    expect(screen.queryByText(/knows nothing about lunch/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/estimates from the best elevation data/),
+    ).not.toBeInTheDocument()
+  })
+
   it('never prints a climb over the stored cache, which has none', () => {
     // The cache was written before any of this existed. Printing today's
     // climb over yesterday's walk would be a display outrunning its source -

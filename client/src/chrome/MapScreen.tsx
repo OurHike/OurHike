@@ -766,6 +766,13 @@ export function MapScreen({
   // the shell above owns the POI data, not the canvas. Tee'd rather than
   // intercepted: the owner's `onMapReady` still sees every hand-over.
   const [liveMap, setLiveMap] = useState<MapLibreMap | null>(null)
+
+  // This screen's own root element, for the share sheet's portal: the sheet
+  // must land inside the subtree App.tsx hides and inerts when another
+  // screen covers the held map (#1081), and the root is the highest box
+  // that is - see PoiShareSheet.tsx's header. State rather than a plain
+  // ref so the card re-renders with the element once it exists.
+  const [screenRoot, setScreenRoot] = useState<HTMLDivElement | null>(null)
   const handleMapReady = useCallback(
     (map: MapLibreMap | null) => {
       setLiveMap(map)
@@ -985,6 +992,7 @@ export function MapScreen({
     // which would put the OS location prompt on screen ahead of the step whose
     // entire job is to explain why we are asking.
     <div
+      ref={setScreenRoot}
       className={entering ? 'map-screen map-screen--entering' : 'map-screen'}
       inert={entering || undefined}
       // Paired with `inert` rather than standing in for it. `inert` is what
@@ -1194,6 +1202,7 @@ export function MapScreen({
                 units={units}
                 noteContext={noteContext}
                 onClose={onClosePoi}
+                sheetContainer={screenRoot}
               />
             )}
 

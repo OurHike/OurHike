@@ -18,6 +18,18 @@ export class MockMap {
   /** Every map ever constructed this test, in order - including ones since removed. */
   static instances: MockMap[] = []
 
+  /** Every construction ATTEMPT, the ones `failConstruction` refused
+   *  included. `instances` cannot count those - a constructor that throws
+   *  pushes nothing - and the #1081 boundary tests are about exactly how
+   *  many times the shell tried to build a map it could not have. */
+  static constructionAttempts = 0
+
+  /** Set to make every construction throw, the way a phone out of WebGL
+   *  contexts does. Persistent rather than one-shot, because the tests that
+   *  use it are about what a DETERMINISTIC fault costs; clear it to let the
+   *  next attempt succeed. */
+  static failConstruction: Error | null = null
+
   /** The maps that are still live (constructed and not yet `.remove()`d). */
   static get live(): MockMap[] {
     return MockMap.instances.filter((m) => !m.removed)
@@ -114,6 +126,8 @@ export class MockMap {
   private canvas: HTMLCanvasElement | undefined = undefined
 
   constructor(options: Record<string, unknown>) {
+    MockMap.constructionAttempts += 1
+    if (MockMap.failConstruction !== null) throw MockMap.failConstruction
     this.options = options
     this.applyCamera(options)
     this.adoptStyleContents(options)
@@ -132,7 +146,8 @@ export class MockMap {
    */
   private adoptStyleContents(options: Record<string, unknown>): void {
     const style = options.style as
-      { layers?: Array<{ id?: unknown }>; sources?: Record<string, unknown> } | undefined
+      | { layers?: Array<{ id?: unknown }>; sources?: Record<string, unknown> }
+      | undefined
     if (style === undefined || style === null) return
 
     if (Array.isArray(style.layers)) {
@@ -506,6 +521,8 @@ export { MockMap as Map }
 /** Clear recorded state between tests. */
 export function resetMapLibreMock(): void {
   MockMap.instances.length = 0
+  MockMap.constructionAttempts = 0
+  MockMap.failConstruction = null
   addProtocol.mockClear()
   removeProtocol.mockClear()
   workerUrl = ''

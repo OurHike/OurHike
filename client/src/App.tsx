@@ -887,6 +887,40 @@ function App() {
   }, [mapNeededNow])
   const mapMounted = mapNeededNow || mapKept
 
+  // Whether something is drawn OVER the held map right now - one of the
+  // full-screen flows (each is somewhere a hiker is typing or deciding, so
+  // it wins over any tab), or a tab screen on the form factors where that
+  // tab replaces the map. The return at the bottom renders these over the
+  // held-map wrapper; this pair of facts is computed up here because two
+  // hooks below need them, and hooks cannot sit under the render-time
+  // branches that build the actual screens.
+  const flowOpen =
+    authFlow !== null ||
+    collectingIdentity ||
+    reportingFailure ||
+    reportingClosure ||
+    reporting !== null
+  const tabOverMap =
+    !entering &&
+    (activeTab === 'more' ||
+      activeTab === 'plan' ||
+      (activeTab === 'today' && !isDesktop))
+  const mapShownNow = mapMounted && !flowOpen && !tabOverMap
+
+  // The map boundary's reset, counted in ARRIVALS at the map rather than in
+  // tab changes. With the map permanently mounted (#1081), a resetKey of
+  // `activeTab` would clear a caught map crash - and re-run the whole
+  // multi-second map build, hidden and inert - on every tab switch for the
+  // rest of the session. Keyed this way, a crashed map retries exactly once,
+  // when the hiker actually returns to it and can see the result - which is
+  // what the old unmount-per-tab structure did by accident.
+  const [mapArrivals, setMapArrivals] = useState(0)
+  const mapWasShown = useRef(false)
+  useEffect(() => {
+    if (mapShownNow && !mapWasShown.current) setMapArrivals((n) => n + 1)
+    mapWasShown.current = mapShownNow
+  }, [mapShownNow])
+
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
   // nothing else writes them.
@@ -4202,60 +4236,62 @@ function App() {
   // hiker sees behind the steps has changed - still the canvas and nothing
   // else, still untouchable, still credited - and there is now one map.
 
+  // The full-screen flows, over the held map rather than instead of it
+  // (#1081, second pass). These were early returns, which was correct when
+  // every screen was: opening a report from Today then cancelling it cost
+  // nothing extra, because nothing extra was mounted. With the map kept, an
+  // early return here silently destroyed the kept map and remounted it -
+  // hidden, at full build cost - the moment the flow closed. So they render
+  // as `flowScreen` in the one return at the bottom, exactly the way the tab
+  // screens do, and the map they were typed over is still there afterwards.
+  // A flow outranks whatever tab is active - it is somewhere a hiker is
+  // typing or deciding - and while one is up the downloads window is not
+  // rendered, which is the behaviour the early returns gave it.
+  let flowScreen: ReactNode = null
   if (authFlow !== null) {
-    if (authFlow.screen === 'email') {
-      return (
+    flowScreen =
+      authFlow.screen === 'email' ? (
         <EmailSignIn
           onMagicLink={sendMagicLink}
           onSignIn={signInWithEmail}
           onSignUp={signUpWithEmail}
           onCancel={() => setAuthFlow(null)}
         />
+      ) : (
+        <SignInPrompt
+          providers={ENABLED_PROVIDERS}
+          reportSaved={authFlow.afterReport}
+          // #315: Google and Apple are a full off-origin navigation, so
+          // offline they take the hiker out of the app and away from the map
+          // rather than merely failing. The screen holds those two and says so.
+          online={online}
+          onSignIn={handleChooseProvider}
+          onCancel={() => setAuthFlow(null)}
+        />
       )
-    }
-
-    return (
-      <SignInPrompt
-        providers={ENABLED_PROVIDERS}
-        reportSaved={authFlow.afterReport}
-        // #315: Google and Apple are a full off-origin navigation, so
-        // offline they take the hiker out of the app and away from the map
-        // rather than merely failing. The screen holds those two and says so.
-        online={online}
-        onSignIn={handleChooseProvider}
-        onCancel={() => setAuthFlow(null)}
-      />
-    )
-  }
-
-  // After the report is saved and after sign-in, which is the order
-  // contributionFlow.ts insists on: a trail name belongs to a profile, so
-  // asking first collects something with nowhere to put it (#233).
-  if (collectingIdentity) {
-    return (
+  } else if (collectingIdentity) {
+    // After the report is saved and after sign-in, which is the order
+    // contributionFlow.ts insists on: a trail name belongs to a profile, so
+    // asking first collects something with nowhere to put it (#233).
+    flowScreen = (
       <IdentitySetup
         onSave={handleSaveIdentity}
         onSkip={() => setCollectingIdentity(false)}
       />
     )
-  }
-
-  // Before the report screens below and after the auth ones above, which is
-  // the order this file already keeps: a full-screen flow renders instead of
-  // the map. Nothing here is gated on an account, deliberately - see
-  // handleSubmitAppFailure.
-  if (reportingFailure) {
-    return (
+  } else if (reportingFailure) {
+    // Before the report screens below and after the auth ones above, which
+    // is the order this file already keeps. Nothing here is gated on an
+    // account, deliberately - see handleSubmitAppFailure.
+    flowScreen = (
       <AppFailureReport
         online={online}
         onSubmit={(draft, authoredAt) => void handleSubmitAppFailure(draft, authoredAt)}
         onClose={() => setReportingFailure(false)}
       />
     )
-  }
-
-  if (reportingClosure) {
-    return (
+  } else if (reportingClosure) {
+    flowScreen = (
       <ClosureForm
         // The snapped mile the header is already showing, or null when there
         // is no fix or it could not be placed on the centerline. Never zero:
@@ -4266,12 +4302,10 @@ function App() {
         onCancel={() => setReportingClosure(false)}
       />
     )
-  }
-
-  if (reporting !== null) {
+  } else if (reporting !== null) {
     if (reporting.step === 'pick') {
       const anchor = reporting.anchor
-      return (
+      flowScreen = (
         <ReportTypePicker
           // The anchor rides through the pick (FIELD_NOTES.md step 1): a
           // report that started from a place card stays about that place
@@ -4292,43 +4326,43 @@ function App() {
           onCancel={() => setReporting(null)}
         />
       )
+    } else {
+      flowScreen = (
+        <ReportForm
+          type={reporting.type}
+          trailName={preferences.trail_name}
+          // The stored answer, or the floor when nobody has said (#233). It was
+          // a hardcoded "thru" here and in More below, so every report in the
+          // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
+          // for why the fallback is the weakest claim rather than that one.
+          reporterType={signReportAs(preferences.reporter_type)}
+          // Anchored reports carry the PLACE (FIELD_NOTES.md step 1): the
+          // POI's own coordinates and mile, which need no GPS fix - it is the
+          // place being reported on, not the hiker's position. Un-anchored
+          // ones keep the fix: null with no fix, rather than 0,0 - a real
+          // place in the Atlantic a maintainer cannot tell from a missing
+          // location. The mile is separately unknown when the fix is off the
+          // centerline or the trail index has not been downloaded yet.
+          location={
+            reporting.anchor !== undefined
+              ? {
+                  lat: reporting.anchor.lat,
+                  lon: reporting.anchor.lon,
+                  ...(reporting.anchor.mile !== undefined
+                    ? { mile: reporting.anchor.mile }
+                    : {}),
+                }
+              : gps.status === 'located'
+                ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
+                : null
+          }
+          poiId={reporting.anchor?.poiId}
+          online={online}
+          onSubmit={(submission) => void handleSubmitReport(submission)}
+          onCancel={() => setReporting(null)}
+        />
+      )
     }
-
-    return (
-      <ReportForm
-        type={reporting.type}
-        trailName={preferences.trail_name}
-        // The stored answer, or the floor when nobody has said (#233). It was
-        // a hardcoded "thru" here and in More below, so every report in the
-        // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
-        // for why the fallback is the weakest claim rather than that one.
-        reporterType={signReportAs(preferences.reporter_type)}
-        // Anchored reports carry the PLACE (FIELD_NOTES.md step 1): the
-        // POI's own coordinates and mile, which need no GPS fix - it is the
-        // place being reported on, not the hiker's position. Un-anchored
-        // ones keep the fix: null with no fix, rather than 0,0 - a real
-        // place in the Atlantic a maintainer cannot tell from a missing
-        // location. The mile is separately unknown when the fix is off the
-        // centerline or the trail index has not been downloaded yet.
-        location={
-          reporting.anchor !== undefined
-            ? {
-                lat: reporting.anchor.lat,
-                lon: reporting.anchor.lon,
-                ...(reporting.anchor.mile !== undefined
-                  ? { mile: reporting.anchor.mile }
-                  : {}),
-              }
-            : gps.status === 'located'
-              ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
-              : null
-        }
-        poiId={reporting.anchor?.poiId}
-        online={online}
-        onSubmit={(submission) => void handleSubmitReport(submission)}
-        onCancel={() => setReporting(null)}
-      />
-    )
   }
 
   // Rendered beside whichever screen is showing rather than instead of it -
@@ -4828,16 +4862,21 @@ function App() {
   // its size and coming back costs no resize, no re-layout and no rebuild.
   // Not rendered at all until the session first needs a map (`mapMounted`),
   // so a launch that stays on Today still builds nothing.
+  // What is over the map right now: a full-screen flow outranks the active
+  // tab's screen, per the flow comment above. Must agree with `mapShownNow`
+  // up top, which is the same fact computed from state for the hooks.
+  const screenOver = flowScreen ?? overlayScreen
+
   return (
     <>
       {mapMounted && (
         <div
-          className={overlayScreen !== null ? 'app__map-held' : undefined}
-          inert={overlayScreen !== null || undefined}
-          aria-hidden={overlayScreen !== null || undefined}
+          className={screenOver !== null ? 'app__map-held' : undefined}
+          inert={screenOver !== null || undefined}
+          aria-hidden={screenOver !== null || undefined}
         >
           <ErrorBoundary
-            resetKey={activeTab}
+            resetKey={mapArrivals}
             fallback={() => (
               <div className="app__screen">
                 <ScreenFailed what="The map" />
@@ -5162,11 +5201,12 @@ function App() {
           </ErrorBoundary>
         </div>
       )}
-      {/* Whichever tab screen is up, over the held map. After the map in the
-          fragment so a positioned screen would also paint over it - though
-          the wrapper above has already taken the map out of flow and out of
-          sight whenever this is non-null. */}
-      {overlayScreen}
+      {/* Whichever screen is up, over the held map - a full-screen flow, or
+          the active tab's screen. After the map in the fragment so a
+          positioned screen would also paint over it - though the wrapper
+          above has already taken the map out of flow and out of sight
+          whenever this is non-null. */}
+      {screenOver}
       {/* The entry steps, over the map screen rather than instead of it
           (#721). A sibling of the boundary, not a child: they are the way out
           of first run, so a map that throws mid-onboarding must not take them
@@ -5186,7 +5226,11 @@ function App() {
           downloadActivity={downloadActivity}
         />
       )}
-      {downloadsWindow}
+      {/* Not while a full-screen flow is up: the flows used to be early
+          returns above this window's own construction, so it never rendered
+          over one, and a dialog floating over somebody's half-typed report
+          is not an arrangement worth inventing now. */}
+      {flowScreen === null && downloadsWindow}
     </>
   )
 }

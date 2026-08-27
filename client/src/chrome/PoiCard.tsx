@@ -268,6 +268,11 @@ export interface PoiCardProps {
    */
   noteContext?: FieldNoteContext
   onClose: () => void
+  /** Where the share sheet's portal lands - the map screen's root, so the
+   *  sheet hides with the held map instead of floating over another tab
+   *  (PoiShareSheet.tsx's header has the whole argument). Optional for the
+   *  same bare-render reason every optional field above states. */
+  sheetContainer?: HTMLElement | null
 }
 
 function mile(value: number): string {
@@ -567,6 +572,7 @@ export function PoiCard({
   units = 'imperial',
   noteContext,
   onClose,
+  sheetContainer,
 }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
 
@@ -1782,6 +1788,7 @@ export function PoiCard({
           poiName={shown.name}
           onShare={(flagged) => void shareOwn(ownShown, flagged)}
           onClose={() => setSharing(false)}
+          container={sheetContainer}
         />
       )}
     </div>

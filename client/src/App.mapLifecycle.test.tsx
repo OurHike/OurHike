@@ -435,7 +435,8 @@ describe('what the first-run steps cost', () => {
       const opened = MockMap.live[0]
       expect(opened).toBeDefined()
       const pushed = opened.sourceData.get(POI_SOURCE_ID) as
-        { features: Array<{ properties?: { poi_id?: string } }> } | undefined
+        | { features: Array<{ properties?: { poi_id?: string } }> }
+        | undefined
       const style = opened.options.style as {
         sources: Record<
           string,
@@ -531,5 +532,75 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
 
     await screen.findByRole('tab', { name: 'Today', selected: true })
     expect(MockMap.instances).toHaveLength(0)
+  })
+
+  it('keeps the one map through a report opened from Today', async () => {
+    // The review of the first cut caught this: the full-screen flows were
+    // still early returns, so a report opened from Today silently destroyed
+    // the kept map and remounted it - hidden, at full build cost - the
+    // moment the flow closed. The flows render over the held map now, the
+    // way the tab screens do, and this pins it with the cheapest flow to
+    // drive: open the report picker, change your mind.
+    aPhoneThatHasBeenUsed()
+    const user = userEvent.setup()
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await landEverything()
+    const built = MockMap.live[0]
+
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(screen.getByRole('button', { name: /note something for the crew/i }))
+    // The picker has the screen; the map survives underneath it.
+    await screen.findByRole('button', { name: 'Cancel' })
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(built)
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.instances).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(built)
+  })
+
+  it('leaves a crashed map alone until the hiker comes back to it', async () => {
+    // The other review catch: with the map permanently mounted, a resetKey
+    // of `activeTab` cleared a caught map crash - and re-ran the whole
+    // multi-second build, hidden and inert - on every tab switch for the
+    // rest of the session. The reset is keyed to ARRIVALS at the map now,
+    // so a deterministic fault costs its retries where the hiker can see
+    // the result, and a trip through the other tabs costs none.
+    aPhoneThatHasBeenUsed()
+    const user = userEvent.setup()
+    // React announces every boundary catch through console.error. The
+    // crashes below are this test's subject, not failures to surface.
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+
+    MockMap.failConstruction = new Error('no WebGL context to be had')
+    await openMapTab()
+    await screen.findByRole('heading', { name: /the map stopped working/i })
+    const attemptsWhileCrashed = MockMap.constructionAttempts
+    expect(attemptsWhileCrashed).toBeGreaterThan(0)
+
+    // Away through the tabs that draw no map: not one hidden retry.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await screen.findByRole('heading', { name: 'More' })
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.constructionAttempts).toBe(attemptsWhileCrashed)
+
+    // Coming back is the one retry, and this time the phone can: the fault
+    // has passed, and the arrival builds the session's map.
+    MockMap.failConstruction = null
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.constructionAttempts).toBe(attemptsWhileCrashed + 1)
+    expect(MockMap.live).toHaveLength(1)
   })
 })

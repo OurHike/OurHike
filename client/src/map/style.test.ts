@@ -49,12 +49,9 @@ import { POI_LAYER_ID, POI_SOURCE_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
-  CLOSURE_BAR_RHYTHM,
-  CLOSURE_CASING_LAYER_ID,
-  CLOSURE_COLOR,
+  CLOSURE_TAPE_IMAGE_ID,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
-  LONG_TERM_CLOSURE_CASING_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
@@ -139,10 +136,7 @@ function sortKeyFor(layerId: string, source: string): number {
  * are drawn, do not reach it. Its own rules are lib/closureStyle.ts's and are
  * tested there.
  */
-const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [
-  LONG_TERM_CLOSURE_LAYER_ID,
-  LONG_TERM_CLOSURE_CASING_LAYER_ID,
-]
+const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [LONG_TERM_CLOSURE_LAYER_ID]
 
 /** Every trail layer bound to the trail source - casing and blaze alike. */
 function trailLayerIds(): string[] {
@@ -179,10 +173,11 @@ describe('buildMapStyle', () => {
     // alone, since a casing drawn dashed would leave exactly the same gaps.
     //
     // The closure overlay is excluded and is the ONE exception WIREFRAMES.md
-    // §3 states: the barred band is the map's only permitted dashed rhythm,
-    // specced in §7. It is a barrier drawn over the trail, not the trail - and
-    // the test below pins it dashed, so admitting the exception here cannot
-    // quietly become "closures went solid too".
+    // §3 states: the barrier tape is the map's only permitted non-solid
+    // trail-line treatment, specced in §7. It is a barrier drawn over the
+    // trail, not the trail - and the test below pins it patterned, so
+    // admitting the exception here cannot quietly become "closures went solid
+    // too".
     for (const id of trailLayerIds()) {
       expect(
         (layer(id).paint as Record<string, unknown> | undefined)?.['line-dasharray'],
@@ -190,14 +185,14 @@ describe('buildMapStyle', () => {
     }
   })
 
-  it('keeps the long-term closure a BARRED band, which is the exception the rule above allows', () => {
-    // The other half of the exception. A long-term closure that lost its bars
-    // would be a wide red line over a trail - which reads as a route, and is
-    // the confident false statement lib/closureStyle.ts exists to prevent.
+  it('keeps the long-term closure TAPE, which is the exception the rule above allows', () => {
+    // The other half of the exception. A long-term closure that lost its
+    // texture would be a wide red line over a trail - which reads as a route,
+    // and is the confident false statement lib/closureStyle.ts exists to
+    // prevent.
     const band = layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>
 
-    expect(band['line-dasharray']).toEqual(CLOSURE_BAR_RHYTHM)
-    expect(band['line-color']).toBe(CLOSURE_COLOR)
+    expect(band['line-pattern']).toBe(CLOSURE_TAPE_IMAGE_ID)
   })
 
   it('draws the long-term closure with exactly the temporary closure’s treatment', () => {
@@ -206,9 +201,6 @@ describe('buildMapStyle', () => {
     // feed's appearance that forgets the other fails here - the two kinds of
     // closed are told apart by the SHEET, never by the line.
     expect(layer(LONG_TERM_CLOSURE_LAYER_ID).paint).toEqual(layer(CLOSURE_LAYER_ID).paint)
-    expect(layer(LONG_TERM_CLOSURE_CASING_LAYER_ID).paint).toEqual(
-      layer(CLOSURE_CASING_LAYER_ID).paint,
-    )
   })
 
   it('draws the barrier only on lines their steward marks closed, and reads the status case-insensitively', () => {
@@ -590,14 +582,15 @@ describe('the safety overlays', () => {
   it('draws the closure band over the blaze, not under it', () => {
     // The entire job of the band. Under the trail line it would be a closure
     // the trail is drawn straight through, which is a picture of an open
-    // trail - and lib/closureStyle.ts's careful width, rhythm and casing
-    // differences would all be spent on something nobody can see.
+    // trail - and lib/closureStyle.ts's careful width and texture differences
+    // would all be spent on something nobody can see.
+    //
+    // Drawn OVER is not the same as hiding, and that is the tape's whole
+    // point: its gaps are transparent, so the blaze underneath still shows
+    // between the stripes and a hiker can read WHICH trail is shut.
     const ids = style().layers.map((l) => l.id)
 
     expect(ids.indexOf(BLAZE_LAYER_ID)).toBeLessThan(ids.indexOf(CLOSURE_LAYER_ID))
-    expect(ids.indexOf(CLOSURE_CASING_LAYER_ID)).toBeLessThan(
-      ids.indexOf(CLOSURE_LAYER_ID),
-    )
   })
 
   it('draws a serious warning over every waypoint pin', () => {
@@ -620,7 +613,6 @@ describe('the safety overlays', () => {
     )
 
     expect(bySource[CLOSURE_LAYER_ID]).toBe(CLOSURE_SOURCE_ID)
-    expect(bySource[CLOSURE_CASING_LAYER_ID]).toBe(CLOSURE_SOURCE_ID)
     expect(bySource[WARNING_LAYER_ID]).toBe(WARNING_SOURCE_ID)
   })
 
@@ -1158,7 +1150,7 @@ describe('the trails other organizations maintain (#950)', () => {
     expect(layer(TRAIL_CASING_LAYER_ID).minzoom).toBeUndefined()
   })
 
-  it('gives a long-term closed nearby trail the same barred band', () => {
+  it('gives a long-term closed nearby trail the same barrier tape', () => {
     // features/NEARBY_TRAILS.md §3: one mark for "do not walk this",
     // whoever's trail it is. OPRHP publishes the status
     // (export_nearby_trails.py's `trail_status`) and lib/closureStyle.ts's

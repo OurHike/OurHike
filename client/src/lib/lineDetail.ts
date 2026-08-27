@@ -84,7 +84,7 @@ export interface LineDetail {
    *  collapsing to whichever half is known when the other is not. */
   extentLine: string | null
   /** "Closed by NYS OPRHP" - §3's long-term closure, kept in the SHEET rather
-   *  than in the line, which is where the whole distinction lives: the barred
+   *  than in the line, which is where the whole distinction lives: the taped
    *  band on the map says "do not walk this" for both kinds, and only the
    *  sheet says which kind it is. Null for every trail that is not marked
    *  closed long-term, including every temporary closure (ClosureSheet owns

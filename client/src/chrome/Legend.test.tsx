@@ -367,7 +367,7 @@ describe('every hideable category has a row, in view or not', () => {
 //
 // The legend named categories the map draws as pins and drew none of them.
 // What is asserted here is not "an icon is present" but that it is THE icon -
-// the same glyph data, the same broken rim, the same barred band - because a
+// the same glyph data, the same broken rim, the same barrier tape - because a
 // legend drawing its own approximation of a pin is worse than one drawing
 // none: it teaches a symbol the map does not use.
 
@@ -399,7 +399,7 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('draws a closure as the barred band it is, not as a pin it never was', () => {
+  it('draws a closure as the barrier tape it is, not as a pin it never was', () => {
     render(<Legend {...PROPS} />)
     const icon = iconIn(rowFor('Closure'))
 

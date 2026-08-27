@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   ATC_NOTICE_CASING_WIDTH,
   ATC_NOTICE_FILL_RADIUS,
-  ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
@@ -185,8 +184,7 @@ describe('and nothing on the map is drawn over it', () => {
     // the same array - a new one appended rather than inserted would cover
     // exactly the mark this whole file is about.
     for (const sheet of SHEETS) {
-      expect(drawOrder(sheet).slice(-3)).toEqual([
-        ATC_UPDATE_CASING_LAYER_ID,
+      expect(drawOrder(sheet).slice(-2)).toEqual([
         ATC_UPDATE_LAYER_ID,
         ATC_UPDATE_POINT_LAYER_ID,
       ])

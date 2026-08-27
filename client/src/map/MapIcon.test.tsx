@@ -15,10 +15,10 @@ import {
 import { WARNING_GLYPH } from './warningPin'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_BAR_RHYTHM,
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
-  CLOSURE_LINE_WIDTH,
+  CLOSURE_STRIPE_EDGE,
+  CLOSURE_TAPE_CADENCE,
 } from '../lib/closureStyle'
 
 // The map's pins, drawn in the DOM for the legend (#572).
@@ -187,34 +187,52 @@ describe('MapIcon: a serious warning', () => {
 })
 
 describe('MapIcon: a closure', () => {
-  it('is the barred band the map draws, not a pin', () => {
+  it('is the barrier tape the map draws, not a pin', () => {
     const svg = draw(<MapIcon type="closure" />)
 
     expect(part(svg, 'map-icon__closure-band').getAttribute('stroke')).toBe(CLOSURE_COLOR)
-    expect(part(svg, 'map-icon__closure-casing').getAttribute('fill')).toBe(
+    expect(part(svg, 'map-icon__closure-casing').getAttribute('stroke')).toBe(
       CLOSURE_CASING_COLOR,
     )
     expect(svg.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('bars it to the map’s own rhythm, converted out of line-width units', () => {
-    // MapLibre's dasharray is in line-width units and SVG's is in user units.
-    // The viewBox is drawn in line-width units so the conversion happens once.
+  it('draws the stripes at the map’s own cadence, in the map’s own units', () => {
+    // The swatch's viewBox is in CSS pixels at the tape's width, so every
+    // number here is the number map/closureTape.ts rasterises - no conversion,
+    // and nothing for the legend to drift from the map by.
     const svg = draw(<MapIcon type="closure" />)
-    const dashes = (
-      part(svg, 'map-icon__closure-band').getAttribute('stroke-dasharray') ?? ''
-    )
-      .split(' ')
-      .map(Number)
+    const band = svg.querySelectorAll('.map-icon__closure-band')
 
-    expect(dashes).toEqual(CLOSURE_BAR_RHYTHM.map((unit) => unit * CLOSURE_LINE_WIDTH))
+    expect(band.length).toBeGreaterThan(1)
+    expect(band[0]?.getAttribute('stroke-width')).toBe(
+      String(CLOSURE_TAPE_CADENCE.stripe),
+    )
   })
 
-  it('keeps the casing continuous, so the bars’ gaps show it through', () => {
-    // The band is dashed and the casing is not - which is what makes this read
-    // as barrier tape rather than as a dashed red trail line.
+  it('edges each stripe rather than laying a casing behind them all', () => {
+    // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
+    // legend drew a filled casing rect with a dashed band over it - which was
+    // honest, because that is what the map drew, and both were a near-black
+    // line with red ticks in it. There is no rect now, and the casing is a
+    // stroke wider than the stripe it outlines.
+    const svg = draw(<MapIcon type="closure" />)
+    const edge = Number(
+      part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
+    )
+
+    expect(svg.querySelector('rect')).toBeNull()
+    expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
+  })
+
+  it('leaves the ground between the stripes alone', () => {
+    // What the map does, restated in the legend: the tape's gaps are
+    // transparent, so nothing here may paint them either. A fill anywhere in
+    // this swatch would be a legend claiming the map hides the trail.
     const svg = draw(<MapIcon type="closure" />)
 
-    expect(part(svg, 'map-icon__closure-casing')).not.toHaveAttribute('stroke-dasharray')
+    for (const node of svg.querySelectorAll('*')) {
+      expect(node.getAttribute('fill')).toBeNull()
+    }
   })
 })

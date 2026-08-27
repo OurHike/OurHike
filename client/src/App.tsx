@@ -1485,7 +1485,7 @@ function App() {
   }, [reports, trailIndex, fix, heading, hike])
 
   /**
-   * The same closures on the canvas: a barred red band along each closed
+   * The same closures on the canvas: red barrier tape along each closed
    * stretch (lib/closureStyle.ts).
    *
    * Needs the centerline index and nothing else - no GPS fix, no direction.

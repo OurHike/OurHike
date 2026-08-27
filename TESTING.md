@@ -123,7 +123,7 @@ One boundary worth stating plainly: everything in this suite runs in jsdom again
 7. **Legend contents** - equals exactly what the viewport contains, with correct counts; recomputes on pan/zoom; closure and serious-warning rows render **without** a hide control of their own. Since [#1047](https://github.com/OurHike/OurHike/issues/1047) the panel does carry one **Alerts** switch over all three alert layers at once, and what the suite pins is the boundary rather than the switch: the banners and the `aria-live` line survive it, the status strip says "Alerts hidden" while it is off, and nothing about it is ever written down - `client/src/chrome/alertLayerPanel.test.ts` watches `Storage.setItem` rather than reading the source, so a stored flag added later fails a test instead of reaching a trail.
 8. **Map chrome** - compass + locate present and ≥44px effective target; zoom buttons absent on mobile, present on web; scale bar respects the unit preference; attribution always rendered.
 9. **Report status rendering** - each of Waiting / Confirmed / Fixed / Not confirmed renders its own affordance; "Not confirmed" applies no penalty styling to the reporter.
-10. **Closure sheet** - shows status, dates, marked-by, sync age; offers no detour computation; renders the barred-band line treatment distinctly from a red blaze.
+10. **Closure sheet** - shows status, dates, marked-by, sync age; offers no detour computation; renders the barrier-tape line treatment distinctly from a red blaze.
 
 **Integration / E2E:**
 11. **First run** - three onboarding steps, each skippable; location asked only after the value-prop screen; **no notification prompt anywhere** in first run; a fresh install can reach a usable map with zero taps beyond the flow.

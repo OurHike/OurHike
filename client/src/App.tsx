@@ -5025,6 +5025,11 @@ function App() {
               // direction claim and the rail refuses to make it unsettled
               // (chrome/NextUpRail.tsx).
               direction={direction?.direction}
+              // And the hiker's own mile as a number, which is what the waypoint
+              // card subtracts against to say how far ahead a place is (#953).
+              // `position` above is the same fact already spent into a sentence -
+              // that is exactly why the card could not say it.
+              {...(fix === null ? {} : { hikerMile: fix.mile })}
               // Which also decides whether the map offers its locate control -
               // attaching it regardless was a second high-accuracy watch and a
               // permission prompt behind this preference's back.

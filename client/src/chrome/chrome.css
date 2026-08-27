@@ -2774,6 +2774,7 @@ a.poi-card__credit::after {
 .poi-card__mile,
 .poi-card__chip-distance,
 .poi-card__part-distance,
+.poi-card__distance,
 .poi-card__coords {
   font-family: var(--font-mono, ui-monospace, monospace);
 }

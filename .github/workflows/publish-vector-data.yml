@@ -696,6 +696,23 @@ jobs:
         if: inputs.include_elevation
         run: python export_network_elevation.py
 
+      # The DENSE profile (#1045), which is a different artifact answering a
+      # different question and is why both steps exist. The one above is
+      # [gain, loss] per edge - the sanctioned TOTAL a card prices a walk
+      # from. This one is the shape of the ground, for a ribbon on a walk
+      # somebody is following, and it is fetched only when a chart opens.
+      #
+      # Same gate, same inputs (the DEM index, the graph's edges and its
+      # geometry) and the same failure reading: no profile means no ribbon on
+      # a day hike, which is exactly the state #1041 shipped and is honest.
+      #
+      # It runs AFTER its scalar sibling and depends on nothing the sibling
+      # writes - the order is so that a run which fails here has already put
+      # the figures a card needs in place.
+      - name: Export the shape of the ground along each graph edge
+        if: inputs.include_elevation
+        run: python export_network_profile.py
+
       # Saved even when an earlier step failed, which is the whole reason the
       # cache is split into restore/save rather than left as `actions/cache`:
       # the bundled post-step only runs on success, so both failed runs of

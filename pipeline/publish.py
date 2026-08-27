@@ -579,6 +579,35 @@ def collect_artifacts() -> dict[str, dict]:
         else:
             artifacts["trail_graph_elevation.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The dense sampled profile along those same edges (#1045,
+    # export_network_profile.py) - the fourth file on the graph's shelf, and
+    # the only one a phone fetches when a CHART opens rather than when the
+    # builder does. Its own manifest for the same reason its two-scalar sibling
+    # has one: the elevation steps are gated on `include_elevation`, so a run
+    # that skipped them ships a graph with no chart data rather than no graph.
+    #
+    # SAME LICENCE GATE, one more level down the derivation. Terrain sampled
+    # along a steward's line is that steward's data exactly as its topology and
+    # its climb are, and export_network_profile.py copies `sources` out of the
+    # graph manifest so this check has something to read.
+    #
+    # NOT gated on its two-scalar sibling being published, deliberately. They
+    # answer different questions - that one prices a walk, this one draws it -
+    # and a client holding one without the other degrades the way it already
+    # does when either is absent. Binding them here would make a chart-only
+    # regression take the card's figures down with it.
+    graph_profile_manifest = PROCESSED_DIR / "trail_graph_profile_manifest.json"
+    if graph_profile_manifest.exists():
+        manifest = json.loads(graph_profile_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: trail_graph_profile.json not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json."
+            )
+        else:
+            artifacts["trail_graph_profile.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():
         manifest = json.loads(poi_manifest.read_text())

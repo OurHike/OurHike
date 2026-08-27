@@ -89,7 +89,12 @@ const ROUTE: GraphRoute = {
   climb: null,
 }
 
-const DRAFT: DayHikeDraft = { segments: [[]], refusal: null, looped: false }
+const DRAFT: DayHikeDraft = {
+  segments: [[]],
+  refusal: null,
+  looped: false,
+  droppedMiles: 0,
+}
 
 /** One routed stretch, which is what a single-stretch walk now looks like to
  *  the bar. The totals travel beside the stretches rather than inside one
@@ -120,6 +125,8 @@ function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}
     onCancel: vi.fn(),
     canCloseLoop: true,
     canStartNew: false,
+    drawing: false,
+    onToggleDraw: vi.fn(),
     ...overrides,
   }
   const view = render(<DayHikePickBar {...props} />)
@@ -343,5 +350,63 @@ describe('several stretches (#935, #983)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Start a new stretch' }))
     expect(props.onStartStretch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('drawing, and the gap a hiker takes on (#983)', () => {
+  it('changes what the bar asks for in draw mode', () => {
+    renderBar({ drawing: true })
+
+    expect(screen.getByText(/Drag to draw/)).toBeInTheDocument()
+    expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+  })
+
+  it('says what a drawn line lost, in the frame\u2019s own words', () => {
+    renderBar({ draft: { ...DRAFT, droppedMiles: 0.3 }, status: routedFrom(ROUTE) })
+
+    expect(screen.getByText(/had no trail under it/)).toBeInTheDocument()
+    expect(screen.getByText(/rather than guess a way across/)).toBeInTheDocument()
+  })
+
+  it('asks the hiker to take the crossing on before it saves', () => {
+    // The maintainer's decision of 2026-08-27, and the reason it is a step
+    // rather than a banner: the difference between reading that the app has
+    // not checked the ground and answering it.
+    const props = renderBar({
+      draft: { ...DRAFT, droppedMiles: 0.3 },
+      status: routedFrom(ROUTE, 0.3),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(props.onDone).not.toHaveBeenCalled()
+    expect(screen.getByText(/cannot say it is walkable/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /find my own way/ }))
+    expect(props.onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the hiker go back to the map instead of taking it on', () => {
+    const props = renderBar({
+      draft: { ...DRAFT, droppedMiles: 0.3 },
+      status: routedFrom(ROUTE, 0.3),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the map' }))
+
+    expect(props.onDone).not.toHaveBeenCalled()
+    expect(screen.getByText(/3 legs/)).toBeInTheDocument()
+  })
+
+  it('does not ask about a walk with no gap in it', () => {
+    // A question with no consequence is one a hiker learns to dismiss, and
+    // this one has to keep its weight for the walks that do cross something.
+    const props = renderBar({ status: routedFrom(ROUTE, 0) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(props.onDone).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/cannot say it is walkable/)).not.toBeInTheDocument()
   })
 })

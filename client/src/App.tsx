@@ -197,6 +197,7 @@ import {
   draftPoints,
   draftStatus,
   EMPTY_DRAFT,
+  drawStroke,
   loopDraft,
   startStretch,
   tapAt,
@@ -2277,10 +2278,29 @@ function App() {
     setPlanMode('day')
   }, [routeBuilder])
 
+  /**
+   * Whether the map is taking a DRAWN line rather than taps (#983, frame 1k).
+   *
+   * Shell state rather than draft state: it is about what the map is doing
+   * with a gesture, not about the walk being built, and a hiker who switches
+   * back to tapping keeps whatever they have drawn.
+   */
+  const [dayHikeDrawMode, setDayHikeDrawMode] = useState(false)
+
+  const handleDayHikeStroke = useCallback(
+    (stroke: Array<{ lon: number; lat: number }>) => {
+      const graphForTaps = dayHikeIndex ?? graphIndex
+      if (graphForTaps === null) return
+      setDayHike(drawStroke(graphForTaps, stroke))
+    },
+    [dayHikeIndex, graphIndex],
+  )
+
   const handleDayHikeCancel = useCallback(() => {
     setDayHikeReview(null)
     setDayHike(null)
     setDayHikeDraftDate(null)
+    setDayHikeDrawMode(false)
   }, [])
 
   // Derived once per state change, not per render - draftStatus runs the
@@ -2365,7 +2385,28 @@ function App() {
     const lines = dayHikeStatus.stretches.flatMap(
       (stretch) => routeLines(dayHikeIndex.graph, stretch.route) ?? [],
     )
-    return { lines, points }
+    // The gap drawn as the app's declined guess (#983, the maintainer's
+    // decision of 2026-08-27): a straight dotted line between the end of one
+    // stretch and the start of the next, so a hiker can see WHERE the app
+    // stopped rather than only that it did.
+    //
+    // Straight, and the same straight line `dayHikeGaps` measures for a saved
+    // hike - not the stroke the finger drew. The stroke is not stored, so the
+    // finished card could not show it either, and two surfaces drawing the
+    // same gap differently is worse than one of them drawing it plainly.
+    const gaps: Array<Array<[number, number]>> = []
+    for (let at = 0; at + 1 < dayHikeStatus.stretches.length; at += 1) {
+      const before = dayHikeStatus.stretches[at].points
+      const after = dayHikeStatus.stretches[at + 1].points
+      const from = before[before.length - 1]
+      const to = after[0]
+      if (from === undefined || to === undefined) continue
+      gaps.push([
+        [from.at.lon, from.at.lat],
+        [to.at.lon, to.at.lat],
+      ])
+    }
+    return { lines, points, gaps }
   }, [dayHike, dayHikeIndex, dayHikeStatus])
 
   const dayHikeOrgLabel = useMemo(() => orgLabelFrom(stewards), [stewards])
@@ -5136,6 +5177,12 @@ function App() {
                   ? undefined
                   : handleMapTap
               }
+              // Draw mode replaces the tap handler rather than joining it -
+              // one interpreter per touch, which is routeLayers.ts's rule for
+              // taps and the same race one level up for a drag.
+              onRouteStroke={
+                dayHike !== null && dayHikeDrawMode ? handleDayHikeStroke : undefined
+              }
               routeSheet={
                 targetRequest !== null ? (
                   targetSheet
@@ -5170,6 +5217,8 @@ function App() {
                     onCancel={handleDayHikeCancel}
                     canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
                     canStartNew={dayHike !== null && canStartStretch(dayHike)}
+                    drawing={dayHikeDrawMode}
+                    onToggleDraw={() => setDayHikeDrawMode((on) => !on)}
                   />
                 ) : followSheetNode !== null ? (
                   // Following outranks both doors below and neither builder above:

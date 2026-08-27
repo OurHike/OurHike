@@ -427,6 +427,39 @@ export class MockMap {
     this.canvas ??= document.createElement('canvas')
     return this.canvas
   }
+
+  /**
+   * The gesture handlers, enough of them to observe a suspend.
+   *
+   * Real MapLibre exposes these as handler objects with
+   * enable/disable/isEnabled, and map/routeLayers.ts's `attachRouteStroke`
+   * turns them off for the life of a drawn stroke - two interpreters per touch
+   * is the failure that module's own comment records. Without these here a
+   * test can drive a drag and cannot tell whether the map panned under it,
+   * which is the half worth asserting.
+   */
+  dragPan = new MockHandler()
+  touchZoomRotate = new MockHandler()
+}
+
+/** enable/disable/isEnabled, and a record of every call. */
+export class MockHandler {
+  private enabled = true
+  readonly calls: string[] = []
+
+  enable(): void {
+    this.enabled = true
+    this.calls.push('enable')
+  }
+
+  disable(): void {
+    this.enabled = false
+    this.calls.push('disable')
+  }
+
+  isEnabled(): boolean {
+    return this.enabled
+  }
 }
 
 /**

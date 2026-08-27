@@ -66,7 +66,12 @@ import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './dispu
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
 import { attachDayHikeData, type DayHikeDrawing } from './dayHikeLayers'
-import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
+import {
+  attachRouteData,
+  attachRouteStroke,
+  attachRouteTaps,
+  type RouteDrawing,
+} from './routeLayers'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type {
   BackgroundSource,
@@ -225,6 +230,15 @@ export interface MapViewProps {
    * stable across renders (useCallback), like `onSelectPoi`.
    */
   onRouteTap?: (at: { lon: number; lat: number }) => void
+  /**
+   * A drawn line, when the builder is in draw mode (#983, frame `1k`).
+   *
+   * Attached INSTEAD of `onRouteTap`, never alongside it, for the rule
+   * routeLayers.ts states about taps: one interpreter per touch. A drag and a
+   * tap are the same gesture until the finger moves, so two handlers watching
+   * for both is the same race one level up.
+   */
+  onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -393,6 +407,7 @@ export function MapView({
   routeDrawing = null,
   dayHikeDrawing = null,
   onRouteTap,
+  onRouteStroke,
   onSelectPoi,
   onSelectLine,
   center,
@@ -904,9 +919,14 @@ export function MapView({
   }, [map, onSelectPoi, onRouteTap])
 
   useEffect(() => {
-    if (map === null || onRouteTap === undefined) return
+    if (map === null || onRouteTap === undefined || onRouteStroke !== undefined) return
     return attachRouteTaps(map, onRouteTap)
-  }, [map, onRouteTap])
+  }, [map, onRouteTap, onRouteStroke])
+
+  useEffect(() => {
+    if (map === null || onRouteStroke === undefined) return
+    return attachRouteStroke(map, onRouteStroke)
+  }, [map, onRouteStroke])
 
   // The line taps (#134), suppressed in route mode like every other tap
   // handler. Attached separately from the POI taps because their yields

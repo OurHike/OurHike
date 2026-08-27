@@ -55,10 +55,12 @@
 // would creep in.
 
 import { straightLineMiles } from './dayHikeShelf'
+import { matchStroke, strokeToStretches } from './strokeMatch'
 import {
   canSnapToGraph,
   closeTheLoop,
   nearestPointOnGraph,
+  metresToMiles,
   routeThrough,
   type GraphPoint,
   type GraphRoute,
@@ -130,9 +132,26 @@ export interface DayHikeDraft {
   refusal: string | null
   /** Whether the hiker asked to walk back to the first tap. */
   looped: boolean
+  /**
+   * Miles of a DRAWN line that had no maintained trail under them, measured
+   * along the stroke (#983, frame `1k`). Zero for a tapped walk.
+   *
+   * Measured along the stroke rather than as the straight line between the
+   * stretches it separates, because that is what the hiker actually drew - the
+   * straight line is a different and shorter claim about ground nobody has
+   * checked. It is kept on the draft rather than recomputed because the stroke
+   * itself is gone by the time the bar renders: this is the only record that
+   * the app declined to guess, and losing it would make the drop silent.
+   */
+  droppedMiles: number
 }
 
-export const EMPTY_DRAFT: DayHikeDraft = { segments: [[]], refusal: null, looped: false }
+export const EMPTY_DRAFT: DayHikeDraft = {
+  segments: [[]],
+  refusal: null,
+  looped: false,
+  droppedMiles: 0,
+}
 
 /** The stretch being built - the invariant above is what makes this total. */
 function currentStretch(draft: DayHikeDraft): GraphPoint[] {
@@ -180,8 +199,40 @@ export function tapAt(
   const segments = draft.segments.map((stretch, at) =>
     at === draft.segments.length - 1 ? [...stretch, found] : stretch,
   )
-  return { segments, refusal: null, looped: false }
+  return { ...draft, segments, refusal: null, looped: false }
 }
+
+/**
+ * Frame `1k`: a drawn line, put on the trails.
+ *
+ * REPLACES THE DRAFT RATHER THAN APPENDING TO IT. A stroke describes the whole
+ * walk - "this is where I went" - and appending it to taps already placed
+ * would join two descriptions of a walk into one walk that is neither. The
+ * hiker draws again to change it, which is what "Redraw" on frame `1k` is.
+ *
+ * The refusal is the honest one for a stroke that matched nothing: not "your
+ * finger was in the wrong place", which is a tap's sentence, but that the line
+ * ran where no organization maintains a trail.
+ */
+export function drawStroke(
+  index: TrailGraphIndex,
+  stroke: readonly LonLat[],
+): DayHikeDraft {
+  if (!canSnapToGraph(index)) {
+    return { ...EMPTY_DRAFT, refusal: NETWORK_STILL_ARRIVING }
+  }
+  const match = matchStroke(index, stroke)
+  const stretches = strokeToStretches(match)
+  const droppedMiles = metresToMiles(match.droppedMetres)
+  if (stretches.length === 0) {
+    return { ...EMPTY_DRAFT, refusal: NOTHING_DRAWN_ON_TRAIL, droppedMiles }
+  }
+  return { segments: stretches, refusal: null, looped: false, droppedMiles }
+}
+
+/** What a drawn line that never touched a maintained trail is told. */
+export const NOTHING_DRAWN_ON_TRAIL =
+  'None of what you drew is on a marked hiking route. OurHike only builds routes on trails an organization maintains.'
 
 /**
  * Frame `1k`'s other half: end this stretch, and start the next one.
@@ -194,7 +245,7 @@ export function tapAt(
  */
 export function startStretch(draft: DayHikeDraft): DayHikeDraft {
   if (!canStartStretch(draft)) return draft
-  return { segments: [...draft.segments, []], refusal: null, looped: false }
+  return { ...draft, segments: [...draft.segments, []], refusal: null, looped: false }
 }
 
 /**
@@ -230,10 +281,16 @@ export function undoTap(draft: DayHikeDraft): DayHikeDraft {
   // alone.
   if (currentStretch(draft).length === 0) {
     if (draft.segments.length === 1) return draft
-    return { segments: draft.segments.slice(0, -1), refusal: null, looped: false }
+    return {
+      ...draft,
+      segments: draft.segments.slice(0, -1),
+      refusal: null,
+      looped: false,
+    }
   }
 
   return {
+    ...draft,
     segments: draft.segments.map((stretch, at) =>
       at === draft.segments.length - 1 ? stretch.slice(0, -1) : stretch,
     ),

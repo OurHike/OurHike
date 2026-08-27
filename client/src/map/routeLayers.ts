@@ -15,7 +15,12 @@ import type {
   GeoJSONSourceSpecification,
   LayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
-import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl'
+import type {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  MapMouseEvent,
+  MapTouchEvent,
+} from 'maplibre-gl'
 import { whenStyleReady } from './styleReady'
 
 export const ROUTE_SOURCE_ID = 'route'
@@ -246,6 +251,82 @@ export function attachRouteTaps(
 
   return () => {
     map.off('click', onClick)
+    canvas.style.cursor = previousCursor
+  }
+}
+
+/**
+ * While the hiker is DRAWING, a drag means "this is where I went" - and the
+ * map must not pan under their finger (#983, frame `1k`).
+ *
+ * WHY THE GESTURE HANDLERS ARE SUSPENDED RATHER THAN THE EVENT SWALLOWED.
+ * MapLibre's `dragPan` and `touchZoomRotate` interpret the same touch this
+ * handler wants, and a `preventDefault` race between them is the failure
+ * atcUpdateLayers.ts already records for taps - two interpreters per touch.
+ * Turning them off for the life of the stroke mode is the version of that rule
+ * with no race in it, and the detach puts back exactly what it found rather
+ * than assuming both were enabled: a hiker who has pinch-rotate off keeps it
+ * off.
+ *
+ * The stroke is reported in map coordinates, unsampled and unsnapped. Deciding
+ * which trail it ran along is lib/strokeMatch.ts's job and telling the hiker
+ * about it is the shell's, exactly as {@link attachRouteTaps} splits the same
+ * work for a tap.
+ */
+export function attachRouteStroke(
+  map: MapLibreMap,
+  onStroke: (stroke: Array<{ lon: number; lat: number }>) => void,
+): () => void {
+  const canvas = map.getCanvas()
+  let drawing: Array<{ lon: number; lat: number }> | null = null
+
+  const dragWasEnabled = map.dragPan?.isEnabled?.() ?? false
+  const touchWasEnabled = map.touchZoomRotate?.isEnabled?.() ?? false
+  map.dragPan?.disable?.()
+  map.touchZoomRotate?.disable?.()
+
+  const previousCursor = canvas.style.cursor
+  canvas.style.cursor = 'crosshair'
+
+  // Mouse and touch carry the same `lngLat` and differ in everything else,
+  // and this handler wants only that. Typed as the union rather than cast,
+  // so a MapLibre change to either shape is a compile error here.
+  type Pointer = MapMouseEvent | MapTouchEvent
+  const at = (event: Pointer) => ({ lon: event.lngLat.lng, lat: event.lngLat.lat })
+
+  const onDown = (event: Pointer) => {
+    drawing = [at(event)]
+  }
+  const onMove = (event: Pointer) => {
+    if (drawing === null) return
+    drawing.push(at(event))
+  }
+  const onUp = () => {
+    const stroke = drawing
+    drawing = null
+    // A stroke of one point is a tap that happened inside draw mode, not a
+    // line. Reporting it would ask the matcher to find a trail along a stroke
+    // with no direction, which is a different question from the one it
+    // answers.
+    if (stroke !== null && stroke.length >= 2) onStroke(stroke)
+  }
+
+  map.on('mousedown', onDown)
+  map.on('mousemove', onMove)
+  map.on('mouseup', onUp)
+  map.on('touchstart', onDown)
+  map.on('touchmove', onMove)
+  map.on('touchend', onUp)
+
+  return () => {
+    map.off('mousedown', onDown)
+    map.off('mousemove', onMove)
+    map.off('mouseup', onUp)
+    map.off('touchstart', onDown)
+    map.off('touchmove', onMove)
+    map.off('touchend', onUp)
+    if (dragWasEnabled) map.dragPan?.enable?.()
+    if (touchWasEnabled) map.touchZoomRotate?.enable?.()
     canvas.style.cursor = previousCursor
   }
 }

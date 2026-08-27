@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, update } from 'idb-keyval'
 import {
   enqueue,
@@ -8,6 +8,8 @@ import {
   removeQueued,
   retryQueued,
   flushOutbox,
+  isHeld,
+  MAX_UNDO_HOLD_MS,
   OUTBOX_KEY,
   type AppFailureDraft,
 } from './outbox'
@@ -246,7 +248,7 @@ describe('a permanently refused report', () => {
       () => 'The server would not accept it.',
     )
 
-    expect(result).toEqual({ sent: 0, failed: 1, stuck: 1 })
+    expect(result).toEqual({ sent: 0, failed: 1, stuck: 1, held: 0 })
     const stored = read()[0] as { failure?: { reason: string } }
     // Kept, not deleted: it is still the only copy of what someone wrote.
     expect(stored.failure?.reason).toBe('The server would not accept it.')
@@ -265,7 +267,7 @@ describe('a permanently refused report', () => {
     // Retrying would spend signal to be refused again, and would keep
     // resetting a failure the hiker is currently being shown.
     expect(send).not.toHaveBeenCalled()
-    expect(second).toEqual({ sent: 0, failed: 1, stuck: 1 })
+    expect(second).toEqual({ sent: 0, failed: 1, stuck: 1, held: 0 })
   })
 
   it('goes again once its failure is cleared', async () => {
@@ -345,7 +347,7 @@ describe('a permanently refused report', () => {
     const third = await flushOutbox(send, () => 'nope')
 
     expect(send).not.toHaveBeenCalled()
-    expect(third).toEqual({ sent: 0, failed: 1, stuck: 1 })
+    expect(third).toEqual({ sent: 0, failed: 1, stuck: 1, held: 0 })
   })
 
   it('retries a failure stored before builds were recorded', async () => {
@@ -385,7 +387,7 @@ describe('a transient failure', () => {
       () => null,
     )
 
-    expect(result).toEqual({ sent: 0, failed: 1, stuck: 0 })
+    expect(result).toEqual({ sent: 0, failed: 1, stuck: 0, held: 0 })
     expect((read()[0] as { failure?: unknown }).failure).toBeUndefined()
   })
 
@@ -604,5 +606,119 @@ describe('hasWorkThatNeedsNoAccount', () => {
     ])
 
     expect(await hasWorkThatNeedsNoAccount()).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The undo window (#1133).
+//
+// The report window files on the tap itself and offers 8 seconds of Undo
+// instead of a form. That promise is only worth making if it can be kept, and
+// the thing that can break it is not the UI: it is a phone finding signal two
+// seconds after the tap and flushing the report while the button is still
+// counting down on screen. These are the tests for the half that stops it.
+
+describe('a report held for its undo window', () => {
+  const AT = new Date('2026-08-27T12:00:00Z')
+
+  // OWNED AND RESTORED, rather than relying on `setSystemTime` alone. Vitest
+  // will move the clock for you without fake timers enabled, but that is not
+  // a documented contract to build on - and worse, an unrestored clock is a
+  // global this file would hand to whichever suite runs next. CLAUDE.md's
+  // rule about order-dependent tests is exactly this hazard, so the window is
+  // opened and closed here rather than left ambient.
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(AT)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('is not sent while the window is open', async () => {
+    const read = withStoredQueue()
+    const send = vi.fn().mockResolvedValue(undefined)
+    await enqueue(DRAFT, AT, undefined, new Date(AT.getTime() + 8_000))
+
+    vi.setSystemTime(new Date(AT.getTime() + 3_000))
+    const result = await flushOutbox(send)
+
+    expect(send).not.toHaveBeenCalled()
+    // Still in the queue, untouched - not failed, not marked, just not yet
+    // eligible. The hiker has not retracted it and nothing is wrong with it.
+    expect(read()).toHaveLength(1)
+    expect(result).toEqual({ sent: 0, failed: 1, stuck: 0, held: 1 })
+    expect((read()[0] as { failure?: unknown }).failure).toBeUndefined()
+  })
+
+  it('goes on the next flush once the window has closed', async () => {
+    const read = withStoredQueue()
+    const send = vi.fn().mockResolvedValue(undefined)
+    await enqueue(DRAFT, AT, undefined, new Date(AT.getTime() + 8_000))
+
+    vi.setSystemTime(new Date(AT.getTime() + 9_000))
+    const result = await flushOutbox(send)
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(read()).toHaveLength(0)
+    expect(result).toEqual({ sent: 1, failed: 0, stuck: 0, held: 0 })
+  })
+
+  it('can still be withdrawn while it is held, which is the whole point', async () => {
+    const read = withStoredQueue()
+    await enqueue(DRAFT, AT, undefined, new Date(AT.getTime() + 8_000))
+    const [queued] = read() as Array<{ id: string }>
+
+    // Undo is `removeQueued`, exactly as it is everywhere else - the item was
+    // a real queue entry the whole time, not a draft in a side pocket.
+    await removeQueued(queued.id)
+    vi.setSystemTime(new Date(AT.getTime() + 20_000))
+    const send = vi.fn().mockResolvedValue(undefined)
+    await flushOutbox(send)
+
+    expect(send).not.toHaveBeenCalled()
+    expect(read()).toHaveLength(0)
+  })
+
+  it('sends anyway when the clock says the hold is absurd', async () => {
+    // The guard is against the DEVICE CLOCK, not against the caller. A phone
+    // whose clock jumps backwards - a flight, a manual change, a cold boot
+    // before NTP - would otherwise hold a report for as long as the jump, and
+    // the queue's actual subject is a washout nobody has heard about yet.
+    // A hold further out than MAX_UNDO_HOLD_MS is a clock that moved rather
+    // than a hiker mid-undo, and the safe answer there is to send: the report
+    // is real and unretracted.
+    const read = withStoredQueue()
+    const send = vi.fn().mockResolvedValue(undefined)
+    await enqueue(
+      DRAFT,
+      AT,
+      undefined,
+      new Date(AT.getTime() + MAX_UNDO_HOLD_MS + 60_000),
+    )
+
+    vi.setSystemTime(AT)
+    await flushOutbox(send)
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(read()).toHaveLength(0)
+  })
+
+  it('never holds an item that has no hold on it', async () => {
+    // Every item already in a phone's IndexedDB predates this field, and all
+    // of them are sendable immediately. An `undefined` hold is not a hold.
+    expect(isHeld({ id: 'a', authoredAt: AT.toISOString() })).toBe(false)
+  })
+
+  it('does not hold on a stamp nobody can read', async () => {
+    // It came off disk. Refusing to send on the strength of a string that
+    // does not parse is how a queue stops being a queue.
+    expect(
+      isHeld(
+        { id: 'a', authoredAt: AT.toISOString(), holdUntil: 'not a date' },
+        AT.getTime(),
+      ),
+    ).toBe(false)
   })
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { syncOutbox, useOutboxSync } from './outboxSync'
-import { flushOutbox, hasWorkThatNeedsNoAccount } from './outbox'
+import { flushOutbox, hasWorkThatNeedsNoAccount, type FlushResult } from './outbox'
 import { accessToken, sendOutboxItem, permanentFailureReason } from './api'
 
 // #231's other half: the outbox had queued correctly since it was written and
@@ -30,7 +30,7 @@ const mockedNeedsNoAccount = vi.mocked(hasWorkThatNeedsNoAccount)
 
 beforeEach(() => {
   mockedToken.mockResolvedValue('a-real-token')
-  mockedFlush.mockResolvedValue({ sent: 1, failed: 0, stuck: 0 })
+  mockedFlush.mockResolvedValue({ sent: 1, failed: 0, stuck: 0, held: 0 })
   // The ordinary queue: reports and photo actions, all of which need an
   // account. The app-failure report is the exception, and the tests that are
   // about it say so.
@@ -72,9 +72,9 @@ describe('syncOutbox', () => {
   })
 
   it('reports a flush that ran, so a caller can record a real sync time', async () => {
-    mockedFlush.mockResolvedValue({ sent: 2, failed: 1, stuck: 0 })
+    mockedFlush.mockResolvedValue({ sent: 2, failed: 1, stuck: 0, held: 0 })
 
-    expect(await syncOutbox()).toEqual({ sent: 2, failed: 1, stuck: 0 })
+    expect(await syncOutbox()).toEqual({ sent: 2, failed: 1, stuck: 0, held: 0 })
   })
 
   it('never rejects, even when the flush itself throws', async () => {
@@ -86,11 +86,7 @@ describe('syncOutbox', () => {
   })
 
   it('does not overlap two flushes, which would file every report twice', async () => {
-    let release: (value: {
-      sent: number
-      failed: number
-      stuck: number
-    }) => void = () => {}
+    let release: (value: FlushResult) => void = () => {}
     mockedFlush.mockReturnValue(
       new Promise((resolve) => {
         release = resolve
@@ -101,7 +97,7 @@ describe('syncOutbox', () => {
     // for, not two calls one after another.
     const first = syncOutbox()
     const second = syncOutbox()
-    release({ sent: 1, failed: 0, stuck: 0 })
+    release({ sent: 1, failed: 0, stuck: 0, held: 0 })
     await Promise.all([first, second])
 
     expect(mockedFlush).toHaveBeenCalledTimes(1)
@@ -141,12 +137,12 @@ describe('useOutboxSync', () => {
 
   it('reports the result back', async () => {
     const onSynced = vi.fn()
-    mockedFlush.mockResolvedValue({ sent: 3, failed: 0, stuck: 0 })
+    mockedFlush.mockResolvedValue({ sent: 3, failed: 0, stuck: 0, held: 0 })
 
     renderHook(() => useOutboxSync(true, onSynced))
 
     await waitFor(() =>
-      expect(onSynced).toHaveBeenCalledWith({ sent: 3, failed: 0, stuck: 0 }),
+      expect(onSynced).toHaveBeenCalledWith({ sent: 3, failed: 0, stuck: 0, held: 0 }),
     )
   })
 

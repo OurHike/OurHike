@@ -21,28 +21,37 @@
 // is the same screen again, and a fourth recipe reaching it would be the
 // gallery SKILL.md warns against.
 //
-// WHAT THIS SHOT CANNOT SHOW, and the reason it is pointed here anyway. The
-// preview build carries an empty `VITE_DATA_BASE_URL` (#1024), so no release
-// artifacts arrive, so there are no ATC notices on the canvas to photograph -
-// the shot is the map screen with no mark on it, which is evidence that the
-// app still comes up and nothing more. It is the right camera position for the
-// day #1024 is fixed. Until then the evidence for the mark itself is measured
-// off the rendered image in map/atcNoticeMark.test.ts, and the pull request's
-// `## Screenshot` section says so rather than letting this stand in for it.
+// Re-pointed a fourth time, 2026-08-27 (#1135), and this one both changes
+// what the frame SHOWS and retires a stale claim two paragraphs used to
+// stand on. The claim first: they said the preview build carries an empty
+// `VITE_DATA_BASE_URL` (#1024) and so no release artifacts arrive. That
+// stopped being true - the preview is built against the live bucket and this
+// very frame draws the trail from it - so the two walls those paragraphs
+// described have narrowed to one: an artifact no publish has carried yet
+// (nearby_poi.geojson then, network_overview.geojson now) still cannot
+// appear, and which map this shot shows is itself evidence of whether the
+// publish has run.
 //
-// #1097 sits behind the SAME wall and one more: even with a data source, that
-// artifact is `nearby_poi.geojson`, which no release has published yet, and
-// its waypoints are in New York State while this shot opens on the A.T. So
-// what would eventually appear here is more pins, not a different screen - the
-// legend is unchanged (the same eight categories), the card is unchanged, and
-// the one genuinely new card STATE is an OPRHP waypoint at low confidence,
-// which draws a broken rim. Until a release carries the artifact, the evidence
-// is lib/trailData.test.ts's four cases for the download, the merge, the
-// low-confidence carry and the 404 - and export_nearby_poi.py's own output for
-// what is in it.
-export const caption = 'The map screen'
+// What #1135 changes in this frame: the opening camera is now the trails and
+// not the waypoints. The dot stipple #603 put on the whole-corridor view is
+// gone (both ranks stop at the pin seam), the "N of M waypoints fit" chip
+// stands down below the seam, and - once network_overview.geojson is in the
+// bucket - every other organization's trails draw ghosted around the A.T.'s
+// New York miles, tapering thinner the further out the camera sits. The
+// A.T.'s line, the corridor highlight marks and the closure tape were
+// already here and stay.
+//
+// A separate recipe reached this change's screen for two CI runs and was
+// retired back into this one, per README.md's "reuse one by touching it" -
+// it opened the legend to photograph the new below-seam sentence, and
+// learned that an open legend blanks the canvas behind it under this
+// camera (#1138), which costs the shot the map half of the change. The
+// sentence's evidence is Legend.test.tsx's below-seam cases; the map half
+// is this frame's.
+export const caption =
+  'The opening map — every mapped trail and no waypoints below the seam (#1135); the network appears once network_overview.geojson is in the bucket this preview reads'
 export const alt =
-  'The map screen: a floating identity plate over the canvas, and the next-up band along the foot'
+  'The whole-corridor opening view: the A.T. as a cased white line from Georgia to Maine with orange highlight marks along it, no waypoint dots anywhere, and — once the artifact publishes — the other organizations’ trails ghosted around its New York miles'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Map' }).click()

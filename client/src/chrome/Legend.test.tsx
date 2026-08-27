@@ -1333,11 +1333,46 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
-    // Reworded by #603. The dot rank draws below the seam now, so the panel
-    // must not say waypoints are absent here - it says what a hiker is looking
-    // at (dots) and what zooming in buys (knowing which is which).
-    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
+    // Reworded by #1135, its third flip - each time with the layer it
+    // describes (#528, then #603's dots, now the trails-only corridor view).
+    // Both ranks stop at the seam again, so "appear from a closer zoom" is
+    // the true sentence, and "pan or zoom out" stays the wrong direction.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('says it over a viewport full of waypoints too, because none of them draw', () => {
+    // The dots-era sentence rendered only on an empty viewport - dots WERE
+    // the below-seam answer everywhere else. With the floor shared (#1135)
+    // the sentence describes every below-seam rectangle, so it must not
+    // vanish behind the counted rows; and the rows keep their plain in-view
+    // counts rather than `0/N` fractions, because down here "drawn" would
+    // measure the floor, not the collision engine.
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[{ id: 'p1', type: 'shelter', lat: 0, lon: 0, confidence: 'high' }]}
+        drawnCounts={new Map()}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
+    // Plain names, no "none of 1 shown" fractions: the fraction is the
+    // collision engine's report, and it was not consulted. (Two shelter
+    // listitems are expected - the row, and its inner toggle button both
+    // carry the name.)
+    expect(
+      screen.getAllByRole('listitem', { name: /^shelter$/i }).length,
+    ).toBeGreaterThan(0)
+    // Narrow enough to spare the safety rows' "Always shown" tag, which is
+    // not a fraction and stays.
+    expect(screen.queryByText(/of \d+ shown/)).not.toBeInTheDocument()
   })
 
   it('still says "nothing here" when that is the true one', () => {

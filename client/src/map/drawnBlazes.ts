@@ -20,7 +20,7 @@
 // with the counting rather than being kept "just in case".
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { BLAZE_LAYER_ID } from './style'
+import { BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID, NETWORK_OVERVIEW_LAYER_ID } from './style'
 import { isNearbyTrail } from './nearbyTrails'
 
 /** The real MapLibre map — see map/drawnPois.ts for why not a structural
@@ -50,6 +50,21 @@ export const TRAIL_SOURCE_PROPERTY = 'source'
  * a state the map has not drawn.
  */
 export function drawsNearbyTrails(map: DrawnBlazeMap): boolean {
+  // The two layers whose EVERY feature is another system's line - the full
+  // network above the seam (#950) and its corridor-view sketch below it
+  // (#1135). One rendered feature on either is exactly the state the sentence
+  // explains, no property read needed: the exporters admit nothing but other
+  // organizations' trails to those artifacts.
+  for (const layerId of [NEARBY_BLAZE_LAYER_ID, NETWORK_OVERVIEW_LAYER_ID]) {
+    if (map.getLayer(layerId) === undefined) continue
+    if (map.queryRenderedFeatures(undefined, { layers: [layerId] }).length > 0) {
+      return true
+    }
+  }
+
+  // The chosen trail's own layer, asked the original #783 question: a feature
+  // there whose `source` is outside the chosen system is ghosted by the same
+  // expression wherever it is drawn from, so the sentence follows the paint.
   if (map.getLayer(BLAZE_LAYER_ID) === undefined) return false
 
   const features = map.queryRenderedFeatures(undefined, { layers: [BLAZE_LAYER_ID] })

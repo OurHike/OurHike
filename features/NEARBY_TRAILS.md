@@ -293,15 +293,24 @@ routes (AT, Long Path) still drawn through them, exactly as club sections tile t
 Tapping a park below the seam says who runs it and what the big routes through it are.
 
 **Half built (2026-08-24, #950).** The half that shipped is the negative one: the
-network draws only at z≥9, so 3,663 lines cannot smear across a corridor view whose
-subject is the thirty club sections. The half that did not is everything positive this
-section describes — park polygons are fetched but not exported, nothing distinguishes a
-marquee route from a short park trail, and there is no below-seam park tap. The
-consequence to know about is that **the Long Path is absent below z9 rather than drawn
-through its parks**, which is not what the paragraph above asks for. Drawn at the wrong
-prominence was judged worse than absent; a reviewer may disagree, and
+network's full lines draw only at z≥9, so 3,663 lines cannot smear across a corridor view
+whose subject is the thirty club sections. The half that did not is everything positive
+this section describes — park polygons are fetched but not exported, nothing distinguishes
+a marquee route from a short park trail, and there is no below-seam park tap.
 [#557 — Draw the map from several coverage units, and say plainly where they end](https://github.com/OurHike/OurHike/issues/557)
 is where the positive half belongs.
+
+**The absence half was withdrawn on 2026-08-27 (#1135 — Decide what the opening map
+draws: every mapped trail, and no waypoints below the seam).** This section used to end
+"the Long Path is absent below z9 rather than drawn at the wrong prominence", and the
+maintainer's call made a third option of that dilemma: below the seam the whole network
+draws from a 100 m overview of itself (`export_nearby_trails.py`'s `write_overview`,
+255 KB gzipped for all 7,670 line-miles, `trail_status` kept so closed ground stays
+taped), ghosted under the A.T. exactly as the full lines are above the seam — presence
+at the *right* prominence, which the dilemma's two horns both lacked. The smear #950 cut
+stays cut: the overview is 31 merged features, not 21,805. What #557 still owns is
+unchanged — the park as the below-seam *subject*, tappable, with marquee routes told
+apart from park trails.
 The stretch model (CORRIDOR_VIEW's `named` basis) carries over unchanged — "Breakneck
 Ridge loop" is a stretch with a citation like "Franconia Ridge" is.
 

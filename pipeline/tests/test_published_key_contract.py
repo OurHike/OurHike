@@ -145,6 +145,11 @@ def client_keys() -> dict[str, str]:
         # name, and the day the licence gate opens is a bad day to discover
         # the two ends spelled it differently.
         _string_const(config, "NEARBY_TRAILS_KEY"): "config.ts NEARBY_TRAILS_KEY",
+        # The corridor-view sketch of those same lines (#1135) - what the
+        # opening camera draws so the whole network shows without fetching the
+        # 7.3 MB artifact above. Published under the same licence gate, so the
+        # same day-the-gate-opens argument applies to its spelling.
+        _string_const(config, "NETWORK_OVERVIEW_KEY"): "config.ts NETWORK_OVERVIEW_KEY",
         # The waypoints those same organizations publish (#1097). Unlike its
         # sibling above, this one is NOT held back today - DEC's and OPRHP's
         # POI sources ship on the same footing their trails do - so a spelling
@@ -239,6 +244,9 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # a reason that has nothing to do with whether the two ends agree").
     nearby = manifest_entry("nearby_trails.geojson")
     nearby["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
+    # The corridor-view sketch riding the same manifest (#1135), the way the
+    # A.T.'s overview rides trails_manifest.json above.
+    nearby["overview"] = manifest_entry("network_overview.geojson")
     (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(nearby))
 
     # The nearby waypoints (#1097), through the same reaches_hikers gate as the

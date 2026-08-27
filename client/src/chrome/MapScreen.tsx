@@ -107,6 +107,8 @@ export interface MapScreenProps {
   /** The trails other organizations maintain (#950), forwarded to MapView -
    *  see its own prop for what null means and why it is the usual answer. */
   nearbyTrailsUrl?: string | null
+  /** The network's corridor-view sketch, forwarded to the canvas (#1135). */
+  networkOverviewUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -675,6 +677,7 @@ export function MapScreen({
   trailsUrl,
   overviewTrailsUrl = null,
   nearbyTrailsUrl = null,
+  networkOverviewUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -981,8 +984,21 @@ export function MapScreen({
   // (#528). `verifiedOnly` and `hiddenTypes` are passed for exactly that reason:
   // with either filter on, the legend counts fewer points, and a canvas figure
   // computed without them would contradict the panel it is standing next to.
+  //
+  // And `drawnCounts` is withheld below the seam for the same reason the
+  // legend withholds it (#1135): with both waypoint ranks floored there,
+  // "drawn" measures the floor rather than the collision engine, and this
+  // chip read "0 of 387 waypoints fit" over the opening view - the floor
+  // described as crowding, on the canvas itself. Withheld, the summary is
+  // null and the chip does not render; the legend's below-seam sentence is
+  // where the absence is explained.
   const droppedSummary = legendDropSummary(
-    computeLegendContents(bbox, viewportPoints, verifiedOnly, drawnCounts),
+    computeLegendContents(
+      bbox,
+      viewportPoints,
+      verifiedOnly,
+      belowPoiZoom ? undefined : drawnCounts,
+    ),
     hiddenTypes,
   )
 
@@ -1207,6 +1223,7 @@ export function MapScreen({
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
               nearbyTrailsUrl={nearbyTrailsUrl}
+              networkOverviewUrl={networkOverviewUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}

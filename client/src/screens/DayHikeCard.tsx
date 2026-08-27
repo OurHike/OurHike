@@ -333,10 +333,7 @@ export function DayHikeCard({
             </p>
           ) : (
             bailOuts.map((bailOut, at) => (
-              <div
-                className="day-hike-card__row day-hike-card__row--mile"
-                key={`${bailOut.miles}-${at}`}
-              >
+              <div className="day-hike-card__row" key={`${bailOut.miles}-${at}`}>
                 {/* formatDistance, not mileMarker: this is a walked length
                     (it converts for a metric hiker), not a name on the one
                     trail with a mile axis - planDisplay.ts draws the line. */}

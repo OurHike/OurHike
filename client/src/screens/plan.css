@@ -2704,25 +2704,69 @@
   color: var(--fg-2);
 }
 
+/* A leg, or a way off it: what the trail is called, how far, and who keeps it
+   walkable - on one line while the three of them fit, and the organization
+   dropping to a line of its own when they do not.
+
+   FLEX RATHER THAN GRID, BECAUSE THE GRID IS WHAT BROKE (#1112). This row was
+   `1fr auto auto` with both trailing columns `white-space: nowrap`. An `auto`
+   track sized by text that cannot break takes whatever width that text needs
+   and then overflows the card: the `1fr` name track is squeezed to its
+   `min-width: 0` floor, its own text wraps and draws OVER the mileage beside
+   it, and the organization still runs off the right edge and is cut. Reported
+   from a desktop build, where the frame is wider and it happens anyway.
+
+   No unusual name is needed to reach that state. Measured against the
+   published `stewards.json` (2026-08-27): `oprhp_trails` carries "New York
+   State Office of Parks, Recreation and Historic Preservation" at 68
+   characters, `usdm_drought` 66, `dec_hiking_trails` 55 - three of the six
+   published stewards past 55, and the first two of those cover much of the
+   ground day hikes actually get built on.
+
+   Wrapping flex items cannot collide that way: an item too long for the line
+   moves to the next line instead of drawing over its neighbour. So the row
+   degrades into two lines rather than into a pile-up, and the name keeps the
+   slack (`flex: 1 1 auto`), which holds the arrangement the grid had wherever
+   the row still fits on one line.
+
+   The `--mile` variant's rule went with the grid rather than being ported:
+   it existed only to re-order the columns so a way-off row leads with its
+   mile, and DOM order already does that here. */
 .day-hike-card__row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
   font-size: 0.9375rem;
 }
 
-/* A way-off row leads with its mile; the trail name takes the slack. */
-.day-hike-card__row--mile {
-  grid-template-columns: auto 1fr auto;
-}
-
 .day-hike-card__row-mile {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 
 .day-hike-card__row-name {
+  /* Takes the slack, and is allowed below its own longest word so a long
+     trail name wraps inside its own box instead of widening the row. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.day-hike-card__row-figures {
+  flex: 0 0 auto;
+  /* The one thing in this row that must never break: "0.4 mi" split across
+     two lines reads as a different number at a glance. */
+  white-space: nowrap;
+}
+
+.day-hike-card__row-org {
+  /* NO `nowrap` here, deliberately - it is what this rule is for. A steward's
+     name is the thing being credited, so it wraps onto as many lines as it
+     needs. Clipping it, or an ellipsis, would name an organization and then
+     decline to name it. */
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -2730,7 +2774,6 @@
 .day-hike-card__row-org {
   font-size: 0.8125rem;
   color: var(--fg-2);
-  white-space: nowrap;
 }
 
 .day-hike-card__note {

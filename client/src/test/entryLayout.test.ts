@@ -33,6 +33,17 @@ const onboardingCss = readFileSync(
   resolve(process.cwd(), 'src/screens/onboarding.css'),
   'utf8',
 )
+const desktopCss = readFileSync(resolve(process.cwd(), 'src/desktop.css'), 'utf8')
+
+/** desktop.css is one big `@media (min-width: 900px)` block plus a short tail
+ *  of pointer-keyed rules, so a selector found anywhere in it is a
+ *  desktop-only rule - which is the guarantee that file's own header makes
+ *  structural. Sliced from the media query's opening brace so the tail
+ *  cannot answer for it. */
+const desktopBlock = desktopCss.slice(
+  desktopCss.indexOf('@media (min-width: 900px)'),
+  desktopCss.indexOf('/* ---------- Input: what a mouse and a keyboard get'),
+)
 
 function ruleFor(css: string, selector: string): string {
   const at = css.indexOf(`${selector} {`)
@@ -120,12 +131,17 @@ describe('first-run layout contract', () => {
     )
   })
 
-  it('draws the photo as a band, never a full-bleed fill', () => {
+  it('draws the photo as a band on a phone, never a full-bleed fill', () => {
     // The pool is landscape frames on a portrait screen: full-bleed cover
     // scaled each ~2.4x and showed a blurred vertical sliver of its middle -
     // the maintainer's "doesn't look great on mobile", 2026-08-26. Half a
     // screen tall they render near-native and keep their compositions, so
     // the regression to catch is a well-meaning `height: 100%` coming back.
+    //
+    // A PHONE claim, and only a phone claim (#1084). Turned sideways the
+    // same band keeps 37.5% of a 3:2 frame at 1920x1080, so desktop.css
+    // overrides it - which is the test below, and the reason this one reads
+    // the unguarded stylesheet rather than either file's whole text.
     const image = ruleFor(onboardingCss, '.onboarding__hero-image')
     expect(image).not.toMatch(/height:\s*100%/)
     expect(image).toMatch(/height:\s*min\(/)
@@ -135,6 +151,53 @@ describe('first-run layout contract', () => {
     expect(ruleFor(onboardingCss, '.onboarding__hero')).toMatch(
       /background:\s*var\(--bg-chrome\)/,
     )
+  })
+
+  it('lets the photo fill a desktop window, where the band was the wrong crop', () => {
+    // #1084's whole point, and the pair of declarations that carry it: the
+    // height cap comes off and the foot fade goes with it, because there is
+    // no pine below the photo any more for it to fade into.
+    const image = ruleFor(desktopBlock, '.onboarding__hero-image')
+
+    expect(image).toMatch(/height:\s*100%/)
+    expect(image).toMatch(/mask-image:\s*none/)
+    // Both spellings, or WebKit keeps fading a photo nothing is behind.
+    expect(image).toMatch(/-webkit-mask-image:\s*none/)
+  })
+
+  it('docks the desktop card to one side, off the middle of the composition', () => {
+    // The card is 400px of opaque paper. Centred on a photograph it sat on
+    // the subject - the Jefferson Rock signpost, the hiker's head - which is
+    // half of what "the photos are getting cut off" meant. `.onboarding` is
+    // a column, so the horizontal axis is `align-items`, and getting that
+    // wrong moves the card to the BOTTOM instead of the side while still
+    // looking plausible in the source.
+    const rule = ruleFor(desktopBlock, '.onboarding')
+
+    expect(rule).toMatch(/align-items:\s*flex-end/)
+    expect(rule).toMatch(/justify-content:\s*center/)
+  })
+
+  it('dims the photograph from inside the hero, where the dim can be seen', () => {
+    // THE test in this pair, and the reason it is pinned rather than left to
+    // review. The rule this replaced was `.onboarding::before`: a generated
+    // box first in `.onboarding`'s box tree, under `.onboarding__hero` -
+    // opaque pine at `inset: 0`, painted after it. It dimmed nothing, and
+    // nothing said so, in every desktop build since #1054. Checked by
+    // setting it to `rgb(255 0 0 / 90%)` and photographing the frame: no red
+    // pixel anywhere (2026-08-27).
+    //
+    // So the scrim has to be a child of the hero, after the image. Anything
+    // that moves it back onto `.onboarding` is invisible again, and looks
+    // exactly as correct in a diff as this does.
+    expect(desktopBlock).toMatch(/\.onboarding__hero::after\s*\{/)
+    expect(desktopBlock).not.toMatch(/\.onboarding::before\s*\{/)
+
+    const scrim = ruleFor(desktopBlock, '.onboarding__hero::after')
+    expect(scrim).toMatch(/position:\s*absolute/)
+    expect(scrim).toMatch(/inset:\s*0/)
+    // It sits over the whole photo, so it must never take a tap.
+    expect(scrim).toMatch(/pointer-events:\s*none/)
   })
 
   it('caps the card short of the screen, so the map shows above it at any height', () => {

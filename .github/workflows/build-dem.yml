@@ -18,8 +18,9 @@
 #
 # The --limit guard is load-bearing, not decorative: the tile walk is driven
 # by a region polygon, and a mis-drawn region would otherwise queue the
-# planet. The corridor at z0-13 is ~21.8k tiles; the default limit leaves
-# room above that without permitting a runaway.
+# planet. The tapered corridor at z0-13 is 8,658 tiles (measured, run
+# 33065213666) where the uniform 30-mile one was ~21.8k; the default limit
+# leaves room above either without permitting a runaway.
 
 name: Build DEM archive
 

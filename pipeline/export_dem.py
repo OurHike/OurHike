@@ -114,12 +114,17 @@ QUANTIZE_STEP_M = 0.5
 # entry, because a z10 tile is 18.6 miles wide and a narrower buffer barely
 # changes which tiles are kept. Pan-out context stays whole either way.
 #
+# BUILT AND MEASURED at this schedule (2026-08-27, run 33065213666): 8,658
+# tiles, 275.6 MB, against the untapered 607.3 - 54.6% off the DEM and 42.0%
+# off the Standard hiking sheet. Per band: z0-9 29.4, z10 11.8, z11 49.3,
+# z12 78.8, z13 106.2.
+#
 # @unvalidated AS NUMBERS. 30/15/6 is the maintainer's opening schedule
-# (2026-08-27), not a finding - the SHAPE is measured, the three values are
-# picked. 6 is 2x trailPosition.MAX_OFF_TRAIL_MILES, the distance past which
-# the app already declines to say where a hiker is, though note that constant
-# is itself derived from bucket-search geometry rather than from how far hikers
-# actually wander. What would settle it: what a hiker pans to when they are
+# (2026-08-27), not a finding - the SHAPE is measured and the SIZE is now
+# measured, but the three values are still picked. 6 is 2x
+# trailPosition.MAX_OFF_TRAIL_MILES, the distance past which the app already
+# declines to say where a hiker is, though note that constant is itself derived
+# from bucket-search geometry rather than from how far hikers actually wander. What would settle it: what a hiker pans to when they are
 # lost and off-trail, which nothing in this project measures yet.
 CORRIDOR_TAPER_MILES = {0: 30.0, 12: 15.0, 13: 6.0}
 

@@ -407,7 +407,10 @@ The vector-first offline program — design, trade-offs and build numbers in
   paper — +26.5 MB, against +435.5 MB had that reached z11. Both the schedule
   and the context zoom travel in the archive's metadata, so
   `check_dem_archive.py` holds a build to its own declared shape rather than to
-  whatever the constants say today.
+  whatever the constants say today. **Built and measured at the shipped
+  schedule** ([run 33065213666](https://github.com/OurHike/OurHike/actions/runs/33065213666),
+  2026-08-27): 8,658 tiles, **275.6 MB** against the untapered 607.3 — 54.6% off
+  the DEM and 42.0% off the Standard hiking sheet.
 - `check_dem_archive.py` — the DEM's publish gate: complete regional
   coverage, every tile decodes, header and metadata say what they must.
 - `spike_dem_banding.py` — the rendered evidence behind the 0.5 m step.

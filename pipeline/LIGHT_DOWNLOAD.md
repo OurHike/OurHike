@@ -203,16 +203,42 @@ all its bytes buying width at the zoom a hiker uses to look at the ground under
 their feet, and nearly none at the zoom they pan out to for orientation.
 
 So the corridor **tapers**: `export_dem.py`'s `CORRIDOR_TAPER_MILES` is
-`{0: 30, 12: 15, 13: 6}` — z0–11 at 30 miles, z12 at 15, z13 at 6. Shipped
-schedules, DEM MB **reasoned** from measured tile counts × the published
-per-zoom mean bytes/tile, basemap held at z13:
+`{0: 30, 12: 15, 13: 6}` — z0–11 at 30 miles, z12 at 15, z13 at 6.
+
+**BUILT AND MEASURED 2026-08-27** ([run 33065213666](https://github.com/OurHike/OurHike/actions/runs/33065213666),
+`build-dem.yml` at the shipped defaults, 8,658 tiles, 0 absent):
+
+| | tiles | MB |
+|---|---|---|
+| z0–9 (full bbox, context) | 821 | 29.4 |
+| z10 | 329 | 11.8 |
+| z11 | 1,139 | 49.3 |
+| z12 (15 mi) | 2,315 | 78.8 |
+| z13 (6 mi) | 4,054 | 106.2 |
+| **dem.pmtiles** | **8,658** | **275.6** |
+
+Against UA's untapered 607.3 MB that is **54.6% off the DEM**, and the Standard
+hiking sheet goes 789.9 → **458.1 MB, 42.0% off**, with the basemap untouched.
+
+The projection this replaces said 275.4 MB, which is 0.1 MB out — and that
+agreement is luckier than it looks. Per band it was wrong in both directions
+and the errors happened to cancel: z0–9 and z10 came in 6.4 MB *under* the
+projection, z12 and z13 5.0 MB *over*. The stated bias — that a narrow corridor
+keeps the ridgeline tiles, which carry more relief and compress worse — held
+exactly where it was claimed (the two tapered bands) and reversed where the
+corridor did not narrow. **A per-zoom mean bytes/tile is not transferable
+across a change of footprint**, and the total agreeing is not evidence that it
+is.
+
+Other schedules, still **reasoned** on the same method and therefore carrying
+the caveat above:
 
 | schedule z11/z12/z13 | DEM MB | off DEM | sheet MB | off sheet |
 |---|---|---|---|---|
-| shipped, uniform 30 | 607.6 | — | 789.9 | — |
-| **30/15/6 (the default)** | 248.9 | 59.0% | 431.2 | **45.4%** |
-| 30/10/6 | 228.5 | 62.3% | 410.8 | 48.0% |
-| 20/6/3 | 159.3 | 73.8% | 341.6 | 56.7% |
+| shipped, uniform 30 | 607.3 | — | 789.9 | — |
+| **30/15/6 (built)** | **275.6** | **54.6%** | **458.1** | **42.0%** |
+| 30/10/6 | ~229 | ~62% | ~411 | ~48% |
+| 20/6/3 | ~159 | ~74% | ~342 | ~57% |
 
 **And the shallow zooms stop being clipped at all.** `extract_package.py` has
 kept the vector sheet's *entire* footprint through z9 since #189 — "panning out

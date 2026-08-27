@@ -274,6 +274,7 @@ import {
 import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
 import { Volunteer } from './screens/Volunteer'
 import { VolunteerHours } from './screens/VolunteerHours'
+import { VolunteerImpact } from './screens/VolunteerImpact'
 import { Today } from './screens/Today'
 import {
   DEFAULT_HIKER_MODE,
@@ -4620,6 +4621,17 @@ function App() {
                         records={hoursRecords}
                         onLog={(draft) => void handleLogHours(draft)}
                         now={now}
+                      />
+                      {/* Under the hours it summarises, deliberately (#969).
+                          The panel is a reading of that logbook, and a summary
+                          above the record it summarises is a number a hiker
+                          cannot check without scrolling past it. */}
+                      <VolunteerImpact
+                        records={hoursRecords}
+                        shown={preferences.impact_panel_shown}
+                        onToggleShown={(next) =>
+                          updatePreferences({ impact_panel_shown: next })
+                        }
                       />
                     </Volunteer>
                   }

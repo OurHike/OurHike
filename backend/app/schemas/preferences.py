@@ -220,6 +220,16 @@ class PreferencesIn(BaseModel):
     # "off" rather than as a ValidationError.
     contribute_conditions: bool = False
 
+    # Whether the Volunteer tab draws "What you've put back" (#969,
+    # features/VOLUNTEERING.md §5). Defaulted TRUE, which is the client's own
+    # default and therefore the same answer whichever side answers first - and
+    # which is also the right way for a row synced before this key existed to
+    # read back: the panel summarises hours the hiker typed in themselves, so
+    # the recovered default should show them their own logbook rather than
+    # hide it. Nothing behind this switch leaves the device; it decides a
+    # DISPLAY, and every record it summarises survives it being off.
+    impact_panel_shown: bool = True
+
     # Onboarding progress
     onboarding_completed: bool = False
     download_choice_made: bool = False

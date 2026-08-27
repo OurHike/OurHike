@@ -204,10 +204,38 @@ The same shape [HIKE_PLANNING.md](HIKE_PLANNING.md) uses, and for the same reaso
   reviewed pipeline-fed file, the fourteen-day list, honest staleness with the 48-hour
   ceiling, contact-mode signup. The *map pins* half is still open on #760 — a pin needs a
   tap and a tap needs a sheet, which is its own small design.
-- **C — Hours, self-logged.** **Built 2026-08-20 (#761).** `VolunteerHoursRecord` in
-  `claimed`, and the first version of the dashboard on top of it. Useful to the volunteer
-  immediately; the club-side confirmation *screens* wait on D even though the endpoints
-  exist.
+- **C — Hours, self-logged.** **The hours half built 2026-08-20 (#761); the dashboard
+  half built 2026-08-27 ([#969](https://github.com/OurHike/OurHike/issues/969)), in
+  part.** `VolunteerHoursRecord` in `claimed`, and above it "What you've put back" —
+  `Kept for you, seen by no one`, one tile per real count and no total across them.
+  Useful to the volunteer immediately; the club-side confirmation *screens* wait on D
+  even though the endpoints exist.
+
+  **Two of the four tiles wireframe 2e frame 2 draws are absent, and one of them is
+  cut rather than deferred.** *Field notes filed* and *water reports* have no source at
+  all: a note is enqueued into `ourhike:outbox` and removed the moment it sends, so the
+  phone forgets what it filed
+  ([#967](https://github.com/OurHike/OurHike/issues/967)). The panel says so in a
+  sentence about the app rather than the hiker, because "you have filed no notes" is the
+  lack-state rule 2 forbids and "this app does not keep a record" is a confession.
+  **"The one that mattered" is cut.** The wireframe's own annotation is the standard —
+  it "needs a real downstream count. If that can't be measured honestly, it's cut rather
+  than estimated" — and nothing measures it;
+  [#596](https://github.com/OurHike/OurHike/issues/596) is the only thing that might.
+  Estimated, it would be the most flattering sentence in the app and the least true.
+
+  **The off switch is `impact_panel_shown`, and it turns off a display rather than a
+  logbook.** #969's reason for it existing: the guardrail targets comparison and
+  pressure, not memory, and a switch is what makes "memory" a claim the hiker can check
+  rather than one the app makes about itself. On by default — every number in the panel
+  is one they typed in themselves, and defaulting it off would be a record kept in
+  secret from the person keeping it. Off hides the summary and keeps the list, the
+  totals line and the CSV export untouched.
+
+  **"Export as a page" is not built and is not planned as a second thing.** Rule 3's
+  answer to sharing is already there: the CSV export #761 shipped is "a hiker handing
+  someone a file, not the app publishing a page", and a page is the shape rule 3 is
+  most wary of.
 - **D — In-app signup and club confirmation.** `WorkProjectSignup`, attendance, hours confirmation. **This is the phase [PRICING_MODEL.md](PRICING_MODEL.md)'s volunteer exemption unblocks on** — worth knowing, since that dependency has been sitting in that doc unresolved.
 - **E — Ridge Runner At-Large, and the club admin module.** The most scope, the most club conversation needed, and the least useful without A–D underneath. Deliberately last.
 

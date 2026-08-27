@@ -223,3 +223,61 @@
   font-size: 12px;
   color: var(--link);
 }
+
+/* "What you've put back" (#969, features/VOLUNTEERING.md §5).
+
+   The promise under the heading gets its own weight because it is the reason
+   the panel is allowed to exist at all: this is a logbook kept for one person,
+   and a hiker who reads it as a profile other people can see has read the whole
+   feature wrong. */
+.volunteer__impact-promise {
+  margin-top: 0;
+  margin-bottom: var(--space-3, 12px);
+  font-style: italic;
+}
+
+/* Auto-fit rather than a fixed column count, and no gap-filling `1fr` tail:
+   the tiles are however many have something to say, and #967 keeps two of
+   frame 2's four away for now. A grid told to be two-by-two would draw an empty
+   cell where a missing tile is, which is exactly the lack-state rule 2 forbids
+   - a hole in a grid reads as a number that should be there. */
+.volunteer__impact-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.volunteer__impact-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* The number leads, and it is the only display-sized thing in the panel. Mono
+   like every other counted figure in the app, so it reads as a measurement
+   rather than as a headline. */
+.volunteer__impact-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--fg-1);
+}
+
+.volunteer__impact-label {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* Inside the tile and quieter than the label, because it qualifies the number
+   above it and nothing else. #761's rule: the state travels where the number
+   does. */
+.volunteer__impact-caveat {
+  font-size: 11px;
+  color: var(--fg-3);
+}

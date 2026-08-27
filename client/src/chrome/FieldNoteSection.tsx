@@ -65,6 +65,7 @@ import { disputeSentence, type DisputeSummary } from '../lib/disputes'
 import { screenPhoto } from '../lib/photoScreen'
 import { CARD_PHOTO_EDGE } from '../lib/poiPhotos'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
+import { REPORT_ICONS } from '../reporting/icons'
 
 /** Where a report started from this card lands (FIELD_NOTES.md step 1: the
  *  plumbing for `poi_id` runs end to end and nothing populated it). */
@@ -103,6 +104,10 @@ export interface FieldNoteContext {
   /** Open the report flow anchored here - the escalation's hand-off, and
    *  the card's own "report a problem" entry. */
   onReportProblem: (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => void
+  /** A thanks for this place. The same anchor a report carries, because a
+   *  thanks IS a report type (screens/ReportForm.tsx) and the club it reaches
+   *  is found from the same `poiId`. */
+  onSayThanks: (anchor: ReportAnchor) => void
   now: Date
 }
 
@@ -614,6 +619,58 @@ export function FieldNoteSection({
               <span className="poi-card__report-title">Something wrong here?</span>
               <span className="poi-card__report-hint">
                 Blowdown, damage, trash — report it
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* The other half of the same relationship (#1133), and the third place
+            it is reachable from - Today's foot and the map's long-press plate
+            are the others.
+
+            THIS IS THE ONE WITH A PLACE ON IT, and that is why it is worth a
+            control of its own rather than being left to Today. A thanks filed
+            from here carries `poiId`, so it reaches the club that looks after
+            THIS shelter rather than the stretch a hiker happens to be standing
+            on at bedtime - and screens/ReportForm.tsx already names that club
+            from lib/maintainerLookup.ts when there is one.
+
+            SAME CONSTRUCTION AS THE REPORT PLATE, STACKED, NOT BESIDE IT. Two
+            two-line plates side by side inside a 264px card is #941's defect
+            with different words. Stacked and identically weighted is the same
+            argument Today's row makes in its own layout: a lighter treatment
+            here would say, in the only language a control has, that thanking
+            is what you do if you have time.
+
+            IT DOES NOT CLAIM ANYBODY MAINTAINS THIS. "Whoever keeps it up" is
+            deliberately vague, because the app does not know until the form
+            asks lib/maintainerLookup.ts, and that lookup returns null for a
+            stretch with nobody assigned. A hint reading "thank the crew who
+            look after this shelter" would be this card asserting a fact it has
+            not looked up, on a place that may have none. */}
+        {escalation === null && (
+          <button
+            type="button"
+            className="poi-card__thank-here"
+            data-testid="poi-card-thank-here"
+            onClick={() => context.onSayThanks(anchor)}
+          >
+            <svg
+              className="poi-card__thank-mark"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              focusable="false"
+              dangerouslySetInnerHTML={{ __html: REPORT_ICONS['heart-handshake'] }}
+            />
+            <span className="poi-card__report-lines">
+              <span className="poi-card__thank-title">Glad it’s here?</span>
+              <span className="poi-card__report-hint">
+                Say thanks to whoever keeps it up
               </span>
             </span>
           </button>

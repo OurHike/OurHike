@@ -191,6 +191,16 @@ Three screens, each skippable, each with a step counter:
 
 ### 6. Reporting (`14a`–`14d`) — supersedes turn `8` — ⚠ see Known Deviations
 
+> **Rebuilt 2026-08-27 ([#1133](https://github.com/OurHike/OurHike/issues/1133)) as a window, not a screen.** What this section describes below is still the content — the six tiles, the two people-cards, the 911 line, the form's fields — and all of it survived. What changed is the container and the moment of filing, and both are worth stating here because the rest of this section reads differently under them:
+>
+> - **A dialog over the screen you were on**, not a route that swaps the shell. The tab bar stays visible behind the scrim. That is what removed the need for a `Cancel` at all — there is nothing to back out of when nothing was replaced.
+> - **One tap on a tile files the report**, into the outbox, immediately. The form below is no longer a gate in front of it; it is an optional receipt afterwards, offering the same note and photo to whoever has something to add.
+> - **An 8-second `Undo` in place of the Cancel.** The report is *held* in the outbox for that window rather than sent, so taking it back deletes something never transmitted. `client/src/lib/outbox.ts` holds the mechanism and a 60s ceiling on any hold, so a bug here cannot silently strand a report forever.
+> - **Two types still open a form**, and this is the exception the design turns on: a **closure** needs two miles, and **something unsafe happened** is private to moderators. `client/src/reporting/categories.ts` states the rule negatively, so a type added later defaults to *not* filing on a tap.
+> - **The anchor is stated rather than asked** — every entry point supplies one — with a `Change` control listing the places today's walked miles covered, nearest first, for the blow-down noticed and remembered a mile later. It never counts them ([features/DATA_NUDGES.md](features/DATA_NUDGES.md)).
+>
+> The icon gap under **Known deviations** is closed for this screen: the tiles carry real Lucide paths (`client/src/reporting/icons.ts`), not emoji, at 1.5px stroke.
+
 Six condition types in a 2-col grid (`14a`, updated 2026-07-30 to add invasive species):
 
 | tile             | Lucide icon | subtitle                                   |
@@ -208,6 +218,8 @@ Then a separate section, **"About people on the trail,"** with two full-width ca
 
 - **Something unsafe happened** (amber) — threats, robbery, being followed. Private to club moderators, never a public pin with a name. Its own form has chips (Threatened / Followed / Theft / Assault / Harassment / Other), a note, GPS location, and opens with an honest limit: **call 911 if you're in danger now; this reaches volunteers, sometimes days later.** If moderators confirm a pattern it can become an unnamed warning.
 - **Say thanks to a maintainer** (green) — pick the club or a specific crew, tap what made the difference (blazes / blow down cleared / shelter / privy / bridge / tread work), leave a note. Negative feedback is nudged to the club directly rather than a public complaint.
+
+  **Amended 2026-08-27 (#1133): this is no longer only a row inside the problem picker.** It was the seventh item in a list of hazards, which is a strange place to keep the one warm thing the app does. It now has two entry points of its own — the foot of Today, beside "Report a problem" at equal width and equal weight, and a plate on a place's card under "Something wrong here?", in the same construction with a green accent. A third, the map's long-press plate, is still to come ([#1137](https://github.com/OurHike/OurHike/issues/1137)). The card's is the one that carries a `poiId`, so the thanks can be routed to whoever looks after *that* place. See [features/SAYING_THANKS.md](features/SAYING_THANKS.md) for why none of the three names a maintainer in its own words.
 
 **Report form:** note (free text), optional photo, location (existing POI, dropped pin, or GPS), "signed as `<trail name>` · `<reporter type>`," and the report's **real timestamp — the moment of writing, not of sending**.
 
@@ -400,7 +412,7 @@ Real values live in this repo, not in this file — see [.claude/OurHike Design 
 
 ## Assets
 
-- **Icons:** Lucide line icons throughout (1.75–2.1px stroke). ⚠ **Known implementation gap:** the built report-type picker (`client/src/screens/ReportTypePicker.tsx`) uses emoji glyphs, not Lucide — a deviation introduced when that screen was first built, before any icon library was added as a dependency. The wireframe names a real Lucide icon per tile (see §6's table). Worth closing as its own change across every screen at once rather than one tile at a time, since a mixed emoji/Lucide picker would look worse than a consistently-emoji one. — `droplet`, `house`, `tent`, `mountain`, `signpost`, `square-parking`, `tree-pine`, `waves`, `trash-2`, `hammer`, `paw-print`, `shield-alert`, `heart-handshake`, `triangle-alert`, `octagon-alert`, `compass`, `locate-fixed`, `list`, `search`, `bell`, `lock`, `clock`, `refresh-cw`, `badge-check`, `shield-check`.
+- **Icons:** Lucide line icons throughout (1.75–2.1px stroke). ~~⚠ **Known implementation gap:** the built report-type picker (`client/src/screens/ReportTypePicker.tsx`) uses emoji glyphs, not Lucide.~~ **Closed 2026-08-27 (#1133)** — for that screen only, and by replacing it: `ReportTypePicker.tsx` is gone and the report window carries real Lucide paths inline (`client/src/reporting/icons.ts`, ISC, at 1.5px stroke rather than Lucide's own 2). **The gap itself is not closed** — the rest of the app still draws its own glyphs, and the argument below for doing it in one pass rather than one tile at a time still holds. What changed is that the report picker is no longer the example. — `droplet`, `house`, `tent`, `mountain`, `signpost`, `square-parking`, `tree-pine`, `waves`, `trash-2`, `hammer`, `paw-print`, `shield-alert`, `heart-handshake`, `triangle-alert`, `octagon-alert`, `compass`, `locate-fixed`, `list`, `search`, `bell`, `lock`, `clock`, `refresh-cw`, `badge-check`, `shield-check`.
 - **Real logo mark chosen 2026-07-28** — see `.claude/OurHike Design System/` → `components/core/Logo.jsx` (React) and `assets/logo-icon.svg` (standalone, for favicons/app icons). Supersedes every "no logo yet" note elsewhere in this doc and in the design system's own readme.
 - **No photography shipped as app assets** — placeholders only. The one photographic surface is the waypoint card's photo slot, filled from _data_ (per-POI Wikimedia Commons photos with per-photo licences, `features/POI_PHOTOS.md`), not from bundled assets.
 - **Map data:** USGS US Topo (public domain), ATC GIS layers, OpenStreetMap (ODbL — **visible "© OpenStreetMap" attribution required**, and due now rather than later: the OSM-schema vector basemap has shipped OSM data since #237. The Protomaps context extract this clause used to wait on was cancelled, #196), USGS NHD, USGS 3DEP 1m DEM.

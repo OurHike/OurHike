@@ -135,6 +135,11 @@ export interface TodayProps {
 
   onStartReport: () => void
 
+  /** Thanking a maintainer, which is no longer buried inside the problem
+   *  picker (#1133). A thanks is a comment about a specific place
+   *  (features/SAYING_THANKS.md), not a kind of problem. */
+  onSayThanks: () => void
+
   /** Saved day hikes, surfaced first in day mode - a starting point rather
    *  than an empty column. Cached figures only (lib/dayHikes.ts documents
    *  the provenance); opening one re-resolves the real route. */
@@ -191,6 +196,7 @@ export function Today({
   passedPlaces,
   queuedReportCount,
   onStartReport,
+  onSayThanks,
   dayHikes,
   onOpenDayHike,
   hasDownload = true,
@@ -340,7 +346,7 @@ export function Today({
     ) : null
 
   const soFar =
-    passedPlaces.length > 0 || queuedReportCount > 0 ? (
+    passedPlaces.length > 0 ? (
       <>
         <div className="today__rule">
           <span className="today__rule-label">Today so far</span>
@@ -374,13 +380,6 @@ export function Today({
             </button>
           </div>
         ))}
-        {queuedReportCount > 0 && (
-          <p className="today__note" role="status">
-            {queuedReportCount === 1
-              ? 'Something you noted is still waiting to send.'
-              : `${queuedReportCount} things you noted are still waiting to send.`}
-          </p>
-        )}
       </>
     ) : null
 
@@ -546,9 +545,72 @@ export function Today({
       <div className="today__paper">
         {download}
         {sections}
-        <Button variant="primary" onClick={onStartReport}>
-          Note something for the crew
-        </Button>
+        {/* TWO BUTTONS, EQUAL WIDTH AND EQUAL WEIGHT (#1133).
+
+            This was one primary button reading "Note something for the crew",
+            and saying thanks was the seventh row inside the problem picker,
+            under a list of hazards. Both halves were wrong. Reporting a
+            problem and thanking a maintainer are two sides of one
+            relationship with the crew - the volunteer card sits directly
+            above this row - and burying one of them under the other was
+            costing it.
+
+            Equal WEIGHT is the part worth defending. An outline "Say thanks"
+            beside a filled "Report a problem" would say, in the only language
+            a button has, that thanking is the afterthought. So both are solid
+            fills, at the same size, in the app's two brand colours.
+
+            Both of those fills were failing contrast until #1132 - the
+            secondary variant read a base palette token that cannot follow a
+            theme, and both hardcoded a label colour that does not flip. This
+            row is why that got measured. */}
+        <div className="today__crew">
+          <Button
+            variant="secondary"
+            size="s"
+            style={{ flex: 1, justifyContent: 'center' }}
+            onClick={onStartReport}
+          >
+            Report a problem
+          </Button>
+          <Button
+            variant="primary"
+            size="s"
+            style={{ flex: 1, justifyContent: 'center' }}
+            onClick={onSayThanks}
+          >
+            Say thanks
+          </Button>
+        </div>
+
+        {/* WAITING, AND NOW SOMEWHERE TO GO. This line already existed - it
+            hid at zero and pluralised - but it sat up in "Today so far", a
+            section about places, and it was not tappable. It is about the
+            outbox, so it belongs under the buttons that fill the outbox, and
+            it opens the screen that actually holds those reports.
+
+            `onOpenVolunteer` rather than a new prop: More's volunteer page is
+            where a queued report is already surfaced and retried, so a second
+            destination would be a second answer to "where are my reports". */}
+        {queuedReportCount > 0 && (
+          <button
+            type="button"
+            className="today__outbox"
+            data-testid="today-outbox"
+            onClick={onOpenVolunteer}
+          >
+            <span className="today__outbox-dot" aria-hidden="true" />
+            <span>
+              {queuedReportCount === 1
+                ? '1 note waiting to send'
+                : `${queuedReportCount} notes waiting to send`}
+            </span>
+            <span className="today__outbox-chevron" aria-hidden="true">
+              ›
+            </span>
+          </button>
+        )}
+
         {/* Said on the home screen because it is the promise the whole app
             is built around. */}
         <p className="today__footer">Everything here works with no signal.</p>

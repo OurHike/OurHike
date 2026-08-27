@@ -1446,6 +1446,7 @@ describe('the peek and the pull', () => {
     contributeConditions: false,
     onAddNote: vi.fn(),
     onReportProblem: vi.fn(),
+    onSayThanks: vi.fn(),
     now: new Date('2026-08-20T12:00:00Z'),
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Today, type TodayProps } from './Today'
 import { STANDARD_PACE } from '../lib/pace'
@@ -57,6 +57,7 @@ function props(overrides: Partial<TodayProps> = {}): TodayProps {
     passedPlaces: [],
     queuedReportCount: 0,
     onStartReport: vi.fn(),
+    onSayThanks: vi.fn(),
     dayHikes: [],
     onOpenDayHike: vi.fn(),
     hasDownload: true,
@@ -292,22 +293,67 @@ describe('the rest of the column', () => {
     expect(hikesAt).toBeLessThan(journalAt)
   })
 
-  it('starts a report from the one primary action', async () => {
+  it('offers both halves of the crew relationship, at equal weight', async () => {
+    // THIS USED TO BE ONE BUTTON (#1133), reading "Note something for the
+    // crew", and saying thanks was the seventh row inside the problem picker
+    // under a list of hazards. Reporting a problem and thanking a maintainer
+    // are two sides of the same relationship - the volunteer card is directly
+    // above this row - and burying one under the other was costing it.
     const onStartReport = vi.fn()
+    const onSayThanks = vi.fn()
     const user = userEvent.setup()
-    render(<Today {...props({ onStartReport })} />)
+    render(<Today {...props({ onStartReport, onSayThanks })} />)
 
-    await user.click(screen.getByRole('button', { name: 'Note something for the crew' }))
-
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
     expect(onStartReport).toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Say thanks' }))
+    expect(onSayThanks).toHaveBeenCalled()
   })
 
-  it('says a queued note is waiting, without a scoreboard', () => {
-    render(<Today {...props({ queuedReportCount: 1 })} />)
+  it('gives the two buttons the same width to share', () => {
+    // The design handoff's own implementation note asked for this to be
+    // CHECKED rather than assumed: `flex: 1` did nothing in its prototype,
+    // because the Button copy there swallowed the style prop, and the two came
+    // out 176px against 129px. This app's Button spreads `style` last, so it
+    // lands - and this is the assertion that says so, because jsdom does no
+    // layout and a rendered-width check is not available here.
+    //
+    // Equal weight is the design intent; equal WIDTH is how a row of two
+    // solid fills actually delivers it.
+    render(<Today {...props()} />)
 
-    expect(
-      screen.getByText('Something you noted is still waiting to send.'),
-    ).toBeInTheDocument()
+    for (const name of ['Report a problem', 'Say thanks']) {
+      expect(screen.getByRole('button', { name })).toHaveStyle({ flex: '1' })
+    }
+  })
+
+  it('says what is waiting, and gives it somewhere to go', () => {
+    // The line existed before and was a paragraph: it said something a hiker
+    // might want to act on, with nowhere to act. It now opens the volunteer
+    // page, which is where a queued report is already surfaced and retried -
+    // rather than a second destination, which would be a second answer to
+    // "where are my reports".
+    const onOpenVolunteer = vi.fn()
+    render(<Today {...props({ queuedReportCount: 1, onOpenVolunteer })} />)
+
+    const line = screen.getByTestId('today-outbox')
+    expect(line).toHaveTextContent('1 note waiting to send')
+    fireEvent.click(line)
+    expect(onOpenVolunteer).toHaveBeenCalled()
+  })
+
+  it('pluralises, and says nothing at all when the outbox is empty', () => {
+    // No "0 notes waiting to send". An empty outbox is not news, and a line
+    // that reports it is a scoreboard for a number that should be zero -
+    // which is the anti-gamification rule DATA_NUDGES.md states four times.
+    const { rerender } = render(<Today {...props({ queuedReportCount: 2 })} />)
+    expect(screen.getByTestId('today-outbox')).toHaveTextContent(
+      '2 notes waiting to send',
+    )
+
+    rerender(<Today {...props({ queuedReportCount: 0 })} />)
+    expect(screen.queryByTestId('today-outbox')).toBeNull()
   })
 
   it('keeps the offline promise on screen', () => {

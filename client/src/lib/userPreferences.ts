@@ -198,6 +198,27 @@ export interface UserPreferences {
    */
   contribute_conditions: boolean
 
+  /**
+   * Whether the Volunteer tab draws "What you've put back" (#969,
+   * features/VOLUNTEERING.md §5).
+   *
+   * ON by default, which is the opposite way round from `contribute_conditions`
+   * above and for a reason worth stating: that one governs whether the app ASKS
+   * a hiker for something, and an ask nobody wanted is an interruption. This
+   * governs whether the app shows a hiker their own logbook back. Every number
+   * in it is one they typed in themselves, nothing about it leaves the phone,
+   * and defaulting it off would mean a record kept in secret from the person
+   * keeping it.
+   *
+   * A DISPLAY SWITCH AND NOT A RETENTION ONE. Off hides the summary and keeps
+   * every record: the list, the totals line and the CSV export are all
+   * untouched. #969's reason for the switch existing at all is that it makes
+   * "this is memory, not a scoreboard" a claim the hiker can check rather than
+   * one the app makes about itself - and a switch that silently deleted the
+   * logbook would be a worse answer than no switch.
+   */
+  impact_panel_shown: boolean
+
   // Onboarding progress
   onboarding_completed: boolean
   download_choice_made: boolean
@@ -240,6 +261,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   anonymity_window_days: 0,
 
   contribute_conditions: false,
+  impact_panel_shown: true,
 
   onboarding_completed: false,
   download_choice_made: false,

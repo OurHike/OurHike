@@ -144,18 +144,10 @@ function featuresIn(map: MockMap, sourceId: string) {
 }
 
 describe('what the shell draws once the reads land', () => {
-  it('places the closure on the trail, from its mile markers', async () => {
-    // The only place the two halves meet: the backend sends mile markers,
-    // the phone holds the centerline, and neither on its own can put a band
-    // on the map.
-    const map = await renderApp()
-
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
-    })
-    expect(featuresIn(map, CLOSURE_SOURCE_ID)[0].id).toBe('c1')
-  }, // // A BUDGET RATHER THAN THE DEFAULT, AND THE NUMBER IS MEASURED (#1083).
-  // This is the first case in the file, so it pays for the whole App's cold
+  // A BUDGET RATHER THAN THE DEFAULT FOR THE CASE BELOW, AND THE NUMBER IS
+  // MEASURED (#1083).
+  //
+  // It is the first case in the file, so it pays for the whole App's cold
   // start - the module graph, the map, and every published read the shell
   // fires on mount. Measured on this machine 2026-08-27: 4,445 ms at
   // 9824e554, which is 89% of vitest's 5,000 ms default. #1083 added an
@@ -167,11 +159,31 @@ describe('what the shell draws once the reads land', () => {
   // itself is no slower to draw. What was wrong was a test sitting 555 ms
   // from its limit with nothing recording that it was.
   //
-  // 20,000 ms rather than a shave over the measurement, so the next read
-  // added to `useConditions` does not spend another session's afternoon
-  // rediscovering this. If a change ever takes this near 20 s, that IS a
-  // behaviour change and the number is the alarm rather than the cost.
-  20_000)
+  // 20 s rather than a shave over the measurement, so the next read added to
+  // `useConditions` does not spend another session's afternoon rediscovering
+  // this. If a change ever takes this near 20 s, that IS a behaviour change
+  // and the number is the alarm rather than the cost.
+  //
+  // Above the call rather than beside the argument, because prettier has no
+  // stable place for a comment between a callback and a trailing number and
+  // reflows it differently on every run.
+  const COLD_START_BUDGET_MS = 20_000
+
+  it(
+    'places the closure on the trail, from its mile markers',
+    async () => {
+      // The only place the two halves meet: the backend sends mile markers,
+      // the phone holds the centerline, and neither on its own can put a band
+      // on the map.
+      const map = await renderApp()
+
+      await waitFor(() => {
+        expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+      })
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)[0].id).toBe('c1')
+    },
+    COLD_START_BUDGET_MS,
+  )
 
   it('draws only the reports a moderator escalated', async () => {
     const map = await renderApp()

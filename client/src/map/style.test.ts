@@ -1214,18 +1214,28 @@ describe('the network overview sketch (#1135)', () => {
     )
   })
 
-  it('paints with the shared expressions, ghosting included', () => {
-    // One appearance across every trail line on this map. The A.T. sketch
-    // already pins colour and width against the blaze layer; this pins the
-    // network sketch against the A.T. sketch, opacity included - the ghost
-    // is the whole reason these lines read as context rather than as a
-    // second chosen trail.
+  it('paints with the shared colour and ghost, and a width that lands on the seam', () => {
+    // Colour and opacity are the A.T. sketch's own expressions - one
+    // appearance, and the ghost is the whole reason these lines read as
+    // context rather than as a second chosen trail. Width is the ONE
+    // deliberate deviation (#1135): at the side-trail width the opening
+    // camera's dense park clusters render as a cloud of coloured dots, so it
+    // tapers - and what this pins is the handoff: the taper's seam-end stop
+    // is the exact width the full network's layers draw these sources at, so
+    // crossing z9 cannot restyle a line.
     const network = layer(NETWORK_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
     const sketch = layer(TRAIL_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
 
     expect(network['line-color']).toEqual(sketch['line-color'])
-    expect(network['line-width']).toEqual(sketch['line-width'])
     expect(network['line-opacity']).toEqual(sketch['line-opacity'])
+
+    const taper = network['line-width'] as unknown[]
+    const fullLines = layer(NEARBY_BLAZE_LAYER_ID).paint as Record<string, unknown>
+    expect(taper[taper.length - 2]).toBe(POI_PIN_MIN_ZOOM)
+    expect(taper[taper.length - 1]).toBe(DEFAULT_TRAIL_LINE_WIDTH)
+    expect(widthFor(fullLines['line-width'], 'oprhp_trails')).toBe(
+      DEFAULT_TRAIL_LINE_WIDTH,
+    )
   })
 
   it('carries its stewards own attribution, because the credit follows the lines', () => {

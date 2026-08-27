@@ -811,6 +811,36 @@ function trailWidthExpression(extra: number): unknown[] {
 export const TRAIL_WIDTH_EXPRESSION = trailWidthExpression(0)
 export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHANG * 2)
 
+/**
+ * The network overview's width, tapering across the representational band
+ * (#1135) - the one paint expression that layer does not share with the
+ * lines it sketches, and the reason is drawn rather than argued: at the
+ * side-trail width the opening camera's dense park clusters render as a
+ * cloud of coloured dots over New York, which is the exact texture #1135
+ * just took off this view (a sub-pixel segment under round caps IS a dot).
+ * Measured on a local serve_processed.py build, 2026-08-27.
+ *
+ * The seam-end stop is DEFAULT_TRAIL_LINE_WIDTH by name, not by value:
+ * every source in the overview takes the side-trail tier from
+ * TRAIL_WIDTH_EXPRESSION (none is a through-route), so landing on that
+ * constant at the seam makes the handoff to the full network's layers
+ * pixel-seamless - and style.test.ts pins it so the two cannot drift apart.
+ *
+ * The far-end 0.8 px is picked against the same local build, not measured
+ * against a phone; it is the mockup's own weight for the mass
+ * (features/mockups/opening-map.html drew it at 1.1 px and this canvas
+ * renders denser than that page's thinned SVG).
+ */
+export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  4,
+  0.8,
+  POI_PIN_MIN_ZOOM,
+  DEFAULT_TRAIL_LINE_WIDTH,
+]
+
 export interface MapStyleOptions {
   /** `pmtiles://` URL for the downloaded topo archive. */
   topoArchiveUrl: string
@@ -1151,9 +1181,21 @@ export function buildMapStyle({
         // restyle.
         //
         // No casing pair, exactly like the A.T. sketch and unlike the full
-        // lines: one layer, the shared expressions, ghosted by the same
-        // opacity rule - so every organization's trails read as context
-        // around the A.T. from the first frame.
+        // lines: one layer, the shared colour and ghost expressions - so
+        // every organization's trails read as context around the A.T. from
+        // the first frame.
+        //
+        // WIDTH IS THE ONE EXPRESSION THIS LAYER DOES NOT SHARE, and the
+        // deviation was drawn before it was coded: rendered at the full
+        // side-trail width, the opening camera's dense park clusters - DEC's
+        // and OPRHP's short segments, sub-pixel long at z5 under round caps -
+        // read as a cloud of coloured dots over New York, which is the exact
+        // texture #1135 just took off this view (measured on a local
+        // serve_processed.py build, 2026-08-27). So the width tapers across
+        // the representational band and lands on the side-trail width AT the
+        // seam, where the full network's layers take over - the handoff stays
+        // pixel-seamless, and the deviation cannot leak into a zoom a hiker
+        // navigates by.
         id: NETWORK_OVERVIEW_LAYER_ID,
         type: 'line',
         source: NETWORK_OVERVIEW_SOURCE_ID,
@@ -1161,7 +1203,7 @@ export function buildMapStyle({
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': blazeLineColor(appearance) as unknown as string,
-          'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
+          'line-width': NETWORK_OVERVIEW_WIDTH_EXPRESSION as unknown as number,
           'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
         },
       },

@@ -2,6 +2,11 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { ElevationRibbon } from './ElevationRibbon'
 import { naismithTime } from '../lib/naismith'
+import { ribbonGeometry } from '../lib/ribbonGeometry'
+
+// Spied rather than replaced: every test below still exercises the real
+// geometry; the spy exists so the memo test can count how often it runs.
+vi.mock('../lib/ribbonGeometry', { spy: true })
 
 // WIREFRAMES.md §1.3. The geometry values are specified exactly - viewBox
 // "0 0 100 40" with preserveAspectRatio="none" so the profile stretches to
@@ -259,5 +264,27 @@ describe('ElevationRibbon', () => {
     expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
     expect(screen.getByText(/980 ft/)).toBeInTheDocument()
     expect(screen.getByText(/2,100 ft/)).toBeInTheDocument()
+  })
+
+  it('rebuilds the path only when the samples or the domain change (#1111)', () => {
+    // The shell re-renders once per GPS callback while a phone sits still
+    // (#1100), and reaches here with the samples' identity held now that the
+    // upstream memos key on the mile. This is the other half of that change:
+    // a re-render with the same ground must not rebuild the ~640-point path.
+    const { rerender } = render(<ElevationRibbon samples={SAMPLES} currentMile={1405} />)
+    const built = () => vi.mocked(ribbonGeometry).mock.calls.length
+    const before = built()
+
+    rerender(<ElevationRibbon samples={SAMPLES} currentMile={1405} />)
+    expect(built()).toBe(before)
+
+    // The rule and the callout may move without the drawn ground changing -
+    // the mile is not part of the geometry's key.
+    rerender(<ElevationRibbon samples={SAMPLES} currentMile={1406} />)
+    expect(built()).toBe(before)
+
+    // A new samples array is a new picture, whatever it holds.
+    rerender(<ElevationRibbon samples={[...SAMPLES]} currentMile={1406} />)
+    expect(built()).toBe(before + 1)
   })
 })

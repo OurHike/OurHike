@@ -17,6 +17,7 @@ import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { liveMap } from './test/liveMap'
+import { ribbonView } from './lib/ribbonView'
 import { THEME_ATTRIBUTE } from './lib/theme'
 import { BACKDROP_LAYER_ID, BLAZE_LAYER_ID, MAP_BACKDROP } from './map/style'
 import { SHEET_VARIANTS } from './map/liveTopo'
@@ -36,6 +37,9 @@ function backdropOf(map: MockMap): unknown {
 // ones that only run after a download succeeds.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
+// Spied rather than replaced: every ribbon test below still runs the real
+// module; the spy exists so the #1111 test can count memo recomputes.
+vi.mock('./lib/ribbonView', { spy: true })
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   set: vi.fn(),
@@ -1198,6 +1202,31 @@ describe('the elevation ribbon and the next-up rail', () => {
     await reportFix()
 
     await waitFor(() => expect(ribbon()).toBeInTheDocument())
+  })
+
+  it('does not rebuild the ribbon for a wobble that snaps to the same vertex (#1111)', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+    await waitFor(() => expect(ribbon()).toBeInTheDocument())
+    const before = vi.mocked(ribbonView).mock.calls.length
+
+    // A few dozen feet of longitude: a genuinely NEW position, so the
+    // useGeolocation bail-out (#1098) does not swallow it - but its nearest
+    // centerline vertex is unchanged, which is what a stationary phone's
+    // jitter delivers at fix rate. Nothing the ribbon draws moved, so the
+    // memo chain must hold rather than re-decimate the window.
+    await app.reportFixAtMile(5, -77.0001)
+    expect(vi.mocked(ribbonView).mock.calls.length).toBe(before)
+
+    // Walking far enough to snap to the next vertex is a changed input, and
+    // the ribbon must follow it - held identity, never a frozen picture.
+    await app.reportFixAtMile(5.6)
+    expect(vi.mocked(ribbonView).mock.calls.length).toBeGreaterThan(before)
   })
 
   it('draws the rail of coming waypoints beside it', async () => {

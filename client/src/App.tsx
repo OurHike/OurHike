@@ -1365,6 +1365,25 @@ function App() {
     return locateOnTrail(trailIndex, gps.at)
   }, [trailIndex, gps])
 
+  // The mile alone, for every derivation below that reads nothing else.
+  //
+  // locateOnTrail answers with the nearest VERTEX's mile, so a wobble that
+  // stays closer to the same vertex than to any other keeps this value still -
+  // while `fix` itself is a fresh object per wobble, because offTrailFeet
+  // genuinely moves with every one. A memo keyed on `fix` where the mile is
+  // all it reads therefore recomputes once per GPS callback for an answer
+  // that has not changed, the whole time a stationary phone jitters (#1111).
+  // Key on this instead. A wobble that flips between two vertices still
+  // recomputes everything keyed here - that is a changed input, and how often
+  // it happens under canopy is #1100's unmeasured radius question.
+  const fixMile = fix?.mile ?? null
+
+  // The settled direction alone, for the same reason: the TRACKER holds its
+  // identity below the quarter-mile threshold (lib/hikeDirection.ts), but a
+  // memo needs only which way was settled, and a plain value cannot regress
+  // to keying on the object by accident.
+  const travelDirection = direction?.direction
+
   /**
    * Which miles this hiker has actually walked (#598's `visited`).
    *
@@ -1459,7 +1478,7 @@ function App() {
    * where the warning matters most. closureBanner.ts owns that split.
    */
   const { closureAhead, advisoryAhead } = useMemo(() => {
-    if (fix === null) return { closureAhead: null, advisoryAhead: null }
+    if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
     // Two sources compete for each line: OurHike's verified closures and the
     // ATC's own notices (#461). Nearest wins, which is the rule the two lane
@@ -1484,8 +1503,8 @@ function App() {
     // closure three miles ahead for 398 miles of walking. The rule is written
     // once per source (`closureLanes`, `atcUpdateLanes`) and the source tie is
     // broken here, the same way, for each lane.
-    const closureLane = closureLanes(placedClosures ?? [], fix.mile, heading)
-    const atcLane = atcUpdateLanes(atcUpdates, fix.mile, heading)
+    const closureLane = closureLanes(placedClosures ?? [], fixMile, heading)
+    const atcLane = atcUpdateLanes(atcUpdates, fixMile, heading)
 
     // Whichever source the hiker reaches first, in that source's own voice.
     // `<=` keeps ours first on an exact tie, which is arbitrary and has to be
@@ -1495,9 +1514,9 @@ function App() {
       atc: RankedAtcUpdate | null,
     ): string | null => {
       if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
-        return closureBanner(closure.closure, fix.mile, heading, units)
+        return closureBanner(closure.closure, fixMile, heading, units)
       }
-      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading, units)
+      if (atc !== null) return atcUpdateBanner(atc.update, fixMile, heading, units)
       return null
     }
 
@@ -1505,7 +1524,8 @@ function App() {
       closureAhead: pick(closureLane.specific, atcLane.specific),
       advisoryAhead: pick(closureLane.broad, atcLane.broad),
     }
-  }, [placedClosures, atcUpdates, fix, heading, units])
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [placedClosures, atcUpdates, fixMile, heading, units])
 
   /**
    * Every published report placed on the mile axis.
@@ -1548,7 +1568,7 @@ function App() {
     if (
       placedWarnings === null ||
       trailIndex === null ||
-      fix === null ||
+      fixMile === null ||
       heading === undefined
     ) {
       return null
@@ -1569,14 +1589,15 @@ function App() {
     const terminus = heading === 'NOBO' ? trailIndex.totalMiles : 0
     const routeEnd =
       declaredEnd !== null &&
-      (heading === 'NOBO' ? declaredEnd >= fix.mile : declaredEnd <= fix.mile)
+      (heading === 'NOBO' ? declaredEnd >= fixMile : declaredEnd <= fixMile)
         ? declaredEnd
         : terminus
 
     return routeBannerText(
-      warningsOnRoute(placedWarnings, { fromMile: fix.mile, toMile: routeEnd }).length,
+      warningsOnRoute(placedWarnings, { fromMile: fixMile, toMile: routeEnd }).length,
     )
-  }, [placedWarnings, trailIndex, fix, heading, hike])
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [placedWarnings, trailIndex, fixMile, heading, hike])
 
   /**
    * The same closures on the canvas: red barrier tape along each closed
@@ -1900,10 +1921,13 @@ function App() {
   // which stretch they are showing.
   const fixWindow = useMemo(
     () =>
-      elevation === null || fix === null
+      elevation === null || fixMile === null
         ? null
-        : ribbonWindow(elevation, fix.mile, direction?.direction),
-    [elevation, fix, direction],
+        : ribbonWindow(elevation, fixMile, travelDirection),
+    // Keyed on the mile and the settled direction, not the objects carrying
+    // them - see fixMile (#1111). The window slides with the mile, so holding
+    // its identity while the mile holds is what lets `ribbon` below hold too.
+    [elevation, fixMile, travelDirection],
   )
 
   /** The lanes' copy of the tier styling (#759's "highest-value surface"):
@@ -1961,9 +1985,10 @@ function App() {
   // pipeline-scale boundaries is the exact mixed measurement lib/route.ts
   // exists to prevent.
   const gpsPlanMile = useMemo(() => {
-    if (fix === null) return null
-    return anchoredMile(fix.mile, mileAnchors)
-  }, [fix, mileAnchors])
+    if (fixMile === null) return null
+    return anchoredMile(fixMile, mileAnchors)
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [fixMile, mileAnchors])
 
   /** The volunteer workdays on the map and the sheet over a tapped one -
    *  chrome/workdayPanel.tsx owns both (#327). Placed here rather than beside
@@ -2945,12 +2970,24 @@ function App() {
         profile: elevation,
         planStretch: draftStretch,
         mapStretch,
-        fixClientMile: fix?.mile ?? null,
+        fixClientMile: fixMile,
         fixPlanMile: gpsPlanMile,
         fixWindow,
-        ...(direction?.direction === undefined ? {} : { direction: direction.direction }),
+        ...(travelDirection === undefined ? {} : { direction: travelDirection }),
       }),
-    [elevation, draftStretch, mapStretch, fix, gpsPlanMile, fixWindow, direction],
+    // Keyed on the mile and the settled direction, not the objects carrying
+    // them - see fixMile (#1111). While every dep here holds, so does the
+    // ribbon's identity, and with it the ~640-sample rebuild in ribbonView,
+    // the lanes keyed on `ribbon` below, and ElevationRibbon's path memo.
+    [
+      elevation,
+      draftStretch,
+      mapStretch,
+      fixMile,
+      gpsPlanMile,
+      fixWindow,
+      travelDirection,
+    ],
   )
 
   /**

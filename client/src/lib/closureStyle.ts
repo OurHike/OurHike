@@ -59,14 +59,19 @@ export const CLOSURE_TAPE_PIXEL_RATIO = 2
 export const CLOSURE_TAPE_WIDTH = 14
 
 /**
- * The casing weight, in CSS pixels.
+ * The casing weight the band used to carry, in CSS pixels.
  *
- * No longer a line under the band - see the header - but still the number the
- * ATC's point notice strokes its dot with (lib/atcUpdateStyle.ts), which is
- * the one place a closure-coloured mark still has a continuous edge. Kept at
- * its own value rather than folded into CLOSURE_STRIPE_EDGE because the two
- * now answer different questions: how heavily a DOT is outlined, and how
- * heavily a STRIPE is.
+ * NOTHING PAINTS WITH THIS ANY MORE, and saying so is the point of keeping it.
+ * The band's casing became the edge on each stripe (CLOSURE_STRIPE_EDGE), and
+ * #1071 took the ATC point notice off the disc that was the other consumer -
+ * so what survives here is a REFERENCE WEIGHT rather than a paint value: the
+ * 2px this map used to outline a safety mark with, and which both of its
+ * successors are held to be lighter than.
+ *
+ * lib/atcUpdateStyle.ts's `atcNoticeRimWidths` names it as the failure case in
+ * so many words - "put `CLOSURE_CASING_WIDTH` back and the test goes red on
+ * 2.9px" - and its ATC_NOTICE_CASING_WIDTH is asserted under it. Deleting the
+ * constant would delete the thing those two comparisons are against.
  */
 export const CLOSURE_CASING_WIDTH = 2
 

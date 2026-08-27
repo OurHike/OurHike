@@ -102,8 +102,16 @@ export function createHashRequestHandler(
 ): (request: HashRequest) => void {
   let hash = new Sha256()
   let queue: Promise<void> = Promise.resolve()
+  /** Set once a request throws. The fold is unknowable after that - `init`
+   *  can fail part-way through restoring a persisted state - so every later
+   *  request is refused rather than answered from whatever is left. */
+  let broken: string | undefined
 
   async function handle(request: HashRequest): Promise<void> {
+    if (broken !== undefined) {
+      if ('id' in request) post({ kind: 'error', id: request.id, message: broken })
+      return
+    }
     switch (request.kind) {
       case 'init':
         hash =
@@ -141,7 +149,26 @@ export function createHashRequestHandler(
   }
 
   return (request) => {
-    queue = queue.then(() => handle(request))
+    // THE CATCH IS NOT OPTIONAL, and its absence was a hang rather than a
+    // crash. `queue.then(...)` on a rejected queue never runs its callback, so
+    // one throwing handler skipped every request after it - silently, because
+    // an unhandled rejection in a worker is not an `error` event, so
+    // WorkerHasher's `lost` stayed false and its promises never settled. The
+    // download sat in `checking` with no message and no way forward.
+    //
+    // A `Sha256State` whose `buffered` is longer than 64 bytes reaches exactly
+    // this: `Sha256.fromState` throws RangeError inside `init`, and
+    // archiveDownload's `resumeHash` validates only `byteLength <= held.size`,
+    // so it passes such a state straight through.
+    queue = queue
+      .then(() => handle(request))
+      .catch((error: unknown) => {
+        broken = error instanceof Error ? error.message : String(error)
+        // Only an id-bearing request has a caller waiting on it. `init` and
+        // `chunk` are fire-and-forget, so their failure surfaces at the next
+        // `state`/`digest`, which is where the degradation is documented.
+        if ('id' in request) post({ kind: 'error', id: request.id, message: broken })
+      })
   }
 }
 
@@ -285,7 +312,17 @@ class WorkerHasher implements ArchiveHasher {
   }
 
   async digest(): Promise<string> {
-    const response = await this.request({ kind: 'digest', id: this.nextId++ })
+    // Every failure becomes the one sentence, because this rejection is read
+    // by a hiker on a card. A worker that died and a worker that threw
+    // RangeError deep in a state restore are the same fact here - the check
+    // did not finish - and "Invalid typed array length" is not a thing to
+    // show somebody standing at a trailhead.
+    let response: HashResponse
+    try {
+      response = await this.request({ kind: 'digest', id: this.nextId++ })
+    } catch {
+      throw new Error(FOLD_LOST_MESSAGE)
+    }
     if (response.kind !== 'digest') throw new Error(FOLD_LOST_MESSAGE)
     return response.digest
   }

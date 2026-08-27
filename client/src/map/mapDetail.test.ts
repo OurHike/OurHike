@@ -46,7 +46,6 @@ describe('the detail matrix', () => {
       LIVE_TOPO_LAYER_IDS.peak,
       LIVE_TOPO_LAYER_IDS.place,
       LIVE_TOPO_LAYER_IDS.roadMajor,
-      LIVE_TOPO_LAYER_IDS.roadMajorCasing,
       LIVE_TOPO_LAYER_IDS.water,
       LIVE_TOPO_LAYER_IDS.waterway,
       LIVE_TOPO_LAYER_IDS.wood,

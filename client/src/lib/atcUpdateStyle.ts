@@ -26,12 +26,23 @@
 // WHAT CHANGED, AND WHY IT IS NOT A SECOND SEVERITY EITHER. The point notice
 // used to be a 10px dot drawn under the waypoint pins, which made the ATC's
 // own word about the trail the smallest and most easily covered mark on the
-// map. It is now 40px of ink, it carries a glow that fades out to nothing, and
-// map/style.ts draws this whole group last of all so nothing can sit on top
-// of it. All three are SIZE and ORDER, not hue: the band and the dot are
-// still the closure's exact red, so none of it says "this barrier is harder
-// than that one". What it says is "there is something here" - which is the
-// one thing a mark can say that a hiker cannot act on if they never see it.
+// map. It is now 40px of ink and map/style.ts draws this whole group last of
+// all so nothing can sit on top of it. Both are SIZE and ORDER, not hue: the
+// band and the burst are still the closure's exact red, so none of it says
+// "this barrier is harder than that one". What it says is "there is something
+// here" - which is the one thing a mark can say that a hiker cannot act on if
+// they never see it.
+//
+// AND THE 40px WAS THEN SPENT AS A SOLID DISC, WHICH IS #1071. Every pixel of
+// it was opaque, so the mark hid whatever it was drawn on - and a point notice
+// is placed ON the centerline (map/atcUpdateLayers.ts), so what it hid was the
+// trail the notice is about plus the shelter, ford or crossing the notice is
+// about. Two earlier passes read that as a number to shave and both were
+// shaving the wrong number: at ANY findable size, opaque ink covers ground.
+// The mark is now a burst of red spokes around an open centre at the same
+// 40px, so the ground reads through it - see ATC_NOTICE_BURST below, and
+// the note below ATC_UPDATE_POINT_SIZE_EXPRESSION for the layer that went
+// with it.
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
@@ -50,7 +61,18 @@ export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
  *  the two feeds, and nothing about hue or weight may. */
 export const ATC_TAPE_IMAGE_ID = 'atc-update-tape'
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
-export const ATC_UPDATE_HALO_LAYER_ID = 'atc-update-halo'
+
+/**
+ * The image id the point layer's `icon-image` resolves to.
+ *
+ * DECLARED HERE RATHER THAN BESIDE THE RASTERISER, which is the reverse of how
+ * map/warningPin.ts does it, and the reason is the dependency direction. The
+ * layer is built in this file and `lib/` does not import from `map/` - the same
+ * constraint ATC_UPDATE_POINT_ZOOM_STOPS records for POI_PIN_MIN_SCALE. So the
+ * id and the geometry live here, where the drawing decisions already are, and
+ * map/atcNoticeMark.ts imports them to turn them into pixels.
+ */
+export const ATC_NOTICE_ICON_ID = 'atc-notice'
 
 /**
  * The diameter of a point notice, in CSS pixels.
@@ -93,25 +115,16 @@ export const ATC_UPDATE_HALO_LAYER_ID = 'atc-update-halo'
  * only comparable when this one includes its edge too.
  *
  * THIS IS THE SIZE AT WALKING ZOOM, not at every zoom - see
- * {@link ATC_UPDATE_POINT_RADIUS_EXPRESSION}, which is where the third and
+ * {@link ATC_UPDATE_POINT_SIZE_EXPRESSION}, which is where the third and
  * largest mistake in this sequence was. A number that is right in the hand is
  * absurd on a map of the whole corridor.
+ *
+ * IT SURVIVED #1071 UNCHANGED, deliberately. What was wrong with the disc was
+ * that all 1,257 px² of it were opaque, not that it reached 40px - the reach is
+ * what makes an eye land here rather than on the shelter pin beside it, and
+ * src/test/atcAlertProminence.test.ts holds it against both pins.
  */
 export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
-
-/**
- * What MapLibre is actually told, which is the ink minus its casing.
- *
- * Derived rather than declared, so the thing a reader can see on a screen -
- * the outer edge of the dot - is the number in the constant above, and the
- * spec value follows from it. Declared the other way round, the two drift the
- * moment the casing changes width.
- */
-export const ATC_UPDATE_POINT_DIAMETER =
-  ATC_UPDATE_POINT_DRAWN_WIDTH - CLOSURE_CASING_WIDTH * 2
-
-/** Half of {@link ATC_UPDATE_POINT_DIAMETER}, which is what MapLibre wants. */
-export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
 
 /**
  * The zooms the dot grows between, and what fraction of full size it is at
@@ -167,72 +180,188 @@ export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: nu
   [13, 1],
 ]
 
-/** A radius that grows with the camera, from a base at full size. */
-function zoomScaledRadius(fullSize: number): unknown[] {
-  return [
-    'interpolate',
-    ['linear'],
-    ['zoom'],
-    ...ATC_UPDATE_POINT_ZOOM_STOPS.flatMap(([zoom, scale]) => [zoom, fullSize * scale]),
-  ]
+/**
+ * What the symbol layer is given instead of a number.
+ *
+ * `icon-size` rather than the `circle-radius` this used to be, so the numbers
+ * are the zoom stops themselves rather than a radius multiplied through them.
+ * The image is rasterised once at full size (map/atcNoticeMark.ts) and MapLibre
+ * samples it down, which is exactly what map/poiLayers.ts already does to every
+ * waypoint pin on the same ramp.
+ */
+export const ATC_UPDATE_POINT_SIZE_EXPRESSION = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  ...ATC_UPDATE_POINT_ZOOM_STOPS.flatMap(([zoom, scale]) => [zoom, scale]),
+]
+
+/**
+ * The dark edge round the red, as a fraction of the mark's drawn radius.
+ *
+ * NOT the band's 2px `CLOSURE_CASING_WIDTH`, which is what the disc carried,
+ * and the first render of the burst is why. A casing runs down BOTH sides of
+ * every spoke, so 2px of it eats 4px out of each gap - and eight spokes inside
+ * 40px have only about 7px of gap to spend in the first place. What came out
+ * was a black disc with red spokes drawn on it: precisely the thing being
+ * replaced.
+ *
+ * Two measurements, because the spokes were re-cut after that render and only
+ * the first belongs to the picture: at the half-width that failed, the band's
+ * casing left **1.7px** of daylight; at the shipped half-width below it would
+ * still leave only **2.9px**, against **4.5px** with this hairline. So the
+ * fatter casing is not survivable at either geometry, which is why the ratio is
+ * a constant under test rather than a detail.
+ *
+ * `radius / 15` is map/poiIcons.ts's own `edgeWidth`, the hairline every
+ * waypoint pin on this map already carries, so this is the map's existing edge
+ * treatment rather than a number invented to make the gaps work. 1.33px at 40
+ * across, and it scales with the mark rather than swamping it as the camera
+ * pulls back.
+ */
+export const ATC_NOTICE_CASING_RATIO = 1 / 15
+
+export const ATC_NOTICE_CASING_WIDTH =
+  (ATC_UPDATE_POINT_DRAWN_WIDTH / 2) * ATC_NOTICE_CASING_RATIO
+
+/**
+ * The radius the RED reaches, which is the drawn radius less its casing.
+ *
+ * Derived in that direction, so the number a reader can see on a screen - the
+ * outer edge of the ink - stays {@link ATC_UPDATE_POINT_DRAWN_WIDTH} and this
+ * follows from it. It is the same derivation the disc's diameter used, and for
+ * the same reason: declared the other way round the two drift the moment the
+ * casing width moves.
+ */
+export const ATC_NOTICE_FILL_RADIUS =
+  ATC_UPDATE_POINT_DRAWN_WIDTH / 2 - ATC_NOTICE_CASING_WIDTH
+
+/** The shape of a point notice, as polar geometry rather than as a polygon. */
+export interface AtcNoticeBurst {
+  /** How many spokes radiate from the centre. */
+  spokes: number
+  /** Bearing of the first spoke, in radians. */
+  phase: number
+  /** Where a spoke starts, as a fraction of {@link ATC_NOTICE_FILL_RADIUS}. */
+  innerRadius: number
+  /** The centre dot's radius, as the same fraction. */
+  hubRadius: number
+  /** A spoke's angular half-width at `innerRadius`, in radians. */
+  innerHalfWidth: number
+  /** A spoke's angular half-width at the rim, in radians. */
+  tipHalfWidth: number
 }
 
-/** What the circle layer is given instead of a number. */
-export const ATC_UPDATE_POINT_RADIUS_EXPRESSION = zoomScaledRadius(
-  ATC_UPDATE_POINT_RADIUS,
-)
+/**
+ * An open-centre burst: eight spokes round a ring of clear ground, with a small
+ * dot on the coordinate itself.
+ *
+ * POLAR RATHER THAN A POLYGON, and that is what makes the casing exact. A
+ * spoke's lateral half-width at radius `r` is an ANGLE, so adding `casing / r`
+ * to it adds the same number of PIXELS of outline all the way along the spoke.
+ * A scaled-up copy of the outline - the obvious way to do this with the polygon
+ * rasteriser map/poiIcons.ts already has - would give an edge that was thin at
+ * the hub and fat at the tip.
+ *
+ * THE NUMBERS, and what each is answering:
+ *
+ *  - **8 spokes.** The count is a trade between the two ends of the zoom ramp
+ *    and it was picked off rendered specimens, not reasoned: eleven spokes look
+ *    better in the hand and close up at z5, where the whole mark is 16px. Eight
+ *    is the largest count whose gaps survive the bottom of the ramp.
+ *  - **`innerRadius` 0.5.** Half the mark is the open ring. This is the whole
+ *    point of the shape - what a notice is drawn ON (a shelter pin, the
+ *    centerline, a ford) sits in that hole and stays readable.
+ *  - **`hubRadius` 0.13.** A 2.4px dot, small enough to leave the hole open and
+ *    large enough to say WHERE. Without it the mark is a ring, and a ring reads
+ *    as drawn AROUND something rather than as marking it.
+ *  - **`tipHalfWidth` 0.2 rad against a 0.785 rad pitch**, so a spoke covers
+ *    just over half the pitch at the rim and the gap covers the rest. Measured
+ *    on the shipped geometry at walking zoom: 7.5px of red against 4.5px of
+ *    clear ground once the casing has taken its bite out of both sides.
+ *    map/atcNoticeMark.test.ts computes both rather than trusting this comment.
+ *  - **`innerHalfWidth` 0.13 rad**, narrower than the tip, so each spoke tapers
+ *    outward. A parallel-sided spoke reads as a cog; a tapered one reads as
+ *    radiating, which is the thing being said.
+ *
+ * Together these put 760.1px² of ink on the map where the disc put 1,256.6px²
+ * - 60.5%, measured 2026-08-27 off the rendered alpha of the shipped image
+ * rather than off this arithmetic. map/atcNoticeMark.test.ts re-measures it.
+ */
+export const ATC_NOTICE_BURST: AtcNoticeBurst = {
+  spokes: 8,
+  // Straight up. Any phase draws the same mark rotated, but a fixed one means
+  // every notice on the map is the identical image rather than eight of them.
+  phase: -Math.PI / 2,
+  innerRadius: 0.5,
+  hubRadius: 0.13,
+  innerHalfWidth: 0.13,
+  tipHalfWidth: 0.2,
+}
 
 /**
- * How far the glow reaches past the dot, as a multiple of its radius.
+ * How wide a spoke and the clear ground beside it are at the rim, in CSS pixels.
  *
- * Half the dot's radius of fading red on every side - enough to catch an eye
- * that is not looking at that part of the screen, and short enough that five
- * of them on the whole-corridor view are five marks rather than one wash.
+ * The property this whole change is bought with is a number of TRANSPARENT
+ * pixels, so it is computed rather than asserted in prose - the first render of
+ * the burst carried the band's 2px casing, which left 1.7px of daylight between
+ * neighbouring spokes and produced a dark disc with red spokes on it. That
+ * failure was invisible in the geometry and obvious in the picture, and this is
+ * what lets a test see it too: put `CLOSURE_CASING_WIDTH` back and
+ * lib/atcUpdateStyle.test.ts goes red on 2.9px, measured 2026-08-27.
  *
- * It was 2, and that was the half of the first pass that actually read as too
- * big: a 96px circle of red around every notice is most of a phone's width
- * for one mile marker, and five of them on a 390px screen is a rash. The dot
- * is what says WHERE; the glow only has to say LOOK, and saying it louder
- * than the dot inverts the two.
- *
- * Measured off the radius rather than off the drawn width, so it tracks the
- * dot's own size: at 36 across the glow is 54, and it shrinks with the dot
- * rather than needing a second edit each time.
+ * Takes a drawn width rather than reading the constant, so a caller can ask the
+ * same question at the bottom of the zoom ramp - which is where the gaps are
+ * scarce and where a spoke count is really decided.
  */
-export const ATC_UPDATE_HALO_SCALE = 1.5
+export function atcNoticeRimWidths(drawnWidth: number = ATC_UPDATE_POINT_DRAWN_WIDTH): {
+  spoke: number
+  gap: number
+} {
+  const casing = (drawnWidth / 2) * ATC_NOTICE_CASING_RATIO
+  const rim = drawnWidth / 2 - casing
+  const pitch = (Math.PI * 2) / ATC_NOTICE_BURST.spokes
 
-export const ATC_UPDATE_HALO_RADIUS = ATC_UPDATE_POINT_RADIUS * ATC_UPDATE_HALO_SCALE
+  return {
+    spoke: 2 * ATC_NOTICE_BURST.tipHalfWidth * rim,
+    // Both sides of the gap lose a hairline to the casing of the spoke beside
+    // it, which is the term the first pass left out.
+    gap: (pitch - 2 * ATC_NOTICE_BURST.tipHalfWidth) * rim - 2 * casing,
+  }
+}
 
-/** The glow on the same zoom ramp as the dot it surrounds.
- *
- *  Through the same helper rather than its own stops, so the two can never
- *  come apart - a glow that stayed put while the dot shrank would end up a
- *  translucent disc with a small mark in the middle of it, which is a
- *  different drawing entirely. */
-export const ATC_UPDATE_HALO_RADIUS_EXPRESSION = zoomScaledRadius(ATC_UPDATE_HALO_RADIUS)
-
-/**
- * Fully blurred, which in MapLibre means a gradient rather than an edge.
- *
- * `circle-blur: 1` is defined as "only the centerpoint is full opacity" - the
- * alpha ramps from the centre to nothing at the circle's edge. So this layer
- * has NO rim: what a hiker sees is red bleeding outward from under the dot and
- * dissolving, which is the point. A hard-edged translucent disc would read as
- * a second, softer barrier - a claim about an area ATC did not make.
- */
-export const ATC_UPDATE_HALO_BLUR = 1
-
-/**
- * The glow's opacity at its centre, which is under the dot and never seen.
- *
- * What is actually visible starts where the dot ends, at two thirds of the
- * radius, and the blur has already taken it to about a third of this by then -
- * fading to zero over the last ten pixels. Deliberately that faint: this layer
- * sits over the waypoint pins (map/style.ts), and a glow that hid a water
- * source to announce a bear warning two hundred feet away would have traded
- * one safety mark for another.
- */
-export const ATC_UPDATE_HALO_OPACITY = 0.55
+// THE GLOW IS GONE (#1071), and this note is the receipt. It is a comment
+// rather than a constant because nothing is left to name - but a layer that
+// simply vanishes from a diff takes its reasoning with it, and the reasoning is
+// the part a later pass needs.
+//
+// There used to be a fourth layer here: a fully-blurred circle at 1.5x the
+// dot's radius and 55% opacity, whose job was to catch an eye that is NOT
+// looking at that part of the screen. It is deleted rather than dimmed, and the
+// honest way to put that is that real conspicuity was given up.
+//
+// WHY IT COULD NOT SIMPLY STAY. A 54px wash of red behind an open burst is the
+// solid disc back again in a softer spelling - the ground between the spokes
+// would be washed exactly where the burst exists to let it through. Keeping
+// both would have meant keeping neither.
+//
+// WHAT REPLACES IT IS SHAPE RATHER THAN AREA. Nothing else on this map is a
+// radial burst: every waypoint and the serious-warning pin are discs
+// (map/poiIcons.ts), and every closure and ATC band is a line. So the mark is
+// still unlike its neighbours at a glance, and it keeps every other conspicuity
+// property it had - the closure red, the 40px reach, being drawn over every
+// other layer (map/style.ts), and `icon-allow-overlap` so the collision engine
+// can never drop one.
+//
+// @unvalidated Nobody has watched a hiker find one of these on a phone, in sun,
+// while walking. A specimen sheet rendered at z5/z9/z13 is what this decision
+// was made on, and a specimen sheet cannot answer a question about peripheral
+// vision. What would settle it is field use. If the burst turns out to be
+// harder to find than the disc was, the fix is a glow back on a ZOOM RAMP -
+// strong at corridor zoom where the mark is 16px and there is no detail to
+// lose, faint in the hand where the spokes are large and the ground under them
+// is what a hiker came for - and not one strength everywhere, which is the
+// shape of the fault this change is fixing.
 
 /**
  * Wider stripes, further apart - literally the closure's tape at twice the
@@ -262,39 +391,26 @@ export const ATC_UPDATE_TAPE_CADENCE: TapeCadence = {
  *  band that quietly drifted narrower than a closure band would be exactly
  *  the severity distinction this module refuses to draw. */
 export const ATC_UPDATE_LINE_WIDTH = CLOSURE_TAPE_WIDTH
+/** The old band casing, which nothing paints with now - see the constant's own
+ *  note in lib/closureStyle.ts. Kept re-exported because ATC_NOTICE_CASING_WIDTH
+ *  is asserted lighter than it, and a comparison needs both sides. */
 export const ATC_UPDATE_CASING_WIDTH = CLOSURE_CASING_WIDTH
 export const ATC_UPDATE_COLOR = CLOSURE_COLOR
 export const ATC_UPDATE_CASING_COLOR = CLOSURE_CASING_COLOR
 
 export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
   return [
-    // The glow, first and therefore underneath everything else here.
+    // ONE band layer, and no casing beneath it - see buildClosureLayers, which
+    // makes the same shape for the same reason. A solid casing under tape with
+    // transparent gaps shows through every one of them, which is the defect
+    // both feeds just stopped having.
     //
-    // Under the band and its casing on purpose. The halo is a soft claim -
-    // "look over here" - and the band is a hard one - "you cannot walk down
-    // there". Painting the soft one over the hard one would wash a barrier in
-    // translucent red exactly where the two coincide, which is where the
-    // barrier most needs to be crisp.
-    //
-    // It draws only around points, because a `circle` layer ignores lines. A
-    // band needs no glow: it is already hundreds of pixels of barrier tape.
-    {
-      id: ATC_UPDATE_HALO_LAYER_ID,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': ATC_UPDATE_COLOR,
-        'circle-radius': ATC_UPDATE_HALO_RADIUS_EXPRESSION as unknown as number,
-        'circle-opacity': ATC_UPDATE_HALO_OPACITY,
-        'circle-blur': ATC_UPDATE_HALO_BLUR,
-        // No stroke, and that is the whole difference between a glow and a
-        // disc. A stroked circle has an edge, and an edge here would draw a
-        // boundary around ground ATC said nothing about.
-      },
-    },
-    // ONE band layer, no casing beneath it - see buildClosureLayers, which
-    // makes the same shape for the same reason. A solid casing under a tape
-    // with transparent gaps is the defect both feeds just stopped having.
+    // THE GLOW THAT USED TO OPEN THIS LIST IS GONE, and it went for a reason
+    // this change shares rather than contradicts. #1071 removed it with the
+    // solid disc it surrounded: opaque ink covers the ground a mark is about,
+    // and a translucent wash around it was the softer half of the same fault.
+    // The burst below and the tape here are the same answer at two scales -
+    // let the ground read through the mark instead of around it.
     {
       id: ATC_UPDATE_LAYER_ID,
       type: 'line',
@@ -306,16 +422,26 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
       },
     },
     // Points, from the same source. A `line` layer ignores Point features and
-    // a `circle` layer ignores lines, so one source can carry both geometries
+    // a `symbol` layer ignores lines, so one source can carry both geometries
     // and the tap has one place to look - which is why this is a third layer
     // rather than a second source.
     //
-    // A circle rather than an icon, deliberately: an icon is an image to
-    // register and a sprite to keep in step, and both are failure modes
-    // (map/warningLayers.ts carries that cost for the warning pin). A dot in
-    // the band's colour, with the band's casing as its stroke, is the same
-    // treatment at a single mile - only much larger than the band is wide,
-    // for the reason ATC_UPDATE_POINT_DRAWN_WIDTH gives.
+    // AN ICON, WHERE THIS FILE USED TO ARGUE FOR A CIRCLE. The old comment was
+    // right about the cost - "an icon is an image to register and a sprite to
+    // keep in step, and both are failure modes" - and map/atcUpdateLayers.ts
+    // now carries that cost, the same one map/warningLayers.ts already carries
+    // for the warning pin. What changed is that the cost bought nothing before
+    // and buys the whole feature now: a `circle` cannot have a hole in it, and
+    // the hole is the fix for #1071. There is no paint property that makes the
+    // middle of a MapLibre circle transparent.
+    //
+    // `icon-allow-overlap`, for map/warningLayers.ts's reason exactly: a notice
+    // dropped because a shelter pin got to that spot first is a notice nobody
+    // was shown, and a hiker cannot tell that from there being none. It still
+    // takes part in placement FOR everything else (`icon-ignore-placement`
+    // stays at its default of false), so it pushes waypoints aside rather than
+    // being pushed - which is the standing this layer already had as a circle,
+    // since circles do not take part in collision at all.
     //
     // Sized on a zoom ramp rather than fixed, which is the correction
     // ATC_UPDATE_POINT_ZOOM_STOPS records: the full size is right in the hand
@@ -323,17 +449,13 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
     // full-size number fixes a fault that is about the other end of the range.
     {
       id: ATC_UPDATE_POINT_LAYER_ID,
-      type: 'circle',
+      type: 'symbol',
       source: sourceId,
-      paint: {
-        'circle-color': ATC_UPDATE_COLOR,
-        'circle-radius': ATC_UPDATE_POINT_RADIUS_EXPRESSION as unknown as number,
-        'circle-stroke-color': ATC_UPDATE_CASING_COLOR,
-        // Constant while the radius ramps, on purpose. The casing is what
-        // holds the dot legible against pale paper and under red light, and a
-        // 1px outline at corridor zoom would be a dot with no edge at exactly
-        // the size where it needs one most.
-        'circle-stroke-width': ATC_UPDATE_CASING_WIDTH,
+      layout: {
+        'icon-image': ATC_NOTICE_ICON_ID,
+        'icon-size': ATC_UPDATE_POINT_SIZE_EXPRESSION as unknown as number,
+        'icon-allow-overlap': true,
+        'icon-padding': 2,
       },
     },
   ]

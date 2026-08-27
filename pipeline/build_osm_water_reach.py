@@ -116,6 +116,43 @@ ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = RAW_DIR / "osm_water_reach.json"
 
+
+# Where apply_grade_gate's mid-run checkpoints go, and the reason they no longer
+# go to OUT_PATH.
+#
+# The guard in write() refuses to replace a good verdict file with a collapsed
+# one - but it used to be guarding a file the checkpoints had ALREADY replaced,
+# because apply_grade_gate wrote to OUT_PATH with guard=False every 25 points and
+# once more at the end. So a run whose trail layers failed to load stamped
+# `reachable: false` over every point, and only THEN raised.
+#
+# The second run was the worse half. `previous` is read from OUT_PATH, which now
+# held the collapse, so the drop guard compared the collapse against itself:
+# 45 reachable against a "previous" of 45 passes a 50% drop guard that 45
+# against 900 had just failed. A total collapse disabled the guard outright -
+# `previous` became 0, and `if previous and ...` is false for 0, leaving only
+# MIN_REACHABLE. Either way export_poi.py reads the verdicts and drops the
+# water.
+#
+# Keeping the partial somewhere else makes the guard true again: OUT_PATH is
+# written once, guarded, at the end of a successful run, and nothing else
+# touches it.
+def checkpoint_path() -> Path:
+    """Beside OUT_PATH, and DERIVED FROM IT AT CALL TIME rather than declared as
+    a second module constant.
+
+    A second constant is one knob too many. Every test in this file redirects
+    OUT_PATH with monkeypatch, and a checkpoint path that did not move with it
+    wrote into the REAL data directory and was then resumed from by whichever
+    test ran next - passing alone and failing in a suite, which is the shape
+    CLAUDE.md asks for three runs to catch. Measured while building this: it
+    took out test_main_re_grades_a_stale_file_it_resumes_from, which loaded one
+    leftover record instead of the forty-five it had just written. One knob
+    cannot drift from itself.
+    """
+    return OUT_PATH.with_name(f"{OUT_PATH.stem}.partial{OUT_PATH.suffix}")
+
+
 # fetch_trail_water.py's radius in metres. Imported rather than restated so a
 # re-tune moves this gate and that one together - they are the same judgement
 # ("somewhere you walk with a bottle") applied to two sources.
@@ -444,8 +481,8 @@ def apply_grade_gate(records: list[dict], limit: int | None = None, quiet: bool 
             record["reason"] = TOO_STEEP.format(drop_ft=drop_ft, distance_ft=distance_ft, grade=grade)
         if i % 25 == 0 and not quiet:
             print(f"  {i}/{len(pending)}", flush=True)
-            write(records, guard=False)
-    write(records, guard=False)
+            write(records, guard=False, path=checkpoint_path())
+    write(records, guard=False, path=checkpoint_path())
 
 
 def is_reachable(record: dict) -> bool:
@@ -454,18 +491,28 @@ def is_reachable(record: dict) -> bool:
     return bool(record["passes_distance"]) and bool(record.get("passes_grade"))
 
 
-def write(records: list[dict], guard: bool = True, previous: int | None = None) -> None:
+def write(records: list[dict], guard: bool = True, previous: int | None = None, path: Path | None = None) -> None:
     """Write the verdict file, refusing a collapsed result when asked to guard.
 
     The guard is off for the checkpoints `apply_grade_gate` takes mid-run, which
-    are deliberately partial - it belongs on the finished file only.
+    are deliberately partial - it belongs on the finished file only. Those
+    checkpoints also go to `checkpoint_path()` rather than here, so an unguarded
+    write can no longer damage the file the guard is protecting; see that
+    constant for what it cost when they shared one.
 
-    `previous` is passed in rather than read here, and that is the whole point of
-    the parameter: those mid-run checkpoints have already overwritten OUT_PATH by
-    the time the guarded write happens, so a drop guard that re-read the file
-    would be comparing this run against itself and could never fire. main() reads
-    it once, before anything is written.
+    `previous` is still passed in rather than read here. It no longer has to be -
+    OUT_PATH holds the last good run until this function replaces it - but a
+    guard that reads its own baseline from the file it is about to overwrite is
+    the shape that failed, and it is not worth rebuilding on the argument that
+    this time nothing else writes there.
     """
+    # Resolved here rather than defaulted in the signature: `path: Path = OUT_PATH`
+    # binds the module's value at import, so a caller that reassigns OUT_PATH -
+    # every test in this file, via monkeypatch - would keep writing to the real
+    # data directory while appearing to be redirected.
+    if path is None:
+        path = OUT_PATH
+
     # Stamped onto each record rather than left for the reader to recompute.
     # export_poi.py is the reader, and a consumer that had to re-derive "both
     # gates, and an unknown is not a pass" from the parts is a second copy of
@@ -499,10 +546,10 @@ def write(records: list[dict], guard: bool = True, previous: int | None = None) 
         "n_reachable": len(reachable),
         "points": records,
     }
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = OUT_PATH.with_suffix(".tmp")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
-    tmp.replace(OUT_PATH)
+    tmp.replace(path)
 
 
 def network_union_changed(path: Path, network_path: Path | None = None) -> bool:
@@ -607,13 +654,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--remeasure", action="store_true", help="redo the distance pass, discarding the file on disk")
     args = parser.parse_args(argv)
 
-    # Read before anything writes: apply_grade_gate checkpoints over OUT_PATH as
-    # it goes, so this is the only moment the count on disk is still the PREVIOUS
-    # run's. See write().
+    # The last good run's count. Checkpoints land beside OUT_PATH rather than on
+    # it now, so this is the previous run's figure whenever it is read - but it
+    # is still read here, before anything writes, because write()'s guard should
+    # not depend on nobody else having touched the file. See checkpoint_path().
     previous = read_previous_reachable_count()
 
-    resumable = OUT_PATH.exists() and not args.remeasure
-    if resumable and network_union_changed(OUT_PATH):
+    partial = checkpoint_path()
+    if args.remeasure:
+        # The partial describes the run being discarded, and resuming from it
+        # after a --remeasure would be the opposite of what was asked for.
+        partial.unlink(missing_ok=True)
+
+    # A partial is mid-run progress and outranks the finished file: it is the
+    # same points with more of them graded.
+    resume_path = partial if partial.exists() else OUT_PATH
+    resumable = resume_path.exists() and not args.remeasure
+    if resumable and network_union_changed(resume_path):
         # The distance pass has to be redone, not patched: a point that was
         # never in the corridor has no row here to re-measure, so the widened
         # union can only arrive through a full re-measure. The EPQS cache makes
@@ -622,9 +679,9 @@ def main(argv: list[str] | None = None) -> int:
         resumable = False
 
     if resumable:
-        payload = json.loads(OUT_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(resume_path.read_text(encoding="utf-8"))
         records = payload["points"]
-        print(f"Resuming from {OUT_PATH.name} ({len(records)} points).")
+        print(f"Resuming from {resume_path.name} ({len(records)} points).")
         stale = drop_stale_grade_verdicts(records, payload.get("min_grade_run_ft"))
         if stale:
             print(f"{stale} verdicts predate the {MIN_GRADE_RUN_FT:.0f} ft floor - re-grading those.")
@@ -635,6 +692,10 @@ def main(argv: list[str] | None = None) -> int:
 
     apply_grade_gate(records, limit=args.limit)
     write(records, previous=previous)
+    # Only once the guarded write has landed. Until then the partial is the only
+    # record of this run's EPQS lookups, and a guard that fired should leave it
+    # for the next attempt to resume from.
+    partial.unlink(missing_ok=True)
     summarise(records)
     print(f"Wrote {OUT_PATH}")
     fetch_receipts.record("build_osm_water_reach", [OUT_PATH])

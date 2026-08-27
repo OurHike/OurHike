@@ -23,8 +23,30 @@
 // `trail_graph_elevation.json` with a sha256 for each in `latest.json`. What
 // was actually stopping the camera was the camera's own origin - screenshot.
 // mjs served from `127.0.0.1` on an OS-picked port, against a CORS allowlist
-// holding exact origins - and that is fixed. So the Follow door should be
-// there, and the followed map is the frame this recipe is for.
+// holding exact origins - and that is fixed.
+//
+// AND THE FOLLOW DOOR IS STILL NOT THERE, FOR A SECOND REASON THAT IS THIS
+// RECIPE'S OWN. Measured on run 1201 of pr-preview (2026-08-27, PR #1119):
+// `day-hike-builder.mjs` photographed the builder bar over a live map in the
+// same run, so the graph plainly arrives - and this recipe still landed on
+// the card, under the card's own sentence, "This phone's current trail map
+// can't place this walk, so these are the figures from the day it was
+// saved."
+//
+// The fixture's ends are INVENTED grid coordinates, and `resolveDayHike`
+// needs each of them within `MAX_OFF_NETWORK_FEET` (150 ft) of a published
+// line. Against a fixture bucket, where the network is the same invented
+// grid, they land on it; against the real one they land in the woods between
+// real trails. So the two halves of this recipe's seed pull against each
+// other: the coordinates were chosen to be nobody's data, and being nobody's
+// data is exactly what stops the live network claiming them.
+//
+// What would settle it is a fixture on the PUBLISHED Pine Meadow line -
+// which is public trail geometry and nobody's personal data, so it costs the
+// never-photograph list nothing. It is not done here because it cannot be
+// checked from an agent sandbox: Chromium here reaches no external host, so
+// picking coordinates off the live artifact and confirming they resolve is
+// work for a session that can see the bucket.
 //
 // #1045 ADDED AN ELEVATION RIBBON TO THAT FRAME, AND IT NEEDS ONE MORE
 // ARTIFACT THAN THE BUCKET HAS. A followed walk now draws its own profile -
@@ -35,11 +57,6 @@
 // is not a fault in this recipe and not a missing feature: it is #1041's
 // honest state, which #1045 keeps deliberately - a walk this phone has no
 // shape for gets no ribbon rather than the A.T.'s borrowed.
-//
-// A SANDBOX SESSION CANNOT VERIFY EITHER OF THOSE. Chromium here reaches no
-// external host, so the only build it can photograph is the dataless one. If
-// the CI frame still shows the card rather than the followed map, that is a
-// finding about the preview's data source and not about this screen.
 //
 // So the drive takes the door WHEN IT IS THERE and stops on the card when it
 // is not, and the frame is true either way. It is the same "several honest

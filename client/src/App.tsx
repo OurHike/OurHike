@@ -4454,6 +4454,19 @@ function App() {
           // The step before this sheet's transfer, so the tap has something
           // to show for itself while the canary is in flight.
           preparing: preparingSheets.includes(sheet.id),
+          // The sheet's own archives, named (#1103). The card's one figure
+          // stays the sheet's - a sheet is chosen and downloaded as one
+          // decision (lib/packages.ts) - and this list is the detail under
+          // it: which assets that decision buys, each with the size and
+          // state the store actually reports. The same statuses the sheet
+          // figure is combined FROM, so the breakdown and the clump cannot
+          // disagree.
+          assets: offeredPackages(sheet).map((pkg) => ({
+            title: pkg.title,
+            summary: pkg.summary,
+            sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel),
+            status: archiveStatusFor(pkg.idbKey),
+          })),
           // Each sheet's picker carries its own level set and writes its own
           // preference (#276) - the USGS raster's tiers and the hiking
           // sheet's cuts are separate dials. The `as` casts are safe because

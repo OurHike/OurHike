@@ -3663,6 +3663,57 @@ a.poi-card__credit::after {
   color: var(--danger);
 }
 
+/* The download note in the float column (#1103): the housekeeping card under
+   the safety strip, in the plate's own pine so it reads as chrome rather
+   than as an alert - a download is not danger, and dressing it in the
+   alerts' red would spend the one colour that must keep meaning trouble.
+   A button, edge to edge of the float column: the tap opens the downloads
+   window, where the per-asset detail lives. Rendered only while something
+   is arriving, which is the DownloadsLink's own absent-is-silence rule. */
+.map-screen__download-note {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg-chrome) 94%, transparent);
+  border: 0;
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-raised);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.map-screen__download-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 14px;
+  color: var(--fg-chrome-1);
+}
+.map-screen__download-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg-chrome-2) 22%, transparent);
+  overflow: hidden;
+}
+.map-screen__download-fill {
+  display: block;
+  height: 100%;
+  background: var(--moss-400, #6b9463);
+}
+.map-screen__download-figures {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}
+.map-screen__download-line {
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+  text-wrap: pretty;
+}
+
 /* The advisory row, subordinate to the two above it (#485).
  *
  * Weight rather than colour or size. It is the one row in this strip that is not

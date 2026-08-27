@@ -54,7 +54,8 @@ import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
-import type { DownloadActivity } from '../lib/downloadActivity'
+import { downloadFillPercent, type DownloadActivity } from '../lib/downloadActivity'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
@@ -1125,6 +1126,58 @@ export function MapScreen({
                     </p>
                   )}
                 </div>
+              )}
+
+              {/* The hour a download spends arriving, admitted where its
+                  thinner map is felt (#1103). Below the alerts on purpose:
+                  those are the ground itself, this is housekeeping. A
+                  button because the window is where the detail lives - the
+                  per-asset list this card deliberately does not carry. No
+                  live role, like the visible alert cards above (#315): the
+                  figures change too often to announce. Absent the moment
+                  nothing is arriving, which is the DownloadsLink's rule and
+                  most of the year. */}
+              {downloadActivity !== null && (
+                <button
+                  type="button"
+                  className="map-screen__download-note"
+                  onClick={onOpenDownloads}
+                >
+                  <span className="map-screen__download-title">Map still arriving</span>
+                  {downloadActivity.kind === 'preparing' ? (
+                    // The canary step: four fetches of unannounced size, so
+                    // the honest figure is no figure (lib/downloadActivity.ts).
+                    <span className="map-screen__download-figures">
+                      Getting trail data first
+                    </span>
+                  ) : (
+                    <>
+                      <span className="map-screen__download-bar">
+                        <span
+                          className="map-screen__download-fill"
+                          style={{
+                            width: `${downloadFillPercent(
+                              downloadActivity.doneBytes,
+                              downloadActivity.totalBytes,
+                            )}%`,
+                          }}
+                        ></span>
+                      </span>
+                      {/* The same words and figures the window's card prints
+                          (DownloadCard.tsx), so the two surfaces can never
+                          disagree about one transfer. */}
+                      <span className="map-screen__download-figures">
+                        {`${downloadActivity.kind === 'downloading' ? 'Downloading' : 'Checking'} · ${formatBytesLive(
+                          downloadActivity.doneBytes,
+                        )} of ${formatBytes(downloadActivity.totalBytes)}`}
+                      </span>
+                      <span className="map-screen__download-line">
+                        Drawing live tiles meanwhile — some detail is missing until this
+                        lands.
+                      </span>
+                    </>
+                  )}
+                </button>
               )}
             </div>
 

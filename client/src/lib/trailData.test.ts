@@ -23,6 +23,7 @@ import {
   RETIRED_POI_KEY,
   dataUrl,
   ELEVATION_KEY,
+  NEARBY_POI_KEY,
   POI_TYPES,
   SPURS_KEY,
   TRAILS_KEY,
@@ -244,9 +245,9 @@ describe('trail data', () => {
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     // Every POI type, plus the trail lines, the spur detail, the maintaining
-    // clubs, the data stewards (#927), the highlights, the tombstones (#831)
-    // and the elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 7)
+    // clubs, the data stewards (#927), the highlights, the tombstones (#831),
+    // the other organizations' waypoints (#1097) and the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 8)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {
@@ -291,6 +292,155 @@ describe('trail data', () => {
       lat: 45.45,
       lon: -69.26,
       confidence: 'high',
+    })
+  })
+
+  // #1097 - NYS DEC's and NYS OPRHP's waypoints. Their own artifact upstream,
+  // because their licence footing is their own, but ONE array on the phone:
+  // map/poiLayers.ts draws every waypoint through a single symbol layer, since
+  // MapLibre can only declutter symbols it places together, so a second source
+  // would have stacked a DEC lean-to on an A.T. shelter.
+  describe("the other organizations' waypoints", () => {
+    /** Serves the A.T. POI files and, separately, nearby_poi.geojson. */
+    function serveWithNearby(nearby: string, nearbyOk = true) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((url: string) => {
+          if (url.includes(NEARBY_POI_KEY)) {
+            return Promise.resolve(
+              nearbyOk
+                ? {
+                    ok: true,
+                    status: 200,
+                    headers: new Headers(),
+                    arrayBuffer: () => Promise.resolve(bytesOf(nearby)),
+                    text: () => Promise.resolve(nearby),
+                  }
+                : { ok: false, status: 404, statusText: 'Not Found' },
+            )
+          }
+          const body = url.includes('poi_')
+            ? poiCollection([
+                {
+                  id: 'atc_shelters:abc',
+                  poi_type: 'shelter',
+                  name: 'Chairback Gap Lean-to',
+                  lat: 45.45,
+                  lon: -69.26,
+                  confidence: 'high',
+                },
+              ])
+            : '{"type":"FeatureCollection"}'
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            arrayBuffer: () => Promise.resolve(bytesOf(body)),
+            blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+            text: () => Promise.resolve(body),
+          })
+        }),
+      )
+    }
+
+    it('merges them into the same stored waypoints as the A.T.', async () => {
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'dec_lean_tos:4791653',
+            poi_type: 'shelter',
+            name: 'Saginaw Bay Lean-To',
+            lat: 44.3,
+            lon: -74.400001,
+            confidence: 'high',
+            source: 'dec_lean_tos',
+            description: 'Lean-To in Saranac Lakes Wild Forest.',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      const dec = pois.find((poi) => poi.id === 'dec_lean_tos:4791653')
+      expect(dec).toEqual({
+        id: 'dec_lean_tos:4791653',
+        type: 'shelter',
+        name: 'Saginaw Bay Lean-To',
+        lat: 44.3,
+        lon: -74.400001,
+        confidence: 'high',
+        source: 'dec_lean_tos',
+        description: 'Lean-To in Saranac Lakes Wild Forest.',
+      })
+      // Beside the A.T.'s, not instead of them. The whole point of the merge is
+      // that both end up in one collision pass.
+      expect(pois.some((poi) => poi.id === 'atc_shelters:abc')).toBe(true)
+    })
+
+    it('carries the low confidence OPRHP rows arrive at, so the map can draw the broken rim', async () => {
+      // OPRHP's ParksApp flag SETS CONFIDENCE rather than filtering (their
+      // `Public` field reads Y on all 8,823 rows and so discriminates nothing).
+      // None of their 37 lean-tos is in their own app, so this is the shape
+      // every one of them reaches a phone in - and a client that flattened it
+      // to 'high' would vouch for what the steward has not.
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'oprhp_facilities:2035',
+            poi_type: 'shelter',
+            lat: 42.1,
+            lon: -78.7,
+            confidence: 'low',
+            source: 'oprhp_facilities',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const oprhp = (store.get(POIS_KEY) as StoredPoi[]).find(
+        (poi) => poi.id === 'oprhp_facilities:2035',
+      )
+      expect(oprhp?.confidence).toBe('low')
+      // 82% of OPRHP's rows publish no name, which the card already renders as
+      // "Unnamed" - the pipeline refuses to put the PARK's name on a feature
+      // inside it, so this is the honest arrival shape rather than a gap.
+      expect(oprhp?.name).toBe('Unnamed')
+    })
+
+    it('drops a waypoint whose type this build does not know, rather than filing it under one', async () => {
+      // One file carries every type here, unlike the eight poi_*.geojson keys,
+      // so readPois' fallback type would silently file a bad row under
+      // whichever type happened to be passed. A pipeline that publishes
+      // 'trailhead' before the client knows the word should lose that row, not
+      // gain a mislabelled shelter.
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'dec_trailheads:1',
+            poi_type: 'trailhead',
+            lat: 44,
+            lon: -74,
+            confidence: 'high',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois.some((poi) => poi.id === 'dec_trailheads:1')).toBe(false)
+    })
+
+    it('treats a 404 as an ordinary answer and keeps the A.T. waypoints', async () => {
+      // What a phone sees against a release exported before this artifact
+      // existed - and what it sees while either steward's reaches_hikers is
+      // false, since publish.py holds the whole file back rather than part of
+      // it.
+      serveWithNearby('', false)
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois.some((poi) => poi.id === 'atc_shelters:abc')).toBe(true)
+      expect(pois.every((poi) => !poi.source?.startsWith('dec_'))).toBe(true)
     })
   })
 

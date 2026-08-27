@@ -275,12 +275,20 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` is false here for a different reason than it used to be: nothing exports this layer yet. Registered and not wired to anything, per reaches_hikers_comment.",
+      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` became true on 2026-08-27 (#1097) when export_nearby_poi.py started reading this layer; it was false before for the reason its own note recorded - nothing exported it - and never as a licence judgement. #769's open question, whether OurHike is non-commercial within OPRHP's stated terms, is NOT settled by this and is unchanged by it. Water is held back from this layer for a separate reason - see oprhp_water_holdback.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "Drawn by every per-park 'Parks App' Web Map alongside oprhp_trails (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
-      "notes": "8,823 point features statewide, measured 2026-08-18. The layer's own display name is 'NY State Parks Facilities (Internal)' although the service is public - what that naming implies about the schema's intended audience is unassessed. dataLastEditDate verified live 2026-08-18 (then 2026-08-12). IT CARRIES WATER, measured live 2026-08-27 and answering the question #769 and NYC_SOURCE_SURVEY.md §10(g) left open: `Sub_Asset` has 158 distinct values, among them **136 'Water Spigot' and 15 'Drinking Fountain'** (plus 'Mineral Spring', 'Water Tower' and 'Waterfall', which are not drinking water and must not be read as such). So the evidence bar CLAUDE.md's four ways sets is now live for this layer rather than hypothetical - shipping it is a water change, and needs export_poi.py's confidence and provenance treatment the way `osm_water` got one, not a plain point dump. `Asset` is a coded integer 1-17 whose domain the service does NOT publish, so the type of a facility is only readable through `Sub_Asset`'s free text; that is the join hazard to solve before any of these become waypoints. `reaches_hikers` stays false because nothing exports this layer - that is the field's OTHER meaning and not a licence judgement (oprhp_licence permits reuse with attribution).",
-      "reaches_hikers": false
+      "notes": "8,823 point features statewide, measured 2026-08-18. The layer's own display name is 'NY State Parks Facilities (Internal)' although the service is public - what that naming implies about the schema's intended audience is unassessed. dataLastEditDate verified live 2026-08-18 (then 2026-08-12). IT CARRIES WATER, measured live 2026-08-27 and answering the question #769 and NYC_SOURCE_SURVEY.md \u00a710(g) left open: `Sub_Asset` has 158 distinct values, among them **136 'Water Spigot' and 15 'Drinking Fountain'** (plus 'Mineral Spring', 'Water Tower' and 'Waterfall', which are not drinking water and must not be read as such). So the evidence bar CLAUDE.md's four ways sets is now live for this layer rather than hypothetical - shipping it is a water change, and needs export_poi.py's confidence and provenance treatment the way `osm_water` got one, not a plain point dump. `Asset` is a coded integer 1-17 whose domain the service does NOT publish, so the type of a facility is only readable through `Sub_Asset`'s free text; that is the join hazard to solve before any of these become waypoints. `reaches_hikers` stays false because nothing exports this layer - that is the field's OTHER meaning and not a licence judgement (oprhp_licence permits reuse with attribution).",
+      "reaches_hikers": true,
+      "public_field": "ParksApp",
+      "public_value": "Y",
+      "public_flag_sets_confidence": true,
+      "public_field_comment": "NOT `Public_`, which reads Y on all 8,823 rows and therefore discriminates nothing (measured 2026-08-27). ParksApp is the field that does, 5,822 Y / 3,000 N - but it records what OPRHP's own visitor app SHOWS rather than what exists on the ground, so it SETS CONFIDENCE rather than filtering: dropping its N side would discard every one of OPRHP's 37 lean-tos, none of which are in that app. An N row ships at CONFIDENCE_LOW, which the map draws with a broken rim and the legend's 'Verified?' filter removes. This is the opposite reading from DEC's PUBLICUSE and the difference is measured, not stylistic - see export_nearby_poi.py's docstring and POI_COVERAGE_SURVEY.md \u00a72.",
+      "name_field": "Name",
+      "facility_field": "Facility",
+      "asset_field": "Sub_Asset",
+      "name_field_comment": "`Name` is populated on 1,631 of 8,823 rows (18%, measured 2026-08-27) and is flagged '(Legacy Field)' in the layer's own alias. The other 82% export with no name and the client renders them 'Unnamed', which is the honest outcome: `Facility` (populated on all 8,823) is the PARK's name, not the feature's, and publishing 'Beaver Island State Park' as the name of a bridge inside it would be a different fact than the one a hiker reads. It goes into the composed description instead - export_nearby_poi.py's compose_description, which is lib/poi_description.py's idea applied to another org's columns."
     },
     {
       "key": "oprhp_park_polygons",
@@ -353,9 +361,9 @@
         "url": "https://www.nynjtc.org/category/trail-alerts/feed/",
         "notes": "The category's RSS feed, used as a change signal and NOT as the content - the same division `atc_trail_updates` uses, and for the same reason: measured 2026-08-27 the feed held 12 items while the API held all 18, so building from it would silently drop six alerts. It is a BETTER marker than ATC's on both counts that matter. The validator is STRONG (`\"b04bf0f8...\"`, no `W/` prefix) where ATC's is weak, so a change to the bytes cannot leave the tag standing; and a `Last-Modified` is served beside it (Wed, 26 Aug 2026 21:41:57 GMT), giving check_freshness.py a second marker if the first is ever dropped. NYNJTC also does not refuse a scripted request the way ATC's host refuses the literal `python-requests/*` User-Agent - verified 2026-08-27 with urllib's default agent, which answered 200 - so nothing here depends on naming ourselves. fetch_nynjtc_alerts.py names the project anyway, as courtesy rather than necessity."
       },
-      "discovered_via": "pipeline/ALERTS_NOTICES_SURVEY.md §5b - the alerts survey #1073 ran across every org whose trails this build draws. Registered by hand: discover_sources.py walks ATC's Experience Builder app and this is a WordPress category, not a layer.",
+      "discovered_via": "pipeline/ALERTS_NOTICES_SURVEY.md \u00a75b - the alerts survey #1073 ran across every org whose trails this build draws. Registered by hand: discover_sources.py walks ATC's Experience Builder app and this is a WordPress category, not a layer.",
       "discovered_date": "2026-08-27",
-      "notes": "Fetched by fetch_nynjtc_alerts.py to data/raw/nynjtc_alerts.json (never by fetch_all.py, which fetches ArcGIS layers only) and exported by export_nynjtc_alerts.py to conditions/nynjtc_alerts.json, which publish.py uploads. WHAT `reaches_hikers: true` MEANS HERE, stated because this source reached it by a different road from every other one: an exporter reads it and its rows reach a release, which is the field's definition (reaches_hikers_comment). Every row ships in the WEAKEST form the design allows - `place: unplaced`, `obstructs_trail: false`, `review_state: unreviewed` - because reference/notice_places.json does not exist yet and nobody has reviewed NYNJTC's page. So the map draws none of these and the client surfaces them as a list a hiker reads, which is features/ORG_NOTICES.md §3's first-class unplaced state rather than a gap. 18 alerts on 2026-08-27, published 2024-01-11 to 2026-06-16, read from the WordPress REST API - `/wp-json/wp/v2/posts?categories=6` - rather than scraped, which is the whole difference from `atc_trail_updates`: there is no markup to misread, and `per_page`/`modified_after`/`_fields` are query parameters rather than things to reimplement. THE FIND THE SURVEY ITSELF MISSED, corrected in §5b the same day: NYNJTC tags each alert from its own CLOSED taxonomies, so placement is a join against tens of terms rather than a fuzzy match of prose against the 21,805 exported network features. Coverage measured on those 18 - park on 17, trail on 10, region and state on 7 each - and the trail vocabulary is 45 terms, the park vocabulary 125. That last number is why the fetcher pages every list route: `park` answers exactly 100 to a single per_page=100 request, and a vocabulary truncated there would drop placements with no error anywhere. ONE HYGIENE WART, recorded so it is not mistaken for a parser bug: `highlands-trail` is a term in BOTH the trail and park taxonomies (ids 31 and 405), so a join table must key on `taxonomy:slug` and never on the slug alone. features/ORG_NOTICES.md is the delivery design and holds the placement, dedup and voice questions; none of them is settled by this registration.",
+      "notes": "Fetched by fetch_nynjtc_alerts.py to data/raw/nynjtc_alerts.json (never by fetch_all.py, which fetches ArcGIS layers only) and exported by export_nynjtc_alerts.py to conditions/nynjtc_alerts.json, which publish.py uploads. WHAT `reaches_hikers: true` MEANS HERE, stated because this source reached it by a different road from every other one: an exporter reads it and its rows reach a release, which is the field's definition (reaches_hikers_comment). Every row ships in the WEAKEST form the design allows - `place: unplaced`, `obstructs_trail: false`, `review_state: unreviewed` - because reference/notice_places.json does not exist yet and nobody has reviewed NYNJTC's page. So the map draws none of these and the client surfaces them as a list a hiker reads, which is features/ORG_NOTICES.md \u00a73's first-class unplaced state rather than a gap. 18 alerts on 2026-08-27, published 2024-01-11 to 2026-06-16, read from the WordPress REST API - `/wp-json/wp/v2/posts?categories=6` - rather than scraped, which is the whole difference from `atc_trail_updates`: there is no markup to misread, and `per_page`/`modified_after`/`_fields` are query parameters rather than things to reimplement. THE FIND THE SURVEY ITSELF MISSED, corrected in \u00a75b the same day: NYNJTC tags each alert from its own CLOSED taxonomies, so placement is a join against tens of terms rather than a fuzzy match of prose against the 21,805 exported network features. Coverage measured on those 18 - park on 17, trail on 10, region and state on 7 each - and the trail vocabulary is 45 terms, the park vocabulary 125. That last number is why the fetcher pages every list route: `park` answers exactly 100 to a single per_page=100 request, and a vocabulary truncated there would drop placements with no error anywhere. ONE HYGIENE WART, recorded so it is not mistaken for a parser bug: `highlands-trail` is a term in BOTH the trail and park taxonomies (ids 31 and 405), so a join table must key on `taxonomy:slug` and never on the slug alone. features/ORG_NOTICES.md is the delivery design and holds the placement, dedup and voice questions; none of them is settled by this registration.",
       "reaches_hikers": true
     },
     {
@@ -399,6 +407,208 @@
       "discovered_date": "2026-08-25",
       "notes": "5,286 polyline segments (4,931 LineString, 355 MultiLineString), fetched whole and counted 2026-08-25 - against the 5,277 NYC_SOURCE_SURVEY.md \u00a73 read on 2026-08-11, so the layer moves. Fields UNIT/FACILITY/NAME/ASSET/MILES/DESCRIP/PUBLICUSE/UPDATED plus the per-use CORRIDOR USE matrix (FOOT/HORSE/BIKE/XC/SNOWMB/ATV/MOTORV/ADMIN/ACCESSIBLE/MAPPWD) and MARKER, which DEC aliases 'Trail Marker Color' and is this pipeline's blaze. FOUR THINGS A READER SHOULD NOT HAVE TO RE-FETCH TO LEARN. (1) MARKER is a genuine coded domain whose codes ARE the words (Red/Yellow/Blue/Orange/Green/White/Other), like oprhp_trails' Blaze and unlike side_trails' integers, so no domain decode stands in front of reference/blaze_mapping.json; live values on the 5,286 rows are 2,929 blank or null, Yellow 704, Blue 692, Red 622, White 128, Other 97, Orange 78, Green 35, and one 'ORANGE AND RED' that DEC's own domain does not declare. (2) FOOT reads Y on 4,050 rows and M on 1,236, and nothing else - see foot_allowed and foot_allowed_comment above. (3) THERE IS NO STATUS COLUMN, so every kept row exports as open under export_nearby_trails.py's DEFAULT_STATUS: DEC publishes no closure state here, and inventing one would be the failure that module's closure treatment exists to avoid. PUBLICUSE reads 'Y' on all 5,286, which is a layer-wide constant rather than a filter worth having. (4) IDS FALL BACK TO OBJECTID, because DEC spells the column GLOBALID and lib/feature_id.py looks for GlobalID - the ids are unique across the fetched 5,286 and stable within a fetch, but a DEC republish that renumbers OBJECTIDs would renumber ours; the stable column is there for the taking if that ever bites. FRESHNESS: no editingInfo (a classic on-prem MapServer), so fetch_external_layers.py's change-aware skip cannot fire for this entry and it is re-fetched every run - accepted rather than fixed, because the layer is 13 MB and the alternative is machinery nothing else needs. The marker the survey identified does work and costs one request: max(UPDATED) via outStatistics answered in 0.5 s on 2026-08-25 and returned 2026-08-20. THE LAYER'S OWN SCOPE, stated because the name oversells it: 'Hiking Trails' is DEC's per-use split, so a row is here because foot travel is allowed on it, not because it is a footpath - 446 rows are ASSET 'SNOWMOBILE TRAIL' with FOOT 'Y', 456 are unpaved roads, and they are walkable corridors on DEC land rather than mistakes. UNIT mixes preserve codes (AFP 2,293, CFP 312) with hundreds of per-county state-forest codes and some dirt (blank, misspellings), exactly as the survey warned; nothing filters on it, per #1019.",
       "reaches_hikers": true
+    },
+    {
+      "key": "dec_lean_tos",
+      "title": "NYS DEC Lean-tos (statewide)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_assets_lean_to/MapServer/0",
+      "poi_type": "shelter",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "discovered_via": "POI_COVERAGE_SURVEY.md \u00a72's measured finding that DEC republishes its PUBLICUSE='Y' slice as small per-type services, and \u00a79's follow-up #1 naming them - acted on under #1097 on the maintainer's 2026-08-27 decision. Registered by hand: discover_sources.py walks ATC's Experience Builder app and these are on DEC's own on-prem server.",
+      "notes": "315 lean-tos statewide, counted live 2026-08-27. THE COUNT IS THE POINT OF USING THIS SERVICE RATHER THAN THE BIG LAYER: dec_backcountry_features carries 325 LEAN-TO rows of which exactly 315 read PUBLICUSE 'Y', so this service IS DEC's own public slice and using it means shipping DEC's curation instead of re-deriving it (POI_COVERAGE_SURVEY.md \u00a72 has the same check on six other services - four exact, three within five features). NO CAPACITY FIELD, which decides how a card may speak: fields are UNIT/FACILITY/NAME/ASSET/DESCRIP/NOTES/ACCESSIBLE/UPDATED/PHOTO_LINK and nothing states how many the shelter sleeps, so a DEC shelter exports without capacity - absent meaning unknown, never zero (CLAUDE.md, 'Omit rather than guess'). Two fields that look useful and are not: PHOTO_LINK points at an internal drive (M:\\DLF\\...) that resolves from inside DEC only, and NOTES carries DEC's '-99' null sentinel on some rows. REGISTERED AS LAYER 0 ONLY, and layer 1 of the same service is deliberately left out: it is the conservation-easement variant, assets on private land the public holds access rights over (fields CE_ASSET_U and PUBRIGHTS, absent from layer 0). Measured 2026-08-27 it is small - 1 lean-to, 10 parking areas - and it is the same shape dil_trails layer 3 has, which dec_hiking_trails also declined when it registered layer 2 alone. Following that precedent rather than inventing a second one; an easement asset carries an access question layer 0's state land does not, and it wants its own decision rather than a ride along with this.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "An on-prem MapServer exposes no editingInfo, so fetch_external_layers.py's change check cannot read a last-edit date here and re-fetches this layer on every run - the same state dec_hiking_trails is in, recorded rather than fixed. The substitute marker is a max(UPDATED) statistics query, which the big layer answers as 2026-08-18 (read 2026-08-27, over 21,445 of 21,468 dated rows). Nothing reads this block yet."
+      },
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
+    },
+    {
+      "key": "dec_primitive_campsites",
+      "title": "NYS DEC Primitive Campsites (statewide)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_assets_prm_cmp/MapServer/0",
+      "poi_type": "campsite",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "discovered_via": "POI_COVERAGE_SURVEY.md \u00a72's measured finding that DEC republishes its PUBLICUSE='Y' slice as small per-type services, and \u00a79's follow-up #1 naming them - acted on under #1097 on the maintainer's 2026-08-27 decision. Registered by hand: discover_sources.py walks ATC's Experience Builder app and these are on DEC's own on-prem server.",
+      "notes": "2,078 primitive campsites statewide, counted live 2026-08-27 - and again exactly the big layer's public slice (1,754 PRIMITIVE TENT SITE plus 548 PRIMITIVE CAMPSITE rows carry PUBLICUSE 'Y' on 1,549 and 529 of them respectively, summing to 2,078). These are genuine BACKCOUNTRY sites, which is the difference from OPRHP's campsite rows: one OPRHP row is one drive-in campground, one row here is one tent site. The largest single block of POIs this registration adds, and the largest non-ATC campsite source found anywhere. No conservation-easement sibling layer on this service - unlike dil_land_assets_lean_to and dil_land_assets_parking, which each carry one as layer 1 and where this registration takes layer 0 only.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "An on-prem MapServer exposes no editingInfo, so fetch_external_layers.py's change check cannot read a last-edit date here and re-fetches this layer on every run - the same state dec_hiking_trails is in, recorded rather than fixed. The substitute marker is a max(UPDATED) statistics query, which the big layer answers as 2026-08-18 (read 2026-08-27, over 21,445 of 21,468 dated rows). Nothing reads this block yet."
+      },
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
+    },
+    {
+      "key": "dec_scenic_vistas",
+      "title": "NYS DEC Scenic Vistas (statewide)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_assets_scenic_vista/MapServer/0",
+      "poi_type": "viewpoint",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "discovered_via": "POI_COVERAGE_SURVEY.md \u00a72's measured finding that DEC republishes its PUBLICUSE='Y' slice as small per-type services, and \u00a79's follow-up #1 naming them - acted on under #1097 on the maintainer's 2026-08-27 decision. Registered by hand: discover_sources.py walks ATC's Experience Builder app and these are on DEC's own on-prem server.",
+      "notes": "134 scenic vistas statewide, counted live 2026-08-27, matching the big layer's 134 SCENIC VISTA rows flagged PUBLICUSE 'Y' exactly. One of three DEC services that feed `viewpoint` - the others are dec_firetowers and dec_viewing_areas - because DEC splits by asset type where our schema splits by what a hiker walks to. No conservation-easement sibling layer on this service - unlike dil_land_assets_lean_to and dil_land_assets_parking, which each carry one as layer 1 and where this registration takes layer 0 only.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "An on-prem MapServer exposes no editingInfo, so fetch_external_layers.py's change check cannot read a last-edit date here and re-fetches this layer on every run - the same state dec_hiking_trails is in, recorded rather than fixed. The substitute marker is a max(UPDATED) statistics query, which the big layer answers as 2026-08-18 (read 2026-08-27, over 21,445 of 21,468 dated rows). Nothing reads this block yet."
+      },
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
+    },
+    {
+      "key": "dec_firetowers",
+      "title": "NYS DEC Firetowers (statewide)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_assets_firetower/MapServer/0",
+      "poi_type": "viewpoint",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "discovered_via": "POI_COVERAGE_SURVEY.md \u00a72's measured finding that DEC republishes its PUBLICUSE='Y' slice as small per-type services, and \u00a79's follow-up #1 naming them - acted on under #1097 on the maintainer's 2026-08-27 decision. Registered by hand: discover_sources.py walks ATC's Experience Builder app and these are on DEC's own on-prem server.",
+      "notes": "35 firetowers statewide, counted live 2026-08-27, against 34 FIRE TOWER rows flagged PUBLICUSE 'Y' in the big layer - one of the three services where the public-slice rule is close rather than exact, recorded here so the discrepancy is a known one rather than a surprise to whoever re-measures. Published as `viewpoint` because a restored Adirondack or Catskill firetower is a thing hikers climb for the view; a hiker who reaches a closed one finds a locked cab, and this layer publishes no open/closed state to distinguish them. @unvalidated - what would settle it is DEC's own tower-status list, which is prose on their website rather than a field here. No conservation-easement sibling layer on this service - unlike dil_land_assets_lean_to and dil_land_assets_parking, which each carry one as layer 1 and where this registration takes layer 0 only.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "An on-prem MapServer exposes no editingInfo, so fetch_external_layers.py's change check cannot read a last-edit date here and re-fetches this layer on every run - the same state dec_hiking_trails is in, recorded rather than fixed. The substitute marker is a max(UPDATED) statistics query, which the big layer answers as 2026-08-18 (read 2026-08-27, over 21,445 of 21,468 dated rows). Nothing reads this block yet."
+      },
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
+    },
+    {
+      "key": "dec_viewing_areas",
+      "title": "NYS DEC Viewing Areas (statewide)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_assets_viewing_area/MapServer/0",
+      "poi_type": "viewpoint",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "discovered_via": "POI_COVERAGE_SURVEY.md \u00a72's measured finding that DEC republishes its PUBLICUSE='Y' slice as small per-type services, and \u00a79's follow-up #1 naming them - acted on under #1097 on the maintainer's 2026-08-27 decision. Registered by hand: discover_sources.py walks ATC's Experience Builder app and these are on DEC's own on-prem server.",
+      "notes": "34 viewing areas statewide, counted live 2026-08-27, against 33 OBSERVATION PLATFORM rows flagged PUBLICUSE 'Y' in the big layer - the second of the three near-misses. The layer's own name carries a leading space (' Viewing Area') in DEC's service metadata, which is hygiene rather than meaning and is recorded so nobody matches on it. No conservation-easement sibling layer on this service - unlike dil_land_assets_lean_to and dil_land_assets_parking, which each carry one as layer 1 and where this registration takes layer 0 only.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "An on-prem MapServer exposes no editingInfo, so fetch_external_layers.py's change check cannot read a last-edit date here and re-fetches this layer on every run - the same state dec_hiking_trails is in, recorded rather than fixed. The substitute marker is a max(UPDATED) statistics query, which the big layer answers as 2026-08-18 (read 2026-08-27, over 21,445 of 21,468 dated rows). Nothing reads this block yet."
+      },
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
+    },
+    {
+      "key": "dec_parking_areas",
+      "title": "NYS DEC Parking (statewide)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_assets_parking/MapServer/0",
+      "poi_type": "parking",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "discovered_via": "POI_COVERAGE_SURVEY.md \u00a72's measured finding that DEC republishes its PUBLICUSE='Y' slice as small per-type services, and \u00a79's follow-up #1 naming them - acted on under #1097 on the maintainer's 2026-08-27 decision. Registered by hand: discover_sources.py walks ATC's Experience Builder app and these are on DEC's own on-prem server.",
+      "notes": "1,852 parking areas statewide, counted live 2026-08-27, against 1,857 parking-shaped rows flagged PUBLICUSE 'Y' in the big layer - the third and widest of the near-misses, five features. Mixed surface and purpose (UNPAVED PARKING LOT dominates at 2,067 of the big layer's parking rows, with 78 DESIGNATED HUNTER PARKING AREA among them), and the layer states no seasonal access - one sampled easement row read 'SEASONALLY OPEN MAY 1 TO SEPT 30' in free-text NOTES, so seasonality exists in DEC's data as prose and not as a field. REGISTERED AS LAYER 0 ONLY, and layer 1 of the same service is deliberately left out: it is the conservation-easement variant, assets on private land the public holds access rights over (fields CE_ASSET_U and PUBRIGHTS, absent from layer 0). Measured 2026-08-27 it is small - 1 lean-to, 10 parking areas - and it is the same shape dil_trails layer 3 has, which dec_hiking_trails also declined when it registered layer 2 alone. Following that precedent rather than inventing a second one; an easement asset carries an access question layer 0's state land does not, and it wants its own decision rather than a ride along with this.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "An on-prem MapServer exposes no editingInfo, so fetch_external_layers.py's change check cannot read a last-edit date here and re-fetches this layer on every run - the same state dec_hiking_trails is in, recorded rather than fixed. The substitute marker is a max(UPDATED) statistics query, which the big layer answers as 2026-08-18 (read 2026-08-27, over 21,445 of 21,468 dated rows). Nothing reads this block yet."
+      },
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
+    },
+    {
+      "key": "dec_backcountry_features",
+      "title": "NYS DEC Back Country Features (statewide asset inventory)",
+      "provider": "NYS DEC",
+      "kind": "external_arcgis_layer",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "steward_contact": "https://dec.ny.gov/about/contact-us",
+      "licence": "See dec_licence below - the same footing dec_hiking_trails ships on, and not a new grant. DEC states no terms of their own: copyrightText is empty on every one of these services and on each layer, read live 2026-08-27, and an on-prem MapServer has no AGOL item carrying terms either. So these ship on the maintainer's authorisation of 2026-08-25, extended to POIs by their 2026-08-27 decision to act on POI_COVERAGE_SURVEY.md. The ask recorded in NYC_SOURCE_SURVEY.md \u00a710(c) - bundle DEC into the OPRHP outreach, one state, two agencies - is still open and is made no less live by this registration.",
+      "attribution": "New York State Department of Environmental Conservation",
+      "discovered_date": "2026-08-27",
+      "reaches_hikers": true,
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+      "id_field": "OBJECTID",
+      "name_field": "NAME",
+      "public_field": "PUBLICUSE",
+      "public_value": "Y",
+      "discovered_via": "NYC_SOURCE_SURVEY.md \u00a73 named this layer on 2026-08-18 and left it unregistered; POI_COVERAGE_SURVEY.md \u00a71 measured what is actually in it on 2026-08-27, and #1097 registers it for the two POI types DEC publishes no per-type service for. Registered by hand.",
+      "notes": "21,468 points, counted live 2026-08-27. REGISTERED FOR EXACTLY TWO POI TYPES - privy and crossing - and deliberately not for the four DEC publishes per-type services for, which are registered separately above. THIS IS NOT A POI LAYER and must not be read as one: DEC's own description calls it 'Point data locating and differentiating assets on state lands... man-made items, which require periodic maintenance or inspection', its largest single value is CULVERT at 4,290 features, and 68% of it is things no hiker wants a pin for. export_nearby_poi.py takes it through a value allowlist plus PUBLICUSE, never a type-prefix match. `ASSET` is free text with 234 values as stored and 223 after trimming - the 12 whitespace variants include 'FORD ' beside 'FORD' and a bare ' ' on 86 rows - and carries DEC's own misspellings ('PRIMATIVE CAMPSITE'), so any match on it is case-insensitive and stripped. PUBLICUSE splits the layer 7,645 Y / 13,823 N and is the only reason this layer is publishable at all. WHAT IS EXCLUDED AND WHY IT STAYS EXCLUDED: 98 rows across 27 values are PROPOSED assets ('PROPOSED LEAN-TO' x11, 'PROPOSED PIT PRIVY' x5) and are dropped - a hiker who walks to a proposed lean-to finds trees; the 4,290 culverts are not crossings, being pipes under the tread rather than things anyone walks over; and NO WATER SHIPS FROM THIS LAYER OR ANY DEC LAYER, which is a measured refusal rather than an omission - see dec_water_holdback below.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "recorded": "2026-08-18",
+        "notes": "max(UPDATED) across the layer, read 2026-08-27 over the 21,445 of 21,468 rows that carry a date (the range runs back to 2002-08-24). An on-prem MapServer has no editingInfo, so this substitute is the only freshness signal the layer offers. Nothing reads it automatically; changing `recorded` is how a person acknowledges having looked."
+      },
+      "facility_field": "FACILITY",
+      "asset_field": "ASSET"
     }
   ],
   "usdm_licence": {
@@ -462,5 +672,586 @@
     "recorded_date": "2026-08-25",
     "open_question": "https://github.com/OurHike/OurHike/issues/768 - DEC's own stated terms should replace the maintainer's authorisation above, the way atc_licence's, nynjtc_licence's and mohonk_licence's open questions read. NYC_SOURCE_SURVEY.md \u00a73's suggestion stands: the OPRHP ask and the DEC ask are one state and belong in one conversation. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line."
   },
-  "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it."
+  "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it.",
+  "poi_coverage": {
+    "_comment": "What each organization publishes for each of lib/poi_schema.POI_TYPES, and whether OurHike ships it (#1092). The maintainer's ask, 2026-08-27: \"We don't have POI for the org's outside of ATC. Search those sources for the POI types we have... Maybe we need to track each of the POI types for the org, and whether or not it is provided.\" This block is the second half of that - the answer in a form a test can read, so \"does DEC give us campsites\" stops being a question the next session re-probes from scratch. pipeline/POI_COVERAGE_SURVEY.md is the evidence and the argument; spike_org_poi_coverage.py is the script every count here came from, re-runnable in one command. THE COUNTS ARE OF WHAT THE ORG PUBLISHES, NOT OF WHAT A HIKER WOULD SEE: nothing here is clipped to a corridor, deduped against ATC's POIs, or filtered to walkable ground, because this block is a survey of supply and those are ingest decisions belonging to per-org issues. `org_flags_public` is the subset the org's OWN publication flag marks as visitor-facing - DEC's PUBLICUSE, OPRHP's ParksApp - and it is the more honest of the two numbers wherever the two disagree. Twelve of these cells became `shipping` on 2026-08-27 (#1097, export_nearby_poi.py -> nearby_poi.geojson): six DEC types and six OPRHP ones, 8,480 features. Neither org's water is among them. tests/test_poi_coverage.py enforces that every provider in `sources` has a verdict for every POI type, from the vocabulary below: no blanks, the same discipline NYC_SOURCE_SURVEY.md \u00a79 applies to licensing.",
+    "status_vocabulary": {
+      "shipping": "An exporter reads this and it reaches a published release today.",
+      "available": "The org publishes it, measured, and nothing here ingests it yet. The count is the org's, not ours.",
+      "unsuitable": "The org publishes something of this shape and it does not clear the bar - said with the evidence, never as a shrug. Reserved for cases where shipping the data would mislead a hiker rather than merely under-serve one.",
+      "absent": "Probed on the date given, and the org publishes nothing of this type anywhere this survey could reach.",
+      "unprobed": "Not yet looked at. A real answer, and the only one here that is an admission rather than a finding."
+    },
+    "orgs": {
+      "ATC": {
+        "probed_date": "2026-08-27",
+        "note": "The baseline every other row is measured against, and it is not as tidy as 'ATC ships all eight' would suggest. Two of the eight are not ATC's data at all: `water` is dominated by opentrail.org and OSM points, with ATC contributing synthesized low-confidence points from the Campsite_Sustainability_Index distances (export_poi.py's atc_csi), and `crossing` is USGS NHD's entirely. ATC's own bridge layer is registered and unread - see the crossing row.",
+        "types": {
+          "shelter": {
+            "status": "shipping",
+            "source_key": "shelters",
+            "note": "ATC's own facility layer, ~1:1 with the poi_type."
+          },
+          "campsite": {
+            "status": "shipping",
+            "source_key": "campsites",
+            "note": "ATC's own facility layer, ~1:1 with the poi_type."
+          },
+          "water": {
+            "status": "shipping",
+            "note": "Not ATC's own points: opentrail.org's 'w'/'s' tags and OSM water carry this, plus low-confidence points export_poi.py synthesizes from ATC's CSI water distances (source id atc_csi). ATC publishes no water-point layer of its own that this pipeline reads."
+          },
+          "resupply": {
+            "status": "shipping",
+            "source_key": "communities",
+            "note": "ATC's Communities layer, published at CONFIDENCE_LOW because an 'official A.T. Community' town is a proxy for resupply rather than a tagged resupply point."
+          },
+          "crossing": {
+            "status": "available",
+            "source_key": "bridges",
+            "measured": {
+              "features": 409,
+              "date": "2026-08-27"
+            },
+            "note": "ATC's OWN bridges - 409 features, dataLastEditDate 2026-08-14T12:06:49Z, registered since 2026-07-25 with reaches_hikers false and read by nothing. The `crossing` layer a hiker sees today is USGS NHD's stream crossings (see the USGS row), which answers a different question: where water crosses the trail, not where there is a structure to get across it. Fields include Status, Type, Super_Stru and Length__fe. So ATC is the one org here with an un-ingested POI type of its own, which is worth an issue rather than a line in a survey about everybody else."
+          },
+          "viewpoint": {
+            "status": "shipping",
+            "source_key": "viewpoints",
+            "note": "ATC's own facility layer, ~1:1 with the poi_type."
+          },
+          "parking": {
+            "status": "shipping",
+            "source_key": "parking",
+            "note": "ATC's own facility layer, ~1:1 with the poi_type."
+          },
+          "privy": {
+            "status": "shipping",
+            "source_key": "privies",
+            "note": "ATC's own facility layer, ~1:1 with the poi_type."
+          }
+        }
+      },
+      "NYS OPRHP": {
+        "probed_date": "2026-08-27",
+        "note": "The richest non-ATC source found, and the only org that publishes something for all eight types. One layer carries all of it: NY_State_Park_Facilities, 8,823 points, typed by a free-text `Sub_Asset` taking 158 distinct values (`Asset` is a coded integer 1-17 whose domain the service does not publish, so Sub_Asset is the only legible type). Registered since 2026-08-18 as oprhp_facilities with reaches_hikers false. TWO CAVEATS THAT APPLY TO EVERY ROW BELOW. (1) `Public` is not a filter: it reads Y on all 8,823 rows. `ParksApp` is the field that discriminates (5,822 Y / 3,000 N) and is what org_flags_public reports here. (2) `CollectedDate` spans 2006-05-10 to 2026-04-30 with 10 rows carrying a 9999-09-09 sentinel; the bulk was collected 2011-2021, so a facility's presence is better evidence than its currency.",
+        "types": {
+          "shelter": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 37,
+              "date": "2026-08-27",
+              "org_flags_public": 0,
+              "values": {
+                "Lean-to": 37
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 37 features via export_nearby_poi.py. 37 lean-tos, every one at CONFIDENCE_LOW: none is in OPRHP's own app. The `ParksApp` flag sets confidence here rather than filtering, which is the whole reason these ship at all. 37 'Lean-to'. NONE of them is in OPRHP's own app - 0 of 37 carry ParksApp Y, the widest gap between supply and the org's own curation anywhere in this block, and a reason to ask OPRHP before publishing them rather than after. No capacity field on the layer.",
+            "published": {
+              "features": 37,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "campsite": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 204,
+              "date": "2026-08-27",
+              "org_flags_public": 153,
+              "values": {
+                "Campground": 153,
+                "Group Camp": 51
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 204 features via export_nearby_poi.py. 153 campgrounds + 51 group camps. FACILITIES, not sites: one row is one drive-in campground, unlike DEC's per-tent-site rows. 204, and the count is of FACILITIES not sites: 153 'Campground' plus 51 'Group Camp', each row one drive-in campground rather than one tent pad. Reading it as a campsite count would overstate it by orders of magnitude. OPRHP's separate NY_State_Parks_Camping service is the same shape - 66 points, one per camping park.",
+            "published": {
+              "features": 204,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "water": {
+            "status": "available",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 151,
+              "date": "2026-08-27",
+              "org_flags_public": 15,
+              "values": {
+                "Water Spigot": 136,
+                "Drinking Fountain": 15
+              }
+            },
+            "note": "HELD BACK rather than refused, and deliberately left `available` to say so - unlike DEC's, this data is real. #1097 shipped every other OPRHP type and stopped at this one: seasonality is unrecorded on the layer and only 15 of the 151 are in OPRHP's own app, so it wants an issue with its own evidence rather than a ride along with parking areas. See sources.json's `oprhp_water_holdback`. 151 plumbed drinking-water fixtures - 136 'Water Spigot' and 15 'Drinking Fountain' - answering the question NYC_SOURCE_SURVEY.md \u00a710(g) left open. Only the 15 fountains are in OPRHP's app. The other 158 Sub_Asset values include 'Mineral Spring' (17), 'Water Tower' (12) and 'Waterfall' (55), which are NOT drinking water and must not be folded in. This is a safety path (CLAUDE.md, 'four ways this app can hurt somebody'): seasonal shutoff is unrecorded on the layer, so a spigot's presence is not a promise that it runs."
+          },
+          "resupply": {
+            "status": "available",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 109,
+              "date": "2026-08-27",
+              "org_flags_public": 91,
+              "values": {
+                "Concession": 91,
+                "Store": 18
+              }
+            },
+            "note": "Still unjudged, and still not shipped by #1097 for exactly the reason recorded below. 109 - 91 'Concession' and 18 'Store'. Whether a park concession stand is resupply in the sense a thru-hiker means is exactly what #806 got wrong about opentrail's 'r' tag (0 of 72 points named for a store), so the count is recorded and the judgement is not made here."
+          },
+          "crossing": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 1222,
+              "date": "2026-08-27",
+              "org_flags_public": 413,
+              "values": {
+                "Trail Bridge": 793,
+                "Stairs": 414,
+                "Vehicle Bridge": 15
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 793 features via export_nearby_poi.py. 793 trail bridges. NOT the 414 'Stairs' or the 15 'Vehicle Bridge' rows the survey counted here - a staircase is not a stream crossing and a road bridge is not a hiker's. 1,222 - 793 'Trail Bridge', 414 'Stairs', 15 'Vehicle Bridge'. Only 413 are in OPRHP's app, which fits these being maintenance assets first. Stairs are bucketed as crossings because they are a built thing a walker traverses; a reviewer may reasonably want them separated.",
+            "published": {
+              "features": 793,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "viewpoint": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 629,
+              "date": "2026-08-27",
+              "org_flags_public": 606,
+              "values": {
+                "Scenic View": 611,
+                "Fire Tower": 11,
+                "Wildlife Viewpoint": 7
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 629 features via export_nearby_poi.py. 611 scenic views + 11 fire towers + 7 wildlife viewpoints. 629 - 611 'Scenic View', 11 'Fire Tower', 7 'Wildlife Viewpoint'. The best-curated of OPRHP's categories: 606 of 629 are in their own app.",
+            "published": {
+              "features": 629,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "parking": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 1202,
+              "date": "2026-08-27",
+              "org_flags_public": 1202,
+              "values": {
+                "Parking Area": 1027,
+                "Pull Off": 129,
+                "Accessible Parking Area": 46
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 1,201 features via export_nearby_poi.py. 1,201 of 1,202 - one row has no usable coordinates. 1,202 - 1,027 'Parking Area', 129 'Pull Off', 46 'Accessible Parking Area'. Every one is in OPRHP's app; the only category here where supply and curation agree exactly.",
+            "published": {
+              "features": 1201,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "privy": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 574,
+              "date": "2026-08-27",
+              "org_flags_public": 572,
+              "values": {
+                "Public Restroom": 543,
+                "Pit Toilet": 27,
+                "Portable Toilet": 4
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 574 features via export_nearby_poi.py. 543 public restrooms + 27 pit toilets + 4 portable toilets. A plumbed park restroom and an A.T. pit privy are not the same facility. 574 - 543 'Public Restroom', 27 'Pit Toilet', 4 'Portable Toilet'. 572 in OPRHP's app. A plumbed park restroom and an A.T. pit privy are not the same facility, and the card would need to say which.",
+            "published": {
+              "features": 574,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          }
+        }
+      },
+      "NYS DEC": {
+        "probed_date": "2026-08-27",
+        "note": "The maintainer's own example - \"DEC has Shelters & Campsites mapped\" - and it holds: 331 shelters and 2,315 campsites, more backcountry campsites than any other source here. What the example does not say is WHAT KIND OF LAYER they are in. dec_backcountry_features/MapServer/0 is 21,468 points typed by a free-text `ASSET` (234 values as stored, 223 after trimming - 'FORD ' sits beside 'FORD'), and DEC's own description of it reads: 'Point data locating and differentiating assets on state lands. Assets represented as point features are man-made items, which require periodic maintenance or inspection.' It is a maintenance inventory that happens to contain recreation facilities - 4,290 of its rows are culverts - not a POI layer. `PUBLICUSE` splits it 7,645 Y / 13,823 N and is DEC's own answer to what a visitor should see; org_flags_public reports it, and it is the number to build on. DEC ALSO PUBLISHES THE Y SLICE AS ITS OWN SMALL SERVICES, which is the practical finding here: dil/dil_land_assets_lean_to is 315 features against 315 LEAN-TO rows flagged Y, dil_land_assets_prm_cmp is 2,078 against 2,078, dil_land_assets_scenic_vista 134 against 134, dil_land_assets_visitor_center 5 against 5 - four exact matches. Three more are close rather than exact (parking 1,852 vs 1,857, firetower 35 vs 34, viewing_area 34 vs 33), so the rule is measured and not perfect. Registering the small per-type services buys DEC's own curation instead of re-deriving it. Note there is NO per-type service for privies or water. 98 rows across 27 values are PROPOSED assets ('PROPOSED LEAN-TO' x11, 'PROPOSED PIT PRIVY' x5) and are excluded from every count below: a hiker who walks to a proposed lean-to finds trees.",
+        "types": {
+          "shelter": {
+            "status": "shipping",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 331,
+              "date": "2026-08-27",
+              "org_flags_public": 321,
+              "values": {
+                "LEAN-TO": 325,
+                "SHELTER": 6
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 315 features via export_nearby_poi.py. 315 lean-tos, DEC's own PUBLICUSE='Y' service rather than the big layer's 325 rows. 331 - 325 'LEAN-TO' and 6 'SHELTER'; 321 flagged public. The Catskills' and Adirondacks' shelter network, and the largest non-ATC shelter source found. NO CAPACITY FIELD: the layer carries NAME/DESCRIP/NOTES/ACCESSIBLE/UPDATED and nothing about how many sleep there, so a DEC shelter would export without capacity - absent meaning unknown, per CLAUDE.md, never a guess. Also excludes 11 'PROPOSED LEAN-TO'. dil/dil_land_assets_lean_to is the same 315 rows as a standalone service.",
+            "source_key": "dec_lean_tos",
+            "published": {
+              "features": 315,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "campsite": {
+            "status": "shipping",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 2315,
+              "date": "2026-08-27",
+              "org_flags_public": 2091,
+              "values": {
+                "PRIMITIVE TENT SITE": 1754,
+                "PRIMITIVE CAMPSITE": 548,
+                "CAMPSITE": 8,
+                "PRIMATIVE CAMPSITE": 5
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 2,077 features via export_nearby_poi.py. 2,077 of DEC's 2,078 published primitive campsites - one row arrives with an empty coordinate array and is dropped rather than published at 0,0. 2,315 - 1,754 'PRIMITIVE TENT SITE', 548 'PRIMITIVE CAMPSITE', 8 'CAMPSITE', 5 'PRIMATIVE CAMPSITE' (DEC's own misspelling, kept because the rows are real); 2,091 flagged public. These are genuine backcountry sites, unlike OPRHP's drive-in campgrounds. dil/dil_land_assets_prm_cmp publishes the 2,078-row public slice on its own.",
+            "source_key": "dec_primitive_campsites",
+            "published": {
+              "features": 2077,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "water": {
+            "status": "unsuitable",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 23,
+              "date": "2026-08-27",
+              "org_flags_public": 0,
+              "values": {
+                "WATER SUPPLY SYSTEM": 23
+              }
+            },
+            "note": "DECIDED 2026-08-27, and the decision was the maintainer's on reading this survey: \"Lets not use water from DEC\". Nothing in #1097 ships it, sources.json's `dec_water_holdback` carries the evidence beside the sources themselves, and export_nearby_poi.py's allowlist is what mechanically keeps it out. THE ONE ROW IN THIS BLOCK THAT IS A REFUSAL, and it closes NYC_SOURCE_SURVEY.md \u00a710(g)'s DEC half. DEC's only plumbed-water asset type is 'WATER SUPPLY SYSTEM', 23 features, and ZERO of them are flagged PUBLICUSE Y - DEC's own answer is that none of it is for visitors. Sampling 14 of them found real water spigots beside a 'Water Storage Tank', an 'Underground Water Line', and a drilled well whose own NOTES read 'Not Approved For Human Consum[ption]'. The values that sound like water are worse: 207 'WATERHOLE' are fire-and-wildlife impoundments ('Wetland Pool', 'Made by Tioga County SWCD in 2016'), 97 'WELL' are dominated by NATURAL GAS WELLS and historic stacked-stone wells, 4 'CISTERN' are CCC-era fire cisterns, and 19 'SPRING' include one described as 'Unnoffical Unsanctioned Traditional Public Wa[ter]' and one 'Untested'. All 350 of those are PUBLICUSE N as well. Publishing any of it as drinking water would be the failure FEATURES.md names - a confidently wrong prediction is more dangerous than an honest unknown - so DEC is not a water source and this row should not be reopened without new data from DEC rather than a new reading of this one."
+          },
+          "resupply": {
+            "status": "absent",
+            "note": "Nothing store-shaped anywhere in DEC's dil folder or in the backcountry layer: no store, outfitter, hostel or concession asset type among the 223 values, and no service of that kind beside the others."
+          },
+          "crossing": {
+            "status": "shipping",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 1182,
+              "date": "2026-08-27",
+              "org_flags_public": 247,
+              "values": {
+                "BRIDGE": 1088,
+                "BOARDWALK": 55,
+                "FORD": 36,
+                "FOOT BRIDGE": 1,
+                "HARDENED CROSSING": 1
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 246 features via export_nearby_poi.py. 246 bridges, foot bridges, boardwalks and hardened crossings, PUBLICUSE='Y'. NOT the 36 FORD rows (an unbridged crossing is a hazard, not an amenity) and not the 4,290 culverts. 1,182 - 1,088 'BRIDGE', 55 'BOARDWALK', 36 'FORD', 1 'FOOT BRIDGE', 1 'HARDENED CROSSING'; only 247 flagged public, which fits a maintenance inventory. DEC's 4,290 CULVERTs are deliberately NOT counted: a culvert is a pipe under the tread, not a thing a hiker crosses. The 36 FORDs are the interesting ones - an unbridged crossing is a hazard, not an amenity, and would need HIKER_SAFETY.md's treatment rather than a pin.",
+            "source_key": "dec_backcountry_features",
+            "published": {
+              "features": 246,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "viewpoint": {
+            "status": "shipping",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 248,
+              "date": "2026-08-27",
+              "org_flags_public": 202,
+              "values": {
+                "SCENIC VISTA": 153,
+                "OBSERVATION PLATFORM": 52,
+                "FIRE TOWER": 35,
+                "OBSERVATION TOWER": 8
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 202 features via export_nearby_poi.py. 134 scenic vistas + 34 firetowers (of 35; one fails PUBLICUSE) + 34 viewing areas, from three separate DEC services because DEC splits by asset type where this schema splits by what a hiker walks to. 248 - 153 'SCENIC VISTA', 52 'OBSERVATION PLATFORM', 35 'FIRE TOWER', 8 'OBSERVATION TOWER'; 202 flagged public. dil_land_assets_scenic_vista (134), _firetower (35) and _viewing_area (34) publish these as three separate services.",
+            "source_key": "dec_scenic_vistas",
+            "published": {
+              "features": 202,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "parking": {
+            "status": "shipping",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 2256,
+              "date": "2026-08-27",
+              "org_flags_public": 1857,
+              "values": {
+                "UNPAVED PARKING LOT": 2067,
+                "PAVED PARKING LOT": 99,
+                "DESIGNATED HUNTER PARKING AREA": 78
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 1,852 features via export_nearby_poi.py. 1,852 parking areas, DEC's own per-type service. 2,256 - 2,067 'UNPAVED PARKING LOT', 99 'PAVED PARKING LOT', 78 'DESIGNATED HUNTER PARKING AREA', plus pull-offs; 1,857 flagged public against dil_land_assets_parking's standalone 1,852.",
+            "source_key": "dec_parking_areas",
+            "published": {
+              "features": 1852,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          },
+          "privy": {
+            "status": "shipping",
+            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
+            "measured": {
+              "features": 393,
+              "date": "2026-08-27",
+              "org_flags_public": 350,
+              "values": {
+                "PIT PRIVY": 356,
+                "PORT-A-JOHN": 24,
+                "RESTROOM": 12,
+                "BATHROOM": 1
+              }
+            },
+            "note": "SHIPPING since 2026-08-27 (#1097), 350 features via export_nearby_poi.py. 350 of DEC's 393 privy-shaped rows - the PUBLICUSE='Y' slice. From the 21,468-row asset inventory because DEC publishes no per-type privy service. 393 - 356 'PIT PRIVY', 24 'PORT-A-JOHN', 12 'RESTROOM', 1 'BATHROOM'; 350 flagged public. The closest analog to ATC's own privies anywhere in this block. Unlike the shelters and campsites, DEC publishes NO standalone privy service, so these are reachable only through the 21,468-row layer.",
+            "source_key": "dec_backcountry_features",
+            "published": {
+              "features": 350,
+              "date": "2026-08-27",
+              "artifact": "nearby_poi.geojson"
+            }
+          }
+        }
+      },
+      "NYNJTC": {
+        "probed_date": "2026-08-27",
+        "note": "The org that maintains more of this ground than anyone and publishes the least of it, which NYC_SOURCE_SURVEY.md \u00a74 already established for trails and this survey confirms for POIs. All 25 services on their public AGOL org were listed: the only two point layers are `Points`, which has 0 features and is an abandoned KML-import shell (FolderPath/SymbolID/Snippet/PopupInfo, last edited 2024-04-15), and the 26 trailheads below. Their full network - and whatever POIs sit in it - remains an agreement rather than a scrape, per SOURCE_SURVEY.md \u00a710.",
+        "types": {
+          "shelter": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "campsite": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "water": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "resupply": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "crossing": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "viewpoint": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "parking": {
+            "status": "unsuitable",
+            "layer": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Trailheads_HighlandsProject_Apr2026/FeatureServer/0",
+            "measured": {
+              "features": 26,
+              "date": "2026-08-27"
+            },
+            "note": "Trailheads_HighlandsProject_Apr2026 - 26 real points (dataLastEditDate 2026-04-09), fields Park/Coord/Town/Hike/Difficulty/Length/ParkingLot. It is a featured-hikes table whose rows happen to be trailheads, not an inventory of parking areas: `ParkingLot` is the lot's NAME as prose and one row is one suggested hike. Calling 26 curated hike starts 'NYNJTC's parking' would misdescribe both the layer and the org. Recorded because it is the only NYNJTC POI-shaped data that exists publicly, and because it is evidence for the trailhead gap the survey raises - three orgs publish trailheads and POI_TYPES has no category for one."
+          },
+          "privy": {
+            "status": "absent",
+            "note": "No point layer of any kind carries one; `Points` is empty."
+          }
+        }
+      },
+      "Mohonk Preserve": {
+        "probed_date": "2026-08-27",
+        "note": "All 23 services on their AGOL org listed; three carry real data and none is a POI layer. Mohonk_Preserve_Trails_and_Carriage_Roads is the 304 polylines already shipping (#992), Mohonk_Preserve is a single boundary polygon, and MP_Deer_Management_with_Restrictions is the hunt-restriction zones the alerts survey found. The smallest org here and the one with the least to give a POI export - which is not a criticism of an ~8,200-acre preserve that publishes its trail network openly and keeps it current.",
+        "types": {
+          "shelter": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "campsite": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "water": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "resupply": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "crossing": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "viewpoint": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "parking": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "privy": {
+            "status": "absent",
+            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          }
+        }
+      },
+      "GATC": {
+        "probed_date": "2026-08-27",
+        "note": "A maintaining club rather than a land manager, registered for exactly one thing: the water-sources PDF. Not re-probed for this survey - SOURCE_SURVEY.md \u00a75 is the club sweep and WATER_SOURCES.md \u00a74 sizes the document. Recorded here so the club sources are not silently missing from a block that claims to cover every provider.",
+        "types": {
+          "water": {
+            "status": "available",
+            "source_key": "gatc_water_sources",
+            "measured": {
+              "features": 65,
+              "date": "2026-08-27"
+            },
+            "note": "65 parsed rows (4 approach trail + 61 A.T.) of GATC mile point plus entry text, fetched and parsed live 2026-08-13. reaches_hikers is false and stays false until GATC answers a redistribution ask - the blocker is the licence, not the data."
+          },
+          "shelter": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "campsite": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "resupply": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "crossing": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "viewpoint": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "parking": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "privy": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          }
+        }
+      },
+      "OpenStreetMap contributors": {
+        "probed_date": "2026-08-27",
+        "note": "The only open-licensed source in this block, and the one whose POI coverage is genuinely unmeasured. osm_water ships today. OSM also carries shelter, toilet, drinking-water and viewpoint tags across this same ground, and how much it knows that the agencies do not is the measurement https://github.com/OurHike/OurHike/issues/771 owns and this survey declines to guess at - which is why seven rows below read `unprobed` rather than `absent`. The two are not interchangeable and the difference is the whole point of the vocabulary.",
+        "types": {
+          "water": {
+            "status": "shipping",
+            "source_key": "osm_water",
+            "note": "Geofabrik extracts, blended into the water layer alongside opentrail.org's tags. ODbL 1.0, the one licence here that is settled."
+          },
+          "shelter": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "crossing": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          }
+        }
+      },
+      "USGS": {
+        "probed_date": "2026-08-27",
+        "note": "A terrain and hydrography publisher, not a facilities one - which is why seven rows read absent rather than unprobed: the question was asked and USGS does not publish shelters. Its one POI contribution is real and already shipping.",
+        "types": {
+          "crossing": {
+            "status": "shipping",
+            "unregistered_source": "FOUND BY tests/test_poi_coverage.py WHILE WRITING THIS BLOCK, and left as a finding rather than fixed here. USGS's only registered entry is usgs_3dhp, kind watched_only, reaches_hikers false - a deliberate WATCH on the successor dataset, explicitly 'nothing fetches this'. The data that actually ships is the retired NHD, pulled as bulk HU4 GeoPackages from prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/ by fetch_trail_water.py, and it has no entry in `sources` at all. So the registry cannot say USGS reaches hikers, and export_sources.py cannot name them, even though NHD geometry is behind both the crossings and part of the water layer. reaches_hikers_comment calls that field the record of 'which registered sources actually SHIP'; this is data that ships without being registered, which is the one case the field cannot express. Not fixed inside #1092 because registering a fetched source is a licence-and-freshness change with its own review - the licence is the easy half (federal public domain, already stated on usgs_3dhp and already on the client's credits screen).",
+            "note": "NHD stream crossings, cut against the A.T. centerline by fetch_trail_water.py and exported as the `crossing` poi_type - the only POI type on a hiker's phone that no ATC layer contributes."
+          },
+          "shelter": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "campsite": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "water": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "resupply": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "viewpoint": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "parking": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "privy": {
+            "status": "absent",
+            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          }
+        }
+      },
+      "National Drought Mitigation Center (UNL), USDA, NOAA, NASA": {
+        "probed_date": "2026-08-27",
+        "not_a_poi_source": "The U.S. Drought Monitor publishes weekly drought-severity polygons for the whole country and nothing point-shaped at all. Recorded rather than omitted so that 'every provider has an answer' stays literally true and a reader can tell a source that was considered from one that was forgotten."
+      }
+    }
+  },
+  "dec_water_holdback": "WHY NO WATER SHIPS FROM DEC, recorded beside the sources rather than only in a survey, because the next person to look at dec_backcountry_features will see 'SPRING' and 'WELL' in its ASSET column and reasonably wonder (#1097; the evidence is POI_COVERAGE_SURVEY.md \u00a73, the verdict is poi_coverage.orgs['NYS DEC'].types.water, and tests/test_poi_coverage.py pins it). Measured live 2026-08-27: DEC's only plumbed-water asset type is 'WATER SUPPLY SYSTEM', 23 features, and ZERO of them are flagged PUBLICUSE 'Y' - DEC's own answer is that none of it is for visitors. Sampling 14 found real spigots beside a 'Water Storage Tank', an 'Underground Water Line', and a drilled well whose own NOTES read 'Not Approved For Human Consum[ption]'. The 350 features whose names merely SOUND like water are worse and are also all PUBLICUSE 'N': 207 'WATERHOLE' are fire-and-wildlife impoundments ('Wetland Pool', 'Made by Tioga County SWCD in 2016'), 97 'WELL' are dominated by NATURAL GAS WELLS, 4 'CISTERN' are CCC-era fire cisterns, and 19 'SPRING' include one 'Unnoffical Unsanctioned Traditional Public Wa[ter]' and one 'Untested'. A pipeline matching on the word 'water' would have published 207 fire ponds and 97 gas wells as places to fill a bottle. The maintainer's decision on reading this, 2026-08-27: 'Lets not use water from DEC'. Reopening it should mean NEW DATA FROM DEC - a layer they publish, a flag that flips - and never a new reading of these same 23 rows.",
+  "oprhp_water_holdback": "WHY OPRHP'S WATER DOES NOT SHIP EITHER, and why its reason is different from DEC's (#1097). OPRHP's water is REAL: 136 'Water Spigot' and 15 'Drinking Fountain' in NY_State_Park_Facilities' Sub_Asset, measured live 2026-08-27, plumbed fixtures named as such - so unlike DEC this is a holdback rather than a refusal, and the poi_coverage verdict stays `available` rather than `unsuitable`. Two things have to be answered first, and neither is answerable from the layer. (1) SEASONALITY IS UNRECORDED. A park spigot is shut off for winter and the layer carries no field saying when; a pin promising water in April where the valve is closed is the failure FEATURES.md names - a confidently wrong prediction is more dangerous than an honest unknown - and water is one of CLAUDE.md's four ways this app can hurt somebody. (2) OPRHP'S OWN APP SHOWS ONLY 15 OF THE 151: every Water Spigot reads ParksApp 'N', so the org itself puts only the drinking fountains in front of visitors, and publishing the other 136 would be going further than the steward does with their own data. Everything else OPRHP publishes ships (shelter, campsite, privy, viewpoint, parking, crossing); this one type waits for an issue of its own with its own evidence, which is the shape export_poi.py's osm_water treatment already sets. Also NOT water and never to be folded in: 'Mineral Spring' (17), 'Water Tower' (12), 'Waterfall' (55)."
 }

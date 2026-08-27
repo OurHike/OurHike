@@ -465,6 +465,12 @@ def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, 
 # lib/config.ts have one spelling to agree with.
 NEARBY_TRAILS_KEY = "nearby_trails.geojson"
 
+# The published key for export_nearby_poi.py's artifact (#1097) - the POIs NYS
+# DEC and NYS OPRHP publish, the sibling of NEARBY_TRAILS_KEY and gated the
+# same way. Named here for the same reason: one spelling for
+# test_published_key_contract.py and the client's lib/config.ts to agree with.
+NEARBY_POI_KEY = "nearby_poi.geojson"
+
 
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
@@ -531,6 +537,38 @@ def collect_artifacts() -> dict[str, dict]:
             )
         else:
             artifacts[NEARBY_TRAILS_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The POIs those same organizations publish (#1097, export_nearby_poi.py) -
+    # DEC's lean-tos, campsites and privies, OPRHP's vistas, parking and
+    # bridges. The identical licence gate to the lines above, for the identical
+    # reason and with the identical all-or-nothing posture: one artifact holds
+    # every source's points, and a file that sometimes contains a steward and
+    # sometimes does not is worse than one that waits.
+    #
+    # WHAT IS DIFFERENT FROM THE LINES, and it is only the answer rather than
+    # the mechanism: both stewards here are already publishing their trails, so
+    # unlike the block above this one does upload. DEC's POI entries and OPRHP's
+    # facilities layer carry reaches_hikers: true on the same footing their
+    # trails do - `dec_licence`'s maintainer authorisation and `oprhp_licence`'s
+    # stated reuse-with-attribution terms. Neither is a new grant and #769's
+    # open non-commercial question is untouched by this.
+    #
+    # Water is absent from the artifact rather than gated here, which is the
+    # right place for it: a gate can be flipped, and DEC's water is a measured
+    # refusal rather than a pending answer. sources.json's `dec_water_holdback`
+    # and `oprhp_water_holdback` carry the evidence for each.
+    nearby_poi_manifest = PROCESSED_DIR / "nearby_poi_manifest.json"
+    if nearby_poi_manifest.exists():
+        manifest = json.loads(nearby_poi_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: {NEARBY_POI_KEY} not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json. "
+                f"See that file's licence blocks for what each steward was asked."
+            )
+        else:
+            artifacts[NEARBY_POI_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The junction graph derived from those same lines (#974,
     # build_trail_graph.py). It carries the nearby manifest's `sources` forward

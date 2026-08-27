@@ -272,6 +272,28 @@ export function useTrailData(
    *  look the same, and one of them is a reason to spend a hiker's data. */
   const [centerlineRead, setCenterlineRead] = useState(false)
   const [error, setError] = useState<TrailDataError | null>(null)
+  /**
+   * Whether the launch fetch has stopped competing for the pipe (#1117).
+   *
+   * The two background artifacts below - the other organizations' lines and
+   * the junction graph - used to start alongside `trails.geojson` and one of
+   * them is nearly twice its size. MEASURED on a cold first run against the
+   * published artifacts, Chromium throttled to 4,000 kbps / 100 ms and 4x CPU,
+   * two runs agreeing: `trail_graph.json` (1,176 KB) opened at 1,524 ms,
+   * `trails.geojson` (3,891 KB) at 1,830 ms, `nearby_trails.geojson`
+   * (7,524 KB) at 2,612 ms - and the trail line, the one thing every entry
+   * step is talking about, did not land until 20,267 ms of a 32,325 ms launch
+   * that moved 14.71 MB.
+   *
+   * SETTLED, not "succeeded". See the launch effect's `finally`.
+   *
+   * A warm launch releases this within milliseconds - `fetchOnce` returns
+   * after two small IndexedDB reads once the phone holds a release - so this
+   * costs a returning hiker nothing. It is only ever a wait on the cold run,
+   * which is the only run where those two artifacts have anything to compete
+   * with.
+   */
+  const [trailFetchSettled, setTrailFetchSettled] = useState(false)
 
   /**
    * Two counters, because the two halves of a release no longer land at the
@@ -545,15 +567,23 @@ export function useTrailData(
     // Deduplicated inside fetchOnce rather than by a flag here, so that a
     // download tapped while this is still running joins it instead of fetching
     // the same megabytes alongside it.
-    void fetchOnce().catch((thrown: unknown) => {
-      // Not reported if the effect was torn down under us: by then this is a
-      // fetch nobody is waiting on, and a notice about it would outlive the
-      // screen that could act on it. Nothing is stored either way -
-      // downloadTrailData commits all four files or none - so coming back into
-      // signal can simply try again.
-      if (cancelled) return
-      setError(describeTrailDataError(thrown))
-    })
+    void fetchOnce()
+      .catch((thrown: unknown) => {
+        // Not reported if the effect was torn down under us: by then this is a
+        // fetch nobody is waiting on, and a notice about it would outlive the
+        // screen that could act on it. Nothing is stored either way -
+        // downloadTrailData commits all four files or none - so coming back into
+        // signal can simply try again.
+        if (cancelled) return
+        setError(describeTrailDataError(thrown))
+      })
+      // EITHER WAY, which is the half that keeps this from being a trap: the
+      // two effects below wait on this flag, and a phone whose trail fetch
+      // failed must not be left holding them forever. A failed launch fetch
+      // releases the gate and they run exactly as they did before #1117.
+      .finally(() => {
+        if (!cancelled) setTrailFetchSettled(true)
+      })
 
     return () => {
       cancelled = true
@@ -657,6 +687,14 @@ export function useTrailData(
     // The state is in the dependency list so that setting it re-runs this
     // and takes one of the early returns.
     if (!DATA_CONFIGURED) return
+    // Behind the trail line, never beside it (#1117). ONLINE ONLY, and the
+    // asymmetry is the whole design: offline this falls through to the store
+    // read below, so a phone with no signal still draws its last verified
+    // nearby lines on the first tick, exactly as before. What waits is the
+    // 7.5 MB refetch - and on the cold run where that is the whole artifact,
+    // there is no stored copy to draw in the meantime either, so the wait
+    // costs a hiker nothing visible and buys `trails.geojson` the pipe.
+    if (online && !trailFetchSettled) return
     if (nearbyTrails !== null && nearbyTrails.revalidated) return
     if (!online && nearbyTrails !== null) return
     if (online && nearbyTried.current) return
@@ -705,7 +743,7 @@ export function useTrailData(
       wanted = false
       controller.abort()
     }
-  }, [online, nearbyTrails])
+  }, [online, nearbyTrails, trailFetchSettled])
 
   // The junction graph's routing half, on the nearby-lines pattern above -
   // once, not once per reconnection, with the state itself as the guard. No
@@ -723,6 +761,12 @@ export function useTrailData(
       setGraphAbsence('unreachable')
       return
     }
+    // Behind the trail line (#1117), and below the two branches above so that
+    // "unconfigured" and "unreachable" are still recorded on the tick they
+    // become true - those are answers the network strip renders, not fetches.
+    // This is the 1.2 MB one, and the day-hike builder it feeds is not
+    // reachable from any entry step.
+    if (!trailFetchSettled) return
     // A settled absence is not re-requested. Without this the reason below
     // becoming a dependency would put the app back on the bucket every time
     // React re-ran the effect, for an answer that cannot have changed.
@@ -754,7 +798,7 @@ export function useTrailData(
       wanted = false
       controller.abort()
     }
-  }, [online, graphIndex, graphAbsence, graphAttempt])
+  }, [online, graphIndex, graphAbsence, graphAttempt, trailFetchSettled])
 
   const retryTrailNetwork = useCallback(() => {
     setGraphAttempt((attempt) => attempt + 1)

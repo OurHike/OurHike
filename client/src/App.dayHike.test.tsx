@@ -19,6 +19,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { NETWORK_STILL_ARRIVING } from './lib/dayHikeDraft'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
 import { TRIPS_KEY } from './lib/trips'
@@ -264,6 +265,40 @@ const tap = async (map: MockMap, lng: number, lat: number) => {
   })
 }
 
+/**
+ * Tap, and wait for the geometry artifact rather than hoping it has landed.
+ *
+ * The graph arrives in two halves and only the routing one is fetched at
+ * launch: `trail_graph_geometry.json` is asked for when the DOOR opens, and
+ * until it lands `canSnapToGraph` is false and every tap comes back refused
+ * with NETWORK_STILL_ARRIVING instead of routed (lib/dayHikeDraft.ts, #1093).
+ * So a test that taps straight after opening the door is racing a fetch, and
+ * `liveMap()` above does not settle it - it proves the click listener is
+ * attached, which happens earlier.
+ *
+ * A refused tap adds NO point (`tapAt` returns the draft with a refusal on
+ * it and the points untouched), so retrying is safe and idempotent. That is
+ * what makes this a wait on an observable that proves the sequence completed,
+ * which is the rule in CLAUDE.md this file's own header cites - and which the
+ * date-across-the-map test below was relying on luck for. It passed until
+ * #1117 moved the launch graph fetch one render later; the margin was always
+ * this thin.
+ *
+ * THE OFF-NETWORK TEST BELOW SOLVES THE SAME RACE ITS OWN WAY, and keeps it:
+ * that one waits until a tap answers with the off-network sentence
+ * specifically, which is stronger there because the sentence IS its subject -
+ * this helper would only prove the still-arriving one had stopped. The two
+ * were written independently against the same defect, on this branch and on
+ * main, and the merge kept the better one for each test rather than making
+ * them agree for its own sake.
+ */
+const tapWhenRoutable = async (map: MockMap, lng: number, lat: number) => {
+  await waitFor(async () => {
+    await tap(map, lng, lat)
+    expect(screen.queryByText(NETWORK_STILL_ARRIVING)).toBeNull()
+  })
+}
+
 describe('the day-hike builder, end to end', () => {
   it('walks door → taps → live tally → close the loop → a saved day hike', async () => {
     const user = userEvent.setup()
@@ -345,7 +380,7 @@ describe('the day-hike builder, end to end', () => {
     await openDoor(user)
     await user.click(await screen.findByRole('button', { name: /A day hike/ }))
     const map = await liveMap()
-    await tap(map, -74.095, 41.25)
+    await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
     await user.click(await screen.findByRole('button', { name: 'Done' }))
 

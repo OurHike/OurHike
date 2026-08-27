@@ -22,6 +22,15 @@ renders our archive **unchanged**, and the offline map is behaviorally
 identical to the live map a hiker already judged by. Every alternative
 costs a full restyle for no quality gain:
 
+> **Since [#1116](https://github.com/OurHike/OurHike/issues/1116) the build
+> emits that schema minus seven layers** — `export_basemap.py`'s
+> `UNRENDERED_LAYERS` — and with `--languages=en` rather than Planetiler's
+> ~80. The paragraph above still holds where it load-bears: every layer the
+> style names is present, in the schema it expects, and nothing in
+> `liveTopo.ts` changed. What is no longer true is that a downloaded tile and
+> an OpenFreeMap tile carry the same *content*. See "What the exclusion
+> costs" below.
+
 | Considered | Why not |
 |---|---|
 | Protomaps daily planet + `pmtiles extract` | Zero build infrastructure — but a Tilezen-derived schema; all 17 style layers rewritten, re-done on their major schema bumps. The documented escape hatch if owning a build ever becomes a burden, not the plan. |
@@ -299,6 +308,74 @@ now names, and the sizes `client/src/lib/packages.ts` advertises:
 | `at_basemap_package.pmtiles` | **532,459,439** | z0–14, 83,818 tiles; the rebuild reproduced run 2's package within 0.06 MB |
 | `at_basemap_package_z13.pmtiles` | **182,286,799** | z0–13, 21,721 tiles (the package minus its 62,097 z14 tiles); the hiking sheet's Standard level (#276), published 2026-08-06 from a rebuild whose z14 package came out hash-identical to the row above |
 | `dem.pmtiles` | **607,265,661** | z0–13, 21,758 tiles, 0 absent, **0.5 m quantize** |
+
+### What the exclusion costs, and what it saves (#1116)
+
+Every figure in the table above is a **pre-#1116 archive**, and stays correct
+until the next build republishes. What that build will weigh was measured
+directly, by rebuilding both published archives without the excluded layers
+and re-gzipping every tile:
+
+| | published (whole schema) | `--exclude-layers` | + `--languages=en` |
+|---|---|---|---|
+| `at_basemap_package_z13.pmtiles` | 182,238,659 | 159,703,445 (−12.4%) | **158,348,907 (−13.1%)** |
+| `at_basemap_package.pmtiles` | 532,287,514 | 347,947,790 (−34.6%) | **345,555,257 (−35.1%)** |
+
+(Tile bytes, so the z13 row is 48,140 short of the file — header and
+directories. The compressor is held constant and is not doing any of the work:
+Planetiler's tiles re-compress to the byte at gzip level 6, verified on all
+21,724 tiles of the z13 package, so these deltas are the exclusion's.)
+
+**The Light z12 cut is not measured here and is helped least**, which follows
+from the same shape rather than from a separate finding: the exclusion's value
+climbs with zoom because that is where the excluded layers live, so a cut that
+stops at z12 keeps the smallest share of it. It is cut from the same build by
+the same run, so it inherits the change with no extra step — the number it
+lands on is whatever `report_archive` prints on the first build after this, and
+that is the honest place to read it rather than an extrapolation from the two
+rows above.
+
+**The two tiers differ that much because z14 is where everything the sheet
+does not draw arrives at once.** Of the Fine package: `transportation_name`
+75.6 MB, `building` 56.7, `housenumber` 36.3, `poi` 33.5, and
+`landuse`+`aeroway`+`aerodrome_label` 13.2 — 40% of the archive.
+`housenumber` does not exist below z14 and `building`/`poi` barely do.
+
+**`--languages=en` is worth 0.7%, and that is worth writing down** so nobody
+re-derives it hoping for more. The ~80-language default is real and visible —
+a `place` feature on the A.T. carries `name:ar`, `name:zh-Hant`, `name:tok` —
+but the exotic variants are rare per feature, and the byte weight sits in
+`name`, `name_en` and `name:latin`, which an English build keeps. It is kept
+because it is free and because it stops being small the moment this pipeline
+builds outside the United States.
+
+**What is NOT reached from a flag.** The client reads six properties from this
+source (`class`, `name`, `intermittent`, `admin_level`, `ele`, `ele_ft`) while
+`transportation` ships `oneway`, `surface`, `network`, `brunnel`, `ramp`,
+`bicycle`, `foot`, `horse` and `access` on 581,224 features. Stripping to
+exactly those six measured **148,229,251 bytes** on the z13 package — another
+6.3% — and needs a custom profile or a post-process that re-encodes every
+tile. #1116 carries the measurement; it is not shipped because a hand-rolled
+MVT re-encoder in the publish path is a poor trade against 6% of one tier, on
+the archive a hiker navigates by.
+
+**The cost.** A downloaded tile and an OpenFreeMap tile are no longer the same
+bytes. Nothing renders differently — the style names none of the excluded
+layers, and this was checked against every `['get', …]` in `liveTopo.ts`,
+`PLACE_FILTER` and `PLACE_SORT_KEY_EXPRESSION`, with nothing outside
+`liveTopo.ts` querying the source's features. What it forecloses is a *future*
+style: adding road labels to the sheet used to be a stylesheet edit and is now
+a rebuild and a republish. That is the trade, and it was made because 40% of
+the tier a hiker picks when they want the good map is a large price for an
+option nobody has asked for.
+
+`planetiler_cmd` stays neutral and `main()` is what asks, so
+`spike_shard_seam.py` keeps the whole schema by doing nothing: its recorded
+drift rate above was measured across every layer, and a narrower build would
+be a narrower question silently substituted for it. Defaulting the exclusion
+on would have been tidier at one call site and wrong at the other — and it
+would put the spike's three Planetiler builds (150-minute timeout each) on
+every push that touched its file.
 
 The DEM's per-zoom table lives beside the raster tiers in
 [README.md](README.md). The quantize step was settled at 0.5 m by

@@ -1,4 +1,4 @@
-// The "today I'm…" mode (#1054): day hiker, thru-hiker, volunteer.
+// The "today I'm…" mode (#1054): day hiker, long hiker, volunteer.
 //
 // One person is a day-hiker in May and a maintainer in June, and the redesign's
 // call (recorded on #1054) is that the app never guesses which day this is:
@@ -30,11 +30,11 @@
 
 import { get, set } from 'idb-keyval'
 
-export const HIKER_MODE_VALUES = ['day', 'thru', 'volunteer'] as const
+export const HIKER_MODE_VALUES = ['day', 'long', 'volunteer'] as const
 export type HikerMode = (typeof HIKER_MODE_VALUES)[number]
 
 /**
- * 'day' rather than 'thru', because it assumes the least. A day hike is the
+ * 'day' rather than 'long', because it assumes the least. A day hike is the
  * mode whose ranking needs no plan, no section and no history to be useful,
  * which makes it the honest answer for a phone that has never said otherwise.
  * (Unvalidated against real installs - what would settle it is which mode
@@ -47,6 +47,14 @@ export const HIKER_MODE_KEY = 'ourhike:hiker-mode'
 /** A stored-or-received value made safe to use, whatever wrote it - the same
  *  contract normalisePreferences keeps, for the same reason. */
 export function normaliseHikerMode(stored: unknown): HikerMode {
+  // 'thru' is the middle mode's word before #1127 renamed it to 'long' - a
+  // thru-hike is one specific way of living on the trail, and the mode
+  // serves every long hike. A phone that chose Thru-hike still holds the
+  // old word in IndexedDB, and it names the same choice, so it maps forward
+  // rather than falling back - falling back would silently overwrite an
+  // explicit statement with the default. Words this build has never had a
+  // meaning for still fall back below: they are garbage, not history.
+  if (stored === 'thru') return 'long'
   return HIKER_MODE_VALUES.includes(stored as HikerMode)
     ? (stored as HikerMode)
     : DEFAULT_HIKER_MODE

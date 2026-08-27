@@ -82,20 +82,21 @@ something this project can read today.
 (LAND_OWNERSHIP.md:44-54). Applied per role: a section with **no recorded maintainer is
 unattributed, never unmaintained**; a section with **no recorded landowner is unrecorded,
 never unowned and never "nobody's say"**. This is not aspiration — it is shipped
-behaviour, in `pipeline/export_club_sections.py:237-239`:
+behaviour, in `pipeline/export_club_sections.py:237-238`:
 
 > Published, not omitted. 41 miles the fresh source cannot name reads as "not recorded";
 > leaving it out would read as "no trail here".
 
 ---
 
-## 1. The lattice is half in the data — every claim checked, and two of them corrected
+## 1. The lattice is half in the data — every claim checked, and four of the five come back changed
 
-#780's body asserts five per-source attribute facts under the heading "The lattice is
-already half in the data (measured 2026-08-18)". They are the evidence the whole design
-stands on, so each was re-read against the survey text and `pipeline/sources.json` on
-**2026-08-27**. One checks out verbatim, three check out with a caveat that changes what
-can be built on them, and one is **partly wrong**.
+The body of **#780 — Research route ownership: the AT in NY has thirty owners, a landowner
+with final say per section, and a maintainer besides** asserts five per-source attribute
+facts under the heading "The lattice is already half in the data (measured 2026-08-18)".
+They are the evidence the whole design stands on, so each was re-read against the survey
+text and `pipeline/sources.json` on **2026-08-27**. One checks out verbatim, three check out
+with a caveat that changes what can be built on them, and one is **partly wrong**.
 
 | # | #780's claim | verdict |
 |---|---|---|
@@ -120,8 +121,9 @@ because it leaves the role with *final say* unsourced on the flagship route.
 
 Two hygiene facts travel with it and both are load-bearing for §8. First, 47 features carry
 a digit string where an acronym belongs — 41.4 miles, 1.90% of the trail — and those miles
-publish as unattributed rather than being backfilled from the two-year-old polygon layer.
-Second, the join key, `pipeline/lib/club_sections.py:37-40`:
+publish as unattributed rather than being backfilled from the two-year-old polygon layer
+(`pipeline/lib/club_sections.py:31-36`, measured 2026-08-13). Second, the join key,
+`pipeline/lib/club_sections.py:37-40`:
 
 > **Two clubs are misspelt** in `Trail_Club` and correct in `Acronym`: "Potomac Appalachain
 > Trail Club" (PATC) and "New York - New Jersey Trail Conference" (NYNJTC, spacing). Every
@@ -134,11 +136,17 @@ organization names would key two of its most important rows on a typo.
 
 ### 2 — NYNJTC's Long Path, verified, and it is a constant
 
-`pipeline/NYC_SOURCE_SURVEY.md:203-204` (survey read 2026-08-18) and `sources.json`'s
-`nynjtc_long_path` notes (re-measured live **2026-08-24**):
+`sources.json`'s `nynjtc_long_path` notes, measured live **2026-08-24**:
 
 > Fields Trail_Name/Blaze/Maintainer/Mileage/Source/Comments/LP_Section/GuideURL; all 43
 > rows read Trail_Name 'Long Path', Maintainer 'NYNJTC' and Source 'NYNJTC'.
+
+That is the registry's read and nothing else. `pipeline/NYC_SOURCE_SURVEY.md:203-204` is the
+corroborating one, six days earlier, and it is thinner than the quote above: on 2026-08-18
+it found the same **43 segments** and the same six-field core —
+`Trail_Name`/`Blaze`/`Maintainer`/`Mileage`/`LP_Section`/`GuideURL` — naming neither
+`Source` nor `Comments`, and saying nothing at all about what the 43 rows contain. The
+constancy below rests on the 2026-08-24 measurement alone.
 
 So the column exists and is real, and **its information content today is zero**: 43 of 43
 rows say the publisher's own name. That is not a defect in NYNJTC's data — it is what a
@@ -149,7 +157,7 @@ is the true one.
 
 ### 3 — NJ's `MANAGING_AGENCY`, verified as a survey finding, unregistered as a source
 
-`pipeline/NYC_SOURCE_SURVEY.md:252`:
+`pipeline/NYC_SOURCE_SURVEY.md:252-254`:
 
 > **`MANAGING_AGENCY`, 166 distinct values**: counties (Morris, Atlantic, Burlington…),
 > boroughs, land trusts, even corporate campuses. **This one layer is the answer to the
@@ -168,7 +176,7 @@ Distribution Agreement, which the survey flags **NEEDS REVIEW** before registrat
 
 ### 4 — OPRHP's `Unit`/`Facility`, verified, and neither field is what its name suggests
 
-`pipeline/NYC_SOURCE_SURVEY.md:95` and `:102`:
+`pipeline/NYC_SOURCE_SURVEY.md:95` and `:101-103`:
 
 > `Unit` is OPRHP's **eleven regions** — `Palisades` and `Taconic` are the ring's two […]
 > all `Facility: Hudson Highlands State Park Preserve`. NYNJTC *maintains* most of those
@@ -185,12 +193,24 @@ that, one inference deep, marked as such.
 
 ### 5 — DEC's `UNIT`/`REGION`/`OFFICE` — half of it could not be verified
 
-`pipeline/NYC_SOURCE_SURVEY.md:113` and `sources.json`'s `dec_hiking_trails` entry
-(counted live 2026-08-25) both give the same field list:
+`pipeline/NYC_SOURCE_SURVEY.md:113-115` and `sources.json`'s `dec_hiking_trails` notes give
+**overlapping but not identical** field lists, and the difference is worth carrying rather
+than flattening. The survey's, on the 5,277 segments it counted:
 
 > fields `UNIT`/`FACILITY`/`NAME`, per-use flags (`FOOT`/`HORSE`/`BIKE`/`XC`/`SNOWMB`/
 > `ATV`/`MOTORV`), `MILES`, `ACCESSIBLE`, `DESCRIP` — and **`MARKER`**, DEC's word for the
 > blaze.
+
+The registry's, counted live 2026-08-25 on **5,286** rows — nine more than the survey found,
+which the entry itself reads as the layer moving rather than either count being wrong — is
+`UNIT`/`FACILITY`/`NAME`/`ASSET`/`MILES`/`DESCRIP`/`PUBLICUSE`/`UPDATED`, plus the
+`CORRIDOR USE` matrix
+(`FOOT`/`HORSE`/`BIKE`/`XC`/`SNOWMB`/`ATV`/`MOTORV`/`ADMIN`/`ACCESSIBLE`/`MAPPWD`), plus
+`MARKER`. Five of those fields are in no version of the survey's list — `ASSET`,
+`PUBLICUSE`, `UPDATED`, `ADMIN`, `MAPPWD` — and **neither carries `REGION` or `OFFICE`**.
+That the two reads disagree about five other columns is what makes their agreement here
+worth something: two independent looks at the layer, a week apart, and the two fields claim
+5 rests on are in neither.
 
 `UNIT` is there. **`REGION` and `OFFICE` appear nowhere** — not in
 `pipeline/NYC_SOURCE_SURVEY.md`, not in `pipeline/SOURCE_SURVEY.md`, not in the registered
@@ -223,10 +243,14 @@ otherwise have had to argue:
 
 - **Owner and manager are separate roles that come apart per section**, in live data this
   project ships today (`reaches_hikers: true` since 2026-08-25), on 6 of 304 segments —
-  1.97%, which is the right order of magnitude to be an ordinary fact rather than an error.
+  1.97%. **@unvalidated** — that those 6 rows are a genuine owner/manager split rather than
+  an upstream data-entry artifact is unchecked; it would be settled by reading the Marakill
+  Woods parcels against PAD-US's `Own_Name`, or by asking Mohonk.
 - **The owner value is already joint, written as `NYS OPRHP/PIPC`** — two organizations in
-  one string, exactly the "superowner" shape, arriving from a source that never read #780.
-  It arrives as a *string* rather than as a list, which is the modelling failure §3 exists
+  one string, exactly the "superowner" shape, arriving from a source that never read **#780 —
+  Research route ownership: the AT in NY has thirty owners, a landowner with final say per
+  section, and a maintainer besides**. It arrives as a *string* rather than as a list, which
+  is the modelling failure §3 exists
   to avoid inheriting: nothing downstream can tell `NYS OPRHP/PIPC` from a park called
   "NYS OPRHP/PIPC" without a table saying so.
 - **A publisher's own definition of its dataset can be a role filter.** Mohonk publishes
@@ -299,9 +323,10 @@ was rejected on POI_IDENTITY.md's evidence: upstream re-keys, and a section defi
 worth *recording* as provenance; they are the wrong thing to define the section by.
 
 **Derived assertions are a published artifact; authored assertions stay in the backend.**
-This is SOURCE_REGISTRY.md's split ("the registration lives in Postgres, the build's input
-lives in `sources.json`") pointed at a different noun, and CORRIDOR_VIEW.md already stated
-the precedence for the one case that exists:
+This is the split SOURCE_REGISTRY.md:58-59 draws in a table — the registration in Postgres
+because an org needs a form rather than a pull request, the source the build reads in
+`sources.json` because the build runs from a checkout — pointed at a different noun, and
+CORRIDOR_VIEW.md already stated the precedence for the one case that exists:
 
 > The backend already holds `Club` and `MaintainerAssignment` for the *authoritative*
 > answer used when a thanks is resolved […] this is the map's copy for drawing and for
@@ -329,7 +354,7 @@ the honest thing to add is that **this document cannot tell you what those thirt
 organizations jointly hold.** Nothing in this repository establishes the legal instrument.
 What the repository does establish, and it is worth separating carefully:
 
-- **ATC publishes the line.** `export_nearby_trails.py:277-291`'s `owned_route_names()`
+- **ATC publishes the line.** `export_nearby_trails.py:277-289`'s `owned_route_names()`
   reads `owns_route_names` off the registry, and `centerline` — an ATC layer — is where
   "Appalachian Trail" resolves.
 - **NPS is the owner of record for corridor land** in the only query this repository has
@@ -362,9 +387,11 @@ every other trail visible, and safety pins that ignore the choice**:
 > the orgs. But the current selected org should always get precedent for the information
 > shown.
 
-And #780's starting hypothesis, offered explicitly as a thing to argue *with* rather than
-*from*: **route owner for identity and centerline, landowner for rules and closures on
-their ground, maintainer for conditions, thanks and reports.**
+And the starting hypothesis on **#780 — Research route ownership: the AT in NY has thirty
+owners, a landowner with final say per section, and a maintainer besides**, offered
+explicitly as a thing to argue *with* rather than *from*: **route owner for identity and
+centerline, landowner for rules and closures on their ground, maintainer for conditions,
+thanks and reports.**
 
 It survives, amended in three places. Two of its three limbs turn out to be shipped code
 rather than proposals, and the amendments are where the joint case actually bites.
@@ -438,9 +465,11 @@ database grant, not on this design.
 
 ### 4d. The amendment the hypothesis is missing: the hiker never selects an org
 
-A hiker selects a **route**. #772's rule says "the current selected org", and on a
-single-owner route those are the same thing. On the A.T. they are not, and "the selected
-org" has no referent at all — thirty organizations are not a display voice.
+A hiker selects a **route**. The rule on **#772 — Design the map when trails cross: one
+chosen centerline, every other trail visible, and safety pins that ignore the choice** says
+"the current selected org", and on a single-owner route those are the same thing. On the
+A.T. they are not, and "the selected org" has no referent at all — thirty organizations are
+not a display voice.
 
 **So the resolution runs: selected route → publisher of record for identity fields →
 section roles for everything else.** Concretely, a hiker walking the A.T. through Harriman,
@@ -460,10 +489,12 @@ lattice is allowed to *add* voices rather than choose between them.
 
 ### The guard rail on the whole thing
 
-Already decided on #772 and inherited here without amendment: **a safety-relevant fact only
-one org carries never loses to precedence. Safety completeness outranks display
-preference.** Every rule in this section is a rule about *which of two answers to show
-first*, and none of them may be implemented as a rule about which answer to keep.
+Already decided on **#772 — Design the map when trails cross: one chosen centerline, every
+other trail visible, and safety pins that ignore the choice** and inherited here without
+amendment: **a safety-relevant fact only one org carries never loses to precedence. Safety
+completeness outranks display preference.** Every rule in this section is a rule about
+*which of two answers to show first*, and none of them may be implemented as a rule about
+which answer to keep.
 
 ---
 
@@ -475,19 +506,21 @@ written to fail in the survivable direction.
 
 ### The measured case, and why it decides the design
 
-[ORG_NOTICES.md](ORG_NOTICES.md) §5 records two closures on the ring's ground, both live on
-**2026-08-27**:
+[ORG_NOTICES.md](ORG_NOTICES.md):170-173 is the home of the measured pair — Breakneck Ridge
+and Lake Awosting Carriage Road, both live on **2026-08-27** — and both are read there
+rather than copied here. Only one of them does any work in this document:
 
-- **Breakneck Ridge** — closed until 2027. On parks.ny.gov as an OPRHP alert, in OPRHP's
-  closure-polygon layer, *and* as a NYNJTC trail alert.
 - **Lake Awosting Carriage Road** — on parks.ny.gov as an OPRHP alert and as a NYNJTC trail
   alert, and **absent from OPRHP's own GIS closure layer**.
 
-The second one is the argument. OPRHP is the landowner and the closing authority at Lake
+That absence is the argument. OPRHP is the landowner and the closing authority at Lake
 Awosting, and OPRHP's own machine-readable closure layer does not carry the closure. A rule
 that read "prefer the land manager" as a **filter** — take OPRHP's closure set, discard the
 maintainer's — would have shown a hiker walking toward a closed carriage road **nothing at
-all**. The maintainer's notice was the only structured record of it.
+all**. NYNJTC's alert was the only record of it in any layer this project ingests — OPRHP's
+own alert lives on parks.ny.gov, which nothing here reads (`pipeline/sources.json` registers
+`oprhp_trails`, `oprhp_trail_closures`, `oprhp_facilities`, `oprhp_park_polygons` and no
+alert feed).
 
 ORG_NOTICES.md §5 already states the rule this design inherits — *"never merge, never
 silently drop, and let the map collapse rather than the data"*, with the land manager's word
@@ -532,14 +565,17 @@ landowner's closure is *area-shaped*, and the app's closure model was route-shap
 Measured on the live layer 2026-08-24, all four features: polygons over ground, **no dates
 at all** — "Closed Until 2027" exists only inside the prose of a field called `Name` — and
 two of the four never touch the A.T. The A.T. closure model is
-`start_mile_marker`/`end_mile_marker` on one trail, so forcing them in "would publish two
-negligible A.T. closures and silently drop everything that matters."
+`start_mile_marker`/`end_mile_marker` on one trail, so forcing them in would — in that
+issue's words — "publish two negligible A.T. closures and silently drop everything that
+matters."
 
 The fix, shipped: `export_nearby_trails.py:546`'s `apply_area_closures()` intersects the
-polygons with the exported network lines and marks what falls inside — 99 sections from 4
-areas, 64 wholly and 35 split at the boundary. Split rather than closed whole, because
-closing whole would have marked the Ramapo-Dunderberg shut across 16.7% of its length,
-which is the cry-wolf failure on a mark a hiker is meant to obey.
+polygons with the exported network lines and marks what falls inside — 99 exported features
+touch the 4 closed areas, **66 lying wholly inside and 33 only partly**, and the 33 are
+split at the boundary (`export_nearby_trails.py:551-553`, measured 2026-08-24). Split rather
+than closed whole, because closing one of those 33 whole would have drawn the barred band
+along the *entire* Ramapo-Dunderberg on the strength of the 16.7% of its length that is
+actually inside a closure, which is the cry-wolf failure on a mark a hiker is meant to obey.
 
 **Three things that case establishes for this document**, and they are more useful than
 anything the abstract rule could have asserted:
@@ -559,10 +595,13 @@ anything the abstract rule could have asserted:
    parks, not a broken fetch. Any per-role artifact needs the same property for the same
    reason: a landowner asserting nothing this week is normal.
 
-### The backend gap this exposes, which is a safety finding and not in #780's list
+### The backend gap this exposes, which is a safety finding nobody asked for
 
-`backend/app/models/closure.py` models a **community-reported** closure and has no way to
-record an authoritative one. Read straight off the columns:
+It is on no list — **#780 — Research route ownership: the AT in NY has thirty owners, a
+landowner with final say per section, and a maintainer besides** does not name it, and it
+turned up on the way to something else. `backend/app/models/closure.py` models a
+**community-reported** closure and has no way to record an authoritative one. Read straight
+off the columns:
 
 - `reported_by` is `nullable=False` and a foreign key to `profiles.id` (line 65). Every
   closure in this table was filed by a person with an account. There is no
@@ -574,8 +613,9 @@ Put those together: **if OPRHP's "Closed Until 2027" ever entered this table, it
 invisible in a moderation queue until a volunteer moderator verified the landowner.** That
 is not a live defect today — OPRHP's closures reach hikers through the pipeline
 (`apply_area_closures()`), never through this table — but it is a loaded gun pointed at the
-obvious next step, which is exactly the maintainer's instinct on #964: *"I think we should
-have the oprhp_trail_closures added to the closures just like the atc's."*
+obvious next step, which is exactly the maintainer's instinct on **#964 — NYS Parks closes
+areas, not trail segments, and the closure model has nowhere to put one**: *"I think we
+should have the oprhp_trail_closures added to the closures just like the atc's."*
 
 Saying so here rather than fixing it, per CLAUDE.md: **where a hiker's safety is at stake,
 name the gap even when fixing it is out of scope.** The fix is small — an org-issued closure
@@ -588,9 +628,13 @@ issue rather than a paragraph in a design doc.
 ## 6. Provenance when the roles disagree
 
 [NEARBY_TRAILS.md](NEARBY_TRAILS.md) §6 owns the display voice and is half built: OPRHP's
-licence makes attribution a condition, so `client/src/map/credits.ts` names both stewards in
-the map corner, and the per-trail line in the tap sheet is still missing. This section adds
-only what changes when a section has three organizations on it rather than one.
+licence makes attribution a condition, so `client/src/map/credits.ts:182` names all four
+stewards whose lines are drawn — OPRHP, NYNJTC, Mohonk Preserve and NYS DEC, read
+2026-08-27 — and the per-trail line in the tap sheet is still missing (NEARBY_TRAILS.md:258
+names that gap as its own). NEARBY_TRAILS.md:253 still says "both stewards"; it was written
+2026-08-24, before Mohonk and DEC were registered, and it is that line that is stale rather
+than the code. This section adds only what changes when a section has three organizations on
+it rather than one.
 
 **Name the role, not just the organization.** "NYS OPRHP" on a card answers a question the
 hiker did not ask. *"Closed by NYS OPRHP, who manage this ground"* and *"Maintained by the
@@ -643,11 +687,13 @@ make). Both are wrong and the second is worse.
 
 The concrete request this puts on POI_DEDUPLICATION.md, whose model this document does not
 otherwise touch: **its tier 1 is "land manager or trail steward"**, which is precisely the
-two roles #780 asks to be separated, sharing a rank. That is fine for the job that table
-does today — deciding which of two rows wins a field — and it will not be fine the moment a
-land manager and a route steward disagree about a field, because the tier cannot break the
-tie. Flagged rather than redesigned here: POI_DEDUPLICATION.md owns its own hierarchy, and
-this document's contribution is the vocabulary that lets it split tier 1 when it needs to.
+two roles **#780 — Research route ownership: the AT in NY has thirty owners, a landowner
+with final say per section, and a maintainer besides** asks to be separated, sharing a rank.
+That is fine for the job that table does today — deciding which of two rows wins a field —
+and it will not be fine the moment a land manager and a route steward disagree about a
+field, because the tier cannot break the tie. Flagged rather than redesigned here:
+POI_DEDUPLICATION.md owns its own hierarchy, and this document's contribution is the
+vocabulary that lets it split tier 1 when it needs to.
 
 `pipeline/NYC_SOURCE_SURVEY.md:306-308` reached the same conclusion from the outreach side
 and said it in one sentence:
@@ -672,14 +718,15 @@ maintainer_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=
 ```
 
 Not nullable. **Every assignment must name a person with an OurHike account.** And
-`backend/app/models/club.py:7` says the opposite is the norm — `Club` exists "because
+`backend/app/models/club.py:5-7` says the opposite is the norm — `Club` exists "because
 SAYING_THANKS.md needs somewhere for a thanks to go when the hiker knows the club but not
 the person - **which is the common case**."
 
-So the thirty A.T. clubs, which are the entire subject of #780's example and of
-CORRIDOR_VIEW.md's shipped corridor view, **cannot be stored as holding their own
-sections.** The table can say "Dana holds mile 1,043 for PATC" and cannot say "PATC holds
-mile 1,043."
+So the thirty A.T. clubs, which are the entire subject of the example on **#780 — Research
+route ownership: the AT in NY has thirty owners, a landowner with final say per section, and
+a maintainer besides** and of CORRIDOR_VIEW.md's shipped corridor view, **cannot be stored
+as holding their own sections.** The table can say "Dana holds mile 1,043 for PATC" and
+cannot say "PATC holds mile 1,043."
 
 The fix is one nullable, and it has a consequence worth stating with it: with
 `maintainer_id` nullable, `publicly_creditable` becomes a field about a row that may have
@@ -723,10 +770,13 @@ kind of join that works in testing and drops PATC in production.
 
 ### 8d. The fourth: the model can express exactly one role, and only for a club
 
-This is the one #780's list does not name, and it is structural rather than a missing
-column. `MaintainerAssignment` has no `role` — the role is the table's name — and
-`club_id = Column(String, ForeignKey("clubs.id"), nullable=False)` means the holder must be
-a row in `clubs`.
+This is the one the list on **#780 — Research route ownership: the AT in NY has thirty
+owners, a landowner with final say per section, and a maintainer besides** does not name,
+and it is structural rather than a missing column. `MaintainerAssignment` has no `role` —
+the role is the table's name — and
+`club_id = Column(String, ForeignKey("clubs.id"), nullable=False, index=True)`
+(`backend/app/models/maintainer_assignment.py:44`) means the holder must be a row in
+`clubs`.
 
 Both halves have to give:
 
@@ -743,8 +793,9 @@ Both halves have to give:
   `clubs.organization_id` referencing it, "one nullable FK plus a backfill — not a rename of
   the existing table" — and lists "Generalising `Club` into `Organization`" as an open
   question because it touches `MaintainerAssignment` and SAYING_THANKS.md's attribution
-  path. **#780 is the second independent reason to do it**, which is worth recording on that
-  open question rather than deciding here.
+  path. **#780 — Research route ownership: the AT in NY has thirty owners, a landowner with
+  final say per section, and a maintainer besides is the second independent reason to do
+  it**, which is worth recording on that open question rather than deciding here.
 
 A fifth thing, smaller and worth a line: nothing constrains two assignments from covering
 the same miles on the same dates, and that is **deliberate** — SAYING_THANKS.md's "zero or
@@ -856,10 +907,14 @@ client work. They produce the data that would tell us whether the rest is worth 
 - **Not a second authority on who maintains a mile.** The backend's `MaintainerAssignment`
   stays authoritative; the published artifact stays the map's copy for drawing and for
   working offline; where they disagree the backend is right (CORRIDOR_VIEW.md, unchanged).
-- **Not a re-opening of #772's POI precedence decisions.** This supplies the definition of
-  "the org" those rules were missing and changes none of them.
+- **Not a re-opening of the POI precedence decisions taken on #772 — Design the map when
+  trails cross: one chosen centerline, every other trail visible, and safety pins that
+  ignore the choice.** This supplies the definition of "the org" those rules were missing
+  and changes none of them.
 - **Not a new closure feed.** §5 is a rule about ordering and about what may never be
-  dropped. The feeds are ORG_NOTICES.md's, ATC_TRAIL_UPDATES.md's and #964's.
+  dropped. The feeds are ORG_NOTICES.md's, ATC_TRAIL_UPDATES.md's, and the one shipped by
+  **#964 — NYS Parks closes areas, not trail segments, and the closure model has nowhere to
+  put one**.
 - **Not a matcher.** No role is inferred from a name, an alternate name, or proximity.
   `suppressed_by_owner()`'s 26-segment `Alt_Name` finding is what that costs.
 

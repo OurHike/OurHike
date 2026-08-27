@@ -268,6 +268,42 @@ function localMetres(from: LonLat, to: LonLat): { x: number; y: number } {
 }
 
 /**
+ * Whether this edge carries its own vertices.
+ *
+ * The one predicate four things read, on `sameTrail`'s reasoning a few
+ * hundred lines up: "has the phone got the lines, or only the topology" is
+ * asked at four different altitudes and has to be answered the same way each
+ * time. {@link nearestPointOnGraph} asks it to decide whether an edge may be
+ * snapped to at all, {@link routeGeometry} to decide whether a leg may be
+ * drawn, lib/dayHikeWalk.ts's `stepPolyline` to decide whether a walked
+ * stretch has a shape, and lib/dayHikeTurns.ts to decide whether a turn may
+ * be given a side.
+ */
+export function hasVertices(
+  edge: GraphEdge,
+): edge is GraphEdge & { geometry: Array<[number, number]> } {
+  return edge.geometry !== undefined && edge.geometry.length >= 2
+}
+
+/**
+ * Whether this index can be snapped against at all.
+ *
+ * The two artifacts are index-aligned and attached all-or-nothing
+ * (lib/trailGraphData.ts refuses a geometry whose edge count disagrees), so
+ * in practice one edge answers for the whole graph. Asked of every edge
+ * anyway rather than of `edges[0]`, so that a graph half-attached by some
+ * future change degrades to "some of it" instead of to whichever edge
+ * happens to be first.
+ *
+ * A caller that gets `false` holds the TOPOLOGY and not the LINES, which is
+ * a different thing from a tap being off the network and has to be said
+ * differently - see lib/dayHikeDraft.ts's two sentences.
+ */
+export function canSnapToGraph(index: TrailGraphIndex): boolean {
+  return index.graph.edges.some(hasVertices)
+}
+
+/**
  * Where on this edge the point lies, as a fraction, plus how far off it was.
  *
  * Walks the edge's own vertices where the artifact carries them, so a tap on
@@ -276,8 +312,13 @@ function localMetres(from: LonLat, to: LonLat): { x: number; y: number } {
  * the ground the whole time. `fraction` is distance along the polyline over
  * its total, which is the same scale `length_m` prices.
  *
- * The chord remains as the fallback for a geometry-less edge (an artifact
- * published before geometry existed), stated rather than hidden.
+ * The chord remains as the fallback here for a geometry-less edge, and no
+ * caller that could act on one still asks: {@link nearestPointOnGraph} skips
+ * those edges outright. It is left rather than removed for
+ * {@link projectOntoEdges}, whose whole contract is answering "how far off am
+ * I" with no refusal in it - though that function has no callers in the app
+ * today, lib/dayHikeFollow.ts having replaced its use of it with a loop over
+ * the ground actually walked.
  */
 function projectOntoEdge(
   index: TrailGraphIndex,
@@ -285,10 +326,9 @@ function projectOntoEdge(
   at: LonLat,
 ): { fraction: number; offMetres: number; point: LonLat } {
   const edge = index.graph.edges[edgeIndex]
-  const vertices: Array<[number, number]> =
-    edge.geometry !== undefined && edge.geometry.length >= 2
-      ? edge.geometry
-      : [index.graph.nodes[edge.from], index.graph.nodes[edge.to]]
+  const vertices: Array<[number, number]> = hasVertices(edge)
+    ? edge.geometry
+    : [index.graph.nodes[edge.from], index.graph.nodes[edge.to]]
 
   let best: { offMetres: number; point: LonLat; along: number } | null = null
   let walked = 0
@@ -334,6 +374,41 @@ function projectOntoEdge(
  *
  * Null is frame `1j`'s refusal, and it is the honest answer rather than a
  * failure: OurHike only builds routes on trails an organization maintains.
+ *
+ * AN EDGE WITH NO VERTICES IS NOT A CANDIDATE, and that is the whole of
+ * #1093. A geometry-less edge offers only the straight chord between its two
+ * junctions, and the map beside the finger is drawing the published line -
+ * so measuring a tap against the chord asks a hiker to aim at something that
+ * is not on their screen.
+ *
+ * Measured on OPRHP's `NY_State_Parks_Trails` layer for the Harriman-Bear
+ * Mountain envelope (2026-08-27, 1,009 lines through `build_trail_graph.py`
+ * at the shipped 8 m endpoint tolerance: 1,059 edges, median edge 279 m, p90
+ * 1,248 m). Five points along each edge's own published geometry - 5,295
+ * taps, every one of them landing exactly on the drawn line:
+ *
+ *   against the chords    20% refused as off-network, 7% placed on a
+ *                         DIFFERENT trail than the one tapped
+ *   against the vertices  0% refused, 0.5% on a different trail (junctions
+ *                         where two trails genuinely share ground)
+ *
+ * The 7% is what {@link MAX_OFF_NETWORK_FEET} is rounded small to prevent,
+ * arriving by a route the tolerance cannot govern. The caveat on the figures:
+ * OPRHP's layer alone, without the other stewards' lines or the A.T.'s, and
+ * with nothing dropped as closed - so the wrong-trail row would move on the
+ * real network and the refusal row, which is one line against its own chord,
+ * would not.
+ *
+ * This is the rule lib/dayHikeFollow.ts already applies ("the geometry is a
+ * requirement, not a nicety") and {@link routeGeometry} already applies to
+ * drawing. Snapping was the last place a chord was still accepted, and it is
+ * the place a finger meets.
+ *
+ * Null therefore covers two situations the CALLER must tell apart, which is
+ * what {@link canSnapToGraph} is for: a tap genuinely off every maintained
+ * line, and a phone that holds the topology and not yet the lines. The first
+ * is frame `1j`'s refusal; the second is not the hiker's aim being wrong and
+ * must not be reported as though it were.
  */
 export function nearestPointOnGraph(
   index: TrailGraphIndex,
@@ -343,6 +418,7 @@ export function nearestPointOnGraph(
   let best: GraphPoint | null = null
 
   for (let edgeIndex = 0; edgeIndex < index.graph.edges.length; edgeIndex += 1) {
+    if (!hasVertices(index.graph.edges[edgeIndex])) continue
     const projected = projectOntoEdge(index, edgeIndex, at)
     const offNetworkFeet = projected.offMetres * FEET_PER_METRE
     if (best !== null && offNetworkFeet >= best.offNetworkFeet) continue
@@ -892,9 +968,7 @@ export function routeGeometry(
   if (edgeIndices.length === 0) return null
   for (const edgeIndex of edgeIndices) {
     const edge = graph.edges[edgeIndex]
-    if (edge === undefined || edge.geometry === undefined || edge.geometry.length < 2) {
-      return null
-    }
+    if (edge === undefined || !hasVertices(edge)) return null
   }
 
   // Which node each edge is entered FROM, chained by shared node ids.

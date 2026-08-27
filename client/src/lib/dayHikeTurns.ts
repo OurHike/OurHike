@@ -42,6 +42,7 @@ import { dayHikeWalk } from './dayHikeWalk'
 import type { ResolvedDayHike } from './dayHikeCard'
 import {
   bearingDegrees,
+  hasVertices,
   metresToMiles,
   sameTrail,
   type LonLat,
@@ -276,7 +277,7 @@ function armBearing(
 ): number | null {
   const edge = index.graph.edges[edgeIndex]
   if (edge === undefined) return null
-  if (edge.geometry === undefined || edge.geometry.length < 2) return null
+  if (!hasVertices(edge)) return null
   // A self-loop leaves the same node twice and there is no "the" direction it
   // goes in; withheld rather than guessed at.
   if (edge.from === edge.to) return null

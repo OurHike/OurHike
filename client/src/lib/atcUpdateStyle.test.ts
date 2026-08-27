@@ -1,20 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
   ATC_UPDATE_BAR_RHYTHM,
-  ATC_UPDATE_CASING_COLOR,
   ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_CASING_WIDTH,
   ATC_UPDATE_COLOR,
-  ATC_UPDATE_HALO_BLUR,
-  ATC_UPDATE_HALO_LAYER_ID,
-  ATC_UPDATE_HALO_OPACITY,
-  ATC_UPDATE_HALO_RADIUS,
-  ATC_UPDATE_HALO_SCALE,
+  ATC_NOTICE_BURST,
+  ATC_NOTICE_CASING_RATIO,
+  ATC_NOTICE_CASING_WIDTH,
+  ATC_NOTICE_FILL_RADIUS,
+  ATC_NOTICE_ICON_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_LINE_WIDTH,
-  ATC_UPDATE_POINT_DIAMETER,
+  ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
-  ATC_UPDATE_POINT_RADIUS,
+  atcNoticeRimWidths,
   buildAtcUpdateLayers,
 } from './atcUpdateStyle'
 import {
@@ -40,17 +39,26 @@ function paintOf(id: string): Record<string, unknown> {
   return (layer as { paint: Record<string, unknown> }).paint
 }
 
+function layoutOf(id: string): Record<string, unknown> {
+  const layer = buildAtcUpdateLayers('atc-updates').find(
+    (candidate) => candidate.id === id,
+  )
+  expect(layer).toBeDefined()
+  return (layer as { layout: Record<string, unknown> }).layout
+}
+
 /**
- * A `circle-radius` read at one zoom.
+ * The mark's drawn width at one zoom, in CSS pixels.
  *
- * The radii are `interpolate` expressions now, so a test that compared the
- * paint value to a number would be asserting the shape of an expression rather
- * than the size of a dot. This evaluates the stops the way MapLibre would -
- * linear between them, clamped outside - which is what lets every case below
- * go on saying what a hiker sees at a given zoom.
+ * The ramp moved from `circle-radius` to `icon-size` with #1071 - a symbol
+ * layer scales one rasterised image rather than growing a circle - so this
+ * evaluates the `icon-size` stops the way MapLibre would (linear between them,
+ * clamped outside) and multiplies through by the size the image was drawn at.
+ * Every case below then goes on saying what a hiker sees at a given zoom,
+ * which is the thing worth asserting and the thing that did not change.
  */
-function radiusAt(id: string, zoom: number): number {
-  const expression = paintOf(id)['circle-radius'] as unknown[]
+function drawnWidthAt(id: string, zoom: number): number {
+  const expression = layoutOf(id)['icon-size'] as unknown[]
   expect(expression[0]).toBe('interpolate')
   expect(expression[1]).toEqual(['linear'])
   expect(expression[2]).toEqual(['zoom'])
@@ -60,16 +68,20 @@ function radiusAt(id: string, zoom: number): number {
     stops.push([expression[at] as number, expression[at + 1] as number])
   }
 
-  const first = stops[0]
-  const last = stops[stops.length - 1]
-  if (zoom <= first[0]) return first[1]
-  if (zoom >= last[0]) return last[1]
+  const clamped = Math.min(Math.max(zoom, stops[0][0]), stops[stops.length - 1][0])
+  let scale = stops[stops.length - 1][1]
+  for (let at = 0; at < stops.length - 1; at += 1) {
+    const [lowZoom, lowScale] = stops[at]
+    const [highZoom, highScale] = stops[at + 1]
+    if (clamped <= highZoom) {
+      const span = highZoom - lowZoom
+      const along = span === 0 ? 0 : (clamped - lowZoom) / span
+      scale = lowScale + along * (highScale - lowScale)
+      break
+    }
+  }
 
-  const upper = stops.findIndex(([stopZoom]) => stopZoom >= zoom)
-  const [lowZoom, lowValue] = stops[upper - 1]
-  const [highZoom, highValue] = stops[upper]
-  const t = (zoom - lowZoom) / (highZoom - lowZoom)
-  return lowValue + (highValue - lowValue) * t
+  return ATC_UPDATE_POINT_DRAWN_WIDTH * scale
 }
 
 /** The zoom at and above which everything on this map is at full size. */
@@ -145,31 +157,30 @@ describe('the layers themselves', () => {
 describe('a point notice', () => {
   // Most of what ATC publishes is a single mile marker, and `trailSlice`
   // renders those as a few dozen feet of line - which is not a small band, it
-  // is an invisible one. The circle layer is what makes them show up at all.
+  // is an invisible one. This layer is what makes them show up at all.
 
   it('is far wider than the band, which is what it was not', () => {
     // It used to be exactly half the band's width - "a barrier seen end-on" -
     // and that made the ATC's own word about the trail the smallest mark on a
     // map full of 38px waypoint pins. src/test/atcAlertProminence.test.ts is
     // where that comparison is actually held, against the pins themselves.
-    expect(ATC_UPDATE_POINT_DIAMETER).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
-    expect(ATC_UPDATE_POINT_RADIUS * 2).toBe(ATC_UPDATE_POINT_DIAMETER)
-    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)).toBe(
-      ATC_UPDATE_POINT_RADIUS,
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)).toBe(
+      ATC_UPDATE_POINT_DRAWN_WIDTH,
     )
   })
 
   it('shrinks with the camera, because the ground a pixel covers does', () => {
     // The fault two rounds of shaving the full-size number could not reach: at
-    // z5 the whole corridor is on one screen and a walking-zoom dot is roughly
+    // z5 the whole corridor is on one screen and a walking-zoom mark is roughly
     // the width of Maryland. Five notices drawn that way are five craters over
     // four states.
-    const walking = radiusAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)
+    const walking = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)
 
-    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 5)).toBeLessThan(walking / 2)
-    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeLessThan(walking)
-    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeGreaterThan(
-      radiusAt(ATC_UPDATE_POINT_LAYER_ID, 5),
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 5)).toBeLessThan(walking / 2)
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeLessThan(walking)
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeGreaterThan(
+      drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 5),
     )
   })
 
@@ -178,31 +189,50 @@ describe('a point notice', () => {
     // and zoomed out to plan a week is exactly when someone wants to know
     // where the ATC has posted something. Clamped at the bottom stop, so the
     // corridor view keeps a mark a hiker can actually find.
-    const smallest = radiusAt(ATC_UPDATE_POINT_LAYER_ID, 0)
+    const smallest = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 0)
 
-    expect(smallest).toBe(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 5))
-    expect(smallest * 2).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(smallest).toBe(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 5))
+    expect(smallest).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
   })
 
   it('stops growing once everything else has', () => {
     // z13 is where map/poiLayers.ts stops interpolating too. Past it the
     // comparison with a waypoint pin is fixed, which is what makes
     // src/test/atcAlertProminence.test.ts's bounds mean anything.
-    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 18)).toBe(
-      radiusAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM),
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 18)).toBe(
+      drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM),
     )
   })
 
-  it('carries the band’s colour and its casing', () => {
-    const paint = paintOf(ATC_UPDATE_POINT_LAYER_ID)
+  it('is drawn as an image, which is the only way it can have a hole', () => {
+    // #1071. A MapLibre circle has no paint property that empties its middle,
+    // so the open centre is not something the old layer could have been tuned
+    // into - it is why this became a symbol layer at all.
+    const layer = buildAtcUpdateLayers('atc-updates').find(
+      (candidate) => candidate.id === ATC_UPDATE_POINT_LAYER_ID,
+    )
 
-    expect(paint['circle-color']).toBe(ATC_UPDATE_COLOR)
-    expect(paint['circle-stroke-color']).toBe(ATC_UPDATE_CASING_COLOR)
-    expect(paint['circle-stroke-width']).toBe(ATC_UPDATE_CASING_WIDTH)
+    expect(layer?.type).toBe('symbol')
+    expect(layoutOf(ATC_UPDATE_POINT_LAYER_ID)['icon-image']).toBe(ATC_NOTICE_ICON_ID)
+  })
+
+  it('never gives way to a waypoint pin that got there first', () => {
+    // map/warningLayers.ts's reason, which applies here with more force: a
+    // notice dropped by the collision engine is a notice nobody was shown, and
+    // a hiker cannot tell that from there being none. As a circle this could
+    // not be dropped at all, so `icon-allow-overlap` is what KEEPS the old
+    // behaviour across the change rather than a new liberty.
+    expect(layoutOf(ATC_UPDATE_POINT_LAYER_ID)['icon-allow-overlap']).toBe(true)
+  })
+
+  it('still pushes other symbols aside rather than ignoring them', () => {
+    // The other half of that: `icon-ignore-placement` stays at its default, so
+    // a waypoint pin under a notice yields instead of being drawn through it.
+    expect(layoutOf(ATC_UPDATE_POINT_LAYER_ID)['icon-ignore-placement']).toBeUndefined()
   })
 
   it('draws from the same source as the bands', () => {
-    // A `line` layer ignores Point features and a `circle` layer ignores
+    // A `line` layer ignores Point features and a `symbol` layer ignores
     // lines, so one source carries both - and the tap has one place to look.
     const layers = buildAtcUpdateLayers('atc-updates')
 
@@ -210,13 +240,11 @@ describe('a point notice', () => {
       'atc-updates',
       'atc-updates',
       'atc-updates',
-      'atc-updates',
     ])
   })
 
-  it('is drawn last, over the bands and over its own glow', () => {
+  it('is drawn last, over both bands', () => {
     expect(buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)).toEqual([
-      ATC_UPDATE_HALO_LAYER_ID,
       ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       ATC_UPDATE_POINT_LAYER_ID,
@@ -224,63 +252,79 @@ describe('a point notice', () => {
   })
 })
 
-describe('the glow around a point notice', () => {
-  // The half of "more pronounced" that is not size. A dot says where; the glow
-  // is what makes an eye that was reading somewhere else look at the dot.
+describe('the burst geometry (#1071)', () => {
+  // The numbers behind the shape, held here rather than in the rasteriser,
+  // because they are decisions about what a hiker sees and not about pixels.
+  // map/atcNoticeMark.test.ts checks that the image agrees with them.
 
-  it('reaches half the dot’s radius past it again, on every side', () => {
-    expect(ATC_UPDATE_HALO_RADIUS).toBe(ATC_UPDATE_POINT_RADIUS * ATC_UPDATE_HALO_SCALE)
-    expect(ATC_UPDATE_HALO_RADIUS).toBeGreaterThan(ATC_UPDATE_POINT_RADIUS)
-    expect(radiusAt(ATC_UPDATE_HALO_LAYER_ID, WALKING_ZOOM)).toBe(ATC_UPDATE_HALO_RADIUS)
+  it('leaves the middle open, which is the whole change', () => {
+    // A spoke starts halfway out, so the inner half of the mark is a ring of
+    // clear ground with a small dot in it. What a notice is drawn ON - the
+    // centerline, a shelter pin, a ford - sits in that hole.
+    expect(ATC_NOTICE_BURST.innerRadius).toBeGreaterThan(ATC_NOTICE_BURST.hubRadius * 2)
+    expect(ATC_NOTICE_BURST.innerRadius).toBeLessThan(1)
   })
 
-  it('rides the dot’s zoom ramp, at every stop on it', () => {
-    // Its own stops would come apart from the dot's the first time either
-    // moved, and what that leaves is a translucent disc with a small mark in
-    // the middle - a different drawing, and one that claims an area.
-    for (const zoom of [0, 5, 7, 9, 11, 13, 18]) {
-      expect(radiusAt(ATC_UPDATE_HALO_LAYER_ID, zoom)).toBeCloseTo(
-        radiusAt(ATC_UPDATE_POINT_LAYER_ID, zoom) * ATC_UPDATE_HALO_SCALE,
-        6,
-      )
-    }
+  it('keeps a dot on the coordinate, so it marks rather than encircles', () => {
+    // Without it the mark is a ring, and a ring reads as drawn AROUND
+    // something. A point notice names one mile marker.
+    expect(ATC_NOTICE_BURST.hubRadius).toBeGreaterThan(0)
+    expect(ATC_NOTICE_BURST.hubRadius * ATC_NOTICE_FILL_RADIUS).toBeGreaterThan(2)
   })
 
-  it('is a gradient with no edge, rather than a translucent disc', () => {
-    // `circle-blur: 1` is MapLibre's "only the centerpoint is full opacity",
-    // so the alpha ramps to nothing at the rim. Anything less leaves a visible
-    // boundary, and a boundary here would be a claim about an area ATC never
-    // made - they published a mile marker, not a radius.
-    const paint = paintOf(ATC_UPDATE_HALO_LAYER_ID)
-
-    expect(paint['circle-blur']).toBe(1)
-    expect(ATC_UPDATE_HALO_BLUR).toBe(1)
-    expect(paint['circle-stroke-width']).toBeUndefined()
+  it('tapers outward rather than running parallel', () => {
+    // A parallel-sided spoke reads as a cog. The taper is what makes it read
+    // as radiating, which is the thing the mark is saying.
+    expect(ATC_NOTICE_BURST.tipHalfWidth).toBeGreaterThan(ATC_NOTICE_BURST.innerHalfWidth)
   })
 
-  it('is transparent, and stays transparent enough to see through', () => {
-    // It is drawn over the waypoint pins now (map/style.ts). A glow that hid a
-    // water source in order to announce a bear warning nearby would have
-    // traded one safety mark for another.
-    const opacity = paintOf(ATC_UPDATE_HALO_LAYER_ID)['circle-opacity']
+  it('leaves real daylight between neighbouring spokes at walking zoom', () => {
+    // THE PROPERTY THE CHANGE IS BOUGHT WITH, and it was false the first time
+    // this was rendered: with the band's 2px casing the gaps came out 1.7px
+    // wide at the half-width of the day and the mark was a dark disc with red
+    // spokes on it. Measured 2026-08-27 on the shipped geometry: 7.5px of red
+    // against 4.5px of clear ground - and 2.9px of gap if the band's casing is
+    // put back, which is what makes this case the guard on that constant.
+    const { spoke, gap } = atcNoticeRimWidths()
 
-    expect(opacity).toBe(ATC_UPDATE_HALO_OPACITY)
-    expect(ATC_UPDATE_HALO_OPACITY).toBeGreaterThan(0)
-    expect(ATC_UPDATE_HALO_OPACITY).toBeLessThan(1)
+    expect(gap).toBeGreaterThan(3)
+    expect(spoke).toBeGreaterThan(gap)
+    expect(spoke).toBeLessThan(gap * 2)
   })
 
-  it('is the band’s red, so the glow is not a second severity', () => {
-    expect(paintOf(ATC_UPDATE_HALO_LAYER_ID)['circle-color']).toBe(ATC_UPDATE_COLOR)
+  it('still has daylight at the bottom of the zoom ramp', () => {
+    // Where a spoke count is really decided. At z5 the whole mark is 16px, and
+    // this is the bound that rules out the finer eleven-spoke burst: gaps that
+    // close here turn the corridor view back into a solid blob.
+    const { gap } = atcNoticeRimWidths(ATC_UPDATE_POINT_DRAWN_WIDTH * 0.4)
+
+    expect(gap).toBeGreaterThan(1)
   })
 
-  it('is drawn under the band, not over it', () => {
-    // A barrier washed in translucent red exactly where a point notice
-    // coincides with it is a barrier that has stopped being crisp at the one
-    // place it most needs to be.
+  it('carries the pins’ own hairline rather than the band’s casing', () => {
+    // 1/15 of the radius is map/poiIcons.ts's `edgeWidth`. Using the band's 2px
+    // here is exactly what closed the gaps, because a casing runs down BOTH
+    // sides of every spoke - so this is the constant whose drift would quietly
+    // undo the test above.
+    expect(ATC_NOTICE_CASING_RATIO).toBe(1 / 15)
+    expect(ATC_NOTICE_CASING_WIDTH).toBeLessThan(ATC_UPDATE_CASING_WIDTH)
+    expect(ATC_NOTICE_FILL_RADIUS + ATC_NOTICE_CASING_WIDTH).toBe(
+      ATC_UPDATE_POINT_DRAWN_WIDTH / 2,
+    )
+  })
+
+  it('has no glow layer left to draw', () => {
+    // Deleted rather than dimmed (#1071): a 54px wash of red behind an open
+    // burst is the solid disc back in a softer spelling. Asserted as an absence
+    // because the next pass to reach for "make it louder" will reach here.
     const ids = buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)
 
-    expect(ids.indexOf(ATC_UPDATE_HALO_LAYER_ID)).toBeLessThan(
-      ids.indexOf(ATC_UPDATE_LAYER_ID),
-    )
+    expect(ids).toHaveLength(3)
+    expect(ids.some((id) => id.includes('halo'))).toBe(false)
+    for (const layer of buildAtcUpdateLayers('atc-updates')) {
+      expect(
+        (layer as { paint?: Record<string, unknown> }).paint?.['circle-blur'],
+      ).toBeUndefined()
+    }
   })
 })

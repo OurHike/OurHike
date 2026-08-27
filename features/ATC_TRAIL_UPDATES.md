@@ -318,9 +318,7 @@ both pin layers. Against the pins it actually competes with, that is a losing ha
 over: a waypoint pin is 38px (`POI_PIN_SIZE`, itself `--space-9`) and a serious-warning pin
 is 44px, so the single mark carrying the trail maintainer's own word about the trail was the
 smallest thing on the map and could be covered by OurHike's pin for the very shelter ATC had
-just closed. It is now **40px of ink** (`--space-10`), it carries a fully-blurred halo
-reaching half its radius again — a gradient rather than a second ring, because a gradient has
-no edge and an edge here would draw a boundary around ground ATC said nothing about — and
+just closed. It is now **40px of ink** (`--space-10`) and
 `map/style.ts` draws the whole ATC group **last of all**, so nothing on the canvas can sit on
 top of it.
 
@@ -354,26 +352,92 @@ mark competing with *other marks*, which is a fixed contest at any zoom. This fa
 mark competing with *the ground it is drawn on*, and how much ground a pixel covers is
 precisely what zoom means. No amount of trimming the full-size number reaches it.
 
-`ATC_UPDATE_POINT_ZOOM_STOPS` is the fix — the dot and its glow ramp together:
+`ATC_UPDATE_POINT_ZOOM_STOPS` is the fix — the mark ramps with the camera:
 
-| Zoom | What is on screen | Dot, drawn width |
+| Zoom | What is on screen | Mark, drawn width |
 |---|---|---|
-| ≤ 5 | the whole corridor | 18px |
-| 9 | `POI_MIN_ZOOM`, waypoint pins appear | 26px |
+| ≤ 5 | the whole corridor | 16px |
+| 9 | `POI_PIN_MIN_ZOOM`, waypoint pins appear | 32px |
 | ≥ 13 | walking | 40px |
 
-The upper two stops are `POI_ICON_SIZE_EXPRESSION`'s own — 0.6 at z9, 1.0 at z13 — matched
-rather than picked, so the dot keeps exactly its clearance over a waypoint pin at *every*
-zoom the two share rather than only at the top. Below z9 the pins are gone and the only
+The upper two stops are `POI_ICON_SIZE_EXPRESSION`'s own — 0.8 at z9, 1.0 at z13 — matched
+rather than picked, so the mark keeps exactly its clearance over a waypoint pin at *every*
+zoom the two share rather than only at the top. (Both were 0.6 at z9 until
+[#617](https://github.com/OurHike/OurHike/issues/617) moved the pin seam out to z9 and raised
+the pins to stay legible there; a mark left at 0.6 would have been 24px against a 30.4px pin,
+which is the fault inverted.) Below z9 the pins are gone and the only
 question is whether someone planning a week can see where the ATC has posted something; it is
 deliberately not a shrink to nothing, because unlike the pins this layer has no minzoom and
 zoomed out is exactly when that question gets asked.
 
-All three changes are size and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
+All of these changes are size, shape and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
 second barrier colour at length, and the reasoning survives intact: on a safety map two reds
 read as two severities rather than as two organisations, and both of these still mean the
 trail is shut. What the size says is only "there is something here", which is the one thing a
 mark cannot say at all if nobody sees it.
+
+**And the fourth pass found that 40px of SOLID ink was itself the fault
+([#1071](https://github.com/OurHike/OurHike/issues/1071)).** Every pixel of the disc was
+opaque, so at any findable size the mark hid whatever it was drawn on — and a point notice is
+placed *on the centerline* (`map/atcUpdateLayers.ts`), so what it hid was the trail the notice
+is about, plus the shelter, ford or crossing the notice is about. The three passes above all
+read that as a number to shave, and none of them could reach it: shrinking an opaque mark
+until it stops covering things is shrinking it until nobody finds it.
+
+So the mark is now an **open-centre burst** at the same 40px — eight red spokes tapering
+outward around a ring of clear ground, with a small dot on the coordinate itself. `ATC_NOTICE_BURST`
+in `lib/atcUpdateStyle.ts` holds the geometry and the derivation of each number; the shape is
+described in *polar* terms rather than as a polygon, which is what makes the dark hairline
+round it exactly one width everywhere (a spoke's half-width at radius *r* is an angle, so
+`casing / r` radians is `casing` pixels at every radius). **Measured 2026-08-27 on the shipped
+image: 760.1px² of ink where the disc put 1,256.6px², which is 60.5%.**
+
+Two things about that are worth recording because they were not obvious:
+
+- **The casing had to shrink, and it is the constant that decides whether any of this works.**
+  The first render kept the band's 2px `CLOSURE_CASING_WIDTH` and came out as a *black disc
+  with red spokes on it* — because a casing runs down **both** sides of every spoke, so 2px of
+  it eats 4px out of each gap, and eight spokes inside 40px only have about 7px of gap to
+  spend in the first place. It is now `radius / 15`, which is `map/poiIcons.ts`'s own
+  `edgeWidth` — the hairline every waypoint pin on this map already carries — so it is the
+  map's existing edge treatment rather than a number invented to make the gaps work.
+  `atcNoticeRimWidths()` computes the result and the tests assert it. Measured 2026-08-27:
+
+  | Casing | Gap at walking zoom | Ink |
+  |---|---|---|
+  | `CLOSURE_CASING_WIDTH`, 2px — at the half-width that failed | 1.7px | — |
+  | `CLOSURE_CASING_WIDTH`, 2px — at the shipped half-width | 2.9px | 957.2px² |
+  | `radius / 15`, 1.33px — shipped | **4.5px** | **760.1px²** |
+
+  That is against 7.5px of red, so a gap is a little over half a spoke; and there is still
+  1.8px of gap at the bottom of the ramp, where the whole mark is 16px and a spoke count is
+  really decided. The middle row is why the ratio is a constant with a test on it rather than
+  a detail — put `CLOSURE_CASING_WIDTH` back and `lib/atcUpdateStyle.test.ts` goes red.
+- **Nothing in the spec could see that failure; only the alpha channel could.** Every constant
+  was correct while the picture was wrong, which is why the tests for this mark are sampled off
+  the *rendered image* — the ring between the hub and the spokes carries alpha 0, every gap
+  carries alpha 0, and the total ink is measured rather than derived.
+
+**The glow is gone with it, and that is a real loss stated rather than buried.** Its job was
+catching an eye that is *not* looking at that part of the screen, and it could not stay: a
+54px wash of red behind an open burst is the solid disc back again in a softer spelling — the
+ground between the spokes would be washed exactly where the burst exists to let it through.
+What replaces it is **shape rather than area**. Nothing else on this map is a radial burst —
+every waypoint and the serious-warning pin are discs, every closure and ATC band is a line — so
+the mark stays unlike its neighbours at a glance, and it keeps every other conspicuity property
+it had: the colour, the 40px reach, being drawn over every other layer, and `icon-allow-overlap`
+so the collision engine can never drop one. (That last one is new work to stand still: as a
+`circle` this layer took no part in placement at all; as a `symbol` it would have been
+droppable without it.)
+
+> **This trade is `@unvalidated`.** Nobody has watched a hiker find one of these on a phone,
+> in sun, while walking. The decision was made on specimens rendered at z5/z9/z13, and a
+> specimen sheet cannot answer a question about peripheral vision. What would settle it is
+> field use. If the burst turns out to be harder to find than the disc was, the fix is a glow
+> back **on a zoom ramp** — strong at corridor zoom where the mark is 16px and there is no
+> detail to lose, faint in the hand where the spokes are large and the ground under them is
+> what a hiker came for — and not one strength everywhere, which is the shape of the fault
+> being fixed here.
 
 **The serious-warning pin keeps "the biggest thing on the map"** at the one measurement
 `map/poiIcons.ts` and WIREFRAMES.md actually name: 44px of drawn pin, against the ATC dot's

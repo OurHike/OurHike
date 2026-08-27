@@ -8,6 +8,8 @@
 import { deflateSync } from 'node:zlib'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { buildPoiIcons } from '../src/map/poiIcons'
+import { buildAtcNoticeIcon } from '../src/map/atcNoticeMark'
+import { ATC_NOTICE_ICON_ID } from '../src/lib/atcUpdateStyle'
 
 function chunk(type: string, body: Buffer): Buffer {
   const length = Buffer.alloc(4)
@@ -75,7 +77,17 @@ const SCALE = 4
 const outDir = process.argv[2] ?? 'poi-pin-preview'
 mkdirSync(outDir, { recursive: true })
 
-for (const { id, image } of buildPoiIcons()) {
+// The ATC point notice rides along, and this script is exactly why (#1071).
+// Its geometry is polar maths rather than polygon maths, which fails in a
+// different way and in the same place: every constant was right while the first
+// render was a black disc with red spokes on it, and no unit test written
+// against the SPEC could have seen that. map/atcNoticeMark.test.ts samples the
+// alpha channel and would catch it now - but a number saying "the gap is 4.5px"
+// is still not the same as looking at the thing.
+for (const { id, image } of [
+  ...buildPoiIcons(),
+  { id: ATC_NOTICE_ICON_ID, image: buildAtcNoticeIcon() },
+]) {
   const { width: w, height: h, data } = image
   writeFileSync(
     `${outDir}/${id}.png`,
@@ -111,4 +123,6 @@ writeFileSync(
     upscale(sheet, cell * cols, cell * rows, SCALE),
   ),
 )
-console.log(`Wrote ${icons.length} pins and a contact sheet to ${outDir}/`)
+console.log(
+  `Wrote ${icons.length} pins, the ATC notice mark and a contact sheet to ${outDir}/`,
+)

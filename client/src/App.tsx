@@ -103,6 +103,7 @@ import {
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
 import { useAvailableBytes } from './lib/useAvailableBytes'
+import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
@@ -1282,6 +1283,10 @@ function App() {
   // below: freeing space is the app's own printed remedy, and #554 measured
   // that the browser's accounting may never notice on its own.
   const { bytes: availableBytes, refresh: refreshAvailableBytes } = useAvailableBytes()
+  // Every size this shell prints for a download comes from the published
+  // manifest where it carries one, and from the catalog's constants where it
+  // does not (#505) - see lib/usePublishedSizes.ts for why both are needed.
+  const publishedSizes = usePublishedSizes()
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -1389,6 +1394,25 @@ function App() {
     return locateOnTrail(trailIndex, gps.at)
   }, [trailIndex, gps])
 
+  // The mile alone, for every derivation below that reads nothing else.
+  //
+  // locateOnTrail answers with the nearest VERTEX's mile, so a wobble that
+  // stays closer to the same vertex than to any other keeps this value still -
+  // while `fix` itself is a fresh object per wobble, because offTrailFeet
+  // genuinely moves with every one. A memo keyed on `fix` where the mile is
+  // all it reads therefore recomputes once per GPS callback for an answer
+  // that has not changed, the whole time a stationary phone jitters (#1111).
+  // Key on this instead. A wobble that flips between two vertices still
+  // recomputes everything keyed here - that is a changed input, and how often
+  // it happens under canopy is #1100's unmeasured radius question.
+  const fixMile = fix?.mile ?? null
+
+  // The settled direction alone, for the same reason: the TRACKER holds its
+  // identity below the quarter-mile threshold (lib/hikeDirection.ts), but a
+  // memo needs only which way was settled, and a plain value cannot regress
+  // to keying on the object by accident.
+  const travelDirection = direction?.direction
+
   /**
    * Which miles this hiker has actually walked (#598's `visited`).
    *
@@ -1483,7 +1507,7 @@ function App() {
    * where the warning matters most. closureBanner.ts owns that split.
    */
   const { closureAhead, advisoryAhead } = useMemo(() => {
-    if (fix === null) return { closureAhead: null, advisoryAhead: null }
+    if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
     // Two sources compete for each line: OurHike's verified closures and the
     // ATC's own notices (#461). Nearest wins, which is the rule the two lane
@@ -1508,8 +1532,8 @@ function App() {
     // closure three miles ahead for 398 miles of walking. The rule is written
     // once per source (`closureLanes`, `atcUpdateLanes`) and the source tie is
     // broken here, the same way, for each lane.
-    const closureLane = closureLanes(placedClosures ?? [], fix.mile, heading)
-    const atcLane = atcUpdateLanes(atcUpdates, fix.mile, heading)
+    const closureLane = closureLanes(placedClosures ?? [], fixMile, heading)
+    const atcLane = atcUpdateLanes(atcUpdates, fixMile, heading)
 
     // Whichever source the hiker reaches first, in that source's own voice.
     // `<=` keeps ours first on an exact tie, which is arbitrary and has to be
@@ -1519,9 +1543,9 @@ function App() {
       atc: RankedAtcUpdate | null,
     ): string | null => {
       if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
-        return closureBanner(closure.closure, fix.mile, heading, units)
+        return closureBanner(closure.closure, fixMile, heading, units)
       }
-      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading, units)
+      if (atc !== null) return atcUpdateBanner(atc.update, fixMile, heading, units)
       return null
     }
 
@@ -1529,7 +1553,8 @@ function App() {
       closureAhead: pick(closureLane.specific, atcLane.specific),
       advisoryAhead: pick(closureLane.broad, atcLane.broad),
     }
-  }, [placedClosures, atcUpdates, fix, heading, units])
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [placedClosures, atcUpdates, fixMile, heading, units])
 
   /**
    * Every published report placed on the mile axis.
@@ -1572,7 +1597,7 @@ function App() {
     if (
       placedWarnings === null ||
       trailIndex === null ||
-      fix === null ||
+      fixMile === null ||
       heading === undefined
     ) {
       return null
@@ -1593,14 +1618,15 @@ function App() {
     const terminus = heading === 'NOBO' ? trailIndex.totalMiles : 0
     const routeEnd =
       declaredEnd !== null &&
-      (heading === 'NOBO' ? declaredEnd >= fix.mile : declaredEnd <= fix.mile)
+      (heading === 'NOBO' ? declaredEnd >= fixMile : declaredEnd <= fixMile)
         ? declaredEnd
         : terminus
 
     return routeBannerText(
-      warningsOnRoute(placedWarnings, { fromMile: fix.mile, toMile: routeEnd }).length,
+      warningsOnRoute(placedWarnings, { fromMile: fixMile, toMile: routeEnd }).length,
     )
-  }, [placedWarnings, trailIndex, fix, heading, hike])
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [placedWarnings, trailIndex, fixMile, heading, hike])
 
   /**
    * The same closures on the canvas: red barrier tape along each closed
@@ -1953,10 +1979,13 @@ function App() {
   // which stretch they are showing.
   const fixWindow = useMemo(
     () =>
-      elevation === null || fix === null
+      elevation === null || fixMile === null
         ? null
-        : ribbonWindow(elevation, fix.mile, direction?.direction),
-    [elevation, fix, direction],
+        : ribbonWindow(elevation, fixMile, travelDirection),
+    // Keyed on the mile and the settled direction, not the objects carrying
+    // them - see fixMile (#1111). The window slides with the mile, so holding
+    // its identity while the mile holds is what lets `ribbon` below hold too.
+    [elevation, fixMile, travelDirection],
   )
 
   /** The lanes' copy of the tier styling (#759's "highest-value surface"):
@@ -2014,9 +2043,10 @@ function App() {
   // pipeline-scale boundaries is the exact mixed measurement lib/route.ts
   // exists to prevent.
   const gpsPlanMile = useMemo(() => {
-    if (fix === null) return null
-    return anchoredMile(fix.mile, mileAnchors)
-  }, [fix, mileAnchors])
+    if (fixMile === null) return null
+    return anchoredMile(fixMile, mileAnchors)
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [fixMile, mileAnchors])
 
   /** The volunteer workdays on the map and the sheet over a tapped one -
    *  chrome/workdayPanel.tsx owns both (#327). Placed here rather than beside
@@ -2932,7 +2962,6 @@ function App() {
         hike={cardDayHike}
         resolved={cardResolution}
         bailOuts={cardBailOuts}
-        stewards={stewards}
         units={units}
         pace={pace}
         networkAvailable={graphIndex !== null}
@@ -2959,6 +2988,26 @@ function App() {
         }}
       />
     ) : null
+
+  /**
+   * The card for a hike that is already in the store, for every shelf that
+   * offers one.
+   *
+   * A REVIEW card is the builder continuing - Done hands frame `1l` the slot
+   * the pick bar just left, over the map, and it belongs nowhere else. What
+   * is below is the other act entirely: a hiker tapped a row on a shelf of
+   * saved hikes and asked what is on that walk.
+   *
+   * Named because there are now TWO such shelves and there was one renderer.
+   * #1054 put "Your day hikes" on the Today tab and wired its taps to
+   * `handleOpenDayHike`, which writes `openId` into the store - but the only
+   * things rendering that pointer were the Plan tab's own slot and the map's
+   * route sheet, and the route sheet only takes a review. So a tap on Today
+   * stored the pointer, re-ran the geometry fetch the card needs, and put
+   * nothing on screen: the store said a hike was open and every surface a
+   * hiker could see disagreed.
+   */
+  const savedDayHikeCardNode = dayHikeReview === null ? dayHikeCardNode : null
 
   /**
    * Which Plan home to show (#1008): the hiker's own last pick wins; until
@@ -3213,16 +3262,26 @@ function App() {
    * back to whatever it showed before, because there is nothing about today
    * for it to be wrong about.
    */
+  /**
+   * The followed walk's own shape, on its own axis - the expensive half, kept
+   * out of the memo below because that one has to re-run on every fix.
+   *
+   * A six-mile walk is about 390 samples at the pipeline's 25 m interval, and
+   * the ground does not change when the hiker moves along it. Recomputing it
+   * per GPS callback would undo exactly what #1111 measured and fixed one
+   * block down.
+   */
+  const followSamples = useMemo(() => {
+    const graph = dayHikeIndex ?? graphIndex
+    if (followResolution === null || graph === null || graphProfile === null) return null
+    return walkProfile(graph.graph, dayHikeWalk(graph, followResolution), graphProfile)
+  }, [followResolution, dayHikeIndex, graphIndex, graphProfile])
+
   const todaysWalk = useMemo<TodaysWalk | null>(() => {
     if (followingHike !== null) {
-      const graph = dayHikeIndex ?? graphIndex
-      const samples =
-        followResolution === null || graph === null || graphProfile === null
-          ? null
-          : walkProfile(graph.graph, dayHikeWalk(graph, followResolution), graphProfile)
       return {
         kind: 'route',
-        samples,
+        samples: followSamples,
         // The same accumulation the header prints and the turn list counts
         // down - lib/dayHikeWalk.ts's `beforeMetres`, read through
         // lib/dayHikeFollow.ts - so the rule under the ribbon lands on the
@@ -3244,15 +3303,7 @@ function App() {
     const to = plan.stops[today + 1]
     if (from === undefined || to === undefined || from.mile === to.mile) return null
     return { kind: 'trail', domain: { startMile: from.mile, endMile: to.mile } }
-  }, [
-    followingHike,
-    followResolution,
-    followState,
-    dayHikeIndex,
-    graphIndex,
-    graphProfile,
-    plan,
-  ])
+  }, [followingHike, followSamples, followState, plan])
 
   /**
    * The one ribbon the phone draws, whichever of the four it turns out to be
@@ -3273,20 +3324,28 @@ function App() {
         todaysWalk,
         planStretch: draftStretch,
         mapStretch,
-        fixClientMile: fix?.mile ?? null,
+        fixClientMile: fixMile,
         fixPlanMile: gpsPlanMile,
         fixWindow,
-        ...(direction?.direction === undefined ? {} : { direction: direction.direction }),
+        ...(travelDirection === undefined ? {} : { direction: travelDirection }),
       }),
+    // Keyed on the mile and the settled direction, not the objects carrying
+    // them - see fixMile (#1111). While every dep here holds, so does the
+    // ribbon's identity, and with it the ~640-sample rebuild in ribbonView,
+    // the lanes keyed on `ribbon` below, and ElevationRibbon's path memo.
+    //
+    // `todaysWalk` is memoized one block up and holds its identity across a
+    // GPS callback that moves nobody, so it belongs here on the same terms
+    // (#1045).
     [
       elevation,
       todaysWalk,
       draftStretch,
       mapStretch,
-      fix,
+      fixMile,
       gpsPlanMile,
       fixWindow,
-      direction,
+      travelDirection,
     ],
   )
 
@@ -4777,7 +4836,7 @@ function App() {
           title: sheet.title,
           summary: sheet.summary,
           status: sheetStatus(sheet),
-          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel),
+          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel, publishedSizes),
           error: sheetError(sheet),
           // Answered against the card's OWN status, not a second reading of
           // what is downloaded: this notice exists to contradict a card that
@@ -4811,7 +4870,7 @@ function App() {
           detail:
             sheet.id === USGS_SHEET.id
               ? {
-                  options: rasterDetailOptions(),
+                  options: rasterDetailOptions(publishedSizes),
                   value: detailLevel,
                   name: 'usgs-detail',
                   availableBytes,
@@ -4822,7 +4881,7 @@ function App() {
                 }
               : sheet.id === HIKING_SHEET.id
                 ? {
-                    options: hikingDetailOptions(),
+                    options: hikingDetailOptions(publishedSizes),
                     value: hikingLevel,
                     name: 'hiking-detail',
                     availableBytes,
@@ -4950,9 +5009,19 @@ function App() {
         <div>
           {/* Its own boundary like More's and Plan's, for their shared
               reason: a throw here must not cost the map, and the tab bar
-              underneath is the way back. */}
+              underneath is the way back. The card is inside it for that same
+              reason rather than beside it - a throw while resolving a saved
+              walk is a throw on this screen. */}
           <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
             {todayScreen}
+            {/* The details a row on "Your day hikes" promises. A sheet over
+                the journal, not a screen instead of it: the tab bar stays
+                put and closing returns to the row that was tapped. It docks
+                against this pane, which App.css makes `position: relative`
+                for exactly this - and `.today` is bounded to the pane's own
+                height, so `bottom: 0` is the bottom a hiker can see rather
+                than the bottom of a scrolled column. */}
+            {savedDayHikeCardNode}
           </ErrorBoundary>
         </div>
         <TabBar
@@ -5142,9 +5211,9 @@ function App() {
                 onDayListOpen={setDayListOpen}
                 dayHikes={dayHikeStore.hikes}
                 onOpenDayHike={handleOpenDayHike}
-                {...(dayHikeReview === null && dayHikeCardNode !== null
-                  ? { dayHikeCard: dayHikeCardNode }
-                  : {})}
+                {...(savedDayHikeCardNode === null
+                  ? {}
+                  : { dayHikeCard: savedDayHikeCardNode })}
                 onStartOnMap={openPlanKind}
                 onNewDayHike={openDayHike}
                 onNewTrip={routeBuilder.openRouteBuilder}
@@ -5310,7 +5379,18 @@ function App() {
               // stands aside - and the journal reads beside the map. Never during
               // first run, whose backdrop must stay bare down to the canvas.
               journal={
-                !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
+                !entering && isDesktop && activeTab === 'today' ? (
+                  <>
+                    {todayScreen}
+                    {/* The same card the phone's Today docks, in the column
+                        the row was tapped in rather than over the map beside
+                        it - the map's own sheet slot belongs to the builders
+                        and the trailhead door, and a shelf tap must not
+                        outrank a walk in progress there. desktop.css makes
+                        the column its containing block. */}
+                    {savedDayHikeCardNode}
+                  </>
+                ) : undefined
               }
               modeSwitch={sidebarModeSwitch}
               // The ask before this phone's map is replaced (#919). Undefined

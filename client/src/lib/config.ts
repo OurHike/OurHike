@@ -90,6 +90,35 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
 export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
 
 /**
+ * The waypoints those same organizations publish (#1097,
+ * pipeline/export_nearby_poi.py) — NYS DEC's lean-tos, primitive campsites and
+ * privies, NYS OPRHP's vistas, parking areas and trail bridges. 8,480 features
+ * on 2026-08-27, 0.37 MB gzipped.
+ *
+ * ONE KEY WITH MIXED `poi_type`s, where `poi_*.geojson` is one key per type,
+ * and the difference is deliberate rather than an inconsistency. That namespace
+ * carries the invariant *live rows of one poi_type* and the download list above
+ * is built from it; this is one more optional artifact alongside
+ * nearby_trails.geojson, read once. `readPois` already reads `poi_type` off
+ * each feature, so a mixed collection costs it nothing.
+ *
+ * Its features join the SAME map source ATC's waypoints feed, which is the one
+ * thing here that had to be got right: map/poiLayers.ts draws every waypoint
+ * through a single symbol layer because MapLibre's collision engine can only
+ * declutter symbols it places together, so a second source and a second layer
+ * would have stacked a DEC lean-to on top of an A.T. shelter. Joining the array
+ * instead means density, the legend's filters and POI_PRIORITY all keep working
+ * as one system.
+ *
+ * A 404 is an ordinary answer, the same reading nearby_trails.geojson gets: a
+ * release exported before the artifact existed, or a bucket a publish has not
+ * reached. It is also what a hiker sees while either steward's `reaches_hikers`
+ * is false — pipeline/publish.py holds the whole artifact back rather than
+ * publishing part of it.
+ */
+export const NEARBY_POI_KEY = 'nearby_poi.geojson'
+
+/**
  * The junction graph a day hike is routed over (#974, #975).
  *
  * Derived from NEARBY_TRAILS_KEY's own lines by
@@ -312,6 +341,7 @@ export function poiKey(type: PoiType): string {
 export const REFRESHABLE_KEYS: readonly string[] = [
   TRAILS_KEY,
   ...POI_TYPES.map(poiKey),
+  NEARBY_POI_KEY,
   SPURS_KEY,
   CLUB_SECTIONS_KEY,
   STEWARDS_KEY,

@@ -52,10 +52,20 @@ describe('hikerMode', () => {
     expect(await loadHikerMode()).toBe(DEFAULT_HIKER_MODE)
   })
 
+  it("reads the middle mode's old word as the same choice, not as garbage", async () => {
+    // #1127 renamed 'thru' to 'long'. Every phone that chose Thru-hike
+    // before that build still holds 'thru' in IndexedDB, and it names the
+    // choice Long hike now names - so it maps forward. Falling back to
+    // 'day' here would silently overwrite an explicit statement.
+    store.set(HIKER_MODE_KEY, 'thru')
+
+    expect(await loadHikerMode()).toBe('long')
+  })
+
   it('reads null and garbage as absent, not as an answer', async () => {
     expect(normaliseHikerMode(null)).toBe(DEFAULT_HIKER_MODE)
     expect(normaliseHikerMode(undefined)).toBe(DEFAULT_HIKER_MODE)
     expect(normaliseHikerMode(42)).toBe(DEFAULT_HIKER_MODE)
-    expect(normaliseHikerMode({ mode: 'thru' })).toBe(DEFAULT_HIKER_MODE)
+    expect(normaliseHikerMode({ mode: 'long' })).toBe(DEFAULT_HIKER_MODE)
   })
 })

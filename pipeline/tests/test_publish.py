@@ -316,8 +316,30 @@ def test_offline_sheet_archives_are_the_basemap_cuts_and_the_dem():
     assert publish.OFFLINE_SHEET_ARCHIVES == {
         "basemap": "at_basemap_package.pmtiles",
         "basemap_z13": "at_basemap_package_z13.pmtiles",
+        "basemap_z12": "at_basemap_package_z12.pmtiles",
         "dem": "dem.pmtiles",
+        "dem_light": "dem_light.pmtiles",
     }
+
+
+def test_each_hiking_level_has_a_basemap_cut_and_a_dem():
+    """The hiking sheet's levels are pairs, and the pairing is what a hiker
+    downloads. A level with one half published and the other missing is the
+    404-on-a-mountain packages.ts remembers - so the two families are held to
+    the same count rather than growing independently."""
+    basemaps = {k for k in publish.OFFLINE_SHEET_ARCHIVES if k.startswith("basemap")}
+    dems = {k for k in publish.OFFLINE_SHEET_ARCHIVES if k.startswith("dem")}
+
+    assert len(basemaps) == 3, f"three basemap cuts - light/standard/fine: {basemaps}"
+    assert len(dems) == 2, f"two DEM tapers - light and the one both other levels share: {dems}"
+
+
+def test_the_light_dem_is_not_named_as_a_zoom_capped_cut():
+    """R2_LAYOUT.md reserves `_z<maxzoom>` for an archive that really stops at
+    that zoom. The Light DEM is z0-13 like its sibling and narrows at the deep
+    end instead (#1088), so a `_z12` spelling would promise a ceiling that is
+    not there - and the additive-only merge means a wrong name is permanent."""
+    assert "z" not in publish.OFFLINE_SHEET_ARCHIVES["dem_light"].removesuffix(".pmtiles").split("_")[-1]
 
 
 def test_offline_sheet_archives_do_not_collide_with_the_raster_tiers():

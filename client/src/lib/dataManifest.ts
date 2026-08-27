@@ -104,17 +104,32 @@ export interface PublishedSnapshot {
    * What each artifact costs to fetch, in bytes on the wire, where the
    * manifest carries a figure.
    *
-   * `transfer_bytes` and never `size_bytes`, and the difference is the whole
-   * reason publish.py measures both: `size_bytes` is the DECODED size, and the
-   * text artifacts are served gzipped, so it is about 3x what a phone actually
-   * spends (trails.geojson is 12 MB decoded and 4.1 MB on the wire, measured
-   * 2026-08-21). This number is shown to a hiker deciding whether to spend it
-   * on mobile data, so the decoded size is not a cautious version of it - it is
-   * a wrong one.
+   * `transfer_bytes` wherever the manifest carries one, because that is what
+   * publish.py measured on the wire. `size_bytes` is the DECODED size, and the
+   * text artifacts are served gzipped, so it is about 4x what a phone actually
+   * spends (the eleven first-launch artifacts are 21.5 MB served against 5.3 MB
+   * gzipped, measured 2026-08-15 in pipeline/lib/content_types.py). This number
+   * is shown to a hiker deciding whether to spend it on mobile data, so the
+   * decoded size is not a cautious version of it - it is a wrong one.
    *
-   * Absent for an artifact published before #919 measured it. A caller adding
-   * these up is adding up what it knows and must say so rather than falling
-   * back to the figure that overstates.
+   * FOR AN ARCHIVE THE BUCKET STORES UNCOMPRESSED, `size_bytes` IS THE SAME
+   * MEASUREMENT and is used where no `transfer_bytes` was published. That is
+   * not a guess: content_types.py leaves `.pmtiles` and `.fgb` out of
+   * COMPRESSIBLE_TYPES deliberately - they are read by byte range, and a stored
+   * Content-Encoding would make ranges refer to compressed offsets and break
+   * both the archive reader and a resumed download - so stored and served are
+   * the same bytes by construction.
+   *
+   * It matters because those are exactly the artifacts whose size a hiker is
+   * shown before the biggest download the app asks for, and `transfer_bytes`
+   * only exists on artifacts uploaded since #919: measured against UA on
+   * 2026-08-27, all 131 entries carried `size_bytes` and 6 carried
+   * `transfer_bytes`, none of them an archive. Without this the map archives
+   * would have kept reading their hand-kept constants forever.
+   *
+   * Still absent for a gzipped text artifact published before #919, and that
+   * omission is deliberate: there is no honest download figure for one, and the
+   * decoded size is the wrong answer rather than a rough one.
    */
   sizes: Record<string, number>
   /** Every artifact's change grade, where this release describes one. */
@@ -179,6 +194,13 @@ function changeIn(entry: ArtifactEntry | undefined): ArtifactChange | null {
   return { severity, added, removed, moved, edited }
 }
 
+/** The extensions publish.py uploads untouched - pipeline/lib/content_types.py's
+ *  BINARY_TYPES, which is defined as everything COMPRESSIBLE_TYPES is not. For
+ *  these, and only these, the stored size and the transferred size are the same
+ *  number. Kept as a literal rather than inferred, so adding a compressed type
+ *  cannot quietly start overstating a download by 4x. */
+const STORED_UNCOMPRESSED = ['.pmtiles', '.fgb']
+
 function snapshotInto(manifest: DataManifest): PublishedSnapshot {
   const hashes: Record<string, string> = {}
   const sizes: Record<string, number> = {}
@@ -189,6 +211,11 @@ function snapshotInto(manifest: DataManifest): PublishedSnapshot {
     const hash = lookup(key)
     if (hash !== null) hashes[key] = hash
     if (isCount(entry?.transfer_bytes)) sizes[key] = entry.transfer_bytes
+    else if (
+      isCount(entry?.size_bytes) &&
+      STORED_UNCOMPRESSED.some((ext) => key.endsWith(ext))
+    )
+      sizes[key] = entry.size_bytes
     const change = changeIn(entry)
     if (change !== null) changes[key] = change
   }

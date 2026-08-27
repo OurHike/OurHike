@@ -13,6 +13,14 @@
 // this canvas - and a second recipe reaching the same screen would be the
 // gallery .claude/skills/pr-screenshot/SKILL.md warns against.
 //
+// Re-pointed again 2026-08-27 (#1097), and for the third time rather than
+// copied, per README.md's "reuse one by touching it": that change puts NYS
+// DEC's and NYS OPRHP's 8,480 waypoints onto THIS canvas, through the same
+// single symbol layer ATC's already draw through (map/poiLayers.ts draws one
+// layer because MapLibre can only declutter symbols it places together). So it
+// is the same screen again, and a fourth recipe reaching it would be the
+// gallery SKILL.md warns against.
+//
 // WHAT THIS SHOT CANNOT SHOW, and the reason it is pointed here anyway. The
 // preview build carries an empty `VITE_DATA_BASE_URL` (#1024), so no release
 // artifacts arrive, so there are no ATC notices on the canvas to photograph -
@@ -21,6 +29,17 @@
 // day #1024 is fixed. Until then the evidence for the mark itself is measured
 // off the rendered image in map/atcNoticeMark.test.ts, and the pull request's
 // `## Screenshot` section says so rather than letting this stand in for it.
+//
+// #1097 sits behind the SAME wall and one more: even with a data source, that
+// artifact is `nearby_poi.geojson`, which no release has published yet, and
+// its waypoints are in New York State while this shot opens on the A.T. So
+// what would eventually appear here is more pins, not a different screen - the
+// legend is unchanged (the same eight categories), the card is unchanged, and
+// the one genuinely new card STATE is an OPRHP waypoint at low confidence,
+// which draws a broken rim. Until a release carries the artifact, the evidence
+// is lib/trailData.test.ts's four cases for the download, the merge, the
+// low-confidence carry and the 404 - and export_nearby_poi.py's own output for
+// what is in it.
 export const caption = 'The map screen'
 export const alt =
   'The map screen: a floating identity plate over the canvas, and the next-up band along the foot'

@@ -1,4 +1,7 @@
-// The "today I'm…" control (#1054): Day hike · Thru-hike · Volunteer.
+// The "today I'm…" control (#1054): Day hike · Long hike · Volunteer.
+// The middle segment said Thru-hike until #1127: it serves everyone living
+// on the trail - thru, section, LASH, flip-flop - and a section hiker five
+// years into the whole trail could not honestly tap the old word.
 //
 // ALL THREE SEGMENTS, ALWAYS RENDERED. This is a product decision, not a
 // layout preference: the redesign took Volunteer out of the tab bar on the
@@ -20,7 +23,7 @@ import './modeSwitch.css'
 
 const MODE_LABELS: Record<HikerMode, string> = {
   day: 'Day hike',
-  thru: 'Thru-hike',
+  long: 'Long hike',
   volunteer: 'Volunteer',
 }
 

@@ -145,14 +145,14 @@ export interface MoreProps extends SettingsProps {
 }
 
 /**
- * The You row's word for each mode - a state ("thru-hiking"), where
- * chrome/ModeSwitch.tsx's labels are choices ("Thru-hike"). Two records
+ * The You row's word for each mode - a state ("on a long hike"), where
+ * chrome/ModeSwitch.tsx's labels are choices ("Long hike"). Two records
  * because they are two sentences, but both are keyed by HikerMode, so a mode
  * added there without a phrase here is a type error rather than a blank row.
  */
 const MODE_PHRASE: Record<HikerMode, string> = {
   day: 'day hiking',
-  thru: 'thru-hiking',
+  long: 'on a long hike',
   volunteer: 'volunteering',
 }
 

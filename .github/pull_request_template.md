@@ -39,6 +39,17 @@ Which of `npm test` / `pytest` / `ruff` / a real device on a real trail, and
 what the result was. New behaviour comes with tests — see TESTING.md.
 -->
 
+## Data pipelines
+
+<!--
+Run scripts/pipelines.sh. If every publishing path is fresh, delete this
+section. If anything is STALE, paste the verdict here and say who arranges
+the rerun - the merged data going quietly stale is the dropped handoff this
+section exists to prevent (#1123). CLAUDE.md, "A pipeline change is not
+finished at the merge", is the rule; production promotion is never part of
+it - that is the release train's.
+-->
+
 ## Docs
 
 <!--

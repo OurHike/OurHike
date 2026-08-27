@@ -73,7 +73,7 @@ Three shelves, and picking the wrong one is the one mistake that cannot be undon
 | `privies` | A.T. Privies | 316 | Point | Found via the FeatureServer root, not the public map |
 | `at_treadway` | A.T. Treadway | 30 | ? | Found via the FeatureServer root - not yet checked how this differs from `centerline` |
 
-**Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them.
+**Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them. **Every POI a hiker sees was ATC's until 2026-08-27**, and what the other four orgs on the map publish for each of the eight types is surveyed and counted in [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md) (snapshot dated 2026-08-27, re-runnable via `spike_org_poi_coverage.py`), with the verdicts carried machine-readably in `sources.json`'s `poi_coverage` block. Headline: OPRHP publishes something for all eight types and DEC for six, both inside maintenance-asset inventories rather than POI layers. **`export_nearby_poi.py` now ships twelve of those cells** — 8,480 waypoints as `nearby_poi.geojson`, the sibling of `nearby_trails.geojson` and gated by the same per-source `reaches_hikers` check ([#1097](https://github.com/OurHike/OurHike/issues/1097)). Neither org's water is among them: DEC's is a measured refusal (`dec_water_holdback`), OPRHP's a holdback pending the seasonality its layer does not record (`oprhp_water_holdback`).
 
 **Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is the resupply layer, and **it is now the whole of it** — `fetch_opentrail.py` (below) was the intended fill until [#806](https://github.com/OurHike/OurHike/issues/806) measured its `r` tag and found roads and gaps rather than shops, so that gap is open again. For water opentrail is one of two — `fetch_osm_water.py` (below, [#529](https://github.com/OurHike/OurHike/issues/529)) took the corridor's water layer from 174 points to 1,705.
 
@@ -408,7 +408,19 @@ The vector-first offline program — design, trade-offs and build numbers in
 - `extract_package.py` — cuts a trail's download package from that build;
   keeps every source tile through z9 so packages carry their own context.
 - `export_dem.py` — the corridor DEM: terrarium tiles fetched, blue channel
-  floored to 0.5 m, lossless WebP, PMTiles.
+  floored to 0.5 m, lossless WebP, PMTiles. Its corridor **tapers with zoom**
+  since [#1088](https://github.com/OurHike/OurHike/issues/1088) — 30 miles
+  through z11, 15 at z12, 6 at z13 (`CORRIDOR_TAPER_MILES`) — because a mile of
+  buffer costs 1.36 MB at z11 and 12.37 MB at z13, measured. Below z10 it stops
+  clipping entirely (`CONTEXT_ZOOM = 9`, the boundary `extract_package.py`
+  already draws) so panning out shows terrain rather than a ribbon in blank
+  paper — +26.5 MB, against +435.5 MB had that reached z11. Both the schedule
+  and the context zoom travel in the archive's metadata, so
+  `check_dem_archive.py` holds a build to its own declared shape rather than to
+  whatever the constants say today. **Built and measured at the shipped
+  schedule** ([run 33065213666](https://github.com/OurHike/OurHike/actions/runs/33065213666),
+  2026-08-27): 8,658 tiles, **275.6 MB** against the untapered 607.3 — 54.6% off
+  the DEM and 42.0% off the Standard hiking sheet.
 - `check_dem_archive.py` — the DEM's publish gate: complete regional
   coverage, every tile decodes, header and metadata say what they must.
 - `spike_dem_banding.py` — the rendered evidence behind the 0.5 m step.
@@ -419,8 +431,15 @@ The vector-first offline program — design, trade-offs and build numbers in
 twice-guarded `publish` inputs, upload the archives; `package-overlap-spike.yml`
 runs the overlap measurement. First published 2026-08-06.
 
-Measured per-zoom, `dem.pmtiles` as published (z0–13, 0.5 m quantize,
-21,758 tiles, none absent — 607,265,661 bytes total):
+Measured per-zoom, `dem.pmtiles` **as it was before the taper** (z0–13, 0.5 m
+quantize, 21,758 tiles, none absent — 607,265,661 bytes total). This archive is
+no longer published and the client no longer advertises it: #1088 replaced it
+on 2026-08-27 with a corridor tapered 30/15/6 miles by zoom, 8,658 tiles and
+275,601,483 bytes, which is what is in the bucket now. The table is kept
+because it is the shape the taper was designed against — z13 alone is 65% of
+the untapered bytes, which is why buying width there rather than at z11 was the
+lever — and [LIGHT_DOWNLOAD.md](LIGHT_DOWNLOAD.md) carries that reasoning and
+its evidence. [BASEMAP.md](BASEMAP.md) carries what is published today.
 
 | zoom | tiles | MB |
 |---|---|---|
@@ -429,13 +448,14 @@ Measured per-zoom, `dem.pmtiles` as published (z0–13, 0.5 m quantize,
 | 12 | 4,176 | 138.9 |
 | 13 | 15,932 | 397.6 |
 
-`at_basemap_package.pmtiles` as published: 83,818 tiles, 532,459,439 bytes —
-per-zoom in [BASEMAP.md](BASEMAP.md)'s measured results. Its z13-capped
-sibling `at_basemap_package_z13.pmtiles` (21,721 tiles, 182,286,799 bytes)
-is the hiking sheet's Standard level (#276). With the DEM the sheet is
-≈ 790 MB at Standard and ≈ 1.14 GB at Fine (`client/src/lib/packages.ts`
-composing `lib/hikingDetail.ts`, sizes exact to the byte against these
-artifacts).
+The basemap is cut three ways, one per hiking level: `at_basemap_package.pmtiles`
+(z0–14, Fine), `at_basemap_package_z13.pmtiles` (Standard) and
+`at_basemap_package_z12.pmtiles` (Light, #1107). With each level's DEM the sheet
+is **257.7 MB at Light, 458.4 MB at Standard and 809.5 MB at Fine** —
+`client/src/lib/packages.ts` composing `lib/hikingDetail.ts`, exact to the byte
+against the published artifacts. [BASEMAP.md](BASEMAP.md) carries the per-zoom
+breakdown and the published byte counts; keeping them in one place is why they
+are not repeated here.
 
 ## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 

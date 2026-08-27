@@ -282,6 +282,13 @@ notes, run the gate, open the pull request, create the GitHub release **as a dra
 Publishing the draft is a human action. [RELEASING.md](RELEASING.md) is the full
 process — §12 is this rule with its mechanism.
 
+The *order* to do all of that in is written once, as
+[`.claude/skills/release-train/SKILL.md`](.claude/skills/release-train/SKILL.md): when
+the maintainer asks for a release, run the train. It dispatches every job and hands the
+maintainer each approve, merge and publish click at the moment it is ready — the line
+above moves not an inch, the train just stops anyone having to remember what is on
+either side of it.
+
 ## Do not merge `main` in just to be current
 
 **Being behind `main` is not a defect, and catching up is not part of finishing the work.**
@@ -318,6 +325,56 @@ derived things go", so a 20,099-line derivation went in with a docstring explain
 belonged there. Every sentence of that explanation was about *reproducibility*, and none of
 it noticed that the file was a permanent publication of somebody else's data. The maintainer
 caught it in review. `.github/tests/test_no_committed_data.py` catches it now.
+
+## A pipeline change is not finished at the merge
+
+**The suites prove your change is correct. Nothing about the merge makes it what hikers
+download.** Publishing is never a side effect of a merge, deliberately — the publishing
+workflows run on dispatch (one on its own schedule), never on a push — so a pull
+request that changes what an exporter produces merges green and leaves the bucket
+describing the code before it, until somebody reruns the workflow that carries it. "Somebody" has repeatedly turned out to
+be nobody, because the session that knew a rerun was needed ended before the merge
+happened. That is the dropped handoff
+**[#1123 — The publish a merged change stales is dropped at the handoff, and the release
+order lives in nobody's file](https://github.com/OurHike/OurHike/issues/1123)** exists
+to end, and this section is the rule that ends it.
+
+On every pull request, before opening it:
+
+```
+scripts/pipelines.sh
+```
+
+It answers which publishing paths this branch stales — scopes derived from the
+workflow files themselves, imports chased, the same one-home argument as
+`scripts/test.sh` — and what each one needs. If everything is fresh, delete the pull
+request template's `## Data pipelines` section and move on. If anything is `STALE`,
+**the section carries the verdict**, so the handoff exists in the one place that
+survives the session: the pull request a reviewer and the next session will both read.
+
+Then follow through. Your session watches its own pull request, so the merge arrives
+as an event:
+
+- **Dispatch each staled dispatchable path with `data_environment: ua` and
+  `publish: true`**, and tell the maintainer an approval is waiting. Within the hour —
+  a pending approval is cancelled by the next hourly conditions bake
+  (`publish-vector-data.yml`'s header has the measurement). If it dies unapproved,
+  re-dispatch; do not shrug.
+- The script's other two answers need nothing: a path whose schedule reruns it from
+  `main`, and the withdrawn raster build (#855).
+- **Never `data_environment: production` from pull-request follow-up.** UA is what
+  keeps `main` testable; production is a promotion, and promotions belong to the
+  release train below. The same asymmetry as migrations: UA follows the merge
+  automatically, production waits for a deliberate act.
+
+If the session ends before the merge, the pull request section *is* the handoff — that
+is why it is written there and not said in chat.
+
+The publishes cost real money and hours, so this is one place the "when unsure, run
+it" rule deliberately inverts: `scripts/pipelines.sh` answers `unclaimed` for a file
+it cannot place rather than demanding five dispatches, and an unclaimed file is yours
+to decide and to say in the section. An honest unknown outranks a confident answer
+here exactly as it does on the safety paths.
 
 ## Run what CI runs, before pushing
 

@@ -28,11 +28,10 @@
 // the path arithmetic for nothing: the SVG is a shape, and a shape has no
 // units.
 
+import { useMemo } from 'react'
 import { naismithTime } from '../lib/naismith'
+import { pctAlong, ribbonGeometry, VIEW_H, VIEW_W } from '../lib/ribbonGeometry'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
-
-const VIEW_W = 100
-const VIEW_H = 40
 
 /** Written out one per line, so each has to be read as the claim it is. */
 const SUBJECT_LABELS: Record<RibbonSubject, string> = {
@@ -152,11 +151,6 @@ export interface ElevationRibbonProps {
   units?: UnitSystem
 }
 
-function pctAlong(mile: number, startMile: number, endMile: number): number {
-  const span = endMile - startMile
-  return span === 0 ? 0 : ((mile - startMile) / span) * 100
-}
-
 export function ElevationRibbon({
   samples,
   currentMile,
@@ -169,59 +163,16 @@ export function ElevationRibbon({
   const startMile = domain?.startMile ?? samples[0]?.mile ?? 0
   const endMile = domain?.endMile ?? samples[samples.length - 1]?.mile ?? 0
 
-  const elevations = samples.map((s) => s.elevationFt)
-  const minFt = Math.min(...elevations)
-  const maxFt = Math.max(...elevations)
-
-  // A flat window makes max === min. Dividing by that range would put NaN into
-  // the path, which renders as nothing at all - so a flat profile is drawn as
-  // a flat line down the middle instead.
-  const range = maxFt - minFt
-  const yFor = (ft: number) =>
-    range === 0 ? VIEW_H / 2 : VIEW_H - ((ft - minFt) / range) * VIEW_H
-
-  // ONE SUBPATH PER RUN OF SAMPLES, split at every `partStart`. With no marker
-  // anywhere - which is every ribbon that existed before #1045 - this is one
-  // run and one subpath, and the output is byte-for-byte what it always was.
-  const runs: ElevationSample[][] = []
-  for (const sample of samples) {
-    if (runs.length === 0 || sample.partStart === true) runs.push([])
-    runs[runs.length - 1].push(sample)
-  }
-
-  const pointsPath = runs
-    .map((run) =>
-      run
-        .map((s, i) => {
-          const x = pctAlong(s.mile, startMile, endMile)
-          return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${yFor(s.elevationFt).toFixed(2)}`
-        })
-        .join(' '),
-    )
-    .join(' ')
-
-  // Closing back along the baseline is what makes this a shaded area rather
-  // than a bare line. It closes under the LINE's own ends rather than under
-  // the ribbon's: with no domain given those are the same two x values, and
-  // where a domain leaves the samples short of an edge, shading out to it
-  // would fill ground the DEM never covered.
-  //
-  // Per run, for the same reason the line breaks: shading a single area across
-  // a break would fill the gap the break exists to leave empty, which is the
-  // one thing this whole marker is for.
-  const areaPath = runs
-    .map((run) => {
-      const runLine = run
-        .map((s, i) => {
-          const x = pctAlong(s.mile, startMile, endMile)
-          return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${yFor(s.elevationFt).toFixed(2)}`
-        })
-        .join(' ')
-      const from = pctAlong(run[0].mile, startMile, endMile)
-      const to = pctAlong(run[run.length - 1].mile, startMile, endMile)
-      return `${runLine} L${to.toFixed(2)},${VIEW_H} L${from.toFixed(2)},${VIEW_H} Z`
-    })
-    .join(' ')
+  // The one expensive part of this render - the min/max scan and the two
+  // ~640-point path strings (lib/ribbonGeometry.ts). Memoized because the
+  // shell re-renders once per GPS callback while a phone sits still (#1100),
+  // reaching here with these three props unchanged (#1111): the mile rule and
+  // the labels may move without the drawn ground changing, and the ground is
+  // all this computes.
+  const { minFt, maxFt, pointsPath, areaPath } = useMemo(
+    () => ribbonGeometry(samples, startMile, endMile),
+    [samples, startMile, endMile],
+  )
 
   // Only where the fix genuinely falls inside what is drawn. Outside it the
   // rule would be clamped to an edge by the SVG viewport and read as "you are

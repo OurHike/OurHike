@@ -30,11 +30,18 @@
 // AND A THIRD: A LEVEL THIS PHONE HAS NO ROOM FOR (#555).
 //
 // Every browser on iOS is WebKit, whose per-origin allowance starts around a
-// gigabyte and prompts beyond it. The Fine raster tier is 1.18 GB and the hiking
-// sheet at Fine is 1.14 GB, so both are over before the origin is holding
-// anything else - and nothing in the download path branched on platform, so the
-// rung was offered with a size and a radio button on a phone that could never
-// store it. #547 made the tap a truthful refusal in about 30 ms instead of a
+// gigabyte and prompts beyond it. The Fine raster tier is 1.18 GB, over that
+// before the origin is holding anything else - and nothing in the download path
+// branched on platform, so the rung was offered with a size and a radio button
+// on a phone that could never store it.
+//
+// THE HIKING SHEET AT FINE NO LONGER IS, and the change is worth naming rather
+// than quietly dropping: it was 1.14 GB when this was written, and the corridor
+// taper (#1088) brought it to 809.5 MB. That does not make this check
+// redundant - it is a reading of what the browser says is free, never a
+// threshold anybody typed, so a phone already holding a raster tier still fails
+// it. What changed is that the default sheet's own worst case now fits where it
+// did not. #547 made the tap a truthful refusal in about 30 ms instead of a
 // wasted transfer, which is a real improvement over spending someone's data and
 // still worse than not offering a rung that cannot work.
 //
@@ -51,8 +58,13 @@
 // absent API.
 
 import { DOWNLOAD_DETAIL_LEVELS, type DetailLevel } from '../lib/downloadDetail'
-import { HIKING_DETAIL_LEVELS } from '../lib/hikingDetail'
-import { hikingSheetSizeBytes } from '../lib/packages'
+import { offeredHikingDetails } from '../lib/hikingDetail'
+import {
+  CORRIDOR_BACKGROUND_PACKAGE,
+  hikingSheetSizeBytes,
+  packageSizeBytes,
+} from '../lib/packages'
+import { NO_PUBLISHED_SIZES, type PublishedSizes } from '../lib/usePublishedSizes'
 import { formatBytes } from '../lib/formatBytes'
 
 export interface DetailOption {
@@ -79,13 +91,23 @@ const LEVEL_LADDER: ReadonlyArray<{ id: DetailLevel; label: string }> = [
 
 /** The USGS raster's tiers, sizes from downloadDetail.ts. Published at all
  *  three, so nothing here is greyed. */
-export function rasterDetailOptions(): DetailOption[] {
+export function rasterDetailOptions(
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
+): DetailOption[] {
   return LEVEL_LADDER.map(({ id, label }) => {
     const detail = DOWNLOAD_DETAIL_LEVELS.find((level) => level.level === id)
     return {
       id,
       label,
-      sizeBytes: detail?.sizeBytes ?? null,
+      // Priced through the package rather than off the tier table, so the
+      // bucket's own figure wins where latest.json carries one and the tier
+      // table is the fallback (#505). Same resolution the hiking sheet gets
+      // below - one path, so the two ladders cannot drift into disagreeing
+      // about where a size comes from.
+      sizeBytes:
+        detail === undefined
+          ? null
+          : packageSizeBytes(CORRIDOR_BACKGROUND_PACKAGE, id, 'standard', published),
       recommended: detail?.recommended ?? false,
     }
   })
@@ -96,18 +118,26 @@ export function rasterDetailOptions(): DetailOption[] {
  * that level - the basemap cut plus the DEM - because that is the number a
  * hiker weighs against their storage, not one archive's share of it.
  *
- * Light comes back with a null size: the pipeline cuts the basemap at z13
- * and z14 and nothing below (lib/hikingDetail.ts), so there is no lighter
- * hiking sheet to offer. It is still drawn, greyed, rather than left out -
+ * A level comes back with a null size when it is not OFFERED - either the
+ * ladder has a rung this sheet has no level for at all, or the level exists in
+ * the catalog but its artifacts are not in the bucket yet (hikingDetail.ts's
+ * `published`, the same 404-on-a-mountain rule packages.ts's `source: null`
+ * enforces one level up). Light was the second case between #1088, which named
+ * its artifacts, and #1107, which built them; all three rungs are priced today.
+ * Either way an unoffered rung is still drawn, greyed, rather than left out -
  * see the header.
  */
-export function hikingDetailOptions(): DetailOption[] {
+export function hikingDetailOptions(
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
+): DetailOption[] {
+  const offered = offeredHikingDetails()
   return LEVEL_LADDER.map(({ id, label }) => {
-    const detail = HIKING_DETAIL_LEVELS.find((level) => level.level === id)
+    const detail = offered.find((level) => level.level === id)
     return {
       id,
       label,
-      sizeBytes: detail === undefined ? null : hikingSheetSizeBytes(detail.level),
+      sizeBytes:
+        detail === undefined ? null : hikingSheetSizeBytes(detail.level, published),
       recommended: detail?.recommended ?? false,
     }
   })

@@ -154,6 +154,25 @@ jobs:
             --out data/processed/at_basemap_package_z13.pmtiles \
             --name "OurHike AT corridor basemap (z13)"
 
+      # The Light level (#1088/#1107): the same cut capped at z12. The taper
+      # narrowed Standard's TERRAIN and left both rungs carrying the same
+      # 182.6 MB of vector basemap, so Light was only ~93 MB below Standard -
+      # thin for a choice a hiker has to understand. This is the other ~107 MB.
+      #
+      # Safe where the DEM's z12 cap was not, and the asymmetry is measured
+      # rather than assumed: BASEMAP.md's own finding is that MapLibre
+      # overzooms z13 VECTOR cleanly, where the same cap on the raster-dem
+      # measured worse than a quantize step already rejected
+      # (pipeline/LIGHT_DOWNLOAD.md). Geometry and labels survive
+      # magnification; a hillshade computed from magnified elevation does not.
+      - name: Cut the z12 package from the build
+        run: |
+          python extract_package.py data/processed/basemap.pmtiles \
+            --region data/processed/basemap_region.geojson \
+            --max-zoom 12 \
+            --out data/processed/at_basemap_package_z12.pmtiles \
+            --name "OurHike AT corridor basemap (z12)"
+
       # The 50-mile stretch units (#556): the corridor package partitioned
       # by calibrated trail-mile, plus one shared context archive and the
       # coverage index. Cut from the package rather than the build because
@@ -180,6 +199,7 @@ jobs:
           report_archive(Path('data/processed/basemap.pmtiles'))
           report_archive(Path('data/processed/at_basemap_package.pmtiles'))
           report_archive(Path('data/processed/at_basemap_package_z13.pmtiles'))
+          report_archive(Path('data/processed/at_basemap_package_z12.pmtiles'))
           " | tee measure.txt
           {
             echo "## Basemap build"
@@ -208,6 +228,7 @@ jobs:
           path: |
             pipeline/data/processed/at_basemap_package.pmtiles
             pipeline/data/processed/at_basemap_package_z13.pmtiles
+            pipeline/data/processed/at_basemap_package_z12.pmtiles
             pipeline/data/processed/at_basemap_stretch_*.pmtiles
             pipeline/data/processed/at_basemap_context.pmtiles
             pipeline/data/processed/at_basemap_stretches.json

@@ -35,7 +35,7 @@ function props(overrides: Partial<TodayProps> = {}): TodayProps {
     online: false,
     hasGpsFix: true,
     lastSyncedAt: new Date(2026, 7, 23),
-    mode: 'thru',
+    mode: 'long',
     onChangeMode: vi.fn(),
     pois: POIS,
     currentMile: 712.4,
@@ -206,7 +206,7 @@ describe('the journal column', () => {
 
 describe('the volunteer card', () => {
   it('renders in every mode - that is the deal the tab removal was made on', () => {
-    for (const mode of ['day', 'thru', 'volunteer'] as const) {
+    for (const mode of ['day', 'long', 'volunteer'] as const) {
       const { unmount } = render(<Today {...props({ mode })} />)
       expect(
         screen.getByText('Volunteer', { selector: '.today__volunteer-eyebrow' }),

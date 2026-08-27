@@ -129,6 +129,12 @@ describe('rollupByPoi', () => {
     const rollups = rollupByPoi([here, there, nowhere], NOW)
 
     expect([...rollups.keys()].sort()).toEqual(['atc_shelters:9', 'osm_water:123'])
-    expect(rollups.get('atc_shelters:9')?.headline?.text).toContain('Fine')
+    // "Good shape" rather than "Fine" since #1122 - the stored value is
+    // unchanged and only what it READS BACK as moved. Asserted on the word
+    // rather than on the key alone because it is what proves the headline was
+    // built from the SHELTER's note: the spring's says something else, and a
+    // grouping that put the wrong note under the right key would pass the
+    // line above.
+    expect(rollups.get('atc_shelters:9')?.headline?.text).toContain('Good shape')
   })
 })

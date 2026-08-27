@@ -3833,12 +3833,13 @@ function App() {
    * A report that starts from a place card carries the place (FIELD_NOTES.md
    * step 1): the escalation after a problem-shaped tap, and the card's own
    * "report a problem here". With a type it goes straight to the form -
-   * `damaged` names shelter_repair - and without one it opens the picker,
-   * because no report type is "a dry spring" and pre-picking a wrong one
-   * would file a flooding report about the absence of water.
+   * `damaged` names shelter_repair and `trash` names the report type of the
+   * same name (#1122) - and without one it opens the picker, because no
+   * report type is "a dry spring" and pre-picking a wrong one would file a
+   * flooding report about the absence of water.
    */
   const handleReportFromPoi = useCallback(
-    (anchor: ReportAnchor, type?: 'shelter_repair') => {
+    (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => {
       setSelectedPoiId(null)
       setReporting(
         type === undefined ? { step: 'pick', anchor } : { step: 'form', type, anchor },
@@ -3970,9 +3971,19 @@ function App() {
   )
 
   /**
-   * Today's walked-past water, shelters, campsites and resupply, oldest mile
-   * first - the Volunteer tab's list (lib/passedToday.ts). Names come from
-   * the same searchable index every other list reads.
+   * Today's walked-past water, shelters, campsites, resupply and - since
+   * #1122 - trailhead parking, oldest mile first: the Volunteer tab's list
+   * (lib/passedToday.ts). Names come from the same searchable index every
+   * other list reads.
+   *
+   * PARKING ARRIVED HERE AS A CONSEQUENCE RATHER THAN A DECISION, which is
+   * worth saying because it is a visible change nobody asked for directly:
+   * the list is built from NOTE_SCOPED_TYPES, so bringing parking into the
+   * ask brought it into the evening list too. Left that way on purpose. The
+   * alternative is a second, narrower list of types here, and then the app
+   * holds two answers to "what do we ask about" - a hiker who can file a note
+   * on a lot from its card but cannot find that lot in the list of places
+   * they passed is being told two different things by one feature.
    */
   const passedPlacesToday = useMemo(
     () =>

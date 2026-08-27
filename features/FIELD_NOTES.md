@@ -406,10 +406,20 @@ FieldNote                        (new — supersedes DATA_NUDGES.md's ConditionC
   poi_id           soft string ref, "atc_shelters:<GlobalID>" — nullable, no FK
                      (the precedent is backend/app/models/report.py's own poi_id)
   lat, lon, mile   fallback anchor, and what re-anchors an orphan
-  observation      optional tag, by poi_type:
-                     water     flowing | trickling | dry | not_found
-                     shelter   fine | damaged | full | not_found
-                     resupply  open | limited | closed | not_found
+  observation      optional tag, by poi_type (#1122 for the last three rows):
+                     water     flowing | trickling | dry      | not_found
+                     shelter   fine    | damaged   | trash    | not_found
+                     campsite  fine    | damaged   | trash    | not_found
+                     resupply  open    | limited   | closed   | not_found
+                     parking   open    | full      | trash    | not_found
+                   Four each, which is what the card's two-per-row grid holds.
+                   `full` left the shelter row and landed on parking: capacity
+                   is a fact at a trailhead and a guess at a shelter. It stays
+                   in the server's enum either way — an old client still sends
+                   it, and a narrowed request enum is a break, not a tidy-up.
+                   The pair the PEEK carries is named per type rather than read
+                   off the ends of these rows; client/src/lib/fieldNotes.ts's
+                   QUICK_ANSWERS is that table and the reasoning.
   note             optional free text, length-capped
   observed_at      when the hiker was there
   posted_at        when it reached the backend

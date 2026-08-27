@@ -39,10 +39,13 @@
 import { useEffect, useId, useState } from 'react'
 import {
   OBSERVATION_OPTIONS,
+  QUICK_ANSWERS,
   escalationFor,
   isNoteScopedType,
   observationLabel,
   peekObservations,
+  pickGoodWord,
+  pickNotedOpener,
   type FieldNoteDraft,
   type NoteObservation,
   type NoteSummary,
@@ -99,7 +102,7 @@ export interface FieldNoteContext {
   onAddNote: (draft: FieldNoteDraft, photo?: Blob) => void
   /** Open the report flow anchored here - the escalation's hand-off, and
    *  the card's own "report a problem" entry. */
-  onReportProblem: (anchor: ReportAnchor, type?: 'shelter_repair') => void
+  onReportProblem: (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => void
   now: Date
 }
 
@@ -133,6 +136,13 @@ export interface FieldNoteSectionProps {
  *  server's per-place few anyway, so this is a display cap, not a claim. */
 const NOTES_SHOWN = 3
 
+/** One card's worth of rotation: which good word, and which acknowledgement
+ *  opener. Carries the waypoint it was rolled for, which is what lets the
+ *  component tell "same card, re-rendered" from "different card". */
+function rollRotation(poiId: string) {
+  return { poiId, good: Math.random(), opener: Math.random() }
+}
+
 export function FieldNoteSection({
   poiId,
   poiType,
@@ -154,6 +164,34 @@ export function FieldNoteSection({
   // The observation just filed, so the section can acknowledge it and offer
   // the escalation. Reset when the card swaps to another part.
   const [filed, setFiled] = useState<NoteObservation | null>(null)
+  // THE ROTATION, PICKED ONCE PER WAYPOINT AND HELD (#1122). Two rules make
+  // this state rather than an expression:
+  //
+  //   - The peek and the opened card are THIS component at two heights, and
+  //     a shelter whose peek says "All good" and whose opened card says
+  //     "No complaints" reads as two different questions being asked.
+  //   - Re-rolling on every render would change the word under a hiker's
+  //     thumb - a photo finishing its shrink, a note arriving, the clock
+  //     ticking `now` forward - which is a button that moves while it is
+  //     being pressed.
+  //
+  // RESET DURING RENDER RATHER THAN IN THE EFFECT BELOW, and that is the one
+  // surprising line in this file, so: React's documented way to reset state
+  // when a prop changes. It re-renders immediately, before committing
+  // anything to the DOM, so no frame is ever painted with the wrong word.
+  //
+  // The effect below cannot do this job. Effects run AFTER paint, so rolling
+  // there shows word A for a frame and then word B on the very first render
+  // of every card - a button that changes its label the instant a hiker looks
+  // at it. `filed` and the photo can be reset there because their pre-reset
+  // value is already correct on a fresh mount; a random number's is not.
+  //
+  // Re-rolled on the waypoint and NOT on the reporter type: somebody changing
+  // their identity in Settings with a card open is not a reason to reword the
+  // button in front of them, and the next card they open reads from the new
+  // list anyway.
+  const [rotation, setRotation] = useState(() => rollRotation(poiId))
+  if (rotation.poiId !== poiId) setRotation(rollRotation(poiId))
   // The peek asks its question in visible words rather than only in the
   // group's `aria-label`, so the id has to be real - and unique, because
   // nothing here can promise there is one card on screen.
@@ -174,6 +212,13 @@ export function FieldNoteSection({
   const presentation = stalenessPresentation(poiType, tier)
   const options = OBSERVATION_OPTIONS[poiType]
   const escalation = filed === null ? null : escalationFor(filed)
+  // Whose vocabulary, from the SIGNED reporter type rather than the stored
+  // preference - so somebody who never answered the identity screen is dealt
+  // the day hiker's words by the same floor that signs their notes. One
+  // answer to "who is this" in this file, used twice.
+  const signedAs = signReportAs(context.reporterType)
+  const goodAnswer = QUICK_ANSWERS[poiType].good
+  const goodWord = pickGoodWord(poiType, signedAs, () => rotation.good)
   const anchor: ReportAnchor = {
     poiId,
     lat,
@@ -261,18 +306,37 @@ export function FieldNoteSection({
 
   /** One answer button. Built here rather than written out twice so the
    *  peek's Dry and the opened card's Dry are the same control - same class,
-   *  same test id, same call into `file` - and cannot drift apart. */
-  const answer = (option: ObservationOption) => (
-    <button
-      key={option.id}
-      type="button"
-      className="poi-card__observation"
-      data-testid={`poi-card-observe-${option.id}`}
-      onClick={() => void file(option.id)}
-    >
-      {option.label}
-    </button>
-  )
+   *  same test id, same call into `file` - and cannot drift apart.
+   *
+   *  TWO OF THEM ARE TINTED (#1122), the good end and the problem end, which
+   *  is the nearest honest thing to the thumbs up / thumbs down this ask is.
+   *  The words still carry the meaning - WIREFRAMES.md §11's rule that the
+   *  visual channel never carries it alone - and the tint is a second channel
+   *  laid over them, readable at arm's length in glare where 13px of text is
+   *  not. The middle answers stay neutral: there are only two ends.
+   *
+   *  The good one also wears the rotating word rather than its canonical
+   *  label. `option.label` is what every surface that READS a note back
+   *  prints; this is what the ask is dressed in. Same value either way. */
+  const answer = (option: ObservationOption) => {
+    const tint =
+      option.id === goodAnswer
+        ? ' poi-card__observation--good'
+        : option.id === QUICK_ANSWERS[poiType].problem
+          ? ' poi-card__observation--problem'
+          : ''
+    return (
+      <button
+        key={option.id}
+        type="button"
+        className={`poi-card__observation${tint}`}
+        data-testid={`poi-card-observe-${option.id}`}
+        onClick={() => void file(option.id)}
+      >
+        {option.id === goodAnswer ? goodWord : option.label}
+      </button>
+    )
+  }
 
   /** What replaces the buttons once an answer is in: an acknowledgement and,
    *  where the answer is problem-shaped, the hand-off into the real report
@@ -282,7 +346,13 @@ export function FieldNoteSection({
   const noted =
     filed === null ? null : (
       <div className="poi-card__noted" role="status">
-        <p>{`Noted: ${observationLabel(filed).toLowerCase()}. It sends when there’s signal.`}</p>
+        {/* The opener rotates and the sentence after it does not (#1122).
+            "Logged." is the app talking about ITSELF and claims nothing about
+            the shelter, which is why it may be playful where the buttons
+            above may not be. "It sends when there's signal" is the offline
+            outbox explaining itself, and it is the one sentence on this
+            surface a hiker genuinely needs to read - so it is fixed. */}
+        <p>{`${pickNotedOpener(() => rotation.opener)} It sends when there’s signal.`}</p>
         {escalation !== null && (
           <button
             type="button"
@@ -513,16 +583,39 @@ export function FieldNoteSection({
           noted
         )}
 
-        {/* The quiet, always-there entry: a report started from a place card
-            carries the place (FIELD_NOTES.md step 1). */}
-        {filed === null && (
+        {/* The entry a report started from a place card comes through, so it
+            carries the place (FIELD_NOTES.md step 1).
+
+            IT USED TO BE QUIET AND IT USED TO VANISH (#1122). 12px of grey
+            inside a hairline pill, hidden the moment any note was filed - so
+            a hiker who tapped the good answer and THEN noticed the privy door
+            was off had nothing left to tap. Both halves are fixed here: it is
+            a control at a control's weight, and it survives the tap.
+
+            The one case it still steps aside for is the escalation, which is
+            the same door with a type already picked. Two buttons into one
+            flow, stacked, would read as two different reports.
+
+            Asked as a question because a question is what a hiker can answer
+            standing there; the hint line carries the feature's own name, so
+            the screen it lands on - titled "Report a problem" - is not a
+            surprise. */}
+        {escalation === null && (
           <button
             type="button"
             className="poi-card__report-here"
             data-testid="poi-card-report-here"
             onClick={() => context.onReportProblem(anchor)}
           >
-            Report a problem here
+            <span className="poi-card__report-flag" aria-hidden="true">
+              ⚑
+            </span>
+            <span className="poi-card__report-lines">
+              <span className="poi-card__report-title">Something wrong here?</span>
+              <span className="poi-card__report-hint">
+                Blowdown, damage, trash — report it
+              </span>
+            </span>
           </button>
         )}
       </div>

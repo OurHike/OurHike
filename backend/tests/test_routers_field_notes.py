@@ -51,6 +51,28 @@ def test_a_note_is_publicly_visible_the_moment_it_lands(client):
     assert [note["id"] for note in listed.json()] == [response.json()["id"]]
 
 
+def test_the_wire_takes_trash_and_still_takes_full(client):
+    """#1122's one enum change, from both sides.
+
+    `trash` is new and has to reach the column: the client offers it on
+    shelters, campsites and parking, and a 422 here would drop those notes
+    into the outbox forever.
+
+    `full` is the half that is easy to get wrong in the other direction. The
+    client stopped offering it on shelters, and the instinct is to prune the
+    member - but an old build in the field still sends it, and a narrowed
+    request enum is what scripts/check_openapi_compat.py calls a break. This
+    asserts the server keeps accepting a value nothing currently asks for.
+    """
+    fresh = _post_note(client, str(uuid.uuid4()), id=str(uuid.uuid4()), observation="trash")
+    assert fresh.status_code == 201
+    assert fresh.json()["observation"] == "trash"
+
+    old_client = _post_note(client, str(uuid.uuid4()), id=str(uuid.uuid4()), observation="full")
+    assert old_client.status_code == 201
+    assert old_client.json()["observation"] == "full"
+
+
 def test_create_note_is_idempotent_on_id(client, db_session):
     user_id = str(uuid.uuid4())
     note_id = str(uuid.uuid4())

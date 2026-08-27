@@ -529,3 +529,98 @@ def test_each_steward_lists_the_registry_keys_behind_its_layers():
 
     (steward,) = output["stewards"]
     assert steward["keys"] == ["oprhp_closures", "oprhp_trails"]
+
+
+class TestTheRegistryTheConsoleReads:
+    """`build_registry` - every registered source, shipping or not (#929).
+
+    Its sibling `build_output` may only name what actually ships. This one
+    exists BECAUSE of that rule rather than in spite of it: the org console
+    asks "what is registered", which is an admin question, and answering it
+    from the hiker-facing artifact would have put a held-back steward on a
+    sources card the day somebody wanted to count registrations.
+    """
+
+    @staticmethod
+    def real() -> dict:
+        return export_sources.build_registry(json.loads((ROOT / "sources.json").read_text()))
+
+    def test_names_the_sources_that_reach_no_hiker(self):
+        """The whole reason for a second artifact. GATC and the held-back
+        OPRHP layer are registrations somebody has to be able to see."""
+        keys = {row["key"] for row in self.real()["sources"]}
+
+        assert "gatc_water_sources" in keys
+        assert "oprhp_park_polygons" in keys
+
+    def test_carries_the_flag_rather_than_filtering_on_it(self):
+        rows = {row["key"]: row for row in self.real()["sources"]}
+
+        assert rows["gatc_water_sources"]["reaches_hikers"] is False
+        assert rows["nynjtc_trail_alerts"]["reaches_hikers"] is True
+
+    def test_every_row_carries_the_stable_id_of_its_organization(self):
+        missing = [row["key"] for row in self.real()["sources"] if not row["steward_id"]]
+
+        assert missing == [], f"rows with no steward_id: {missing}"
+
+    def test_leaves_an_undeclared_kind_null_rather_than_defaulting_it(self):
+        """Twelve ATC entries declare no `kind`, and `lib/source_registry.py`
+        reads an absent one as an ArcGIS feature layer. That default is a fact
+        about the FETCHER, not about the registration - a console that filled
+        it in would hide the twelve registrations a probe cannot describe."""
+        rows = {row["key"]: row for row in self.real()["sources"]}
+
+        assert rows["centerline"]["kind"] is None
+        assert rows["nynjtc_trail_alerts"]["kind"] == "published_notices"
+
+    def test_says_which_organizations_have_asked_for_support(self):
+        rows = {row["key"]: row for row in self.real()["sources"]}
+
+        assert rows["nynjtc_trail_alerts"]["supports_donation"] is True
+        assert rows["dec_hiking_trails"]["supports_donation"] is False
+
+    def test_says_no_organization_has_licensed_a_mark(self):
+        states = {row["mark_state"] for row in self.real()["sources"]}
+
+        assert states == {"not_asked"}
+
+    def test_lists_every_organization_once_with_its_id(self):
+        orgs = self.real()["organizations"]
+
+        assert len(orgs) == 9
+        assert {org["steward_id"] for org in orgs} == {
+            "org:atc",
+            "org:gatc",
+            "org:mohonk",
+            "org:ndmc",
+            "org:nynjtc",
+            "org:nysdec",
+            "org:nysoprhp",
+            "org:osm",
+            "org:usgs",
+        }
+
+    def test_composes_nothing_a_reviewer_would_have_to_check(self):
+        """Every field is one the registry already carries, copied. A console
+        showing a number this file worked out - "seems well licensed",
+        "probably fresh" - would be an opinion wearing the registry's
+        authority, which is the failure the whole evidence standard exists to
+        prevent."""
+        registry = json.loads((ROOT / "sources.json").read_text())
+        by_key = {s["key"]: s for s in registry["sources"]}
+
+        for row in self.real()["sources"]:
+            source = by_key[row["key"]]
+            assert row["trust"] == source.get("trust")
+            assert row["licence_basis"] == source.get("licence_basis")
+            assert row["reaches_hikers"] == source["reaches_hikers"]
+
+    def test_survives_a_registry_with_no_organizations_block(self):
+        """Every synthetic fixture in this suite predates it, and so does every
+        release exported before #929. Null rather than an error, because the id
+        is additive and its absence is a state rather than a fault."""
+        out = export_sources.build_registry(registry(source("a", "P", True, steward="Org")))
+
+        assert out["sources"][0]["steward_id"] is None
+        assert out["organizations"] == []

@@ -91,6 +91,20 @@ export interface MoreProps extends SettingsProps {
    */
   onOpenModeration?: () => void
   /**
+   * Opens the source registry - every organization whose data is registered,
+   * shipping or not (#929).
+   *
+   * An optional callback for the same reason `onOpenModeration` is one: this
+   * screen has no business knowing what a role is. Absent means no entry.
+   *
+   * Sits under "Where this map comes from" rather than beside the moderation
+   * queue, because it is the same question one level down. That card names the
+   * organizations a hiker's data belongs to; this names every organization
+   * registered, including the ones held back, and says what each one's licence
+   * actually rests on.
+   */
+  onOpenRegistry?: () => void
+  /**
    * The hike in one line (lib/plannedHike.ts), or null for a hiker who has
    * not set one - which is a first-class state, not an incomplete setup. The
    * row invites rather than nags, because every part of this app works
@@ -273,6 +287,7 @@ export function More({
   onStartReport,
   volunteerScreen,
   onOpenModeration,
+  onOpenRegistry,
   hikeSummary = null,
   onEditHike,
   queuedReportCount,
@@ -502,6 +517,11 @@ export function More({
               order a hiker reads in: what is on this phone, then whose it
               is, then which build is showing it. */}
           <SourcesSection stewards={stewards} />
+          {onOpenRegistry !== undefined && (
+            <button type="button" className="settings__action" onClick={onOpenRegistry}>
+              The source registry
+            </button>
+          )}
           <AboutBuild build={build} />
           {/* Immediately after it, because the build is what a bug report
               has to name and these links carry it (#626). The same `build`

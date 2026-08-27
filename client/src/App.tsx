@@ -52,6 +52,7 @@ import {
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type MorePage, type StuckReport } from './screens/More'
 import { Moderation } from './screens/Moderation'
+import { Registry } from './screens/Registry'
 import { InstallPrompt } from './screens/InstallPrompt'
 import {
   ENTRY_CARD_MAX_VIEWPORT_FRACTION,
@@ -744,6 +745,10 @@ function App() {
   // read once per sign-in (lib/useModerator.ts) and decides only whether the
   // entry point exists - the backend gates every call regardless (#235).
   const [moderating, setModerating] = useState(false)
+  /** Whether the source registry is open (#929). Local to the shell like every
+   *  other Settings-reached screen, and there is no router to put it in - see
+   *  this file's opening comment. */
+  const [browsingRegistry, setBrowsingRegistry] = useState(false)
   const isModerator = useModerator(account !== null)
   /**
    * Which of More's pages is showing (screens/More.tsx). Shell state rather
@@ -4739,7 +4744,12 @@ function App() {
                 a resetKey={activeTab} here could never change while mounted
                 (#175). */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              {moderating ? (
+              {browsingRegistry ? (
+                // Replaces More, like Moderation beside it and for the same
+                // reason: reached from here and nowhere else, so there is
+                // nothing behind it worth keeping visible.
+                <Registry onClose={() => setBrowsingRegistry(false)} />
+              ) : moderating ? (
                 // Replaces More rather than covering it, for the same reason
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
@@ -4796,6 +4806,7 @@ function App() {
                   onStartReport={() => setReporting({ step: 'pick' })}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
+                  onOpenRegistry={() => setBrowsingRegistry(true)}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}

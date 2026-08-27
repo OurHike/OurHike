@@ -136,6 +136,21 @@ SOURCES_PATH = ROOT / "sources.json"
 OUT_PATH = ROOT / "data" / "processed" / "stewards.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "stewards_manifest.json"
 
+# The second artifact, and the reason it is a second one rather than a wider
+# `stewards.json` (#929).
+#
+# `stewards.json` answers "whose data is on this phone", and its whole
+# discipline is credits.ts's rule taken whole: name what is actually there,
+# never what could be. A held-back steward in that file would be the quiet
+# inaccuracy value #4 exists to prevent, printed under a LICENCE.
+#
+# The org console asks the opposite question - "what is registered, including
+# what does not ship" - and it is an admin surface rather than a hiker's. Two
+# questions, two files. Widening the first to answer the second would have put
+# GATC on a sources card the day somebody wanted to count registrations.
+REGISTRY_OUT_PATH = ROOT / "data" / "processed" / "registry.json"
+REGISTRY_MANIFEST_PATH = ROOT / "data" / "processed" / "registry_manifest.json"
+
 # The registry's own key for "who publishes this", and the field naming the
 # organization in full where an entry carries one.
 PROVIDER_FIELD = "provider"
@@ -260,6 +275,89 @@ def _unanimous(values: list, absent_counts: bool = True) -> str | None:
     return unique.pop() if len(unique) == 1 else None
 
 
+def _organizations(registry: dict) -> dict[str, dict]:
+    """The `organizations` block, keyed by provider rather than by id.
+
+    Returns `{}` for a registry that predates the block, which is every
+    synthetic fixture in the test suite - the id is additive and its absence is
+    not an error.
+    """
+    orgs = registry.get("organizations", {}).get("orgs", {})
+    return {
+        org["provider"]: {"steward_id": steward_id, **org}
+        for steward_id, org in orgs.items()
+        if isinstance(org, dict) and org.get("provider")
+    }
+
+
+def build_registry(registry: dict | None = None) -> dict:
+    """Every registered source, shipping or not, for the org console (#929).
+
+    ONE ROW PER SOURCE, not per organization, and that is the difference from
+    `build_output` below rather than an inconsistency with it. A console is
+    looking at registrations; a hiker is looking at organizations.
+
+    NOTHING IS COMPOSED HERE. Every field is a field the registry already
+    carries, copied. The console's job is to show what is recorded, and a
+    number this file worked out - "seems well licensed", "probably fresh" -
+    would be an opinion wearing the registry's authority. Where a source does
+    not carry a field, the row carries null and the table shows a gap, which is
+    the answer: twelve entries declare no `kind` at all, and a console that
+    filled that in from the ArcGIS default would hide the twelve registrations
+    a probe cannot describe.
+    """
+    registry = registry if registry is not None else json.loads(SOURCES_PATH.read_text())
+    sources = registry.get("sources", [])
+    orgs = _organizations(registry)
+    marks = registry.get("org_marks", {}).get("orgs", {})
+
+    rows = []
+    for source in sources:
+        provider = source.get(PROVIDER_FIELD, "")
+        org = orgs.get(provider, {})
+        block = _block(registry, [source], "_support")
+        rows.append(
+            {
+                "key": source["key"],
+                "title": source.get("title"),
+                "provider": provider,
+                # Null where the registry predates the organizations block, or
+                # where a provider was added without one - which the test suite
+                # refuses, so a null here on the real file is a bug rather than
+                # a state.
+                "steward_id": org.get("steward_id"),
+                "steward": source.get(STEWARD_FIELD) or org.get("name"),
+                # Null is the honest answer for the twelve ATC entries that
+                # declare none: lib/source_registry.py reads an absent `kind`
+                # as an ArcGIS feature layer, and that DEFAULT is a fact about
+                # the fetcher rather than about the registration.
+                "kind": source.get("kind"),
+                "trust": source.get("trust"),
+                "reaches_hikers": source["reaches_hikers"],
+                "licence_basis": source.get("licence_basis"),
+                "freshness_kind": (source.get("freshness") or {}).get("kind"),
+                "supports_donation": bool(block),
+                "mark_state": (marks.get(provider) or {}).get("state"),
+            }
+        )
+
+    return {
+        "sources": sorted(rows, key=lambda row: (row["provider"], row["key"])),
+        "organizations": sorted(
+            (
+                {
+                    "steward_id": org["steward_id"],
+                    "provider": provider,
+                    "name": org.get("name"),
+                    "note": org.get("note"),
+                }
+                for provider, org in orgs.items()
+            ),
+            key=lambda org: org["provider"],
+        ),
+    }
+
+
 def build_output(registry: dict | None = None) -> dict:
     registry = registry if registry is not None else json.loads(SOURCES_PATH.read_text())
     sources = registry.get("sources", [])
@@ -321,16 +419,34 @@ def build_output(registry: dict | None = None) -> dict:
                 # asked (#932). Null renders exactly as today: no button, no
                 # empty section, no placeholder.
                 "support": _support_record(_block(registry, entries, "_support")),
+                # The stable id #929 introduces. Null on a registry that
+                # predates the `organizations` block; never derived from the
+                # provider string, which is the thing an id exists not to be.
+                "steward_id": _organizations(registry).get(provider, {}).get("steward_id"),
             }
         )
 
     return {"stewards": stewards}
 
 
+def _write(path: Path, manifest_path: Path, payload: dict) -> dict:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    # ABSOLUTE, like every sibling manifest - publish.py resolves this against
+    # its own CWD (export_club_sections.py's comment has the incident).
+    manifest = {"path": str(path), "sha256": digest}
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
 def main() -> dict:
     output = build_output()
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
+
+    registry_out = build_registry()
+    _write(REGISTRY_OUT_PATH, REGISTRY_MANIFEST_PATH, registry_out)
 
     digest = hashlib.sha256(OUT_PATH.read_bytes()).hexdigest()
     # ABSOLUTE, like every sibling manifest - publish.py resolves this against
@@ -345,6 +461,13 @@ def main() -> dict:
         print(f"  {steward['name']}")
         print(f"    {len(steward['layers'])} layers · {tier}")
         print(f"    {licence}")
+
+    shipped = sum(1 for row in registry_out["sources"] if row["reaches_hikers"])
+    print(
+        f"\n{len(registry_out['sources'])} registered sources across "
+        f"{len(registry_out['organizations'])} organizations -> {REGISTRY_OUT_PATH}"
+    )
+    print(f"  {shipped} reach a hiker, {len(registry_out['sources']) - shipped} do not")
     return manifest
 
 

@@ -3,11 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/app/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: without it, env(safe-area-inset-*) is 0 in the
+         full-screen WebViews the Capacitor shells run (#101) and in the
+         installed iOS PWA, and the paddings written against those insets
+         (chrome.css, App.css, onboarding.css) never fire. A portrait browser
+         tab is unaffected. The one web case it does change: landscape Safari
+         on a notched phone stops auto-insetting content from the sensor
+         housing, which is why the top-of-viewport surfaces and the tab bar
+         also pad against the left/right insets. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>OurHike</title>
-    <script type="module" crossorigin src="/app/assets/main-D3o0kLD5.js"></script>
-    <link rel="modulepreload" crossorigin href="/app/assets/style-CrXZ-KWv.js">
-    <link rel="stylesheet" crossorigin href="/app/assets/main-Bu8Nv-iy.css">
+    <script type="module" crossorigin src="/app/assets/main-Co9uJeNr.js"></script>
+    <link rel="modulepreload" crossorigin href="/app/assets/protocol-CiV2A8kp.js">
+    <link rel="stylesheet" crossorigin href="/app/assets/main-DTzboDvZ.css">
+    <link rel="preload" as="fetch" crossorigin="anonymous" href="https://data.ourhike.org/trails_overview.geojson">
   <link rel="manifest" href="/app/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/app/registerSW.js"></script></head>
   <body>
     <div id="root"></div>

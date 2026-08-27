@@ -1,0 +1,113 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Get the app — OurHike</title><meta name="description" content="Install OurHike on your phone and download the Appalachian Trail for offline use — then test it in airplane mode before you go."><link rel="canonical" href="https://ourhike.org/get-the-app/"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preload" href="/fonts/bitter-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/fonts/plex-mono-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/_astro/about.TjvLZtfn.css"></head> <body> <nav class="wrap nav" aria-label="Site"> <a class="nav__brand" href="/"> <svg width="34" height="34" viewBox="0 0 96 96" role="img" aria-label="OurHike"> <defs> <linearGradient id="nav-mark-split" x1="0" y1="0" x2="1" y2="1"> <stop offset="50%" stop-color="#355c3a"></stop> <stop offset="50%" stop-color="#5a5346"></stop> </linearGradient> <clipPath id="nav-mark-round"> <rect width="96" height="96" rx="20"></rect> </clipPath> <filter id="nav-mark-jag" x="-40%" y="-15%" width="180%" height="130%"> <feTurbulence type="fractalNoise" baseFrequency="0.03 0.09" numOctaves="2" seed="7" result="n"></feTurbulence> <feDisplacementMap in="SourceGraphic" in2="n" scale="10" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap> </filter> </defs> <g clip-path="url(#nav-mark-round)"> <rect width="96" height="96" fill="url(#nav-mark-split)"></rect> <svg x="31" y="8" width="34" height="80" viewBox="0 0 40 100"> <rect x="10" y="8" width="20" height="84" rx="10" fill="#fff" filter="url(#nav-mark-jag)"></rect> </svg> </g> </svg> <span class="nav__word">OurHike</span> </a> <a class="nav__link" href="/get-the-app/" aria-current="page"> Get the app </a><a class="nav__link" href="/about/"> About </a> <a class="nav__cta" href="/support/">
+Support the trail
+</a> </nav>  <main class="wrap"> <header class="section"> <div class="section__head"> <span class="blaze"></span> <h2>Get the app on the phone you'll carry</h2> </div> <p class="lede">
+OurHike installs from the browser — no app store between you and the
+        trail. Two rules make it work out there: install it <em>from the app
+        itself</em>, and test it in airplane mode before you set off.
+</p> </header> <section class="section--tight prose"> <h3 style="font-size: 20px; margin-bottom: 14px">Install it</h3> <p id="installed-msg" hidden> <strong>OurHike is already installed.</strong> Open it from your home
+        screen.
+</p> <div id="how"> <!-- Installing has to happen from the app itself, at /app/, because
+             that is the page carrying the manifest and service worker. This
+             page has neither, so a browser's "Add to Home screen" here makes
+             a plain bookmark: it opens in a tab, has no service worker, and
+             works offline not at all - while looking exactly like a
+             successful install. Someone could carry that into the woods.
+             Sending people to the app instead is the whole reason this
+             section is written this way. Carried over from the original
+             landing page with the code it explains - see also the script
+             comment at the foot of this file. --> <ol class="steps"> <li>
+Open the app itself — <a href="/app/">OurHike</a>. Installing has
+            to be done from there, not from this page.
+</li> <li id="how-step-2">
+Once it&rsquo;s open, go to the <strong>Downloads</strong> tab. It
+            shows the install button, or the exact steps for your phone.
+</li> <li>Then come back here for what to do next.</li> </ol> <p style="margin-top: 20px"> <a class="btn" href="/app/">Open OurHike</a> </p> </div> <div id="ios-note" hidden> <div class="warn" style="margin-top: 16px"> <strong>On iPhone, use Safari.</strong> Other iOS browsers cannot
+          install a web app at all. iOS can also clear a web app&rsquo;s stored
+          data when the device runs short on space, and the offline map is a
+          large download — so test it before a trip, and check the map is
+          still there before you set off.
+</div> </div> <div id="desktop" hidden> <p style="color: var(--fg-2); margin-top: 16px">
+It runs in a desktop browser for a look around — the map, and now the
+          full elevation chart, get more room there than any phone has. But the
+          offline download is for the phone you&rsquo;ll carry: open this page
+          on your phone to install it properly.
+</p> </div> </section> <section class="section--tight prose"> <h3 style="font-size: 20px; margin-bottom: 14px">Once it's installed</h3> <ol class="steps"> <li>Open the app and go through the short first-run screens.</li> <li>Pick how much map detail you want — the only real decision.</li> <li>
+On <strong>Downloads</strong>, tap <strong>Download the map</strong>
+while you're on wifi. Trail lines come first, then the topo
+          background.
+</li> <li> <strong>Test it before you go.</strong> Turn on airplane mode and
+          check the map still draws.
+</li> </ol> <div class="tiers"> <div class="tier"> <span class="tier__name">Light</span> <span class="tier__size">64 MB</span> <span class="tier__for">A tight phone, or a first look.</span> </div> <div class="tier tier--pick"> <span class="tier__name">Standard <span class="tier__pill">Recommended</span></span> <span class="tier__size">314 MB</span> <span class="tier__for">The right choice for most people.</span> </div> <div class="tier"> <span class="tier__name">Fine</span> <span class="tier__size">1.18 GB</span> <span class="tier__for">Reading terrain closely, if you have the space.</span> </div> </div> <div class="note">
+A dropped download <strong>resumes</strong> instead of starting over.
+        If trailhead wifi gives out at 90%, you haven't lost the 90%.
+</div> </section> <section class="section--tight prose" style="padding-bottom: 24px"> <h3 style="font-size: 20px; margin-bottom: 14px">Tell us what broke</h3> <p>
+That's the whole point of a beta. Open an issue on
+<a href="https://github.com/OurHike/OurHike/issues">GitHub</a> with
+        what phone you're on, what you did, and what happened.
+</p> </section> </main> <script>
+    // There is deliberately NO install button on this page.
+    //
+    // A page can only be installed if IT carries the manifest and service
+    // worker, and this one carries neither - they belong to the app at
+    // /app/, whose service-worker scope cannot be raised to cover this page
+    // (that needs a Service-Worker-Allowed header GitHub Pages will not
+    // send). So `beforeinstallprompt` can never fire here, and a browser's
+    // own "Add to Home screen" on this page produces a plain bookmark: opens
+    // in a tab, no service worker, no offline map - while looking exactly
+    // like a successful install. Someone could carry that into the woods.
+    //
+    // All this script does is tailor the wording. The install itself happens
+    // in the app, on its Downloads screen.
+    (function () {
+      var ua = navigator.userAgent;
+      var isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        // iPadOS 13+ reports itself as a Mac; the touch points give it away.
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var isAndroid = /Android/.test(ua);
+
+      var standalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true;
+
+      function show(id) {
+        var el = document.getElementById(id);
+        if (el) el.hidden = false;
+      }
+      function hide(id) {
+        var el = document.getElementById(id);
+        if (el) el.hidden = true;
+      }
+
+      if (standalone) {
+        show('installed-msg');
+        hide('how');
+        return;
+      }
+
+      if (isIOS) {
+        show('ios-note');
+        var step = document.getElementById('how-step-2');
+        if (step) {
+          step.innerHTML =
+            "Once it's open, tap <strong>Share</strong>, then " +
+            '<strong>Add to Home Screen</strong>. The app&rsquo;s ' +
+            '<strong>Downloads</strong> tab shows these steps too.';
+        }
+      } else if (!isAndroid) {
+        show('desktop');
+      }
+    })();
+  </script>  <footer class="footer"> <div class="wrap"> <div class="footer__cols"> <div class="footer__about"> <span class="footer__brand"> <svg width="28" height="28" viewBox="0 0 96 96" role="img" aria-label="OurHike"> <defs> <linearGradient id="footer-mark-split" x1="0" y1="0" x2="1" y2="1"> <stop offset="50%" stop-color="#355c3a"></stop> <stop offset="50%" stop-color="#5a5346"></stop> </linearGradient> <clipPath id="footer-mark-round"> <rect width="96" height="96" rx="20"></rect> </clipPath> <filter id="footer-mark-jag" x="-40%" y="-15%" width="180%" height="130%"> <feTurbulence type="fractalNoise" baseFrequency="0.03 0.09" numOctaves="2" seed="7" result="n"></feTurbulence> <feDisplacementMap in="SourceGraphic" in2="n" scale="10" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap> </filter> </defs> <g clip-path="url(#footer-mark-round)"> <rect width="96" height="96" fill="url(#footer-mark-split)"></rect> <svg x="31" y="8" width="34" height="80" viewBox="0 0 40 100"> <rect x="10" y="8" width="20" height="84" rx="10" fill="#fff" filter="url(#footer-mark-jag)"></rect> </svg> </g> </svg>
+OurHike
+</span> <p class="footer__independence">
+OurHike is an independent, open-source project. It is not affiliated
+          with or endorsed by the Appalachian Trail Conservancy or any trail
+          club — it exists to serve the communities they built, and to be
+          handed to them whole if they ever want it.
+</p> </div> <div class="footer__col"> <span class="footer__heading">THE SITE</span> <a href="/get-the-app/">Get the app</a> <a href="/support/">Support the trail</a> <a href="/about/">About &amp; values</a> <a href="/status/">Status — is it me or us?</a> <a href="/Privacy/">Privacy policy</a> </div> <div class="footer__col"> <span class="footer__heading">THE PROJECT</span> <a href="https://github.com/OurHike/OurHike">Source on GitHub — AGPL-3.0</a> <a href="https://github.com/OurHike/OurHike/issues">Tell us what broke</a> <a href="/app/">Open the app</a> </div> </div> <p class="footer__credits">
+Trail centerline and facilities: ATC GIS, NYNJTC, NY State Parks, Mohonk
+      Preserve, NYS DEC · Map data © OpenStreetMap contributors (ODbL) · Topo:
+      USGS US Topo · Elevation: USGS 3DEP · Found a blowdown or a dry spring?
+      Report it in the app — it reaches a moderator who can act on it.
+</p> </div> </footer> </body></html>

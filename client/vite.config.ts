@@ -234,8 +234,14 @@ export default defineConfig({
           manifest: {
             name: 'OurHike',
             short_name: 'OurHike',
+            // What a hiker reads on the install prompt and on their home
+            // screen, so it is the app's own one-line description of itself.
+            // NOT A.T.-only: five organizations publish the trail lines this
+            // map draws (pipeline/sources.json, `reaches_hikers: true`), and
+            // the A.T. is where the project started rather than the whole of
+            // what it covers.
             description:
-              'Offline-first topo map and trail data for the Appalachian Trail.',
+              'Offline-first topo map and trail data from five trail organizations, inspired by the Appalachian Trail.',
             // Pulled from the OurHike Design System tokens (--brand-primary /
             // --paper-100), not invented here - see
             // src/design-system/tokens/colors.css.

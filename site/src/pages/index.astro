@@ -20,9 +20,15 @@ import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
 import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
 
-const title = 'OurHike — The whole Appalachian Trail, offline'
+// The title and the description are the H1's other half and were left behind
+// when #1059 fixed the H1 itself: the rotation below stopped implying an
+// A.T.-only product on the page, while the two strings a search result, a
+// shared link and a browser tab actually show carried the old claim unchanged.
+// Same file, same pull request, and the visible line got fixed while the
+// metadata beside it did not.
+const title = "OurHike — Five organizations' trails, offline"
 const description =
-  'A free, open-source offline map of the Appalachian Trail: topo, water, shelters and elevation, working with no bars and no data plan.'
+  "A free, open-source offline map inspired by the Appalachian Trail and drawn from five organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan."
 
 // The organization roster and its copy live in lib/heroOrgs.mjs, imported
 // rather than inlined here, so heroOrgs.test.mjs can hold the rotation to
@@ -88,6 +94,14 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
         <div class="stat">
           <span class="stat__figure">280</span>
           <span class="stat__label">shelters, from ATC's own inventory</span>
+        </div>
+        <!-- Added rather than replacing one of the three above, which are all
+             true and all about the A.T. Three A.T. figures with nothing beside
+             them read as an A.T.-only product even though not one of them says
+             so - measured 2026-08-25 on a live fetch, pipeline/README.md. -->
+        <div class="stat">
+          <span class="stat__figure">21,805</span>
+          <span class="stat__label">trail lines, from five organizations</span>
         </div>
       </div>
       <p class="prose" style="color: var(--fg-chrome-3); font-size: 13.5px; margin-top: 14px">

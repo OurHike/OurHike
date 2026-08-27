@@ -1314,7 +1314,7 @@ function App() {
    * - is a different feature and needs an explicit, dated decision about rule 2
    * before anybody builds it. This is not that, and does not become it.
    */
-  const [walked, setWalked] = useState<MileRange[]>(() => readWalked())
+  const [walked, setWalked] = useState<readonly MileRange[]>(() => readWalked())
   const previousWalkedMile = useRef<number | null>(null)
 
   // Today's slice of the same record (lib/passedToday.ts), for the Volunteer
@@ -1438,27 +1438,51 @@ function App() {
   }, [placedClosures, atcUpdates, fix, heading, units])
 
   /**
-   * Serious warnings between here and the end of the trail, counted.
+   * Every published report placed on the mile axis.
    *
    * Placing them is `placeAll`'s job (#244), which snaps lat/lon against this
    * same trail index where it can and falls back to the mile the reporting
    * phone recorded where it cannot - the case that used to be uncountable, a
    * report filed against a POI with no coordinates.
    *
+   * ITS OWN MEMO, BECAUSE NOTHING ABOUT IT DEPENDS ON THE HIKER (#1090). This
+   * ran inside `warningsAhead` below, whose deps list `fix` - so a phone
+   * sitting still on Today re-snapped every published report against the
+   * centerline once per GPS fix, computed an identical answer, and threw it
+   * away. The term is `R x mileOnTrail` where `R` is every verified public
+   * report ever published: `PUBLIC_REPORTS_SQL` (pipeline/export_conditions.py)
+   * has no time window, so `R` only goes up, and the phone paid it at the
+   * platform's fix cadence for as long as the app was open.
+   *
+   * Keyed on what the placement actually reads. `reports` is a fetched array
+   * and `trailIndex` is built once per download, so this recomputes when the
+   * conditions refresh or the corridor changes and at no other time.
+   *
+   * The gate on `fix` went with the split, which moves this pass EARLIER
+   * rather than adding one: a phone that never gets a fix now pays a single
+   * placement it used to skip, and any phone that gets one used to pay that
+   * same pass per fix forever.
+   */
+  const placedWarnings = useMemo(() => {
+    if (reports === null || trailIndex === null) return null
+    return placeAll(reports, trailIndex)
+  }, [reports, trailIndex])
+
+  /**
+   * Serious warnings between here and the end of the trail, counted.
+   *
    * `severity` filtering is `warningsOnRoute`'s job, so a report that a
    * moderator has not escalated cannot reach this line.
    */
   const warningsAhead = useMemo(() => {
     if (
-      reports === null ||
+      placedWarnings === null ||
       trailIndex === null ||
       fix === null ||
       heading === undefined
     ) {
       return null
     }
-
-    const placed = placeAll(reports, trailIndex)
 
     // Where the ROUTE ends, which is the phrase the banner uses. A declared
     // hike answers it exactly; without one the terminus is as far as "ahead"
@@ -1480,9 +1504,9 @@ function App() {
         : terminus
 
     return routeBannerText(
-      warningsOnRoute(placed, { fromMile: fix.mile, toMile: routeEnd }).length,
+      warningsOnRoute(placedWarnings, { fromMile: fix.mile, toMile: routeEnd }).length,
     )
-  }, [reports, trailIndex, fix, heading, hike])
+  }, [placedWarnings, trailIndex, fix, heading, hike])
 
   /**
    * The same closures on the canvas: red barrier tape along each closed

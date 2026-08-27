@@ -7,7 +7,7 @@
 // enforced rather than merely intended.
 
 import { POI_PIN_SIZE } from '../map/poiIcons'
-import { locateOnTrail, type TrailIndex } from './trailPosition'
+import { mileOnTrail, type TrailIndex } from './trailPosition'
 
 export type WarningSeverity = 'normal' | 'serious'
 
@@ -63,6 +63,18 @@ export interface PlaceableReport {
  *
  * Severity is NOT filtered here — `warningsOnRoute` owns that, so the pins
  * and the banner cannot come to disagree about which reports are warnings.
+ *
+ * THE MILE ALONE, THROUGH `mileOnTrail` (#1090). This used to call
+ * `locateOnTrail` and read `.mile` off the result, paying the second search
+ * over `tread` — 251,544 vertices against the centerline's 219,293, roughly
+ * half the cost of the call — to answer "is this report on a trail at all",
+ * which nothing here asks. #717 split the cheap path out for exactly this
+ * shape of caller and `searchablePois` took it; this one was missed.
+ *
+ * That is a change of cost and not of answer: `mileOnTrail` runs the same
+ * centerline search and applies the same `MAX_OFF_TRAIL_MILES` gate, and a
+ * report the gate rejects still falls through to the mile its reporting phone
+ * recorded, exactly as before.
  */
 export function placeAll(
   reports: readonly PlaceableReport[],
@@ -72,9 +84,9 @@ export function placeAll(
     const snapped =
       report.lat === null || report.lon === null
         ? null
-        : locateOnTrail(index, { lon: report.lon, lat: report.lat })
+        : mileOnTrail(index, { lon: report.lon, lat: report.lat })
 
-    const mile = snapped?.mile ?? report.mile
+    const mile = snapped ?? report.mile
     if (mile === null) return []
 
     return [{ id: report.id, type: report.type, severity: report.severity, mile }]

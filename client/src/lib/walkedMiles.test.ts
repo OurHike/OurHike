@@ -170,3 +170,59 @@ describe('what is stored', () => {
     expect(readWalked()).toEqual([{ startMile: 1, endMile: 2 }])
   })
 })
+
+describe('costing nothing when nothing was walked (#1090)', () => {
+  // These assertions are about REFERENCES, which is unusual and is the point.
+  // This set is React state: `setWalked` runs once per GPS fix whose mile
+  // differs from the last, a fix jittering under tree cover flips between
+  // adjacent centerline vertices without anybody moving, and React bails out of
+  // the render only when an updater hands back the state it was given. A copy
+  // with equal contents is a re-render of the whole shell plus a synchronous
+  // `localStorage` write from the effect that persists it - and, through
+  // `advanceToday`, twice over. `toBe` rather than `toEqual` throughout: the
+  // contents were never the thing that was wrong.
+
+  const covered: readonly MileRange[] = [{ startMile: 940, endMile: 941 }]
+
+  it('hands back the same set when the step is already inside it', () => {
+    expect(recordStep(covered, 940.2, 940.6)).toBe(covered)
+  })
+
+  it('hands back the same set when the two fixes are the same mile', () => {
+    expect(recordStep(covered, 940.2, 940.2)).toBe(covered)
+  })
+
+  it('hands back the same set when the pair is too far apart to be walking', () => {
+    expect(recordStep(covered, 940, 960)).toBe(covered)
+  })
+
+  it('hands back the same set when a mile is missing or not a number', () => {
+    expect(recordStep(covered, null, 940.5)).toBe(covered)
+    expect(recordStep(covered, 940.5, null)).toBe(covered)
+    expect(recordStep(covered, Number.NaN, 940.5)).toBe(covered)
+  })
+
+  it('still builds a new set the moment there is new ground', () => {
+    // The other half of the claim: identity is a no-op signal, not a
+    // suppression. A step that reaches past the end of a held range is new
+    // ground and has to come back as a new set, or React would never re-render
+    // on a walk that genuinely happened.
+    const next = recordStep(covered, 940.9, 941.4)
+
+    expect(next).not.toBe(covered)
+    expect(next).toEqual([{ startMile: 940, endMile: 941.4 }])
+  })
+
+  it('does not mistake a step that reaches back past a held range for a no-op', () => {
+    // Containment is checked the right way round. A step from 939.8 to 940.2
+    // OVERLAPS the held range's near end rather than sitting inside it, and the
+    // first two tenths of it are ground this set does not hold. Written as a
+    // step the half-mile gate accepts, because a longer one that spans the
+    // whole range would come back unchanged for the other reason entirely and
+    // prove nothing about the containment test.
+    const next = recordStep(covered, 939.8, 940.2)
+
+    expect(next).not.toBe(covered)
+    expect(next).toEqual([{ startMile: 939.8, endMile: 941 }])
+  })
+})

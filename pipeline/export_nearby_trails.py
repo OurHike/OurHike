@@ -170,7 +170,13 @@ from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
 from shapely.ops import unary_union
 
-from export_trails import geometry_to_wkt, simplify_records
+from export_trails import (
+    OVERVIEW_COORDINATE_DECIMALS,
+    OVERVIEW_SIMPLIFY_TOLERANCE_M,
+    _overview_coordinates,
+    geometry_to_wkt,
+    simplify_records,
+)
 from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.feature_id import resolve_feature_id
@@ -184,6 +190,13 @@ SOURCES_PATH = ROOT / "sources.json"
 
 ARTIFACT_NAME = "nearby_trails.geojson"
 MANIFEST_NAME = "nearby_trails_manifest.json"
+
+# The corridor-view sketch of this whole network - export_trails.py's
+# write_overview pattern (#869) applied to the artifact above, so the opening
+# camera can draw every organization's trails without fetching or parsing the
+# full file (#1135). Its own flat name for publish.py and lib/config.ts to
+# agree on, like NEARBY_TRAILS_KEY.
+OVERVIEW_ARTIFACT_NAME = "network_overview.geojson"
 
 # Coordinates are written at six decimals - about 0.11 m of longitude at
 # these latitudes - by export_trails.py's own precision rule: an order finer
@@ -724,6 +737,66 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
     ]
 
 
+def write_overview(records: list[dict]) -> dict:
+    """Write the corridor-view sketch of the network to OUT_DIR, and return its
+    manifest entry (#1135).
+
+    Takes the SAME records write_artifact publishes - after every filter, the
+    closure split and the 1 m simplification - so the sketch can never describe
+    different trails: it is those lines with vertices removed, at
+    export_trails.py's own overview constants (100 m Douglas-Peucker, four
+    decimals), imported rather than copied so the two sketches cannot drift.
+
+    ONE FEATURE PER (source, blaze_color, trail_status), where the A.T.'s
+    overview is one feature flat. The first two are the properties the client's
+    line expressions read (map/style.ts keys width and ghosting off `source`,
+    colour off `blaze_color`), so the sketch draws through the same paint as
+    the real lines. `trail_status` is the safety column: 224 of 21,805 features
+    read `closed` (measured 2026-08-27), and folding closed ground into an
+    `open` feature would draw it open-looking at the one range of zooms where
+    the full artifact's own tape does not draw - the display outrunning its
+    source. Measured cost of carrying it: 25 -> 31 features, +328 gzipped
+    bytes. `closure_kind` and `closure_reason` deliberately do not ride along:
+    the sketch is paint and tape, and the sheet that reads those opens on the
+    real lines above the seam.
+
+    What it weighs, measured 2026-08-27 against the live published artifact by
+    pipeline/spike_network_overview.py (this function is that spike's method,
+    moved into the export): 480,115 -> 57,226 coordinates, 1,125,263 bytes raw,
+    255,263 gzipped - beside 7.3 MB gzipped for the artifact it sketches.
+    """
+    coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
+
+    groups: dict[tuple[str, str, str], list[list[list[float]]]] = {}
+    for record in coarse:
+        key = (record["source"], record["blaze_color"], record["trail_status"])
+        lines = _overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS)
+        groups.setdefault(key, []).extend(lines)
+
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"source": source, "blaze_color": blaze, "trail_status": status},
+                "geometry": {"type": "MultiLineString", "coordinates": lines},
+            }
+            for (source, blaze, status), lines in sorted(groups.items())
+        ],
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR / OVERVIEW_ARTIFACT_NAME
+    path.write_text(json.dumps(body, separators=(",", ":")))
+
+    return {
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "feature_count": len(body["features"]),
+        "coordinate_count": sum(len(line) for lines in groups.values() for line in lines),
+        "tolerance_m": OVERVIEW_SIMPLIFY_TOLERANCE_M,
+    }
+
+
 def write_artifact(records: list[dict], per_source: dict) -> dict:
     """Write the artifact and return its manifest entry."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -806,9 +879,19 @@ def main() -> dict:
     simplified = simplify_records(all_records)
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
+    # The corridor-view sketch, from the same simplified records the artifact
+    # was just written from - export_trails.py's ordering, for its reason: the
+    # overview simplifies the same geometry a second time at its own coarser
+    # tolerance.
+    manifest["overview"] = write_overview(simplified)
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
+    overview = manifest["overview"]
+    print(
+        f"  overview: {overview['feature_count']} features, {overview['coordinate_count']:,} coordinates "
+        f"-> {overview['path']} ({Path(overview['path']).stat().st_size:,} bytes)"
+    )
 
     held_back = [k for k, s in per_source.items() if not s["reaches_hikers"]]
     if held_back:

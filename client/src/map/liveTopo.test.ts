@@ -615,6 +615,13 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
+      // The network's corridor-view sketch and its tape (#1135), below the
+      // A.T.'s own sketch as everywhere: an offline phone is exactly the one
+      // whose opening camera has to draw the network from the stored
+      // overview, and the tape is the safety half - closed ground stays
+      // closed-looking below the seam with no signal at all.
+      'network-overview-line',
+      'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
       // sketch to put in it, and the shell only has one when the phone has no

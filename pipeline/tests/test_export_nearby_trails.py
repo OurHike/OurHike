@@ -965,3 +965,80 @@ def test_a_source_with_no_blaze_marker_is_not_a_line_source():
     polygons = {k: v for k, v in _oprhp_source(key="polygons", reaches_hikers=True).items() if k != "blaze_field"}
 
     assert ex.shipped_line_source_keys({"sources": [polygons]}) == set()
+
+
+# --------------------------------------------------------------------------
+# The corridor-view sketch (#1135). The opening camera draws the whole network
+# from this rather than from the 7.3 MB artifact, so what is pinned is the
+# contract that lets one set of paint serve both: the three properties, the
+# A.T. overview's own precision, and the manifest entry the publish gate reads.
+# --------------------------------------------------------------------------
+
+
+def _overview(tmp_path):
+    return json.loads((tmp_path / "processed" / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+
+
+def test_the_overview_groups_by_the_three_properties_the_paint_and_tape_read(tmp_path, monkeypatch):
+    # One open and one closed segment of the same blaze must stay two features:
+    # folding them would draw closed ground open-looking at exactly the zooms
+    # where the full artifact's own tape does not draw.
+    _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(HARRIMAN, _oprhp_properties(), feature_id=1),
+                _feature(PAST_THE_OLD_NORTH_CUT, _oprhp_properties(Status="Closed"), feature_id=2),
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    features = _overview(tmp_path)["features"]
+    assert [f["properties"] for f in features] == [
+        {"source": "oprhp_trails", "blaze_color": "Red", "trail_status": "closed"},
+        {"source": "oprhp_trails", "blaze_color": "Red", "trail_status": "open"},
+    ]
+    assert all(f["geometry"]["type"] == "MultiLineString" for f in features)
+
+
+def test_overview_coordinates_carry_the_at_sketchs_own_four_decimals(tmp_path, monkeypatch):
+    # OVERVIEW_COORDINATE_DECIMALS, imported from export_trails.py rather than
+    # restated - four decimals is ~11 m of longitude, an order finer than the
+    # 100 m tolerance, and survey-noise digits are what the sketch exists to
+    # shed.
+    survey_noise = [(-74.123456789, 41.251234567), (-74.109876543, 41.267654321)]
+    _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(survey_noise, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = _overview(tmp_path)["features"]
+    (line,) = feature["geometry"]["coordinates"]
+    assert line[0] == [-74.1235, 41.2512]
+    assert line[-1] == [-74.1099, 41.2677]
+
+
+def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkeypatch):
+    # publish.py ships network_overview.geojson from this entry, inside the
+    # same reaches_hikers branch as the artifact it sketches - so the entry's
+    # absence has to mean "an older export", never "a failed one".
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    overview = manifest["overview"]
+    assert overview["path"].endswith(ex.OVERVIEW_ARTIFACT_NAME)
+    assert len(overview["sha256"]) == 64
+    assert overview["feature_count"] == 1
+    assert overview["coordinate_count"] >= 2
+    assert overview["tolerance_m"] == 100.0

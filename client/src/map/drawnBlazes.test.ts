@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { MockMap } from '../test/mocks/maplibre-gl'
 import { drawsNearbyTrails, TRAIL_SOURCE_PROPERTY } from './drawnBlazes'
-import { BLAZE_LAYER_ID } from './style'
+import { BLAZE_LAYER_ID, NETWORK_OVERVIEW_LAYER_ID } from './style'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
 // What the map is drawing on its trail-line layer (#783). Shaped on
@@ -49,6 +49,24 @@ describe('drawsNearbyTrails', () => {
     const map = mapWith([sourced(1, 'oprhp_trails')], [])
 
     expect(drawsNearbyTrails(map)).toBe(false)
+  })
+
+  it('is true when the corridor-view sketch is what draws the other network', () => {
+    // Below the seam the full network's layers do not draw at all - the
+    // sketch is the only drawing of those lines (#1135) - and the opening
+    // camera is exactly where a new hiker meets the dimming the sentence
+    // explains. No property read: every feature in that source is another
+    // organization's line by construction.
+    const map = new MockMap({
+      style: {
+        layers: [{ id: BLAZE_LAYER_ID }, { id: NETWORK_OVERVIEW_LAYER_ID }],
+        sources: { trails: {} },
+      },
+    })
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [sourced(1, 'centerline')])
+    map.renderedFeatures.set(NETWORK_OVERVIEW_LAYER_ID, [{ id: 2, properties: {} }])
+
+    expect(drawsNearbyTrails(map as unknown as MapLibreMap)).toBe(true)
   })
 
   it('does not treat a feature missing its source as a nearby trail', () => {

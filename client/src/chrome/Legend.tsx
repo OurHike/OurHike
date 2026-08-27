@@ -346,7 +346,18 @@ export function Legend({
   // category whether or not one is in front of the hiker right now. A row
   // reading `Privy 0` is an accurate statement about this rectangle and a
   // working switch; no row at all was neither.
-  const inView = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
+  // `drawnCounts` is withheld below the seam (#1135): with the dot rank
+  // floored there, "drawn" would measure the floor rather than the collision
+  // engine, every row would read `0/N`, and the drop summary would tell a
+  // hiker to zoom in as if the absence were crowding. The rows keep their
+  // in-view counts - the switches' job - and the below-seam sentence says
+  // where the waypoints went.
+  const inView = computeLegendContents(
+    bbox,
+    points,
+    verifiedOnly,
+    belowPoiZoom ? undefined : drawnCounts,
+  )
   // Padded for the toggles, then keyed for the two symbols that have no toggle
   // and had no row at all (#1051). `withSafetyKey` is last because it OWNS those
   // two rows - it replaces whatever the viewport produced for them, so a closure
@@ -419,21 +430,17 @@ export function Legend({
           The background picker used to sit above this and now sits at the foot of
           the panel with the downloads link (#583) - the daily question keeps the
           top. Nothing here moved it back. */}
-      {/* Below the pin seam. The sentence changed with #603: the dot rank now
-          draws all the way down (map/poiLayers.ts's POI_DOT_MIN_ZOOM), so
-          "waypoints are drawn from a closer zoom" became half wrong - they ARE
-          drawn here, as dots. What needs a closer zoom is telling one from
-          another, which is the pin's job and the thing this panel lists.
-
-          Gated on `inView` rather than `rows`, which is #723's rule and not a
-          detail of this sentence: `rows` now carries every hideable category
-          whether or not one is in front of the hiker, so it is almost never
-          empty and this line would have stopped appearing at all. Every
-          sentence in this panel speaks about the viewport. */}
-      {belowPoiZoom && inView.length === 0 && (
-        <p className="legend__empty">
-          Waypoints show as dots at this zoom. Zoom in to see what each one is.
-        </p>
+      {/* Below the pin seam. This sentence has now flipped three times, with
+          the layer it describes: "drawn from a closer zoom" (#528), then
+          "show as dots at this zoom" when #603 took the dot rank to z0, and
+          back to appearing-from-closer when #1135 floored both ranks at the
+          seam so the opening view is the trails. It renders whenever the
+          camera is below the seam - not only on an empty viewport, as the
+          dots-era version did - because it now describes every below-seam
+          rectangle: the waypoints a hiker can see counted in the grid are
+          all of what this zoom declines to draw. */}
+      {belowPoiZoom && (
+        <p className="legend__empty">Waypoints appear from a closer zoom.</p>
       )}
 
       {/* "No WAYPOINTS", where this said "Nothing", and the word had to change
@@ -450,7 +457,11 @@ export function Legend({
         </p>
       )}
 
-      {emptiedByFilter && (
+      {/* Not below the seam (#1135): down there the filter is not why the map
+          is empty of waypoints - the floor is - and "turn Verified? off to see
+          what is reported" would promise pins no below-seam camera draws. The
+          sentence above covers that band. */}
+      {emptiedByFilter && !belowPoiZoom && (
         <p className="legend__empty">
           Nothing here has been confirmed yet — turn Verified? off to see what is
           reported.

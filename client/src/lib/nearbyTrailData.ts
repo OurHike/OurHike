@@ -94,12 +94,17 @@
 // this module for the rest of the day.
 
 import { get, set } from 'idb-keyval'
-import { dataUrl, DATA_CONFIGURED, NEARBY_TRAILS_KEY } from './config'
+import {
+  dataUrl,
+  DATA_CONFIGURED,
+  NEARBY_TRAILS_KEY,
+  NETWORK_OVERVIEW_KEY,
+} from './config'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
 
 /**
- * The one record this module keeps: the artifact's bytes and the published
+ * The one record this module keeps per artifact: the bytes and the published
  * hash they matched when they were fetched (#197). The hash is stored so a
  * later launch can answer "is this still what is published?" with a string
  * comparison against the manifest - the bytes are NOT re-hashed on read,
@@ -107,6 +112,17 @@ import { sha256Of } from './trailData'
  * blobs: verification happens where bytes cross the network.
  */
 export const NEARBY_TRAILS_STORE_KEY = 'ourhike:nearby-trails'
+
+/**
+ * The corridor-view sketch of the same network (#1135), under the same
+ * mechanism because it has the same needs for the same reasons: verified
+ * against the manifest where bytes cross the network, served from the store
+ * with or without signal, and re-fetched only when a publish moves the hash.
+ * It is the OPENING view's trail lines - the one range of zooms where the
+ * artifact above does not draw - so an offline launch that lost it would open
+ * on an A.T.-only map that the last online launch did not show.
+ */
+export const NETWORK_OVERVIEW_STORE_KEY = 'ourhike:network-overview'
 
 type StoredNearbyTrails = { bytes: Blob; hash: string }
 
@@ -140,9 +156,9 @@ export type NearbyTrailsAnswer = {
   revalidated: boolean
 }
 
-async function readStored(): Promise<StoredNearbyTrails | null> {
+async function readStored(storeKey: string): Promise<StoredNearbyTrails | null> {
   try {
-    const record = (await get(NEARBY_TRAILS_STORE_KEY)) as StoredNearbyTrails | undefined
+    const record = (await get(storeKey)) as StoredNearbyTrails | undefined
     // Shape-checked because this store is written by every past version of
     // this module there will ever be: a record that is not exactly a blob and
     // a hash is treated as absent, and the next verified fetch rewrites it.
@@ -174,15 +190,43 @@ export async function loadNearbyTrails(
   online: boolean,
   signal?: AbortSignal,
 ): Promise<NearbyTrailsAnswer | null> {
+  return loadVerifiedArtifact(NEARBY_TRAILS_KEY, NEARBY_TRAILS_STORE_KEY, online, signal)
+}
+
+/**
+ * Loads the network's corridor-view sketch (#1135), under exactly the
+ * contract above - same store shape, same manifest question, same honesty
+ * about `revalidated` - because it is the same kind of thing: somebody
+ * else's trails, verified where they crossed the network, drawn from the
+ * store when there is no signal.
+ */
+export async function loadNetworkOverview(
+  online: boolean,
+  signal?: AbortSignal,
+): Promise<NearbyTrailsAnswer | null> {
+  return loadVerifiedArtifact(
+    NETWORK_OVERVIEW_KEY,
+    NETWORK_OVERVIEW_STORE_KEY,
+    online,
+    signal,
+  )
+}
+
+async function loadVerifiedArtifact(
+  key: string,
+  storeKey: string,
+  online: boolean,
+  signal?: AbortSignal,
+): Promise<NearbyTrailsAnswer | null> {
   if (!DATA_CONFIGURED) return null
 
-  const stored = await readStored()
+  const stored = await readStored(storeKey)
   if (!online) {
     return stored === null ? null : urlFor(stored, false)
   }
 
   try {
-    const expected = await publishedHash(NEARBY_TRAILS_KEY, { signal })
+    const expected = await publishedHash(key, { signal })
     if (expected === null) {
       // No manifest, or a manifest naming no hash. Fresh bytes would be
       // unverifiable and are not drawn (the header's #197 stance) - but the
@@ -197,7 +241,7 @@ export async function loadNearbyTrails(
       return urlFor(stored, true)
     }
 
-    const response = await fetch(dataUrl(NEARBY_TRAILS_KEY), { signal })
+    const response = await fetch(dataUrl(key), { signal })
     // A release exported before this artifact existed, or a bucket a publish
     // has not reached. Not a failure - see the header. The stored copy, where
     // one exists, outlives a bucket that has gone quiet - and stays
@@ -220,7 +264,7 @@ export async function loadNearbyTrails(
       hash: expected,
     }
     try {
-      await set(NEARBY_TRAILS_STORE_KEY, fresh)
+      await set(storeKey, fresh)
     } catch {
       // A full or refusing store must not cost the session its lines: the
       // verified bytes in hand still draw, and the next launch fetches again

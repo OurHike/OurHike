@@ -28,6 +28,7 @@ import {
   attachMapAppearance,
   attachTrailData,
   attachNearbyTrails,
+  attachNetworkOverview,
   attachTrailOverview,
   buildMapStyle,
 } from './style'
@@ -109,6 +110,17 @@ export interface MapViewProps {
    * as the A.T.-only map this app has always drawn.
    */
   nearbyTrailsUrl?: string | null
+  /**
+   * The corridor-view sketch of that whole network, as an object URL (#1135,
+   * lib/config.ts's NETWORK_OVERVIEW_KEY).
+   *
+   * Drawn only below the pin seam - the zooms where the lines above do not
+   * draw - through the same expressions, so the opening camera shows every
+   * organization's trails for 255 KB instead of an A.T.-only map. Null
+   * renders exactly that older map: a release without the artifact, or a
+   * bucket holding it back with its parent.
+   */
+  networkOverviewUrl?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -371,6 +383,7 @@ export function MapView({
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
   nearbyTrailsUrl = null,
+  networkOverviewUrl = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -715,6 +728,14 @@ export function MapView({
     if (map === null) return
     return attachNearbyTrails(map, nearbyTrailsUrl)
   }, [map, nearbyTrailsUrl])
+
+  // The network's own sketch (#1135), on the nearby lines' clock rather than
+  // the A.T. sketch's: it arrives once and stays, because nothing better
+  // replaces it below the seam.
+  useEffect(() => {
+    if (map === null) return
+    return attachNetworkOverview(map, networkOverviewUrl)
+  }, [map, networkOverviewUrl])
 
   // Three separate effects rather than one, because they change on different
   // clocks: the pin images are built once and never again, while the source and

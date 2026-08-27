@@ -107,6 +107,8 @@ export interface MapScreenProps {
   /** The trails other organizations maintain (#950), forwarded to MapView -
    *  see its own prop for what null means and why it is the usual answer. */
   nearbyTrailsUrl?: string | null
+  /** The network's corridor-view sketch, forwarded to the canvas (#1135). */
+  networkOverviewUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -656,6 +658,7 @@ export function MapScreen({
   trailsUrl,
   overviewTrailsUrl = null,
   nearbyTrailsUrl = null,
+  networkOverviewUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -1186,6 +1189,7 @@ export function MapScreen({
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
               nearbyTrailsUrl={nearbyTrailsUrl}
+              networkOverviewUrl={networkOverviewUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}

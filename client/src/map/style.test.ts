@@ -18,6 +18,9 @@ import {
   NEARBY_BLAZE_LAYER_ID,
   NEARBY_TRAIL_CASING_LAYER_ID,
   NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+  NETWORK_OVERVIEW_SOURCE_ID,
+  NETWORK_OVERVIEW_LAYER_ID,
+  NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
   CENTERLINE_SOURCE,
@@ -1179,5 +1182,69 @@ describe('the trails other organizations maintain (#950)', () => {
     expect(layer(NEARBY_TRAIL_LABEL_LAYER_ID).paint).toEqual(
       layer(TRAIL_LABEL_LAYER_ID).paint,
     )
+  })
+})
+
+describe('the network overview sketch (#1135)', () => {
+  it('draws below the seam, exactly where the full network does not', () => {
+    // The two representations partition the zoom range rather than overlap:
+    // the sketch's maxzoom is the full network layers' minzoom, so every
+    // camera draws exactly one of them. The tape cap rides along, or closed
+    // ground would be taped twice - from 100 m geometry - above the seam.
+    expect(layer(NETWORK_OVERVIEW_LAYER_ID).maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(POI_PIN_MIN_ZOOM)
+  })
+
+  it('sits under everything the A.T. draws, its own sketch included', () => {
+    // The full network's ordering argument, one zoom band earlier: a nearby
+    // trail must never cover the trail the map is about, and below the seam
+    // "the trail the map is about" is drawn by the A.T. sketch too.
+    const ids = style().layers.map((l) => l.id)
+
+    expect(ids.indexOf(NETWORK_OVERVIEW_LAYER_ID)).toBeGreaterThan(-1)
+    expect(ids.indexOf(NETWORK_OVERVIEW_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
+    )
+    expect(ids.indexOf(NETWORK_OVERVIEW_CLOSURE_LAYER_ID)).toBeLessThan(
+      ids.indexOf(TRAIL_OVERVIEW_LAYER_ID),
+    )
+    expect(ids.indexOf(TRAIL_OVERVIEW_LAYER_ID)).toBeLessThan(
+      ids.indexOf(TRAIL_CASING_LAYER_ID),
+    )
+  })
+
+  it('paints with the shared expressions, ghosting included', () => {
+    // One appearance across every trail line on this map. The A.T. sketch
+    // already pins colour and width against the blaze layer; this pins the
+    // network sketch against the A.T. sketch, opacity included - the ghost
+    // is the whole reason these lines read as context rather than as a
+    // second chosen trail.
+    const network = layer(NETWORK_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
+    const sketch = layer(TRAIL_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
+
+    expect(network['line-color']).toEqual(sketch['line-color'])
+    expect(network['line-width']).toEqual(sketch['line-width'])
+    expect(network['line-opacity']).toEqual(sketch['line-opacity'])
+  })
+
+  it('carries its stewards own attribution, because the credit follows the lines', () => {
+    // OPRHP's terms require credit whenever their lines are drawn, and below
+    // the seam this source is the only drawing of them - an overview credited
+    // like the A.T. would lapse the condition at exactly the camera every
+    // launch opens on.
+    const sources = style().sources as Record<string, { attribution?: string }>
+
+    expect(sources[NETWORK_OVERVIEW_SOURCE_ID].attribution).toEqual(
+      sources[NEARBY_TRAILS_SOURCE_ID].attribution,
+    )
+  })
+
+  it('opens empty, so a launch with no artifact draws the A.T.-only map', () => {
+    const source = style().sources[NETWORK_OVERVIEW_SOURCE_ID] as {
+      data: { features: unknown[] }
+    }
+
+    expect(source.data.features).toEqual([])
   })
 })

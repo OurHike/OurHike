@@ -36,7 +36,10 @@ vi.mock('./trailData', () => ({
   loadTrailLines: vi.fn(),
   TrailDataHashMismatchError: class extends Error {},
 }))
-vi.mock('./nearbyTrailData', () => ({ loadNearbyTrails: vi.fn() }))
+vi.mock('./nearbyTrailData', () => ({
+  loadNearbyTrails: vi.fn(),
+  loadNetworkOverview: vi.fn(),
+}))
 vi.mock('./trailGraphData', () => ({
   loadTrailGraph: vi.fn(),
   isSettledAbsence: () => false,
@@ -53,7 +56,7 @@ vi.mock('./dataRefresh', () => ({
 
 const { downloadTrailData, haveTrailData, loadTrailData, loadTrailLines } =
   await import('./trailData')
-const { loadNearbyTrails } = await import('./nearbyTrailData')
+const { loadNearbyTrails, loadNetworkOverview } = await import('./nearbyTrailData')
 const { loadTrailGraph } = await import('./trailGraphData')
 const { fetchTrailOverview } = await import('./trailOverview')
 const { publishedSnapshot } = await import('./dataManifest')
@@ -92,6 +95,7 @@ beforeEach(() => {
   vi.mocked(publishedSnapshot).mockResolvedValue({} as never)
   vi.mocked(recallRelease).mockResolvedValue(null)
   vi.mocked(loadNearbyTrails).mockResolvedValue(null)
+  vi.mocked(loadNetworkOverview).mockResolvedValue(null)
   vi.mocked(loadTrailGraph).mockResolvedValue({
     kind: 'absent',
     because: 'missing',
@@ -123,6 +127,26 @@ describe('a cold launch, with signal', () => {
 
     await waitFor(() => expect(loadNearbyTrails).toHaveBeenCalled())
     await waitFor(() => expect(loadTrailGraph).toHaveBeenCalled())
+  })
+
+  it('asks for the network overview immediately, because the opening view is waiting on it', async () => {
+    // The one network artifact deliberately OUTSIDE #1117's gate (#1135):
+    // below the pin seam it is the only drawing of the other organizations'
+    // trails, and at 255 KB it is the A.T. sketch's class of fetch, not the
+    // 7.5 MB class the gate sequences. Held behind the launch fetch, the
+    // opening camera would show the A.T. alone for the ~30 s the cold run
+    // measured - which is exactly the screen this artifact exists to fix.
+    const trailFetch = deferred<void>()
+    vi.mocked(haveTrailData).mockResolvedValue(false)
+    vi.mocked(downloadTrailData).mockReturnValue(trailFetch.promise)
+
+    renderHook(() => useTrailData(true))
+
+    await waitFor(() => expect(downloadTrailData).toHaveBeenCalled())
+    await waitFor(() => expect(loadNetworkOverview).toHaveBeenCalled())
+    // While its two gated siblings still wait.
+    expect(loadNearbyTrails).not.toHaveBeenCalled()
+    expect(loadTrailGraph).not.toHaveBeenCalled()
   })
 
   it('releases them when the trail line fails, rather than holding them forever', async () => {

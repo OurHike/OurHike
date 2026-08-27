@@ -32,8 +32,13 @@ vi.mock('idb-keyval', () => ({
 }))
 
 const { get, set } = await import('idb-keyval')
-const { loadNearbyTrails, NEARBY_TRAILS_STORE_KEY } = await import('./nearbyTrailData')
-const { NEARBY_TRAILS_KEY } = await import('./config')
+const {
+  loadNearbyTrails,
+  loadNetworkOverview,
+  NEARBY_TRAILS_STORE_KEY,
+  NETWORK_OVERVIEW_STORE_KEY,
+} = await import('./nearbyTrailData')
+const { NEARBY_TRAILS_KEY, NETWORK_OVERVIEW_KEY } = await import('./config')
 
 // One OPRHP line, carrying exactly the properties
 // pipeline/export_nearby_trails.py publishes.
@@ -364,5 +369,40 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     )
 
     await expect(loadNearbyTrails(true, controller.signal)).resolves.toBeNull()
+  })
+})
+
+describe('the network overview, through the same mechanism (#1135)', () => {
+  it('asks for its own key and stores under its own record, beside the network', async () => {
+    // The overview is the OPENING view's lines, so the two artifacts must
+    // never share a store record - a 255 KB sketch overwritten by (or
+    // overwriting) the 23.5 MB network would cost one launch the other's
+    // layer. The key spelling is the other half of the contract
+    // pipeline/tests/test_published_key_contract.py checks from its side.
+    serve({
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
+    })
+
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
+      url: 'blob:nearby',
+      hash: await networkHash(),
+      revalidated: true,
+    })
+    expect(fetchedUrls()).toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
+    expect(vi.mocked(set)).toHaveBeenCalledWith(
+      NETWORK_OVERVIEW_STORE_KEY,
+      expect.objectContaining({ hash: await networkHash() }),
+    )
+    expect(NETWORK_OVERVIEW_STORE_KEY).not.toBe(NEARBY_TRAILS_STORE_KEY)
+  })
+
+  it('treats a 404 as an older release, exactly like its parent artifact', async () => {
+    // The bucket also 404s this while publish.py holds the pair back on a
+    // steward's reaches_hikers - one decision, two files, same reading.
+    serve({ network: 'missing', manifest: { artifacts: {} } })
+
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
   })
 })

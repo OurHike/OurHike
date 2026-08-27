@@ -167,12 +167,17 @@ export const TOPO_PALETTE = {
   contour: '#8a6c42',
   contourIndex: '#5f4527',
   contourLabel: '#4a3620',
-  /** Roads and tracks: present, quiet, and hue-free - see above. */
-  roadMajor: '#dad6ca',
-  roadMajorEdge: '#8e897a',
-  roadMinor: '#ddd9cd',
-  track: '#7b776b',
-  path: '#55503f',
+  /** Roads and tracks: hue-free (see above), and since #1074 drawn as single
+   *  strokes rather than cased ribbons - so `roadMajor` is now the INK of a
+   *  1.8px line rather than the fill of a 7px one, and is correspondingly
+   *  dark. It is the value `path` used to carry, which is where it came from:
+   *  already hue-free, already tuned per sheet, and already the right darkness
+   *  for a line of that weight. `path` moves 45% of the way to `wood` in
+   *  exchange. */
+  roadMajor: '#55503f',
+  roadMinor: '#848672',
+  track: '#8e8e80',
+  path: '#929681',
   boundary: '#6f6753',
   label: '#14130f',
   labelHalo: '#ffffff',
@@ -231,11 +236,10 @@ export const TOPO_PALETTE_DARK: TopoPalette = {
   contour: '#2c3a2e',
   contourIndex: '#465844',
   contourLabel: '#6b8465',
-  roadMajor: '#2a2f22',
-  roadMajorEdge: '#3a4030',
-  roadMinor: '#232819',
-  track: '#4a4f3a',
-  path: '#565b46',
+  roadMajor: '#565b46',
+  roadMinor: '#3e4535',
+  track: '#3e4532',
+  path: '#373e30',
   boundary: '#444a3a',
   /* Moss, not white - card 1c's whole trick: the brightest ink on this sheet
      is the White blaze itself, which is the point of it. */
@@ -283,11 +287,10 @@ export const TOPO_PALETTE_RED: TopoPalette = {
   contour: '#481a0e',
   contourIndex: '#6b2a16',
   contourLabel: '#963f20',
-  roadMajor: '#341107',
-  roadMajorEdge: '#45180c',
-  roadMinor: '#2a0e06',
-  track: '#5f2412',
-  path: '#6b2a15',
+  roadMajor: '#6b2a15',
+  roadMinor: '#4f1e10',
+  track: '#521f10',
+  path: '#471b0e',
   boundary: '#521f10',
   label: '#c1611a',
   labelHalo: '#140503',
@@ -323,11 +326,10 @@ export const TOPO_PALETTE_FIELD_NIGHT: TopoPalette = {
   contour: '#5f5236',
   contourIndex: '#8a7649',
   contourLabel: '#b39b60',
-  roadMajor: '#383830',
-  roadMajorEdge: '#55534a',
-  roadMinor: '#2a2a24',
-  track: '#6f6d62',
-  path: '#7a745c',
+  roadMajor: '#7a745c',
+  roadMinor: '#575845',
+  track: '#5d5e54',
+  path: '#4d503e',
   boundary: '#5f5c4a',
   label: '#ffffff',
   labelHalo: '#0d0e0b',
@@ -356,11 +358,10 @@ export const TOPO_PALETTE_QUIET_PINE: TopoPalette = {
   contour: '#a3a08c',
   contourIndex: '#7c7a64',
   contourLabel: '#6d6b55',
-  roadMajor: '#dcd4bd',
-  roadMajorEdge: '#bcb193',
-  roadMinor: '#e3ddc9',
-  track: '#a99f83',
-  path: '#97907a',
+  roadMajor: '#97907a',
+  roadMinor: '#b0af9a',
+  track: '#b4ae94',
+  path: '#b7b8a3',
   boundary: '#9a9483',
   label: '#3f4237',
   labelHalo: '#f4f4ec',
@@ -384,11 +385,10 @@ export const TOPO_PALETTE_QUIET_PINE_NIGHT: TopoPalette = {
   contour: '#46503f',
   contourIndex: '#66705a',
   contourLabel: '#8b9678',
-  roadMajor: '#38402f',
-  roadMajorEdge: '#4c5540',
-  roadMinor: '#2c3326',
-  track: '#5a5f48',
-  path: '#6a6f58',
+  roadMajor: '#6a6f58',
+  roadMinor: '#4f5745',
+  track: '#4e5540',
+  path: '#47503f',
   boundary: '#55584a',
   label: '#cfd8c2',
   labelHalo: '#121a14',
@@ -416,11 +416,10 @@ export const TOPO_PALETTE_PARCHMENT: TopoPalette = {
   contour: '#b06e35',
   contourIndex: '#7e4a1e',
   contourLabel: '#6b3d16',
-  roadMajor: '#e2c99b',
-  roadMajorEdge: '#a67c48',
-  roadMinor: '#e6d8b4',
-  track: '#8f6f3f',
-  path: '#7d6a45',
+  roadMajor: '#7d6a45',
+  roadMinor: '#9d9570',
+  track: '#9e8659',
+  path: '#a6a17c',
   boundary: '#8a6f4a',
   label: '#3d3222',
   labelHalo: '#f6efdd',
@@ -445,11 +444,10 @@ export const TOPO_PALETTE_LANTERN: TopoPalette = {
   contour: '#6b4a24',
   contourIndex: '#966c38',
   contourLabel: '#c19453',
-  roadMajor: '#3d2f18',
-  roadMajorEdge: '#55432a',
-  roadMinor: '#2c2312',
-  track: '#6b5738',
-  path: '#77644a',
+  roadMajor: '#77644a',
+  roadMinor: '#584c36',
+  track: '#5c4c30',
+  path: '#4f4530',
   boundary: '#5f4f36',
   label: '#e0d0a6',
   labelHalo: '#191108',
@@ -477,11 +475,10 @@ export const TOPO_PALETTE_RIDGELINE: TopoPalette = {
   contour: '#97948a',
   contourIndex: '#6e6b60',
   contourLabel: '#5c594e',
-  roadMajor: '#dcd6c4',
-  roadMajorEdge: '#b5ac94',
-  roadMinor: '#e2dccb',
-  track: '#9d9480',
-  path: '#8c8574',
+  roadMajor: '#8c8574',
+  roadMinor: '#aaa697',
+  track: '#aba492',
+  path: '#b3b0a1',
   boundary: '#969082',
   label: '#3a382f',
   labelHalo: '#efeee8',
@@ -506,11 +503,10 @@ export const TOPO_PALETTE_RIDGELINE_NIGHT: TopoPalette = {
   contour: '#4c4e45',
   contourIndex: '#6e7165',
   contourLabel: '#909485',
-  roadMajor: '#30322a',
-  roadMajorEdge: '#43463a',
-  roadMinor: '#26281f',
-  track: '#565949',
-  path: '#626555',
+  roadMajor: '#626555',
+  roadMinor: '#494d40',
+  track: '#4a4e40',
+  path: '#42463a',
   boundary: '#4e5145',
   label: '#d5d8c9',
   labelHalo: '#141613',
@@ -745,7 +741,6 @@ export const LIVE_TOPO_LAYER_IDS = {
   contourIndex: 'topo-contour-index',
   contourLabel: 'topo-contour-label',
   roadMinor: 'topo-road-minor',
-  roadMajorCasing: 'topo-road-major-casing',
   roadMajor: 'topo-road-major',
   track: 'topo-track',
   path: 'topo-path',
@@ -790,7 +785,6 @@ export const SHEET_COLOURS: ReadonlyArray<
   [LIVE_TOPO_LAYER_IDS.contourLabel, 'text-color', 'contourLabel'],
   [LIVE_TOPO_LAYER_IDS.contourLabel, 'text-halo-color', 'labelHalo'],
   [LIVE_TOPO_LAYER_IDS.roadMinor, 'line-color', 'roadMinor'],
-  [LIVE_TOPO_LAYER_IDS.roadMajorCasing, 'line-color', 'roadMajorEdge'],
   [LIVE_TOPO_LAYER_IDS.roadMajor, 'line-color', 'roadMajor'],
   [LIVE_TOPO_LAYER_IDS.track, 'line-color', 'track'],
   [LIVE_TOPO_LAYER_IDS.path, 'line-color', 'path'],
@@ -1328,6 +1322,26 @@ export function liveTopoLayers({
         'text-halo-width': type.contourLabelHalo,
       },
     },
+    // THE GROUND NETWORK IS DRAWN IN STROKES, NOT RIBBONS (#1074).
+    //
+    // Every road here used to be a casing plus a fill - a filled ribbon, the
+    // way a road basemap draws one - and the ribbon grew with zoom until it
+    // reached 7.00px at z16, against the 6.50px the A.T. occupies with its own
+    // casing. The road was, measurably, the widest line on a map whose whole
+    // subject is the trail. From z13 up it also out-drew a side trail's entire
+    // 4.50px footprint.
+    //
+    // So the casing is gone and each of these is ONE stroke, capped below
+    // style.ts's SIDE_TRAIL_WIDTH - the narrowest trail line on the sheet -
+    // at every zoom. `roadsStayUnderTheTrail` in the tests is that ceiling
+    // written down, because the old widths were nobody's decision: they were a
+    // road-basemap default that no test disagreed with.
+    //
+    // Losing the ribbon costs the untitled "this is a paved highway" cue, and
+    // road class is now carried by width alone (1.8 / 1.3 / 1.1px). That was
+    // the accepted trade; the alternative that kept the ribbon (a plain width
+    // cut) left the roads no easier to find on the sheets that are already
+    // hardest to read.
     {
       id: LIVE_TOPO_LAYER_IDS.roadMinor,
       type: 'line',
@@ -1337,19 +1351,7 @@ export function liveTopoLayers({
       minzoom: 12,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.roadMinor, palette),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.8, 16, 3] as never,
-      },
-    },
-    {
-      id: LIVE_TOPO_LAYER_IDS.roadMajorCasing,
-      type: 'line',
-      source: OSM_SOURCE_ID,
-      'source-layer': 'transportation',
-      filter: isClass('motorway', 'trunk', 'primary', 'secondary', 'tertiary') as never,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        ...sheetColours(LIVE_TOPO_LAYER_IDS.roadMajorCasing, palette),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.6, 16, 7] as never,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1.3] as never,
       },
     },
     {
@@ -1361,7 +1363,7 @@ export function liveTopoLayers({
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.roadMajor, palette),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 16, 5] as never,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 16, 1.8] as never,
       },
     },
     // Tracks are how you reach most trailheads, and forest roads are a real
@@ -1376,7 +1378,7 @@ export function liveTopoLayers({
       minzoom: 11,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.track, palette),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 16, 1.8] as never,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.4, 16, 1.1] as never,
         'line-dasharray': [6, 3],
       },
     },
@@ -1385,6 +1387,14 @@ export function liveTopoLayers({
     // footpaths around it, which are exactly what the downloaded raster cannot
     // show and what a hiker looking for a side trail or a shortcut wants.
     // Dotted and quiet so they never read as a blazed route.
+    //
+    // "Quiet" is now true of the ink as well as the rhythm. Measured against
+    // each sheet's own wood fill, `path` used to be the 2nd highest-contrast
+    // of the eight ground inks on eight of the ten sheets (1st on night_hike,
+    // 3rd on field/night) - louder than the minor contour lines on all ten. A
+    // 1px dotted line inked at near-label darkness is loud whatever its width,
+    // which is why this one was fixed with colour while the roads above were
+    // fixed with weight: they were opposite defects (#1074).
     {
       id: LIVE_TOPO_LAYER_IDS.path,
       type: 'line',
@@ -1394,9 +1404,9 @@ export function liveTopoLayers({
       minzoom: 12,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.path, palette),
-        'line-width': 1,
+        'line-width': 0.8,
         'line-dasharray': [2, 2],
-        'line-opacity': 0.8,
+        'line-opacity': 0.75,
       },
     },
     {

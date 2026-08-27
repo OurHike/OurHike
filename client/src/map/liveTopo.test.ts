@@ -5,7 +5,12 @@ import {
   latest,
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
-import { buildMapStyle, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
+import {
+  buildMapStyle,
+  TOPO_LAYER_ID,
+  BACKDROP_LAYER_ID,
+  SIDE_TRAIL_WIDTH,
+} from './style'
 import { OSM_CREDIT } from './credits'
 import {
   CORRIDOR_BOUNDARY_LAYER_ID,
@@ -885,6 +890,144 @@ describe('attachElevationLabelUnits', () => {
       peakLabelTextField('metric'),
     )
     expect(m.layoutProperties.size).toBe(1)
+  })
+})
+
+describe('the ground network stays behind the trail', () => {
+  // The two ceilings #1074 put on the road and other-trail layers, asserted
+  // rather than commented, because the widths they replaced were nobody's
+  // decision - they were a road-basemap default that survived precisely
+  // because no test disagreed with it. A major road's casing had reached
+  // 7.00px at z16, against the 6.50px the A.T. occupies with its own casing,
+  // and `path` was inked the 2nd loudest of the eight ground inks on eight of
+  // the ten sheets.
+  //
+  // Both are swept over every variant, not just the default sheet, for the
+  // reason the park-wash sweep already is: a palette added later meets the
+  // same bar without anyone remembering to come back here.
+
+  const GROUND_LAYERS = [
+    LIVE_TOPO_LAYER_IDS.roadMajor,
+    LIVE_TOPO_LAYER_IDS.roadMinor,
+    LIVE_TOPO_LAYER_IDS.track,
+    LIVE_TOPO_LAYER_IDS.path,
+  ]
+
+  const VARIANTS = [
+    ...MAP_STYLE_VALUES.flatMap((style) => [
+      { label: `${style}/day`, variant: SHEET_VARIANTS[style].day },
+      { label: `${style}/night`, variant: SHEET_VARIANTS[style].night },
+    ]),
+    { label: 'night_hike/red', variant: SHEET_VARIANT_RED },
+  ]
+
+  /** `line-width` as MapLibre will really compute it, through its own engine
+   *  rather than by re-implementing interpolation here. */
+  function widthAt(layer: LayerSpecification, zoom: number): number {
+    const value = (layer.paint as Record<string, unknown> | undefined)?.['line-width']
+    const compiled = createExpression(
+      value as never,
+      latest.paint_line['line-width'] as never,
+    )
+    if (compiled.result === 'error') {
+      throw new Error(`${layer.id}'s line-width is not a valid expression`)
+    }
+    return compiled.value.evaluate({ zoom } as never) as number
+  }
+
+  /** WCAG contrast ratio - a symmetric "how far apart are these two inks". */
+  function contrast(a: string, b: string): number {
+    const channel = (c: number) => {
+      const s = c / 255
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+    }
+    const luminance = (hex: string) => {
+      const [r, g, blue] = hexChannels(hex).map(channel)
+      return 0.2126 * r + 0.7152 * g + 0.0722 * blue
+    }
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (high + 0.05) / (low + 0.05)
+  }
+
+  it('draws no road wider than the narrowest trail line, at any zoom', () => {
+    // The regression that let 7.00px happen. SIDE_TRAIL_WIDTH is the thinnest
+    // line style.ts will draw a trail with, so it is the ceiling every ground
+    // line has to clear - a road that reaches it has stopped being context.
+    // Swept across the whole zoom range the sheet is drawn at rather than at
+    // its endpoints, because the old ramp was legal at z8 and wrong at z16.
+    const layers = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' })
+
+    for (const id of GROUND_LAYERS) {
+      const layer = layers.find((candidate) => candidate.id === id)
+      if (layer === undefined) throw new Error(`no ${id} layer in the live sheet`)
+
+      for (let zoom = 8; zoom <= 16; zoom += 0.5) {
+        expect(widthAt(layer, zoom), `${id} at z${zoom}`).toBeLessThan(SIDE_TRAIL_WIDTH)
+      }
+    }
+  })
+
+  it('carries no casing on any road, so none of them can be a ribbon again', () => {
+    // The width ceiling alone would pass a casing-plus-fill pair that each
+    // sat under it while together drawing a 4px band, which is the shape the
+    // fix was actually about. One stroke per road class, and no layer id
+    // carrying a casing, is the structural half of that.
+    const built = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).map((l) => l.id)
+
+    expect(built.filter((id) => id.startsWith('topo-road')).sort()).toEqual(
+      [LIVE_TOPO_LAYER_IDS.roadMajor, LIVE_TOPO_LAYER_IDS.roadMinor].sort(),
+    )
+    expect(Object.keys(LIVE_TOPO_LAYER_IDS)).not.toContain('roadMajorCasing')
+  })
+
+  it('keeps other trails out of the three loudest inks on the ground, on every sheet', () => {
+    // `path` is every trail that is NOT the A.T. It is hiker signal and must
+    // stay drawn (mapDetail.ts keeps it at every level), but it may not be
+    // among the loudest things on the ground - which is exactly what it was.
+    // Measured against each sheet's own woodland fill it ranked 2nd of the
+    // ground inks on eight of the ten sheets, 1st on night_hike and 3rd on
+    // field/night; it now ranks 6th or 7th of seven on every one of them.
+    //
+    // A rank rather than a ratio, because the sheets differ by more than a
+    // stop in overall contrast - red light has a fifth of field/day's range -
+    // so any single ratio that fits one sheet is meaningless on another.
+    const GROUND_INKS = [
+      'path',
+      'track',
+      'roadMinor',
+      'roadMajor',
+      'contour',
+      'contourIndex',
+      'waterway',
+    ] as const
+
+    for (const { label, variant } of VARIANTS) {
+      const wood = variant.palette.wood
+      const loudestFirst = [...GROUND_INKS].sort(
+        (a, b) => contrast(variant.palette[b], wood) - contrast(variant.palette[a], wood),
+      )
+
+      expect(
+        loudestFirst.indexOf('path') + 1,
+        `${label}: loudest first, ${loudestFirst.join(' > ')}`,
+      ).toBeGreaterThan(3)
+    }
+  })
+
+  it('leaves a major road easier to find than the paper it crosses, on every sheet', () => {
+    // The other half of the trade, and the one that stops "quieter" turning
+    // into "gone": these are bail-out routes, and a 1.8px stroke only works
+    // if its ink carries it. The floor is the loudest OTHER trail on the same
+    // sheet - a road a hiker cannot pick out from a side trail has lost the
+    // distinction that matters when they need to walk out.
+    for (const { label, variant } of VARIANTS) {
+      const { roadMajor, path, wood } = variant.palette
+
+      expect(
+        contrast(roadMajor, wood),
+        `${label}: roadMajor ${roadMajor} against wood ${wood}`,
+      ).toBeGreaterThan(contrast(path, wood))
+    }
   })
 })
 

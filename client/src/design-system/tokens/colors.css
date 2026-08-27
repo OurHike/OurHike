@@ -131,8 +131,31 @@ color-scheme:light;
 --brand-primary:var(--forest-600);
 --brand-primary-hover:var(--pine-700);
 --brand-primary-press:var(--pine-800);
---brand-secondary:var(--blaze-orange);
---brand-secondary-hover:var(--blaze-orange-dark);
+/* THE FILLED ORANGE BUTTON'S HUE, ONE RUNG DOWN FROM THE BRAND'S (#1131).
+
+   This was `--blaze-orange`, and a label in `--fg-on-brand` on it measured
+   4.14:1 - under AA, at the 14px a `size="s"` Button sets. Two controls wore
+   it: the Button component's `secondary` variant, and `.wrong-way-cue__primary`,
+   which is the primary action on the one alert HIKER_SAFETY.md lets this app
+   send. A hiker reads that button in the dark, off-trail, deciding whether to
+   turn around.
+
+   `--blaze-orange-dark` takes it to 5.98:1 (measured 2026-08-27 against
+   `--fg-on-brand`'s own light value, paper-0). The dark theme already points
+   here at `--blaze-orange-light`, which carries ink text at 6.82:1 and needed
+   no change.
+
+   THE BRAND HUE ITSELF DID NOT MOVE. `--accent-blaze-orange` is still
+   `--blaze-orange`, and is what pins, dots, rails and the drought wash keep
+   using - ink nothing sits on, where 4.5:1 does not apply. That split is the
+   point of having two names for one colour family: one for a surface a label
+   lands on, one for a mark that stands alone. */
+--brand-secondary:var(--blaze-orange-dark);
+/* Darker still on hover, following `--brand-primary-hover`'s direction rather
+   than inverting it. There is no rung below `--blaze-orange-dark` in the
+   palette and inventing a fourth orange to sit under it would be a hex nobody
+   can trace, so this mixes toward the palette's own black: 7.22:1. */
+--brand-secondary-hover:color-mix(in srgb, var(--blaze-orange-dark) 85%, var(--black));
 
 --accent-blaze-orange:var(--blaze-orange);
 --accent-blaze-yellow:var(--blaze-yellow);

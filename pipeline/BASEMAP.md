@@ -326,6 +326,15 @@ directories. The compressor is held constant and is not doing any of the work:
 Planetiler's tiles re-compress to the byte at gzip level 6, verified on all
 21,724 tiles of the z13 package, so these deltas are the exclusion's.)
 
+**The Light z12 cut is not measured here and is helped least**, which follows
+from the same shape rather than from a separate finding: the exclusion's value
+climbs with zoom because that is where the excluded layers live, so a cut that
+stops at z12 keeps the smallest share of it. It is cut from the same build by
+the same run, so it inherits the change with no extra step — the number it
+lands on is whatever `report_archive` prints on the first build after this, and
+that is the honest place to read it rather than an extrapolation from the two
+rows above.
+
 **The two tiers differ that much because z14 is where everything the sheet
 does not draw arrives at once.** Of the Fine package: `transportation_name`
 75.6 MB, `building` 56.7, `housenumber` 36.3, `poi` 33.5, and

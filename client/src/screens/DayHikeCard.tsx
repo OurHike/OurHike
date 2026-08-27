@@ -1,12 +1,28 @@
 // The finished day hike (#980, frame `1l`) - the blocks with a source today.
 //
 // The frame is the richest in its group and this card deliberately renders
-// LESS of it than it draws. What ships: the legs with each organization's own
-// name on its trail, the walked miles, the LOOP badge, the ± elevation and
-// ≈time (#1011), the ways off, and the one-line credit to the orgs that keep
-// the ground walkable - and, since #1008, a date field, the gap rows for a
-// multi-segment walk, and the "Leave this with someone" door (frame D6,
-// screens/LeaveWithSomeone.tsx).
+// LESS of it than it draws. What ships: the legs with their walked miles, the
+// LOOP badge, the ± elevation and ≈time (#1011), the ways off, and the
+// one-line credit to the orgs that keep the ground walkable - and, since
+// #1008, a date field, the gap rows for a multi-segment walk, and the "Leave
+// this with someone" door (frame D6, screens/LeaveWithSomeone.tsx).
+//
+// WHAT CAME BACK OFF, and why (#1112, maintainer's call 2026-08-27): each
+// leg used to name its maintaining organization, and each way off did too.
+// Three things were wrong with it at once. It repeated - one row per leg,
+// usually the same org twice over. It was the least actionable part of a row
+// a hiker reads to walk by: the trail's name and its length are what the
+// walking is done with. And the published names are long enough to break the
+// row - `oprhp_trails` is 68 characters, and #1112 is what that did to the
+// layout.
+//
+// It is NOT an attribution obligation, and that was checked rather than
+// assumed: chrome/SourcesSection.tsx renders each steward's licence and
+// attribution string verbatim, which is where features/SOURCE_REGISTRY.md's
+// "required at submission" text is actually discharged. This card credits by
+// COUNT - "Two organizations keep this loop walkable" - which survives
+// unchanged, and `orgCount` reads `leg.source` rather than a steward name, so
+// the sentence never depended on the labels that left.
 //
 // What waits, and on what (#980 keeps the ledger): the turn list (a naming
 // rule #934 left open), "Starts at · Parking" (#981's pipeline data), the
@@ -45,9 +61,9 @@ import { useState } from 'react'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
+import { blazeLabel, blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { dayLongDateLabel } from '../lib/planDisplay'
-import { orgLabelFrom, type Stewards } from '../lib/stewards'
 import { paceEstimate, type PaceProfile } from '../lib/pace'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
@@ -62,7 +78,6 @@ export interface DayHikeCardProps {
    *  stored figures and says which of the two happened. */
   resolved: ResolvedDayHike | null
   bailOuts: BailOut[]
-  stewards: Stewards
   units: UnitSystem
   /**
    * The hiker's own pace (#880), which this card used to ignore (#1040).
@@ -99,7 +114,6 @@ export function DayHikeCard({
   hike,
   resolved,
   bailOuts,
-  stewards,
   units,
   pace,
   networkAvailable,
@@ -117,7 +131,6 @@ export function DayHikeCard({
   // sheet frame - one surface continuing, the bar-to-card convention.
   const [leaving, setLeaving] = useState(false)
 
-  const orgLabel = orgLabelFrom(stewards)
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
   const gaps = dayHikeGaps(hike)
@@ -310,13 +323,42 @@ export function DayHikeCard({
               agree about the same ground. */}
           {legs.map((leg, at) => (
             <div className="day-hike-card__row" key={`${leg.name ?? 'leg'}-${at}`}>
+              {/* The blaze, as the paint and nothing else - the legend's own
+                  swatch, back with a caller (#1112). Through
+                  `blazePaintColor` rather than a second table, so a leg's
+                  swatch and the line the map draws for that leg are the same
+                  hue by construction; lib/blaze.ts holds the closed palette
+                  and #782's admission bar.
+
+                  The WORD rides underneath for a screen reader, which is the
+                  freshness dots' arrangement on Today (screens/Today.tsx) and
+                  is not decoration: half the network has no hue to show
+                  (measured against the published graph, 2026-08-27: 48.1% of
+                  edges are `Unknown`, 1.8% `None`, 1.3% `Other`), and those
+                  all paint the same neutral grey. Grey is the app's own
+                  sentence for "we do not know this" - the colour the map
+                  paints such a line, and the corridor view spends on miles
+                  with no club recorded - so the swatch agrees with the map
+                  rather than inventing a fourth meaning. `blazeLabel` is
+                  what tells the three neutrals apart in words: "Blaze not
+                  recorded", "Unblazed", "Other blaze". */}
+              <span
+                className="day-hike-card__blaze"
+                style={{
+                  backgroundColor:
+                    leg.blaze_color === null
+                      ? NEUTRAL_BLAZE_COLOR
+                      : blazePaintColor(leg.blaze_color),
+                }}
+              >
+                <span className="visually-hidden">{blazeLabel(leg.blaze_color)}</span>
+              </span>
               <span className="day-hike-card__row-name">
                 {leg.name ?? 'Unnamed trail'}
               </span>
               <span className="day-hike-card__row-figures">
                 {formatDistance(leg.miles, units)}
               </span>
-              <span className="day-hike-card__row-org">{orgLabel(leg.source)}</span>
             </div>
           ))}
         </section>
@@ -333,10 +375,7 @@ export function DayHikeCard({
             </p>
           ) : (
             bailOuts.map((bailOut, at) => (
-              <div
-                className="day-hike-card__row day-hike-card__row--mile"
-                key={`${bailOut.miles}-${at}`}
-              >
+              <div className="day-hike-card__row" key={`${bailOut.miles}-${at}`}>
                 {/* formatDistance, not mileMarker: this is a walked length
                     (it converts for a metric hiker), not a name on the one
                     trail with a mile axis - planDisplay.ts draws the line. */}
@@ -347,7 +386,6 @@ export function DayHikeCard({
                   {bailOut.name ?? 'Unnamed trail'}
                   {bailOut.blaze_color !== null && ` (${bailOut.blaze_color})`}
                 </span>
-                <span className="day-hike-card__row-org">{orgLabel(bailOut.source)}</span>
               </div>
             ))
           )}

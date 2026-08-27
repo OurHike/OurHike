@@ -251,13 +251,20 @@ def planetiler_cmd(
     ]
 
 
-def load_corridor_4326():
+def load_corridor_4326(buffer_miles: float | None = None):
     """The corridor as a shapely geometry in EPSG:4326, built fresh from the
     centerline exactly as the raster pipeline does (and never from the stale
-    spike output - see lib/corridor.py)."""
+    spike output - see lib/corridor.py).
+
+    `buffer_miles` narrows it for one caller, export_dem.py, which wants a
+    different width per zoom (#1088 - see its CORRIDOR_TAPER_MILES). None means
+    lib/corridor.BUFFER_MILES, so the basemap build's own shape is untouched."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    build_corridor(con, CENTERLINE_PATH)
+    if buffer_miles is None:
+        build_corridor(con, CENTERLINE_PATH)
+    else:
+        build_corridor(con, CENTERLINE_PATH, buffer_miles=buffer_miles)
     geojson = con.execute("SELECT ST_AsGeoJSON(geom) FROM corridor").fetchone()[0]
     return shape(json.loads(geojson))
 

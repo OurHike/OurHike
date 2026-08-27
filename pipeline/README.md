@@ -408,7 +408,19 @@ The vector-first offline program — design, trade-offs and build numbers in
 - `extract_package.py` — cuts a trail's download package from that build;
   keeps every source tile through z9 so packages carry their own context.
 - `export_dem.py` — the corridor DEM: terrarium tiles fetched, blue channel
-  floored to 0.5 m, lossless WebP, PMTiles.
+  floored to 0.5 m, lossless WebP, PMTiles. Its corridor **tapers with zoom**
+  since [#1088](https://github.com/OurHike/OurHike/issues/1088) — 30 miles
+  through z11, 15 at z12, 6 at z13 (`CORRIDOR_TAPER_MILES`) — because a mile of
+  buffer costs 1.36 MB at z11 and 12.37 MB at z13, measured. Below z10 it stops
+  clipping entirely (`CONTEXT_ZOOM = 9`, the boundary `extract_package.py`
+  already draws) so panning out shows terrain rather than a ribbon in blank
+  paper — +26.5 MB, against +435.5 MB had that reached z11. Both the schedule
+  and the context zoom travel in the archive's metadata, so
+  `check_dem_archive.py` holds a build to its own declared shape rather than to
+  whatever the constants say today. **Built and measured at the shipped
+  schedule** ([run 33065213666](https://github.com/OurHike/OurHike/actions/runs/33065213666),
+  2026-08-27): 8,658 tiles, **275.6 MB** against the untapered 607.3 — 54.6% off
+  the DEM and 42.0% off the Standard hiking sheet.
 - `check_dem_archive.py` — the DEM's publish gate: complete regional
   coverage, every tile decodes, header and metadata say what they must.
 - `spike_dem_banding.py` — the rendered evidence behind the 0.5 m step.
@@ -420,7 +432,10 @@ twice-guarded `publish` inputs, upload the archives; `package-overlap-spike.yml`
 runs the overlap measurement. First published 2026-08-06.
 
 Measured per-zoom, `dem.pmtiles` as published (z0–13, 0.5 m quantize,
-21,758 tiles, none absent — 607,265,661 bytes total):
+21,758 tiles, none absent — 607,265,661 bytes total). **This is the untapered
+archive**: the taper landed after this build, so these are the figures the
+client still advertises and the ones the next build will move —
+[LIGHT_DOWNLOAD.md](LIGHT_DOWNLOAD.md) carries the projection and its grade.
 
 | zoom | tiles | MB |
 |---|---|---|

@@ -184,6 +184,23 @@ describe('desktop layout contract', () => {
     expect(block).not.toMatch(/position:\s*static/)
   })
 
+  it('anchors the journal column, so the card docked in it lands on its edge', () => {
+    // The shell docks the day-hike card beside the journal on this layout
+    // (App.tsx's `journal` slot), and `.day-hike-card` is an absolute box at
+    // `bottom: 0`. Static, the column is not an anchor: that box would go to
+    // the nearest positioned ancestor out in MapScreen and dock against the
+    // wrong edge of the wrong column - the same defect #631 found behind the
+    // pickers' hidden radios, and the reason .legend--persistent above says
+    // `relative` rather than `static`.
+    //
+    // Pinned as text because jsdom does no layout, which is this whole file's
+    // premise: nothing rendering the card can see where it landed.
+    const block = declarationsOf('.map-screen__journal')
+
+    expect(block).toMatch(/position:\s*relative/)
+    expect(block).not.toMatch(/position:\s*static/)
+  })
+
   it('paints the chrome from its own aliases, which is what lets the theme re-point it', () => {
     // The frame is pine under the light theme and ink under the dark one, and
     // one stylesheet can only say both by reading the --*-chrome tokens -

@@ -65,7 +65,7 @@ const DAY_HIKES = {
         {
           name: 'Pine Meadow Trail',
           source: 'oprhp_trails',
-          blaze_color: 'blue',
+          blaze_color: 'Blue',
           miles: 3 + (at % 7) * 0.8,
         },
       ],

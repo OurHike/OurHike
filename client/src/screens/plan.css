@@ -2704,33 +2704,86 @@
   color: var(--fg-2);
 }
 
+/* A leg, or a way off it: what the trail is called, and how far.
+
+   WHAT BROKE, AND WHAT ACTUALLY FIXED IT (#1112) - they are two different
+   things, and the second one is not this rule. The row used to carry a THIRD
+   part, the maintaining organization's name, and was `1fr auto auto` with
+   both trailing columns `white-space: nowrap`. An `auto` track sized by text
+   that cannot break takes whatever width that text needs and then overflows
+   the card: the `1fr` name track squeezed to its `min-width: 0` floor, its
+   own text wrapped and drew OVER the mileage, and the organization still ran
+   off the right edge and was cut. Measured against the published
+   `stewards.json` (2026-08-27), `oprhp_trails` carries 68 characters - "New
+   York State Office of Parks, Recreation and Historic Preservation" - so no
+   unusual name was needed to get there.
+
+   The organization came OFF this row (maintainer's call, 2026-08-27: it is
+   repeated per leg, it is the least actionable part of the row, and the
+   attribution obligation is `SourcesSection`'s, which renders each steward's
+   licence and attribution verbatim). With it gone the collision has no cause
+   left: two parts, one of which can wrap inside its own box.
+
+   FLEX ANYWAY, rather than reverting to a two-column grid. A wrapping flex
+   line cannot produce that pile-up whatever is added to it later - an item
+   too long for the line moves to the next line instead of drawing over its
+   neighbour - so this is the guard that keeps a future third part from
+   reintroducing #1112. The name keeps the slack (`flex: 1 1 auto`), which is
+   what holds the one-line arrangement.
+
+   The `--mile` variant's rule went with the grid rather than being ported:
+   it existed only to re-order the columns so a way-off row leads with its
+   mile, and DOM order already does that here. */
 .day-hike-card__row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
   font-size: 0.9375rem;
 }
 
-/* A way-off row leads with its mile; the trail name takes the slack. */
-.day-hike-card__row--mile {
-  grid-template-columns: auto 1fr auto;
+/* The blaze, as the legend used to paint it: a short length of the line
+   itself, 22x4 with a hairline border so White and Yellow still read against
+   the card's paper. Those numbers are the legend's own - `.legend__swatch`,
+   removed 2026-08-25 when the blaze rows came off that panel - rather than
+   picked again here, so the one thing this app has ever drawn to mean "this
+   blaze" keeps one shape. */
+.day-hike-card__blaze {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-2);
+  /* The row is baseline-aligned and this box has no text in it to sit on, so
+     it would hang off the bottom of the line. Nudged to sit against the
+     name's x-height instead. */
+  align-self: center;
 }
 
 .day-hike-card__row-mile {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 
 .day-hike-card__row-name {
+  /* Takes the slack, and is allowed below its own longest word so a long
+     trail name wraps inside its own box instead of widening the row. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.day-hike-card__row-figures,
-.day-hike-card__row-org {
+.day-hike-card__row-figures {
+  flex: 0 0 auto;
+  /* The one thing in this row that must never break: "0.4 mi" split across
+     two lines reads as a different number at a glance. */
+  white-space: nowrap;
+}
+
+.day-hike-card__row-figures {
   font-size: 0.8125rem;
   color: var(--fg-2);
-  white-space: nowrap;
 }
 
 .day-hike-card__note {

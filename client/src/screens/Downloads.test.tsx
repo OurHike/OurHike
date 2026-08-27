@@ -255,9 +255,10 @@ describe('the USGS sheet as its own decision (#237)', () => {
   })
 
   it('gives each sheet its own picker, with its own level set (#276)', async () => {
-    // The USGS raster has Light/Standard/Fine; the hiking sheet has its z13
-    // Standard cut and z14 Fine one. Distinct radio-group names keep one
-    // card's choice from toggling the other's.
+    // The USGS raster's Light/Standard/Fine are whole alternative archives;
+    // the hiking sheet's are its z12/z13/z14 basemap cuts paired with their
+    // own DEMs. Same three labels, different things behind them - so distinct
+    // radio-group names keep one card's choice from toggling the other's.
     const user = userEvent.setup()
     render(<Downloads sheets={twoSheets()} />)
 
@@ -271,16 +272,21 @@ describe('the USGS sheet as its own decision (#237)', () => {
     expect(usgsGroup).toBe('usgs-detail')
   })
 
-  it('draws the same three rungs under either tab, greyed where the sheet has none (#298)', async () => {
+  it('draws the same three rungs under either tab (#298)', async () => {
     // Two level sets meant two differently-shaped pickers, and switching
     // tabs made the cheapest row disappear. Same ladder under both now:
     // what differs is what each rung costs, not whether it was asked.
+    //
+    // Both ladders are fully operable since #1107 built the hiking sheet's
+    // Light artifacts, so what this asserts is the SHAPE - three rungs, either
+    // tab. The greyed-rather-than-dropped half of #298 has moved to
+    // DownloadCard.test.tsx, where a sheet with no dial at all still shows it.
     const user = userEvent.setup()
     render(<Downloads sheets={twoSheets()} />)
 
-    expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
+    const hikingLevels = screen.getAllByRole('radio')
+    expect(hikingLevels).toHaveLength(3)
+    for (const level of hikingLevels) expect(level).toBeEnabled()
 
     await openTab(user, /usgs sheet/i)
 

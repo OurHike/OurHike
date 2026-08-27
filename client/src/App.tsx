@@ -103,6 +103,7 @@ import {
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
 import { useAvailableBytes } from './lib/useAvailableBytes'
+import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
@@ -1258,6 +1259,10 @@ function App() {
   // below: freeing space is the app's own printed remedy, and #554 measured
   // that the browser's accounting may never notice on its own.
   const { bytes: availableBytes, refresh: refreshAvailableBytes } = useAvailableBytes()
+  // Every size this shell prints for a download comes from the published
+  // manifest where it carries one, and from the catalog's constants where it
+  // does not (#505) - see lib/usePublishedSizes.ts for why both are needed.
+  const publishedSizes = usePublishedSizes()
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -2732,7 +2737,6 @@ function App() {
         hike={cardDayHike}
         resolved={cardResolution}
         bailOuts={cardBailOuts}
-        stewards={stewards}
         units={units}
         pace={pace}
         networkAvailable={graphIndex !== null}
@@ -2759,6 +2763,26 @@ function App() {
         }}
       />
     ) : null
+
+  /**
+   * The card for a hike that is already in the store, for every shelf that
+   * offers one.
+   *
+   * A REVIEW card is the builder continuing - Done hands frame `1l` the slot
+   * the pick bar just left, over the map, and it belongs nowhere else. What
+   * is below is the other act entirely: a hiker tapped a row on a shelf of
+   * saved hikes and asked what is on that walk.
+   *
+   * Named because there are now TWO such shelves and there was one renderer.
+   * #1054 put "Your day hikes" on the Today tab and wired its taps to
+   * `handleOpenDayHike`, which writes `openId` into the store - but the only
+   * things rendering that pointer were the Plan tab's own slot and the map's
+   * route sheet, and the route sheet only takes a review. So a tap on Today
+   * stored the pointer, re-ran the geometry fetch the card needs, and put
+   * nothing on screen: the store said a hike was open and every surface a
+   * hiker could see disagreed.
+   */
+  const savedDayHikeCardNode = dayHikeReview === null ? dayHikeCardNode : null
 
   /**
    * Which Plan home to show (#1008): the hiker's own last pick wins; until
@@ -4477,7 +4501,7 @@ function App() {
           title: sheet.title,
           summary: sheet.summary,
           status: sheetStatus(sheet),
-          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel),
+          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel, publishedSizes),
           error: sheetError(sheet),
           // Answered against the card's OWN status, not a second reading of
           // what is downloaded: this notice exists to contradict a card that
@@ -4511,7 +4535,7 @@ function App() {
           detail:
             sheet.id === USGS_SHEET.id
               ? {
-                  options: rasterDetailOptions(),
+                  options: rasterDetailOptions(publishedSizes),
                   value: detailLevel,
                   name: 'usgs-detail',
                   availableBytes,
@@ -4522,7 +4546,7 @@ function App() {
                 }
               : sheet.id === HIKING_SHEET.id
                 ? {
-                    options: hikingDetailOptions(),
+                    options: hikingDetailOptions(publishedSizes),
                     value: hikingLevel,
                     name: 'hiking-detail',
                     availableBytes,
@@ -4645,9 +4669,19 @@ function App() {
         <div>
           {/* Its own boundary like More's and Plan's, for their shared
               reason: a throw here must not cost the map, and the tab bar
-              underneath is the way back. */}
+              underneath is the way back. The card is inside it for that same
+              reason rather than beside it - a throw while resolving a saved
+              walk is a throw on this screen. */}
           <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
             {todayScreen}
+            {/* The details a row on "Your day hikes" promises. A sheet over
+                the journal, not a screen instead of it: the tab bar stays
+                put and closing returns to the row that was tapped. It docks
+                against this pane, which App.css makes `position: relative`
+                for exactly this - and `.today` is bounded to the pane's own
+                height, so `bottom: 0` is the bottom a hiker can see rather
+                than the bottom of a scrolled column. */}
+            {savedDayHikeCardNode}
           </ErrorBoundary>
         </div>
         <TabBar
@@ -4827,9 +4861,9 @@ function App() {
                 onDayListOpen={setDayListOpen}
                 dayHikes={dayHikeStore.hikes}
                 onOpenDayHike={handleOpenDayHike}
-                {...(dayHikeReview === null && dayHikeCardNode !== null
-                  ? { dayHikeCard: dayHikeCardNode }
-                  : {})}
+                {...(savedDayHikeCardNode === null
+                  ? {}
+                  : { dayHikeCard: savedDayHikeCardNode })}
                 onStartOnMap={openPlanKind}
                 onNewDayHike={openDayHike}
                 onNewTrip={routeBuilder.openRouteBuilder}
@@ -4987,7 +5021,18 @@ function App() {
               // stands aside - and the journal reads beside the map. Never during
               // first run, whose backdrop must stay bare down to the canvas.
               journal={
-                !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
+                !entering && isDesktop && activeTab === 'today' ? (
+                  <>
+                    {todayScreen}
+                    {/* The same card the phone's Today docks, in the column
+                        the row was tapped in rather than over the map beside
+                        it - the map's own sheet slot belongs to the builders
+                        and the trailhead door, and a shelf tap must not
+                        outrank a walk in progress there. desktop.css makes
+                        the column its containing block. */}
+                    {savedDayHikeCardNode}
+                  </>
+                ) : undefined
               }
               modeSwitch={sidebarModeSwitch}
               // The ask before this phone's map is replaced (#919). Undefined

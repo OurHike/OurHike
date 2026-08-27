@@ -271,7 +271,7 @@ describe('what a sheet will cost', () => {
   })
 
   it('follows the hiking level for the leveled basemap, exactly as published', () => {
-    for (const level of ['standard', 'fine'] as const) {
+    for (const level of ['light', 'standard', 'fine'] as const) {
       expect(packageSizeBytes(BASEMAP_PACKAGE as OfferedPackage, 'light', level)).toBe(
         getHikingDetail(level).basemapSizeBytes,
       )
@@ -279,12 +279,59 @@ describe('what a sheet will cost', () => {
   })
 
   it('composes the hiking sheet’s total per level (#276)', () => {
-    // What the sheet's picker shows: the level's basemap cut plus the DEM,
-    // which never changes across levels.
-    for (const level of ['standard', 'fine'] as const) {
+    // What the sheet's picker shows: the level's basemap cut plus its DEM.
+    // The DEM became per-level with #1088 - the corridor tapers harder at
+    // Light - so this sums the level's own two artifacts rather than adding a
+    // constant, which is the thing that would silently stop being true.
+    //
+    // Light is in this loop since #1107 and is the level that would catch the
+    // regression: it is the only one whose basemap AND DEM both differ from
+    // every other rung's, so a resolver that fell back to Standard's pair
+    // would still look right on Fine.
+    for (const level of ['light', 'standard', 'fine'] as const) {
+      const detail = getHikingDetail(level)
       expect(hikingSheetSizeBytes(level)).toBe(
-        getHikingDetail(level).basemapSizeBytes + 607_265_661,
+        (detail.basemapSizeBytes ?? 0) + (detail.demSizeBytes ?? 0),
       )
+    }
+  })
+
+  it('resolves each leveled package to its own artifact, not the other one', () => {
+    // The 'of' discriminant earns its place here: both packages are leveled
+    // now, so a resolver that keyed off the kind alone would hand the DEM's
+    // download the basemap's key - the right hash against the wrong bytes.
+    for (const level of ['light', 'standard', 'fine'] as const) {
+      const detail = getHikingDetail(level)
+      expect(
+        packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'standard', level),
+      ).toBe(detail.artifact)
+      expect(packageArtifactKey(DEM_PACKAGE as OfferedPackage, 'standard', level)).toBe(
+        detail.demArtifact,
+      )
+    }
+  })
+
+  it('refuses to price a level whose artifact nobody has published', () => {
+    // packages.ts's own memory: "the app was offering a Light tier that did
+    // not exist". A level with no published size has no honest cost, and a NaN
+    // in the remaining-storage sum is exactly the silent wrong number that
+    // rule exists to prevent.
+    //
+    // Driven through a level blanked for the duration rather than through
+    // whichever rung happens to be unbuilt this week. Light was that rung
+    // between #1088 and #1107 and this test read `'light'` literally; the day
+    // its DEM was published the test went green for a reason that had nothing
+    // to do with the throw still working. Blanking the table restores what was
+    // actually being asserted, and keeps asserting it once every level ships.
+    const light = getHikingDetail('light')
+    const size = light.demSizeBytes
+    light.demSizeBytes = null
+    try {
+      expect(() =>
+        packageSizeBytes(DEM_PACKAGE as OfferedPackage, 'standard', 'light'),
+      ).toThrow(/no published dem size/i)
+    } finally {
+      light.demSizeBytes = size
     }
   })
 

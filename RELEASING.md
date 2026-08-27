@@ -622,6 +622,15 @@ An agent may do everything up to that line: prepare the branch, generate the not
 run the battery, open the pull request, and create the GitHub release **as a draft**.
 Publishing the draft is a human action.
 
+The order those steps run in lives in one place —
+[`.claude/skills/release-train/SKILL.md`](.claude/skills/release-train/SKILL.md), the
+train — added 2026-08-27
+([#1123](https://github.com/OurHike/OurHike/issues/1123)) after v1.1.1 was cut with
+every step reconstructed from this document's prose. The train is operational only: it
+cites this document's sections rather than restating them, the agent dispatches every
+job, and the maintainer's part reduces to the approvals, the merge, the UA smoke and
+the publish. Where the two could ever disagree, this document wins.
+
 **That last permission was unbuildable until 2026-08-27, and the sentence did not say
 so.** The only thing that drafts a release is `pages.yml`'s `release` job, and it
 `needs: build` — where `build` *is* the production deploy. So the draft could not exist

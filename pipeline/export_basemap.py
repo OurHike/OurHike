@@ -205,18 +205,20 @@ def planetiler_cmd(
     layer_stats: bool = False,
     http_timeout_seconds: int | None = None,
     exclude_layers: list[str] | None = None,
-    languages: str | None = BUILD_LANGUAGES,
+    languages: str | None = None,
 ) -> list[str]:
     """The Planetiler invocation. --download fetches the profile's non-OSM
     sources (Natural Earth, water polygons) on first run; --polygon bounds the
     output tiles to the clip shape (omitted under --no-clip, where the input
     PBF's own extent is the bound).
 
-    exclude_layers defaults to UNRENDERED_LAYERS above; pass [] to build the
-    whole schema (what a shard-comparison spike wants, where the question is
-    whether two builds agree rather than what the app draws). languages is the
-    profile's label filter, None to leave Planetiler's ~80-language default
-    alone.
+    NEUTRAL BY DEFAULT on both of the arguments below, and main() is what opts
+    in (`UNRENDERED_LAYERS`, `BUILD_LANGUAGES`). Defaulting them the other way
+    would be tidier at this call site and wrong at the other one: this is a
+    command builder, the exclusion is a decision about what the APP draws, and
+    spike_shard_seam.py builds to compare two shards rather than to ship - its
+    recorded drift rate was measured across the whole schema, so a narrower
+    build there would be a narrower question silently substituted for it.
 
     layer_stats asks for the per-(tile, layer) TSV that compare_shards.py
     reads. Off by default and opt-in rather than always on: Planetiler names
@@ -230,7 +232,7 @@ def planetiler_cmd(
     is that 30s expiring on a slow host - a failure that says nothing about
     the data and stops the build regardless. None leaves Planetiler's
     default alone."""
-    excluded = UNRENDERED_LAYERS if exclude_layers is None else exclude_layers
+    excluded = exclude_layers or []
     return [
         "java",
         "-jar",
@@ -331,7 +333,17 @@ def main(args: argparse.Namespace):
 
     print("Running Planetiler...")
     tmp_dir = OSM_RAW_DIR / "planetiler-tmp"
-    cmd = planetiler_cmd(args.planetiler_jar, merged, args.out, args.max_zoom, None if args.no_clip else CLIP_POLY_PATH, tmp_dir)
+    # The shipped build, and the one place the exclusion is asked for (#1116).
+    cmd = planetiler_cmd(
+        args.planetiler_jar,
+        merged,
+        args.out,
+        args.max_zoom,
+        None if args.no_clip else CLIP_POLY_PATH,
+        tmp_dir,
+        exclude_layers=UNRENDERED_LAYERS,
+        languages=BUILD_LANGUAGES,
+    )
     print(f"  {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 

@@ -360,9 +360,13 @@ a rebuild and a republish. That is the trade, and it was made because 40% of
 the tier a hiker picks when they want the good map is a large price for an
 option nobody has asked for.
 
-`spike_shard_seam.py` opts back out (`exclude_layers=[]`, `languages=None`):
-its recorded drift rate was measured across the whole schema, and a narrower
-build is a narrower question.
+`planetiler_cmd` stays neutral and `main()` is what asks, so
+`spike_shard_seam.py` keeps the whole schema by doing nothing: its recorded
+drift rate above was measured across every layer, and a narrower build would
+be a narrower question silently substituted for it. Defaulting the exclusion
+on would have been tidier at one call site and wrong at the other — and it
+would put the spike's three Planetiler builds (150-minute timeout each) on
+every push that touched its file.
 
 The DEM's per-zoom table lives beside the raster tiers in
 [README.md](README.md). The quantize step was settled at 0.5 m by

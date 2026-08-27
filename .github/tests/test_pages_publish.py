@@ -689,3 +689,38 @@ class TestDraftingWithoutDeploying:
         assert self._workflow()["jobs"]["build"]["outputs"]["version"]
         raw = self.WORKFLOW.read_text(encoding="utf-8")
         assert "needs.build.outputs.version" in raw
+
+    # --- what publishing the draft would actually tag ------------------------
+    #
+    # The three below are the sharp edge `draft_only` introduced, found by
+    # walking into it: v1.1.1 was drafted from a pull-request branch on
+    # 2026-08-27, so its target_commitish was the branch head rather than a
+    # commit on main. Publishing it then would have created the tag on unmerged
+    # work, and §4's immutable releases make that permanent. It was saved only
+    # by the branch merging with a merge commit, which put the target on main's
+    # history; a squash merge would not have.
+
+    def _draft_step(self) -> dict:
+        steps = self._workflow()["jobs"]["release"]["steps"]
+        return next(step for step in steps if step.get("name") == "Draft the release")
+
+    def test_the_draft_says_which_commit_publishing_would_tag(self):
+        """The step summary is the only place a person sees this before
+        pressing publish, and `target_commitish` is not shown in the release UI
+        next to the button."""
+        assert "Publishing this draft would tag" in self._draft_step()["run"]
+
+    def test_a_draft_from_a_branch_warns_that_it_is_not_the_default_branch(self):
+        """A warning rather than a refusal, deliberately: drafting from a branch
+        is the useful case - it is how a release is prepared before it lands -
+        so what must not happen quietly is publishing, not drafting."""
+        run = self._draft_step()["run"]
+        assert '"$REF_NAME" != "$DEFAULT_BRANCH"' in run
+        assert "::warning::" in run
+
+    def test_the_branch_comparison_reaches_the_script_through_env(self):
+        """#660. Both values are GitHub-controlled rather than user input, but
+        the rule is not "inputs that look dangerous" - it is inputs."""
+        env = self._draft_step()["env"]
+        assert env["REF_NAME"] == "${{ github.ref_name }}"
+        assert env["DEFAULT_BRANCH"] == "${{ github.event.repository.default_branch }}"

@@ -6,6 +6,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { DayHikeList, type DayHikeListProps } from './DayHikeList'
+import { STANDARD_PACE } from '../lib/pace'
 import type { DayHike } from '../lib/dayHikes'
 
 function dayHike(id: string, overrides: Partial<DayHike> = {}): DayHike {
@@ -32,6 +33,7 @@ function dayHike(id: string, overrides: Partial<DayHike> = {}): DayHike {
 const PROPS: DayHikeListProps = {
   dayHikes: [],
   units: 'imperial',
+  pace: STANDARD_PACE,
   at: null,
   onOpen: vi.fn(),
   onBack: vi.fn(),

@@ -478,3 +478,29 @@ describe('the climb, once the phone can price it (#1011)', () => {
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
   })
 })
+
+describe('the climb when the live resolution is gone (#1045, 2026-08-27)', () => {
+  it('falls back to the cached climb, under the sentence that says it is cached', () => {
+    // The condition on printing a cached figure at all: the card already
+    // tells the hiker these numbers are the ones stored at save time, so the
+    // climb is covered by the same disclosure the miles are.
+    renderCard({
+      hike: {
+        ...HIKE,
+        figures: { ...HIKE.figures, climb: { gainFt: 1240, lossFt: 1240 } },
+      },
+      resolved: null,
+    })
+
+    expect(screen.getByText(/1,240/)).toBeInTheDocument()
+  })
+
+  it('says nothing about climb for a hike saved before the field existed', () => {
+    // `undefined` reads exactly as `null` does on this card - no figure, no
+    // ≈time, nothing invented - which is what it looked like before #1011.
+    renderCard({ hike: HIKE, resolved: null })
+
+    expect(screen.queryByText(/ft/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/walking/)).not.toBeInTheDocument()
+  })
+})

@@ -5,14 +5,17 @@ import { describe, expect, it } from 'vitest'
 
 import type { DayHike } from './dayHikes'
 import {
+  cachedEstimate,
   dayHikeGaps,
   dayHikesNearHere,
   distanceToStartMiles,
   NEAR_START_MILES,
   sortedByDate,
   sortedByNearest,
+  sortedByTime,
   splitDayHikes,
 } from './dayHikeShelf'
+import { STANDARD_PACE } from './pace'
 
 /** A valid stored hike at a grid coordinate, tweakable per test. */
 function hikeAt(
@@ -149,5 +152,46 @@ describe('gaps between segments (frame D5, #935)', () => {
 
   it('a single-segment hike has no gaps', () => {
     expect(dayHikeGaps(hikeAt('plain', -74.095, 41.25))).toEqual([])
+  })
+})
+
+describe('pricing a walk from its cache (#1045, 2026-08-27)', () => {
+  const priced = (id: string, miles: number, gainFt: number) =>
+    hikeAt(id, -74.1, 41.25, {
+      figures: { miles, legs: [], climb: { gainFt, lossFt: gainFt } },
+    })
+
+  it('has nothing to say about a hike whose record holds no climb', () => {
+    // Both ways of getting here answer the same: a record saved before the
+    // field existed, and one the graph could not price. Neither may fall
+    // back to distance alone - Naismith with no ascent is a flat-ground
+    // claim, and it fails SHORT.
+    const older = hikeAt('older', -74.1, 41.25)
+    const unpriceable = hikeAt('unpriceable', -74.1, 41.25, {
+      figures: { miles: 3.4, legs: [], climb: null },
+    })
+
+    expect(cachedEstimate(older, STANDARD_PACE)).toBeNull()
+    expect(cachedEstimate(unpriceable, STANDARD_PACE)).toBeNull()
+  })
+
+  it('prices one it can, and a climb makes the walk longer than the miles alone', () => {
+    const flat = cachedEstimate(priced('flat', 5, 0), STANDARD_PACE)
+    const steep = cachedEstimate(priced('steep', 5, 2000), STANDARD_PACE)
+
+    expect(flat).not.toBeNull()
+    expect(steep).not.toBeNull()
+    expect(steep!.minutes).toBeGreaterThan(flat!.minutes)
+  })
+
+  it('sorts shortest first and leaves the unpriceable ones at the end', () => {
+    // A sort that dropped them would be a filter wearing a sort's label, and
+    // a hiker would lose a walk off the screen by pressing a chip.
+    const sorted = sortedByTime(
+      [priced('long', 9, 2400), hikeAt('nothing', -74.1, 41.25), priced('short', 2, 300)],
+      STANDARD_PACE,
+    )
+
+    expect(sorted.map((hike) => hike.id)).toEqual(['short', 'long', 'nothing'])
   })
 })

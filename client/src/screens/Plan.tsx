@@ -316,6 +316,7 @@ export function PlanScreen({
             dayHikes={dayHikes}
             units={units}
             at={gpsAt}
+            pace={pace}
             onOpen={onOpenDayHike}
             onBack={() => onDayListOpen(false)}
             // The day room's own action, on the day room's own terms: a live

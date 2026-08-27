@@ -225,6 +225,68 @@ describe('validateDayHikeStore', () => {
     expect(validated?.hikes[0].segments).toEqual(gapped.segments)
   })
 
+  describe('the cached climb (#1045, 2026-08-27)', () => {
+    it('tells "never asked" from "asked and could not price"', () => {
+      // The distinction the optional field exists for. A hike saved before
+      // the field existed has no key; one the graph could not price has an
+      // explicit null. A screen that showed both as "no climb data" would be
+      // reporting a limit of the artifact where the truth is a limit of the
+      // record - and only one of the two is fixed by re-resolving.
+      const never = validateDayHikeStore({
+        hikes: [hike('older', { figures: { miles: 3, legs: [] } })],
+        openId: null,
+      })
+      const unpriceable = validateDayHikeStore({
+        hikes: [hike('unpriced', { figures: { miles: 3, legs: [], climb: null } })],
+        openId: null,
+      })
+
+      expect(never?.hikes[0].figures).not.toHaveProperty('climb')
+      expect(unpriceable?.hikes[0].figures.climb).toBeNull()
+    })
+
+    it('keeps a climb it can trust', () => {
+      const validated = validateDayHikeStore({
+        hikes: [
+          hike('priced', {
+            figures: { miles: 3, legs: [], climb: { gainFt: 1240, lossFt: 1240 } },
+          }),
+        ],
+        openId: null,
+      })
+
+      expect(validated?.hikes[0].figures.climb).toEqual({ gainFt: 1240, lossFt: 1240 })
+    })
+
+    it('reads a junk climb as never-asked, and keeps the hike', () => {
+      // Sanitise rather than refuse, per this module's rule: a climb carries
+      // no invariant the rest of the record's arithmetic depends on, so junk
+      // costs the field and never the walk. Reading it as `undefined` rather
+      // than `null` is the weaker of the two true statements - the record
+      // does not tell us, rather than the graph could not say.
+      const junk: unknown[] = [
+        { gainFt: 'lots' },
+        { gainFt: -5, lossFt: 2 },
+        'up',
+        12,
+        NaN,
+      ]
+      for (const climb of junk) {
+        // Cast at the boundary rather than in the fixture helper: what
+        // arrives here really is unknown - it came off a disk or a sync row -
+        // and typing the input would be testing the compiler's opinion of the
+        // shape instead of the validator's handling of a bad one.
+        const validated = validateDayHikeStore({
+          hikes: [{ ...hike('junk'), figures: { miles: 3, legs: [], climb } }],
+          openId: null,
+        })
+
+        expect(validated?.hikes[0].figures.miles).toBe(3)
+        expect(validated?.hikes[0].figures).not.toHaveProperty('climb')
+      }
+    })
+  })
+
   it('drops a junk figures leg, and only that leg', () => {
     const validated = validateDayHikeStore({
       hikes: [

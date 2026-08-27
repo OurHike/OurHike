@@ -23,6 +23,7 @@
 // another.
 
 import type { DayHike } from './dayHikes'
+import { paceEstimate, type PaceEstimate, type PaceProfile } from './pace'
 import type { LonLat } from './trailGraph'
 import { metresToMiles } from './trailGraph'
 
@@ -140,6 +141,47 @@ export function sortedByNearest(dayHikes: readonly DayHike[], at: LonLat): DayHi
     if (aMiles === null) return 1
     if (bMiles === null) return -1
     return aMiles - bMiles
+  })
+}
+
+/**
+ * A saved walk priced from its CACHE, or null when it cannot be priced.
+ *
+ * The one way a surface that must not load the routing graph can put a ≈time
+ * on a row. Null means exactly one thing here - this record has no climb -
+ * and there are two ways to arrive at it, which callers should not try to
+ * tell apart: a hike saved before `DayHikeFigures.climb` existed
+ * (2026-08-27), and a hike whose graph could not price some edge of it. Both
+ * mean the same to a reader: the app has no time to offer for this walk.
+ *
+ * What it must never do is fall back to distance alone. Naismith without
+ * ascent is a flat-ground claim, and on this network the flat-ground answer
+ * is short - which is the direction that gets somebody caught by the dark.
+ */
+export function cachedEstimate(hike: DayHike, pace: PaceProfile): PaceEstimate | null {
+  const climb = hike.figures.climb
+  if (climb === undefined || climb === null) return null
+  return paceEstimate(
+    { distanceMi: hike.figures.miles, ascentFt: climb.gainFt, descentFt: climb.lossFt },
+    pace,
+  )
+}
+
+/**
+ * The walks that can be priced, shortest first, then the rest in the order
+ * they arrived.
+ *
+ * Unpriceable hikes go last rather than being hidden: this is a sort, and a
+ * sort that drops rows is a filter wearing a sort's label.
+ */
+export function sortedByTime(dayHikes: readonly DayHike[], pace: PaceProfile): DayHike[] {
+  return [...dayHikes].sort((a, b) => {
+    const aTime = cachedEstimate(a, pace)
+    const bTime = cachedEstimate(b, pace)
+    if (aTime === null && bTime === null) return 0
+    if (aTime === null) return 1
+    if (bTime === null) return -1
+    return aTime.minutes - bTime.minutes
   })
 }
 

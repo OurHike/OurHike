@@ -2389,6 +2389,12 @@ function App() {
           blaze_color: leg.blaze_color,
           miles: leg.miles,
         })),
+        // The climb as this phone's graph priced it, cached so that the two
+        // surfaces which may only read the cache - the day-hike list and the
+        // trailhead door - can print a ≈time at all. `route.climb` is already
+        // null-or-nothing across every segment, so caching it verbatim
+        // inherits that rule rather than restating it.
+        climb: route.climb,
       },
       looped: dayHike.looped,
       recorded: 'planned',
@@ -2800,6 +2806,7 @@ function App() {
       <DayHikesHere
         near={hikesNearHere}
         units={units}
+        pace={pace}
         // lib/passedToday.ts's own helper rather than a second copy of the
         // idiom - it already spells the phone's LOCAL calendar day as
         // YYYY-MM-DD, which is the store's date shape and the right clock

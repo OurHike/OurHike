@@ -32,7 +32,7 @@
 export const caption =
   'The legend — the closure and serious-warning rows, on screen at last (#1051)'
 export const alt =
-  'The legend sheet over the trail screen, scrolled to the foot of the waypoint grid: two full-width rows below the two-column grid, a barrier-tape swatch labelled Closure and a hollow red triangle labelled Serious warning, each tagged Alerts and neither carrying a count, with the Verified? and Alerts switches below them'
+  'The legend sheet over the trail screen, scrolled to the foot of the waypoint grid: two full-width rows below the two-column grid, a barrier-tape swatch labelled Closure and a hollow red triangle labelled Serious warning, each tagged ALERTS and neither carrying a count, where all eight rows above them read 0'
 
 export default async function drive(page) {
   // The map first: the app opens on Today since #1054, and the legend's
@@ -51,9 +51,14 @@ export default async function drive(page) {
   // element, so this is the settle as well as the scroll.
   //
   // The LOWER of the two on purpose. They are stacked and each spans the grid,
-  // so reaching the second brings the first with it, and it sits directly above
-  // the Alerts switch that names the tag both rows carry — one scroll, and the
-  // row and the switch it points at are in the same frame.
+  // so reaching the second brings the first with it, and the eight counted rows
+  // come with them — which is what makes the absent number legible as a
+  // decision rather than as a missing element.
+  //
+  // The Alerts switch itself lands just under the fold at 390x844, checked
+  // against the frame this recipe produced on PR #1094 rather than assumed.
+  // Scrolling far enough to include it would push the Closure row off the top,
+  // and the row is what this shot is for.
   //
   // By its accessible name, which the row carries as an `aria-label` because a
   // safety row is not a button (chrome/Legend.tsx). An exact name rather than a

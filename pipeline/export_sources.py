@@ -57,12 +57,51 @@ So two fields ship and one does not:
     and never composed, shortened or prettified here.
   - Where no block matches, `licence` is null and the card shows attribution
     alone. That is a registry gap rather than a rendering decision, and it is
-    real today: `osm_water` has no block at all, and `usdm_licence`'s `author`
-    ("National Drought Mitigation Center, USDA, NOAA and NASA") does not match
-    its source's `steward` ("National Drought Mitigation Center, University of
-    Nebraska-Lincoln"), so neither resolves to a short licence. Recording one
-    is a data change somebody reviews; inventing one here would be this file
+    real today for `osm_water`, which has no block at all. Recording one is a
+    data change somebody reviews; inventing one here would be this file
     authoring a licence statement, which it has no standing to do.
+
+    IT WAS ALSO REAL FOR THE U.S. DROUGHT MONITOR UNTIL 2026-08-27, and how
+    that went unnoticed is the reason for `test_every_licence_block_joins_a
+    _steward`. `usdm_licence`'s `author` read "National Drought Mitigation
+    Center, USDA, NOAA and NASA" while its source's `steward` read "National
+    Drought Mitigation Center, University of Nebraska-Lincoln", so the block
+    matched nothing and NDMC's recorded terms never reached the sources
+    screen - while every test passed, this docstring described the state
+    accurately, and the entry's own `licence` prose said "See usdm_licence
+    above". A gap that is written down in three places and still ships is not
+    documented, it is decorated. The block's author is now the steward's own
+    name and a test fails if any block goes unjoinable again.
+
+HOW TO SUPPORT THE ORGANIZATION, AND THE ONE FIELD THAT BOUNDS IT (#932)
+
+A steward record can now carry `support`: a destination, the organization's
+own call to action, and `donate_surfaces` - the list of screens on which the
+line may appear. Read from a top-level `<x>_support` block, joined on `author`
+exactly the way `<x>_licence` is, because supporting an organization is a fact
+about the ORGANIZATION and not about any one of its thirteen layers.
+
+`donate_surfaces` is the point of the schema rather than a detail of it. The
+v2 frames are explicit that a placement is a permission the ORG GRANTS, not
+something the app decides, and equally explicit about the one value that has
+to be expressible: on the map, never. So the vocabulary below is a CLOSED
+opt-in list of the surfaces that exist, and there is no map member to grant -
+the refusal is enforced by the vocabulary rather than by a check somebody has
+to keep passing. A surface added later needs a new member here AND a fresh
+answer from every org, because nobody has granted a value that did not exist
+when they answered. That is the intended cost.
+
+Money on a safety app is value #1 territory: these fields make a fundraising
+ask renderable on a screen a hiker opens when they are lost. A malformed
+support block is therefore a HARD FAILURE here rather than a field quietly
+dropped - a block with no `donate_surfaces` would otherwise be indistinguish-
+able from one whose org granted every surface.
+
+A steward with no block publishes `support: null` and renders exactly as it
+does today - no button, no empty section, no placeholder. Absent means the
+organization has not asked for support, which is not the same as an
+organization that wants none, and neither is a thing to guess at on a hiker's
+screen. Same rule the pipeline already applies to shelter capacity.
 
 WHAT IT REFUSES TO GUESS
 
@@ -102,9 +141,31 @@ MANIFEST_PATH = ROOT / "data" / "processed" / "stewards_manifest.json"
 PROVIDER_FIELD = "provider"
 STEWARD_FIELD = "steward"
 
+# The surfaces an organization can grant a support line on (#932). CLOSED, and
+# deliberately holding no member for the map: the v2 frames say "on the map,
+# never", and a vocabulary that cannot express the map is a stronger guarantee
+# than a validator that rejects it, because a validator can be edited in one
+# line while adding a member here is a conversation with every org that has
+# already answered.
+DONATE_SURFACES = frozenset(
+    {
+        # frame `1h` - "Where this map comes from", the settings screen (#927).
+        "sources_screen",
+        # frame `1f` - the card for one trail: "NYNJTC - Maintains this trail".
+        "trail_card",
+        # frame `1l` - the day-hike summary, where several orgs share a loop.
+        "day_hike_summary",
+    }
+)
 
-def _licence_block(registry: dict, provider_sources: list[dict]) -> dict:
-    """The top-level `<x>_licence` block a steward's sources point at, if any.
+# What a `<x>_support` block must carry to be publishable at all. `donate_blurb`
+# is deliberately NOT here: the org's own words about what the money does are
+# their writing, and this project ships facts and a link until they send them.
+REQUIRED_SUPPORT_FIELDS = ("author", "donate_url", "donate_cta", "donate_surfaces")
+
+
+def _block(registry: dict, provider_sources: list[dict], suffix: str) -> dict:
+    """The top-level `<x>{suffix}` block a steward's sources point at, if any.
 
     Matched by the block's `author` against the entries' `steward`, rather than
     by guessing a key name from the provider string - `atc_licence` is keyed on
@@ -112,15 +173,76 @@ def _licence_block(registry: dict, provider_sources: list[dict]) -> dict:
     and a future block will not necessarily follow either convention.
 
     Returns `{}` when nothing matches, which is the ordinary case for a steward
-    whose sources each carry their own licence.
+    whose sources each carry their own licence, and for every steward that has
+    not been asked about support.
+
+    THE FAILURE MODE THIS MATCHING HAS: an author string that matches nothing
+    is silent here and correct-looking in the registry. It happened - see this
+    module's docstring on `usdm_licence` - so
+    `tests/test_export_sources.py::test_every_block_joins_a_steward` reads the
+    real registry and fails on an unjoinable block. That check cannot live in
+    this function, because a block for a steward whose data does not ship is
+    legitimate and looks identical from in here.
     """
     stewards = {s[STEWARD_FIELD] for s in provider_sources if s.get(STEWARD_FIELD)}
     for key, value in registry.items():
-        if not key.endswith("_licence") or not isinstance(value, dict):
+        if not key.endswith(suffix) or not isinstance(value, dict):
             continue
         if value.get("author") in stewards:
             return value
     return {}
+
+
+def _licence_block(registry: dict, provider_sources: list[dict]) -> dict:
+    return _block(registry, provider_sources, "_licence")
+
+
+def _support_record(block: dict) -> dict | None:
+    """One steward's support line, or None where the org has not asked for one.
+
+    Raises rather than dropping a malformed block. A support block missing
+    `donate_surfaces` is not a block with no permissions - it is a block whose
+    permissions nobody wrote down, and the two must never render the same.
+    """
+    if not block:
+        return None
+
+    missing = [f for f in REQUIRED_SUPPORT_FIELDS if not block.get(f)]
+    if missing:
+        raise SystemExit(
+            f"support block for {block.get('author') or '(no author)'} is missing: "
+            + ", ".join(missing)
+            + "\nA support block records a fundraising ask on a hiker's screen. "
+            "Every field above is required; see export_sources.py's docstring."
+        )
+
+    surfaces = block["donate_surfaces"]
+    if not isinstance(surfaces, list):
+        raise SystemExit(f"donate_surfaces for {block['author']} must be a list, got {type(surfaces).__name__}")
+    unknown = sorted(set(surfaces) - DONATE_SURFACES)
+    if unknown:
+        raise SystemExit(
+            f"donate_surfaces for {block['author']} names surfaces that do not exist: "
+            + ", ".join(unknown)
+            + "\nThe vocabulary is closed and holds no member for the map, deliberately - "
+            "see export_sources.py's DONATE_SURFACES."
+        )
+
+    record = {
+        "donate_url": block["donate_url"],
+        "donate_cta": block["donate_cta"],
+        "donate_surfaces": sorted(set(surfaces)),
+    }
+    # Only where the money does not reach the steward the card names. Absent on
+    # the ordinary case, present and REQUIRED TO RENDER where it is not - see
+    # oprhp_support, whose destination is a separate 501(c)(3).
+    if block.get("donate_recipient"):
+        record["donate_recipient"] = block["donate_recipient"]
+    # The org's own words about what the money does, when an org sends them.
+    # Absent everywhere today, and that is the honest state rather than a gap.
+    if block.get("donate_blurb"):
+        record["donate_blurb"] = block["donate_blurb"]
+    return record
 
 
 def _unanimous(values: list, absent_counts: bool = True) -> str | None:
@@ -195,6 +317,10 @@ def build_output(registry: dict | None = None) -> dict:
                 # vocabularies. Joining them positionally is the mistake this
                 # comment exists to prevent.
                 "keys": sorted(e["key"] for e in entries),
+                # How to support this organization, or null where it has not
+                # asked (#932). Null renders exactly as today: no button, no
+                # empty section, no placeholder.
+                "support": _support_record(_block(registry, entries, "_support")),
             }
         )
 

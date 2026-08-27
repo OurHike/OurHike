@@ -177,6 +177,134 @@ class TestLicenceAndAttribution:
         assert out["stewards"][0]["attribution"] == "© Org"
 
 
+class TestTheSupportLine:
+    """`<x>_support` - how a hiker supports the organization (#932).
+
+    Every case here is about the same thing: a fundraising ask is renderable on
+    a screen a hiker opens when they are lost, so the schema has to be able to
+    say WHERE it may appear, and has to refuse to publish an ask that does not.
+    """
+
+    def test_publishes_a_support_line_from_a_block_matched_by_author(self):
+        out = export_sources.build_output(
+            registry(
+                source("a", "P", True, steward="Trail Org"),
+                anything_support={
+                    "author": "Trail Org",
+                    "donate_url": "https://example.org/join",
+                    "donate_cta": "Become a Member",
+                    "donate_surfaces": ["sources_screen"],
+                },
+            )
+        )
+
+        assert out["stewards"][0]["support"] == {
+            "donate_url": "https://example.org/join",
+            "donate_cta": "Become a Member",
+            "donate_surfaces": ["sources_screen"],
+        }
+
+    def test_a_steward_that_has_not_asked_for_support_publishes_null(self):
+        """#932's first rule: absent means the organization has not asked, which
+        is not the same as an organization that wants none. Null so the card
+        renders exactly as it does today - no button, no empty section, no
+        placeholder. The same rule the pipeline applies to shelter capacity."""
+        out = export_sources.build_output(registry(source("a", "P", True, steward="Org")))
+
+        assert out["stewards"][0]["support"] is None
+
+    def test_refuses_a_support_block_with_no_surfaces(self):
+        """The failure this whole field exists to prevent. A block with no
+        `donate_surfaces` is not a block granting nothing - it is a block whose
+        permissions nobody wrote down, and a renderer given the two cannot tell
+        them apart. So it stops the publish rather than shipping."""
+        with pytest.raises(SystemExit, match="donate_surfaces"):
+            export_sources.build_output(
+                registry(
+                    source("a", "P", True, steward="Org"),
+                    x_support={
+                        "author": "Org",
+                        "donate_url": "https://example.org/give",
+                        "donate_cta": "Give",
+                    },
+                )
+            )
+
+    def test_refuses_a_surface_that_is_not_in_the_vocabulary(self):
+        with pytest.raises(SystemExit, match="surfaces that do not exist"):
+            export_sources.build_output(
+                registry(
+                    source("a", "P", True, steward="Org"),
+                    x_support={
+                        "author": "Org",
+                        "donate_url": "https://example.org/give",
+                        "donate_cta": "Give",
+                        "donate_surfaces": ["sources_screen", "trailhead_kiosk"],
+                    },
+                )
+            )
+
+    def test_the_map_is_not_a_surface_an_org_can_grant(self):
+        """ "On the map, never" - the v2 frames' one explicit refusal, enforced
+        by the vocabulary having no member for it rather than by a check that
+        rejects one. The distinction matters: a rejecting check can be relaxed
+        in a one-line diff, while adding a member here means going back to every
+        organization that has already answered."""
+        assert "map" not in export_sources.DONATE_SURFACES
+        assert not any("map" in s for s in export_sources.DONATE_SURFACES)
+
+        with pytest.raises(SystemExit, match="surfaces that do not exist"):
+            export_sources.build_output(
+                registry(
+                    source("a", "P", True, steward="Org"),
+                    x_support={
+                        "author": "Org",
+                        "donate_url": "https://example.org/give",
+                        "donate_cta": "Give",
+                        "donate_surfaces": ["map"],
+                    },
+                )
+            )
+
+    def test_carries_a_recipient_when_the_money_goes_somewhere_else(self):
+        """Real for NYS OPRHP: a state agency has no donation destination of its
+        own, and parks.ny.gov's Donate link points at the Natural Heritage
+        Trust, a separate 501(c)(3). Rendering "Support NYS OPRHP" over that URL
+        would tell a hiker their money reaches the agency. It does not."""
+        out = export_sources.build_output(
+            registry(
+                source("a", "P", True, steward="An Agency"),
+                x_support={
+                    "author": "An Agency",
+                    "donate_url": "https://example.gov/trust",
+                    "donate_cta": "Donate",
+                    "donate_recipient": "A Separate Charity",
+                    "donate_surfaces": ["sources_screen"],
+                },
+            )
+        )
+
+        assert out["stewards"][0]["support"]["donate_recipient"] == "A Separate Charity"
+
+    def test_omits_the_blurb_key_entirely_when_no_org_has_sent_words(self):
+        """`donate_blurb` is the org's own writing about what the money does,
+        and no organization has sent any. Absent rather than empty-string, so a
+        renderer cannot mistake "nobody asked" for "they said nothing"."""
+        out = export_sources.build_output(
+            registry(
+                source("a", "P", True, steward="Org"),
+                x_support={
+                    "author": "Org",
+                    "donate_url": "https://example.org/give",
+                    "donate_cta": "Give",
+                    "donate_surfaces": ["sources_screen"],
+                },
+            )
+        )
+
+        assert "donate_blurb" not in out["stewards"][0]["support"]
+
+
 class TestAgainstTheRealRegistry:
     """What the checked-in `sources.json` currently produces.
 
@@ -264,6 +392,102 @@ class TestAgainstTheRealRegistry:
         assert held == {"oprhp_park_polygons"}
         for key in held:
             assert "nothing exports this layer" in oprhp[key]["licence"]
+
+    def test_every_licence_and_support_block_joins_a_steward(self):
+        """The check that would have caught a two-year-old silent bug in one run.
+
+        `_block` matches a block's `author` against the entries' `steward`, and
+        an author string that matches nothing is invisible: the block sits in
+        the registry looking correct, the exporter emits null, the card renders
+        attribution alone, and every test passes.
+
+        That is not hypothetical. Until 2026-08-27 `usdm_licence`'s author read
+        "National Drought Mitigation Center, USDA, NOAA and NASA" while its
+        source's steward read "National Drought Mitigation Center, University of
+        Nebraska-Lincoln", so the U.S. Drought Monitor's recorded terms - which
+        exist specifically because NDMC's permission is conditional on a credit
+        - never reached the sources screen. The gap was WRITTEN DOWN in three
+        places (this module's docstring, the entry's own `licence` prose saying
+        "See usdm_licence above", and a test asserting null was expected) and
+        still shipped. A gap documented in three places and never fixed is not
+        documented, it is decorated.
+
+        Scoped to stewards that exist in the registry at all, not to stewards
+        that ship: a licence block for a held-back source is legitimate, and a
+        block whose author matches NO registered steward is a typo.
+        """
+        registry = json.loads((ROOT / "sources.json").read_text())
+        stewards = {s["steward"] for s in registry["sources"] if s.get("steward")}
+
+        orphaned = {
+            key: block["author"]
+            for key, block in registry.items()
+            if isinstance(block, dict)
+            and (key.endswith("_licence") or key.endswith("_support"))
+            and block.get("author") not in stewards
+        }
+
+        assert orphaned == {}, (
+            "these blocks name an author no registered source's `steward` matches, "
+            f"so nothing they record reaches a hiker: {orphaned}"
+        )
+
+    def test_the_drought_monitors_terms_now_reach_the_screen(self):
+        """The regression half of the case above, asserted on the real output
+        rather than on the registry, because the registry looked fine
+        throughout."""
+        ndmc = next(s for s in self.real()["stewards"] if s["provider"].startswith("National Drought"))
+
+        assert ndmc["licence"], "usdm_licence records conditional terms; a null here means unjoined"
+
+    def test_the_three_orgs_that_have_a_support_line_and_the_five_that_do_not(self):
+        """Measured 2026-08-27. Asserted as the SPLIT rather than as a list of
+        three, because the failure worth catching is a fourth organization
+        acquiring a support line without anybody deciding it should have one.
+
+        The three are the orgs whose own public page states a destination and a
+        button in their own words - read live, not composed here. The rest carry
+        nothing, which is #932's first rule: absent means the organization has
+        not asked, and it renders exactly as today.
+        """
+        support = {s["provider"]: s["support"] for s in self.real()["stewards"]}
+
+        asking = {p for p, v in support.items() if v}
+        assert asking == {"ATC", "NYNJTC", "NYS OPRHP"}
+
+        assert support["ATC"]["donate_cta"] == "Become a Member"
+        assert support["NYNJTC"]["donate_cta"] == "Donate Today"
+
+        for provider in support.keys() - asking:
+            assert support[provider] is None
+
+    def test_oprhps_support_line_names_who_actually_receives_the_money(self):
+        """The one entry where the destination is not the steward. NYS OPRHP is
+        a state agency with no donation destination of its own; parks.ny.gov's
+        Donate link resolves to the Natural Heritage Trust, a separate
+        501(c)(3). A card rendering "Support NYS OPRHP" over that URL would make
+        a claim about where a hiker's money goes that is not true, which is the
+        never-let-a-display-outrun-its-source rule on a payment.
+
+        Its surfaces are also the narrowest of the three, deliberately: the
+        sources screen only, because a hiker on a trail card is looking at a
+        trail rather than at where the map came from, and nobody at OPRHP has
+        been asked.
+        """
+        oprhp = next(s for s in self.real()["stewards"] if s["provider"] == "NYS OPRHP")
+
+        assert oprhp["support"]["donate_recipient"] == "Natural Heritage Trust"
+        assert oprhp["support"]["donate_surfaces"] == ["sources_screen"]
+
+    def test_no_organization_has_sent_words_about_what_the_money_does(self):
+        """`donate_blurb` is absent everywhere, and this test is what keeps it
+        that way until an org actually sends words. Lifting a paragraph off an
+        organization's "why join" page and rendering it under their name in a
+        hiker's app is the app speaking for an organization it does not
+        represent - the same line #458 drew for ATC's notice text."""
+        for steward in self.real()["stewards"]:
+            if steward["support"]:
+                assert "donate_blurb" not in steward["support"]
 
     def test_names_the_atc_with_its_recorded_licence(self):
         atc = next(s for s in self.real()["stewards"] if s["provider"] == "ATC")

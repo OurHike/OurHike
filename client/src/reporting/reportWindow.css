@@ -1,0 +1,375 @@
+/* The report window (#1133) — a dialog over the screen you were already on.
+   Metrics are the design handoff's; every colour is a token, because the app
+   has a full dark theme that re-points these aliases and a hex here would
+   break it. */
+
+/* The scrim. Full-bleed over whatever is behind, which stays mounted and
+   dimmed rather than being unmounted — that is the whole difference between
+   this and the two full-screen routes it replaces. */
+.report-window__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4, 16px);
+  /* A literal rather than a token, and the one in this file. It is the ink of
+     the app's own `--black` at 55%, and there is no token for "a scrim" — the
+     palette names surfaces and foregrounds, not overlays. Stated here rather
+     than invented as a semantic alias nothing else would use. */
+  background: rgb(20 19 15 / 55%);
+}
+
+.report-window {
+  display: flex;
+  flex-direction: column;
+  /* Narrow enough to read as a window rather than a page, and to leave the
+     dimmed screen visible around it — which is what says "you have not gone
+     anywhere". */
+  width: 100%;
+  max-width: 334px;
+  /* Content-driven up to here, then the BODY scrolls. The header must not:
+     the anchor and the close button are what orient somebody who opened this
+     by accident. */
+  max-height: 74%;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-raised);
+}
+
+.report-window:focus {
+  outline: none;
+}
+
+/* THE HEADER SITS ON THE DARK CHROME, deliberately. Everything else in this
+   app that floats over a screen is paper on paper — a card, a sheet — and this
+   is not one of those: it is a modal that has taken the screen. Chrome is the
+   app's own vocabulary for "this is the application talking", and it is dark
+   under both themes, so the window reads the same way at night. */
+.report-window__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 10px);
+  padding: var(--space-3, 12px) 14px;
+  background: var(--bg-chrome);
+}
+
+.report-window__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.report-window__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.report-window__title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-chrome-1);
+}
+
+.report-window__anchor {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-chrome-2);
+}
+
+.report-window__close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fg-chrome-2);
+  background: transparent;
+  border: 1px solid var(--border-chrome);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.report-window__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  min-height: 0;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+/* Two per row. Four answers squeezed onto one row inside a narrow card is the
+   defect #941 fixed on the place card, and the same arithmetic applies here. */
+.report-window__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2, 8px);
+}
+
+/* LEFT-ALIGNED, NOT CENTRED, which is a change from the shipped picker. With
+   a description under every label, centred text goes ragged on both edges and
+   has to be read line by line; left-aligned with the icon at the top scans in
+   one vertical sweep. */
+.report-window__tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  /* Comfortably past the 44px minimum: this is the control the whole surface
+     exists for, and under 1a a tap on it files a report. */
+  min-height: 64px;
+  padding: 10px var(--space-3, 12px);
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast, 120ms) var(--ease-standard),
+    transform var(--duration-fast, 120ms) var(--ease-standard);
+}
+
+.report-window__tile:hover {
+  border-color: var(--border-2);
+}
+
+.report-window__tile:active {
+  /* The design system's stated press behaviour. No bounce anywhere. */
+  transform: scale(0.97);
+}
+
+.report-window__icon {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 2px;
+  color: var(--fg-2);
+}
+
+.report-window__tile-label {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.report-window__tile-description {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--fg-3);
+}
+
+/* The two heavy rows. Full width and a chevron, so they read as doors rather
+   than as answers — neither files on a tap. */
+.report-window__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 10px);
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-3, 12px);
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.report-window__row:hover {
+  border-color: var(--border-2);
+}
+
+.report-window__row-icon {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--fg-2);
+}
+
+.report-window__row-icon--closure {
+  color: var(--accent-blaze-orange);
+}
+
+.report-window__row-icon--unsafe {
+  color: var(--danger);
+}
+
+.report-window__row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.report-window__row-label {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.report-window__row-description {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-2);
+}
+
+.report-window__row-chevron {
+  margin-left: auto;
+  font-size: 16px;
+  color: var(--fg-3);
+}
+
+/* Ruled off from everything above it: what is up there is the trail, and this
+   is about people on it. The shipped picker draws the same line with a
+   separate section and a subtitle. */
+.report-window__unsafe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
+}
+
+.report-window__row--unsafe {
+  background: color-mix(in srgb, var(--warning) 14%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+}
+
+.report-window__emergency {
+  margin: 0;
+  padding: 10px var(--space-3, 12px);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 10px;
+}
+
+/* The receipt. Success-tinted at the same 8% #1122 measured for the place
+   card's answer buttons, and for the same reason: a wash of a hue under text
+   of that hue eats the contrast the hue was picked for, and 8% is where every
+   pair still clears AA under both themes. */
+.report-window__receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+  border-radius: 10px;
+}
+
+.report-window__receipt-headline {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fg-1);
+}
+
+.report-window__receipt-sub {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* `tabular-nums` so the countdown does not jitter the button's width as it
+   runs — a control that twitches while you are deciding whether to press it. */
+.report-window__undo {
+  align-self: flex-start;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--brand-primary);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+.report-window__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
+}
+
+.report-window__detail-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide, 0.04em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.report-window__note {
+  width: 100%;
+  padding: var(--space-3, 12px);
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 14px;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  resize: vertical;
+}
+
+.report-window__done,
+.report-window__again {
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.report-window__done {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+}
+
+.report-window__again {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-window__tile {
+    transition: none;
+  }
+
+  .report-window__tile:active {
+    transform: none;
+  }
+}

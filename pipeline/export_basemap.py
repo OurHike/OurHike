@@ -132,6 +132,69 @@ def osmium_merge_cmd(inputs: list[Path], out_pbf: Path) -> list[str]:
     return ["osmium", "merge", "--overwrite", "-o", str(out_pbf), *[str(p) for p in inputs]]
 
 
+# The OpenMapTiles layers client/src/map/liveTopo.ts never names, dropped at
+# build time with the profile's own --exclude-layers (#1116).
+#
+# MEASURED, against the published archives on 2026-08-27: per-layer bytes read
+# out of every tile's MVT, and the saving confirmed by rebuilding each archive
+# without these layers and re-gzipping. The compressor is held constant, which
+# is why the number is the strip's and not gzip's - Planetiler's tiles
+# re-compress to the byte at level 6, verified on all 21,724 tiles of the z13
+# package. at_basemap_package_z13.pmtiles 182,286,799 -> 159,703,445 bytes
+# (-12.4%); at_basemap_package.pmtiles 532,459,439 -> 347,947,790 (-34.6%).
+#
+# The two tiers differ that much because z14 is where everything the sheet does
+# not draw arrives at once: of the Fine package, transportation_name is 75.6 MB,
+# building 56.7, housenumber 36.3, poi 33.5. housenumber does not exist below
+# z14 and building/poi barely do.
+#
+# transportation_name is the one worth naming twice - 150,595 road-label
+# features across the corridor, and this sheet draws no road labels at any
+# zoom. It is not an oversight in the style; it is a hiking map.
+#
+# WHAT THIS COSTS, because it is not free: the offline tiles stop being
+# content-identical to the OpenFreeMap tiles the live sheet falls through to,
+# which is part of what BASEMAP.md's "schema is the load-bearing choice" bought.
+# Rendering is unaffected - the style names none of these layers - but a future
+# style that wants road labels needs a REBUILD rather than a stylesheet edit.
+# See BASEMAP.md, which records the trade rather than leaving it here.
+UNRENDERED_LAYERS = [
+    "transportation_name",
+    "landuse",
+    "building",
+    "housenumber",
+    "poi",
+    "aeroway",
+    "aerodrome_label",
+]
+
+# Planetiler's own default is ~80 languages (onthegomap/planetiler#1043), which
+# is how `place` features end up carrying name:ar, name:zh-Hant and name:tok for
+# towns on the Appalachian Trail.
+#
+# MEASURED AND SMALL, and worth writing down as such so nobody re-derives it
+# hoping for more: modelled over the published z13 package by dropping every
+# name variant outside the set an English build keeps, this is 159,703,445 ->
+# 158,348,907 bytes on top of the layer exclusion - 0.7%, against the 12.4% the
+# layers themselves are worth. The exotic variants are rare per feature; the
+# byte weight sits in `name`, `name_en` and `name:latin`, which an English build
+# keeps.
+#
+# Kept anyway because it is free and because it stops being a rounding error the
+# moment this pipeline builds anywhere outside the United States.
+#
+# The REST of the unread attribute weight is not reachable from a flag. The
+# client reads six properties from this source (class, name, intermittent,
+# admin_level, ele, ele_ft) while transportation ships oneway, surface, network,
+# brunnel, ramp, bicycle, foot, horse and access on 581,224 features. Stripping
+# to exactly those six measured 148,229,251 bytes on the z13 package - another
+# 6.3% - and needs a custom profile or a post-process re-encode of every tile.
+# #1116 carries that measurement and the reason it is not shipped here: a
+# hand-rolled MVT re-encoder in the publish path is a poor trade against 6% of
+# one tier, on the archive a hiker navigates by.
+BUILD_LANGUAGES = "en"
+
+
 def planetiler_cmd(
     jar: Path,
     osm_pbf: Path,
@@ -141,11 +204,19 @@ def planetiler_cmd(
     tmp_dir: Path,
     layer_stats: bool = False,
     http_timeout_seconds: int | None = None,
+    exclude_layers: list[str] | None = None,
+    languages: str | None = BUILD_LANGUAGES,
 ) -> list[str]:
     """The Planetiler invocation. --download fetches the profile's non-OSM
     sources (Natural Earth, water polygons) on first run; --polygon bounds the
     output tiles to the clip shape (omitted under --no-clip, where the input
     PBF's own extent is the bound).
+
+    exclude_layers defaults to UNRENDERED_LAYERS above; pass [] to build the
+    whole schema (what a shard-comparison spike wants, where the question is
+    whether two builds agree rather than what the app draws). languages is the
+    profile's label filter, None to leave Planetiler's ~80-language default
+    alone.
 
     layer_stats asks for the per-(tile, layer) TSV that compare_shards.py
     reads. Off by default and opt-in rather than always on: Planetiler names
@@ -159,6 +230,7 @@ def planetiler_cmd(
     is that 30s expiring on a slow host - a failure that says nothing about
     the data and stops the build regardless. None leaves Planetiler's
     default alone."""
+    excluded = UNRENDERED_LAYERS if exclude_layers is None else exclude_layers
     return [
         "java",
         "-jar",
@@ -168,6 +240,8 @@ def planetiler_cmd(
         f"--maxzoom={max_zoom}",
         f"--tmpdir={tmp_dir}",
         *([] if poly_path is None else [f"--polygon={poly_path}"]),
+        *([] if not excluded else [f"--exclude-layers={','.join(excluded)}"]),
+        *([] if languages is None else [f"--languages={languages}"]),
         *(["--output-layerstats"] if layer_stats else []),
         *([] if http_timeout_seconds is None else [f"--http-timeout={http_timeout_seconds}s"]),
         "--download",

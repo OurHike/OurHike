@@ -328,8 +328,24 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
     out_dir = work / name
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path, tmp_dir = out_dir / "build.pmtiles", out_dir / "tmp"
+    # THE WHOLE SCHEMA, deliberately, where the shipped build now excludes the
+    # layers the app never draws (#1116). This spike asks whether two shards
+    # agree with a control, and a narrower build is a narrower question: the
+    # drift rate BASEMAP.md records (0.19% of tiles for dense New York/New
+    # Jersey) was measured across every layer, and a re-run that quietly
+    # dropped seven of them could not be compared against it. Same reason
+    # layer_stats is on here and off in the build.
     cmd = planetiler_cmd(
-        jar, osm_pbf, out_path, max_zoom, poly_path, tmp_dir, layer_stats=True, http_timeout_seconds=HTTP_TIMEOUT_SECONDS
+        jar,
+        osm_pbf,
+        out_path,
+        max_zoom,
+        poly_path,
+        tmp_dir,
+        layer_stats=True,
+        http_timeout_seconds=HTTP_TIMEOUT_SECONDS,
+        exclude_layers=[],
+        languages=None,
     )
     print(f"\n=== {name} ===\n  {' '.join(str(c) for c in cmd)}")
 

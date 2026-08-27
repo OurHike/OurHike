@@ -21,6 +21,8 @@ from pmtiles.writer import write
 import export_basemap
 from export_basemap import (
     AT_STATES,
+    BUILD_LANGUAGES,
+    UNRENDERED_LAYERS,
     fetch_states,
     osmium_extract_cmd,
     osmium_merge_cmd,
@@ -76,6 +78,58 @@ def test_layer_stats_are_asked_for_only_when_wanted():
 
     asked = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"), layer_stats=True)
     assert "--output-layerstats" in asked
+
+
+def test_the_build_excludes_the_layers_the_app_never_draws():
+    """#1116. The saving is 12.4% of the z13 package and 34.6% of the z14 one,
+    measured; what this pins is that the flag is actually passed and that it
+    names every layer no `source-layer` in client/src/map/liveTopo.ts does.
+
+    Spelled as one comma-joined argument because that is the profile's own
+    syntax (`--exclude-layers=poi,housenumber,...`) - passing them as separate
+    flags silently keeps only the last."""
+    cmd = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    excluded = [arg for arg in cmd if arg.startswith("--exclude-layers=")]
+    assert len(excluded) == 1
+    named = set(excluded[0].removeprefix("--exclude-layers=").split(","))
+    assert named == set(UNRENDERED_LAYERS)
+    # The nine the style DOES name. Listed rather than derived so that deleting
+    # a layer from the style cannot silently widen the exclusion without
+    # somebody editing this line and thinking about the archive it changes.
+    assert named.isdisjoint(
+        {
+            "landcover",
+            "park",
+            "water",
+            "waterway",
+            "transportation",
+            "boundary",
+            "mountain_peak",
+            "water_name",
+            "place",
+        }
+    )
+
+
+def test_a_spike_can_ask_for_the_whole_schema_back():
+    """spike_shard_seam.py compares two shards against a control, and its
+    recorded drift rate was measured across every layer - so it passes [] and
+    must get an invocation with no exclusion in it at all, rather than one
+    excluding nothing in a way Planetiler would still have to parse."""
+    whole = planetiler_cmd(
+        Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"), exclude_layers=[], languages=None
+    )
+    assert not any(arg.startswith("--exclude-layers") for arg in whole)
+    assert not any(arg.startswith("--languages") for arg in whole)
+
+
+def test_the_build_asks_for_one_language():
+    """Planetiler's default is ~80 (onthegomap/planetiler#1043), which is how a
+    town on the A.T. ends up carrying name:tok. Worth 0.7% on top of the layer
+    exclusion, measured - small, and kept because it is free and stops being
+    small the moment this builds outside the United States."""
+    cmd = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    assert f"--languages={BUILD_LANGUAGES}" in cmd
 
 
 def test_fetch_states_skips_files_already_present(tmp_path, requests_mock):

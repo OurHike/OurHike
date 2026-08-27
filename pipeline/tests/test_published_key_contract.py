@@ -145,6 +145,12 @@ def client_keys() -> dict[str, str]:
         # name, and the day the licence gate opens is a bad day to discover
         # the two ends spelled it differently.
         _string_const(config, "NEARBY_TRAILS_KEY"): "config.ts NEARBY_TRAILS_KEY",
+        # The waypoints those same organizations publish (#1097). Unlike its
+        # sibling above, this one is NOT held back today - DEC's and OPRHP's
+        # POI sources ship on the same footing their trails do - so a spelling
+        # drift here is a 404 on a mountain now rather than on the day a
+        # licence answer lands.
+        _string_const(config, "NEARBY_POI_KEY"): "config.ts NEARBY_POI_KEY",
         _string_const(config, "TRAIL_GRAPH_KEY"): "config.ts TRAIL_GRAPH_KEY",
         _string_const(config, "TRAIL_GRAPH_GEOMETRY_KEY"): "config.ts TRAIL_GRAPH_GEOMETRY_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
@@ -221,6 +227,16 @@ def published(tmp_path, monkeypatch) -> set[str]:
     nearby = manifest_entry("nearby_trails.geojson")
     nearby["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
     (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(nearby))
+
+    # The nearby waypoints (#1097), through the same reaches_hikers gate as the
+    # lines above. Stated here as shipping because that is what the real
+    # registry now says - `dec_lean_tos` and the rest carry reaches_hikers true
+    # on `dec_licence`'s footing, and `oprhp_facilities` flipped when this
+    # export started reading it - so unlike its sibling this is the present
+    # world rather than a post-licence one.
+    nearby_poi = manifest_entry("nearby_poi.geojson")
+    nearby_poi["sources"] = {"dec_lean_tos": {"reaches_hikers": True}}
+    (tmp_path / "nearby_poi_manifest.json").write_text(json.dumps(nearby_poi))
 
     # The junction graph derived from those lines (#974). Same post-licence
     # framing as its parent above, for the same reason: this file asks whether

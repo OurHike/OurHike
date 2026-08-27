@@ -12,10 +12,19 @@ outside of ATC. Search those sources for the POI types we have. For example, DEC
 Shelters & Campsites mapped. Maybe we need to track each of the POI types for the org, and
 whether or not it is provided."*
 
-Today the map draws five orgs' trails and every published POI is ATC's.
+When this was written the map drew five orgs' trails and every published POI was ATC's.
 `lib/poi_schema.POI_TYPES` is eight categories — shelter, campsite, water, resupply,
 crossing, viewpoint, parking, privy — and OPRHP, DEC, NYNJTC and Mohonk Preserve
-contribute none of them.
+contributed none of them.
+
+**That changed the same day.** The maintainer read this and answered: *"Lets not use water
+from DEC, you are right. How about you crank this out and implement these 2?"* — so DEC's
+and OPRHP's waypoints now ship, 8,480 of them, and neither org's water does
+([#1097](https://github.com/OurHike/OurHike/issues/1097)). The survey is kept in the tense
+it was written in, with the outcome marked where it lands: **§0**'s matrix says what ships,
+**§4a** says where shipping disagreed with the counting, and **§9**'s ranked list records
+which follow-ups are done. A survey rewritten to look prescient is a survey nobody can
+check.
 
 Written 2026-08-27 from live probes. **Every count below came from
 [`spike_org_poi_coverage.py`](spike_org_poi_coverage.py)**, which is in the tree so a
@@ -56,17 +65,27 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | | shelter | campsite | water | resupply | crossing | viewpoint | parking | privy |
 |---|---|---|---|---|---|---|---|---|
 | **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping |
-| **NYS OPRHP** | 37 / **0** | 204 / 153 | 151 / 15 | 109 / 91 | 1,222 / 413 | 629 / 606 | 1,202 / 1,202 | 574 / 572 |
-| **NYS DEC** | 331 / 321 | 2,315 / 2,091 | **unsuitable** 23 / **0** | absent | 1,182 / 247 | 248 / 202 | 2,256 / 1,857 | 393 / 350 |
+| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 793** | **ships 629** | **ships 1,201** | **ships 574** |
+| **NYS DEC** | **ships 315** | **ships 2,077** | **unsuitable** 23 / **0** | absent | **ships 246** | **ships 202** | **ships 1,852** | **ships 350** |
 | **NYNJTC** | absent | absent | absent | absent | absent | absent | *unsuitable* 26 | absent |
 | **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent |
 | **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent |
 | **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed |
 | **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent |
 
-Every OPRHP and DEC cell is **available** unless the table says otherwise. The U.S.
-Drought Monitor is registered and publishes nothing point-shaped at all; its row is
-`not_a_poi_source` in the block rather than eight `absent` cells.
+**Twelve of those cells became `shipping` on 2026-08-27**
+([#1097](https://github.com/OurHike/OurHike/issues/1097)) — the maintainer's decision on
+reading this survey: *"Lets not use water from DEC, you are right. How about you crank this
+out and implement these 2?"* `export_nearby_poi.py` publishes **8,480 waypoints** as
+`nearby_poi.geojson` (0.37 MB gzipped), the sibling of `nearby_trails.geojson` and gated
+the same way. The bolded numbers above are what that artifact actually contains, which is
+**not** the same as what each org publishes — the two differ wherever this survey's
+counting bucket turned out to be wrong for shipping, and §4a says where.
+
+Neither org's water is among them, for two different reasons that both matter: DEC's is a
+refusal, OPRHP's is a holdback. The U.S. Drought Monitor is registered and publishes
+nothing point-shaped at all; its row is `not_a_poi_source` in the block rather than eight
+`absent` cells.
 
 **The one-sentence answer to the ask:** OPRHP publishes something for all eight types and
 DEC for six, so between them the non-ATC orgs would roughly *double* every POI category on
@@ -222,6 +241,41 @@ has 12 whitespace variants (`FORD ` beside `FORD`, a bare `' '` on 86 rows), and
 `PHOTO_LINK` points at an internal drive (`M:\DLF\StateForest\…`), as does the layer
 description's asset-list URL (`http://internal/…`). Neither resolves from outside DEC.
 
+## 4a. What shipping changed about §0's counts, and why counting is not drawing
+
+Four of this survey's original buckets did not survive contact with an actual export, and
+the differences are worth naming rather than smoothing over — a count and a pin answer
+different questions, and three of these four are cases where the honest count was the
+wrong thing to draw.
+
+| | surveyed | shipped | why |
+|---|---:|---:|---|
+| OPRHP `crossing` | 1,222 | **793** | `Stairs` (414) and `Vehicle Bridge` (15) dropped. §5 already flagged that "a reviewer may reasonably want them separated"; drawing is where it matters. A staircase is not a stream crossing. |
+| DEC `crossing` | 247 | **246** | The 36 `FORD` rows were already excluded from both; the remaining gap is one row with an empty coordinate array. |
+| OPRHP `parking` | 1,202 | **1,201** | One row arrives as a `Point` with an empty coordinate array. |
+| DEC `campsite` | 2,091 | **2,077** | DEC's own per-type service publishes 2,078, of which one has no usable coordinates — and the service, not the big layer's `PUBLICUSE` slice, is what ships. |
+
+**Fourteen features across three layers arrive as a `Point` with an empty coordinate
+array** (12 in `dec_backcountry_features`, 1 in `dec_primitive_campsites`, 1 in
+`oprhp_facilities`) — an agency's null island, written the honest way. They are dropped and
+counted rather than published at 0,0.
+
+One thing the export added that no count could: **a description for every one of the 8,480**.
+OPRHP names only 18% of its rows (`Name` is flagged "(Legacy Field)" in their own alias),
+so 3,133 of these waypoints reach a phone with no name at all. Rather than put the *park's*
+name on a bridge inside it, `compose_description` assembles one sentence from two columns
+each org does populate — "Trail Bridge in Beaver Island State Park." — which is
+`lib/poi_description.py`'s argument applied to two more agencies.
+
+DEC's `DESCRIP` is deliberately **not** in that sentence, and the measurement is the reason:
+it is populated on 14,303 rows and **27% of them are under twelve characters** of
+maintenance shorthand — `18" X 24 Metal`, `12" Good`, `Saloon Style Gate`. That is the same
+finding `lib/atc_notes.py` already recorded about ATC's own `Comments` column, on another
+agency's data. One thing inside it is genuinely useful and is left on the table on purpose:
+parking rows carry `3 Vehicle Capacity`, which is exactly what a hiker planning a trailhead
+start wants, and getting it out means parsing free text against a pattern nobody has
+measured coverage for.
+
 ## 5. NYS OPRHP — the richest, and the least curated where it matters most
 
 The only org publishing something for all eight types, all in one layer registered since
@@ -329,23 +383,34 @@ ask.
 Candidate follow-ups, deliberately not done in this survey — registering a layer, writing
 a fetcher or extending `export_poi.py` each needs its own issue and its own review.
 
-1. **Register DEC's per-type services** (§2) — `lean_to` (315), `prm_cmp` (2,078),
-   `scenic_vista` (134), `parking` (1,852), `firetower` (35). They are DEC's own
-   `PUBLICUSE='Y'` curation, they need no new fetch code (`lib/arcgis.py` already pages
-   MapServers — proven by `dec_hiking_trails`), and they are the cheapest real POI win
-   here. Privies and water have no such service and should not be taken from the big layer
-   in the same change.
-2. **Decide OPRHP's non-commercial question** (§8) before publishing 4,128 facilities
-   under terms whose applicability is open.
+1. ~~**Register DEC's per-type services** (§2) — `lean_to` (315), `prm_cmp` (2,078),
+   `scenic_vista` (134), `parking` (1,852), `firetower` (35).~~ **Done 2026-08-27**
+   (#1097), plus `viewing_area` (34), and the prediction held: no new fetch code, and
+   `lib/arcgis.py` paged all six on the first run. Privies and crossings came from the big
+   layer after all — DEC publishes no per-type service for either — through a value
+   allowlist plus `PUBLICUSE` rather than the type-prefix match this line warned against.
+   Water did not, and will not.
+2. **Decide OPRHP's non-commercial question** (§8). This got MORE urgent rather than less:
+   3,438 of their facilities now reach hikers on terms whose applicability to a paid pass
+   is still open. Nothing in #1097 settled it and nothing in #1097 depended on it — the
+   flip was about an exporter existing, not about a licence answer arriving — but the
+   number of features riding on that answer went from zero to 3,438.
 3. **Ship ATC's own bridges as `crossing`** (§7a) — data already registered, already
    fetched, already licensed, read by nothing.
 4. **Register the NHD source USGS actually ships** (§7b) — or record deliberately why a
    fetched federal dataset stays out of the registry.
 5. **Decide the trailhead type** (§7c). Three orgs have the data and the schema has no
-   shelf for it.
+   shelf for it — and #1097 made this concrete rather than theoretical: 287 OPRHP
+   trailheads were dropped by name in that export, and the client now filters any waypoint
+   whose `poi_type` it does not know, so the day a trailhead type is added both ends have
+   to move together.
 6. **Measure OSM's POI coverage over this ground** — seven of OSM's eight cells read
    `unprobed`, which is honest and unsatisfying.
    [#771](https://github.com/OurHike/OurHike/issues/771) is the runnable place for it.
+7. **Get `N Vehicle Capacity` out of DEC's `DESCRIP`** (§4a). It is exactly what a hiker
+   planning a trailhead start wants, it is in a free-text column 27% of which is
+   maintenance shorthand, and #806's lesson is that a plausible read of an uncounted column
+   ships wrong data quietly. Needs a coverage measurement before a regex.
 
 Nothing in this survey is a reason to publish anything faster. Every org above publishes
 its maintenance inventory, not its visitor guide, and the distance between those two is

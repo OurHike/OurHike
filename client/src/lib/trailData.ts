@@ -31,6 +31,7 @@ import {
   STEWARDS_KEY,
   HIGHLIGHTS_KEY,
   poiKey,
+  NEARBY_POI_KEY,
   REFRESHABLE_KEYS,
   RETIRED_POI_KEY,
   SPURS_KEY,
@@ -773,6 +774,32 @@ async function fetchSpurs(
  *  nothing publishes no artifact at all, which verify_release's check 21
  *  reports as OK rather than as a failure. Both cases are "no tombstones", and
  *  neither is a reason to fail a download whose real payload is the trail. */
+/** The waypoints NYS DEC and NYS OPRHP publish, or none (#1097).
+ *
+ *  A 404 is treated the way fetchSpurs() treats one, for the reason every
+ *  optional artifact here is - a phone pointed at an older release should still
+ *  get its trails and its A.T. waypoints. It is also the ordinary answer while
+ *  either steward's `reaches_hikers` is false, since pipeline/publish.py holds
+ *  the whole artifact back rather than publishing part of it.
+ *
+ *  ONE FILE, EVERY TYPE, unlike the eight `poi_*.geojson` keys beside it -
+ *  so `readPois`' fallback type is the wrong tool here and the result is
+ *  filtered against POI_TYPES instead. Every feature the pipeline writes
+ *  carries its own `poi_type`; one that does not is a pipeline bug, and
+ *  dropping it is better than letting the fallback file a privy under
+ *  'shelter'. The fallback passed in is therefore never expected to apply. */
+async function fetchNearbyPois(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<StoredPoi[]> {
+  const fetched = await fetchOptionalArtifact(NEARBY_POI_KEY, expected, signal)
+  if (fetched === null) return []
+  const types = new Set<string>(POI_TYPES)
+  return readPois(decode(fetched.bytes), POI_TYPES[0]).filter((poi) =>
+    types.has(poi.type),
+  )
+}
+
 async function fetchRetiredPois(
   expected: PublishedHashLookup,
   signal?: AbortSignal,
@@ -952,7 +979,7 @@ export async function downloadTrailData({
   // Still all-or-nothing: `Promise.all` rejects on the first failure and
   // nothing below commits, which is the property the `set()` calls at the end
   // depend on.
-  const [poiGroups, spurs, clubSections, stewards, highlights, retiredPois] =
+  const [poiGroups, spurs, clubSections, stewards, highlights, retiredPois, nearbyPois] =
     await Promise.all([
       Promise.all(
         POI_TYPES.map(async (type) => {
@@ -991,10 +1018,29 @@ export async function downloadTrailData({
         finished('Retired waypoints')
         return value
       }),
+      // Beside the A.T. waypoints rather than after them, for the reason every
+      // small keyed artifact here sits in this list: nothing is waiting on it,
+      // and a serial fetch would buy a round trip of dead time. 0.37 MB
+      // gzipped on 2026-08-27 - the heaviest of the optional artifacts in this
+      // group, and still an eighth of what the eight POI files carry.
+      fetchNearbyPois(expected, signal).then((value) => {
+        finished('Nearby waypoints')
+        return value
+      }),
     ])
   // Flattened in POI_TYPES order rather than in completion order, so what is
   // stored does not depend on which request happened to finish first.
-  const pois: StoredPoi[] = poiGroups.flat()
+  //
+  // The other organizations' waypoints join the SAME array, and that is the
+  // whole client-side shape of #1097. They are their own artifact upstream -
+  // a different licence footing, which is what `reaches_hikers` keeps
+  // separable per source - but on the phone they are waypoints like any other,
+  // and map/poiLayers.ts draws every one of them through a single symbol layer
+  // because MapLibre can only declutter symbols it places together. A second
+  // source here would have stacked a DEC lean-to on an A.T. shelter. Appended
+  // after, so ordering stays deterministic in the same way the flatten above
+  // makes it.
+  const pois: StoredPoi[] = [...poiGroups.flat(), ...nearbyPois]
 
   // Last, and on its own, which is the one piece of ordering worth keeping -
   // see fetchElevation. A hiker whose connection dies here has the trail and

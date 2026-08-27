@@ -4442,6 +4442,7 @@ function App() {
       preferences.contribute_conditions,
       handleAddFieldNote,
       handleReportFromPoi,
+      handleThanksFromPoi,
       now,
     ],
   )

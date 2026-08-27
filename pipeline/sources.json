@@ -338,6 +338,27 @@
       "reaches_hikers": true
     },
     {
+      "key": "nynjtc_trail_alerts",
+      "title": "NYNJTC Trail Alerts",
+      "provider": "NYNJTC",
+      "kind": "published_notices",
+      "url": "https://www.nynjtc.org/category/trail-alerts/",
+      "trust": "authoritative",
+      "steward": "New York-New Jersey Trail Conference",
+      "steward_contact": "https://secure.nynjtc.org/contact-us",
+      "licence": "UNSETTLED, AND NARROWER THAN THE BLOCK IT SITS BESIDE. `nynjtc_licence` below covers NYNJTC's two public TRAIL EXTRACTS and says in its own words that it must not be read as precedent - so it does NOT cover republishing their notices, and this entry does not borrow it. Nothing here reaches a hiker: `reaches_hikers` is false, no export reads the cache, and the conservative facts-and-a-link split that let ATC's notices ship (see `atc_trail_updates` above) is a posture this source has not been granted by anybody. What would settle it: the maintainer's NYNJTC conversation (https://github.com/OurHike/OurHike/issues/768) extending to the alerts, or NYNJTC's own terms - the latter being the ideal, the way every licence block here reads.",
+      "attribution": "New York-New Jersey Trail Conference",
+      "freshness": {
+        "kind": "http_etag",
+        "url": "https://www.nynjtc.org/category/trail-alerts/feed/",
+        "notes": "The category's RSS feed, used as a change signal and NOT as the content - the same division `atc_trail_updates` uses, and for the same reason: measured 2026-08-27 the feed held 12 items while the API held all 18, so building from it would silently drop six alerts. It is a BETTER marker than ATC's on both counts that matter. The validator is STRONG (`\"b04bf0f8...\"`, no `W/` prefix) where ATC's is weak, so a change to the bytes cannot leave the tag standing; and a `Last-Modified` is served beside it (Wed, 26 Aug 2026 21:41:57 GMT), giving check_freshness.py a second marker if the first is ever dropped. NYNJTC also does not refuse a scripted request the way ATC's host refuses the literal `python-requests/*` User-Agent - verified 2026-08-27 with urllib's default agent, which answered 200 - so nothing here depends on naming ourselves. fetch_nynjtc_alerts.py names the project anyway, as courtesy rather than necessity."
+      },
+      "discovered_via": "pipeline/ALERTS_NOTICES_SURVEY.md §5b - the alerts survey #1073 ran across every org whose trails this build draws. Registered by hand: discover_sources.py walks ATC's Experience Builder app and this is a WordPress category, not a layer.",
+      "discovered_date": "2026-08-27",
+      "notes": "Fetched by fetch_nynjtc_alerts.py to data/raw/nynjtc_alerts.json (never by fetch_all.py, which fetches ArcGIS layers only). 18 alerts on 2026-08-27, published 2024-01-11 to 2026-06-16, read from the WordPress REST API - `/wp-json/wp/v2/posts?categories=6` - rather than scraped, which is the whole difference from `atc_trail_updates`: there is no markup to misread, and `per_page`/`modified_after`/`_fields` are query parameters rather than things to reimplement. THE FIND THE SURVEY ITSELF MISSED, corrected in §5b the same day: NYNJTC tags each alert from its own CLOSED taxonomies, so placement is a join against tens of terms rather than a fuzzy match of prose against the 21,805 exported network features. Coverage measured on those 18 - park on 17, trail on 10, region and state on 7 each - and the trail vocabulary is 45 terms, the park vocabulary 125. That last number is why the fetcher pages every list route: `park` answers exactly 100 to a single per_page=100 request, and a vocabulary truncated there would drop placements with no error anywhere. ONE HYGIENE WART, recorded so it is not mistaken for a parser bug: `highlands-trail` is a term in BOTH the trail and park taxonomies (ids 31 and 405), so a join table must key on `taxonomy:slug` and never on the slug alone. features/ORG_NOTICES.md is the delivery design and holds the placement, dedup and voice questions; none of them is settled by this registration.",
+      "reaches_hikers": false
+    },
+    {
       "key": "mohonk_trails",
       "title": "Mohonk Preserve Trails and Carriage Roads",
       "provider": "Mohonk Preserve",
@@ -407,6 +428,7 @@
     "terms_source": "AGOL items 55350d7014c746949809bde71e373d67 and aa7e805d911546a189d47b7263c6e686, licenseInfo empty on both, read 2026-08-24",
     "basis": "Maintainer authorisation, 2026-08-24, on the maintainer's own reading that these are openly published datasets. THE SAME FOOTING atc_licence AND photo_licence ALREADY USE, and worth being precise about what it is and is not: it is the maintainer deciding, as the person who carries the consequence, that publishing NYNJTC's two PUBLIC EXTRACTS is acceptable. It is NOT a grant from NYNJTC, who have stated nothing - their items carry an empty licenseInfo and an empty accessInformation, verified whole 2026-08-24 - so ordinary copyright is the default this decision is taken against. WHAT IT DOES NOT TOUCH: SOURCE_SURVEY.md \u00a75's verdict on the full NYNJTC network stands unchanged - 'an agreement, not a scrape'. This authorisation covers the two public extracts and nothing else, and must not be read as precedent for the network.",
     "recorded_date": "2026-08-24",
+    "scope_note_2026_08_27": "THIS BLOCK DOES NOT COVER `nynjtc_trail_alerts`, registered on 2026-08-27 (#1078). The authorisation above is for the two public TRAIL EXTRACTS and says so twice; their trail ALERTS are a third thing NYNJTC publishes, they were not in front of anybody when this was recorded, and the sentence 'must not be read as precedent for the network' applies with equal force to reading it as precedent for the notices. That entry therefore carries its own unsettled `licence` field and `reaches_hikers: false`, and stays that way until #768 covers it or NYNJTC states terms.",
     "open_question": "https://github.com/OurHike/OurHike/issues/768 - NYNJTC's own answer should replace the maintainer's authorisation with their stated terms, the way atc_licence's open question reads. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line."
   },
   "mohonk_licence": {

@@ -219,12 +219,33 @@ Three properties, stated with their costs:
   entries restate what a land manager published (Breakneck, Awosting both appear here
   *and* on parks.ny.gov), so shipping both sources needs a dedup posture, and the
   attribution must say NYNJTC-reporting-on-OPRHP-ground, not OPRHP.
-- **Locations are names, not miles.** "Harriman State Park", "Brook Trail (Red Trail)" —
-  no NOBO-mile convention exists off the A.T., so placement is a name-join against parks
-  and trails already shipped, and the honest fallback is ATC_TRAIL_UPDATES.md's own: an
-  update whose range cannot be drawn is still one a hiker is told about. List entry
-  first, geometry when a name resolves cleanly (or when NYNJTC pairs the alert with a
-  detour layer, §5a).
+- **Locations are names, not miles** — no NOBO-mile convention exists off the A.T., so an
+  update whose place cannot be drawn is still one a hiker is told about (list entry first,
+  geometry when a place resolves), which is ATC_TRAIL_UPDATES.md's own fallback.
+
+  **Corrected the same day, and the correction is the reason this source is worth having.**
+  The sentence above was written from the alert *prose*, where the names do indeed sit in
+  paragraphs — and it understated the payload, because a first read of one post's fields
+  stopped at the ones ATC's shape had taught this survey to look for. **NYNJTC tags every
+  alert from its own closed taxonomies**, and the API returns them as term ids:
+
+  | taxonomy | terms | populated on the 18 alerts |
+  |---|---:|---:|
+  | `trail` | 45 | 10 |
+  | `park` | 125 | 17 |
+  | `region` | 13 | 7 |
+  | `state` | 3 | 7 |
+
+  So placement is a join against **45 trail terms**, not a fuzzy match of prose against the
+  21,805 exported network features — a table a person reviews in one sitting rather than a
+  guess with a hiker's location attached. Two things measured while confirming it, both now
+  carried in the registry entry: `park` answers exactly 100 to a single `per_page=100`
+  request and has 125 terms, so a vocabulary asked for once is silently truncated; and
+  `highlands-trail` is a term in **both** the trail and park taxonomies (ids 31 and 405),
+  so a join table must key on `taxonomy:slug` and never on the slug alone.
+
+  This is §0's own frame catching this survey out — *structured beats scrapeable* — one
+  level below where it first looked.
 
 **Verdict: this is the second `published_notices` source**, and the machinery to receive
 it exists end-to-end — `lib/source_registry.py`'s kind, the fetch-as-content pattern, the
@@ -272,6 +293,13 @@ publish closures as data.
 
 ## 8. Placement off the A.T., named as its own problem
 
+> **Superseded 2026-08-27 by [../features/ORG_NOTICES.md](../features/ORG_NOTICES.md)**
+> ([#1077](https://github.com/OurHike/OurHike/issues/1077)), which owns this question and
+> answers it — a tagged `place` union with *unplaced* as a first-class arm, and a reviewed
+> join table over each org's own vocabulary. This section is kept as the statement of the
+> problem, and §5b's correction is the fact that changed its shape: NYNJTC's half of it is
+> a join over 45 terms rather than the prose name-match described below.
+
 ATC's updates were cheap to place because ATC writes NOBO miles and the build already had
 the mile-to-coordinate table (ATC_TRAIL_UPDATES.md's "the find that makes this cheap").
 **No other org has a mile axis.** What they have instead:
@@ -308,11 +336,15 @@ headline, link out; never the body text.
 
 Candidate follow-ups, deliberately not done in this survey:
 
-1. **Register NYNJTC's Trail Alerts as the second `published_notices` source** (§5b) —
-   the API endpoint as `url`, the RSS as the freshness marker, the ATC review pipeline's
-   shape (fetch as content, human-reviewed file, facts + link only), review-only until
-   the #768 conversation covers republication. The name-join reference table (§8) is the
-   one genuinely new piece.
+1. ~~**Register NYNJTC's Trail Alerts as the second `published_notices` source** (§5b)~~ —
+   **done 2026-08-27** ([#1078](https://github.com/OurHike/OurHike/issues/1078)):
+   `nynjtc_trail_alerts` is in [sources.json](sources.json) with the RSS feed as its
+   freshness marker and `reaches_hikers: false`, fetched by `fetch_nynjtc_alerts.py` into
+   a review cache. The delivery design the registration deliberately does not settle —
+   placement, dedup against OPRHP's own alerts, whose voice a notice speaks in — is
+   [../features/ORG_NOTICES.md](../features/ORG_NOTICES.md)
+   ([#1077](https://github.com/OurHike/OurHike/issues/1077)), which supersedes §8 below.
+   Republication is still NYNJTC's conversation to conclude (#768).
 2. **Say, wherever OPRHP closures render, that they are the layer's four areas and not
    OPRHP's full alert list** (§3b) — one sentence of honesty available immediately, ahead
    of any scraper. The measured instance: Lake Awosting closed on OPRHP's own site since

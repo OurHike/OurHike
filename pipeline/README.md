@@ -170,6 +170,16 @@ GUIDE_PDF=/path/to/at_guide.pdf .venv/Scripts/python spike_guide_water_check.py
 
 Change-aware per entry (conditional GET against its own manifest, plus a body-hash check because WordPress does not always honour conditionals), strict on parse (a PDF whose layout changed stops the run and keeps the previous known-good state — `build_shelter_capacity.py`'s posture applied to a fetch), and **review-only by construction: no export reads `data/raw/club_pdfs/`**. Club PDFs state no terms ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §9), so each registry entry's `licence` field records the ask that has to be answered before anything here reaches a hiker; [WATER_SOURCES.md](WATER_SOURCES.md) §4 sizes GATC's as "a pilot-state candidate after an email". The next club document is one `sources.json` entry and, optionally, one parser — not a new script.
 
+## Fetching another organization's notices (review-only)
+
+`fetch_nynjtc_alerts.py` reads NYNJTC's Trail Alerts into `data/raw/nynjtc_alerts.json` ([#1078](https://github.com/OurHike/OurHike/issues/1078)), the second entry of `kind: "published_notices"` after ATC's. The difference from ATC's is the whole point: NYNJTC leaves the WordPress REST API on, so this reads JSON with documented field names instead of parsing a theme, and five requests a run cover the alerts plus all four place taxonomies.
+
+```
+.venv/Scripts/python fetch_nynjtc_alerts.py
+```
+
+18 alerts on 2026-08-27, and **10 of them name a trail from NYNJTC's own 45-term vocabulary** rather than only prose — which is what makes placing them a reviewed join table rather than a fuzzy match ([ALERTS_NOTICES_SURVEY.md](ALERTS_NOTICES_SURVEY.md) §5b holds the measurement and the correction it forced). **Review-only by construction: no export reads this file**, and `reaches_hikers` is false on the entry — `nynjtc_licence` covers NYNJTC's two trail extracts and explicitly not this, so republication waits on [#768](https://github.com/OurHike/OurHike/issues/768). [../features/ORG_NOTICES.md](../features/ORG_NOTICES.md) is the delivery design and owns everything this fetch deliberately does not settle.
+
 ## Fetching external-organization layers (review-only)
 
 `fetch_external_layers.py` downloads the ArcGIS feature layers other organizations host on their own orgs, as `sources.json` registers them (`kind: "external_arcgis_layer"` — [#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app](https://github.com/OurHike/OurHike/issues/769)). Registered so far: **NYS OPRHP's four Parks Explorer layers** — 16,641 trail segments statewide with names, up to three blaze colours, surfaces, per-use permissions and mileage, plus the temporary-closure polygons, facilities points and park-unit boundaries the State's own app draws (all counts measured 2026-08-18) — and **NYNJTC's two public extracts**, the Long Path (43 sections) and the Highlands Trail (12), added under [#950](https://github.com/OurHike/OurHike/issues/950) on the verdict [NYC_SOURCE_SURVEY.md](NYC_SOURCE_SURVEY.md) §4 recorded and nothing had acted on (counts re-measured live 2026-08-24). NYNJTC's FULL network is not here and is not coming this way: SOURCE_SURVEY.md §5's verdict — *an agreement, not a scrape* — stands.

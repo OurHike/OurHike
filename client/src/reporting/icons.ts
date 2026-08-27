@@ -11,9 +11,10 @@
 // the build and fetches nothing - so the argument here is smaller and worth
 // stating honestly rather than borrowing that one's weight:
 //
-//   - Eight icons is 2.3 KB of path data. `lucide-react` is a dependency, a
-//     lockfile entry, a supply-chain surface and an upgrade to think about,
-//     for eight shapes that will not change.
+//   - Ten icons is 2,314 bytes of path data (measured 2026-08-27, the string
+//     literals below). `lucide-react` is a dependency, a lockfile entry, a
+//     supply-chain surface and an upgrade to think about, for ten shapes that
+//     will not change.
 //   - map/poiIcons.ts already holds this repo's icon geometry as data in TS.
 //     A second, different answer to "where do icons live" is the cost.
 //

@@ -8,12 +8,57 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 ## The core flow
 
-A hiker taps **Report a Problem** and:
+**Revised 2026-08-27 (#1133) to describe what shipped.** The four steps below
+are what this section said, and the order is what changed: the flow asked for a
+location, then a type, then detail, then filed. It now files on the type and
+asks for the rest afterwards. Both versions are recorded because the argument
+for the change is entirely in the difference.
 
-1. **Picks a location** - either an existing map point (a shelter, water source, any POI already shown), or a custom spot: drop a pin, or use current GPS location. This is the same anchoring pattern [SEGMENTS.md](SEGMENTS.md) already uses for segment boundaries - reuse it rather than inventing a second way to pin a place on the map.
-2. **Picks a problem type** from a fixed set (below).
-3. **Adds whatever detail they have** - v1 is just a note and an optional photo (matching FEATURES.md's existing "text + photo, timestamp + reporter type" line). Structured, type-specific follow-up questions come later - see "Follow-up info, phased" below.
-4. The report enters the **moderation queue for club admins** and the **maintainer verification/flagging workflow** - both already planned in FEATURES.md, not new here.
+A hiker taps **Report a problem** — from Today's foot, from a place's card, or
+from the map — and:
+
+1. **The window opens over whatever they were looking at**, rather than
+   replacing it. It is a dialog, not a route: the screen behind it stays, so
+   nobody loses their place to file a blow-down.
+2. **Where the report is going is stated, not asked.** Every entry point
+   supplies an anchor and the hiker is standing at it — the place's card knows
+   the place, the map's long-press knows the point, Today knows the fix. A
+   `Change` control re-anchors to a place today's walked miles covered, for the
+   one case the stated anchor gets wrong: something noticed and remembered a
+   mile later.
+3. **One tap on a type files the report**, into the outbox, at once. There is
+   no submit button and nothing to abandon.
+4. **An 8-second `Undo` stands where the Cancel used to.** The report is held
+   in the outbox for that window rather than sent, so taking it back is a
+   delete of something never transmitted, not a withdrawal of something
+   published.
+5. **Detail is optional and comes after.** A note, and a photo, on the receipt
+   — the same fields, no longer in the way of the thing a hiker actually came
+   to do.
+6. The report enters the **moderation queue for club admins** and the
+   **maintainer verification/flagging workflow** — both already planned in
+   FEATURES.md, unchanged by any of the above.
+
+**Two types never file on a tap**, and this is the load-bearing exception
+rather than a detail: a **closure** needs two miles, and **something unsafe
+happened** is a report about a person that routes privately to moderators
+(see "Problem types" below). Both open a form. `reporting/categories.ts` states
+that rule negatively — a type added later defaults to *not* filing — because a
+new type quietly inheriting one-tap filing is the wrong direction to fail in.
+
+**What the old ordering cost, which is why this changed.** Asking for a
+location first is the right shape for a report filed at a desk and the wrong
+one for a report filed standing in front of the problem, where the location is
+the thing the phone is most sure of and the hiker is least interested in
+confirming. Three screens of ceremony before anything is recorded is three
+chances to give up, in weather, one-handed, on a phone with one bar.
+
+**What it is not**, and the cost this change accepts: a tap is now
+unrecoverable after eight seconds without an edit path. That is a real trade
+and the `Undo` is the whole of the mitigation. It was chosen over a confirm
+step because a confirm step is the ceremony this change exists to remove, and
+over an indefinite edit window because a report already in a club's queue is
+not the app's to silently rewrite.
 
 ## Problem types
 

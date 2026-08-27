@@ -42,7 +42,7 @@
 export const caption =
   'The opened card — four answers, and both halves of the crew relationship (#1122, #1133)'
 export const alt =
-  'Either a waypoint card pulled open for a shelter, scrolled to a “Say something back” band with four answer buttons — a green rotating good word, an orange “Damaged”, “Trash” and “Not here” — above a pair of stacked full-width bordered plates of equal weight: a red-accented “Something wrong here?” over “Blowdown, damage, trash — report it”, and a green-accented “Glad it’s here?” over “Say thanks to whoever keeps it up”; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'Either a waypoint card pulled open for a shelter, scrolled to a “Say something back” band with four answer buttons — a green rotating good word, an orange “Problem”, “Trash” and “Not here” — above a pair of stacked full-width bordered plates of equal weight: a red-accented “Something wrong here?” over “Blowdown, damage, trash — report it”, and a green-accented “Glad it’s here?” over “Say thanks to whoever keeps it up”; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 export const wait = 5000
 

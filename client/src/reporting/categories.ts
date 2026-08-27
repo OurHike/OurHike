@@ -83,9 +83,15 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
     // fouled privy or a dry piped spring should not have to decide whether
     // that counts as "repair" before they can say so.
     //
-    // It also squares the tile with #1122, which made `damaged` and `trash`
-    // on a CAMPSITE card escalate into this exact type. A campsite escalating
-    // into something called "Shelter repair" was the seam showing.
+    // It also squares the tile with #1122, which made `trash` on a CAMPSITE
+    // card escalate into this exact type. A campsite escalating into
+    // something called "Shelter repair" was the seam showing.
+    //
+    // #1140 stopped the overnight thumbs-down escalating here directly - it
+    // reads "Problem" now, which covers mice and a fouled privy as well as a
+    // hole in the roof, so it opens the picker rather than pre-picking this.
+    // The tile is where a hiker lands from that picker, and the broadened
+    // label above is exactly why it can be.
     id: 'shelter_repair',
     label: 'Shelter or campsite',
     description: 'Damage, mess, privy, water at the site',

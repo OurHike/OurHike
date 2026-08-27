@@ -36,16 +36,16 @@ describe('peekObservations', () => {
     // #1122's correction. These used to be read off the ENDS of each list, and
     // the ends rule survives only while every list happens to run best to
     // worst. It does not survive `trash`: the ends of a shelter's list are now
-    // `fine` and `trash`, so the derived version would hide Damaged - the
+    // `fine` and `trash`, so the derived version would hide Problem - the
     // answer this whole change exists to promote - and would hide Full on
     // parking, which is the reason parking is here at all.
     expect(peekObservations('shelter').map((option) => option.id)).toEqual([
       'fine',
-      'damaged',
+      'problem',
     ])
     expect(peekObservations('campsite').map((option) => option.id)).toEqual([
       'fine',
-      'damaged',
+      'problem',
     ])
     expect(peekObservations('resupply').map((option) => option.id)).toEqual([
       'open',
@@ -77,7 +77,7 @@ describe('peekObservations', () => {
 
   it('hands back the SAME option object the opened card renders', () => {
     // Identity, not equality, and the distinction is the point: the peek's
-    // Damaged and the opened card's Damaged have to be one control with one
+    // Problem and the opened card's Problem have to be one control with one
     // label and one id. `peekObservations` looks its answers up in
     // OBSERVATION_OPTIONS rather than constructing them, and this is what
     // would fail if somebody "simplified" that into a literal.
@@ -273,7 +273,6 @@ describe('the acknowledgement’s opener', () => {
 
 describe('escalationFor', () => {
   it('sends a named problem straight to the form that names it', () => {
-    expect(escalationFor('damaged')).toEqual({ kind: 'form', type: 'shelter_repair' })
     // `trash` is the same complaint at two weights - one tap that dates the
     // observation, and a form that puts it in front of a maintainer - so it
     // hands off to the report type of the same name rather than the picker.
@@ -284,6 +283,21 @@ describe('escalationFor', () => {
     // No report type is "a dry spring", and pre-picking a wrong one would file
     // a flooding report about the absence of water.
     expect(escalationFor('dry')).toEqual({ kind: 'pick' })
+  })
+
+  it('opens the picker for `problem` too, because the word stopped being narrow', () => {
+    // THE HALF OF #1140 THAT IS NOT A LABEL. `damaged` went straight to the
+    // `shelter_repair` form, and that was honest: the word promised structural
+    // damage, so the form matched what had been tapped. "Problem" covers mice
+    // in the food box, a fouled privy, a missing bear hang, a spring that
+    // stopped - and a repair form for any of those is the same pre-pick the
+    // test above refuses for `dry`.
+    //
+    // Asserted as `{ kind: 'pick' }` rather than "not shelter_repair", because
+    // the failure worth catching is somebody restoring the shortcut for the
+    // common case, and `null` would pass a looser assertion while silently
+    // dropping the escalation altogether.
+    expect(escalationFor('problem')).toEqual({ kind: 'pick' })
   })
 
   it('stops escalating `full`, which now points at nowhere (#1122)', () => {

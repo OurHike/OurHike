@@ -47,7 +47,7 @@ class Observation(str, enum.Enum):
     """The one-tap tags, all POI types' values in one enum.
 
     FIELD_NOTES.md scopes them by poi_type - water gets flowing/trickling/
-    dry, shelters and campsites fine/damaged/trash, resupply open/limited/
+    dry, shelters and campsites fine/problem/trash, resupply open/limited/
     closed, parking open/full/trash, and `not_found` is the dispute value
     every type shares. They live in ONE enum because this backend cannot
     police the pairing: a POI's type is a fact of the published artifact, not
@@ -85,6 +85,12 @@ class Observation(str, enum.Enum):
     dry = "dry"
     # Shelters and campsites
     fine = "fine"
+    problem = "problem"
+    # Was the shelter/campsite thumbs-down until #1140, and is kept because
+    # notes filed under it still say what somebody meant when they tapped it.
+    # The word implied structural damage, so a hiker with mice in the food box
+    # or a fouled privy had no button - "problem" is the same thumbs-down
+    # without the claim. Nothing writes this any more; everything must read it.
     damaged = "damaged"
     # Shelters, campsites and parking - litter somebody left (#1122). Shares
     # its name with the report type it escalates into, because they are the

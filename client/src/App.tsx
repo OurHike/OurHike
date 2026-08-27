@@ -4211,10 +4211,18 @@ function App() {
    * A report that starts from a place card carries the place (FIELD_NOTES.md
    * step 1): the escalation after a problem-shaped tap, and the card's own
    * "report a problem here". With a type it goes straight to the form -
-   * `damaged` names shelter_repair and `trash` names the report type of the
-   * same name (#1122) - and without one it opens the picker, because no
-   * report type is "a dry spring" and pre-picking a wrong one would file a
-   * flooding report about the absence of water.
+   * `trash` names the report type of the same name (#1122) - and without one
+   * it opens the picker, because no report type is "a dry spring" and
+   * pre-picking a wrong one would file a flooding report about the absence of
+   * water.
+   *
+   * `damaged` used to be the other one that named a type, and #1140 took that
+   * away with the word: the button now reads "Problem", which covers mice and
+   * a fouled privy as well as a hole in the roof, so `shelter_repair` stopped
+   * being a safe guess. It reaches this function without a type now, like
+   * `dry`. The parameter keeps `shelter_repair` in its union because the
+   * picker still offers it and the form still takes it - what changed is that
+   * nothing pre-picks it.
    */
   const handleReportFromPoi = useCallback(
     (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => {

@@ -373,3 +373,101 @@
     transform: none;
   }
 }
+
+/* The Change control, in the header beside the anchor it changes. */
+.report-window__change {
+  margin-left: var(--space-2, 8px);
+  min-height: 28px;
+  padding: 0 10px;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-chrome-2);
+  background: transparent;
+  border: 1px solid var(--border-chrome);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+/* Where else this report could go. Sunken against the dialog's own surface,
+   so it reads as a drawer that opened rather than as another card. */
+.report-window__places {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-page);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+}
+
+.report-window__filter {
+  min-height: 40px;
+  padding: 0 10px;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 13px;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 0;
+  border-bottom: 1px solid var(--border-1);
+}
+
+/* Capped and scrolled, so the window does not grow without bound on a day
+   that walked past two dozen places - and so it is visibly scrollable rather
+   than looking like the whole list. */
+.report-window__place-list {
+  max-height: 188px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.report-window__place {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: 7px 10px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border-1);
+  cursor: pointer;
+}
+
+.report-window__place-list li:first-child .report-window__place {
+  border-top: 0;
+}
+
+.report-window__place:hover {
+  background: var(--bg-surface);
+}
+
+/* Truncates, because a place name can be long and the distance beside it
+   must not be pushed off the row - the distance is what the list is sorted
+   on, so it is what a hiker is comparing. */
+.report-window__place-name {
+  overflow: hidden;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-1);
+}
+
+.report-window__place-back {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.report-window__place-empty {
+  padding: var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-3);
+}

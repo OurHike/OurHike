@@ -34,6 +34,7 @@
 // reporting/categories.ts owns that distinction; this file only renders it.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { formatDistance, type UnitSystem } from '../lib/units'
 import {
   CLOSURE_ROW,
   EMERGENCY_NOTICE,
@@ -92,8 +93,48 @@ export interface ReportWindowAnchor {
   phrase: string
 }
 
+/** One place this hiker walked past today, as the picker lists it.
+ *
+ *  CARRIES ITS OWN COORDINATES, which this file never reads - the window
+ *  renders a name and a distance back, and hands the whole place to
+ *  `onPickAnchor`. The fields are here for that callback's contract: an
+ *  anchor needs a lat and a lon, so the place a picker offers has to be able
+ *  to become one.
+ *
+ *  Requiring them is what stops the tempting fill. An earlier cut passed
+ *  `{ id, name, mile }` and let the caller look the coordinates up at pick
+ *  time, which puts an `undefined` in front of somebody at exactly the moment
+ *  `lat: 0, lon: 0` looks like a reasonable default - and 0,0 is the Atlantic
+ *  off West Africa, the substitution this app already refuses in two other
+ *  places (chrome/Header.tsx on the mile readout, screens/ReportForm.tsx on
+ *  the location line). With the fields required, the lookup happens where the
+ *  list is built and there is no gap left to fill. */
+export interface PassedPlace {
+  id: string
+  name: string
+  mile: number
+  lat: number
+  lon: number
+}
+
 export interface ReportWindowProps {
   anchor: ReportWindowAnchor
+  /**
+   * Where else this report could be anchored: the places today's walked miles
+   * covered (lib/passedToday.ts). Empty is an ordinary state - an early start
+   * has passed nothing - and the option is withheld rather than shown empty.
+   */
+  passedPlaces?: readonly PassedPlace[]
+  /** The hiker's own mile, for ordering the list by how far back each place
+   *  is. Absent when there is no fix, which is when the list cannot be
+   *  ordered that way and says so by not offering itself. */
+  fixMile?: number
+  /** Re-anchor. The caller owns the anchor, so the window asks rather than
+   *  deciding. */
+  onPickAnchor?: (place: PassedPlace) => void
+  /** The hiker's own unit system, for the distance each place is written at
+   *  (lib/units.ts, features/UX_CUSTOMIZATION.md). */
+  units: UnitSystem
   /** Signed exactly as every other contribution is - the floor in
    *  lib/reporterIdentity.ts applies, and the caller has already applied it. */
   reporterType: 'thru' | 'section' | 'day' | 'maintainer'
@@ -154,6 +195,10 @@ function Icon({ name }: { name: ReportIconName }) {
 
 export function ReportWindow({
   anchor,
+  passedPlaces = [],
+  fixMile,
+  onPickAnchor,
+  units,
   reporterType,
   onFile,
   onUndo,
@@ -178,6 +223,9 @@ export function ReportWindow({
   // report without clearing the first, and Undo removes one without
   // necessarily emptying the set.
   const [standing, setStanding] = useState<readonly string[]>([])
+  // Whether the anchor list is open, and what is typed into its filter.
+  const [picking, setPicking] = useState(false)
+  const [placeFilter, setPlaceFilter] = useState('')
   // Ticks only while an undo window is open, so a window sitting on the tiles
   // costs no timer at all.
   const [remaining, setRemaining] = useState(0)
@@ -283,10 +331,104 @@ export function ReportWindow({
     setRemaining(0)
   }
 
+  /**
+   * The places today covered, NEAREST FIRST.
+   *
+   * ORDERED HERE RATHER THAN IN lib/passedToday.ts, which sorts ascending by
+   * mile and keeps doing so. That is right for its two other readers - Today's
+   * "Today so far" and the Volunteer tab both read the day as a list of places
+   * - and it is wrong for a picker, because the two orders are only the same
+   * thing walking north. A SOBO's day runs the other way, so mile-ascending
+   * puts the place they passed an hour ago at the BOTTOM of the list they are
+   * scrolling to find it in.
+   *
+   * Distance back from the fix is direction-free and is what a hiker
+   * re-anchoring is actually thinking in ("that blow-down a mile back"). The
+   * design handoff asked for it; what it did not have to weigh is that the
+   * function it would have changed has two other callers, and this list is the
+   * only one that wants it.
+   *
+   * NO COUNT, ANYWHERE. lib/passedToday.ts's own rule - the list "never
+   * counts, and never mentions what was skipped" - because a number here is a
+   * scoreboard of places a hiker walked past without reporting, which is the
+   * guilt mechanic DATA_NUDGES.md rules out four times.
+   */
+  const nearbyFirst: readonly { place: PassedPlace; back: number }[] =
+    fixMile === undefined
+      ? []
+      : passedPlaces
+          .map((place) => ({ place, back: Math.abs(place.mile - fixMile) }))
+          .sort((a, b) => a.back - b.back)
+
+  const needle = placeFilter.trim().toLowerCase()
+  const shownPlaces =
+    needle === ''
+      ? nearbyFirst
+      : nearbyFirst.filter((row) => row.place.name.toLowerCase().includes(needle))
+
+  const canRepick = onPickAnchor !== undefined && nearbyFirst.length > 0
+
   const undoable = filed !== null && remaining > 0
+
+  /* The anchor list, when the header's Change is open. Above the tiles rather
+     than below them: it answers "where", and a hiker who opened it is not
+     looking at the categories until they have. */
+  const anchorPicker = !picking ? null : (
+    <div className="report-window__places" data-testid="report-places">
+      {/* Offered past roughly half a dozen rows, which is where scanning a
+          list stops being faster than typing three letters of a name. Below
+          that it is a control in the way. */}
+      {nearbyFirst.length > 6 && (
+        <input
+          type="search"
+          className="report-window__filter"
+          data-testid="report-place-filter"
+          value={placeFilter}
+          placeholder="Filter places"
+          aria-label="Filter the places you passed"
+          onChange={(event) => setPlaceFilter(event.target.value)}
+        />
+      )}
+      <ul className="report-window__place-list" aria-label="Somewhere you passed today">
+        {shownPlaces.map(({ place, back }) => (
+          <li key={place.id}>
+            <button
+              type="button"
+              className="report-window__place"
+              data-testid={`report-place-${place.id}`}
+              onClick={() => {
+                onPickAnchor?.(place)
+                setPicking(false)
+                setPlaceFilter('')
+              }}
+            >
+              <span className="report-window__place-name">{place.name}</span>
+              {/* Tabular figures so a scrolling list does not jitter, and the
+                  distance never truncates - it is the thing being sorted on,
+                  so it is the thing a hiker is comparing.
+
+                  A DIFFERENCE OF TWO MILES, not a mile marker, which is the
+                  distinction #986 was: `formatDistance(place.mile, ...)`
+                  would print a metric hiker's "757.7 km" for a place the row
+                  above calls mi 470.8, and both are positions on this trail.
+                  The subtraction happens here so that what reaches the
+                  formatter is a distance. */}
+              <span className="report-window__place-back">
+                {`${formatDistance(back, units)} back`}
+              </span>
+            </button>
+          </li>
+        ))}
+        {shownPlaces.length === 0 && (
+          <li className="report-window__place-empty">Nothing by that name today.</li>
+        )}
+      </ul>
+    </div>
+  )
 
   const tiles = (
     <>
+      {anchorPicker}
       <div className="report-window__grid">
         {REPORT_CATEGORIES.map((category) => (
           <button
@@ -455,13 +597,32 @@ export function ReportWindow({
             <h2 className="report-window__title" id={titleId}>
               {filed === null ? 'What did you find?' : 'Anything to add?'}
             </h2>
-            {/* The anchor, stated rather than asked. Under 1a it is not a
+            {/* The anchor, STATED RATHER THAN ASKED. Under 1a it is not a
                 question: every entry point supplies one, and the hiker is
-                standing at it. Re-anchoring is a separate control and is not
-                built yet - which is why there is no `Change` button here
-                rather than a dead one. */}
+                standing at it. `Change` is the escape hatch for the case that
+                is not that - a blow-down noticed and remembered a mile later
+                - and it is deliberately the smaller of the two, because the
+                stated anchor is right nearly every time. */}
             <p className="report-window__anchor" data-testid="report-anchor">
               {anchor.label}
+              {/* CHANGE IS OFFERED ONLY WHEN THERE IS SOMETHING TO CHANGE TO.
+                  A picker that opens onto an empty list is a control that
+                  taught a hiker not to trust its labels - and an empty list is
+                  an ORDINARY state here, not an error: an early start has
+                  walked past nothing yet, and a phone with no fix cannot order
+                  what it has. Withheld in both cases rather than shown
+                  disabled. */}
+              {canRepick && filed === null && (
+                <button
+                  type="button"
+                  className="report-window__change"
+                  data-testid="report-change-anchor"
+                  onClick={() => setPicking((open) => !open)}
+                  aria-expanded={picking}
+                >
+                  {picking ? 'Done' : 'Change'}
+                </button>
+              )}
             </p>
           </div>
           <button

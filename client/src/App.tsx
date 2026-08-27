@@ -4189,6 +4189,24 @@ function App() {
   )
 
   /**
+   * A thanks from a place's card (#1133).
+   *
+   * STRAIGHT TO THE FORM, not through the window, for the reason
+   * reporting/categories.ts states as `filesOnTap`: a thanks is one of the two
+   * things that must never be filed by a tap. It is a message to a person, and
+   * an empty one sent by accident is worse than none - so it gets the form,
+   * where there is something to write and a Cancel to change your mind with.
+   *
+   * The anchor is the card's own, so the club lookup has a `poiId` to work
+   * from. Same shape as `handleReportFromPoi`'s escalation arm, deliberately:
+   * this is that path with the type already picked.
+   */
+  const handleThanksFromPoi = useCallback((anchor: ReportAnchor) => {
+    setSelectedPoiId(null)
+    setReporting({ step: 'form', type: 'thanks', anchor })
+  }, [])
+
+  /**
    * What the report window's header prints for where this is going (#1133).
    *
    * A place's NAME when the report started from its card, because that is
@@ -4368,6 +4386,7 @@ function App() {
       onAddNote: (draft: FieldNoteDraft, photo?: Blob) =>
         void handleAddFieldNote(draft, photo),
       onReportProblem: handleReportFromPoi,
+      onSayThanks: handleThanksFromPoi,
       now,
     }),
     [
@@ -5928,6 +5947,45 @@ function App() {
               ...(reporting.anchor ?? {}),
               ...reportAnchorWords(reporting.anchor),
             } satisfies ReportWindowAnchor
+          }
+          // Re-anchoring, from today's own walked miles (#1133). The window
+          // orders them by how far back each one is; `passedPlaces` itself
+          // keeps sorting by mile, which is what its two other readers want.
+          //
+          // Each one is resolved against `pois` HERE rather than at pick time,
+          // so the picker only ever offers a place that can become a real
+          // anchor. Nothing is dropped by that in practice and the `flatMap`
+          // is not a filter in disguise: `passedPlacesToday` comes from
+          // `searchablePois`, which is `pois.map(...)` a few thousand lines
+          // up, so every id in this list is a `pois` id by construction. The
+          // empty arm exists because that fact lives in another `useMemo` and
+          // TypeScript cannot see it - not because a place might be missing.
+          passedPlaces={passedPlacesToday.flatMap((place) => {
+            const found = pois.find((poi) => poi.id === place.id)
+            return found === undefined || place.mile === undefined
+              ? []
+              : [
+                  {
+                    id: place.id,
+                    name: place.name,
+                    mile: place.mile,
+                    lat: found.lat,
+                    lon: found.lon,
+                  },
+                ]
+          })}
+          {...(fix?.mile !== undefined ? { fixMile: fix.mile } : {})}
+          units={units}
+          onPickAnchor={(place) =>
+            setReporting({
+              step: 'window',
+              anchor: {
+                poiId: place.id,
+                lat: place.lat,
+                lon: place.lon,
+                mile: place.mile,
+              },
+            })
           }
           reporterType={signReportAs(preferences.reporter_type)}
           onFile={handleFileFromWindow}

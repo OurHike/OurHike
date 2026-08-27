@@ -592,3 +592,100 @@ class TestTheCustomDomainAndTheBuildAgree:
         )
         assert github_io is not None, "removing this is a separate change - see #733"
         assert github_io.get("hiker_facing") is True
+
+
+class TestDraftingWithoutDeploying:
+    """`draft_only` exists because RELEASING.md §12 promised what pages.yml did not.
+
+    §12 says an agent "may ... create the GitHub release as a draft" and may not
+    publish. But the only thing that drafts one is the `release` job, which
+    `needs: build`, and build deploys production - so the draft appeared only
+    after hikers already had the build, and the human-reserved action had to
+    happen first. Every assertion here stands for one half of inverting that,
+    and each fails against the workflow as it was before `draft_only`.
+
+    The one exception is `test_the_release_job_still_only_ever_drafts`, which
+    passes against both and is here to stay that way: this change moves WHEN a
+    release is drafted and must never touch the fact that it is only ever a
+    draft. Measured rather than asserted - run against the pre-`draft_only`
+    workflow, nine of these ten fail and that one passes.
+
+    `test_a_non_tag_dispatch_that_is_not_a_draft_is_still_refused` is the #644
+    guard restated for the new shape: #644 was a non-tag dispatch that DEPLOYED
+    with both gates skipped, and the exemption added here must stay narrow
+    enough not to widen back into it.
+    """
+
+    WORKFLOW = WORKFLOW_DIR / "pages.yml"
+
+    @classmethod
+    def _workflow(cls) -> dict:
+        return yaml.safe_load(cls.WORKFLOW.read_text(encoding="utf-8"))
+
+    @classmethod
+    def _build_steps(cls) -> list[dict]:
+        return cls._workflow()["jobs"]["build"]["steps"]
+
+    @classmethod
+    def _step(cls, name: str) -> dict:
+        for step in cls._build_steps():
+            if step.get("name") == name:
+                return step
+        raise AssertionError(f"pages.yml has no build step named {name!r}")
+
+    def test_a_draft_never_reaches_the_publish_step(self):
+        """The deploy is the promotion §12 reserves for a human."""
+        condition = self._step("Publish to GitHub Pages").get("if", "")
+        assert "draft_only" in condition, "the publish step must be skipped for a draft"
+
+    def test_a_draft_runs_the_notes_gate(self):
+        """Gate 12 skipped on a non-tag ref, which is exactly what #644 exploited.
+
+        A draft is a non-tag ref, so inheriting that guard would draft a release
+        for a version with no notes committed beside it.
+        """
+        assert "draft_only" in self._step("Confirm this tag has its release notes")["if"]
+
+    def test_a_draft_runs_the_version_gate(self):
+        """A draft disagreeing with package.json becomes a tag that disagrees
+        with it the moment somebody presses publish."""
+        assert "draft_only" in self._step("Confirm this tag matches the app's version")["if"]
+
+    def test_a_non_tag_dispatch_that_is_not_a_draft_is_still_refused(self):
+        """#644's fix, which the draft exemption must not widen."""
+        condition = self._step("Refuse a dispatch that is not a tag")["if"]
+        assert "workflow_dispatch" in condition
+        assert "refs/tags/" in condition
+        assert "!inputs.draft_only" in condition, "only a draft may be exempt from the refusal"
+
+    def test_a_draft_with_no_version_is_refused(self):
+        condition = self._step("Refuse a draft with nothing to draft")["if"]
+        assert "draft_only" in condition and "inputs.version" in condition
+
+    def test_the_release_job_drafts_for_a_draft_run(self):
+        assert "draft_only" in self._workflow()["jobs"]["release"]["if"]
+
+    def test_the_release_job_still_only_ever_drafts(self):
+        """The half of §12 this change must not touch."""
+        raw = self.WORKFLOW.read_text(encoding="utf-8")
+        assert "draft: true" in raw
+        assert "draft: false" not in raw
+
+    def test_a_draft_and_a_deploy_cannot_cancel_each_other(self):
+        """`cancel-in-progress` is right for two deploys and a disaster shared
+        with drafts: asking for a draft would kill a deploy mid-push."""
+        group = self._workflow()["concurrency"]["group"]
+        assert "draft_only" in group, "drafting and deploying must not share a concurrency group"
+
+    def test_the_draft_says_which_commit_to_tag(self):
+        """A draft's tag does not exist yet - publishing creates it - so the
+        release has to name the commit or GitHub picks the default branch."""
+        raw = self.WORKFLOW.read_text(encoding="utf-8")
+        assert "target_commitish" in raw
+
+    def test_the_version_is_resolved_once_rather_than_per_job(self):
+        """Two places deriving the version is two places to disagree, which is
+        the argument §4 already makes about package.json."""
+        assert self._workflow()["jobs"]["build"]["outputs"]["version"]
+        raw = self.WORKFLOW.read_text(encoding="utf-8")
+        assert "needs.build.outputs.version" in raw

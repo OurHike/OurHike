@@ -62,7 +62,26 @@ on:
     tags: ['v*']
   # So the site can be republished after setting DATA_BASE_URL, with no code
   # change - and so a previous tag can be re-deployed to roll back.
+  #
+  # `draft_only` is the third use, and it exists because RELEASING.md §12
+  # promised something this file did not deliver. §12 says an agent "may
+  # create the GitHub release as a draft" and may not publish - but the only
+  # thing that drafts one is the `release` job below, which `needs: build`,
+  # and build is the production deploy. So the draft only ever appeared
+  # AFTER hikers already had the build, and the one action §12 reserves for
+  # a human was the one that had to happen first. `draft_only` inverts that:
+  # build and gate everything, skip the deploy, draft the release. Publishing
+  # the draft creates the tag, which fires this workflow for real.
   workflow_dispatch:
+    inputs:
+      draft_only:
+        description: 'Draft the release without deploying. RELEASING.md §12 - publishing the draft is what ships it.'
+        type: boolean
+        default: false
+      version:
+        description: 'The version to draft, e.g. v1.1.0. Required with draft_only, ignored on a tag.'
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -72,7 +91,11 @@ permissions:
 # it: cancellation is not instant, and workflow_dispatch can start a run
 # whenever someone asks for one. The retry in the publish step covers the rest.
 concurrency:
-  group: pages
+  # Drafting and deploying get separate groups. `cancel-in-progress` is right
+  # for two deploys racing, and would be a disaster shared with drafts: asking
+  # for a release draft would cancel a deploy that is mid-push to `gh-pages`,
+  # which is the one moment publish.sh's retry cannot help with.
+  group: pages-${{ inputs.draft_only && 'draft' || 'deploy' }}
   cancel-in-progress: true
 
 jobs:
@@ -81,6 +104,10 @@ jobs:
     # Room for a build plus a publish waiting its turn behind several previews,
     # without letting a wedged job bill all day.
     timeout-minutes: 20
+    outputs:
+      # Resolved once here rather than re-derived per job. On a tag it is the
+      # ref; on a draft_only dispatch there is no tag yet, so it is the input.
+      version: ${{ steps.version.outputs.value }}
     steps:
       # Production deploys from a tag, and both sanctioned dispatch uses -
       # republishing after a variable change, rolling back (RELEASING.md §11b)
@@ -91,11 +118,47 @@ jobs:
       # silently skipped (#644). Refused here by name instead. After this
       # step the only dispatch that proceeds is a tag's, where the gates run
       # - and pass, because every tag that ever shipped passed them to ship.
+      # `draft_only` is exempt, and the exemption is narrow on purpose: #644 was
+      # a non-tag dispatch DEPLOYING with the gates skipped. A draft_only run
+      # deploys nothing and runs both gates below, so it is the opposite case
+      # rather than a hole in this one.
       - name: Refuse a dispatch that is not a tag
-        if: github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'workflow_dispatch' && !inputs.draft_only && !startsWith(github.ref, 'refs/tags/')
         run: |
           echo "::error::Deploy Pages was dispatched on '$GITHUB_REF'. Production deploys from a v* tag - dispatch against the release tag to republish or roll back (RELEASING.md §11b)."
           exit 1
+
+      - name: Refuse a draft with nothing to draft
+        if: inputs.draft_only && inputs.version == ''
+        run: |
+          echo "::error::draft_only needs a version - e.g. v1.1.0. Without one there is no notes file to read and no name to give the draft."
+          exit 1
+
+      # The version every gate and the release job below reads. A tag names
+      # itself; a draft is told. Written once so the two cannot disagree, which
+      # is the same argument §4 makes for package.json being the single source.
+      - name: Resolve the version being released
+        id: version
+        # Through env, never interpolated into the script (#660). `draft_only`
+        # is a typed boolean and so cannot carry anything but true/false, but
+        # the rule is not "inputs that look dangerous" - it is inputs.
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          DRAFT_ONLY: ${{ inputs.draft_only }}
+        run: |
+          set -euo pipefail
+          if [ "$DRAFT_ONLY" = "true" ]; then
+            value="$INPUT_VERSION"
+          else
+            value="$REF_NAME"
+          fi
+          case "$value" in
+            v*.*.*) ;;
+            *) echo "::error::'$value' is not vMAJOR.MINOR.PATCH - see RELEASING.md §4."; exit 1 ;;
+          esac
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+          echo "Releasing: $value"
 
       - uses: actions/checkout@v7
 
@@ -109,9 +172,9 @@ jobs:
       # something already released, and re-asserting its paperwork would make
       # the rollback path fail exactly when it is needed.
       - name: Confirm this tag has its release notes
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.draft_only
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           # Nullglob so a pattern that matches nothing is an empty list rather
           # than the literal pattern, which would otherwise "exist" as a name.
@@ -135,9 +198,9 @@ jobs:
       # other than a tagged CI run. package.json is in the tree; the tag is
       # not, and a laptop, a preview and UA all have to answer this too.
       - name: Confirm this tag matches the app's version
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.draft_only
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
           packaged="$(jq -r '.version' client/package.json)"
@@ -356,7 +419,10 @@ jobs:
       # pr-preview/ on this same branch and had to be worked around here - and
       # it is what clears out the last of them, since they are served from
       # Cloudflare Pages now (pr-preview.yml).
+      # Skipped for a draft, which is the whole point: RELEASING.md §12 keeps
+      # promotion to production a human action, and this step is the promotion.
       - name: Publish to GitHub Pages
+        if: ${{ !inputs.draft_only }}
         uses: ./.github/actions/publish-to-pages
         with:
           source-dir: _site
@@ -375,7 +441,7 @@ jobs:
       # same commit is not those bytes - it is a build that agrees with them
       # until some day it does not.
       - name: Keep the built app for the release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.draft_only
         uses: actions/upload-artifact@v4
         with:
           name: app-dist
@@ -391,7 +457,7 @@ jobs:
   # document (which is the baseline the next release's compatibility diff reads,
   # #374), and the data manifest naming the artifacts this build pins.
   release:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.draft_only
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -423,7 +489,7 @@ jobs:
 
       - name: Collect the assets
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
           DATA_BASE: ${{ vars.DATA_BASE_URL }}
         run: |
           tar -czf "ourhike-app-$VERSION.tar.gz" -C app-dist .
@@ -456,8 +522,9 @@ jobs:
       - name: Draft the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
           REPO: ${{ github.repository }}
+          TARGET: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -472,7 +539,8 @@ jobs:
             --arg tag "$VERSION" \
             --arg name "$title" \
             --rawfile body "$NOTES" \
-            '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}' > payload.json
+            --arg target "$TARGET" \
+            '{tag_name: $tag, name: $name, body: $body, target_commitish: $target, draft: true, prerelease: false}' > payload.json
 
           id="$(curl -fsS -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \

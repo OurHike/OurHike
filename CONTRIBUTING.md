@@ -22,7 +22,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [FEATURES.md](FEATURES.md) | What the product is, MVP and beyond |
 | [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | How it is built and why those choices |
 | [WIREFRAMES.md](WIREFRAMES.md) | Screen-by-screen specification |
-| [features/](features/) | Full design drafts, one per feature |
+| [features/](features/) | Full design drafts, one per feature (including [ORG_NOTICES.md](features/ORG_NOTICES.md) — how a notice from an org that is not the ATC reaches a hiker) |
 | [TESTING.md](TESTING.md) | Testing approach and standards |
 | [BRANCHING.md](BRANCHING.md) | Branching and pull request strategy, and running several at once |
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |
@@ -32,6 +32,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 | [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
 | [pipeline/NYC_SOURCE_SURVEY.md](pipeline/NYC_SOURCE_SURVEY.md) | Trail sources within a day of NYC — DEC, NYNJTC, the NJ side — surveyed and qualified (dated snapshot) |
+| [pipeline/ALERTS_NOTICES_SURVEY.md](pipeline/ALERTS_NOTICES_SURVEY.md) | Where each org publishes alerts and notices — map layers first, webpages second — surveyed and qualified (dated snapshot) |
 | [pipeline/WATER_SOURCES.md](pipeline/WATER_SOURCES.md) | Water near shelters — measurements against every candidate source, and the options (dated snapshot) |
 | [pipeline/WATER_CONDITIONS.md](pipeline/WATER_CONDITIONS.md) | Whether the water is *flowing* — the hydrology and drought sources that carry a current low-water signal (dated snapshot) |
 

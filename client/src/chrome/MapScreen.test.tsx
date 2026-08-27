@@ -515,6 +515,24 @@ describe('MapScreen dropped-waypoint count', () => {
 
     expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
   })
+
+  it('says nothing below the seam, where the floor decides and not the collision', () => {
+    // With both waypoint ranks stopping at the pin seam (#1135), every drawn
+    // count below it is 0 by construction - and "0 of 387 waypoints fit" over
+    // the opening view described that floor as crowding. The legend's
+    // below-seam sentence explains the absence; this chip stands down.
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[point('w1', 'water'), point('w2', 'water')]}
+        drawnCounts={new Map([['water', 0]])}
+        hiddenTypes={new Set()}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
+  })
 })
 
 // --- The safety alert strip (#232) ---------------------------------------

@@ -963,8 +963,21 @@ export function MapScreen({
   // (#528). `verifiedOnly` and `hiddenTypes` are passed for exactly that reason:
   // with either filter on, the legend counts fewer points, and a canvas figure
   // computed without them would contradict the panel it is standing next to.
+  //
+  // And `drawnCounts` is withheld below the seam for the same reason the
+  // legend withholds it (#1135): with both waypoint ranks floored there,
+  // "drawn" measures the floor rather than the collision engine, and this
+  // chip read "0 of 387 waypoints fit" over the opening view - the floor
+  // described as crowding, on the canvas itself. Withheld, the summary is
+  // null and the chip does not render; the legend's below-seam sentence is
+  // where the absence is explained.
   const droppedSummary = legendDropSummary(
-    computeLegendContents(bbox, viewportPoints, verifiedOnly, drawnCounts),
+    computeLegendContents(
+      bbox,
+      viewportPoints,
+      verifiedOnly,
+      belowPoiZoom ? undefined : drawnCounts,
+    ),
     hiddenTypes,
   )
 

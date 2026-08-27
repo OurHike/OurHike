@@ -15,6 +15,15 @@ export const caption =
 export const alt =
   'The whole-corridor opening view: the A.T. as a cased white line from Georgia to Maine with the other organizations’ trails ghosted around its New York miles, no waypoint dots anywhere, and the legend sheet reading “Waypoints appear from a closer zoom” above the waypoint grid'
 
+// Three times the default settle, on each side of the drive. The corridor
+// camera has the most to draw of any shot - the live basemap's tiles for the
+// whole eastern seaboard plus the trail artifacts fetched from the bucket -
+// and at the default 3.5 s this frame was captured mid-load on its first CI
+// run: blank paper where trail-screen.mjs's identical camera, same build,
+// same default, happened to finish. The margin is for the race, not the
+// mean.
+export const wait = 10_500
+
 export default async function drive(page) {
   // The map tab — the app opens on Today (#1054), and the camera this shot is
   // about is the one the map screen opens on: CORRIDOR_BOUNDS, no fix, no

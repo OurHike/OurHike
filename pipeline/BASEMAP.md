@@ -297,24 +297,44 @@ OpenMapTiles detail. Both cuts are published now: the z13 extract stopped
 being a future decision when #276 made it the hiking sheet's Standard
 level, cut by the same `extract_package.py` run with `--max-zoom 13`.
 
-### Published archives (2026-08-06)
+### Published archives (2026-08-27)
 
-The first publish runs, from this repository's `build-basemap.yml` and
-`build-dem.yml` with `publish` ticked — the exact artifacts `latest.json`
-now names, and the sizes `client/src/lib/packages.ts` advertises:
+What is in production's bucket right now — the exact artifacts `latest.json`
+names, and the sizes `client/src/lib/hikingDetail.ts` advertises. Bytes read
+back by `HEAD` on `https://data.ourhike.org` after the publish, tile counts
+from each build's own Measure step, so no row here is copied from a projection:
 
-| Artifact | Bytes | Notes |
-|---|---|---|
-| `at_basemap_package.pmtiles` | **532,459,439** | z0–14, 83,818 tiles; the rebuild reproduced run 2's package within 0.06 MB |
-| `at_basemap_package_z13.pmtiles` | **182,286,799** | z0–13, 21,721 tiles (the package minus its 62,097 z14 tiles); the hiking sheet's Standard level (#276), published 2026-08-06 from a rebuild whose z14 package came out hash-identical to the row above |
-| `dem.pmtiles` | **607,265,661** | z0–13, 21,758 tiles, 0 absent, **0.5 m quantize** |
+| Artifact | Bytes | Tiles | Notes |
+|---|---|---|---|
+| `at_basemap_package.pmtiles` | **533,926,586** | 83,821 | z0–14; the hiking sheet's Fine level ([run 33074194236](https://github.com/OurHike/OurHike/actions/runs/33074194236)) |
+| `at_basemap_package_z13.pmtiles` | **182,774,166** | 21,724 | z0–13, the package minus its z14 tiles; **Standard** (#276) |
+| `at_basemap_package_z12.pmtiles` | **75,451,755** | 5,825 | z0–12; **Light** (#1107). Safe where the DEM's z12 cap was not — MapLibre overzooms z13 vector cleanly, and geometry and labels survive magnification where a hillshade computed from magnified elevation does not (`pipeline/LIGHT_DOWNLOAD.md`) |
+| `dem.pmtiles` | **275,601,483** | 8,658 | z0–13, **0.5 m quantize**, corridor tapered 30/15/6 miles by zoom (#1088) ([run 33074191775](https://github.com/OurHike/OurHike/actions/runs/33074191775)) |
+| `dem_light.pmtiles` | **182,205,873** | 5,553 | the same pyramid at a 20/6/3 taper, for Light (#1088/#1107) ([run 33074208491](https://github.com/OurHike/OurHike/actions/runs/33074208491)) |
+
+Composed per level, which is the figure a hiker actually weighs against their
+storage: **Light 257.7 MB**, **Standard 458.4 MB**, **Fine 809.5 MB**.
+
+**The two DEMs reproduced UA's bytes exactly** — same size *and* same sha256,
+from independent builds on different runners hours apart. That is the static
+AWS Open Data source and a deterministic quantize-and-encode path, and it is
+measured rather than assumed. The basemap carries no such guarantee: it rebuilds
+from whatever OSM says that day.
+
+**The previous table, and why the DEM row moved so far.** These replace the
+first publish runs of 2026-08-06 — `at_basemap_package.pmtiles` 532,459,439,
+`at_basemap_package_z13.pmtiles` 182,286,799, `dem.pmtiles` 607,265,661. The two
+basemap cuts moved 0.3% (fresher OSM); the DEM fell 54.6% because #1088 stopped
+buying corridor width at depths where it costs the most — 12.37 MB per mile of
+buffer at z13 against 1.36 at z11.
 
 ### What the exclusion costs, and what it saves (#1116)
 
 Every figure in the table above is a **pre-#1116 archive**, and stays correct
-until the next build republishes. What that build will weigh was measured
-directly, by rebuilding both published archives without the excluded layers
-and re-gzipping every tile:
+until the next build republishes. #1116 landed in `main` roughly 40 minutes
+after the 2026-08-27 promotion, so the exclusion is in the build code and not
+in the bucket. What that build will weigh was measured directly, by rebuilding
+both published archives without the excluded layers and re-gzipping every tile:
 
 | | published (whole schema) | `--exclude-layers` | + `--languages=en` |
 |---|---|---|---|
@@ -325,6 +345,20 @@ and re-gzipping every tile:
 directories. The compressor is held constant and is not doing any of the work:
 Planetiler's tiles re-compress to the byte at gzip level 6, verified on all
 21,724 tiles of the z13 package, so these deltas are the exclusion's.)
+
+**These were measured against the 2026-08-06 archives, not the ones now
+published**, so carry the *ratios* forward and not the absolute right-hand
+column: −12.4% and −34.6% applied to 182,774,166 and 533,926,586 land near
+160.1 MB and 349.2 MB, and the honest figure is whatever `report_archive`
+prints on the first build after this.
+
+**Whoever runs that build moves `client/src/lib/hikingDetail.ts` in the same
+change**, and this is the one consequence worth stating as an instruction
+rather than an observation. A 12–35% drop against a release gate that fails
+past 2% (`verify_release.py` check 18) is a hard block, so a rebuild that
+republishes without refreshing those constants stops the next release rather
+than shipping a wrong number — the safe direction, and still a surprise nobody
+needs to rediscover from a red gate.
 
 **The Light z12 cut is not measured here and is helped least**, which follows
 from the same shape rather than from a separate finding: the exclusion's value

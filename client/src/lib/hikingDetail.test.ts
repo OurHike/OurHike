@@ -18,12 +18,17 @@ describe('the hiking sheet’s levels', () => {
 
   it('offers only levels whose artifacts are actually in the bucket', () => {
     // packages.ts's memory, one level up: "the app was offering a Light tier
-    // that did not exist" - a 404 on a mountain. Light is catalogued and
-    // unbuilt (#1088), so it must be gated out here rather than by any screen.
+    // that did not exist" - a 404 on a mountain. Light WAS that case between
+    // #1088 (which named its artifacts) and #1107 (which built them), and this
+    // line held it out of the picker for the day and a half in between.
+    //
+    // All three are published now, so the filter removes nothing - which makes
+    // this the tripwire rather than the guard. A level added to the table
+    // before its build has run turns this red, and the red is the reminder to
+    // check that the picker greys the new rung instead of dropping it.
     const offered = offeredHikingDetails().map((d) => d.level)
 
-    expect(offered).not.toContain('light')
-    expect(offered).toEqual(['standard', 'fine'])
+    expect(offered).toEqual(['light', 'standard', 'fine'])
   })
 
   it('never states a size for an artifact nobody has published', () => {

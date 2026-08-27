@@ -37,7 +37,7 @@
 //
 // THE HIKING SHEET AT FINE NO LONGER IS, and the change is worth naming rather
 // than quietly dropping: it was 1.14 GB when this was written, and the corridor
-// taper (#1088) brought it to 809.1 MB. That does not make this check
+// taper (#1088) brought it to 809.5 MB. That does not make this check
 // redundant - it is a reading of what the browser says is free, never a
 // threshold anybody typed, so a phone already holding a raster tier still fails
 // it. What changed is that the default sheet's own worst case now fits where it
@@ -122,9 +122,10 @@ export function rasterDetailOptions(
  * ladder has a rung this sheet has no level for at all, or the level exists in
  * the catalog but its artifacts are not in the bucket yet (hikingDetail.ts's
  * `published`, the same 404-on-a-mountain rule packages.ts's `source: null`
- * enforces one level up). Light is the second case today: #1088 named its
- * artifact and nothing has built it. Either way the rung is still drawn,
- * greyed, rather than left out - see the header.
+ * enforces one level up). Light was the second case between #1088, which named
+ * its artifacts, and #1107, which built them; all three rungs are priced today.
+ * Either way an unoffered rung is still drawn, greyed, rather than left out -
+ * see the header.
  */
 export function hikingDetailOptions(
   published: PublishedSizes = NO_PUBLISHED_SIZES,

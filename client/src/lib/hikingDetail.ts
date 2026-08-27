@@ -2,13 +2,13 @@
 // for the other sheet.
 //
 // The USGS raster's levels are whole alternative archives. The hiking sheet's
-// switch its BASEMAP cut - the z13 Standard package or the full z14 Fine one -
-// and, since #1088, its DEM as well: the terrain corridor narrows with depth
-// (pipeline/export_dem.py's CORRIDOR_TAPER_MILES), and a Light level is a
-// harder taper rather than a shallower pyramid. Both artifacts are therefore
-// per-level, which is why this table carries an artifact and a size for each
-// rather than a whole-sheet total; the sheet's total is composed where sheets
-// are composed (lib/packages.ts).
+// switch its BASEMAP cut - z12 Light, z13 Standard, the full z14 Fine - and,
+// since #1088, its DEM as well: the terrain corridor narrows with depth
+// (pipeline/export_dem.py's CORRIDOR_TAPER_MILES), and Light is a harder taper
+// rather than a shallower pyramid. Both artifacts are therefore per-level,
+// which is why this table carries an artifact and a size for each rather than a
+// whole-sheet total; the sheet's total is composed where sheets are composed
+// (lib/packages.ts).
 //
 // Sizes are the published artifacts' exact bytes, per the same honesty bar as
 // everything in packages.ts - and since #505 they are the FALLBACK rather than
@@ -17,11 +17,18 @@
 // carries one. These remain because a phone that has not been able to ask still
 // has to print something, and they must stay accurate for exactly that reader.
 //
-// Today the manifest carries no size for any .pmtiles - the six entries were
-// published by the build workflows before sizes were measured, and publish.py's
-// merge lets such an entry "survive without one rather than gaining a guess" -
-// so these numbers are what every hiker currently sees. That changes with no
-// client edit the first time build-basemap.yml and build-dem.yml publish again.
+// As of 2026-08-27 UA's latest.json carries `transfer_bytes` for all five of
+// these keys: both DEMs and all three basemap cuts have now been republished
+// since #505 taught publish.py to measure on upload, so a phone that can reach
+// the manifest reads the bucket's own figures and never these. publish.py's
+// merge lets an entry published earlier "survive without one rather than
+// gaining a guess", which is why a newly-added key's size appears the first
+// time its workflow publishes and not before - with no client edit either way.
+//
+// That does NOT make these constants decorative. They are what a phone shows
+// before latest.json lands, and first run on a slow connection is exactly when
+// somebody is deciding whether they have room, so they are kept exact and
+// refreshed in the same change as any republish that moves them.
 //
 // Standard is recommended for the same reason it is the preference default
 // (userPreferences.ts): it is the level that fits the storage envelope, and z14
@@ -36,6 +43,12 @@
 // behind a key; what it may not do is become choosable. `published` is the one
 // gate, and it flips only when a maintainer has run the build and measured the
 // object in the bucket.
+//
+// ALL THREE LEVELS ARE PUBLISHED TODAY, so the gate removes nothing - which is
+// the state it is easiest to let rot in. It stays because the next level added
+// here will be catalogued before it is built, exactly as Light was between
+// #1088 and #1107, and because the same table is what a hiker weighs against
+// their remaining storage.
 
 import type { HikingDetailLevel } from './userPreferences'
 
@@ -58,19 +71,18 @@ export interface HikingDetail {
 
 export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
   {
-    // NOT OFFERED YET, and the null DEM size is the honest reason rather than
-    // an oversight. `dem_light.pmtiles` is a real artifact name publish.py
-    // knows and build-dem.yml can now produce (`variant: light`, #1088), but no
-    // build has produced it - checked against UA's manifest 2026-08-27, where
-    // it is absent while `dem.pmtiles` is present at its tapered size. So
-    // nobody can state its bytes, and a projection is exactly the grade that
-    // may not be shown to a hiker deciding whether they have room.
+    // OFFERED SINCE 2026-08-27, and both figures are the bucket's own rather
+    // than projections. `dem_light.pmtiles` is 182,205,873 bytes, published to
+    // UA by build-dem.yml run 33067212006 at the 20/6/3 taper (#1088);
+    // `at_basemap_package_z12.pmtiles` is 75_451_755 bytes, published by
+    // build-basemap.yml run 33069162537 (#1107). Both read back out of UA's
+    // latest.json, not out of a build log.
     //
-    // BOTH ARTIFACTS ARE LIGHT'S OWN since #1107, and that is the point of the
-    // rung. The taper narrowed Standard's TERRAIN and left both levels carrying
-    // the same 182.6 MB of vector basemap, so Light came out only ~93 MB below
-    // Standard - thin for a choice a hiker has to understand. The z12 cut is
-    // the other ~107 MB.
+    // BOTH ARTIFACTS ARE LIGHT'S OWN, and that is the point of the rung. The
+    // taper only ever narrowed TERRAIN, so Light and Standard were still
+    // carrying the same 182.6 MB of vector basemap and Light came out only
+    // ~93 MB below Standard - thin for a choice a hiker has to understand.
+    // The z12 cut is the other ~107 MB.
     //
     // Capping the BASEMAP at z12 is safe where capping the DEM there was not,
     // and the asymmetry is measured rather than assumed: MapLibre overzooms
@@ -79,18 +91,17 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
     // (pipeline/LIGHT_DOWNLOAD.md). Geometry and labels survive magnification;
     // a hillshade computed from magnified elevation does not.
     //
-    // Flip `published` when both objects are in the bucket and have been
-    // weighed, and put their exact bytes here in the same change. Neither
-    // exists yet, which is why both sizes are null rather than projected -
-    // a size shown before a download is what a hiker weighs against their
-    // remaining storage, and a projection may not appear there.
+    // What Light gives up is stated where it is decided, in export_dem.py:
+    // terrain runs out 3 miles from the trail, exactly
+    // trailPosition.MAX_OFF_TRAIL_MILES. #1107 carries whether 20/6/3 are the
+    // right numbers - they are picked, not derived.
     level: 'light',
     artifact: 'at_basemap_package_z12.pmtiles',
-    basemapSizeBytes: null,
+    basemapSizeBytes: 75_451_755,
     demArtifact: 'dem_light.pmtiles',
-    demSizeBytes: null,
+    demSizeBytes: 182_205_873,
     recommended: false,
-    published: false,
+    published: true,
   },
   {
     // THE TAPERED DEM, measured in the bucket rather than projected: 275,601,483
@@ -106,7 +117,7 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
     // about - understating, so a hiker who freed exactly enough is stranded.
     level: 'standard',
     artifact: 'at_basemap_package_z13.pmtiles',
-    basemapSizeBytes: 182_610_914,
+    basemapSizeBytes: 182_774_166,
     demArtifact: 'dem.pmtiles',
     demSizeBytes: 275_601_483,
     recommended: true,
@@ -117,7 +128,7 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
     // constant of 532,459,439 - 995,756 bytes out, same direction.
     level: 'fine',
     artifact: 'at_basemap_package.pmtiles',
-    basemapSizeBytes: 533_455_195,
+    basemapSizeBytes: 533_926_586,
     demArtifact: 'dem.pmtiles',
     demSizeBytes: 275_601_483,
     recommended: false,

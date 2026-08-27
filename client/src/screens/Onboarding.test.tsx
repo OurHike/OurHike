@@ -25,6 +25,13 @@ import { HERO_PHOTOS } from '../lib/heroPhotos'
 
 const PROPS = { onComplete: vi.fn() }
 
+/** Light's whole-sheet size as first run renders it: the z12 basemap cut plus
+ *  the harder-tapered DEM, both measured in UA's bucket (#1107). Written out
+ *  rather than computed from hikingDetail.ts, for the same reason the other two
+ *  rungs' figures are - a test that derives the expected string from the same
+ *  table the screen reads cannot notice the two disagreeing. */
+const LIGHT_MB = '257.7 MB'
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -70,20 +77,27 @@ describe('Onboarding', () => {
     expect(fundingNote).toHaveTextContent(/other organizations/i)
   })
 
-  it('offers the hiking sheet\u2019s two levels on the map-size step, with the real figures', async () => {
+  it('offers the hiking sheet\u2019s three levels on the map-size step, with the real figures', async () => {
     // The download decision shown is the one a hiker will actually meet in
-    // the Downloads window (#277): the hiking sheet's Standard/Fine cuts at
-    // their whole-sheet sizes, not the optional USGS raster's tiers.
+    // the Downloads window (#277): the hiking sheet's own cuts at their
+    // whole-sheet sizes, not the optional USGS raster's tiers.
+    //
+    // The figures are the published artifacts' bytes summed per level, and
+    // they moved twice: the tapered DEM took Standard from 789.6 MB to
+    // 458.4 MB and Fine from 1.14 GB to 809.5 MB (#1088), and Light arrived
+    // at 257.7 MB with a DEM and a basemap cut of its own (#1107). Asserted as rendered
+    // strings on purpose - this is the number a hiker weighs against their
+    // remaining storage, so a formatter change is a change to that.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
-    expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
-    // The tapered DEM's published sizes (#1088): 458.2 MB and 809.1 MB, where
-    // these read 789.6 MB and 1.14 GB before the corridor narrowed.
-    expect(screen.getByText('458.2 MB')).toBeInTheDocument()
-    expect(screen.getByText('809.1 MB')).toBeInTheDocument()
+    for (const level of [/light/i, /standard/i, /fine/i]) {
+      expect(screen.getByRole('radio', { name: level })).toBeEnabled()
+    }
+    expect(screen.getByText(LIGHT_MB)).toBeInTheDocument()
+    expect(screen.getByText('458.4 MB')).toBeInTheDocument()
+    expect(screen.getByText('809.5 MB')).toBeInTheDocument()
   })
 
   it('asks the map-size question in the download window\u2019s shape (#298, #855)', async () => {
@@ -104,16 +118,22 @@ describe('Onboarding', () => {
     expect(screen.getByText(HIKING_SHEET.summary)).toBeInTheDocument()
   })
 
-  it('greys the hiking sheet\u2019s missing Light rung rather than dropping it (#298)', async () => {
-    // The basemap is cut at z13 and z14 and nothing below. Under a tab
-    // beside the raster's three, a two-row picker cannot say whether this
-    // map has no Light version or whether the app forgot to ask.
+  it('draws all three of the hiking sheet\u2019s rungs, and every one is takeable (#298)', async () => {
+    // This test used to assert the Light rung was GREYED, and the rule it was
+    // written for is unchanged: a two-row picker cannot say whether this map
+    // has no Light version or whether the app forgot to ask, so an unbuilt
+    // level is drawn and disabled rather than left out. Light was the live
+    // example of that from #1088, which named its artifacts, until #1107 built
+    // them - so what is asserted here now is that first run offers the whole
+    // ladder, and DownloadCard.test.tsx carries the greying with a sheet that
+    // still has no dial at all.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+    const levels = screen.getAllByRole('radio')
+    expect(levels).toHaveLength(3)
+    for (const level of levels) expect(level).toBeEnabled()
   })
 
   it('never mentions the withdrawn USGS sheet at all (#855)', async () => {

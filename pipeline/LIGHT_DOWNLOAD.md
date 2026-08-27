@@ -471,14 +471,14 @@ Two things the workflow does that are not conveniences:
   variant's archive and upload it under the other's key.
 
 `publish.py` already knew `dem_light.pmtiles`; what was missing was any way to
-produce it. **It is still unbuilt**, so `hikingDetail.ts` keeps the Light level
-at `published: false` with a null size. The rung lights up when a build has run
-and its bytes have been measured — not before, for the reason `packages.ts`
+produce it. Until one had run, `hikingDetail.ts` kept the Light level at
+`published: false` with a null size — the rung lights up when a build has run
+and its bytes have been measured, not before, for the reason `packages.ts`
 records as "a 404 on a mountain".
 
 **BUILT 2026-08-27** ([run 33067212006](https://github.com/OurHike/OurHike/actions/runs/33067212006)):
-`dem_light.pmtiles` is 5,553 tiles and **182.2 MB** — z9 18.4, z10 9.2, z11
-36.3, z12 41.8, z13 66.8. Note the context band shrank too (z9 552 tiles
+`dem_light.pmtiles` is 5,553 tiles and **182,205,873 bytes** — z9 18.4, z10 9.2,
+z11 36.3, z12 41.8, z13 66.8 MB. Note the context band shrank too (z9 552 tiles
 against the canonical build's 576): the bbox follows the widest corridor, which
 is 20 miles here rather than 30.
 
@@ -494,17 +494,38 @@ measured worse than a quantize step already rejected (see the table above).
 Geometry and labels survive magnification; a hillshade computed from magnified
 elevation does not.
 
-| level | basemap | DEM | sheet | vs original |
-|---|---|---|---|---|
-| Fine | z14, 533.5 | 275.6 | 809.1 MB | −29.1% |
-| Standard | z13, 182.6 | 275.6 | 458.2 MB | −42.0% |
-| **Light** | **z12, ~75** | **182.2** | **~257 MB** | **~−67%** |
+**BUILT AND PUBLISHED 2026-08-27**
+([run 33069162537](https://github.com/OurHike/OurHike/actions/runs/33069162537)),
+so every figure below is measured in UA's bucket:
 
-Light's basemap figure is **reasoned** from BASEMAP.md's per-zoom table
-(31.0 + 44.1) and nothing has built it yet; its DEM figure is measured. The
-rung stays `published: false` with null sizes until both objects are in the
-bucket and weighed — a size shown before a download is what a hiker weighs
-against their remaining storage, and a projection may not appear there.
+| level | basemap | DEM | sheet | vs its own original |
+|---|---|---|---|---|
+| Fine | z14, 533,926,586 | 275,601,483 | **809.5 MB** | −29.0% |
+| Standard | z13, 182,774,166 | 275,601,483 | **458.4 MB** | −42.0% |
+| **Light** | **z12, 75,451,755** | **182,205,873** | **257.7 MB** | **−67.4%** |
+
+Light's basemap came in at 75,451,755 bytes against the 75.1 MB reasoned from
+BASEMAP.md's per-zoom table (31.0 + 44.1) — **0.5% high**. That is a wider miss
+than the tapered DEM's whole-archive projection (275.4 against 275.6, 0.07%) and
+a more trustworthy one: the DEM's per-band errors cancelled, 6.4 MB under at
+z0–10 against 5.0 MB over at z12/z13, because the taper changed the footprint
+those per-zoom means were measured on. Capping the basemap at z12 changes no
+footprint at all, so summing published per-zoom bytes is arithmetic rather than
+extrapolation. What the remaining 0.5% covers is the rounding in those published
+per-zoom megabytes plus whatever OSM changed between the two builds — which of
+those dominates has not been separated and would need the older build's exact
+per-zoom bytes to settle.
+
+**Standard and Fine both moved too, and not because of anything here.** This
+run rebuilt the basemap from current OSM, so all three cuts were re-measured:
+z13 went 182,610,914 → 182,774,166 and z14 533,455,195 → 533,926,586, drifts of
++0.09% each. `verify_release.py` check 18 tolerates 2% and would not have
+flagged either, but `hikingDetail.ts` carries them exactly anyway — the
+constants are what a phone that has not reached `latest.json` shows a hiker, and
+understating is the direction that strands somebody who freed exactly enough.
+
+**Against the 40–80% the request asked for**: Light is 67.4% off the 789.6 MB
+Standard used to cost, inside the band; Standard's own 42.0% is at its floor.
 
 @unvalidated — 20/6/3 is still picked, and what Light gives up is stated in
 `export_dem.py`: terrain runs out at 3 miles from the trail, exactly

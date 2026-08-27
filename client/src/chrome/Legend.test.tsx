@@ -912,19 +912,19 @@ describe('the way to every ATC notice (#687)', () => {
   // this is the row itself.
 
   it('is not there when the app holds no ATC notices', () => {
-    render(<Legend {...PROPS} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
   })
 
   it('draws no such row where the shell offers no handler', () => {
-    render(<Legend {...PROPS} atcNoticeCount={6} />)
+    render(<Legend {...PROPS} noticeCount={6} />)
 
     expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
   })
 
   it('names every notice it holds', () => {
-    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(
       screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
@@ -932,7 +932,7 @@ describe('the way to every ATC notice (#687)', () => {
   })
 
   it('counts one notice without pluralising it', () => {
-    render(<Legend {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} noticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
       screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
@@ -940,12 +940,12 @@ describe('the way to every ATC notice (#687)', () => {
   })
 
   it('reports the tap up to the shell', async () => {
-    const onOpenAtcNotices = vi.fn()
-    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />)
+    const onOpenNotices = vi.fn()
+    render(<Legend {...PROPS} noticeCount={6} onOpenNotices={onOpenNotices} />)
 
     await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
 
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('sits above the downloaded-map block, not inside it', () => {
@@ -954,8 +954,8 @@ describe('the way to every ATC notice (#687)', () => {
     const { container } = render(
       <Legend
         {...PROPS}
-        atcNoticeCount={6}
-        onOpenAtcNotices={vi.fn()}
+        noticeCount={6}
+        onOpenNotices={vi.fn()}
         onOpenDownloads={vi.fn()}
       />,
     )

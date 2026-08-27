@@ -18,7 +18,7 @@
 // already-rendered strings on their own props, and this flag is applied at
 // the `<MapView>` call site, so nothing here is able to reach them. Nor does
 // it touch the ATC notice list or its "new alerts" banner, which have their
-// own silence (lib/atcAlertsBanner.ts).
+// own silence (lib/notices.ts).
 //
 // So what a hiker turns off is INK ON THE CANVAS, never the app's word about
 // what is in front of them. That distinction is what makes this a decluttering

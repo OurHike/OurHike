@@ -2136,6 +2136,32 @@
   color: var(--fg-2);
 }
 
+/* The heading over each half of the list (#1083). Two sections, split on
+   whether a notice has a mile at all rather than on who published it - so the
+   heading is a claim about the DATA, and the rows carry the organization.
+
+   Uppercased in CSS rather than in the string, like the category above, so a
+   screen reader announces "On the A.T." and not the letters. */
+.atc-notices__section {
+  margin: var(--space-3, 12px) 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* Weight and not hue, for the same reason .atc-notices__offmap gives: this
+   line carries the honesty the eighteen rows below it would otherwise repeat
+   one by one, and a caveat dimmed to look like an aside is a caveat nobody
+   reads at arm's length in direct sun. */
+.atc-notices__section-note {
+  margin: 2px 0 var(--space-2, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
 /* ---------- Waypoint card (tapped pin) ---------- */
 
 /* Floats beside the pin it describes rather than docking at the bottom edge -

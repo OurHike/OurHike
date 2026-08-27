@@ -280,7 +280,8 @@ export interface LegendProps {
    *  its window will actually look to find out whether it is still going. */
   downloadActivity?: DownloadActivity | null
   /**
-   * How many ATC trail updates the app is holding, for the row that opens
+   * How many trail notices the app is holding, from every organization that
+   * publishes them, for the row that opens
    * all of them (#687). Zero, or the shell not passing it, renders no row -
    * the same "count rather than the notices" reasoning MapScreen's own prop
    * of this name documents.
@@ -293,10 +294,10 @@ export interface LegendProps {
    * this." What is actually NEW gets its own bottom banner on the map screen
    * instead, which this row has no opinion about.
    */
-  atcNoticeCount?: number
-  /** Opens the full list (chrome/AtcNoticeList.tsx), rendered by the shell
+  noticeCount?: number
+  /** Opens the full list (chrome/NoticeList.tsx), rendered by the shell
    *  the same way `onOpenDownloads` is. */
-  onOpenAtcNotices?: () => void
+  onOpenNotices?: () => void
 }
 
 export function Legend({
@@ -330,8 +331,8 @@ export function Legend({
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
-  atcNoticeCount = 0,
-  onOpenAtcNotices,
+  noticeCount = 0,
+  onOpenNotices,
 }: LegendProps) {
   if (!open && !persistent) return null
 
@@ -805,11 +806,11 @@ export function Legend({
           the downloaded-map block below rather than inside it - those answer
           a different question and #687 is explicit that conflating them is
           what this replaces. */}
-      {atcNoticeCount > 0 && onOpenAtcNotices !== undefined && (
-        <button type="button" className="legend__atc-link" onClick={onOpenAtcNotices}>
-          {atcNoticeCount === 1
-            ? 'Read the 1 ATC trail update'
-            : `Read all ${atcNoticeCount} ATC trail updates`}
+      {noticeCount > 0 && onOpenNotices !== undefined && (
+        <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
+          {noticeCount === 1
+            ? 'Read the 1 trail notice'
+            : `Read all ${noticeCount} trail notices`}
         </button>
       )}
 

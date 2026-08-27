@@ -249,39 +249,55 @@ export interface MapScreenProps {
    */
   followAnnouncement?: string | null
   /**
-   * How many ATC notices the app is holding, for the Legend row that opens
-   * all of them (#687 - it used to be a permanent button on this screen; see
-   * `newAtcAlertCount` below for what replaced it here). Zero, or the shell
-   * not passing it, renders no row.
+   * How many trail notices the app is holding, from every organization, for
+   * the Legend row that opens all of them (#687 - it used to be a permanent
+   * button on this screen; see `newNoticeCount` below for what replaced it
+   * here). Zero, or the shell not passing it, renders no row.
    *
    * A COUNT RATHER THAN THE NOTICES. This component does not need to read one,
-   * and handing it the array would make it the second place that knows how an
-   * ATC update is rendered - which is how the banner and the sheet would come
-   * to disagree. The list itself arrives as `atcNoticeList` below, already
-   * built, exactly as `atcUpdateSheet` does.
+   * and handing it the array would make it the second place that knows how a
+   * notice is rendered - which is how the banner and the sheet would come to
+   * disagree. The list itself arrives as `noticeList` below, already built,
+   * exactly as `atcUpdateSheet` does.
    */
-  atcNoticeCount?: number
+  noticeCount?: number
   /** Opens that list - from the Legend row and from the bottom banner below,
    *  both of which are simply "a hiker asked to see it". */
-  onOpenAtcNotices?: () => void
-  /** The full list of ATC notices, or null when it is closed. */
-  atcNoticeList?: ReactNode
+  onOpenNotices?: () => void
+  /** The full list of notices, or null when it is closed. */
+  noticeList?: ReactNode
   /**
-   * How many ATC notices this screen is holding that ATC touched in the last
-   * 72 hours and the hiker has not already silenced (lib/atcAlertsBanner.ts,
+   * How many notices this screen is holding that their publisher touched in
+   * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
    * #687). Zero, or the shell not passing it, renders no banner.
    *
-   * Deliberately not derived from `atcNoticeCount` above - that is every
-   * notice the app holds, drawn or not, and this is the much narrower
-   * "something changed recently" question the bottom banner exists to
-   * answer. The two can and usually do disagree: most visits hold several
-   * notices and none of them new.
+   * Deliberately not derived from `noticeCount` above - that is every notice
+   * the app holds, drawn or not, and this is the much narrower "something
+   * changed recently" question the bottom banner exists to answer. The two can
+   * and usually do disagree: most visits hold several notices and none of them
+   * new.
+   *
+   * ONE BANNER ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 calls
+   * the banner "a scarce surface rather than a record"; a second one is a
+   * third of the chrome the wrong-way alert competes with. So the count merges
+   * and every row survives in the list.
    */
-  newAtcAlertCount?: number
+  newNoticeCount?: number
+  /**
+   * What that banner says, built by the shell.
+   *
+   * A STRING RATHER THAN A COUNT AND A LIST OF ORGANIZATIONS, because naming
+   * an organization means resolving its `source_key` through the published
+   * registry, and features/ORG_NOTICES.md §6 puts that everywhere except a
+   * component: "a string in a component is how the app ends up telling a hiker
+   * that NYNJTC's closure is ATC's word." This screen renders the sentence and
+   * does not compose it.
+   */
+  newNoticeLabel?: string
   /** Silences the bottom banner without opening the list - the quick "not
-   *  now" beside `onOpenAtcNotices`'s "show me". Omitted, no silence control
+   *  now" beside `onOpenNotices`'s "show me". Omitted, no silence control
    *  is drawn. */
-  onSilenceNewAtcAlerts?: () => void
+  onSilenceNewNotices?: () => void
   /**
    * The published trail data this phone does not have, and the two answers to
    * it (#919). Undefined renders nothing, which is the state on every launch
@@ -690,11 +706,12 @@ export function MapScreen({
   routeSheet,
   followBand,
   followAnnouncement = null,
-  atcNoticeCount = 0,
-  onOpenAtcNotices,
-  atcNoticeList,
-  newAtcAlertCount = 0,
-  onSilenceNewAtcAlerts,
+  noticeCount = 0,
+  onOpenNotices,
+  noticeList,
+  newNoticeCount = 0,
+  newNoticeLabel,
+  onSilenceNewNotices,
   trailDataUpdate,
   warnings,
   alertsShown = true,
@@ -1030,7 +1047,7 @@ export function MapScreen({
         {/* One line, polite, and stable across jitter.
 
             `aria-live="polite"` rather than `role="status"`, which is the
-            convention this screen already keeps and the ATC banner's own
+            convention this screen already keeps and the notices banner's own
             test spells out: StatusStrip.tsx owns `role="status"` here, and a
             second region claiming it makes "the status region" ambiguous to a
             screen reader and to a role query alike. Polite rather than
@@ -1300,7 +1317,7 @@ export function MapScreen({
                 on the canvas. Both can be open at once and the list is
                 rendered second, so it lands on top; that is the right way
                 round, since the list is what a hiker just asked for. */}
-            {atcNoticeList}
+            {noticeList}
 
             {/* The route builder's card, in the same slot family: it is about
                 a route, which anchors to nothing on the canvas either. */}
@@ -1352,8 +1369,8 @@ export function MapScreen({
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
-            atcNoticeCount={atcNoticeCount}
-            onOpenAtcNotices={onOpenAtcNotices}
+            noticeCount={noticeCount}
+            onOpenNotices={onOpenNotices}
           />
         </div>
 
@@ -1430,7 +1447,7 @@ export function MapScreen({
             answers only the first, and answers it far less often: it renders
             solely while ATC has touched a live notice in the last 72 hours
             and the hiker has not already silenced it
-            (lib/atcAlertsBanner.ts).
+            (lib/notices.ts).
 
             At the FOOT of the main column instead - `aria-live="polite"`
             rather than `role="alert"` (assertive) or `role="status"`: the
@@ -1446,27 +1463,28 @@ export function MapScreen({
             drift the moment either changes size. A row in flow needs none of
             that, on a phone or the desktop sidebar layout alike. */}
         {/* Beneath the alert row rather than above it, on the one occasion
-            both are up: an ATC closure changes what a hiker does next, and
-            newer waypoint data does not. The order is the ranking. */}
+            both are up: an organization's closure changes what a hiker does
+            next, and newer waypoint data does not. The order is the ranking. */}
         {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
-        {newAtcAlertCount > 0 && onOpenAtcNotices !== undefined && (
+        {newNoticeCount > 0 && onOpenNotices !== undefined && (
           <div className="map-screen__new-alerts" aria-live="polite">
             <button
               type="button"
               className="map-screen__new-alerts-button"
-              onClick={onOpenAtcNotices}
+              onClick={onOpenNotices}
             >
-              {newAtcAlertCount === 1
-                ? 'ATC · New alert issued'
-                : `ATC · ${newAtcAlertCount} new alerts issued`}
+              {newNoticeLabel ??
+                (newNoticeCount === 1
+                  ? 'New trail notice issued'
+                  : `${newNoticeCount} new trail notices issued`)}
             </button>
-            {onSilenceNewAtcAlerts !== undefined && (
+            {onSilenceNewNotices !== undefined && (
               <button
                 type="button"
                 className="map-screen__new-alerts-silence"
-                onClick={onSilenceNewAtcAlerts}
+                onClick={onSilenceNewNotices}
               >
-                <span className="visually-hidden">Silence new ATC alerts</span>
+                <span className="visually-hidden">Silence new trail notices</span>
                 <span aria-hidden="true">×</span>
               </button>
             )}

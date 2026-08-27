@@ -265,7 +265,7 @@ export async function recallRelease(): Promise<StoredRelease | null> {
 /** Where a "not now" is remembered.
  *
  *  Keyed by the version declined, so it silences THAT release and nothing
- *  after it - the same shape as the ATC alert watermark (lib/atcAlertsBanner.ts)
+ *  after it - the same shape as the notice watermarks (lib/notices.ts)
  *  and for the same reason: a prompt that returns every launch after being
  *  answered is a nag, and a prompt silenced forever is a fix nobody is offered
  *  twice. */

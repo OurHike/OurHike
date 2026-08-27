@@ -910,9 +910,7 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   })
 
   it('reaches the legend once open', () => {
-    render(
-      <MapScreen {...PROPS} legendOpen atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />,
-    )
+    render(<MapScreen {...PROPS} legendOpen noticeCount={6} onOpenNotices={vi.fn()} />)
 
     const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
@@ -921,9 +919,7 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   })
 
   it('counts one notice without pluralising it', () => {
-    render(
-      <MapScreen {...PROPS} legendOpen atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />,
-    )
+    render(<MapScreen {...PROPS} legendOpen noticeCount={1} onOpenNotices={vi.fn()} />)
 
     const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
@@ -932,28 +928,23 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   })
 
   it('reports the tap up to the shell, which owns whether the list is open', async () => {
-    const onOpenAtcNotices = vi.fn()
+    const onOpenNotices = vi.fn()
     render(
-      <MapScreen
-        {...PROPS}
-        legendOpen
-        atcNoticeCount={6}
-        onOpenAtcNotices={onOpenAtcNotices}
-      />,
+      <MapScreen {...PROPS} legendOpen noticeCount={6} onOpenNotices={onOpenNotices} />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
 
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('renders the list the shell hands it, over the canvas', () => {
     render(
       <MapScreen
         {...PROPS}
-        atcNoticeCount={6}
-        onOpenAtcNotices={vi.fn()}
-        atcNoticeList={<div data-testid="atc-notice-list" />}
+        noticeCount={6}
+        onOpenNotices={vi.fn()}
+        noticeList={<div data-testid="atc-notice-list" />}
       />,
     )
 
@@ -961,26 +952,26 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   })
 
   it('shows nothing until the shell says the list is open', () => {
-    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByTestId('atc-notice-list')).toBe(null)
   })
 })
 
 describe('the bottom banner for new ATC alerts (#687)', () => {
-  // Independent of atcNoticeCount above - a screen can hold six notices and
+  // Independent of noticeCount above - a screen can hold six notices and
   // none of them new, which is the ordinary case now that the 72-hour gate
   // lives in lib/atcAlertsBanner.ts rather than here. MapScreen only renders
   // what it is told; the gate itself is that module's own test.
 
   it('is not there when nothing is new', () => {
-    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
   })
 
   it('appears once something is, outside any legend or notice-count prop', () => {
-    render(<MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
 
     expect(
       screen.getByRole('button', { name: 'ATC · 2 new alerts issued' }),
@@ -988,7 +979,7 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
   })
 
   it('counts one alert without pluralising it', () => {
-    render(<MapScreen {...PROPS} newAtcAlertCount={1} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} newNoticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
       screen.getByRole('button', { name: 'ATC · New alert issued' }),
@@ -996,36 +987,34 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
   })
 
   it('opens the same list a tap on the legend row would', async () => {
-    const onOpenAtcNotices = vi.fn()
-    render(
-      <MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={onOpenAtcNotices} />,
-    )
+    const onOpenNotices = vi.fn()
+    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={onOpenNotices} />)
 
     await userEvent.click(screen.getByRole('button', { name: /new alerts issued/ }))
 
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('offers a silence control that does not also open the list', async () => {
-    const onOpenAtcNotices = vi.fn()
-    const onSilenceNewAtcAlerts = vi.fn()
+    const onOpenNotices = vi.fn()
+    const onSilenceNewNotices = vi.fn()
     render(
       <MapScreen
         {...PROPS}
-        newAtcAlertCount={2}
-        onOpenAtcNotices={onOpenAtcNotices}
-        onSilenceNewAtcAlerts={onSilenceNewAtcAlerts}
+        newNoticeCount={2}
+        onOpenNotices={onOpenNotices}
+        onSilenceNewNotices={onSilenceNewNotices}
       />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Silence new ATC alerts' }))
 
-    expect(onSilenceNewAtcAlerts).toHaveBeenCalledTimes(1)
-    expect(onOpenAtcNotices).not.toHaveBeenCalled()
+    expect(onSilenceNewNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).not.toHaveBeenCalled()
   })
 
   it('omits the silence control when the shell offers none', () => {
-    render(<MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /silence/i })).toBe(null)
   })
@@ -1042,8 +1031,8 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
       <MapScreen
         {...PROPS}
         closureAhead="Trail closed 5.0 mi ahead · Storm damage"
-        newAtcAlertCount={2}
-        onOpenAtcNotices={vi.fn()}
+        newNoticeCount={2}
+        onOpenNotices={vi.fn()}
       />,
     )
 

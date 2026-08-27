@@ -32,8 +32,10 @@ import {
   fetchPublishedDisputes,
   fetchPublishedDrought,
   fetchPublishedFieldNotes,
+  fetchPublishedNynjtcAlerts,
   fetchPublishedReports,
   fetchPublishedWorkProjects,
+  type OrgNotice,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
@@ -105,8 +107,29 @@ export interface Conditions {
    */
   atcUpdates: readonly AtcUpdate[]
   /** The other half of that honesty, beside the list rather than inside the
-   *  rows - it is a fact about the review, not about any one notice. */
+   *  rows - it is a fact about the review, not about any one notice.
+   *
+   *  ATC's ONLY. `conditions/nynjtc_alerts.json` deliberately carries no
+   *  `reviewed_at` - nobody has checked NYNJTC's page, so there is no such
+   *  date, and the exporter refuses to invent one. See `orgNotices`. */
   atcReviewedAt: Date | null
+  /**
+   * Notices from organizations that are not the ATC (#1083).
+   *
+   * A second publisher through the same machinery, and the reason it is a
+   * separate field rather than concatenated onto `atcUpdates` is that the two
+   * artifacts are different shapes: ATC's rows carry two mile columns and
+   * NYNJTC's carry features/ORG_NOTICES.md §2's publisher-agnostic row with
+   * its `place` union. lib/notices.ts adapts the older one into the newer, and
+   * chrome/noticesPanel.tsx is where that happens - which keeps the asymmetry
+   * in one file rather than in every consumer.
+   *
+   * Empty rather than null when nothing comes back, for the same reason
+   * `atcUpdates` is: the bucket serves a 404 while the exporter has never run,
+   * and the pipeline publishes nothing rather than an empty document so that
+   * "we have not looked" cannot render as "NYNJTC reports nothing".
+   */
+  orgNotices: readonly OrgNotice[]
   /**
    * This week's drought bands, and the week they describe (#720).
    *
@@ -156,6 +179,7 @@ export function useConditions(online: boolean): Conditions {
   const [disputeState, setDisputeState] =
     useState<ConditionState<DisputeSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
+  const [orgNotices, setOrgNotices] = useState<readonly OrgNotice[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -301,6 +325,16 @@ export function useConditions(online: boolean): Conditions {
       setAtcReviewedAt(published.reviewedAt ?? null)
     })
 
+    // NYNJTC's alerts (#1083). Same posture as ATC's above and for the same
+    // reason - they publish on their own site, not through our API - and no
+    // `reviewedAt` to read, because that artifact deliberately carries none.
+    // Nobody has checked NYNJTC's page, so every row ships `unreviewed` and
+    // the list says so rather than the app implying a review nobody did.
+    void fetchPublishedNynjtcAlerts(undefined, how).then((published) => {
+      if (cancelled || published === null) return
+      setOrgNotices(published.items)
+    })
+
     // The volunteer workdays (#760). Reviewed-file data like the ATC
     // notices, so a plain set - and the generated_at travels because the
     // 48-hour opportunity ceiling is judged against it.
@@ -413,6 +447,7 @@ export function useConditions(online: boolean): Conditions {
     noteState,
     atcUpdates,
     atcReviewedAt,
+    orgNotices,
     drought,
     droughtWeek,
     workProjects,

@@ -83,7 +83,7 @@ describe('which updates become bands', () => {
     const bears = update({ category: 'Alert', obstructs_trail: false })
 
     expect(atcBandCandidates([bears])).toHaveLength(0)
-    expect(atcUpdateBanner(bears, 480, 'NOBO')).not.toBeNull()
+    expect(atcUpdateBanner(bears, 480, 'NOBO', 'ATC')).not.toBeNull()
   })
 })
 
@@ -103,7 +103,7 @@ describe('the adapter into the shared closure shape', () => {
     const detour = update({ category: 'Detour' })
 
     const asClosure = closureBanner(atcUpdateAsClosure(detour), 480, 'NOBO')
-    const asAtc = atcUpdateBanner(detour, 480, 'NOBO')
+    const asAtc = atcUpdateBanner(detour, 480, 'NOBO', 'ATC')
 
     expect(asClosure).toContain('Trail closed')
     expect(asAtc).not.toContain('Trail closed')
@@ -131,20 +131,20 @@ describe('the adapter into the shared closure shape', () => {
 
 describe('the banner, in ATC’s voice', () => {
   it('names the ATC before anything else', () => {
-    const line = atcUpdateBanner(update(), 470, 'NOBO')
+    const line = atcUpdateBanner(update(), 470, 'NOBO', 'ATC')
 
     expect(line?.startsWith('ATC · ')).toBe(true)
   })
 
   it('quotes ATC’s own category and headline', () => {
-    const line = atcUpdateBanner(update({ category: 'Detour' }), 470, 'NOBO')
+    const line = atcUpdateBanner(update({ category: 'Detour' }), 470, 'NOBO', 'ATC')
 
     expect(line).toContain('Detour')
     expect(line).toContain('SW Virginia: VA Creeper Trail Closure/Detour')
   })
 
   it('says how far ahead it is, to a tenth', () => {
-    expect(atcUpdateBanner(update(), 470, 'NOBO')).toContain('6.6 mi ahead')
+    expect(atcUpdateBanner(update(), 470, 'NOBO', 'ATC')).toContain('6.6 mi ahead')
   })
 
   it('says it in kilometres for a hiker who chose them, leaving ATC’s range alone', () => {
@@ -152,7 +152,7 @@ describe('the banner, in ATC’s voice', () => {
     // position and follows their preference; the mile range is ATC's own
     // published figure, in the units they publish it in, and rewriting their
     // numbers would misquote them as well as move a mile marker.
-    const line = atcUpdateBanner(update(), 470, 'NOBO', 'metric')
+    const line = atcUpdateBanner(update(), 470, 'NOBO', 'ATC', 'metric')
 
     expect(line).toContain('10.6 km ahead')
     expect(line).toContain('mi 476.6 – 485.8')
@@ -161,37 +161,37 @@ describe('the banner, in ATC’s voice', () => {
   it('says "here" rather than a distance when the hiker is inside it', () => {
     // "0.0 mi ahead" is a distance pretending to be a place - the same call
     // lib/closureBanner.ts makes.
-    const line = atcUpdateBanner(update(), 480, 'NOBO')
+    const line = atcUpdateBanner(update(), 480, 'NOBO', 'ATC')
 
     expect(line).toContain('here')
     expect(line).not.toContain('mi ahead')
   })
 
   it('needs no direction to warn a hiker standing inside it', () => {
-    expect(atcUpdateBanner(update(), 480, undefined)).not.toBeNull()
+    expect(atcUpdateBanner(update(), 480, undefined, 'ATC')).not.toBeNull()
   })
 
   it('stays silent outside it while the direction is unknown', () => {
     // Guessing would warn half of all hikers about something behind them.
-    expect(atcUpdateBanner(update(), 470, undefined)).toBeNull()
+    expect(atcUpdateBanner(update(), 470, undefined, 'ATC')).toBeNull()
   })
 
   it('stays silent about a notice a hiker has already walked past', () => {
-    expect(atcUpdateBanner(update(), 490, 'NOBO')).toBeNull()
-    expect(atcUpdateBanner(update(), 470, 'SOBO')).toBeNull()
+    expect(atcUpdateBanner(update(), 490, 'NOBO', 'ATC')).toBeNull()
+    expect(atcUpdateBanner(update(), 470, 'SOBO', 'ATC')).toBeNull()
   })
 
   it('warns a southbound hiker approaching the far end', () => {
     // The end a SOBO hiker reaches first is `end_mile_marker`. Getting this
     // backwards means silence about the notice they are walking into.
-    expect(atcUpdateBanner(update(), 490, 'SOBO')).toContain('4.2 mi ahead')
+    expect(atcUpdateBanner(update(), 490, 'SOBO', 'ATC')).toContain('4.2 mi ahead')
   })
 
   it('writes a point notice as one mile rather than a zero-length range', () => {
     const shelter = update({ start_mile_marker: 1503.6, end_mile_marker: 1503.6 })
 
-    expect(atcUpdateBanner(shelter, 1500, 'NOBO')).toContain('mi 1,503.6')
-    expect(atcUpdateBanner(shelter, 1500, 'NOBO')).not.toContain('–')
+    expect(atcUpdateBanner(shelter, 1500, 'NOBO', 'ATC')).toContain('mi 1,503.6')
+    expect(atcUpdateBanner(shelter, 1500, 'NOBO', 'ATC')).not.toContain('–')
   })
 })
 
@@ -267,11 +267,11 @@ describe('a region-wide ATC advisory', () => {
   })
 
   it('stops saying the notice is "here" when here is 398 miles long', () => {
-    const banner = atcUpdateBanner(HELENE, 242, 'NOBO')
+    const banner = atcUpdateBanner(HELENE, 242, 'NOBO', 'ATC')
 
     expect(banner).not.toContain('Alert here')
     expect(banner).toContain('ATC · Alert along 398 mi of trail')
-    expect(atcUpdateBanner(HELENE, 242, 'NOBO', 'metric')).toContain(
+    expect(atcUpdateBanner(HELENE, 242, 'NOBO', 'ATC', 'metric')).toContain(
       'ATC · Alert along 641 km of trail',
     )
     // ATC's category and headline stay verbatim - only OurHike's word for WHERE
@@ -290,7 +290,7 @@ describe('a region-wide ATC advisory', () => {
       end_mile_marker: 1503.6,
     })
 
-    expect(atcUpdateBanner(shelter, 1503.6, 'NOBO')).toContain('Closure here')
+    expect(atcUpdateBanner(shelter, 1503.6, 'NOBO', 'ATC')).toContain('Closure here')
   })
 })
 
@@ -316,13 +316,18 @@ describe('rows nobody here has read (#963)', () => {
   it('says so on the banner, because the position claim is ours and not ATC’s', () => {
     // ATC's category, headline and mile are theirs and need no hedge. "here"
     // is OurHike's, derived from a mile a regex read off their prose.
-    const banner = atcUpdateBanner(update({ review_state: 'unreviewed' }), 480, 'NOBO')
+    const banner = atcUpdateBanner(
+      update({ review_state: 'unreviewed' }),
+      480,
+      'NOBO',
+      'ATC',
+    )
 
     expect(banner).toContain('not checked by OurHike')
   })
 
   it('leaves a reviewed banner alone', () => {
-    expect(atcUpdateBanner(update(), 480, 'NOBO')).not.toContain('not checked')
+    expect(atcUpdateBanner(update(), 480, 'NOBO', 'ATC')).not.toContain('not checked')
   })
 
   it('marks an automatic notice a hiker has not reached yet', () => {
@@ -332,6 +337,6 @@ describe('rows nobody here has read (#963)', () => {
       end_mile_marker: 500,
     })
 
-    expect(atcUpdateBanner(ahead, 480, 'NOBO')).toContain('not checked by OurHike')
+    expect(atcUpdateBanner(ahead, 480, 'NOBO', 'ATC')).toContain('not checked by OurHike')
   })
 })

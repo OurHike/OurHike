@@ -858,12 +858,12 @@ describe('the thanks entry on a place card', () => {
   })
 
   it('steps aside for the escalation, for the report entry’s reason', () => {
-    // A hiker who has just said the shelter is damaged is being asked one
-    // question - do you want to write that up - and a "Glad it's here?" under
-    // it would be the card arguing with itself.
+    // A hiker who has just said something is wrong with the shelter is being
+    // asked one question - do you want to write that up - and a "Glad it's
+    // here?" under it would be the card arguing with itself.
     renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
 
-    fireEvent.click(screen.getByTestId('poi-card-observe-damaged'))
+    fireEvent.click(screen.getByTestId('poi-card-observe-problem'))
 
     expect(screen.queryByTestId('poi-card-thank-here')).toBeNull()
   })

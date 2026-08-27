@@ -234,6 +234,59 @@ jobs:
       - name: Export the ATC's reviewed trail updates
         run: python export_atc_updates.py
 
+      # NYNJTC'S TRAIL ALERTS (#1078, #940), on the same shape as the ATC leg
+      # above because they answer the same question for a different steward:
+      # 160 miles of the A.T. and the trails in most of the parks this build
+      # now draws. What ships is tightly bounded and is sources.json's
+      # `nynjtc_alerts_licence` block rather than this file's decision - the
+      # headline, the locality their own region and state tags give, their
+      # `modified` date and the URL of their page, and NOT their body text.
+      # export_nynjtc_alerts.py applies that split; nothing here widens it.
+      #
+      # WHY THIS IS BEING WIRED NOW AND NOT WHEN IT WAS WRITTEN. It was not
+      # wired at all: the fetcher, the exporter, its tests and its place in
+      # publish.py's conditions manifests all landed, the registry was marked
+      # `reaches_hikers: true` on the maintainer's instruction, and no step
+      # ever ran the script - so `conditions/nynjtc_alerts.json` was 404 on
+      # production (measured 2026-08-27) while the ATC file beside it was 200.
+      # That is #940's pattern for the fourth time, and
+      # .github/tests/test_exporters_are_published.py is what found it and
+      # what stops the fifth.
+      #
+      # The cache earns its place for the ATC leg's reason, at a smaller
+      # scale: one request for the alerts plus one per place taxonomy, five in
+      # the steady state, for data that moves a few times a month. The
+      # exporter reads this cache, so a run that could not reach NYNJTC
+      # publishes the previous copy rather than nothing.
+      - name: Restore NYNJTC's trail alerts
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/data/raw/nynjtc_alerts.json
+          key: nynjtc-alerts-${{ github.run_id }}
+          restore-keys: nynjtc-alerts-
+
+      # `continue-on-error`, like the ATC fetch: NYNJTC being unreachable is
+      # weather, and it must not take the drought bands and the verified
+      # conditions down with it. The fetcher already exits non-zero rather
+      # than writing a payload it does not recognise, and leaves the previous
+      # cache in place when it does.
+      - name: Fetch NYNJTC's trail alerts
+        continue-on-error: true
+        run: python fetch_nynjtc_alerts.py
+
+      - name: Save NYNJTC's trail alerts
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/data/raw/nynjtc_alerts.json
+          key: nynjtc-alerts-${{ github.run_id }}
+
+      # Exits without writing when there is no cache to read - a first run on
+      # a cold cache whose fetch failed - which publish.py reads as "this
+      # release has no such artifact" rather than as a failure.
+      - name: Export NYNJTC's trail alerts
+        run: python export_nynjtc_alerts.py
+
       # The volunteer workdays (#760), from the same kind of reviewed file as
       # the ATC leg above and with the same refuse-unreviewed posture. The
       # one difference: this exporter asks which environment it is baking

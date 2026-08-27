@@ -51,6 +51,7 @@ import {
   DATA_CONFIGURED,
   dataUrl,
   TRAIL_GRAPH_ELEVATION_KEY,
+  TRAIL_GRAPH_PROFILE_KEY,
   TRAIL_GRAPH_GEOMETRY_KEY,
   TRAIL_GRAPH_KEY,
 } from './config'
@@ -378,6 +379,76 @@ export async function fetchTrailGraphElevation(
     return parsed
   } catch {
     return await readStoredJson(TRAIL_GRAPH_ELEVATION_KEY, isGraphElevation, edgeCount)
+  }
+}
+
+/**
+ * Whether the parsed JSON is one array of samples (or null) per edge.
+ *
+ * Spot-checked on the first entry that is not null, for the reason
+ * {@link isGraphElevation} states: a graph whose leading edges sit in a DEM
+ * gap is a real artifact, and reading its leading null as "wrong shape" would
+ * throw the whole file away over the one case it is designed to express. The
+ * first SAMPLE may legitimately be null too - a hole in the DEM with its place
+ * on the axis kept - so the check accepts either.
+ */
+function isGraphProfile(value: unknown): value is Array<Array<number | null> | null> {
+  if (!Array.isArray(value)) return false
+  const first = value.find((entry) => entry !== null)
+  if (first === undefined) return true
+  if (!Array.isArray(first)) return false
+  if (first.length === 0) return true
+  return typeof first[0] === 'number' || first[0] === null
+}
+
+/**
+ * The SHAPE of the ground along each edge - fetched when a chart opens, and
+ * never with the builder (#1045).
+ *
+ * The same hash, shape and edge-count checks {@link fetchTrailGraphElevation}
+ * makes, and the edge-count one is if anything more load-bearing here: edge 40
+ * DRAWN from edge 41's profile is a plausible-looking picture of ground the
+ * hiker is not on, on the band they read to judge daylight.
+ *
+ * **A different artifact from the elevation one, and not a replacement for
+ * it.** That file is the sanctioned TOTAL a card prices from; this is what a
+ * ribbon draws. `lib/config.ts` carries why they must not be swapped and
+ * `lib/walkProfile.ts` carries the rules for reading this one.
+ *
+ * Null - no profile on this phone - is ordinary and its consequence is
+ * exactly #1041's: no ribbon on a followed walk, which is the honest state
+ * rather than a missing feature.
+ */
+export async function fetchTrailGraphProfile(
+  edgeCount: number,
+  signal?: AbortSignal,
+  online = true,
+): Promise<Array<Array<number | null> | null> | null> {
+  if (!DATA_CONFIGURED) return null
+
+  if (!online) {
+    return await readStoredJson(TRAIL_GRAPH_PROFILE_KEY, isGraphProfile, edgeCount)
+  }
+
+  try {
+    const response = await fetch(dataUrl(TRAIL_GRAPH_PROFILE_KEY), { signal })
+    if (!response.ok) {
+      return await readStoredJson(TRAIL_GRAPH_PROFILE_KEY, isGraphProfile, edgeCount)
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    const expected = await publishedHash(TRAIL_GRAPH_PROFILE_KEY, { signal })
+    if (expected === null) return null
+    if ((await sha256Of(bytes)) !== expected) return null
+
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    if (!isGraphProfile(parsed)) return null
+    if (parsed.length !== edgeCount) return null
+
+    void keepVerified(TRAIL_GRAPH_PROFILE_KEY, bytes, expected, response, signal)
+    return parsed
+  } catch {
+    return await readStoredJson(TRAIL_GRAPH_PROFILE_KEY, isGraphProfile, edgeCount)
   }
 }
 

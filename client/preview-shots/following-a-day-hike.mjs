@@ -22,6 +22,20 @@
 // is not, and the frame is true either way. It is the same "several honest
 // states, one recipe" shape day-hike-card.mjs already ships, and it becomes
 // the picture this change is about on the day #1024 lands.
+//
+// #1045 ADDED A THIRD THING TO THIS FRAME AND THE SAME GATE HOLDS OVER IT.
+// A followed walk now draws an elevation ribbon on its OWN mile axis - miles
+// from the hiker's first step - from `trail_graph_profile.json`. That needs
+// two artifacts out of the same bucket the graph comes from, so on a preview
+// build with an empty VITE_DATA_BASE_URL there is no ribbon here for the same
+// reason there is no Follow door: no data source, nothing to resolve, and
+// nothing invented to fill the space.
+//
+// The alt below is unchanged deliberately. It already describes the two
+// states this recipe can actually reach, and adding "with an elevation
+// ribbon" to a sentence a screen-reader user gets INSTEAD of the picture
+// would describe a band that is not in either frame today - which is the
+// failure #1058 rewrote this caption to stop.
 
 // THE CAPTION NAMES BOTH FRAMES, because a static string cannot know which
 // one landed (#1058). photograph-preview.mjs reads `caption` and `alt` off

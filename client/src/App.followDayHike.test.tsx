@@ -23,7 +23,12 @@ import App from './App'
 import { DAY_HIKE_SOURCE_ID } from './map/dayHikeLayers'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
-import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
+import { ELEVATION_STORE_KEY } from './lib/trailData'
+import {
+  TRAIL_GRAPH_GEOMETRY_KEY,
+  TRAIL_GRAPH_KEY,
+  TRAIL_GRAPH_PROFILE_KEY,
+} from './lib/config'
 import { appHarness, MILE_LAT } from './test/appHarness'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -192,11 +197,27 @@ async function hashOf(body: string): Promise<string> {
     .join('')
 }
 
-async function serveGraph() {
+/** The dense per-edge profile (#1045), one array of whole feet per edge.
+ *  Pine Meadow climbs west to east and Seven Hills climbs north, so the walk
+ *  in `HIKE` is one long rise and any test reading an edge backwards would
+ *  draw a different shape. */
+const PROFILE = JSON.stringify([
+  [900, 950, 1000, 1050, 1100],
+  [1100, 1150, 1200, 1250, 1300],
+  [1100, 1200, 1300, 1400, 1500],
+])
+
+async function serveGraph({ profile = false } = {}) {
   const manifest = {
     artifacts: {
       [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) },
       [TRAIL_GRAPH_GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) },
+      // Absent unless a test asks for it, because absent is the ordinary
+      // state: the profile is fetched only once a walk is being followed, and
+      // a release built without `include_elevation` does not carry it at all.
+      ...(profile
+        ? { [TRAIL_GRAPH_PROFILE_KEY]: { sha256: await hashOf(PROFILE) } }
+        : {}),
     },
   }
   vi.stubGlobal(
@@ -210,11 +231,14 @@ async function serveGraph() {
           json: () => Promise.resolve(manifest),
         } as unknown as Response)
       }
-      const body = key.includes(TRAIL_GRAPH_GEOMETRY_KEY)
-        ? GEOMETRY
-        : key.includes(TRAIL_GRAPH_KEY)
-          ? GRAPH
-          : null
+      const body =
+        profile && key.includes(TRAIL_GRAPH_PROFILE_KEY)
+          ? PROFILE
+          : key.includes(TRAIL_GRAPH_GEOMETRY_KEY)
+            ? GEOMETRY
+            : key.includes(TRAIL_GRAPH_KEY)
+              ? GRAPH
+              : null
       if (body === null) {
         return Promise.resolve({ ok: false, status: 404 } as unknown as Response)
       }
@@ -436,5 +460,50 @@ describe('following a day hike, end to end', () => {
         [-74.1, 41.25],
       ],
     ])
+  })
+
+  it('draws the walk\u2019s own elevation once the profile arrives (#1045)', async () => {
+    // The whole wiring in one assertion: the fetch fires because a walk is
+    // being followed, lib/walkProfile.ts turns the walk into samples on its
+    // own axis, and lib/ribbonView.ts prefers them. The accessible name is
+    // the claim being checked - "ahead" is about the A.T. and this is not.
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph({ profile: true })
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    await screen.findByText(/mi in \u00b7/)
+
+    expect(
+      await screen.findByRole('img', { name: /whole walk today/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('draws no ribbon at all when the release carries no profile', async () => {
+    // #1041's honest state, kept - and this is the half #1045 calls a bug.
+    // The A.T.'s OWN profile is in this phone's download, so before the fix
+    // the ribbon fell through to it and drew the Appalachian Trail under a
+    // header counting down a Harriman walk. A walk this phone has no shape
+    // for gets NOTHING rather than another walk's shape borrowed.
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(ELEVATION_STORE_KEY, {
+      distanceMi: Float32Array.from({ length: 200 }, (_, i) => i / 10),
+      elevationFt: Float32Array.from({ length: 200 }, (_, i) => 1000 + (i % 20) * 60),
+    })
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    await screen.findByText(/mi in \u00b7/)
+
+    expect(
+      screen.queryByRole('img', { name: /Elevation profile/i }),
+    ).not.toBeInTheDocument()
   })
 })

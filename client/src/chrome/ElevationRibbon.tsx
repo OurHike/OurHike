@@ -37,6 +37,7 @@ const VIEW_H = 40
 /** Written out one per line, so each has to be read as the claim it is. */
 const SUBJECT_LABELS: Record<RibbonSubject, string> = {
   ahead: 'Elevation profile ahead',
+  'todays-walk': 'Elevation profile of your whole walk today',
   'planned-stretch': 'Elevation profile of the stretch being planned',
   'map-view': 'Elevation profile of the trail shown on the map',
   'whole-trail': 'Elevation profile of the whole trail',
@@ -45,6 +46,30 @@ const SUBJECT_LABELS: Record<RibbonSubject, string> = {
 export interface ElevationSample {
   mile: number
   elevationFt: number
+  /**
+   * The first sample after ground this ribbon has no shape for, so the drawn
+   * line BREAKS here instead of sloping across it.
+   *
+   * The name and the convention are `lib/elevationGain.ts`'s `ProfileSample.
+   * partStart`, deliberately, rather than a second marker meaning the same
+   * thing: that field already tells `cumulativeGainOverProfile` where a seam
+   * in the trail is rather than a slope, and `pipeline/export_network_profile.
+   * py` names both sides of the language boundary as the documented way to
+   * flatten a route without inventing climb across a join.
+   *
+   * WHAT IT MARKS HERE IS A STRETCH BOUNDARY, NOT AN EDGE BOUNDARY, and the
+   * difference is the whole reason this is safe to draw at all. A day hike
+   * built from several stretches (#983) has ground between them that OurHike
+   * will not route - a road walk, most often - and a line sloping across it
+   * would be a picture of terrain nobody measured. A junction between two
+   * edges INSIDE a stretch is not marked: this ribbon prices nothing, so the
+   * vertical step an endpoint weld can leave (up to 19.06 m of horizontal
+   * separation, measured by export_network_profile.py) is a step in a drawing
+   * rather than climbing in a total, and it is sub-pixel on a 54 px band. A
+   * route crosses a median 23 of those junctions, so marking them all would
+   * render the ribbon as dots.
+   */
+  partStart?: boolean
 }
 
 export interface UpcomingClimb {
@@ -58,7 +83,8 @@ export interface UpcomingClimb {
  * accessible name. lib/ribbonView.ts decides which, and its `source` IS this
  * type - one value, not a field here and a field there that can drift apart.
  */
-export type RibbonSubject = 'ahead' | 'planned-stretch' | 'map-view' | 'whole-trail'
+export type RibbonSubject =
+  'ahead' | 'todays-walk' | 'planned-stretch' | 'map-view' | 'whole-trail'
 
 /** One map-framing button under the ribbon (#910 review). The screen decides
  *  WHICH exist - they depend on what the ribbon is currently showing - so this
@@ -154,11 +180,24 @@ export function ElevationRibbon({
   const yFor = (ft: number) =>
     range === 0 ? VIEW_H / 2 : VIEW_H - ((ft - minFt) / range) * VIEW_H
 
-  const pointsPath = samples
-    .map((s, i) => {
-      const x = pctAlong(s.mile, startMile, endMile)
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${yFor(s.elevationFt).toFixed(2)}`
-    })
+  // ONE SUBPATH PER RUN OF SAMPLES, split at every `partStart`. With no marker
+  // anywhere - which is every ribbon that existed before #1045 - this is one
+  // run and one subpath, and the output is byte-for-byte what it always was.
+  const runs: ElevationSample[][] = []
+  for (const sample of samples) {
+    if (runs.length === 0 || sample.partStart === true) runs.push([])
+    runs[runs.length - 1].push(sample)
+  }
+
+  const pointsPath = runs
+    .map((run) =>
+      run
+        .map((s, i) => {
+          const x = pctAlong(s.mile, startMile, endMile)
+          return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${yFor(s.elevationFt).toFixed(2)}`
+        })
+        .join(' '),
+    )
     .join(' ')
 
   // Closing back along the baseline is what makes this a shaded area rather
@@ -166,12 +205,23 @@ export function ElevationRibbon({
   // the ribbon's: with no domain given those are the same two x values, and
   // where a domain leaves the samples short of an edge, shading out to it
   // would fill ground the DEM never covered.
-  const firstX = samples.length === 0 ? 0 : pctAlong(samples[0].mile, startMile, endMile)
-  const lastX =
-    samples.length === 0
-      ? VIEW_W
-      : pctAlong(samples[samples.length - 1].mile, startMile, endMile)
-  const areaPath = `${pointsPath} L${lastX.toFixed(2)},${VIEW_H} L${firstX.toFixed(2)},${VIEW_H} Z`
+  //
+  // Per run, for the same reason the line breaks: shading a single area across
+  // a break would fill the gap the break exists to leave empty, which is the
+  // one thing this whole marker is for.
+  const areaPath = runs
+    .map((run) => {
+      const runLine = run
+        .map((s, i) => {
+          const x = pctAlong(s.mile, startMile, endMile)
+          return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${yFor(s.elevationFt).toFixed(2)}`
+        })
+        .join(' ')
+      const from = pctAlong(run[0].mile, startMile, endMile)
+      const to = pctAlong(run[run.length - 1].mile, startMile, endMile)
+      return `${runLine} L${to.toFixed(2)},${VIEW_H} L${from.toFixed(2)},${VIEW_H} Z`
+    })
+    .join(' ')
 
   // Only where the fix genuinely falls inside what is drawn. Outside it the
   // rule would be clamped to an edge by the SVG viewport and read as "you are

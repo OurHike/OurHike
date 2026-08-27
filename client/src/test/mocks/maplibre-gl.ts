@@ -14,6 +14,20 @@ import { vi } from 'vitest'
 
 type Listener = (...args: unknown[]) => void
 
+/** The events real MapLibre delivers as a `MapMouseEvent`/`MapTouchEvent`,
+ *  every one of which carries a `point`. */
+const POINTER_EVENTS = new Set([
+  'click',
+  'dblclick',
+  'mousedown',
+  'mousemove',
+  'mouseup',
+  'touchstart',
+  'touchmove',
+  'touchend',
+  'contextmenu',
+])
+
 export class MockMap {
   /** Every map ever constructed this test, in order - including ones since removed. */
   static instances: MockMap[] = []
@@ -187,7 +201,26 @@ export class MockMap {
     // MapLibre is never in - and one that quietly breaks anything re-checking
     // later, which is every attach-on-ready helper in map/.
     if (event === 'load') this.styleLoaded = true
-    for (const handler of [...(this.listeners.get(event) ?? [])]) handler(payload)
+    for (const handler of [...(this.listeners.get(event) ?? [])])
+      handler(this.pointed(event, payload))
+  }
+
+  /**
+   * A pointer event always carries its CANVAS POINT in real MapLibre, and a
+   * mock that omits it models a state the library is never in.
+   *
+   * This is not hypothetical tidying: #931 made a refused day-hike tap ask
+   * `queryRenderedFeatures` what was drawn where the hiker pointed, a question
+   * only a screen position can ask - and every suite that emitted a bare
+   * `{lngLat}` then threw on `point.x`. Filled in only where a caller supplied
+   * no point of its own, so a test that cares which pixel was hit still says
+   * so.
+   */
+  private pointed(event: string, payload?: unknown): unknown {
+    if (!POINTER_EVENTS.has(event)) return payload
+    if (typeof payload !== 'object' || payload === null) return payload
+    if ('point' in payload) return payload
+    return { ...payload, point: { x: 0, y: 0 } }
   }
 
   listenerCount(event: string): number {

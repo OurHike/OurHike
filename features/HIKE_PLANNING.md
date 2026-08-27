@@ -428,6 +428,49 @@ So taking everything costs about **2% on top of a corridor package that is alrea
 
 The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it.
 
+## The elevation under a walk that is not the A.T. (#1045, 2026-08-27)
+
+Decided by the maintainer: *"Show the elevation. B then C, and anything else that needs to show the gain/loss"* — and, on what to do about the ribbon that was already drawing, *"Treat it as a bug and fix it first… If a ribbon is drawing on a followed day hike from two scalars per edge, that's a picture of terrain nobody measured on the band a hiker uses to judge daylight. Blank it in the same branch, then build B and C properly."*
+
+### The bug was worse than the issue's premise
+
+#1045 opens with *"a followed day hike shows no elevation at all"*, which was what #1041 deliberately shipped and is the honest state. What was actually happening is one step past that. `lib/ribbonView.ts` knew nothing about following, so its precedence fell straight through to the ten-mile fix window — and **the A.T. runs through the same woods as a Harriman loop**, so `fix.mile` is a real number while somebody walks that loop. A hiker following a day hike got the *Appalachian Trail's* profile, captioned "Elevation profile ahead", under a header counting down their own walk. A picture of a different walk, announced as the strongest claim the five labels make, on the band a hiker reads to decide whether they beat the dark.
+
+That is fixed first and independently of the new data: a followed day hike now suppresses the fall-through whether or not there is anything to draw in its place. `App.followDayHike.test.tsx`'s *"draws no ribbon at all when the release carries no profile"* is that guard, and it fails on the old behaviour.
+
+### One asymmetry, deliberately
+
+A **trip day** that cannot be drawn *does* fall through to the fix window; a **day hike** never does. Both are "today", and the difference is what the fall-through would be a picture of. `ahead` under a trip is a different window of the hiker's own trail, correctly labelled — honest if less useful. `ahead` under a day hike is different ground entirely.
+
+### B — the trip half, which needed no new data
+
+`'todays-walk'` is a fifth `RibbonSubject`, and on a trip it is today camp to camp: `lib/plan.ts`'s `currentDayIndex` and the two `PlanStop` miles either side of it, both already on the pipeline axis the published profile is measured on. It replaces `'ahead'` for anyone with a plan open; `'ahead'` survives for a hiker walking with no plan loaded, which is what #1045 asks for. The gain over the sliding window is that the day's ends are the hiker's ends: a ten-mile window's edges are arbitrary and can cut off the climb that decides whether somebody makes the shelter before dark.
+
+A zero day is not a walk and yields nothing — the ribbon shows whatever it showed before, because there is nothing about today for it to be wrong about.
+
+### C — the day-hike half, from the fourth artifact
+
+`pipeline/export_network_profile.py` publishes `trail_graph_profile.json`: one array of whole feet per edge, index-aligned with `trail_graph.json`'s `edges` like the geometry and elevation files already are. 694,955 samples at 25 m — 3.47 MB raw, 1.22 MB over the wire, measured. `lib/walkProfile.ts` is the client half, and it reads `lib/dayHikeWalk.ts`'s existing flattening rather than adding a fourth accumulation: the ribbon's x-axis is `WalkStep.beforeMetres`, which is the *same* axis the follow header prints `walkedMi` on and the turn list counts down, so the rule under the ribbon lands on the number written above it.
+
+**Fetched only once a walk is being followed** — never at launch, never with the builder. That is the artifact's own contract (`export_network_elevation.py`: *"a fourth artifact fetched when that chart opens"*), and it means a hiker who opens the builder, draws a loop and never walks it pays nothing for it.
+
+Four rules, each of which is a wrong picture if dropped, and every one of them a pipeline measurement rather than an opinion:
+
+1. **The sample count comes from the published array's own length**, never from `length_m / 25`. 63 of 40,596 edges (0.155%) disagree, because the published length and the walked geometry differ by a median 0.035 m and up to 1.50 m. Those 63 would draw every sample after the first in the wrong place.
+2. **A null is unknown and never zero**, in both its shapes — a whole entry null (the DEM covers none of that edge) and a null inside an array (one missing sample with its place kept). Either one anywhere on the walk means no ribbon, the all-or-nothing rule `ResolvedDayHike.climb` already follows.
+3. **Nothing sums a climb from these samples.** The ± figures a card prints come from `trail_graph_elevation.json`, which is per-edge by construction. Two screens showing two totals for one walk is worse than either total on its own — and the disagreement is measured: per-edge summing understates a continuous profile by a median 6.9% (p90 46.9%) across 300 six-mile routes, in the unsafe direction. That measurement is **#1120 — Summing a route's climb edge by edge understates it by a median 6.9%, in the unsafe direction** and is not this change's to settle.
+4. **A gap between stretches breaks the drawn line rather than sloping across it.** A day hike built from several stretches (#983) has ground between them OurHike will not route — a road walk, most often. `ElevationSample.partStart` marks the first sample of each later stretch and `ElevationRibbon` starts a new subpath there, so nothing is stroked or shaded across it. The name and the convention are `lib/elevationGain.ts`'s, deliberately, rather than a second marker meaning the same thing.
+
+A junction *inside* a stretch is **not** marked. This ribbon prices nothing, so the vertical step an endpoint weld can leave — up to 19.06 m of horizontal separation, measured — is a step in a drawing rather than climbing in a total, and it is sub-pixel on a 54 px band. A route crosses a median 23 of those junctions (p90 232), so marking them all would render the ribbon as dots.
+
+The gap consumes **no width on the x-axis**, because `ResolvedDayHike.miles` does not count it either. One axis for the ribbon, the header and the card, rather than a ribbon measuring the walk differently from every figure printed beside it.
+
+### The trap this opened, and where it is closed
+
+`RibbonView` gained `axis: 'trail' | 'walk'`, and it exists because `'todays-walk'` is **both**. Every POI this app holds carries a mile on the published centerline; a followed day hike's domain is miles from the hiker's first step. Without the field, `ribbonLanes` would have read "mile 2" of a Harriman loop and hung the shelters at A.T. mile 2 — in Georgia — under it, and nothing about the picture would have looked wrong. So the lanes are dropped entirely on a `walk`-axis ribbon and kept on a trip day, which is measured with the same ruler as the POIs.
+
+What would fix that properly is placing a walk's own POIs on the walk's own axis, which `lib/dayHikeCard.ts`'s bail-out arithmetic already demonstrates for junctions. It is its own issue.
+
 ## Where a plan lives
 
 On the phone, in the same IndexedDB the map already uses — SEGMENTS.md's answer, and nothing here changes it.

@@ -151,7 +151,8 @@ import {
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
 import { ribbonWindow } from './lib/elevationProfile'
-import { ribbonLanes, ribbonView } from './lib/ribbonView'
+import { ribbonLanes, ribbonView, type TodaysWalk } from './lib/ribbonView'
+import { walkProfile } from './lib/walkProfile'
 import { viewportMiles } from './lib/viewportMiles'
 import { anchoredClientMile, anchoredMile, type MileAnchor } from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
@@ -159,6 +160,7 @@ import type { ChartStretch } from './chrome/ElevationChart'
 import { type RouteStopChoice } from './chrome/RouteStopPicker'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
+  currentDayIndex,
   insertZeroAfter,
   removeDay,
   togglePinned,
@@ -213,6 +215,7 @@ import {
   attachTrailGraphGeometry,
   fetchTrailGraphElevation,
   fetchTrailGraphGeometry,
+  fetchTrailGraphProfile,
 } from './lib/trailGraphData'
 import { orgLabelFrom } from './lib/stewards'
 import {
@@ -226,6 +229,7 @@ import { useDayHikesSync } from './lib/useDayHikesSync'
 import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
 import { followDayHike, followHeader, type FollowState } from './lib/dayHikeFollow'
 import { atJunction, dayHikeTurns, nextTurn } from './lib/dayHikeTurns'
+import { dayHikeWalk } from './lib/dayHikeWalk'
 import { NextTurnCard } from './chrome/NextTurnCard'
 import { TurnCard } from './chrome/TurnCard'
 import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
@@ -550,6 +554,19 @@ function App() {
    * a chord across a switchback is a picture of a trail that does not exist.
    */
   const [dayHikeIndex, setDayHikeIndex] = useState<TrailGraphIndex | null>(null)
+  /**
+   * `trail_graph_profile.json` - the SHAPE of the ground along each edge
+   * (#1045), held beside the index rather than attached to it.
+   *
+   * Beside, because nothing that routes or prices a walk may read it. The
+   * climb a card prints comes from `trail_graph_elevation.json`, attached to
+   * the edges above; this is what a ribbon DRAWS. Hanging it on the same edge
+   * objects would make swapping them a one-character mistake, and the two
+   * disagree about a walk's total by a measured median 6.9% (#1120).
+   */
+  const [graphProfile, setGraphProfile] = useState<Array<Array<
+    number | null
+  > | null> | null>(null)
   /** The SAVED day hikes (#976) - loaded once, written through saveDayHikes,
    *  and fed to the account sync exactly as tripStore is. */
   const [dayHikeStore, setDayHikeStore] = useState<DayHikeStore>(EMPTY_DAY_HIKES)
@@ -3103,6 +3120,44 @@ function App() {
     }
   }, [wantsGraphGeometry, graphIndex, dayHikeIndex, online])
 
+  /**
+   * The dense per-edge profile, fetched ONLY once a walk is being followed
+   * (#1045) - never with the builder, and never at launch.
+   *
+   * That gate is the artifact's own contract rather than a preference:
+   * pipeline/export_network_profile.py sizes it at 3.47 MB raw / 1.22 MB over
+   * the wire and export_network_elevation.py's header names it as "a fourth
+   * artifact fetched when that chart opens". A hiker who opens the builder,
+   * draws a loop and never walks it pays nothing for it.
+   *
+   * Keyed on `followingId !== null` rather than on the resolved walk, for the
+   * reason the geometry effect above learned the hard way (#1093): anything
+   * that changes per tap or per GPS fix re-runs the effect, and the cleanup
+   * aborts the very fetch that would let the ribbon draw.
+   */
+  const wantsGraphProfile = followingId !== null
+  useEffect(() => {
+    if (!wantsGraphProfile || graphIndex === null || graphProfile !== null) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchTrailGraphProfile(
+      graphIndex.graph.edges.length,
+      controller.signal,
+      online,
+    ).then((profile) => {
+      // Null is ordinary and its consequence is #1041's: no ribbon on this
+      // walk, which is the honest state rather than a missing feature.
+      if (wanted && profile !== null) setGraphProfile(profile)
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [wantsGraphProfile, graphIndex, graphProfile, online])
+
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to
   // your own route (openRouteBuilderFrom's rule, kept here for both modes).
@@ -3140,6 +3195,66 @@ function App() {
   }, [mapTaken, trailIndex, bbox, mileAnchors])
 
   /**
+   * Today's walk, end to end - the domain #1045 asks the ribbon to prefer over
+   * its ten-mile sliding window, in whichever of the two shapes today is.
+   *
+   * A FOLLOWED DAY HIKE WINS EVEN WHEN IT CANNOT BE DRAWN, and that is the
+   * half of #1045 that is a bug fix. Returning `{samples: null}` rather than
+   * null tells lib/ribbonView.ts "the hiker is on a walk this phone has no
+   * shape for", which suppresses the A.T. fix window; returning null would say
+   * "the hiker is on no walk" and let the A.T.'s ten miles draw under a header
+   * about a Harriman loop. The A.T. runs through those same woods, so
+   * `fix.mile` there is a real number and the wrong picture was a plausible
+   * one.
+   *
+   * The trip half needs no new data: `lib/plan.ts` already computes today camp
+   * to camp on the pipeline axis, which is the axis the published profile is
+   * measured on. A zero day is not a walk and yields null - the ribbon falls
+   * back to whatever it showed before, because there is nothing about today
+   * for it to be wrong about.
+   */
+  const todaysWalk = useMemo<TodaysWalk | null>(() => {
+    if (followingHike !== null) {
+      const graph = dayHikeIndex ?? graphIndex
+      const samples =
+        followResolution === null || graph === null || graphProfile === null
+          ? null
+          : walkProfile(graph.graph, dayHikeWalk(graph, followResolution), graphProfile)
+      return {
+        kind: 'route',
+        samples,
+        // The same accumulation the header prints and the turn list counts
+        // down - lib/dayHikeWalk.ts's `beforeMetres`, read through
+        // lib/dayHikeFollow.ts - so the rule under the ribbon lands on the
+        // number written above it. Off-route the hiker's own miles are still
+        // the best answer this phone has about where along the walk they are.
+        alongMi:
+          followState === null
+            ? null
+            : followState.kind === 'on-route'
+              ? followState.walkedMi
+              : followState.nearest.walkedMi,
+      }
+    }
+
+    if (plan === null) return null
+    const today = currentDayIndex(plan)
+    if (today === null) return null
+    const from = plan.stops[today]
+    const to = plan.stops[today + 1]
+    if (from === undefined || to === undefined || from.mile === to.mile) return null
+    return { kind: 'trail', domain: { startMile: from.mile, endMile: to.mile } }
+  }, [
+    followingHike,
+    followResolution,
+    followState,
+    dayHikeIndex,
+    graphIndex,
+    graphProfile,
+    plan,
+  ])
+
+  /**
    * The one ribbon the phone draws, whichever of the four it turns out to be
    * (lib/ribbonView.ts holds the precedence and the reasoning).
    *
@@ -3155,6 +3270,7 @@ function App() {
     () =>
       ribbonView({
         profile: elevation,
+        todaysWalk,
         planStretch: draftStretch,
         mapStretch,
         fixClientMile: fix?.mile ?? null,
@@ -3162,7 +3278,16 @@ function App() {
         fixWindow,
         ...(direction?.direction === undefined ? {} : { direction: direction.direction }),
       }),
-    [elevation, draftStretch, mapStretch, fix, gpsPlanMile, fixWindow, direction],
+    [
+      elevation,
+      todaysWalk,
+      draftStretch,
+      mapStretch,
+      fix,
+      gpsPlanMile,
+      fixWindow,
+      direction,
+    ],
   )
 
   /**

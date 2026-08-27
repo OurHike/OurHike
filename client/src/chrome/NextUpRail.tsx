@@ -50,6 +50,10 @@ export function railHeading(
   if (subject === 'ahead') return direction === undefined ? 'NEARBY' : 'NEXT UP'
   if (subject === 'planned-stretch') return 'ON THIS STRETCH'
   if (subject === 'map-view') return 'IN VIEW'
+  // Only ever a TRIP day reaches this - lib/ribbonView.ts drops the lanes
+  // entirely for a followed day hike, whose miles are not the miles any POI
+  // in this app carries.
+  if (subject === 'todays-walk') return "ON TODAY'S WALK"
   return 'ON THE TRAIL'
 }
 

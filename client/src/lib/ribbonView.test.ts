@@ -48,6 +48,7 @@ function atLengthProfile(): ElevationProfile {
 function inputs(over: Partial<RibbonInputs> = {}): RibbonInputs {
   return {
     profile: longProfile(),
+    todaysWalk: null,
     planStretch: null,
     mapStretch: null,
     fixClientMile: null,
@@ -114,6 +115,154 @@ describe('ribbonView precedence', () => {
 
     expect(view?.source).toBe('planned-stretch')
     expect(view?.domain.startMile).toBeCloseTo(10, 2)
+  })
+})
+
+describe("today's walk (#1045)", () => {
+  const WALK = [
+    { mile: 0, elevationFt: 900 },
+    { mile: 1.5, elevationFt: 1400 },
+    { mile: 3, elevationFt: 950 },
+  ]
+
+  it('draws a followed day hike on its own axis, not on the A.T.’s', () => {
+    const profile = longProfile()
+    const view = ribbonView(
+      inputs({
+        profile,
+        todaysWalk: { kind: 'route', samples: WALK, alongMi: 1.2 },
+        fixClientMile: 39,
+        fixWindow: ribbonWindow(profile, 39, 'NOBO'),
+      }),
+    )
+
+    expect(view?.source).toBe('todays-walk')
+    expect(view?.domain).toEqual({ startMile: 0, endMile: 3 })
+    expect(view?.currentMile).toBe(1.2)
+    expect(view?.samples).toEqual(WALK)
+  })
+
+  it('draws nothing at all when the followed walk has no shape to draw', () => {
+    // THE BUG #1045 CALLS A BUG. The A.T. runs through the same woods as a
+    // Harriman loop, so `fix.mile` is a real number while somebody walks that
+    // loop - and before this the ribbon fell through to the A.T.'s ten-mile
+    // window and captioned it "ahead". A picture of a different walk, on the
+    // band a hiker reads to judge daylight. #1041 chose "no ribbon at all" as
+    // the honest state and this is what keeps that promise.
+    const profile = longProfile()
+    const view = ribbonView(
+      inputs({
+        profile,
+        todaysWalk: { kind: 'route', samples: null, alongMi: 1.2 },
+        fixClientMile: 39,
+        fixWindow: ribbonWindow(profile, 39, 'NOBO'),
+      }),
+    )
+
+    expect(view).toBeUndefined()
+  })
+
+  it('needs no A.T. profile to draw a day hike', () => {
+    // The samples came off the walk's own edges. A phone whose download
+    // carries no elevation_profile.json can still draw a Harriman loop.
+    const view = ribbonView(
+      inputs({
+        profile: null,
+        todaysWalk: { kind: 'route', samples: WALK, alongMi: null },
+      }),
+    )
+
+    expect(view?.source).toBe('todays-walk')
+    expect(view?.currentMile).toBeNull()
+  })
+
+  it('draws a trip day camp to camp instead of the ten-mile window', () => {
+    const profile = longProfile()
+    const view = ribbonView(
+      inputs({
+        profile,
+        todaysWalk: { kind: 'trail', domain: { startMile: 35, endMile: 52 } },
+        fixClientMile: 39,
+        fixPlanMile: 39,
+        fixWindow: ribbonWindow(profile, 39, 'NOBO'),
+      }),
+    )
+
+    // The window's edges are arbitrary and can hide the climb that decides
+    // whether somebody makes the shelter before dark; the day's own ends
+    // cannot.
+    expect(view?.source).toBe('todays-walk')
+    expect(view?.domain).toEqual({ startMile: 35, endMile: 52 })
+    expect(view?.currentMile).toBe(39)
+  })
+
+  it('still yields to a route being planned and to a map the hiker took', () => {
+    const profile = longProfile()
+    const today = { kind: 'trail' as const, domain: { startMile: 35, endMile: 52 } }
+
+    expect(
+      ribbonView(
+        inputs({
+          profile,
+          todaysWalk: today,
+          mapStretch: { startMile: 70, endMile: 80 },
+        }),
+      )?.source,
+    ).toBe('map-view')
+    expect(
+      ribbonView(
+        inputs({
+          profile,
+          todaysWalk: today,
+          planStretch: { startMile: 10, endMile: 30 },
+        }),
+      )?.source,
+    ).toBe('planned-stretch')
+  })
+
+  it('falls back to the fix window on a trip day it cannot draw, and never on a day hike', () => {
+    // The one asymmetry in this module. `ahead` under a trip is a different
+    // window of the hiker's OWN trail, correctly labelled - honest if less
+    // useful. Under a day hike it is different ground entirely.
+    const profile = longProfile()
+    const fixWindow = ribbonWindow(profile, 39, 'NOBO')
+
+    const trip = ribbonView(
+      inputs({
+        profile,
+        todaysWalk: { kind: 'trail', domain: { startMile: 200, endMile: 200 } },
+        fixClientMile: 39,
+        fixWindow,
+      }),
+    )
+    expect(trip?.source).toBe('ahead')
+
+    const hike = ribbonView(
+      inputs({
+        profile,
+        todaysWalk: { kind: 'route', samples: [WALK[0]], alongMi: null },
+        fixClientMile: 39,
+        fixWindow,
+      }),
+    )
+    expect(hike).toBeUndefined()
+  })
+
+  it('carries no climb callout, because the callout is about the A.T.', () => {
+    const profile = longProfile()
+    const view = ribbonView(
+      inputs({
+        profile,
+        todaysWalk: { kind: 'trail', domain: { startMile: 38, endMile: 48 } },
+        fixClientMile: 39,
+        fixPlanMile: 39,
+        fixWindow: ribbonWindow(profile, 39, 'NOBO'),
+        direction: 'NOBO',
+      }),
+    )
+
+    expect(view?.source).toBe('todays-walk')
+    expect(view?.upcomingClimb).toBeUndefined()
   })
 })
 
@@ -314,6 +463,37 @@ describe('ribbonLanes', () => {
     const view = ribbonView(inputs({ planStretch: { startMile: 10, endMile: 30 } }))
 
     expect(ribbonLanes(view, both([shelter('a'), shelter('b')]))).toBeUndefined()
+  })
+
+  it('refuses on a ribbon measured with the walk’s own ruler (#1045)', () => {
+    // A followed day hike's "mile 2" is a place in Harriman. Every POI this
+    // app holds carries a mile on the A.T. centerline, so lanes here would
+    // pin the shelters at A.T. mile 2 - in Georgia - under a Harriman loop.
+    // Nothing about the picture would look wrong.
+    const walk = ribbonView(
+      inputs({
+        todaysWalk: {
+          kind: 'route',
+          samples: [
+            { mile: 0, elevationFt: 900 },
+            { mile: 3, elevationFt: 1200 },
+          ],
+          alongMi: null,
+        },
+      }),
+    )
+
+    expect(walk?.source).toBe('todays-walk')
+    expect(ribbonLanes(walk, both([shelter('georgia', 2)]))).toBeUndefined()
+  })
+
+  it('keeps them on a TRIP day, which is measured with the same ruler as the POIs', () => {
+    const trip = ribbonView(
+      inputs({ todaysWalk: { kind: 'trail', domain: { startMile: 10, endMile: 25 } } }),
+    )
+
+    expect(trip?.source).toBe('todays-walk')
+    expect(ribbonLanes(trip, both([shelter('on-today', 18)]))?.points).toHaveLength(1)
   })
 
   it('refuses without a ribbon to sit under', () => {

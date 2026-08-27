@@ -5120,6 +5120,11 @@ function App() {
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
       onStartReport={() => setReporting({ step: 'window' })}
+      // A thanks goes straight to its form rather than through the window: it
+      // is not a problem, and the window is a list of problems
+      // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
+      // splitting it out of one.
+      onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
       // ONLY WHAT IS STILL AHEAD (#982, the maintainer's decision of
       // 2026-08-27: "Today shouldn't have other day hikes. I think the
       // previous hikes need to live on a different screen"). Today is the day

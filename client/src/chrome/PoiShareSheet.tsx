@@ -12,6 +12,16 @@
 // containing block for fixed descendants). The portal is the smallest
 // honest exit; the sheet still behaves as the card's own dialog.
 //
+// The exit stops at the map screen's root, not document.body (#1081). The
+// card's transform is the box being escaped, and the screen root escapes it
+// just as well - untransformed, so position:fixed still resolves against
+// the viewport - while staying inside the subtree App.tsx hides and inerts
+// when another screen covers the held map. A body portal floated this
+// sheet, primary action and all, fully interactive over Settings the
+// moment a tab switch hid the map underneath it. `document.body` remains
+// the fallback for a caller that passes no container, which keeps the
+// sheet's own tests rendering it bare.
+//
 // What this sheet never becomes (#577): no "share all", no default-on
 // toggle, no count of anything. It appears when the hiker taps Share on
 // their own photo, and declining is one tap that is never mentioned again.
@@ -48,6 +58,11 @@ export interface PoiShareSheetProps {
    *  could not run, indistinguishably (see lib/photoScreen.ts). */
   onShare: (flagged: 'nudity' | 'faces' | null) => void
   onClose: () => void
+  /** Where the portal lands - the map screen's root in the app, so the
+   *  sheet hides and inerts with the held map (see the header). Null while
+   *  that ref has not attached, and absent in bare test renders; both fall
+   *  back to document.body. */
+  container?: HTMLElement | null
 }
 
 /** "One face" / "Two faces" / "11 faces" - the mockup's headline counts in
@@ -82,6 +97,7 @@ export function PoiShareSheet({
   poiName,
   onShare,
   onClose,
+  container,
 }: PoiShareSheetProps) {
   // The two identity facts the sheet's sentences turn on, read from the
   // device's own preferences: who the credit names, and whether the
@@ -338,5 +354,5 @@ export function PoiShareSheet({
     </div>
   )
 
-  return createPortal(sheet, document.body)
+  return createPortal(sheet, container ?? document.body)
 }

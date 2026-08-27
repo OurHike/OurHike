@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ATC_NOTICE_CASING_WIDTH,
+  ATC_NOTICE_FILL_RADIUS,
   ATC_UPDATE_CASING_LAYER_ID,
-  ATC_UPDATE_CASING_WIDTH,
-  ATC_UPDATE_HALO_LAYER_ID,
-  ATC_UPDATE_HALO_RADIUS,
   ATC_UPDATE_LAYER_ID,
-  ATC_UPDATE_POINT_DIAMETER,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
   ATC_UPDATE_POINT_ZOOM_STOPS,
@@ -140,28 +138,33 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
     expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeLessThan(WARNING_PIN.sizePx)
   })
 
-  it('declares a radius that leaves room for its own casing', () => {
-    // The derivation, held so the two cannot drift apart: what MapLibre is
-    // told, plus the stroke it puts outside that, is the width above.
-    expect(ATC_UPDATE_POINT_DIAMETER + ATC_UPDATE_CASING_WIDTH * 2).toBe(
-      ATC_UPDATE_POINT_DRAWN_WIDTH,
+  it('reaches its full width with its own casing inside it', () => {
+    // The derivation, held so the two cannot drift apart: the red plus the
+    // hairline round it is the drawn width above. It used to read the other way
+    // - MapLibre puts `circle-stroke-width` OUTSIDE the radius, so a dot
+    // declared at 40 covered 44 and tied the warning pin it was meant to stay
+    // under. The burst is rasterised rather than stroked, so the edge is inside
+    // the number by construction; this holds that it stayed that way.
+    expect(ATC_NOTICE_FILL_RADIUS + ATC_NOTICE_CASING_WIDTH).toBe(
+      ATC_UPDATE_POINT_DRAWN_WIDTH / 2,
     )
   })
 
-  it('carries a glow that reaches past every one of them', () => {
-    // Size alone is what a hiker sees once they are already looking at that
-    // part of the screen. The glow is for the rest of the time - and it is
-    // where the ATC notice does end up the widest mark on the map, in the one
-    // form that cannot hide anything: an edgeless gradient fading to zero.
-    expect(ATC_UPDATE_HALO_RADIUS * 2).toBeGreaterThan(WARNING_PIN.sizePx)
-    expect(ATC_UPDATE_HALO_RADIUS * 2).toBeGreaterThan(POI_PIN_SIZE)
-  })
-
-  it('keeps the glow tighter than the dot is wide, so it reads as a rim', () => {
-    // The other half of the first pass being too big: at scale 2 the glow was
-    // a 96px circle of red per notice, most of a phone's width for one mile
-    // marker. The dot says where; the glow only says look.
-    expect(ATC_UPDATE_HALO_RADIUS).toBeLessThan(ATC_UPDATE_POINT_DRAWN_WIDTH)
+  it('no longer buys any of that with a glow', () => {
+    // WHAT #1071 GAVE UP, asserted rather than left as an absence in a diff.
+    // The glow reached past every pin on the map and was the one form in which
+    // this notice could be the widest mark without hiding anything. It is gone,
+    // because a 54px wash of red behind an open burst is the solid disc back
+    // again - so every claim this file makes about prominence now rests on
+    // size, draw order and shape alone.
+    //
+    // @unvalidated Nobody has watched a hiker find one of these on a phone in
+    // sun. lib/atcUpdateStyle.ts carries the trade in full and what would
+    // settle it; if the answer comes back wrong, the glow returns on a zoom
+    // ramp rather than at one strength.
+    for (const sheet of SHEETS) {
+      expect(drawOrder(sheet).some((id) => id.includes('halo'))).toBe(false)
+    }
   })
 })
 
@@ -182,8 +185,7 @@ describe('and nothing on the map is drawn over it', () => {
     // the same array - a new one appended rather than inserted would cover
     // exactly the mark this whole file is about.
     for (const sheet of SHEETS) {
-      expect(drawOrder(sheet).slice(-4)).toEqual([
-        ATC_UPDATE_HALO_LAYER_ID,
+      expect(drawOrder(sheet).slice(-3)).toEqual([
         ATC_UPDATE_CASING_LAYER_ID,
         ATC_UPDATE_LAYER_ID,
         ATC_UPDATE_POINT_LAYER_ID,

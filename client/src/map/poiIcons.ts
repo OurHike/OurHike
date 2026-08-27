@@ -533,7 +533,12 @@ function rimHasInk(dx: number, dy: number, confidence: PoiConfidence): boolean {
   return Math.floor(turns * RIM_DASHES * 2) % 2 === 0
 }
 
-function parseHex(hex: string): readonly [number, number, number] {
+/** `#rrggbb` to a channel triple.
+ *
+ *  Exported for map/atcNoticeMark.ts, which rasterises a shape this module's
+ *  scanline path cannot draw (a burst is polar, not a polygon) but which has to
+ *  put down exactly the same bytes for the same hex string. */
+export function parseHex(hex: string): readonly [number, number, number] {
   const value = Number.parseInt(hex.slice(1), 16)
   return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
 }

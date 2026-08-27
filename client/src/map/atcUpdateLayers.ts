@@ -32,7 +32,13 @@ import type {
   MapMouseEvent,
   PointLike,
 } from 'maplibre-gl'
-import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
+import {
+  ATC_NOTICE_ICON_ID,
+  ATC_UPDATE_LAYER_ID,
+  ATC_UPDATE_POINT_LAYER_ID,
+} from '../lib/atcUpdateStyle'
+import { buildAtcNoticeIcon } from './atcNoticeMark'
+import { POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { atcBandId, type AtcUpdate } from '../lib/atcUpdates'
 import { trailPointAtMile, type TrailIndex } from '../lib/trailPosition'
 import { closureFeatureCollection, type ClosureBand } from './closureLayers'
@@ -123,6 +129,35 @@ export function attachAtcUpdateData(
       source.setData(atcFeatureCollection(bands, points) as never)
     },
     'ATC update bands',
+  )
+}
+
+/**
+ * Registers the point-notice image on a live map, and returns a detach.
+ *
+ * THE COST THIS FILE'S HEADER WARNED ABOUT, now paid (#1071). lib/atcUpdateStyle.ts
+ * argued for a circle precisely to avoid this - "an icon is an image to register
+ * and a sprite to keep in step, and both are failure modes" - and the argument
+ * was sound while a circle could draw the mark. It cannot draw a mark with a
+ * hole in it, and the hole is the fix.
+ *
+ * So the failure mode is real and is handled the way map/warningLayers.ts
+ * handles its own: wait for the layer to exist, which is the condition
+ * `addImage` actually requires, and never re-add - images outlive a style
+ * reload and adding one twice throws.
+ */
+export function attachAtcNoticeIcon(map: MapLibreMap): () => void {
+  return whenStyleReady(
+    map,
+    () => map.getLayer(ATC_UPDATE_POINT_LAYER_ID) !== undefined,
+    () => {
+      if (!map.hasImage(ATC_NOTICE_ICON_ID)) {
+        map.addImage(ATC_NOTICE_ICON_ID, buildAtcNoticeIcon(), {
+          pixelRatio: POI_PIN_PIXEL_RATIO,
+        })
+      }
+    },
+    'ATC notice mark image',
   )
 }
 

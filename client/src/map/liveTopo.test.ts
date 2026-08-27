@@ -53,7 +53,6 @@ import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
-  ATC_UPDATE_HALO_LAYER_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
@@ -275,7 +274,7 @@ describe('the live topographic background', () => {
     // SYMBOL layers, not all of them, and the distinction is the whole
     // mechanism rather than a narrowing of the test. Placement only ever ranks
     // symbols against symbols - a `circle` or a `line` takes no part in it, so
-    // the ATC's dots and bands sit above these two in the style (that is
+    // the ATC's bands sit above these two in the style (that is
     // src/test/atcAlertProminence.test.ts's subject) and cannot suppress a
     // water pin no matter where they are drawn. Asserting on the raw tail
     // would say the opposite: that appending any non-symbol layer costs the
@@ -285,7 +284,7 @@ describe('the live topographic background', () => {
       .layers.filter((layer) => layer.type === 'symbol')
       .map((layer) => layer.id)
 
-    expect(symbols.slice(-4)).toEqual([
+    expect(symbols.slice(-5)).toEqual([
       POI_LAYER_ID,
       // The dispute mark (#876) sits directly on the pin it annotates, so it
       // joins this group between the waypoints and the workdays. It never
@@ -295,6 +294,15 @@ describe('the live topographic background', () => {
       DISPUTE_LAYER_ID,
       WORKDAY_LAYER_ID,
       WARNING_LAYER_ID,
+      // AND THE ATC'S POINT NOTICE, which joined this list rather than being
+      // added to it (#1071). It was a `circle` and took no part in placement at
+      // all; drawing the burst needs an image, so it is a symbol now and it
+      // ranks against these four. Last, which is the only place it may be: it
+      // already sits over every one of them in the style, and a notice that
+      // could be decluttered away by a workday pin would be a notice nobody was
+      // shown. `icon-allow-overlap` is the belt to this braces - the layer
+      // cannot be suppressed even if a later edit moved it up this list.
+      ATC_UPDATE_POINT_LAYER_ID,
     ])
   })
 
@@ -718,7 +726,6 @@ describe('the offline-only background', () => {
       // organisation that maintains it, underneath OurHike's own pin for that
       // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
       // holds that ordering as a property; this case only has to agree with it.
-      ATC_UPDATE_HALO_LAYER_ID,
       ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       // And the dots, which is what most ATC notices actually are - five of

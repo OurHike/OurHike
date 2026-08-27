@@ -41,6 +41,7 @@ import { loadMapEngine, loadedMapEngine } from './mapEngineLoader'
 import type { ResolvedTheme } from '../lib/theme'
 import { attachPoiData, attachPoiFilter, attachPoiIcons } from './poiLayers'
 import {
+  attachAtcNoticeIcon,
   attachAtcUpdateData,
   attachAtcUpdateTaps,
   type AtcUpdatePoint,
@@ -767,6 +768,16 @@ export function MapView({
   useEffect(() => {
     if (map === null) return
     return attachWarningIcon(map)
+  }, [map])
+
+  // The ATC point-notice mark, on the same reasoning as the warning pin above
+  // and NOT gated on there being any notices (#1071). The image is one 80px
+  // rasterise whatever arrives, and a mark registered only once data lands
+  // would leave the first render of a notice drawing nothing at all - which is
+  // the one failure this layer must never have.
+  useEffect(() => {
+    if (map === null) return
+    return attachAtcNoticeIcon(map)
   }, [map])
 
   useEffect(() => {

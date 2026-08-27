@@ -295,9 +295,10 @@ describe('the images themselves', () => {
   })
 
   it('draws a POI type it has never heard of rather than nothing at all', () => {
-    // A category added upstream should reach the map as a neutral pin, the
-    // same call waypointLanes.ts makes when it drops an unknown type into the
-    // ELSE lane. Silently drawing nothing would hide real data behind a client
+    // A category added upstream should reach the map as a neutral pin - the
+    // call the waypoint lanes used to make for an unknown type, kept after
+    // #1054 deleted waypointLanes.ts and turned the lanes into the next-up
+    // rail. Silently drawing nothing would hide real data behind a client
     // release.
     const unknown = buildPoiIcon('yurt', 'high')
 

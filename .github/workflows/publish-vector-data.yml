@@ -39,8 +39,13 @@ on:
         type: choice
         options: [ua, production, dev]
         default: ua
+      # ~40 min for the three, MEASURED on run #63 (2026-08-27, the run that
+      # first published the per-edge profile): tiles 27s, the A.T. profile
+      # 6m33s, the per-edge climb 16m22s, the per-edge profile 16m24s. The
+      # figure here said ~25 min for two artifacts and was correct for those
+      # two - #1045 added the third and this is the whole cost now.
       include_elevation:
-        description: "Also sample elevation: the A.T. profile behind the ribbon, and the per-edge climb a day hike is priced from (~25 min). Untick and both stay at the last elevation run's."
+        description: "Also sample elevation: the A.T. profile behind the ribbon, the per-edge climb a day hike is priced from, and the per-edge profile a followed walk's ribbon is drawn from (~40 min). Untick and all three stay at the last elevation run's."
         type: boolean
         default: false
       include_photos:

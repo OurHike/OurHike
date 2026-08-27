@@ -89,9 +89,12 @@ export const POI_COLORS: Record<PoiType, string> = {
  * For a POI type this build has never heard of.
  *
  * A later import adding a category should put a neutral pin on the map rather
- * than nothing at all - the same call lib/waypointLanes.ts makes when it drops
- * an unrecognised type into the ELSE lane. Silently not drawing it would hide
- * real data behind a client release.
+ * than nothing at all. The same call the waypoint lanes USED to make when they
+ * dropped an unrecognised type into the ELSE lane - `lib/waypointLanes.ts` was
+ * deleted by #1054 when the lanes became chrome/NextUpRail.tsx's cards, and the
+ * rail keeps the behaviour (an unknown type falls back to its own label rather
+ * than vanishing). The reasoning is what carried over; the file did not.
+ * Silently not drawing it would hide real data behind a client release.
  */
 export const POI_FALLBACK_COLOR = '#5a5346'
 

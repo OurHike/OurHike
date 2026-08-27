@@ -148,6 +148,38 @@ const STEWARDS = {
   ],
 }
 
+/**
+ * A hike saved by an earlier session: ends mid-first-edge and mid-second-edge
+ * of Pine Meadow, walking through the Seven Hills junction. The cached
+ * figures are deliberately stale (7 miles) - a card that opens must
+ * re-resolve against the live graph rather than print the cache
+ * (lib/dayHikes.ts's provenance rule).
+ */
+const SAVED_HIKE = {
+  id: 'saved-1',
+  name: 'Pine Meadow out and back',
+  date: '2026-08-29',
+  segments: [
+    [
+      { coord: [-74.095, 41.25], poiId: null },
+      { coord: [-74.085, 41.25], poiId: null },
+    ],
+  ],
+  figures: {
+    miles: 7,
+    legs: [
+      {
+        name: 'Pine Meadow Trail',
+        source: 'oprhp_trails',
+        blaze_color: 'blue',
+        miles: 7,
+      },
+    ],
+  },
+  looped: false,
+  recorded: 'planned',
+}
+
 async function hashOf(body: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
@@ -350,12 +382,27 @@ describe('the day-hike builder, end to end', () => {
     await user.click(await screen.findByRole('button', { name: /A day hike/ }))
     const map = await liveMap()
 
-    // ~5 km north of anything routable.
-    await tap(map, -74.095, 41.3)
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      /only builds routes on trails an organization maintains/,
-    )
+    // ~5 km north of anything routable - tapped until the graph can answer.
+    //
+    // `liveMap()` proves the canvas is up and listening, which is NOT the
+    // same as the LINES having landed: until the geometry artifact is
+    // applied, `canSnapToGraph` is false and every tap comes back
+    // NETWORK_STILL_ARRIVING - the other sentence, and the one the test below
+    // is about. Nothing in the DOM tells the two states apart before a tap
+    // lands (the bar reads `empty` either way), so the wait is the app's own
+    // instruction carried out: tap, and tap again while the answer is still
+    // "try again in a moment".
+    //
+    // Safe to repeat precisely because a refusal leaves the points untouched
+    // (lib/dayHikeDraft.ts), which is what the last assertion here checks.
+    // Measured on a clean tree before this wait existed: 2 failures in 6 runs
+    // of the file, 0 in 6 after (2026-08-27, this container).
+    await waitFor(async () => {
+      await tap(map, -74.095, 41.3)
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        /only builds routes on trails an organization maintains/,
+      )
+    })
     // Placed nothing: still no route total on the bar.
     expect(screen.queryByText(/leg ·/)).not.toBeInTheDocument()
   })
@@ -440,39 +487,7 @@ describe('the day-hike builder, end to end', () => {
     app.store.set('ourhike:stewards', STEWARDS)
     await serveGraph()
 
-    // A hike saved by an earlier session: ends mid-first-edge and
-    // mid-second-edge of Pine Meadow, walking through the Seven Hills
-    // junction. Cached figures deliberately stale (7 miles) - the card must
-    // re-derive against the live graph, not print the cache.
-    app.store.set(DAY_HIKES_KEY, {
-      hikes: [
-        {
-          id: 'saved-1',
-          name: 'Pine Meadow out and back',
-          date: '2026-08-29',
-          segments: [
-            [
-              { coord: [-74.095, 41.25], poiId: null },
-              { coord: [-74.085, 41.25], poiId: null },
-            ],
-          ],
-          figures: {
-            miles: 7,
-            legs: [
-              {
-                name: 'Pine Meadow Trail',
-                source: 'oprhp_trails',
-                blaze_color: 'blue',
-                miles: 7,
-              },
-            ],
-          },
-          looped: false,
-          recorded: 'planned',
-        },
-      ],
-      openId: null,
-    })
+    app.store.set(DAY_HIKES_KEY, { hikes: [SAVED_HIKE], openId: null })
 
     render(<App />)
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
@@ -492,8 +507,10 @@ describe('the day-hike builder, end to end', () => {
     expect(within(card).getByText('If you need to get off')).toBeInTheDocument()
     expect(within(card).getByText(/Seven Hills Trail \(white\)/)).toBeInTheDocument()
     expect(within(card).queryByText(/7\.0 mi/)).not.toBeInTheDocument()
-    // The steward join reaches the card too - names, never raw keys.
-    expect(within(card).getByText('NYS Parks')).toBeInTheDocument()
+    // No organization on the rows since #1112, in either spelling - not the
+    // steward join's name and not the raw key it falls back to. The card
+    // still credits by count, and screens/DayHikeCard.test.tsx holds that.
+    expect(within(card).queryByText('NYS Parks')).not.toBeInTheDocument()
     expect(
       within(card).queryByText(/oprhp_trails|nynjtc_long_path/),
     ).not.toBeInTheDocument()
@@ -530,6 +547,86 @@ describe('the day-hike builder, end to end', () => {
     })
     const stored = app.store.get(DAY_HIKES_KEY) as { hikes: unknown[] }
     expect(stored.hikes).toHaveLength(0)
+  })
+
+  it('opens a saved hike’s card from the Today tab, where the shelf also lives', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+    app.store.set(DAY_HIKES_KEY, { hikes: [SAVED_HIKE], openId: null })
+
+    // No tab click: Today is the tab the app opens on, and the shelf is on
+    // it - the row a hiker meets first is the one this test taps.
+    render(<App />)
+    expect(await screen.findByText('Your day hikes')).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+
+    // The same card the Plan home opens, resolved against the live graph -
+    // the row promised details, and details are what a tap has to produce.
+    const card = await screen.findByRole('dialog', {
+      name: 'Pine Meadow out and back',
+    })
+    expect(await within(card).findByText(/0\.5 mi · 1 leg\b/)).toBeInTheDocument()
+    expect(within(card).getByText('If you need to get off')).toBeInTheDocument()
+    expect(within(card).queryByText(/7\.0 mi/)).not.toBeInTheDocument()
+
+    // And the tab bar is still underneath it: the card is a sheet over the
+    // journal, not a screen that replaces it.
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+
+    // Closing puts the pointer away rather than leaving it set - a stored
+    // openId nothing renders is how this bug looked from the store.
+    await user.click(within(card).getByRole('button', { name: 'Close the day hike' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
+      ).not.toBeInTheDocument()
+    })
+    expect((app.store.get(DAY_HIKES_KEY) as { openId: string | null }).openId).toBeNull()
+  })
+
+  it('opens it in the journal column when Today reads beside the map (#1054)', async () => {
+    // The desktop's Today: the shell stands the Today branch aside and docks
+    // the journal into MapScreen, so the phone's fix reaches none of it. The
+    // shelf is the same shelf and the tap has to land the same way.
+    //
+    // Matched on the query rather than answering true to everything, for
+    // App.test.tsx's reason: this shell also asks matchMedia whether it is
+    // standalone and whether the pointer is fine.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query.includes('min-width: 900px'),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    )
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+    app.store.set(DAY_HIKES_KEY, { hikes: [SAVED_HIKE], openId: null })
+
+    render(<App />)
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+
+    const card = await screen.findByRole('dialog', {
+      name: 'Pine Meadow out and back',
+    })
+    expect(await within(card).findByText(/0\.5 mi · 1 leg\b/)).toBeInTheDocument()
+
+    // In the column the row was tapped in, not over the map beside it: the
+    // map's own sheet slot belongs to the builders and the trailhead door,
+    // and desktop.css anchors this column so `bottom: 0` is its own edge.
+    expect(card.closest('.map-screen__journal')).not.toBeNull()
   })
 
   it('closes the day hike when a route-builder door opens over it (#997)', async () => {

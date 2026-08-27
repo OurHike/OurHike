@@ -243,6 +243,14 @@
     overflow-y: auto;
     background: var(--bg-page);
     border-right: 1px solid var(--border-1);
+    /* The containing block for the day-hike card the shell docks in here
+       beside the journal (`.day-hike-card` is an absolute box at
+       `bottom: 0`). Without it that box belongs to the nearest positioned
+       ancestor out in MapScreen, which is the wrong column and, on a screen
+       taller than the card, the wrong edge - the same anchoring rule
+       App.css's `.app__screen > :first-child` states for the phone, and
+       hiddenInputContainment.test.ts for the pickers. */
+    position: relative;
   }
 
   /* The journal re-inked for this room. On a phone the Today header is a

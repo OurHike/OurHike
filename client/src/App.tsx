@@ -36,7 +36,7 @@
 // so that step ends the flow the way it already ended, with the report
 // queued.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
 import type { PoiDetail } from './chrome/PoiCard'
@@ -851,6 +851,41 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
+
+  /**
+   * Whether this session has ever needed the map, because the map is built at
+   * most once per session (#1081). v1.0.0 kept one map for a whole session by
+   * making it the home tab; #1054 moved the home to Today, and the map -
+   * unmounted by every tab branch that renders without it - was being torn
+   * down and rebuilt on every return. One data-loaded build is 2,353 ms of
+   * blocking work on the throttled-phone profile (App.loadBudget.test.tsx's
+   * measurement), which is the "extremely slow after downloading the data"
+   * of the report behind #1081: the build is cheap on an empty phone and
+   * multi-second once the sheet and the trail release are on it.
+   *
+   * So the shell remembers that the map was wanted - the first-run backdrop
+   * counts, which is what lets the map built behind the entry steps survive
+   * into the session instead of being thrown away on the way to Today - and
+   * after that the bottom of this component keeps it mounted, hidden and
+   * inert, underneath whichever tab screen is up. Phones only ever set this
+   * through that first need; a desktop renders the map from launch and the
+   * latch is simply always on.
+   *
+   * What is deliberately NOT changed: a launch that stays on Today still
+   * builds no map at all (the latch starts false), so the entry budget that
+   * test enforces is untouched.
+   */
+  // `entering` counts only once the preferences have actually been read:
+  // before that it is true on EVERY launch (the comment above), nothing is
+  // rendered - `preferencesLoaded` gates the whole tree below - and a latch
+  // set during that window would mount a map on a returning hiker's Today,
+  // which is exactly the launch the budget test keeps free.
+  const [mapKept, setMapKept] = useState(false)
+  const mapNeededNow = (entering && preferencesLoaded) || isDesktop || activeTab === 'map'
+  useEffect(() => {
+    if (mapNeededNow) setMapKept(true)
+  }, [mapNeededNow])
+  const mapMounted = mapNeededNow || mapKept
 
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
@@ -4479,36 +4514,41 @@ function App() {
   // default names. The Today branch is also skipped on a desktop, where the
   // journal reads beside the map instead of replacing it - the map branch
   // at the bottom of this component docks `todayScreen` there.
+  //
+  // These are screens OVER the held map rather than early returns instead of
+  // it (#1081): each renders as `overlayScreen` in the one return at the
+  // bottom, with the map - if this session has built one - kept mounted and
+  // hidden underneath, so coming back to the Map tab shows the map that is
+  // already there instead of paying for a new one. The screens themselves
+  // still mount and unmount exactly as they did as returns, which is what
+  // More's boundary comment below relies on (#175).
+  let overlayScreen: ReactNode = null
   if (!entering && activeTab === 'today' && !isDesktop) {
-    return (
-      <>
-        <div className="app__screen">
-          <div>
-            {/* Its own boundary like More's and Plan's, for their shared
-                reason: a throw here must not cost the map, and the tab bar
-                underneath is the way back. */}
-            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              {todayScreen}
-            </ErrorBoundary>
-          </div>
-          <TabBar
-            active={activeTab}
-            onSelect={setActiveTab}
-            modeSwitch={sidebarModeSwitch}
-          />
+    overlayScreen = (
+      <div className="app__screen">
+        <div>
+          {/* Its own boundary like More's and Plan's, for their shared
+              reason: a throw here must not cost the map, and the tab bar
+              underneath is the way back. */}
+          <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
+            {todayScreen}
+          </ErrorBoundary>
         </div>
-        {downloadsWindow}
-      </>
+        <TabBar
+          active={activeTab}
+          onSelect={setActiveTab}
+          modeSwitch={sidebarModeSwitch}
+        />
+      </div>
     )
-  }
-  if (!entering && activeTab === 'more') {
+  } else if (!entering && activeTab === 'more') {
     // Its own boundary for the same reason the map has one, with the roles
     // reversed: a throw anywhere in Settings used to escape to the ROOT
     // boundary, which has no tab bar and no reset - one bad stored value
     // rendering More was a permanently dead app. Caught here, the tab bar
     // survives underneath and the map stays one tap away, which is the only
     // recovery that matters on a trail.
-    return (
+    overlayScreen = (
       <>
         <div className="app__screen">
           <div>
@@ -4609,13 +4649,10 @@ function App() {
             modeSwitch={sidebarModeSwitch}
           />
         </div>
-        {downloadsWindow}
       </>
     )
-  }
-
-  if (!entering && activeTab === 'plan') {
-    return (
+  } else if (!entering && activeTab === 'plan') {
+    overlayScreen = (
       <>
         <div className="app__screen">
           <div>
@@ -4767,7 +4804,6 @@ function App() {
             modeSwitch={sidebarModeSwitch}
           />
         </div>
-        {downloadsWindow}
       </>
     )
   }
@@ -4783,332 +4819,354 @@ function App() {
   // thing that can put a map back on a phone that has none, so it has to
   // survive the map falling over - and it is already open, over the failure,
   // whenever the map threw while someone was in it.
+  //
+  // The wrapper is #1081's other half. With a tab screen up, it takes the
+  // whole map subtree - the fallback included, which is why it sits outside
+  // the boundary rather than being a MapScreen prop - out of flow, out of
+  // sight and out of the accessibility tree, without unmounting any of it.
+  // `visibility: hidden` rather than `display: none`, so the canvas keeps
+  // its size and coming back costs no resize, no re-layout and no rebuild.
+  // Not rendered at all until the session first needs a map (`mapMounted`),
+  // so a launch that stays on Today still builds nothing.
   return (
     <>
-      <ErrorBoundary
-        resetKey={activeTab}
-        fallback={() => (
-          <div className="app__screen">
-            <ScreenFailed what="The map" />
-            <TabBar active={activeTab} onSelect={setActiveTab} />
-          </div>
-        )}
-      >
-        <MapScreen
-          // First run (#721). Hides everything but the canvas and makes the
-          // whole subtree inert, so the steps below are drawn over the map
-          // rather than over a second copy of it.
-          entering={entering}
-          // The desktop planning station (#1054): with Today active above the
-          // breakpoint, this branch is the one rendering - the Today branch
-          // stands aside - and the journal reads beside the map. Never during
-          // first run, whose backdrop must stay bare down to the canvas.
-          journal={
-            !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
-          }
-          modeSwitch={sidebarModeSwitch}
-          // The ask before this phone's map is replaced (#919). Undefined
-          // while there is nothing newer published, which is every launch but
-          // the ones after a release - see lib/dataRefresh.ts.
-          trailDataUpdate={
-            trailDataUpdate === null
-              ? undefined
-              : {
-                  update: trailDataUpdate,
-                  warnsAboutData: updateWarnsAboutData,
-                  applying: applyingUpdate,
-                  onApply: () => void applyUpdate(),
-                  onDecline: () => void declineUpdate(),
+      {mapMounted && (
+        <div
+          className={overlayScreen !== null ? 'app__map-held' : undefined}
+          inert={overlayScreen !== null || undefined}
+          aria-hidden={overlayScreen !== null || undefined}
+        >
+          <ErrorBoundary
+            resetKey={activeTab}
+            fallback={() => (
+              <div className="app__screen">
+                <ScreenFailed what="The map" />
+                <TabBar active={activeTab} onSelect={setActiveTab} />
+              </div>
+            )}
+          >
+            <MapScreen
+              // First run (#721). Hides everything but the canvas and makes the
+              // whole subtree inert, so the steps below are drawn over the map
+              // rather than over a second copy of it.
+              entering={entering}
+              // The desktop planning station (#1054): with Today active above the
+              // breakpoint, this branch is the one rendering - the Today branch
+              // stands aside - and the journal reads beside the map. Never during
+              // first run, whose backdrop must stay bare down to the canvas.
+              journal={
+                !entering && isDesktop && activeTab === 'today' ? todayScreen : undefined
+              }
+              modeSwitch={sidebarModeSwitch}
+              // The ask before this phone's map is replaced (#919). Undefined
+              // while there is nothing newer published, which is every launch but
+              // the ones after a release - see lib/dataRefresh.ts.
+              trailDataUpdate={
+                trailDataUpdate === null
+                  ? undefined
+                  : {
+                      update: trailDataUpdate,
+                      warnsAboutData: updateWarnsAboutData,
+                      applying: applyingUpdate,
+                      onApply: () => void applyUpdate(),
+                      onDecline: () => void declineUpdate(),
+                    }
+              }
+              topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
+              trailsUrl={trailsUrl}
+              overviewTrailsUrl={overviewTrailsUrl}
+              nearbyTrailsUrl={nearbyTrailsUrl}
+              background={effectiveBackground(
+                preferences.background_source,
+                saveData,
+                archiveDownloaded,
+              )}
+              // Same inputs, same module, one line apart - so the strip cannot say
+              // the background was overridden while the canvas draws the one that
+              // was chosen, which is the mismatch dataSaver.ts exists to stop.
+              backgroundOverride={backgroundOverride(
+                preferences.background_source,
+                saveData,
+                archiveDownloaded,
+              )}
+              // The CHOICE, not the outcome above: the picker in the legend shows
+              // and writes what the hiker asked for, and the override note beside it
+              // explains any gap between that and what is drawn.
+              backgroundChoice={preferences.background_source}
+              onChangeBackground={handleChangeBackground}
+              // And whether that choice still exists to make (#855). False on a
+              // phone with no raster archive, which is every phone that did not
+              // take one before the sheet was withdrawn.
+              offlineBackgroundAvailable={offlineBackground}
+              // The link at the foot of the legend, and the wording it gets. This
+              // is the only way to the download from the map now that the tab is
+              // gone - which is why it is carried, and not why it is given room.
+              onOpenDownloads={openDownloads}
+              hasDownload={anySheetDownloaded}
+              // The bar on that same link. This is the only place a download in
+              // flight is visible from the map, and the map is where a hiker who
+              // shut the window is standing.
+              downloadActivity={downloadActivity}
+              // Narrower than the line above on purpose: the credit corner names
+              // the USGS survey only while there are USGS tiles on the phone to
+              // draw, and a hiking-sheet-only download has none.
+              hasRasterArchive={archiveDownloaded}
+              hasNearbyTrails={nearbyTrailsUrl !== null}
+              // Decided here rather than on the screen (#334): the same failing
+              // source has to reach the downloads window, which opens over the
+              // More tab where the map screen is not rendered at all. What the
+              // sources reported and what is on the phone mean nothing apart, so
+              // they are joined once, in one place, and both screens read the
+              // same answer. The DEM is deliberately not an input - an outage
+              // there costs relief and contours on a sheet that still draws.
+              backgroundProblem={backgroundProblem({
+                sources: notDrawing,
+                online,
+                rasterArchiveDownloaded: archiveDownloaded,
+                hikingSheetDownloaded,
+              })}
+              onLiveSourceHealth={recordSourceHealth}
+              belowArchiveZoom={belowArchiveZoom}
+              // Only once something has actually gone wrong, not merely because
+              // the lines have not arrived yet. A first launch spends a few
+              // seconds with no trail on the map in the ordinary case, and a flag
+              // that fired during it would be crying wolf on every cold start -
+              // which is how a flag stops being read. `dataError` is what turns
+              // "not yet" into "not coming".
+              trailLinesMissing={!haveTrailLines && dataError !== null}
+              // For the opening camera only - MapView keeps it out of the zooms
+              // the download has no tiles for.
+              archiveZooms={archiveZooms}
+              // The mode signal costs ZERO pixels (frame `D9`): it is this
+              // eyebrow saying "Day hike · leg 2 of 3 · Pine Meadow Trail" where
+              // it usually says the trail, not a new band. The A.T.'s own mark
+              // goes with it - a followed park loop is not on the A.T., and
+              // leaving the logo up would be the header naming the wrong trail.
+              trailName={followHeaderText?.trailName ?? TRAIL_NAME}
+              trailLogo={followHeaderText === null ? TRAIL_LOGO : undefined}
+              state={followHeaderText?.state}
+              // One sentence rather than a number, decided in one place
+              // (lib/positionLine.ts): the header used to say "Looking for GPS…"
+              // for six different situations, three of which never resolve (#312).
+              // Computed above the tab branches since #1054, because the Today
+              // header reads the same line.
+              position={position}
+              // As data too, for the next-up rail's heading: "NEXT UP" is a
+              // direction claim and the rail refuses to make it unsettled
+              // (chrome/NextUpRail.tsx).
+              direction={direction?.direction}
+              // Which also decides whether the map offers its locate control -
+              // attaching it regardless was a second high-accuracy watch and a
+              // permission prompt behind this preference's back.
+              locationEnabled={locationAllowed}
+              closureAhead={closureAhead}
+              advisoryAhead={advisoryAhead}
+              warningsAhead={warningsAhead}
+              closures={closureBandsOnMap}
+              corridor={corridorOnMap}
+              maintainerLine={maintainerLine}
+              disputes={disputedPoints}
+              // Three features, three files, three lines (#327). Each spread is
+              // exactly the `MapScreenProps` fields that feature owns - a
+              // `Pick<>` on the screen's own type, so the compiler refuses a
+              // second owner for any of them and a change to one of these
+              // features never reaches this file at all.
+              {...atc.mapScreen}
+              {...line.mapScreen}
+              {...workday.mapScreen}
+              // The route builder's three, from the same kind of hook (#991).
+              {...routeBuilder.mapScreen}
+              dayHikeDrawing={dayHikeDrawing ?? followDrawing}
+              followBand={
+                followState !== null && followState.kind === 'off-route' ? (
+                  <OffRouteBand follow={followState} units={units} />
+                ) : undefined
+              }
+              // The same condition, said once, with no distance in it (#1055).
+              // followState is rebuilt on every fix, so anything carrying
+              // `offRouteFeet` into a live region announces on every fix; this
+              // string has only two values, and lib/dayHikeFollow.ts's hysteresis
+              // (90 ft out, 45 ft back) is what keeps it from flipping between
+              // them while somebody stands at the edge of the threshold.
+              followAnnouncement={
+                followState !== null && followState.kind === 'off-route'
+                  ? 'You are off your route.'
+                  : null
+              }
+              // Two things sit OVER the builder's own surface, and both are the
+              // shell's: the break-into-days sheet, and the day-hike builder.
+              // The precedence between them is unchanged - target, then day
+              // hike, then whatever the route builder wanted to show.
+              onRouteTap={
+                targetRequest !== null ||
+                (dayHike === null && routeBuilder.mapScreen.onRouteTap === undefined)
+                  ? undefined
+                  : handleMapTap
+              }
+              routeSheet={
+                targetRequest !== null ? (
+                  targetSheet
+                ) : dayHikeReview !== null ? (
+                  // Frame `1l` as a review, in the same slot the bar held - one
+                  // surface continuing, with Save as its one primary action.
+                  dayHikeCardNode
+                ) : dayHike !== null ? (
+                  <DayHikePickBar
+                    draft={dayHike}
+                    status={dayHikeStatus ?? { kind: 'empty' }}
+                    units={units}
+                    orgLabel={dayHikeOrgLabel}
+                    // Priced from the graph's own per-edge climb (#1011). Still
+                    // null - and the bar still prints no time - whenever this
+                    // phone holds no elevation artifact or the walk crosses an
+                    // edge nobody measured: ascentFt: 0 would price a climb in
+                    // Harriman at zero, a flat-ground claim on real ground.
+                    walking={dayHikeWalking}
+                    onUndo={() =>
+                      setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
+                    }
+                    onCloseLoop={() =>
+                      setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
+                    }
+                    onDone={handleDayHikeDone}
+                    onCancel={handleDayHikeCancel}
+                    canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
+                  />
+                ) : followSheetNode !== null ? (
+                  // Following outranks both doors below and neither builder above:
+                  // a hiker mid-walk is not planning, and a hiker who IS planning
+                  // has said so more recently than they said "follow this".
+                  followSheetNode
+                ) : (
+                  // The trailhead door (frame D8) takes the slot only when
+                  // nothing else wants it - a door must never cover a builder.
+                  (routeBuilder.mapScreen.routeSheet ?? dayHikesHereNode)
+                )
+              }
+              warnings={warningPins}
+              time={now}
+              online={online}
+              hasGpsFix={gps.status === 'located'}
+              lastSyncedAt={lastSyncedAt}
+              conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
+              activeTab={activeTab}
+              onSelectTab={setActiveTab}
+              onOpenLegend={handleOpenLegend}
+              onOpenSearch={() => setSearchOpen(true)}
+              legendOpen={legendOpen}
+              onCloseLegend={closeLegend}
+              searchOpen={searchOpen}
+              onCloseSearch={() => setSearchOpen(false)}
+              searchablePois={searchablePois}
+              onSelectSearchResult={(poi) => {
+                const found = pois.find((p) => p.id === poi.id)
+                // AND OPEN ITS CARD (§3 of #527). Moving the camera was the whole of
+                // what selecting a result did, which broke the moment sites landed:
+                // `composeSites` removes a folded member from the source, so
+                // searching "Mt. Algo Shelter Privy" centred the map on a coordinate
+                // with NO PIN on it - the privy rides the shelter's pin ~42 m away -
+                // and then said nothing. The search found it and the map denied it.
+                //
+                // Selecting it is what makes the card open, and the card is where
+                // the answer is: PoiCard opens on whichever part the shell asked for
+                // (`shown = site.find(...) ?? poi`), so this lands on the PRIVY's
+                // chip with the rest of the site beside it, rather than on the
+                // shelter. Nothing here special-cases a member - passing the id that
+                // was searched for is what makes it right.
+                handleSelectPoi(poi.id)
+                // Centring alone left the zoom wherever it was, which from the opening
+                // view of the whole corridor meant tapping a result moved the map by a
+                // few pixels and looked like nothing happened at all.
+                // The miss is unreachable, and kept for the type checker: every result
+                // the sheet can offer was built by mapping this same `pois` array, and
+                // the sheet only exists on the map screen, so `found` is always there
+                // and `map` is never null. Ignored for coverage rather than covered -
+                // no input produces a search result pointing at a POI the app does not
+                // hold, or a tap on a sheet that is not rendered.
+                /* v8 ignore start */
+                if (found !== undefined && map !== null) {
+                  map.jumpTo({
+                    center: [found.lon, found.lat],
+                    zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+                  })
                 }
-          }
-          topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
-          trailsUrl={trailsUrl}
-          overviewTrailsUrl={overviewTrailsUrl}
-          nearbyTrailsUrl={nearbyTrailsUrl}
-          background={effectiveBackground(
-            preferences.background_source,
-            saveData,
-            archiveDownloaded,
-          )}
-          // Same inputs, same module, one line apart - so the strip cannot say
-          // the background was overridden while the canvas draws the one that
-          // was chosen, which is the mismatch dataSaver.ts exists to stop.
-          backgroundOverride={backgroundOverride(
-            preferences.background_source,
-            saveData,
-            archiveDownloaded,
-          )}
-          // The CHOICE, not the outcome above: the picker in the legend shows
-          // and writes what the hiker asked for, and the override note beside it
-          // explains any gap between that and what is drawn.
-          backgroundChoice={preferences.background_source}
-          onChangeBackground={handleChangeBackground}
-          // And whether that choice still exists to make (#855). False on a
-          // phone with no raster archive, which is every phone that did not
-          // take one before the sheet was withdrawn.
-          offlineBackgroundAvailable={offlineBackground}
-          // The link at the foot of the legend, and the wording it gets. This
-          // is the only way to the download from the map now that the tab is
-          // gone - which is why it is carried, and not why it is given room.
-          onOpenDownloads={openDownloads}
-          hasDownload={anySheetDownloaded}
-          // The bar on that same link. This is the only place a download in
-          // flight is visible from the map, and the map is where a hiker who
-          // shut the window is standing.
-          downloadActivity={downloadActivity}
-          // Narrower than the line above on purpose: the credit corner names
-          // the USGS survey only while there are USGS tiles on the phone to
-          // draw, and a hiking-sheet-only download has none.
-          hasRasterArchive={archiveDownloaded}
-          hasNearbyTrails={nearbyTrailsUrl !== null}
-          // Decided here rather than on the screen (#334): the same failing
-          // source has to reach the downloads window, which opens over the
-          // More tab where the map screen is not rendered at all. What the
-          // sources reported and what is on the phone mean nothing apart, so
-          // they are joined once, in one place, and both screens read the
-          // same answer. The DEM is deliberately not an input - an outage
-          // there costs relief and contours on a sheet that still draws.
-          backgroundProblem={backgroundProblem({
-            sources: notDrawing,
-            online,
-            rasterArchiveDownloaded: archiveDownloaded,
-            hikingSheetDownloaded,
-          })}
-          onLiveSourceHealth={recordSourceHealth}
-          belowArchiveZoom={belowArchiveZoom}
-          // Only once something has actually gone wrong, not merely because
-          // the lines have not arrived yet. A first launch spends a few
-          // seconds with no trail on the map in the ordinary case, and a flag
-          // that fired during it would be crying wolf on every cold start -
-          // which is how a flag stops being read. `dataError` is what turns
-          // "not yet" into "not coming".
-          trailLinesMissing={!haveTrailLines && dataError !== null}
-          // For the opening camera only - MapView keeps it out of the zooms
-          // the download has no tiles for.
-          archiveZooms={archiveZooms}
-          // The mode signal costs ZERO pixels (frame `D9`): it is this
-          // eyebrow saying "Day hike · leg 2 of 3 · Pine Meadow Trail" where
-          // it usually says the trail, not a new band. The A.T.'s own mark
-          // goes with it - a followed park loop is not on the A.T., and
-          // leaving the logo up would be the header naming the wrong trail.
-          trailName={followHeaderText?.trailName ?? TRAIL_NAME}
-          trailLogo={followHeaderText === null ? TRAIL_LOGO : undefined}
-          state={followHeaderText?.state}
-          // One sentence rather than a number, decided in one place
-          // (lib/positionLine.ts): the header used to say "Looking for GPS…"
-          // for six different situations, three of which never resolve (#312).
-          // Computed above the tab branches since #1054, because the Today
-          // header reads the same line.
-          position={position}
-          // As data too, for the next-up rail's heading: "NEXT UP" is a
-          // direction claim and the rail refuses to make it unsettled
-          // (chrome/NextUpRail.tsx).
-          direction={direction?.direction}
-          // Which also decides whether the map offers its locate control -
-          // attaching it regardless was a second high-accuracy watch and a
-          // permission prompt behind this preference's back.
-          locationEnabled={locationAllowed}
-          closureAhead={closureAhead}
-          advisoryAhead={advisoryAhead}
-          warningsAhead={warningsAhead}
-          closures={closureBandsOnMap}
-          corridor={corridorOnMap}
-          maintainerLine={maintainerLine}
-          disputes={disputedPoints}
-          // Three features, three files, three lines (#327). Each spread is
-          // exactly the `MapScreenProps` fields that feature owns - a
-          // `Pick<>` on the screen's own type, so the compiler refuses a
-          // second owner for any of them and a change to one of these
-          // features never reaches this file at all.
-          {...atc.mapScreen}
-          {...line.mapScreen}
-          {...workday.mapScreen}
-          // The route builder's three, from the same kind of hook (#991).
-          {...routeBuilder.mapScreen}
-          dayHikeDrawing={dayHikeDrawing ?? followDrawing}
-          followBand={
-            followState !== null && followState.kind === 'off-route' ? (
-              <OffRouteBand follow={followState} units={units} />
-            ) : undefined
-          }
-          // The same condition, said once, with no distance in it (#1055).
-          // followState is rebuilt on every fix, so anything carrying
-          // `offRouteFeet` into a live region announces on every fix; this
-          // string has only two values, and lib/dayHikeFollow.ts's hysteresis
-          // (90 ft out, 45 ft back) is what keeps it from flipping between
-          // them while somebody stands at the edge of the threshold.
-          followAnnouncement={
-            followState !== null && followState.kind === 'off-route'
-              ? 'You are off your route.'
-              : null
-          }
-          // Two things sit OVER the builder's own surface, and both are the
-          // shell's: the break-into-days sheet, and the day-hike builder.
-          // The precedence between them is unchanged - target, then day
-          // hike, then whatever the route builder wanted to show.
-          onRouteTap={
-            targetRequest !== null ||
-            (dayHike === null && routeBuilder.mapScreen.onRouteTap === undefined)
-              ? undefined
-              : handleMapTap
-          }
-          routeSheet={
-            targetRequest !== null ? (
-              targetSheet
-            ) : dayHikeReview !== null ? (
-              // Frame `1l` as a review, in the same slot the bar held - one
-              // surface continuing, with Save as its one primary action.
-              dayHikeCardNode
-            ) : dayHike !== null ? (
-              <DayHikePickBar
-                draft={dayHike}
-                status={dayHikeStatus ?? { kind: 'empty' }}
-                units={units}
-                orgLabel={dayHikeOrgLabel}
-                // Priced from the graph's own per-edge climb (#1011). Still
-                // null - and the bar still prints no time - whenever this
-                // phone holds no elevation artifact or the walk crosses an
-                // edge nobody measured: ascentFt: 0 would price a climb in
-                // Harriman at zero, a flat-ground claim on real ground.
-                walking={dayHikeWalking}
-                onUndo={() =>
-                  setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
-                }
-                onCloseLoop={() =>
-                  setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
-                }
-                onDone={handleDayHikeDone}
-                onCancel={handleDayHikeCancel}
-                canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
-              />
-            ) : followSheetNode !== null ? (
-              // Following outranks both doors below and neither builder above:
-              // a hiker mid-walk is not planning, and a hiker who IS planning
-              // has said so more recently than they said "follow this".
-              followSheetNode
-            ) : (
-              // The trailhead door (frame D8) takes the slot only when
-              // nothing else wants it - a door must never cover a builder.
-              (routeBuilder.mapScreen.routeSheet ?? dayHikesHereNode)
-            )
-          }
-          warnings={warningPins}
-          time={now}
-          online={online}
-          hasGpsFix={gps.status === 'located'}
-          lastSyncedAt={lastSyncedAt}
-          conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          onOpenLegend={handleOpenLegend}
-          onOpenSearch={() => setSearchOpen(true)}
-          legendOpen={legendOpen}
-          onCloseLegend={closeLegend}
-          searchOpen={searchOpen}
-          onCloseSearch={() => setSearchOpen(false)}
-          searchablePois={searchablePois}
-          onSelectSearchResult={(poi) => {
-            const found = pois.find((p) => p.id === poi.id)
-            // AND OPEN ITS CARD (§3 of #527). Moving the camera was the whole of
-            // what selecting a result did, which broke the moment sites landed:
-            // `composeSites` removes a folded member from the source, so
-            // searching "Mt. Algo Shelter Privy" centred the map on a coordinate
-            // with NO PIN on it - the privy rides the shelter's pin ~42 m away -
-            // and then said nothing. The search found it and the map denied it.
-            //
-            // Selecting it is what makes the card open, and the card is where
-            // the answer is: PoiCard opens on whichever part the shell asked for
-            // (`shown = site.find(...) ?? poi`), so this lands on the PRIVY's
-            // chip with the rest of the site beside it, rather than on the
-            // shelter. Nothing here special-cases a member - passing the id that
-            // was searched for is what makes it right.
-            handleSelectPoi(poi.id)
-            // Centring alone left the zoom wherever it was, which from the opening
-            // view of the whole corridor meant tapping a result moved the map by a
-            // few pixels and looked like nothing happened at all.
-            // The miss is unreachable, and kept for the type checker: every result
-            // the sheet can offer was built by mapping this same `pois` array, and
-            // the sheet only exists on the map screen, so `found` is always there
-            // and `map` is never null. Ignored for coverage rather than covered -
-            // no input produces a search result pointing at a POI the app does not
-            // hold, or a tap on a sheet that is not rendered.
-            /* v8 ignore start */
-            if (found !== undefined && map !== null) {
-              map.jumpTo({
-                center: [found.lon, found.lat],
-                zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
-              })
-            }
-            /* v8 ignore stop */
-            setSearchOpen(false)
-          }}
-          bbox={bbox}
-          // Which of the four the ribbon is showing is lib/ribbonView.ts's
-          // decision, made above. The LANES follow it (#913): one window for
-          // both, from that same decision, so a pin always sits under the
-          // ground it names - and dropped entirely, rather than re-windowed
-          // or emptied, on the domains where a pill would stand for more
-          // trail than a place (lib/ribbonView.ts has the arithmetic).
-          elevation={ribbon}
-          chart={desktopChart}
-          waypoints={waypoints}
-          onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
-          viewportPoints={viewportPoints}
-          ghostedTrailsDrawn={ghostedTrailsDrawn}
-          drawnCounts={drawnPoiCounts}
-          belowPoiZoom={belowPoiZoom}
-          {...filters.mapScreen}
-          {...alerts.mapScreen}
-          selectedPoi={selectedPoi}
-          selectedSite={selectedSite}
-          removedPoiCard={
-            removedPoi === null ? undefined : (
-              <RemovedPoiCard
-                tombstone={removedPoi.tombstone}
-                successorName={removedPoi.successor?.name}
-                onOpenSuccessor={
-                  removedPoi.successor === undefined
-                    ? undefined
-                    : () => handleSelectPoi(removedPoi.successor?.id ?? null)
-                }
-                onClose={handleClosePoi}
-              />
-            )
-          }
-          noteContext={noteContext}
-          pinCondition={pinCondition}
-          onSelectPoi={handleSelectPoi}
-          onClosePoi={handleClosePoi}
-          // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
-          // this, so `showZoomButtons` sat on its default of false everywhere and
-          // a browser with a mouse had no visible way to zoom at all.
-          showZoomButtons={finePointer}
-          // The canvas is WebGL and cannot read the `data-theme` attribute the
-          // rest of the app follows, so the resolved answer goes down as a prop
-          // - see map/style.ts's attachMapAppearance. The style, red-light and
-          // detail preferences ride the same road for the same reason.
-          theme={resolvedTheme}
-          themeChoice={preferences.theme}
-          mapStyle={preferences.map_style}
-          redLight={preferences.red_light_enabled}
-          detail={preferences.layer_detail_level}
-          // And the same road for the same reason: the contour interval, the
-          // summit labels, the scale bar and the elevation ribbon's three
-          // labels all answer from this one value (#619). The machinery on the
-          // map side has been there since the contours were built - what was
-          // missing was anybody passing the preference into it.
-          units={units}
-          // The corridor is the opening view only. Once there is a camera to put
-          // back, it wins: `bounds` would otherwise re-frame the entire trail
-          // every time the map screen came back from another tab.
-          center={camera?.center}
-          zoom={camera?.zoom}
-          bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
-          boundsPadding={entryFitPadding}
-          onViewportChange={handleViewportChange}
-          onMapReady={handleMapReady}
-        />
-      </ErrorBoundary>
+                /* v8 ignore stop */
+                setSearchOpen(false)
+              }}
+              bbox={bbox}
+              // Which of the four the ribbon is showing is lib/ribbonView.ts's
+              // decision, made above. The LANES follow it (#913): one window for
+              // both, from that same decision, so a pin always sits under the
+              // ground it names - and dropped entirely, rather than re-windowed
+              // or emptied, on the domains where a pill would stand for more
+              // trail than a place (lib/ribbonView.ts has the arithmetic).
+              elevation={ribbon}
+              chart={desktopChart}
+              waypoints={waypoints}
+              onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
+              viewportPoints={viewportPoints}
+              ghostedTrailsDrawn={ghostedTrailsDrawn}
+              drawnCounts={drawnPoiCounts}
+              belowPoiZoom={belowPoiZoom}
+              {...filters.mapScreen}
+              {...alerts.mapScreen}
+              selectedPoi={selectedPoi}
+              selectedSite={selectedSite}
+              removedPoiCard={
+                removedPoi === null ? undefined : (
+                  <RemovedPoiCard
+                    tombstone={removedPoi.tombstone}
+                    successorName={removedPoi.successor?.name}
+                    onOpenSuccessor={
+                      removedPoi.successor === undefined
+                        ? undefined
+                        : () => handleSelectPoi(removedPoi.successor?.id ?? null)
+                    }
+                    onClose={handleClosePoi}
+                  />
+                )
+              }
+              noteContext={noteContext}
+              pinCondition={pinCondition}
+              onSelectPoi={handleSelectPoi}
+              onClosePoi={handleClosePoi}
+              // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
+              // this, so `showZoomButtons` sat on its default of false everywhere and
+              // a browser with a mouse had no visible way to zoom at all.
+              showZoomButtons={finePointer}
+              // The canvas is WebGL and cannot read the `data-theme` attribute the
+              // rest of the app follows, so the resolved answer goes down as a prop
+              // - see map/style.ts's attachMapAppearance. The style, red-light and
+              // detail preferences ride the same road for the same reason.
+              theme={resolvedTheme}
+              themeChoice={preferences.theme}
+              mapStyle={preferences.map_style}
+              redLight={preferences.red_light_enabled}
+              detail={preferences.layer_detail_level}
+              // And the same road for the same reason: the contour interval, the
+              // summit labels, the scale bar and the elevation ribbon's three
+              // labels all answer from this one value (#619). The machinery on the
+              // map side has been there since the contours were built - what was
+              // missing was anybody passing the preference into it.
+              units={units}
+              // The corridor is the opening view only. Once there is a camera to put
+              // back, it wins: `bounds` would otherwise re-frame the entire trail
+              // every time the map screen came back from another tab.
+              center={camera?.center}
+              zoom={camera?.zoom}
+              bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
+              boundsPadding={entryFitPadding}
+              onViewportChange={handleViewportChange}
+              onMapReady={handleMapReady}
+            />
+          </ErrorBoundary>
+        </div>
+      )}
+      {/* Whichever tab screen is up, over the held map. After the map in the
+          fragment so a positioned screen would also paint over it - though
+          the wrapper above has already taken the map out of flow and out of
+          sight whenever this is non-null. */}
+      {overlayScreen}
       {/* The entry steps, over the map screen rather than instead of it
           (#721). A sibling of the boundary, not a child: they are the way out
           of first run, so a map that throws mid-onboarding must not take them

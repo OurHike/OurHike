@@ -448,4 +448,88 @@ describe('what the first-run steps cost', () => {
       expect(features[0]?.properties?.poi_id).toBe('atc_water:1')
     })
   })
+
+  it('keeps the backdrop map when the steps land on Today (#1081)', async () => {
+    // The most expensive teardown the shell ever performed. First run builds
+    // a map to stand behind the steps; finishing them lands on Today (#1054),
+    // which used to unmount that map - so the first Map tap of the session,
+    // usually seconds after the download the steps started had finished,
+    // rebuilt from scratch what had just been thrown away. The latch keeps
+    // it: the steps' backdrop IS the session's map.
+    aReleaseOnThePhone()
+    const user = userEvent.setup()
+
+    const backdrop = await launch()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Decide this later' }))
+    await user.click(screen.getByRole('button', { name: /not now/i }))
+    await landEverything()
+
+    // Landed on Today, and the backdrop map is still alive underneath.
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(backdrop)
+
+    // And the first Map open of the session is that same map - not a second
+    // construction.
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.live[0]).toBe(backdrop)
+    expect(MockMap.instances).toHaveLength(1)
+  })
+})
+
+describe('what the tab bar costs after the cold start (#1081)', () => {
+  // The regression the v1.1.0 report was about. #1054 moved the home to
+  // Today, and every trip back to the Map tab was a full teardown and
+  // rebuild - 2,353 ms of blocking work on the throttled-phone profile once
+  // the data is downloaded (the measured figures at the top of this file's
+  // sibling, App.loadBudget.test.tsx). Counted here the same way the cold
+  // start is: in maps constructed, which is the only place the cost shows
+  // against a mock.
+
+  it('keeps the one map across Today and More round trips', async () => {
+    aPhoneThatHasBeenUsed()
+    const user = userEvent.setup()
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await landEverything()
+    expect(MockMap.instances).toHaveLength(1)
+    const built = MockMap.live[0]
+
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    // The map screen is put away, not merely covered: out of the
+    // accessibility tree entirely while Today is up.
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await screen.findByRole('heading', { name: 'More' })
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Two round trips, still the one construction, still the same map.
+    expect(MockMap.instances).toHaveLength(1)
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(built)
+  })
+
+  it('still builds nothing for a launch that stays on Today', async () => {
+    // The half of #1054's arrangement that was worth keeping, and the latch
+    // must not cost: a hiker who opens the app to read their journal and
+    // closes it again never pays for a map. `entering` is true on every
+    // launch until the preferences read lands, so a latch that counted it
+    // before `preferencesLoaded` would mount a map on exactly this launch -
+    // which is what this pins.
+    aPhoneThatHasBeenUsed()
+    render(<App />)
+    await landEverything()
+
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.instances).toHaveLength(0)
+  })
 })

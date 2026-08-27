@@ -27,6 +27,8 @@ SCRIPTS = [
     # blanket "nothing in scripts/ is outside every suite" guard, and leaving
     # a file off it is how the drift #660 was about started.
     REPO_ROOT / "scripts" / "sweep-pages-previews.sh",
+    # Behaviour held in test_pipeline_scopes.py (#1123).
+    REPO_ROOT / "scripts" / "pipelines.sh",
 ]
 SUITE_SCOPES = REPO_ROOT / "scripts" / "suite_scopes.py"
 
@@ -74,7 +76,7 @@ def test_no_script_invokes_a_bare_python_or_python3():
     scripts/pick_python.sh; a bare `python`/`python3` command word is the
     drift this catches. The `|| echo python3` scope fallbacks and prose in
     comments or error messages are not command words and do not match."""
-    for script in SCRIPTS[:2]:  # pick_python.sh is the selector itself
+    for script in [s for s in SCRIPTS if s.name != "pick_python.sh"]:  # the selector itself is exempt
         offenders = [
             line.strip()
             for line in script.read_text(encoding="utf-8").splitlines()

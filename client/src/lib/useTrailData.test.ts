@@ -172,9 +172,16 @@ describe('the launches that must not pay for the rule', () => {
     await waitFor(() =>
       expect(loadNearbyTrails).toHaveBeenCalledWith(false, expect.anything()),
     )
-    // The graph is a different case and stays one: offline it records
-    // 'unreachable' rather than fetching, which is an answer the network
-    // strip renders and not a request.
-    expect(loadTrailGraph).not.toHaveBeenCalled()
+    // The graph reads its store on the same tick, and used to be the
+    // exception here. #1050 removed the offline early return that recorded
+    // 'unreachable' without asking: a hiker who downloaded the corridor at
+    // home and drove to a trailhead with no signal got a day-hike builder
+    // that refused every tap. `loadTrailGraph` is handed `online = false`
+    // and answers from the store, and 'unreachable' is now what it says when
+    // the store is empty too - the same sentence, arrived at only when it is
+    // true. So the gate above is online-only for this effect as well.
+    await waitFor(() =>
+      expect(loadTrailGraph).toHaveBeenCalledWith(expect.anything(), false),
+    )
   })
 })

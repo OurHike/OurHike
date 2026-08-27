@@ -33,6 +33,14 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "trails.fgb",
         "elevation_profile.json",
         "spurs.json",
+        # The junction graph and the three files index-aligned with its edges
+        # (#974, #1011, #1045). One family, spelled here together, because the
+        # alignment invariant is the reason they share a stem and a rename of
+        # any one of them is a rename of the set.
+        "trail_graph.json",
+        "trail_graph_geometry.json",
+        "trail_graph_elevation.json",
+        "trail_graph_profile.json",
         # The tombstones (#673). Spelled WITHOUT the `poi_` prefix on
         # purpose - that prefix is a namespace meaning "live rows of one
         # poi_type", and export_retired_poi.py's docstring lists the three

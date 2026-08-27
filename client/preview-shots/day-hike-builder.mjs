@@ -48,9 +48,9 @@
 // Nobody's data is in the frame by construction: no account, no saved hikes
 // seeded, no location fix, and the map is wherever the app opens itself.
 
-export const caption = 'The day-hike builder, or the door it opens from'
+export const caption = 'The day-hike builder in draw mode, or the door it opens from'
 export const alt =
-  'Either the day-hike builder bar over the map - "Tap a trail to walk it. Tap again further along to turn." with Cancel and the Roads and connectors LATER row - or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
+  'Either the day-hike builder bar over the map in draw mode - "Drag to draw. We\'ll put it on the trails and tell you what moved." with Cancel, a "Tap instead" way back, and the row saying roads are drawn and never routed on - or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
 
 // The routing artifact is 7.5 MB and is hashed before it is trusted, so the
 // door can take a moment to appear on a cold preview. The drive waits on the
@@ -74,4 +74,18 @@ export default async function drive(page) {
 
   await door.click()
   await page.getByRole('region', { name: 'Build a day hike' }).waitFor()
+
+  // ON INTO DRAW MODE, because that is what changed. Three of this branch's
+  // decisions land on this bar and only one of them survives a canvas the
+  // drive cannot aim at: frame `1k`'s freehand door (#983), the way back from
+  // it, and the row that used to promise roads as a LATER feature and now
+  // says what is true about them (#931). The resting "Tap a trail to walk it"
+  // frame is the one this recipe already published; this is the frame with
+  // the change in it.
+  //
+  // The prompt line is what proves the mode flipped - the button's own label
+  // changes too, but waiting on the sentence waits on the thing being
+  // photographed rather than on the thing that was clicked.
+  await page.getByRole('button', { name: 'Draw instead' }).click()
+  await page.getByText(/Drag to draw/).waitFor()
 }

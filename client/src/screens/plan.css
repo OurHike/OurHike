@@ -2597,6 +2597,44 @@
   color: var(--fg-on-dark);
 }
 
+/* The gap between two stretches (#935/#983), on the builder bar.
+   Dashed like the finished card's `.day-hike-card__gap`, and for the same
+   reason rather than for consistency's sake: a dashed border is the app's
+   one visual word for "this is a boundary, not a route". */
+.day-hike-bar__gap {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+/* The acknowledgement's frame (#983): the warning colours the target sheet's
+   caveat wears, because this is the one thing on the bar a hiker is being
+   asked to take on rather than told. */
+.day-hike-bar__gap--warn {
+  border-color: var(--warning);
+  background: var(--surface-warning);
+  color: var(--fg-1);
+}
+
+.day-hike-bar__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* Draw mode, pressed. aria-pressed carries the state to a screen reader; this
+   carries it to everyone else. */
+.day-hike-bar__action[aria-pressed='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+
 /* #931's row: named, not omitted, and with nothing to press. */
 .day-hike-bar__later {
   display: flex;
@@ -2836,4 +2874,132 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-2);
   border-radius: 10px;
+}
+
+/* ----- a walk already done (#982, screens/WalkedHike.tsx) ----- */
+
+/* Its own chrome rather than the card's, because it is its own screen - see
+   the component's header for why that is structural rather than cosmetic.
+   What it borrows is the surface and the type ramp; what it does NOT borrow
+   is the brand band, which #1008 gave a meaning (the day-hike ROOM) that a
+   backward-looking screen would blur. */
+.walked-hike {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-5, 20px);
+  background: var(--bg-surface);
+  max-height: 85%;
+  overflow-y: auto;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.walked-hike__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.walked-hike__title {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 1.25rem;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.walked-hike__day {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.walked-hike__when input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* The hiker's own sentence, and the one field on this screen the app did not
+   write. It gets the most room of anything here on purpose. */
+.walked-hike__note textarea {
+  width: 100%;
+  padding: var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.walked-hike__figures {
+  display: flex;
+  gap: var(--space-6, 24px);
+  margin: 0;
+}
+
+.walked-hike__figures div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.walked-hike__figures dt {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.walked-hike__figures dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+.walked-hike__cached,
+.walked-hike__orgs {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.walked-hike__actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+}
+
+/* #979's one action on the line sheet. Deliberately a modest secondary
+   control rather than a primary one: the sheet is still a view-only surface
+   whose job is to say what a trail is, and this is a door out of it. */
+.line-sheet__add {
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+  font-size: 0.875rem;
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  cursor: pointer;
 }

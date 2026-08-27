@@ -682,6 +682,11 @@ describe('the offline-only background', () => {
       // The day hike's tapped points (#978), above the lines like every
       // marker - only its casing lives below the trail stacks. Same offline
       // reasoning as the route layers directly above.
+      //
+      // The gap (#983) rides with them rather than with the casing, because
+      // the casing goes UNDER the trail lines so a blaze is never recoloured
+      // and there is no trail line under a gap to go under.
+      'day-hike-route-gap',
       'day-hike-route-points',
       'day-hike-route-point-labels',
       CLOSURE_LAYER_ID,

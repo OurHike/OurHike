@@ -219,7 +219,10 @@ export interface MapScreenProps {
    */
   routeDrawing?: RouteDrawing | null
   dayHikeDrawing?: DayHikeDrawing | null
-  onRouteTap?: (at: { lon: number; lat: number }) => void
+  onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
+  /** A drawn line, in the day-hike builder's draw mode (#983). Replaces the
+   *  tap handler while set - see MapViewProps.onRouteStroke. */
+  onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void
   routeSheet?: ReactNode
   /**
    * The band a followed day hike puts directly UNDER the header (#1041,
@@ -687,6 +690,7 @@ export function MapScreen({
   routeDrawing = null,
   dayHikeDrawing = null,
   onRouteTap,
+  onRouteStroke,
   routeSheet,
   followBand,
   followAnnouncement = null,
@@ -1206,6 +1210,7 @@ export function MapScreen({
               routeDrawing={routeDrawing}
               dayHikeDrawing={dayHikeDrawing}
               onRouteTap={onRouteTap}
+              onRouteStroke={onRouteStroke}
               onSelectPoi={onSelectPoi}
               onSelectLine={onSelectLine}
               showZoomButtons={showZoomButtons}

@@ -153,6 +153,13 @@ def client_keys() -> dict[str, str]:
         _string_const(config, "NEARBY_POI_KEY"): "config.ts NEARBY_POI_KEY",
         _string_const(config, "TRAIL_GRAPH_KEY"): "config.ts TRAIL_GRAPH_KEY",
         _string_const(config, "TRAIL_GRAPH_GEOMETRY_KEY"): "config.ts TRAIL_GRAPH_GEOMETRY_KEY",
+        # The two elevation artifacts, which were both missing from this list
+        # until #1045 added the second one and noticed. Neither is fetched at
+        # launch - the climb arrives with the builder, the profile only when a
+        # chart opens - which is exactly why a rename would have gone
+        # unnoticed here until somebody opened a day hike.
+        _string_const(config, "TRAIL_GRAPH_ELEVATION_KEY"): "config.ts TRAIL_GRAPH_ELEVATION_KEY",
+        _string_const(config, "TRAIL_GRAPH_PROFILE_KEY"): "config.ts TRAIL_GRAPH_PROFILE_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_REPORTS_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_ATC_UPDATES_KEY"): "publishedConditions.ts",
@@ -253,6 +260,16 @@ def published(tmp_path, monkeypatch) -> set[str]:
     graph["geometry_path"] = geometry_entry["path"]
     graph["geometry_sha256"] = geometry_entry["sha256"]
     (tmp_path / "trail_graph_manifest.json").write_text(json.dumps(graph))
+
+    # The climb along each edge (#1011) and the dense profile a chart draws
+    # from (#1045). Separate manifests because a publish can legitimately run
+    # without either - both are gated on `include_elevation` in the workflow -
+    # and the same post-licence framing as their parents above, for the same
+    # reason: the question here is whether the two ends agree on the NAME.
+    for name in ("trail_graph_elevation", "trail_graph_profile"):
+        entry = manifest_entry(f"{name}.json")
+        entry["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
+        (tmp_path / f"{name}_manifest.json").write_text(json.dumps(entry))
 
     conditions_dir = tmp_path / "conditions"
     conditions_dir.mkdir()

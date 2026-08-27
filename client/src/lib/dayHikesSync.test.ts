@@ -56,6 +56,7 @@ function hike(id = 'hike-1', name = 'Bear Mountain loop'): DayHike {
     },
     looped: false,
     recorded: 'planned',
+    note: '',
   }
 }
 

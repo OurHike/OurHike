@@ -24,6 +24,17 @@
 // through legFigures (reverse-then-count, never a swap of the two totals -
 // see lib/elevationGain.ts's reverseProfileWindow for why those differ).
 //
+// DAY BOUNDARIES (#971, wireframe 3a). Handed `boundaries`, the chart draws a
+// plan's stops over the profile and lets a pointer take the ones the plan says
+// may move. That is the one planning gesture a phone cannot offer - a ten-mile
+// window has nothing to drag a day between - and it is why the Plan tab has a
+// wide layout at all. Two rules keep it honest, and both are here rather than
+// implied: this component NEVER writes a plan, it reports a mile and redraws
+// from what comes back (lib/planBench.ts owns every rule about what a move may
+// do); and every movable boundary is also a focusable slider, because a
+// gesture with no keyboard equivalent is a feature half the people who need it
+// cannot use.
+//
 // The selection and the direction are CONTROLLABLE (PR #885 review): while
 // the route builder is open the shell derives both from the draft, so a
 // stop typed into the builder selects here and a drag here re-stretches the
@@ -73,9 +84,96 @@ const ZOOM_PADDING = 0.08
 /** One arrow-key step, as a fraction of the domain. */
 const KEY_STEP = 0.01
 
+/**
+ * How close a pointer must come to a day boundary to take it, in CSS pixels.
+ *
+ * @unvalidated 10 px is picked, not measured. This is a mouse surface - the
+ * chart only ever renders above desktop.css's breakpoint - so it is not the
+ * 24 px WCAG 2.2 asks of a touch target, and it is not trying to be: the
+ * keyboard handles below are the accessible path to the same edit, and they
+ * are real focusable controls.
+ *
+ * WHAT IT CANNOT BE BOUNDED BY, since the number wants to look derivable and
+ * is not: the spacing between boundaries. At 166 miles across a 1,000 px plot
+ * one mile is 6 px, so a twelve-mile day is 72 px wide and a two-mile day is
+ * 12 - narrower than two 10 px regions side by side. That overlap is resolved
+ * by taking the NEAREST movable boundary rather than the first one in range,
+ * so a tight pair still picks correctly; it just has to be aimed at within
+ * 6 px. A slop small enough to never overlap would be about 5 px, which is
+ * harder to hit than the miss it prevents.
+ *
+ * What would settle it: somebody dragging boundaries on a real plan at a real
+ * width and reporting the misses. The direction it errs in is a grab that
+ * needs a second try - a press outside every region starts a measurement,
+ * which changes no plan and is visibly not a plan edit.
+ */
+const BOUNDARY_GRAB_PX = 10
+
+/**
+ * One arrow-key nudge of a day boundary, and the Shift version, in miles.
+ *
+ * MILES, not a fraction of the domain like `KEY_STEP` above, and that half is
+ * reasoned: a fraction makes one keypress worth 1.7 mi on a 166-mile section
+ * and 0.15 mi on a fifteen-mile one, so the same key does a different thing
+ * depending on what the chart happens to be showing. A hiker moving a day
+ * boundary is thinking in miles.
+ *
+ * WHY THERE ARE TWO, with the arithmetic, because the fine one is invisible at
+ * the width this screen exists for: 166 miles across a 1,000-unit viewBox puts
+ * 0.1 mi at 0.6 px. It still moves the plan and the figures still say so, but
+ * nothing visibly slides - so Shift gets a step that does, at 6 px, and a hiker
+ * placing a boundary precisely zooms first, where 0.1 mi is 60 px on a two-mile
+ * domain. Neither number is small enough to be lost: `wasDistanceMi` records a
+ * change past 0.05 mi (lib/planBench.ts), so even one fine nudge prints "was".
+ *
+ * @unvalidated The two figures themselves are picked. 0.1 mi is a tenth, which
+ * is the precision every mile marker in this app is printed to; 1 mi is a round
+ * number for crossing a section. Both are far coarser than the published
+ * profile can resolve - `SAMPLE_INTERVAL_METERS = 25` in
+ * pipeline/export_elevation.py is about 0.0155 mi - so neither is bounded by
+ * the data. What would settle them: watching somebody place a boundary by
+ * keyboard. Until then they err small, which for an edit to a plan means
+ * correctable by another keypress.
+ */
+const BOUNDARY_KEY_STEP_MI = 0.1
+const BOUNDARY_KEY_COARSE_MI = 1
+
 export interface ChartStretch {
   startMile: number
   endMile: number
+}
+
+/**
+ * One day boundary of a plan, drawn on the profile (#971).
+ *
+ * The chart NEVER decides which of these may move or how far - lib/planBench.ts
+ * does, because those are rules about a plan (the walked prefix, pins, the
+ * neighbouring stops) and this component knows nothing about plans. It draws
+ * what it is handed and reports where a pointer let go.
+ */
+export interface ChartBoundary {
+  /** Opaque to this component - handed straight back to `onMoveBoundary`. */
+  stopIndex: number
+  mile: number
+  /** For the handle's accessible name: "Lost Mountain Shelter", "mi 486.2". */
+  label: string
+  /** Whether this one may be taken. A fixed boundary is still DRAWN - a
+   *  section whose first and last edges were invisible would read as a plan
+   *  running off both sides of the picture. */
+  movable: boolean
+  /** How far it may travel. Present only while `movable`. */
+  minMile?: number
+  maxMile?: number
+  /**
+   * Why a fixed boundary is fixed, in a sentence, or absent.
+   *
+   * A dashed line says "not this one" and nothing else, and #1049 is this
+   * repository's own lesson about that: a refusal that does not say WHICH
+   * absence it is sends a hiker looking for a fix that does not exist. Shown
+   * as the line's `<title>`, which is the hover explanation a pointer surface
+   * already has and costs nothing when nobody asks for it.
+   */
+  fixedReason?: string
 }
 
 export interface ElevationChartProps {
@@ -120,6 +218,40 @@ export interface ElevationChartProps {
    *  builder prices its legs - the two share a selection now, so they must
    *  not disagree about the same walk (#886). Standard when absent. */
   pace?: PaceProfile
+  /**
+   * Where the chart RESTS, when something narrower than the whole published
+   * profile is the subject (#971): the plan's own miles on the bench, so a
+   * 166-mile section fills the plot instead of being a sliver of 2,197.
+   *
+   * Clamped to the profile, and it is what "Whole trail" returns to - the
+   * button is relabelled, because on this screen the whole trail is not what
+   * zooming out means.
+   */
+  restingDomain?: ChartDomain | null
+  /** The plan's day boundaries, drawn on the profile and - where the plan says
+   *  they may move - draggable (#971). Absent leaves the chart exactly as it
+   *  was before. */
+  boundaries?: readonly ChartBoundary[]
+  /** A boundary was dragged or nudged to a new mile. THE CHART NEVER WRITES
+   *  THE PLAN: it reports the mile and redraws from the boundaries it gets
+   *  back, so every rule about what a move is allowed to do lives in one
+   *  place (lib/planBench.ts) rather than half here. */
+  onMoveBoundary?: (stopIndex: number, mile: number) => void
+  /**
+   * What to invite with when nothing is selected, replacing "Drag to measure a
+   * stretch" / "Drag to set the route's stretch".
+   *
+   * Exists because those two sentences are claims about what a drag DOES, and
+   * on the plan bench neither is true: the selection there is a day the shell
+   * owns, so a drag on empty plot settles nothing and the only thing a pointer
+   * can move is a boundary. A hint that promised a measurement would be the
+   * display outrunning what the surface actually does.
+   */
+  hint?: string
+  /** What the controlled selection IS, for the chip beside its miles. "route"
+   *  where the builder owns it, "day" on the bench - the same reason `hint`
+   *  exists. Only shown while `selectionFromPlan`. */
+  selectionLabel?: string
 }
 
 /** A mile POSITION, printed the way the position line, PoiCard and the
@@ -144,6 +276,13 @@ interface DragState {
   moved: boolean
 }
 
+/** A boundary being dragged: which one, where it started, where it is now. */
+interface BoundaryDrag {
+  stopIndex: number
+  fromMile: number
+  mile: number
+}
+
 export function ElevationChart({
   profile,
   currentMile = null,
@@ -157,6 +296,11 @@ export function ElevationChart({
   onZoomDomain,
   onPlanStretch,
   pace = STANDARD_PACE,
+  restingDomain = null,
+  boundaries,
+  onMoveBoundary,
+  hint,
+  selectionLabel = 'route',
 }: ElevationChartProps) {
   const [zoom, setZoom] = useState<ChartDomain | null>(null)
   const [hoverMile, setHoverMile] = useState<number | null>(null)
@@ -168,15 +312,25 @@ export function ElevationChart({
   const [ownSelection, setOwnSelection] = useState<ChartStretch | null>(null)
   const [ownSouthbound, setOwnSouthbound] = useState(false)
   const dragRef = useRef<DragState | null>(null)
+  /** The boundary drag in flight, or null. Held in a ref for the pointer
+   *  handlers and mirrored into state for the picture - the same split the
+   *  selection drag uses above. */
+  const boundaryDragRef = useRef<BoundaryDrag | null>(null)
+  const [liveBoundary, setLiveBoundary] = useState<BoundaryDrag | null>(null)
   const plotRef = useRef<HTMLDivElement | null>(null)
 
   const settled = selection !== undefined ? selection : ownSelection
   const sobo = southbound !== undefined ? southbound : ownSouthbound
 
+  const resting = useMemo(() => {
+    if (restingDomain === null) return fullDomain(profile)
+    return clampDomain(restingDomain, profile)
+  }, [restingDomain, profile])
+
   const domain = useMemo(() => {
     if (zoom !== null) return zoom
-    return fullDomain(profile)
-  }, [zoom, profile])
+    return resting
+  }, [zoom, resting])
 
   const drawn = useMemo(() => {
     if (domain === null) return null
@@ -274,10 +428,90 @@ export function ElevationChart({
     [onSelectStretch, profile],
   )
 
+  /** How far, in miles, `mile` may travel while dragging boundary `at`. */
+  const boundaryLimits = useCallback(
+    (at: number): { minMile: number; maxMile: number } | null => {
+      const boundary = boundaries?.find((b) => b.stopIndex === at)
+      if (boundary === undefined || !boundary.movable) return null
+      return {
+        minMile: boundary.minMile ?? boundary.mile,
+        maxMile: boundary.maxMile ?? boundary.mile,
+      }
+    },
+    [boundaries],
+  )
+
+  /**
+   * The movable boundary nearest `clientX`, within the grab region, or null.
+   *
+   * NEAREST rather than first-in-range, which is what makes BOUNDARY_GRAB_PX
+   * safe on a whole-section domain where two boundaries can be closer together
+   * than the region is wide - see that constant.
+   */
+  const boundaryForClientX = useCallback(
+    (clientX: number): ChartBoundary | null => {
+      const plot = plotRef.current
+      if (plot === null || domain === null || boundaries === undefined) return null
+      const rect = plot.getBoundingClientRect()
+      if (rect.width === 0) return null
+      const span = domain.endMile - domain.startMile
+      if (span === 0) return null
+
+      let best: ChartBoundary | null = null
+      let bestPx = BOUNDARY_GRAB_PX
+      for (const boundary of boundaries) {
+        if (!boundary.movable) continue
+        const at = rect.left + ((boundary.mile - domain.startMile) / span) * rect.width
+        const away = Math.abs(clientX - at)
+        if (away <= bestPx) {
+          bestPx = away
+          best = boundary
+        }
+      }
+      return best
+    },
+    [boundaries, domain],
+  )
+
+  /** Report a boundary's new mile, clamped to its own travel. Shared by the
+   *  drag and the keyboard, so the two cannot disagree about the limits. */
+  const settleBoundary = useCallback(
+    (at: number, mile: number) => {
+      const limits = boundaryLimits(at)
+      if (limits === null) return
+      onMoveBoundary?.(at, Math.min(limits.maxMile, Math.max(limits.minMile, mile)))
+    },
+    [boundaryLimits, onMoveBoundary],
+  )
+
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const mile = mileForClientX(event.clientX)
       if (mile === null) return
+
+      // A press that lands on a day boundary takes it, and takes nothing
+      // else: no measurement starts, so a slip while aiming at a handle
+      // cannot also unmake whatever was selected.
+      const grabbed = boundaryForClientX(event.clientX)
+      if (grabbed !== null) {
+        // Starts where the BOUNDARY is, not where the pointer is: taking hold
+        // of something must not move it, or a grab that changed its mind has
+        // already edited the plan by up to BOUNDARY_GRAB_PX of trail.
+        const held = {
+          stopIndex: grabbed.stopIndex,
+          fromMile: grabbed.mile,
+          mile: grabbed.mile,
+        }
+        boundaryDragRef.current = held
+        setLiveBoundary(held)
+        try {
+          event.currentTarget.setPointerCapture?.(event.pointerId)
+        } catch {
+          /* jsdom */
+        }
+        return
+      }
+
       dragRef.current = { anchorMile: mile, moved: false }
       try {
         // Without capture, a drag that leaves the element stops updating -
@@ -288,7 +522,7 @@ export function ElevationChart({
         /* jsdom */
       }
     },
-    [mileForClientX],
+    [mileForClientX, boundaryForClientX],
   )
 
   const handlePointerMove = useCallback(
@@ -296,6 +530,19 @@ export function ElevationChart({
       const mile = mileForClientX(event.clientX)
       if (mile === null) return
       reportHover(mile)
+
+      const held = boundaryDragRef.current
+      if (held !== null) {
+        const limits = boundaryLimits(held.stopIndex)
+        const at =
+          limits === null
+            ? mile
+            : Math.min(limits.maxMile, Math.max(limits.minMile, mile))
+        const moved = { ...held, mile: at }
+        boundaryDragRef.current = moved
+        setLiveBoundary(moved)
+        return
+      }
 
       const drag = dragRef.current
       if (drag === null || domain === null) return
@@ -308,11 +555,22 @@ export function ElevationChart({
         endMile: Math.max(drag.anchorMile, mile),
       })
     },
-    [mileForClientX, reportHover, domain],
+    [mileForClientX, reportHover, domain, boundaryLimits],
   )
 
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      const held = boundaryDragRef.current
+      if (held !== null) {
+        boundaryDragRef.current = null
+        setLiveBoundary(null)
+        // A press on a handle that never travelled is not an edit. Reported
+        // only when the boundary actually ended up somewhere else, so the
+        // undo the screen offers always has something to undo.
+        if (held.mile !== held.fromMile) settleBoundary(held.stopIndex, held.mile)
+        return
+      }
+
       const drag = dragRef.current
       dragRef.current = null
       if (drag === null) return
@@ -330,11 +588,11 @@ export function ElevationChart({
         endMile: Math.max(drag.anchorMile, end),
       })
     },
-    [mileForClientX, settleSelection, selectionFromPlan],
+    [mileForClientX, settleSelection, selectionFromPlan, settleBoundary],
   )
 
   const handlePointerLeave = useCallback(() => {
-    if (dragRef.current === null) reportHover(null)
+    if (dragRef.current === null && boundaryDragRef.current === null) reportHover(null)
   }, [reportHover])
 
   const zoomToSelection = useCallback(() => {
@@ -452,6 +710,13 @@ export function ElevationChart({
   // The drag in flight outranks the settled claim on screen; the figures
   // wait for it to settle (legFigures walks every sample in the window).
   const shown = liveSelection ?? settled
+  /** The boundaries as they should be DRAWN: the one being dragged sits where
+   *  the pointer has it, the rest where the plan has them. */
+  const drawnBoundaries = (boundaries ?? []).map((boundary) =>
+    liveBoundary !== null && liveBoundary.stopIndex === boundary.stopIndex
+      ? { ...boundary, mile: liveBoundary.mile }
+      : boundary,
+  )
   const hoverSample = hoverMile === null ? null : sampleAtMile(profile, hoverMile)
   const hoverPct = hoverMile === null ? null : pctFor(hoverMile)
   const herePct =
@@ -473,9 +738,10 @@ export function ElevationChart({
               {formatDistance(domain.endMile - domain.startMile, units)}
             </span>
             <span className="elevation-chart__hint">
-              {selectionFromPlan
-                ? "Drag to set the route's stretch"
-                : 'Drag to measure a stretch'}
+              {hint ??
+                (selectionFromPlan
+                  ? "Drag to set the route's stretch"
+                  : 'Drag to measure a stretch')}
             </span>
           </>
         ) : (
@@ -484,7 +750,7 @@ export function ElevationChart({
               mi {formatMileMarker(shown.startMile)} – {formatMileMarker(shown.endMile)}
             </span>
             {selectionFromPlan && liveSelection === null && (
-              <span className="elevation-chart__hint">route</span>
+              <span className="elevation-chart__hint">{selectionLabel}</span>
             )}
             <span className="elevation-chart__mono">
               {formatDistance(shown.endMile - shown.startMile, units)}
@@ -575,7 +841,10 @@ export function ElevationChart({
         )}
         {zoom !== null && (
           <button type="button" className="elevation-chart__control" onClick={zoomOut}>
-            Whole trail
+            {/* What zooming out goes back TO. On the bench that is the plan's
+                own miles, and calling it "Whole trail" there would promise
+                2,197 miles and deliver 166. */}
+            {restingDomain === null ? 'Whole trail' : 'Whole section'}
           </button>
         )}
       </div>
@@ -657,6 +926,30 @@ export function ElevationChart({
             </>
           )}
 
+          {/* The plan's day boundaries, drawn over the profile and under the
+              cursor (#971). Immovable ones are drawn too, dashed: an edge a
+              hiker cannot take still tells them where a day ends, and the
+              difference between the two has to be visible before they try. */}
+          {drawnBoundaries.map((boundary) => (
+            <line
+              key={`boundary-${boundary.stopIndex}`}
+              data-testid={`chart-boundary-${boundary.stopIndex}`}
+              className={
+                boundary.movable
+                  ? 'elevation-chart__boundary'
+                  : 'elevation-chart__boundary elevation-chart__boundary--fixed'
+              }
+              x1={drawn.xFor(boundary.mile)}
+              x2={drawn.xFor(boundary.mile)}
+              y1={0}
+              y2={VIEW_H}
+            >
+              {!boundary.movable && boundary.fixedReason !== undefined && (
+                <title>{boundary.fixedReason}</title>
+              )}
+            </line>
+          ))}
+
           {herePct !== null && (
             <line
               data-testid="chart-you-are-here"
@@ -690,6 +983,48 @@ export function ElevationChart({
             />
           )}
         </svg>
+
+        {/* THE KEYBOARD PATH TO THE SAME EDIT, and the reason it is a real
+            control rather than another key on the plot: a drag on a chart is
+            the one gesture in this app with no keyboard equivalent, and #971
+            makes it the gesture the whole screen exists for. Each movable
+            boundary is a slider - the role that already means "one value
+            along a range", which is exactly what a day boundary is - carrying
+            its own limits, so a screen reader is told how far it may go
+            before it is moved rather than after. Immovable boundaries get no
+            handle: a focus stop that refuses every key is worse than none. */}
+        {drawnBoundaries
+          .filter((boundary) => boundary.movable)
+          .map((boundary) => (
+            <button
+              key={`handle-${boundary.stopIndex}`}
+              type="button"
+              data-testid={`chart-boundary-handle-${boundary.stopIndex}`}
+              className="elevation-chart__boundary-handle"
+              style={{ left: `${pctFor(boundary.mile)}%` }}
+              role="slider"
+              aria-label={`Day boundary at ${boundary.label}`}
+              aria-valuemin={boundary.minMile ?? boundary.mile}
+              aria-valuemax={boundary.maxMile ?? boundary.mile}
+              aria-valuenow={boundary.mile}
+              aria-valuetext={`mi ${formatMileMarker(boundary.mile)}`}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                // Stopped here rather than left to bubble: the plot's own
+                // arrow keys move the hover cursor and extend selections,
+                // and a boundary nudge must not do either as a side effect.
+                event.stopPropagation()
+                const step = event.shiftKey
+                  ? BOUNDARY_KEY_COARSE_MI
+                  : BOUNDARY_KEY_STEP_MI
+                settleBoundary(
+                  boundary.stopIndex,
+                  boundary.mile + (event.key === 'ArrowLeft' ? -step : step),
+                )
+              }}
+            />
+          ))}
 
         {hoverPct !== null && hoverSample !== null && (
           <div

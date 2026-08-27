@@ -203,6 +203,10 @@ Sidewalk presence alone doesn't capture road-walk safety (a quiet residential st
 
 `show_roads` (off by default - keeps the base map at the same deliberately-minimal MVP visual density when not needed) - a simple overlay toggle, same settings surface as background source above.
 
+> **Overtaken by what shipped, 2026-08-27 (#931).** This sentence predates the vector sheet, and honouring it now would *hide* road context every hiker already has: `map/liveTopo.ts` draws four transportation classes on the live sheet — `topo-road-major`, `topo-road-minor`, `topo-track` and `topo-path` — and its own comment says why tracks get their own weight, *"Tracks are how you reach most trailheads, and forest roads are a real bail-out option."* So the preference remains stored, synced and wired to nothing, and the Settings row that claimed roads were off now says what is true instead.
+>
+> What #931 turned out to need was therefore not cartography. It was that the day-hike builder answered a tap on a clearly-drawn road with *"That tap isn't on a marked hiking route"* — true, and reading as **there is nothing there**, about a line the app itself had drawn. `map/roadTaps.ts` names what was tapped, says no organization maintains it for walking, and points at #935's segments model. §2's walkability tiers below stay unbuilt: a road with a shoulder and a road with a guardrail at 55 mph are the same OSM line class, and the refusal is tested to make no claim either way.
+
 ## 3. Snap-to-segment
 
 ### DuckDB's real spatial-snap capability, checked against the actual extension (not assumed)

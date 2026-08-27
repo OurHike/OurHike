@@ -173,13 +173,26 @@ export function DayHikeCard({
     )
   }
 
-  // Climb comes ONLY from the live resolution, never from the stored cache.
-  // A saved hike's figures were written before any of this existed and hold no
-  // climb at all, so there is nothing to fall back to - and a card that fell
-  // back to miles while quietly printing today's climb over yesterday's walk
-  // would be a display outrunning its source. Null here means the block below
-  // is simply absent, which is what it looked like before #1011.
-  const climb = resolved?.climb ?? null
+  // The live resolution first, the cache behind it - the same precedence the
+  // miles and the legs above already use, and it arrived later for a reason
+  // worth keeping in view.
+  //
+  // This line used to read `resolved?.climb ?? null`, with a comment saying
+  // there was nothing to fall back TO: #1011 gave the network its climb and
+  // did not give it to `DayHikeFigures`, so a saved hike held miles and legs
+  // and no ascent. That is fixed as of 2026-08-27 and the fallback is now
+  // real - but only for hikes saved since. `climb` is optional on the stored
+  // shape precisely so that a hike saved before it existed reads `undefined`
+  // and lands here as null, indistinguishable on screen from a walk the graph
+  // could not price, because on this card the two say the same thing: no
+  // figure, no ≈time, nothing invented.
+  //
+  // The sentence above the figures is what keeps this honest. When `resolved`
+  // is null the card already says the numbers are the ones stored at save
+  // time, so a cached climb is covered by the same disclosure the cached
+  // miles are - which is the condition CLAUDE.md's "never let a display
+  // outrun its source" puts on printing it at all.
+  const climb = resolved?.climb ?? hike.figures.climb ?? null
   // Descent goes in beside the climb (#900): `routeClimb` measured both, and
   // a hiker who set a descent penalty is asking for it to count on exactly
   // this kind of walk. `paceEstimate` returns the figure and its baseline in

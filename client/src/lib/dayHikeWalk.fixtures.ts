@@ -119,6 +119,7 @@ export function hikeThrough(coords: Array<[number, number]>, looped = false): Da
     figures: { miles: 0, legs: [] },
     looped,
     recorded: 'planned',
+    note: '',
   }
 }
 

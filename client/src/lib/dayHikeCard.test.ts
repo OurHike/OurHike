@@ -104,6 +104,7 @@ function hikeOf(segments: DayHikeSegment[], looped = false): DayHike {
     figures: { miles: 99, legs: [] },
     looped,
     recorded: 'planned',
+    note: '',
   }
 }
 

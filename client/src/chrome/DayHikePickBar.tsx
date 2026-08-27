@@ -31,7 +31,9 @@
 // road is there and does not route on it - not wonder why the loop will not
 // close.
 
-import type { DayHikeDraft, DraftStatus } from '../lib/dayHikeDraft'
+import { useState } from 'react'
+
+import { draftPoints, type DayHikeDraft, type DraftStatus } from '../lib/dayHikeDraft'
 import type { PaceEstimate } from '../lib/pace'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
@@ -55,9 +57,15 @@ export interface DayHikePickBarProps {
   walking: PaceEstimate | null
   onUndo: () => void
   onCloseLoop: () => void
+  /** #935: end this stretch here, and pick the walk up somewhere else. */
+  onStartStretch: () => void
   onDone: () => void
   onCancel: () => void
   canCloseLoop: boolean
+  canStartNew: boolean
+  /** Whether the map is in draw mode (#983, frame `1k`), and the toggle. */
+  drawing: boolean
+  onToggleDraw: () => void
 }
 
 /**
@@ -86,18 +94,86 @@ export function DayHikePickBar({
   walking,
   onUndo,
   onCloseLoop,
+  onStartStretch,
   onDone,
   onCancel,
   canCloseLoop,
+  canStartNew,
+  drawing,
+  onToggleDraw,
 }: DayHikePickBarProps) {
-  const route = status.kind === 'routed' ? status.route : null
+  const routed = status.kind === 'routed' ? status : null
   const time = walkingTime(walking)
+  const stretches = routed?.stretches.length ?? 0
+
+  /**
+   * The acknowledgement before a walk with a gap in it saves (#983, the
+   * maintainer's decision of 2026-08-27).
+   *
+   * A step rather than a banner, and once rather than per gap. What it is for
+   * is that the hiker takes the crossing on knowingly: the app has not
+   * checked that ground and cannot say it is walkable, and the difference
+   * between reading that in passing and answering it is the difference the
+   * decision turns on. It replaces the bar's own body rather than opening a
+   * dialog - the same one-surface-continuing convention the card uses for
+   * "Leave this with someone".
+   */
+  const [acknowledging, setAcknowledging] = useState(false)
+  const hasGap = (routed?.gapMiles ?? 0) > 0 || draft.droppedMiles > 0
+
+  if (acknowledging && routed !== null) {
+    const crossing = (routed.gapMiles || 0) + draft.droppedMiles
+    return (
+      <div
+        className="day-hike-bar"
+        role="region"
+        aria-label="One stretch is yours to cross"
+      >
+        <div className="day-hike-bar__head">
+          <p className="day-hike-bar__prompt">One stretch is yours to cross</p>
+        </div>
+        <p className="day-hike-bar__gap day-hike-bar__gap--warn">
+          {stretches > 2
+            ? `Between the ${stretches} stretches of this walk there are `
+            : 'Between the two stretches of this walk there are '}
+          <strong>{formatDistance(crossing, units, 'fine')}</strong> with no maintained
+          trail under them. OurHike has not checked that ground and cannot say it is
+          walkable.
+        </p>
+        <p className="day-hike-bar__note">
+          The rest — {formatDistance(routed.miles, units)} on marked trails — is
+          unaffected.
+        </p>
+        <div className="day-hike-bar__actions">
+          <button
+            type="button"
+            className="day-hike-bar__action"
+            onClick={() => setAcknowledging(false)}
+          >
+            Back to the map
+          </button>
+          <button
+            type="button"
+            className="day-hike-bar__action day-hike-bar__action--done"
+            onClick={() => {
+              setAcknowledging(false)
+              onDone()
+            }}
+          >
+            I&rsquo;ll find my own way
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="day-hike-bar" role="region" aria-label="Build a day hike">
       <div className="day-hike-bar__head">
         <p className="day-hike-bar__prompt">
-          Tap a trail to walk it. Tap again further along to turn.
+          {drawing
+            ? "Drag to draw. We'll put it on the trails and tell you what moved."
+            : 'Tap a trail to walk it. Tap again further along to turn.'}
         </p>
         <button type="button" className="day-hike-bar__cancel" onClick={onCancel}>
           Cancel
@@ -117,13 +193,35 @@ export function DayHikePickBar({
         </p>
       )}
 
-      {route !== null && (
+      {routed !== null && (
         <>
           <p className="day-hike-bar__total">
-            {route.legs.length} {route.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
-            {formatDistance(route.miles, units)}
+            {routed.legs.length} {routed.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
+            {formatDistance(routed.miles, units)}
             {time !== null && <> · {time}</>}
           </p>
+
+          {/* THE GAP IS PRINTED APART FROM THE MILES, NEVER ADDED TO THEM.
+              One is ground an organization maintains and measures; the other
+              is ground the app declined to route and nobody has walked for
+              us. A single total would launder the second into the first, and
+              the ≈time above is priced on trail miles alone for the same
+              reason - the app has no idea what that ground is. */}
+          {draft.droppedMiles > 0 && (
+            <p className="day-hike-bar__gap">
+              {formatDistance(draft.droppedMiles, units, 'fine')} of what you drew had no
+              trail under it. We dropped it rather than guess a way across.
+            </p>
+          )}
+
+          {routed.gapMiles > 0 && (
+            <p className="day-hike-bar__gap">
+              Plus {formatDistance(routed.gapMiles, units, 'fine')} with no trail under
+              it, across {stretches > 2 ? `${stretches - 1} gaps` : 'the gap'} between
+              your {stretches} stretches. You cross that on your own — we haven&rsquo;t
+              checked it.
+            </p>
+          )}
           {/* Whose pace that time is, when it is not the standard one (#851).
               Absent for a hiker who never moved a control, which is most of
               them - the line has to keep its weight for the ones who did. */}
@@ -131,7 +229,7 @@ export function DayHikePickBar({
             <p className="day-hike-bar__baseline">{walking.relativeLine}</p>
           )}
           <ul className="day-hike-bar__orgs">
-            {route.legsBySource.map((tally) => (
+            {routed.legsBySource.map((tally) => (
               <li key={tally.source ?? 'unattributed'} className="day-hike-bar__org">
                 {orgLabel(tally.source)} · {tally.legs}{' '}
                 {tally.legs === 1 ? 'leg' : 'legs'}
@@ -150,7 +248,7 @@ export function DayHikePickBar({
           is not teaches a hiker the app is broken. A control that does not
           apply yet is absent, like Close the loop always was. */}
       <div className="day-hike-bar__actions">
-        {(draft.points.length > 0 || draft.refusal !== null) && (
+        {(draftPoints(draft).length > 0 || draft.refusal !== null) && (
           <button type="button" className="day-hike-bar__action" onClick={onUndo}>
             Undo
           </button>
@@ -160,23 +258,49 @@ export function DayHikePickBar({
             Close the loop
           </button>
         )}
-        {route !== null && (
+        {/* #935's other half, in one control. The wording is what the hiker
+            is actually telling the app - not "add a segment", which is the
+            model's word for it, but that the walk carries on somewhere the
+            app will not claim to know. */}
+        {canStartNew && !drawing && (
+          <button type="button" className="day-hike-bar__action" onClick={onStartStretch}>
+            Start a new stretch
+          </button>
+        )}
+        {/* Frame `1k`'s door. Both ways of building are on the map, so the
+            switch between them is too. */}
+        <button
+          type="button"
+          className="day-hike-bar__action"
+          aria-pressed={drawing}
+          onClick={onToggleDraw}
+        >
+          {drawing ? 'Tap instead' : 'Draw instead'}
+        </button>
+        {routed !== null && (
           <button
             type="button"
             className="day-hike-bar__action day-hike-bar__action--done"
-            onClick={onDone}
+            onClick={() => (hasGap ? setAcknowledging(true) : onDone())}
           >
-            Done
+            {drawing ? 'Keep the snapped route' : 'Done'}
           </button>
         )}
       </div>
 
-      {/* #931, drawn rather than omitted - see the header. Deliberately a row
-          with a label and no control: there is nothing to press yet, and a
-          dead button would say something different from what is true. */}
+      {/* #931, and this row used to say LATER over something that already
+          ships. map/liveTopo.ts draws roads, tracks and OSM paths on the live
+          sheet, and its own comment calls forest roads "a real bail-out
+          option" - so the road under a Harriman loop has been on the map in
+          the hiker's hand the whole time.
+
+          What was actually missing was not cartography. It was that a tap on
+          one of those lines was answered with "that tap isn't on a marked
+          hiking route", which is true and reads as THERE IS NOTHING THERE.
+          That sentence is fixed (map/roadTaps.ts), and this row now says what
+          is true rather than promising a feature that is half here. */}
       <p className="day-hike-bar__later">
-        <span className="day-hike-bar__later-name">Roads and connectors</span>
-        <span className="day-hike-bar__later-tag">LATER</span>
+        <span className="day-hike-bar__later-name">Roads are drawn, never routed on</span>
       </p>
     </div>
   )

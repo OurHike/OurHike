@@ -41,7 +41,14 @@ import { whenStyleReady } from './styleReady'
 
 export const DAY_HIKE_SOURCE_ID = 'day-hike-route'
 export const DAY_HIKE_CASING_LAYER_ID = 'day-hike-route-casing'
+export const DAY_HIKE_GAP_LAYER_ID = 'day-hike-route-gap'
 export const DAY_HIKE_POINT_LAYER_ID = 'day-hike-route-points'
+/** Flags a feature as a gap rather than a routed stretch. A property rather
+ *  than a second source, so the gap and the route cannot get out of step. */
+export const DAY_HIKE_GAP_PROPERTY = 'day_hike_gap'
+/** Stone. Not the brand green, which means "your route", and not a blaze or a
+ *  warning colour - a gap is the absence of a claim. */
+const DAY_HIKE_GAP_INK = '#8a8271'
 export const DAY_HIKE_POINT_LABEL_LAYER_ID = 'day-hike-route-point-labels'
 
 /** The tap's ordinal, already a string - frame `1j`'s numbered marks. A
@@ -53,6 +60,26 @@ export const DAY_HIKE_POINT_LABEL_PROPERTY = 'day_hike_point_label'
 export interface DayHikeDrawing {
   lines: Array<Array<[number, number]>>
   points: Array<{ lon: number; lat: number; label: string }>
+  /**
+   * The gaps between stretches (#935/#983): ground the app declined to route,
+   * drawn so a hiker can see WHERE it declined rather than only that it did.
+   *
+   * DRAWN AS NEITHER A ROUTE NOR A CLOSURE, and that is the whole of its
+   * styling. The route is a solid casing under the blaze because it is a
+   * statement about trail; a dash is the map's word for a barrier. A gap is
+   * neither - it is the app saying it has no evidence about this ground - so
+   * it may not borrow either vocabulary. What it gets is a DOT rhythm in
+   * stone: about 1 px on and 6 px off at 2 px wide, against corridorLayers.ts's
+   * 2/1.3 dashes for an unattributed run and the long dashes a closure wears.
+   *
+   * A solid line here would be the app drawing a way across ground it has
+   * just told the hiker it will not guess at.
+   *
+   * @unvalidated, like every dash rhythm in this codebase and for the same
+   * reason: nobody has looked at it on a phone in daylight. The outdoor pass
+   * #105 owes the rest of the chrome owes this too.
+   */
+  gaps?: Array<Array<[number, number]>>
 }
 
 const CASING_WIDTH = 11
@@ -76,7 +103,15 @@ export function buildDayHikeCasingLayers(): LayerSpecification[] {
       id: DAY_HIKE_CASING_LAYER_ID,
       type: 'line',
       source: DAY_HIKE_SOURCE_ID,
-      filter: ['==', ['geometry-type'], 'LineString'],
+      // The gap is excluded EXPLICITLY rather than by geometry: MapLibre's
+      // `geometry-type` reports a MultiLineString as 'LineString', so a filter
+      // on shape alone would give the gap the route's own casing - a solid
+      // band under ground the app has just declined to route.
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'LineString'],
+        ['!', ['to-boolean', ['get', DAY_HIKE_GAP_PROPERTY]]],
+      ],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': ROUTE_INK,
@@ -95,6 +130,23 @@ export function buildDayHikeCasingLayers(): LayerSpecification[] {
  */
 export function buildDayHikePointLayers(): LayerSpecification[] {
   return [
+    {
+      // The gap sits with the POINTS rather than with the casing, and that is
+      // the placement rather than an accident of ordering: the casing goes
+      // UNDER the trail lines so a blaze is never recoloured, and there is no
+      // trail line under a gap to go under. Drawn over the basemap where a
+      // hiker can see it.
+      id: DAY_HIKE_GAP_LAYER_ID,
+      type: 'line',
+      source: DAY_HIKE_SOURCE_ID,
+      filter: ['==', ['get', DAY_HIKE_GAP_PROPERTY], true],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': DAY_HIKE_GAP_INK,
+        'line-width': 2,
+        'line-dasharray': [0.5, 3] as unknown as number[],
+      },
+    },
     {
       id: DAY_HIKE_POINT_LAYER_ID,
       type: 'circle',
@@ -132,7 +184,7 @@ interface DayHikeFeatureCollection {
     | {
         type: 'Feature'
         geometry: { type: 'MultiLineString'; coordinates: Array<Array<[number, number]>> }
-        properties: Record<string, never>
+        properties: Record<string, never> | { [DAY_HIKE_GAP_PROPERTY]: true }
       }
     | {
         type: 'Feature'
@@ -160,6 +212,14 @@ export function dayHikeFeatureCollection(
             },
           ]
         : []),
+      // One feature per gap rather than one MultiLineString holding them all,
+      // so a gap is a thing on the map with its own extent rather than a part
+      // of a shape that also spans the walk.
+      ...(drawing.gaps ?? []).map((line) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'MultiLineString' as const, coordinates: [line] },
+        properties: { [DAY_HIKE_GAP_PROPERTY]: true as const },
+      })),
       ...drawing.points.map((point) => ({
         type: 'Feature' as const,
         geometry: {

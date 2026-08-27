@@ -1173,6 +1173,57 @@ def test_collect_treats_an_unbuilt_graph_as_an_absence(tmp_path, monkeypatch):
     assert "trail_graph.json" not in publish.collect_artifacts()
 
 
+def _write_graph_profile_manifest(tmp_path, sources):
+    artifact = tmp_path / "trail_graph_profile.json"
+    artifact.write_text("[[100,101],null]")
+    (tmp_path / "trail_graph_profile_manifest.json").write_text(
+        json.dumps({"path": str(artifact), "sha256": "pr0f1le", "edges": 2, "sources": sources})
+    )
+
+
+def test_collect_holds_back_the_dense_profile_on_the_same_licence_gate_as_its_lines(tmp_path, monkeypatch, capsys):
+    """The dense per-edge profile (#1045) is terrain sampled along
+    nearby_trails.geojson's own lines, one derivation further out than the
+    graph and its climb. It inherits the same reaches_hikers gate: a chart of
+    ground a steward has not licensed is still that steward's data."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_profile_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "trail_graph_profile.json" not in artifacts
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_collect_publishes_the_dense_profile_once_every_steward_has_answered(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_profile_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+
+    assert publish.collect_artifacts()["trail_graph_profile.json"]["sha256"] == "pr0f1le"
+
+
+def test_collect_publishes_the_dense_profile_without_its_two_scalar_sibling(tmp_path, monkeypatch):
+    """The two elevation artifacts answer different questions - one prices a
+    walk, the other draws it - and each degrades on its own. Binding them here
+    would make a chart-only regression take the card's figures down with it."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_profile_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "trail_graph_profile.json" in artifacts
+    assert "trail_graph_elevation.json" not in artifacts
+
+
+def test_collect_treats_an_unbuilt_dense_profile_as_an_absence(tmp_path, monkeypatch):
+    # A publish without `include_elevation` ships a graph and no chart data,
+    # which the client reads as "no ribbon for this hike" rather than as a
+    # failure - the same reading an absent elevation_profile.json already gets.
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+
+    assert "trail_graph_profile.json" not in publish.collect_artifacts()
+
+
 # ------------------------------------------- what changed, described (#919)
 #
 # `lib/data_change.py` decides what a change IS and is tested there. These are

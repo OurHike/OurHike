@@ -4,7 +4,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
-import { BLAZE_LAYER_ID } from './style'
+import { BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
 import { CORRIDOR_HIGHLIGHT_LAYER_ID, HIGHLIGHT_ID_PROPERTY } from './corridorLayers'
 import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
 
@@ -16,6 +16,9 @@ function buildMap(): MockMap {
   const map = new MockMap({})
   map.layerIds = [
     BLAZE_LAYER_ID,
+    // The ghosted blaze layer every other organization's lines are drawn on
+    // (#979). A style that holds one holds both.
+    NEARBY_BLAZE_LAYER_ID,
     POI_LAYER_ID,
     ATC_UPDATE_LAYER_ID,
     CORRIDOR_HIGHLIGHT_LAYER_ID,
@@ -342,5 +345,38 @@ describe('yielding to a highlight mark (#858)', () => {
     map.emit('click', touchAt(120, 240))
 
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'centerline:0' }))
+  })
+})
+
+describe('the trails a day hike is made of (#979)', () => {
+  it('queries the ghosted blaze layer as well as the chosen one', () => {
+    // Every organization's lines except the chosen system's are ghosted onto
+    // NEARBY_BLAZE_LAYER_ID. Querying only the first meant a tap on any of
+    // them reported nothing - so #134's sheet, and #979's action on it, were
+    // unreachable on exactly the trails a day hike is made of.
+    const map = buildMap()
+    map.renderedFeatures.set(NEARBY_BLAZE_LAYER_ID, [
+      line('oprhp_trails:1', 'oprhp_trails', 'Blue', 'Pine Meadow Trail'),
+    ])
+
+    const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+
+    const query = map.featureQueries.at(-1)
+    expect(query?.layers).toContain(BLAZE_LAYER_ID)
+    expect(query?.layers).toContain(NEARBY_BLAZE_LAYER_ID)
+    expect(tapped?.name).toBe('Pine Meadow Trail')
+  })
+
+  it('asks only for the layers the style actually holds', () => {
+    // Querying a layer the style does not hold fires an error event rather
+    // than throwing - the same guard poiTaps.ts states, extended to the
+    // second layer rather than assumed away.
+    const map = buildMap()
+    map.layerIds = map.layerIds.filter((id) => id !== NEARBY_BLAZE_LAYER_ID)
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [line('centerline:1', 'centerline')])
+
+    tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+
+    expect(map.featureQueries.at(-1)?.layers).toEqual([BLAZE_LAYER_ID])
   })
 })

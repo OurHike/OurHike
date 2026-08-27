@@ -85,6 +85,7 @@ const PROPS = {
     ],
     currentMile: 1405,
     source: 'ahead' as const,
+    axis: 'trail' as const,
     domain: { startMile: 1400, endMile: 1410 },
   },
   waypoints: {

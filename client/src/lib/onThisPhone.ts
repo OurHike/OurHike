@@ -18,9 +18,10 @@
 import { get } from 'idb-keyval'
 import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './trailData'
 import { NEARBY_TRAILS_STORE_KEY } from './nearbyTrailData'
+import { storedGraphBytes } from './trailGraphStore'
 
 export interface TrailDataAsset {
-  id: 'trail-line' | 'waypoints' | 'elevation' | 'nearby-trails'
+  id: 'trail-line' | 'waypoints' | 'elevation' | 'nearby-trails' | 'day-hike-routing'
   /** Measured bytes of what is stored, or null where the stored shape has
    *  no byte size to measure (a parsed record is not its wire bytes, and
    *  inventing one would be a figure nobody stands behind). */
@@ -47,12 +48,20 @@ async function read(key: string): Promise<unknown> {
  * moment the answer is worth having.
  */
 export async function storedTrailData(): Promise<TrailDataAsset[]> {
-  const [trails, pois, elevation, nearby] = await Promise.all([
+  const [trails, pois, elevation, nearby, graph] = await Promise.all([
     read(TRAILS_BLOB_KEY),
     read(POIS_KEY),
     read(ELEVATION_STORE_KEY),
     read(NEARBY_TRAILS_STORE_KEY),
+    storedGraphBytes(),
   ])
+
+  // The four graph artifacts as ONE row, because they are one capability to a
+  // hiker: either day hikes work without a signal or they do not, and a row
+  // per file would be four numbers answering a question nobody asked. Summed
+  // rather than counted for the same reason - what a hiker wants to know is
+  // what it is costing them.
+  const graphBytes = Object.values(graph).reduce((sum, bytes) => sum + bytes, 0)
 
   const nearbyBytes =
     nearby !== undefined &&
@@ -86,6 +95,12 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
       bytes: null,
       count: elevationSamples,
       present: elevation !== undefined && elevation !== null,
+    },
+    {
+      id: 'day-hike-routing',
+      bytes: graphBytes > 0 ? graphBytes : null,
+      count: null,
+      present: graphBytes > 0,
     },
     {
       id: 'nearby-trails',

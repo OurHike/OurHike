@@ -17,15 +17,15 @@ describe('ModeSwitch', () => {
 
     expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual([
       'Day hike',
-      'Thru-hike',
+      'Long hike',
       'Volunteer',
     ])
   })
 
   it('marks exactly the current mode as checked', () => {
-    render(<ModeSwitch mode="thru" onChange={vi.fn()} />)
+    render(<ModeSwitch mode="long" onChange={vi.fn()} />)
 
-    expect(screen.getByRole('radio', { name: 'Thru-hike' })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: 'Long hike' })).toHaveAttribute(
       'aria-checked',
       'true',
     )

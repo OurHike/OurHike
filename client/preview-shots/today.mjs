@@ -13,4 +13,4 @@
 // is fixed, the dated journal appears here without re-aiming the camera.
 export const caption = 'Today — the journal the app now opens on (#1054)'
 export const alt =
-  'The Today screen: a pine header with the date, a mode switch reading Day hike, Thru-hike and Volunteer, and a paper column below with the volunteer card and the no-signal footer'
+  'The Today screen: a pine header with the date, a mode switch reading Day hike, Long hike and Volunteer, and a paper column below with the volunteer card and the no-signal footer'

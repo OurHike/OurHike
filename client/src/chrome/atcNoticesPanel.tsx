@@ -126,7 +126,7 @@ export function useAtcNoticesPanel({
    * painting a fifth of the trail (#462).
    *
    * The candidate filter is where the two differ: only ATC categories that
-   * mean the trail itself is obstructed become a band, because a barred band
+   * mean the trail itself is obstructed become a band, because barrier tape
    * says "go around" and a notice about a closed car park does not. The rest
    * keep the banner, exactly as an over-long advisory does.
    */

@@ -8,7 +8,7 @@
 // features/ATC_TRAIL_UPDATES.md measured the case that makes this necessary.
 // ATC's Hurricane Helene update spans NOBO 239.4 to 637.8 - 398 miles, a fifth
 // of the Appalachian Trail. Drawn the way map/closureLayers.ts draws a closure
-// that is a barred red band across a fifth of the map, at every zoom, and it
+// that is red barrier tape across a fifth of the map, at every zoom, and it
 // would visually swamp the nine-mile Creeper Trail closure a hiker actually has
 // to walk around. The more urgent warning buried under the broader one. ATC's
 // own text says the damage is patchy: "The worst of the damage occurred along

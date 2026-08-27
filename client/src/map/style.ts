@@ -33,9 +33,10 @@
 //     What this gives up is real and worth naming: yellow, orange and red side
 //     trails were separable by rhythm and are now separable by hue alone, and
 //     an undecoded blaze no longer reads as uncertain from its dotted rhythm.
-//     Closures are unaffected - lib/closureStyle.ts keeps its barred band, and
-//     with every blaze now solid that band is a stronger distinction than it
-//     was, not a weaker one.
+//     Closures are unaffected by that change and have since moved further
+//     away from it: lib/closureStyle.ts now draws barrier tape, so against a
+//     solid line the distinction is texture rather than a second rhythm to
+//     tell apart.
 //
 //  3. A side trail is never drawn over the through-route it hangs off. One
 //     layer means one painter's order, and where two features share geometry
@@ -71,7 +72,6 @@ import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
   LONG_TERM_CLOSED_FILTER,
-  LONG_TERM_CLOSURE_CASING_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 import { buildDroughtLayer } from '../lib/droughtStyle'
@@ -167,7 +167,6 @@ export const TRAIL_OVERVIEW_LAYER_ID = 'trail-overview-line'
 export const NEARBY_TRAIL_CASING_LAYER_ID = 'nearby-trail-casing'
 export const NEARBY_BLAZE_LAYER_ID = 'nearby-trail-blaze'
 export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
-export const NEARBY_LONG_TERM_CLOSURE_CASING_LAYER_ID = 'nearby-long-term-closure-casing'
 
 /**
  * What the map paints wherever it has no topo ink to paint.
@@ -1152,7 +1151,7 @@ export function buildMapStyle({
         // having first; the other half is #557's ground.
         POI_PIN_MIN_ZOOM,
       ),
-      // A nearby trail marked closed long-term gets the same barred band the
+      // A nearby trail marked closed long-term gets the same barrier tape the
       // A.T.'s closures get (features/NEARBY_TRAILS.md §3: a hiker learns ONE
       // mark for "do not walk this"). Over its own blaze for the reason the
       // chosen trail's band is over its own - a barrier under the line is a
@@ -1160,7 +1159,6 @@ export function buildMapStyle({
       // chosen trail, per the ordering argument above.
       ...buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
         bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
-        casingId: NEARBY_LONG_TERM_CLOSURE_CASING_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
       ...buildTrailLineLayers(
@@ -1231,11 +1229,12 @@ export function buildMapStyle({
       // The day hike's tapped points ride above the lines like every marker;
       // only its casing lives below.
       ...buildDayHikePointLayers(),
-      // Over the blaze, and that ordering is the closure's entire job. A
-      // barred red band UNDER the trail line would be a closure the trail is
-      // drawn straight through - which is a picture of an open trail. See
-      // lib/closureStyle.ts for why the band differs from a blaze in width,
-      // rhythm and casing weight rather than only in colour.
+      // Over the blaze, and that ordering is the closure's entire job. Tape
+      // UNDER the trail line would be a closure the trail is drawn straight
+      // through - which is a picture of an open trail. See lib/closureStyle.ts
+      // for why the tape differs from a blaze in width and texture rather than
+      // only in colour, and why the trail still shows THROUGH it: the gaps are
+      // transparent, so being drawn over is not the same as being hidden.
       // The long-term closures a steward marks on the trail line itself
       // (features/NEARBY_TRAILS.md §3) - 125 of them statewide in OPRHP's
       // layer, a different FEED from the live temporary closures above but
@@ -1246,11 +1245,11 @@ export function buildMapStyle({
       // Immediately after the temporary closures so the two are one band in
       // the stack: where a temporary closure sits on a trail already marked
       // closed long-term, whichever draws last wins pixels that look
-      // identical either way.
+      // identical either way. Two tapes at the same cadence stack without a
+      // seam, because they are the same image.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
       ...buildClosureLayers(TRAILS_SOURCE_ID, {
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
-        casingId: LONG_TERM_CLOSURE_CASING_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
       // Then the waypoints, in their two ranks (#597). The dots go down first
@@ -1294,7 +1293,7 @@ export function buildMapStyle({
       //
       // THEY USED TO SIT HERE DIRECTLY AFTER THE CLOSURE BANDS, under both pin
       // layers, and the point notices are what made that untenable. A band is
-      // hundreds of pixels of barred red and a pin cannot hide it; a dot at a
+      // hundreds of pixels of barrier tape and a pin cannot hide it; a dot at a
       // single mile is exactly the size of the thing drawn on top of it, and
       // most of what ATC publishes is a dot - five of the six reviewed rows on
       // 2026-08-12. A closed shelter reported by the organisation that

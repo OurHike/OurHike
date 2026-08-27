@@ -2,9 +2,9 @@
 //
 // The band's job is identical to a closure's - "do not walk down there, go
 // around" - so it is drawn with identical weight: the same width, the same
-// hard casing, the same colour. Only the RHYTHM differs, longer bars with
-// longer gaps, so that the two read as the same kind of thing from the same
-// distance while still being distinguishable side by side.
+// barrier tape, the same colour. Only the CADENCE differs, the identical tape
+// at twice the scale, so that the two read as the same kind of thing from the
+// same distance while still being distinguishable side by side.
 //
 // THE COLOUR IS DELIBERATELY NOT DIFFERENT, and this is the decision worth
 // recording because the obvious move is to make it different. #461 asks that
@@ -38,11 +38,17 @@ import {
   CLOSURE_CASING_COLOR,
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_LINE_WIDTH,
+  CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_WIDTH,
+  type TapeCadence,
 } from './closureStyle'
 
 export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
-export const ATC_UPDATE_CASING_LAYER_ID = 'atc-update-casing'
+
+/** The ATC tape's own image id. A second image rather than a second colour,
+ *  for the reason the header gives at length: the cadence is what separates
+ *  the two feeds, and nothing about hue or weight may. */
+export const ATC_TAPE_IMAGE_ID = 'atc-update-tape'
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
 export const ATC_UPDATE_HALO_LAYER_ID = 'atc-update-halo'
 
@@ -229,21 +235,33 @@ export const ATC_UPDATE_HALO_BLUR = 1
 export const ATC_UPDATE_HALO_OPACITY = 0.55
 
 /**
- * Long bars, long gaps - the same barrier tape at a slower cadence.
+ * Wider stripes, further apart - literally the closure's tape at twice the
+ * scale.
  *
- * In line-width units, like every MapLibre dasharray, and deliberately a
- * multiple of the closure rhythm's scale rather than an unrelated pattern: at
- * a glance the two are the same treatment, and only a close look separates
- * them. That is the intended reading order, since what a hiker must register
+ * DERIVED FROM THE CLOSURE'S CADENCE RATHER THAN PICKED, and multiplied on
+ * both axes by the same factor, which is what makes "the same tape, slower"
+ * true rather than merely intended: doubling only the pitch would thin the
+ * ATC's band to a third of the closure's red and read as a softer claim, which
+ * is the severity distinction this module exists to refuse. Scaling both keeps
+ * tapeRedFraction identical for the two - the tests hold that equality rather
+ * than these numbers.
+ *
+ * At a glance the two are one treatment, and only a close look separates them.
+ * That is the intended reading order, since what a hiker must register
  * instantly is "barrier", and only then "whose".
  */
-export const ATC_UPDATE_BAR_RHYTHM: [number, number] = [1.5, 0.75]
+export const ATC_UPDATE_TAPE_SCALE = 2
+
+export const ATC_UPDATE_TAPE_CADENCE: TapeCadence = {
+  stripe: CLOSURE_TAPE_CADENCE.stripe * ATC_UPDATE_TAPE_SCALE,
+  pitch: CLOSURE_TAPE_CADENCE.pitch * ATC_UPDATE_TAPE_SCALE,
+}
 
 /** Re-exported so a test can hold the equality rather than the numbers, and
  *  so the coupling to lib/closureStyle.ts is visible from this file. An ATC
  *  band that quietly drifted narrower than a closure band would be exactly
  *  the severity distinction this module refuses to draw. */
-export const ATC_UPDATE_LINE_WIDTH = CLOSURE_LINE_WIDTH
+export const ATC_UPDATE_LINE_WIDTH = CLOSURE_TAPE_WIDTH
 export const ATC_UPDATE_CASING_WIDTH = CLOSURE_CASING_WIDTH
 export const ATC_UPDATE_COLOR = CLOSURE_COLOR
 export const ATC_UPDATE_CASING_COLOR = CLOSURE_CASING_COLOR
@@ -259,7 +277,7 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
     // barrier most needs to be crisp.
     //
     // It draws only around points, because a `circle` layer ignores lines. A
-    // band needs no glow: it is already hundreds of pixels of barred red.
+    // band needs no glow: it is already hundreds of pixels of barrier tape.
     {
       id: ATC_UPDATE_HALO_LAYER_ID,
       type: 'circle',
@@ -274,25 +292,17 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
         // boundary around ground ATC said nothing about.
       },
     },
-    {
-      id: ATC_UPDATE_CASING_LAYER_ID,
-      type: 'line',
-      source: sourceId,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-color': ATC_UPDATE_CASING_COLOR,
-        'line-width': ATC_UPDATE_LINE_WIDTH + ATC_UPDATE_CASING_WIDTH * 2,
-      },
-    },
+    // ONE band layer, no casing beneath it - see buildClosureLayers, which
+    // makes the same shape for the same reason. A solid casing under a tape
+    // with transparent gaps is the defect both feeds just stopped having.
     {
       id: ATC_UPDATE_LAYER_ID,
       type: 'line',
       source: sourceId,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: {
-        'line-color': ATC_UPDATE_COLOR,
+        'line-pattern': ATC_TAPE_IMAGE_ID,
         'line-width': ATC_UPDATE_LINE_WIDTH,
-        'line-dasharray': ATC_UPDATE_BAR_RHYTHM,
       },
     },
     // Points, from the same source. A `line` layer ignores Point features and

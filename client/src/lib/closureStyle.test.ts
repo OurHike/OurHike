@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CLOSURE_LINE_WIDTH,
-  CLOSURE_CASING_WIDTH,
-  CLOSURE_BAR_RHYTHM,
+  CLOSURE_TAPE_WIDTH,
+  CLOSURE_STRIPE_EDGE,
+  CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_IMAGE_ID,
+  CLOSURE_TAPE_PIXEL_RATIO,
   CLOSURE_COLOR,
   buildClosureLayers,
+  tapeRedFraction,
   CLOSURE_LAYER_ID,
-  CLOSURE_CASING_LAYER_ID,
 } from './closureStyle'
 import {
   buildMapStyle,
@@ -15,19 +17,25 @@ import {
   BLAZE_LAYER_ID,
 } from '../map/style'
 
-// WIREFRAMES.md §7 and its Load-bearing values: "Closure = barred band + hard
-// casing; blaze = solid line + hairline casing."
+// WIREFRAMES.md §7 and its Load-bearing values: a closure is a barrier along
+// the trail, a blaze is the trail.
 //
 // This file exists for one reason. A closure that reads as a red blaze is a
 // safety failure - a hiker glancing at a phone in glare would see a side
 // trail where the real message is "do not walk down there." So the two
-// treatments must differ STRUCTURALLY (width, rhythm, casing), not only in
-// hue: colour alone disappears in greyscale, in sunlight, and for a
-// red-green colour-blind hiker, which between them cover a great many of the
-// moments this warning matters most.
+// treatments must differ STRUCTURALLY (width, texture), not only in hue:
+// colour alone disappears in greyscale, in sunlight, and for a red-green
+// colour-blind hiker, which between them cover a great many of the moments
+// this warning matters most.
+//
+// The band these tests were written against was a dashed line over a solid
+// casing, so they asked about a dasharray. It is barrier tape now
+// (lib/closureStyle.ts's header has the measurement that ended the band), so
+// they ask about a pattern - but they ask the same QUESTIONS, which is the
+// part that had to survive the change.
 
 /** The blaze layer's own paint, read out of the real style rather than
- *  described here - the rhythm claims below are about what actually ships. */
+ *  described here - the texture claims below are about what actually ships. */
 function blazePaint(): Record<string, unknown> {
   const layer = buildMapStyle({
     topoArchiveUrl: 'pmtiles://ourhike-corridor',
@@ -41,27 +49,31 @@ describe('closure vs blaze, as structural difference', () => {
   it('draws a closure markedly wider than any blaze', () => {
     // BLAZE_LINE_WIDTH is the WIDEST blaze on the map, not one of them, so
     // this holds against the centerline rather than against a side trail.
-    // Widening the AT line therefore has to widen the closure band with it,
-    // and this is the test that says so.
-    expect(CLOSURE_LINE_WIDTH).toBeGreaterThan(BLAZE_LINE_WIDTH * 2)
+    // Widening the AT line therefore has to widen the tape with it, and this
+    // is the test that says so.
+    expect(CLOSURE_TAPE_WIDTH).toBeGreaterThan(BLAZE_LINE_WIDTH * 2)
   })
 
-  it('gives a closure a hard casing where a blaze gets a hairline', () => {
-    // Measured as the casing's overhang beyond its own line, which is what
-    // actually reads as weight on screen.
-    const closureOverhang = CLOSURE_CASING_WIDTH
+  it('gives a closure a harder edge than a blaze gets', () => {
+    // Measured as the dark edge each mark carries beyond its own colour, which
+    // is what actually reads as weight on screen. The closure's edge used to be
+    // a casing line under the whole band; it is now the outline on every
+    // stripe, and it is thinner than that casing was - so this comparison is
+    // the one that had to be re-checked rather than assumed.
     const blazeOverhang = (CASING_LINE_WIDTH - BLAZE_LINE_WIDTH) / 2
 
-    expect(closureOverhang).toBeGreaterThan(blazeOverhang)
+    expect(CLOSURE_STRIPE_EDGE).toBeGreaterThan(blazeOverhang)
   })
 
-  it('bars a closure where every blaze is drawn solid', () => {
-    // This used to compare two dash rhythms, and now compares having one
-    // against having none - a stronger difference, and one that cannot drift
-    // by someone editing a number. Read off the shipped style so it fails if
-    // a dash is ever reintroduced on the trail lines.
-    expect(CLOSURE_BAR_RHYTHM.length).toBeGreaterThan(0)
-    expect(blazePaint()['line-dasharray']).toBeUndefined()
+  it('textures a closure where every blaze is drawn solid', () => {
+    // Having a texture against having none - a stronger difference than two
+    // rhythms to tell apart, and one that cannot drift by someone editing a
+    // number. Read off the shipped style so it fails if a dash or a pattern is
+    // ever introduced on the trail lines.
+    const paint = blazePaint()
+
+    expect(paint['line-dasharray']).toBeUndefined()
+    expect(paint['line-pattern']).toBeUndefined()
   })
 
   it('stays distinguishable with hue removed entirely', () => {
@@ -72,53 +84,83 @@ describe('closure vs blaze, as structural difference', () => {
     // narrows these to their exact values and calls the check a tautology -
     // which would make it pass forever, including on the day someone sets the
     // two widths equal. This has to be a runtime comparison to be a guard.
-    const closureWidth: number = CLOSURE_LINE_WIDTH
+    const closureWidth: number = CLOSURE_TAPE_WIDTH
     const blazeWidth: number = BLAZE_LINE_WIDTH
 
     const differsOnWidth = closureWidth !== blazeWidth
-    const differsOnRhythm = blazePaint()['line-dasharray'] === undefined
+    const differsOnTexture = blazePaint()['line-pattern'] === undefined
 
     expect(
-      [differsOnWidth, differsOnRhythm].filter(Boolean).length,
+      [differsOnWidth, differsOnTexture].filter(Boolean).length,
     ).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('the tape shows more ground than ink', () => {
+  it('leaves most of its length transparent', () => {
+    // The direction this treatment was asked for in, held as a number rather
+    // than as an adjective. The band it replaced was 100% opaque along its
+    // whole length - 59% red, 41% casing showing through the bars - so
+    // anything under a half here is already a change in kind.
+    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeLessThan(0.5)
+  })
+
+  it('still puts down enough red to read as a barrier', () => {
+    // The other side of the same number, and the reason it is a range rather
+    // than a ceiling: FEATURES.md's "a confidently wrong prediction is more
+    // dangerous than an honest unknown" cuts both ways on a safety mark, and a
+    // barrier nobody notices has failed exactly as badly as one nobody trusts.
+    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeGreaterThan(0.2)
+  })
+
+  it('tiles without a seam at the pixel ratio it is drawn at', () => {
+    // map/closureTape.ts makes the image exactly one pitch wide, so a pitch
+    // that is not a whole number of image pixels rounds - and a rounded tile
+    // repeats at the wrong length, which shows as a stutter every few stripes.
+    // Cheap to hold here, invisible until somebody photographs it.
+    const pixels = CLOSURE_TAPE_CADENCE.pitch * CLOSURE_TAPE_PIXEL_RATIO
+
+    expect(pixels).toBe(Math.round(pixels))
   })
 })
 
 describe('buildClosureLayers', () => {
   const layers = buildClosureLayers('closures')
 
-  it('draws the casing beneath the band, never over it', () => {
-    const ids = layers.map((l) => l.id)
-
-    expect(ids.indexOf(CLOSURE_CASING_LAYER_ID)).toBeLessThan(
-      ids.indexOf(CLOSURE_LAYER_ID),
-    )
+  it('draws the tape as ONE layer, with no casing beneath it', () => {
+    // Not tidiness. A casing drawn as a second line under this one would show
+    // through every transparent gap in the tape, which is the exact defect the
+    // tape replaced - so "one layer" is the fix, and this is where it is held.
+    expect(layers).toHaveLength(1)
+    expect(layers[0]?.id).toBe(CLOSURE_LAYER_ID)
   })
 
   it('reads from the source it was given', () => {
     expect(layers.every((l) => 'source' in l && l.source === 'closures')).toBe(true)
   })
 
-  it('paints the band in the closure red', () => {
-    const band = layers.find((l) => l.id === CLOSURE_LAYER_ID)
-    const paint = band?.paint as Record<string, unknown>
+  it('paints the band with the tape image rather than a flat colour', () => {
+    const paint = layers[0]?.paint as Record<string, unknown>
 
-    expect(paint['line-color']).toBe(CLOSURE_COLOR)
-  })
-
-  it('bars the band rather than drawing it solid', () => {
-    const band = layers.find((l) => l.id === CLOSURE_LAYER_ID)
-    const paint = band?.paint as Record<string, unknown>
-
-    expect(paint['line-dasharray']).toBeDefined()
+    expect(paint['line-pattern']).toBe(CLOSURE_TAPE_IMAGE_ID)
+    expect(paint['line-width']).toBe(CLOSURE_TAPE_WIDTH)
   })
 
   it('does not data-drive colour off blaze_color - a closure is not a blaze', () => {
     // Guards against someone reusing the blaze match expression here for
     // consistency's sake, which would make a closure inherit a trail's hue.
-    const band = layers.find((l) => l.id === CLOSURE_LAYER_ID)
-    const paint = band?.paint as Record<string, unknown>
+    // Stronger than it was: with the red baked into the image there is no
+    // `line-color` on this layer at all, so the check is that none appeared.
+    const paint = layers[0]?.paint as Record<string, unknown>
 
-    expect(JSON.stringify(paint['line-color'])).not.toContain('blaze_color')
+    expect(paint['line-color']).toBeUndefined()
+    expect(JSON.stringify(paint)).not.toContain('blaze_color')
+  })
+
+  it('keeps the closure red as the tape colour, wherever it is now drawn', () => {
+    // The hue did not change and must not: the constant is still the one
+    // map/closureTape.ts rasterises, and lib/atcUpdateStyle.ts still reads it
+    // so the two feeds cannot drift into two severities.
+    expect(CLOSURE_COLOR).toBe('#b2321f')
   })
 })

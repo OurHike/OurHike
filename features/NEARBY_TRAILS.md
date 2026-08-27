@@ -130,9 +130,9 @@ evidence; until then it stands.
 ## 3. Closed trails — the closure vocabulary, reused
 
 OPRHP marks trails `Closed` long-term (125 statewide) — distinct from the live
-temporary-closures layer. They ship, drawn with **the closure treatment**: the red barred
-band over its casing, the map's one permitted dashed rhythm (WIREFRAMES.md §3's stated
-exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
+temporary-closures layer. They ship, drawn with **the closure treatment**: the red
+barrier tape, the map's one permitted non-solid trail-line treatment (WIREFRAMES.md §3's
+stated exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
 won: a hiker learns one mark.
 
 **Built 2026-08-24 ([#964](https://github.com/OurHike/OurHike/issues/964)), and it turned out to be two feeds rather than one.** OPRHP's long-term `Closed` status ships on the line as this section describes. Their *temporary* closures do not work that way at all: they are polygons over ground, with the reason as prose and no dates, and two of the four do not touch the A.T. — so they are derived onto the trail lines by intersection, split at the boundary, and carry `closure_kind: "area"` against the status feed's `"long_term"`. That property exists because this paragraph asks the sheet to say different things about the two, and `trail_status` cannot tell them apart. **The sheet itself is still not built.**

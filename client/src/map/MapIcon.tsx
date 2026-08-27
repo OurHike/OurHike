@@ -23,9 +23,9 @@
 //  - A serious warning is the same pin with the three things allowed to differ
 //    (map/warningPin.ts): its colour, its hollow hazard triangle, and on the
 //    map its size. Size is the one this does NOT carry - see below.
-//  - A closure is not a pin at all. It is a barred red band along closed
-//    geometry (lib/closureStyle.ts), and drawing it here as a pin would invent
-//    a symbol the map never shows.
+//  - A closure is not a pin at all. It is barrier tape along closed geometry
+//    (lib/closureStyle.ts), and drawing it here as a pin would invent a symbol
+//    the map never shows.
 
 import {
   glyphPath,
@@ -40,11 +40,12 @@ import {
 import { WARNING_GLYPH, WARNING_ICON_ID } from './warningPin'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_BAR_RHYTHM,
   CLOSURE_CASING_COLOR,
-  CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_LINE_WIDTH,
+  CLOSURE_STRIPE_ANGLE_DEG,
+  CLOSURE_STRIPE_EDGE,
+  CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_WIDTH,
 } from '../lib/closureStyle'
 
 /** The one type here that is a line rather than a pin. Paired with
@@ -168,14 +169,57 @@ function Pin({ className, color, path, confidence }: PinProps) {
   )
 }
 
-/** Height of the closure swatch in its own viewBox: the band plus its casing
- *  either side, in the same line-width units lib/closureStyle.ts uses. */
-const CLOSURE_HEIGHT = CLOSURE_LINE_WIDTH + CLOSURE_CASING_WIDTH * 2
-/** Twice as wide as it is tall, which is three and a bit bars - enough for
- *  "barred" to be a rhythm rather than a single stripe. */
-const CLOSURE_WIDTH = CLOSURE_HEIGHT * 2
+/** The swatch's viewBox is drawn in CSS pixels, at the tape's own width - so
+ *  every number below is the number map/closureTape.ts rasterises, and the
+ *  legend cannot drift from the map by someone editing one of them. */
+const CLOSURE_HEIGHT = CLOSURE_TAPE_WIDTH
+/**
+ * How many pitches of tape the swatch shows.
+ *
+ * Four, and the number was chosen by looking rather than by arithmetic: the
+ * legend's slot is 24px square (chrome.css's .legend__icon) and the viewBox
+ * letterboxes into it, so this trades the strip's height against how much
+ * cadence it shows. At two the swatch is a pair of fat slashes with no rhythm
+ * to read; at four it is a run of parallel diagonals, which is the thing a
+ * hiker has to recognise again on the map.
+ *
+ * The stripes stay at the map's own proportions throughout - this crops the
+ * tape, it does not redraw it - so the last one runs off the right edge, the
+ * way a crop of something continuous should.
+ */
+const CLOSURE_TILES = 4
+const CLOSURE_WIDTH = CLOSURE_TAPE_CADENCE.pitch * CLOSURE_TILES
+/** How far a stripe travels along the tape while crossing it. Same angle the
+ *  image uses, so the swatch leans the way the map does. */
+const CLOSURE_STRIPE_RUN =
+  CLOSURE_HEIGHT / Math.tan((CLOSURE_STRIPE_ANGLE_DEG * Math.PI) / 180)
+/** One stripe per pitch, plus one past each end: an SVG clips to its own
+ *  viewBox, so a stripe that starts off the left edge still draws the part of
+ *  itself that is inside - which is what keeps the swatch from beginning and
+ *  ending on a half-stripe. */
+const CLOSURE_STRIPES = Array.from(
+  { length: CLOSURE_TILES + 2 },
+  (_, index) => (index - 1) * CLOSURE_TAPE_CADENCE.pitch,
+)
 
 function ClosureBand({ className }: { className?: string }) {
+  // Every stripe drawn twice: the dark edge first, the red over it. The same
+  // two passes map/closureTape.ts makes into its byte array, and the same
+  // reason - the edge is what the stripe is outlined WITH, never a second
+  // mark beside it.
+  const stripe = (x: number, mark: string, stroke: string, width: number) => (
+    <line
+      key={`${mark}-${x}`}
+      className={mark}
+      x1={x}
+      y1={CLOSURE_HEIGHT}
+      x2={x + CLOSURE_STRIPE_RUN}
+      y2={0}
+      stroke={stroke}
+      strokeWidth={width}
+    />
+  )
+
   return (
     <svg
       className={className}
@@ -183,31 +227,20 @@ function ClosureBand({ className }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* Continuous, exactly as on the map: the casing runs the whole length
-          and the band's gaps are where it shows through. */}
-      <rect
-        className="map-icon__closure-casing"
-        x={0}
-        y={0}
-        width={CLOSURE_WIDTH}
-        height={CLOSURE_HEIGHT}
-        fill={CLOSURE_CASING_COLOR}
-      />
-      <line
-        className="map-icon__closure-band"
-        x1={0}
-        y1={CLOSURE_HEIGHT / 2}
-        x2={CLOSURE_WIDTH}
-        y2={CLOSURE_HEIGHT / 2}
-        stroke={CLOSURE_COLOR}
-        strokeWidth={CLOSURE_LINE_WIDTH}
-        // MapLibre's dasharray is in line-width units and SVG's is in user
-        // units, which is why the viewBox above is drawn in line-width units
-        // too - the multiplication happens once, here.
-        strokeDasharray={CLOSURE_BAR_RHYTHM.map((part) => part * CLOSURE_LINE_WIDTH).join(
-          ' ',
-        )}
-      />
+      {/* No background rect, which is the whole change: what shows between the
+          stripes on the map is the trail and the ground under it, so what
+          shows between them here has to be the legend's own paper. */}
+      {CLOSURE_STRIPES.map((x) =>
+        stripe(
+          x,
+          'map-icon__closure-casing',
+          CLOSURE_CASING_COLOR,
+          CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2,
+        ),
+      )}
+      {CLOSURE_STRIPES.map((x) =>
+        stripe(x, 'map-icon__closure-band', CLOSURE_COLOR, CLOSURE_TAPE_CADENCE.stripe),
+      )}
     </svg>
   )
 }

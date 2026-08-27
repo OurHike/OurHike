@@ -24,7 +24,7 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | source | trails | POIs | closures | structured | last known change | verdict |
 |---|:-:|:-:|:-:|:-:|---|---|
 | NYS OPRHP AGOL org (4 layers) | ✓ 16,641 | ✓ 8,823 | ✓ live | ✓ | **2026-08-17** | **registered** (#769/#776); §2 |
-| NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | trails **registered, ship** (#1019, maintainer authorisation 2026-08-25); the POI layers still unregistered — §3 |
+| NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | trails **registered, ship** (#1019, maintainer authorisation 2026-08-25); the POI layers still unregistered, and now surveyed type by type in [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md) — §3 |
 | NYNJTC public extracts (LP, HT, SRT) | ✓ 43 + 12 | | ✓ one live detour | ✓ | **2026-08-04** | register now — §4 |
 | NYNJTC full network | ✓ | ✓ | | org-internal | GIS program alive | **agreement, not a scrape** — §4 |
 | Mohonk Preserve trails/carriage roads | ✓ 304 | | | ✓ (own AGOL org) | **2026-08-24** | **registered, ships** (#992, maintainer authorisation 2026-08-25); §11 |
@@ -177,6 +177,19 @@ suppressed by the route-owner rule rather than by anything DEC-specific: 61 name
 unregistered:** Back Country Features (21,466 points), Trailheads (10,524) and the 314
 lean-tos. Those are POIs, they carry §10(g)'s open water question, and this change did not
 touch them.
+
+**Surveyed properly 2026-08-27** ([POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md), #1092),
+and the three lines above understate what is there in one way and overstate it in another.
+Back Country Features is not a POI layer: DEC's own description calls it "assets on state
+lands… man-made items, which require periodic maintenance or inspection", its largest
+single asset type is `CULVERT` (4,290), and 68% of it is things no hiker wants a pin for.
+Inside it, though, are **331 shelters, 2,315 backcountry campsites, 393 privies, 2,256
+parking areas, 248 viewpoints and 1,182 crossings** — six of the eight `POI_TYPES`, and
+more backcountry campsites than any other source in the registry. The `PUBLICUSE` flag
+splits the layer 7,645 Y / 13,823 N, and **DEC republishes the Y slice as small per-type
+services** (`dil_land_assets_lean_to` is 315 against 315, `_prm_cmp` 2,078 against 2,078 —
+four exact matches of seven checked), which is what to register rather than the big layer.
+§10(g)'s water question is answered in the same place, and the answer is no.
 
 ## 4. NYNJTC — a public shelf bigger than the A.T. survey knew, and still an agreement
 
@@ -340,8 +353,17 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
      from the A.T. survey, applied here before anyone fetches them.
    - (f) **PIPC's NJ section** — expected inside the NJ layers, unverified.
    - (g) Whether DEC's Back Country Features asset types include **water** — raises the
-     evidence bar if true (CLAUDE.md's four ways). **DEC's half is still unchecked.
-     OPRHP's half is answered, and the answer is yes** — measured live 2026-08-27:
+     evidence bar if true (CLAUDE.md's four ways). **Both halves are now answered, and
+     they answer differently** — [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md) §3,
+     measured 2026-08-27 by `spike_org_poi_coverage.py`. **DEC's half is no.** Its only
+     plumbed-water asset type is `WATER SUPPLY SYSTEM`, 23 features, **zero of them
+     flagged `PUBLICUSE='Y'`** — DEC's own answer is that none of it is for visitors — and
+     the 350 features whose names merely sound like water are worse: 207 `WATERHOLE` are
+     fire-and-wildlife impoundments, 97 `WELL` are dominated by natural gas wells, 19
+     `SPRING` include one "Unnoffical Unsanctioned" and one "Untested", and one sampled
+     drilled well's own notes read "Not Approved For Human Consum[ption]". So DEC is not a
+     water source, and that verdict is pinned by `tests/test_poi_coverage.py` rather than
+     left to review. **OPRHP's half is yes** — measured live 2026-08-27:
      `NY_State_Park_Facilities`'s `Sub_Asset` holds **136 `Water Spigot` and 15
      `Drinking Fountain`** among 158 distinct values (`Mineral Spring`, `Water Tower`
      and `Waterfall` also appear and are *not* drinking water). So that layer is a

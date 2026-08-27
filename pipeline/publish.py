@@ -70,6 +70,7 @@ MANIFEST_KEY = "latest.json"
 CONDITIONS_MANIFESTS = (
     "conditions_manifest.json",
     "atc_updates_manifest.json",
+    "nynjtc_alerts_manifest.json",
     "drought_manifest.json",
     "work_projects_manifest.json",
 )

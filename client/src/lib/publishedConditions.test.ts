@@ -273,3 +273,85 @@ describe('fetchPublishedAtcUpdates', () => {
     expect(published?.items).toEqual([])
   })
 })
+
+// NYNJTC's alerts are the first notices from an organization that is not the
+// ATC, and the document shape differs in the two ways features/ORG_NOTICES.md
+// argues for: there is no `reviewed_at` (nobody has reviewed their page, and
+// stamping the bake's clock as a review date would claim a review that never
+// happened), and location is a tagged `place` rather than two mile columns.
+
+const A_NYNJTC_ALERTS_DOCUMENT = {
+  generated_at: '2026-08-27T02:20:00Z',
+  nynjtc_alerts: [
+    {
+      notice_id: 'nynjtc_trail_alerts:a-t-detour-at-harriman-state-park',
+      source_key: 'nynjtc_trail_alerts',
+      title: 'A.T. Detour at Harriman State Park',
+      category: null,
+      locality: 'Harriman-Bear Mountain',
+      place: { kind: 'unplaced' },
+      obstructs_trail: false,
+      updated_at: '2026-06-16T14:37:46Z',
+      source_url:
+        'https://www.nynjtc.org/trail-alerts/a-t-detour-at-harriman-state-park/',
+      review_state: 'unreviewed',
+    },
+  ],
+}
+
+describe('fetchPublishedNynjtcAlerts', () => {
+  it('reads its own artifact, under its own key', async () => {
+    const fetchSpy = mockResponse(A_NYNJTC_ALERTS_DOCUMENT)
+    const { fetchPublishedNynjtcAlerts, PUBLISHED_NYNJTC_ALERTS_KEY } =
+      await loadWithBase(BASE)
+
+    const published = await fetchPublishedNynjtcAlerts()
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}/${PUBLISHED_NYNJTC_ALERTS_KEY}`,
+      expect.anything(),
+    )
+    expect(published?.items).toHaveLength(1)
+  })
+
+  it('carries the bake date and no review date, because nobody has reviewed', async () => {
+    mockResponse(A_NYNJTC_ALERTS_DOCUMENT)
+    const { fetchPublishedNynjtcAlerts } = await loadWithBase(BASE)
+
+    const published = await fetchPublishedNynjtcAlerts()
+
+    expect(published?.generatedAt.toISOString()).toBe('2026-08-27T02:20:00.000Z')
+    expect(published?.reviewedAt).toBeUndefined()
+  })
+
+  it('keeps the notice unplaced and unreviewed rather than defaulting either', async () => {
+    // The two rails features/ORG_NOTICES.md bolts on until the thing that
+    // would remove them exists. A reader that quietly defaulted `place` to a
+    // mile range, or `review_state` to reviewed, would draw a notice nobody
+    // has checked onto ground nobody has joined it to.
+    mockResponse(A_NYNJTC_ALERTS_DOCUMENT)
+    const { fetchPublishedNynjtcAlerts } = await loadWithBase(BASE)
+
+    const notice = (await fetchPublishedNynjtcAlerts())?.items[0]
+
+    expect(notice?.place).toEqual({ kind: 'unplaced' })
+    expect(notice?.review_state).toBe('unreviewed')
+    expect(notice?.obstructs_trail).toBe(false)
+  })
+
+  it('reads a null category as absent rather than as a word', async () => {
+    // NYNJTC publishes no per-alert vocabulary, so there is nothing true to
+    // put there. A renderer shows the title alone; it must not borrow ATC's.
+    mockResponse(A_NYNJTC_ALERTS_DOCUMENT)
+    const { fetchPublishedNynjtcAlerts } = await loadWithBase(BASE)
+
+    expect((await fetchPublishedNynjtcAlerts())?.items[0].category).toBeNull()
+  })
+
+  it('is null when the bucket has no artifact, which is what an unrun fetch looks like', async () => {
+    mockResponse('', { status: 404 })
+    const { fetchPublishedNynjtcAlerts } = await loadWithBase(BASE)
+
+    expect(await fetchPublishedNynjtcAlerts()).toBeNull()
+  })
+})

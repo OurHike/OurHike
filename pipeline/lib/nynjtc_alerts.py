@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import html as html_module
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from lib.atc_scrape import strip_html
 
@@ -204,6 +205,113 @@ def parse_alert(post: dict, vocabularies: dict[str, dict[int, Term]]) -> ParsedA
         states=terms_for("state"),
         text=_text_of(post.get("content")),
     )
+
+
+#: Provenance, carried into the artifact so a display cannot outrun its
+#: source. `lib/atc_updates.py` holds both halves of this vocabulary; NYNJTC
+#: only ever emits the second today, because no reviewed file exists for this
+#: source and `export_nynjtc_alerts.py`'s docstring says why.
+REVIEWED = "reviewed"
+UNREVIEWED = "unreviewed"
+
+#: The source key this publisher's rows are namespaced by, matching its
+#: `sources.json` entry. features/ORG_NOTICES.md §2: a notice id is
+#: `<source key>:<the org's own slug>`, because the registry key is what
+#: `export_sources.py` and the client's steward registry already join on.
+SOURCE_KEY = "nynjtc_trail_alerts"
+
+#: Every field a published row carries. Facts and a link - deliberately not
+#: NYNJTC's body text, which is theirs (the `licence` field on this source in
+#: sources.json, and ATC_TRAIL_UPDATES.md's split applied unchanged).
+PUBLISHED_FIELDS = (
+    "notice_id",
+    "source_key",
+    "title",
+    "category",
+    "locality",
+    "place",
+    "obstructs_trail",
+    "updated_at",
+    "source_url",
+    "review_state",
+)
+
+
+def _as_utc_stamp(iso: str) -> str:
+    """A WordPress local timestamp in the `...Z` form the artifacts use.
+
+    WordPress's `modified` is site-local with no offset on it (NYNJTC runs
+    US/Eastern), so this cannot convert what it is not told. It stamps the
+    value as UTC rather than guessing an offset, which is a known and bounded
+    error of a few hours on a field a hiker reads as a DATE - and the
+    alternative, hard-coding somebody's timezone, is a guess that breaks
+    silently if they move the site. `modified_gmt` is the real fix and is in
+    the payload; taking it is a follow-up rather than a silent change here,
+    because it changes every published stamp.
+    """
+    try:
+        stamped = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    if stamped.tzinfo is None:
+        stamped = stamped.replace(tzinfo=timezone.utc)
+    return stamped.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def locality_of(entry: dict) -> str:
+    """The coarse "roughly where" a list entry prints, from the org's terms.
+
+    Region and state rather than trail and park, because this is the string
+    that answers "is this anywhere near me" at a glance - features/ORG_NOTICES
+    .md §2's `locality`. Falls back to the parks when NYNJTC tagged neither,
+    and to an empty string when they tagged nothing at all, which the client
+    renders as no locality rather than as a guess.
+    """
+    for taxonomy in ("regions", "states", "parks"):
+        names = [term.get("name") for term in entry.get(taxonomy) or [] if isinstance(term, dict)]
+        named = [name for name in names if isinstance(name, str) and name.strip()]
+        if named:
+            return ", ".join(dict.fromkeys(named))
+    return ""
+
+
+def published_rows(alerts: dict) -> list[dict]:
+    """The cached alerts as the artifact carries them.
+
+    Projected onto `PUBLISHED_FIELDS` rather than passed through, so the body
+    text the cache holds for a reviewer's eyes cannot reach the bucket by
+    accident - `lib/atc_updates.py`'s `published_rows` and its reasoning,
+    applied to a cache instead of a reviewed file.
+
+    EVERY ROW IS `unplaced` AND UNREVIEWED, and neither is a placeholder that
+    a later change should quietly relax. Placing one needs the reviewed join
+    table features/ORG_NOTICES.md §4 specifies, and promoting one to reviewed
+    needs a person - so both stay false until the thing that would make them
+    true actually exists.
+    """
+    rows = []
+    for slug in sorted(alerts):
+        entry = alerts[slug]
+        if not isinstance(entry, dict):
+            continue
+        rows.append(
+            {
+                "notice_id": f"{SOURCE_KEY}:{slug}",
+                "source_key": SOURCE_KEY,
+                "title": entry.get("title") or "",
+                # NYNJTC files every alert under one category and publishes no
+                # per-alert vocabulary, so there is nothing true to put here.
+                # Absent means unknown - it must not borrow ATC's word list.
+                "category": None,
+                "locality": locality_of(entry),
+                "place": {"kind": "unplaced"},
+                "obstructs_trail": False,
+                "updated_at": _as_utc_stamp(entry.get("modified_at") or ""),
+                "source_url": entry.get("source_url") or "",
+                "review_state": UNREVIEWED,
+            }
+        )
+    return rows
 
 
 def alert_problems(alert: ParsedAlert) -> list[str]:

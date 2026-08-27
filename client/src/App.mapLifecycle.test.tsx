@@ -539,7 +539,15 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
     // the kept map and remounted it - hidden, at full build cost - the
     // moment the flow closed. The flows render over the held map now, the
     // way the tab screens do, and this pins it with the cheapest flow to
-    // drive: open the report picker, change your mind.
+    // drive: open reporting, change your mind.
+    //
+    // #1133 made this cheaper still and the test is kept rather than
+    // retired. Reporting is a WINDOW now, so it does not take the screen at
+    // all and the map is held by construction rather than by care. But the
+    // failure mode this guards is a rendering decision somebody could make
+    // again - the window is one line away from being assigned to
+    // `flowScreen`, which is what would destroy the map - and a test that
+    // costs one click is worth keeping against that.
     aPhoneThatHasBeenUsed()
     const user = userEvent.setup()
     render(<App />)
@@ -551,13 +559,14 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
     const built = MockMap.live[0]
 
     await user.click(screen.getByRole('tab', { name: 'Today' }))
-    await user.click(screen.getByRole('button', { name: /note something for the crew/i }))
-    // The picker has the screen; the map survives underneath it.
-    await screen.findByRole('button', { name: 'Cancel' })
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    // The window is over the screen rather than instead of it, and the map
+    // survives underneath both.
+    await screen.findByRole('dialog', { name: 'What did you find?' })
     expect(MockMap.live).toHaveLength(1)
     expect(MockMap.live[0]).toBe(built)
 
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByTestId('report-close'))
     await screen.findByRole('tab', { name: 'Today', selected: true })
     expect(MockMap.instances).toHaveLength(1)
     expect(MockMap.live[0]).toBe(built)

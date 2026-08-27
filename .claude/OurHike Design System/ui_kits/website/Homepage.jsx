@@ -40,8 +40,8 @@ const { Callout, Button } = NS;
 return (
 <div style={{padding:'0 32px 64px',background:'var(--bg-page)'}}>
 <div style={{maxWidth:1200,margin:'0 auto'}}>
-<Callout tone="brand" title="Support 2,100+ Miles of Trail" action={<Button variant="primary" size="m">Join Today</Button>}>
-Membership starts at $25/year and funds trail crews, maps, and conservation programs across the region.
+<Callout tone="brand" title="Support 2,100+ Miles of Trail" action={<Button variant="primary" size="m">Support Them</Button>}>
+The organizations who maintain these trails take members and donations directly, on their own sites. OurHike takes no cut and holds no money.
 </Callout>
 </div>
 </div>

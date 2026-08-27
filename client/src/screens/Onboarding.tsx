@@ -351,9 +351,41 @@ export function Onboarding({
               The whole trail&rsquo;s topo map lives on your phone. It works with no bars
               and no data plan &mdash; the way the trail actually is.
             </p>
+            {/*
+              The money sentence, and the one thing on this screen that has to
+              be exactly right.
+
+              It read "Paid memberships and public support fund the ATC and the
+              other organizations who keep these trails open" until 2026-08-27.
+              Read in isolation that is true about how trail organizations are
+              funded - dues plus public money - but no hiker reads it in
+              isolation. Every other sentence on this screen has OurHike as its
+              subject, and the line directly below says "No account. Nothing to
+              sign up for." So "paid memberships" reads as OurHike's, and a
+              hiker walks away believing their money would reach the ATC through
+              this app. It would not, and there is no arrangement under which it
+              would: **OurHike sends no money to any organization and has no
+              revenue-sharing agreement with one.** The maintainer, 2026-08-27:
+              "There is no funding model today for the orgs. The hope is we will
+              drive membership and donations to those orgs."
+
+              Neither half of the replacement is newly invented, deliberately.
+              "your money belongs with the people holding the tools" is already
+              live on ourhike.org/support, and "OurHike takes no cut and holds
+              no money" is the sentence chrome/SourcesSection.tsx has been
+              holding back for want of a donate link to attach it to (#932 -
+              *sources.json can describe a steward but cannot say how to
+              support one*).
+              One posture in two voices - the web attributes it as opinion
+              ("we just think your money belongs..."), and here it is asserted,
+              because a first-run screen has no room to hedge and the thing
+              being asserted is ours to assert: it is a statement about where
+              OurHike's own hand is, not a claim about anybody else.
+            */}
             <p>
-              Paid memberships and public support fund the ATC and the other organizations
-              who keep these trails open.
+              Your money belongs with the people holding the tools. The ATC, and other
+              organizations who keep these trails open, take members and donations
+              directly &mdash; OurHike takes no cut and holds no money.
             </p>
             <p className="onboarding__reassurance">No account. Nothing to sign up for.</p>
           </section>

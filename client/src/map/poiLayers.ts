@@ -391,39 +391,36 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
 ]
 
 /**
- * How far down the dot rank goes - and it goes all the way (#603).
+ * How far down the dot rank goes - to the seam, with the pins (#1135).
  *
- * The pin seam is a claim about legibility: below {@link POI_PIN_MIN_ZOOM} a
- * pin cannot say what it is without colliding with its neighbours. A DOT MAKES
- * NO SUCH CLAIM. It says something is here and nothing more, so the argument
- * that stops pins never applied to it, and stopping both at one seam meant the
- * opening view of the whole corridor - which lands near z4 on a phone - drew
- * the trail line and nothing else.
+ * It was 0 from #603 to 2026-08-27, and the maintainer reversed that
+ * below-seam half deliberately: *"The opening map probably just needs to be
+ * all the trails that we have mapped. Not including the POIs."* Two things
+ * had changed since #603 put a stipple on the corridor view to answer an
+ * empty screen:
  *
- * This is features/POI_VISIBILITY.md's own open question ("whether the dot rank
- * should extend below the seam"), answered yes by the maintainer on #603.
+ *  - The subject #603 was standing in for exists now. The corridor view
+ *    carries the thirty club sections (#594) and the named highlights (#595),
+ *    and with #1135 it carries every organization's trails - so "the trail
+ *    line and nothing else", the emptiness the stipple was the answer to, is
+ *    not what removing it restores.
+ *  - #1097 joined 8,480 network waypoints to this source, and their trails'
+ *    lines draw only from the seam up. Below it the stipple stopped being
+ *    "every waypoint on the trail you see" and became mostly places on
+ *    trails the view refuses to draw - a texture that had quietly started
+ *    lying about where the trails are.
  *
- * IT IS THE ANSWER THAT ADDS RATHER THAN REVERSES, which is why it is this one
- * and not a tighter opening camera. `App.tsx`'s CORRIDOR_BOUNDS argues that any
- * camera naming a place is "a confident-looking answer that is wrong for
- * everyone not standing" there, and `lib/cameraMemory.ts` argues that a camera
- * surviving the tab closing would restore "last Tuesday's view over Georgia to
- * someone starting in Maine". Both stand. The camera does not move here; what
- * changes is that there is now something on it.
+ * WHAT IS NOT REOPENED: everything from the seam up. "A pin or a dot and
+ *  never as neither" stands untouched - this floor moves, the rank's whole
+ * argument does not. And the 1.2 px corridor stipple this retires carried its
+ * own @unvalidated: nobody ever looked at it on a phone in sunlight.
  *
- * Zero rather than a floor near the opening view, because there is no zoom at
- * which "something is here" becomes false. The radius below carries the
- * honesty instead: at z4 these are 1.2 px, a stipple along the corridor rather
- * than a map of places.
- *
- * What it costs, stated rather than glossed: ~2,837 circles at z4. They are a
- * `circle` layer, so no collision pass and no per-feature layout - the cost is
- * one draw call's worth of geometry, not 2,837 decisions. And it softens
- * features/POI_VISIBILITY.md's "below the seam the map is a complete map of
- * something else" - the corridor view now carries a second thing. See
- * features/CORRIDOR_VIEW.md, which owns that view.
+ * The same constant as the pins' rather than a second number that happens to
+ * agree, so the corridor view has ONE seam for waypoints again - which is
+ * what lets features/POI_VISIBILITY.md's "below the seam the map is a
+ * complete map of something else" read unqualified once more.
  */
-export const POI_DOT_MIN_ZOOM = 0
+export const POI_DOT_MIN_ZOOM = POI_PIN_MIN_ZOOM
 
 /**
  * Small, and smaller the further out you are.
@@ -438,23 +435,14 @@ export const POI_DOT_MIN_ZOOM = 0
  * design most likely to be wrong in a browser and right on a phone, or the
  * reverse.
  *
- * The corridor end of the ramp is 1.2 px at {@link POI_DOT_MIN_ZOOM}, and it is
- * doing the work the seam used to do (#603). At z4 the corridor's 2,837
- * waypoints sit within a few hundred pixels of trail line, so a dot sized for
- * the seam would draw a solid bar and claim the trail is one continuous place.
- * At 1.2 px they read as what they are - texture, denser where the places are.
- *
- * @unvalidated 1.2 px is picked, not measured. What would settle it is the same
- * outdoor pass #105 already owes the 2.5 px above: whether a corridor-view
- * stipple is legible in sunlight, or whether it wants 1.5 px and a lighter
- * halo. Nobody has looked at this on a phone.
+ * The ramp starts where the rank does, at the shared seam (#1135) - the
+ * 1.2 px corridor stop it used to open with went with the below-seam dots it
+ * sized, POI_DOT_MIN_ZOOM's docstring being the record of why.
  */
 export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  POI_DOT_MIN_ZOOM,
-  1.2,
   POI_PIN_MIN_ZOOM,
   2.5,
   16,

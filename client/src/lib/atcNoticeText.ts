@@ -1,6 +1,6 @@
 // The words an ATC notice is rendered with, in one place.
 //
-// Extracted when a second surface needed them (chrome/AtcNoticeList.tsx). Two
+// Extracted when a second surface needed them (chrome/NoticeList.tsx). Two
 // components formatting the same mile marker to different precision, or
 // disagreeing about what an unreadable date should say, is exactly the kind of
 // drift a safety surface cannot afford - a hiker comparing the banner, the

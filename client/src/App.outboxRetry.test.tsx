@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness } from './test/appHarness'
 import { OUTBOX_KEY } from './lib/outbox'
+import { UNDO_WINDOW_MS } from './reporting/ReportWindow'
 import { sendOutboxItem } from './lib/api'
 import { BUILD_INFO } from './lib/buildInfo'
 
@@ -131,26 +132,55 @@ describe('Try again, on a report the server refused', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBe(null))
   })
 
-  it('sends a report the moment it is filed with signal and an account', async () => {
-    // #640, the submit-path twin of #266: enqueueing changes neither of
-    // useOutboxSync's deps, so on a steady connection nothing flushed and a
-    // freshly filed report sat as "waiting to send" until the connection
-    // flapped - while the submit handler's comment said it would go on its
-    // own. The mount flush below drains an empty queue, so a send can only
-    // have come from the submit itself.
-    const user = userEvent.setup()
-    render(<App />)
-    await screen.findByRole('tab', { name: 'More' })
-    expect(mockedSend).not.toHaveBeenCalled()
+  it('sends a freshly filed report once its undo window shuts', async () => {
+    // #640, and #1133's near-miss with it. The original rule: enqueueing
+    // changes neither of useOutboxSync's deps, so on a steady connection
+    // nothing flushed and a freshly filed report sat as "waiting to send"
+    // until the connection flapped. The submit handler's own flush is what
+    // fixed it.
+    //
+    // The report window re-opened that hole in a way that would have been
+    // very quiet. It files on the tap and HOLDS the report for the length of
+    // the undo window; `Done` is right there, so a hiker closes in about two
+    // seconds; so the flush on close drains everything EXCEPT the report they
+    // just wrote. Nothing would then flush again until the connection
+    // flapped - which is #640, word for word, on a new path.
+    //
+    // What closes it is FlushResult.held: a flush that reports a held item
+    // schedules one more past the window. This test is that behaviour, and
+    // it would pass without the follow-up if it only waited for the close.
+    // `shouldAdvanceTime` so the clock still runs on its own: findBy* and
+    // waitFor are built on real timers, and a frozen clock deadlocks them.
+    // What the fake clock is for here is the one jump past the undo window,
+    // which is otherwise an eight-second wait in the suite.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      render(<App />)
+      await screen.findByRole('tab', { name: 'More' })
+      expect(mockedSend).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
-    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-    await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /^send$/i }))
+      await user.click(screen.getByRole('tab', { name: 'More' }))
+      await user.click(
+        await screen.findByRole('button', { name: /^volunteer & report/i }),
+      )
+      await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+      await user.click(await screen.findByRole('button', { name: /blow down/i }))
+      await user.click(screen.getByTestId('report-done'))
 
-    await waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
-    expect(mockedSend.mock.calls[0][0].payload?.type).toBe('blowdown')
+      // Held, so nothing has gone yet - which is the promise the Undo button
+      // was making while it was on screen.
+      expect(mockedSend).not.toHaveBeenCalled()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS + 1_000)
+      })
+
+      await waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
+      expect(mockedSend.mock.calls[0][0].payload?.type).toBe('blowdown')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not claim the report is waiting when the send failed again', async () => {

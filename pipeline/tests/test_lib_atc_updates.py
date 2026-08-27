@@ -17,6 +17,7 @@ import pytest
 from lib.atc_scrape import MileReference, ParsedUpdate
 from lib.atc_updates import (
     REVIEWED,
+    SOURCE_KEY,
     TRAIL_MILE_MAX,
     UNREVIEWED,
     auto_publish_refusal,
@@ -211,8 +212,14 @@ def test_only_the_published_fields_reach_the_artifact():
         # file IS - so a reviewer never types this, and a stale or mistyped
         # value can never claim a row was checked when it was not.
         "review_state",
+        # Same treatment, same reason, for the registry key (#1083). It is a
+        # fact about the SOURCE and not about any one notice, so a reviewer
+        # never types it and a mistyped one could never send the client
+        # looking up the wrong organization's name.
+        "source_key",
     }
     assert rows[0]["review_state"] == REVIEWED
+    assert rows[0]["source_key"] == SOURCE_KEY
 
 
 # --- The file this repository actually ships -------------------------------

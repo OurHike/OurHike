@@ -90,6 +90,37 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
 export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
 
 /**
+ * The corridor-view sketch of that whole network (#1135,
+ * pipeline/export_nearby_trails.py's write_overview) - trails_overview.geojson's
+ * pattern applied to the artifact above, so the opening camera draws every
+ * organization's trails without fetching or parsing the 7.3 MB file whose
+ * lines only draw from the pin seam anyway.
+ *
+ * 255,263 gzipped bytes for all 7,669.7 line-miles as 31 features, measured
+ * 2026-08-27 against the live nearby_trails.geojson
+ * (pipeline/spike_network_overview.py) - beside the A.T. overview's 51,068,
+ * about 306 KB for every line the opening camera can draw. Each feature
+ * carries the three properties the paint and the tape read - `source`,
+ * `blaze_color`, `trail_status` - so it draws through the same expressions the
+ * real lines do, ghosting included, and closed ground stays closed-looking
+ * below the seam.
+ *
+ * NOT NAVIGATION DATA, exactly like the A.T.'s sketch: no point on it is more
+ * than 100 m from the exported line, so it draws only below the seam
+ * (map/style.ts's NETWORK_OVERVIEW_LAYER_ID carries maxzoom for it) and the
+ * real network takes over where its own layers start. Unlike that sketch it is
+ * STANDING rather than a stand-in - nothing else draws these trails below z9 -
+ * so it is cached and revalidated the way nearby_trails.geojson itself is
+ * (lib/nearbyTrailData.ts), not dropped when something better lands.
+ *
+ * A 404 is an ordinary answer for the two reasons its parent's is: a release
+ * exported before the artifact existed, and a bucket where either steward's
+ * `reaches_hikers` is false - pipeline/publish.py holds this sketch back with
+ * the artifact it sketches, as one decision.
+ */
+export const NETWORK_OVERVIEW_KEY = 'network_overview.geojson'
+
+/**
  * The waypoints those same organizations publish (#1097,
  * pipeline/export_nearby_poi.py) — NYS DEC's lean-tos, primitive campsites and
  * privies, NYS OPRHP's vistas, parking areas and trail bridges. 8,480 features

@@ -302,20 +302,26 @@ two is worth stating here because it is what makes the seam defensible:
 else** — all thirty maintaining-club sections, all of the stretches worth going to. Nothing is
 sampled, so nothing needs a caption admitting it was.
 
-**Since #603 it also carries the dot rank**, which is a real qualification of the paragraph above
-rather than a footnote to it: the corridor view is now that complete map of something else *plus*
-a stipple of every waypoint on the trail. The claim survives because a dot is not a place-card —
-nothing about the scatter suggests it is a curated set, and no dot is sampled out — but the view is
-no longer showing one subject. See the answered question below for why that trade was taken, and
-`client/src/map/poiLayers.ts`'s `POI_DOT_MIN_ZOOM` for the reasoning in the code.
+**From #603 to 2026-08-27 it also carried the dot rank**, a real qualification of the paragraph
+above while it held: the corridor view was that complete map of something else *plus* a stipple of
+every waypoint on the trail. **#1135 — Decide what the opening map draws: every mapped trail, and
+no waypoints below the seam** took the stipple back off, on the maintainer's decision — *"The
+opening map probably just needs to be all the trails that we have mapped. Not including the
+POIs."* — and both ranks now stop at the one seam again. Two things had changed since #603 took
+the trade: the subject the dots were standing in for exists (the clubs, the highlights, and now
+every organization's trails as a 255 KB overview), and #1097 had joined 8,480 network waypoints
+to the dot source while their trails' lines draw only from the seam up — so the stipple had
+quietly become mostly places on trails the view refuses to draw.
+`client/src/map/poiLayers.ts`'s `POI_DOT_MIN_ZOOM` carries the full record, and nothing from the
+seam up is reopened: a pin or a dot and never as neither stands.
 
-The legend's sentence for this band is now *"Waypoints show as dots at this zoom. Zoom in to see
-what each one is."* It replaced `Nothing on this part of the map yet — pan or zoom out to see
-more`, which at the opening view was false in both halves — there was plenty here, and zooming
-*out* was the wrong direction. The first replacement landed with
-[#528](https://github.com/OurHike/OurHike/issues/528) as *"waypoints are drawn from a closer
-zoom"*; #603 corrected it again, because once dots draw here that sentence is half wrong too —
-they **are** drawn, and what needs a closer zoom is telling one from another.
+The legend's sentence for this band is now *"Waypoints appear from a closer zoom."* — its third
+flip, each time with the layer it describes. `Nothing on this part of the map yet — pan or zoom
+out to see more` was false in both halves at the opening view;
+[#528](https://github.com/OurHike/OurHike/issues/528) replaced it with *"waypoints are drawn from
+a closer zoom"*; #603 corrected that to *"show as dots at this zoom"* once dots drew here; #1135
+flipped it back, and the sentence now renders on every below-seam rectangle rather than only an
+empty one, because it describes the band rather than a viewport.
 
 ---
 

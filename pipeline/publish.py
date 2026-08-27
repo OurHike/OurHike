@@ -489,6 +489,13 @@ NEARBY_TRAILS_KEY = "nearby_trails.geojson"
 # test_published_key_contract.py and the client's lib/config.ts to agree with.
 NEARBY_POI_KEY = "nearby_poi.geojson"
 
+# The corridor-view sketch of the whole network (#1135,
+# export_nearby_trails.write_overview) - trails_overview.geojson's sibling,
+# published under NEARBY_TRAILS_KEY's own licence gate below because it is the
+# same stewards' geometry with vertices removed. Named here for the same
+# contract-test reason as its two neighbours.
+NETWORK_OVERVIEW_KEY = "network_overview.geojson"
+
 
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
@@ -555,6 +562,18 @@ def collect_artifacts() -> dict[str, dict]:
             )
         else:
             artifacts[NEARBY_TRAILS_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+            # The corridor-view sketch of the same lines (#1135). Inside this
+            # branch deliberately: it is the same stewards' geometry, so it
+            # ships and is held back as one decision with the artifact it
+            # sketches - an overview of lines nobody may publish is still
+            # those lines. Absent from a manifest written before the export
+            # grew it, which the client reads as "no network overview" rather
+            # than as a failure - trails_overview.geojson's own rule.
+            if "overview" in manifest:
+                artifacts[NETWORK_OVERVIEW_KEY] = {
+                    "path": manifest["overview"]["path"],
+                    "sha256": manifest["overview"]["sha256"],
+                }
 
     # The POIs those same organizations publish (#1097, export_nearby_poi.py) -
     # DEC's lean-tos, campsites and privies, OPRHP's vistas, parking and
@@ -710,6 +729,24 @@ def collect_artifacts() -> dict[str, dict]:
     if stewards_manifest.exists():
         manifest = json.loads(stewards_manifest.read_text())
         artifacts["stewards.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The registry itself, for the org console (#929) - every registered
+    # source, INCLUDING the ones that reach no hiker.
+    #
+    # Its sibling above is deliberately not this file. `stewards.json` answers
+    # "whose data is on this phone" and may only name what actually ships;
+    # this one answers "what is registered", which is an admin question with a
+    # different rule. Two files rather than one wider one, because widening
+    # the first would have put a held-back steward on a hiker's sources card
+    # the day somebody wanted to count registrations.
+    #
+    # Same optional treatment as every artifact above: absent from a release
+    # exported before it existed, and the console renders an empty registry
+    # rather than an error.
+    registry_manifest = PROCESSED_DIR / "registry_manifest.json"
+    if registry_manifest.exists():
+        manifest = json.loads(registry_manifest.read_text())
+        artifacts["registry.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The curated highlights, if export_highlights.py has run (#595,
     # features/CORRIDOR_VIEW.md). Same shape again, and the same reason a run

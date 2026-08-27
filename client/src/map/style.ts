@@ -159,6 +159,20 @@ export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
  */
 export const NEARBY_TRAILS_SOURCE_ID = 'nearby-trails'
 
+/**
+ * The corridor-view sketch of that whole network (#1135, lib/config.ts's
+ * NETWORK_OVERVIEW_KEY) - what the opening camera draws, since the full
+ * network's layers carry `minzoom` at the seam and the A.T.'s own sketch
+ * covers only the A.T.
+ *
+ * A third source rather than a second `data` for NEARBY_TRAILS_SOURCE_ID
+ * because the two are on the map AT ONCE with disjoint zoom ranges: the
+ * sketch below the seam, the full lines above it, and one GeoJSON source
+ * takes one `data`. Same stewards, so the same attribution rides it - the
+ * licence condition follows the lines, not the artifact.
+ */
+export const NETWORK_OVERVIEW_SOURCE_ID = 'network-overview'
+
 export const BACKDROP_LAYER_ID = 'backdrop'
 export const TOPO_LAYER_ID = 'topo'
 export const TRAIL_CASING_LAYER_ID = 'trail-casing'
@@ -167,6 +181,8 @@ export const TRAIL_OVERVIEW_LAYER_ID = 'trail-overview-line'
 export const NEARBY_TRAIL_CASING_LAYER_ID = 'nearby-trail-casing'
 export const NEARBY_BLAZE_LAYER_ID = 'nearby-trail-blaze'
 export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
+export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
+export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
 
 /**
  * What the map paints wherever it has no topo ink to paint.
@@ -624,6 +640,33 @@ export function attachNearbyTrails(
   )
 }
 
+/**
+ * The network's corridor-view sketch, or nothing (#1135).
+ *
+ * attachNearbyTrails' shape and clock, not attachTrailOverview's: once these
+ * lines are on the map they stay, because nothing better replaces them below
+ * the seam - the full network's layers start where this one stops. `null`
+ * means "there is no sketch" - an older release, or a bucket holding the
+ * artifact back with its parent - and draws as the A.T.-only opening view
+ * this app had before the artifact existed.
+ */
+export function attachNetworkOverview(
+  map: MapLibreMap,
+  networkOverviewUrl: string | null,
+): () => void {
+  return whenStyleReady(
+    map,
+    () => map.getSource(NETWORK_OVERVIEW_SOURCE_ID) !== undefined,
+    () => {
+      const source = map.getSource<GeoJSONSource>(NETWORK_OVERVIEW_SOURCE_ID)
+      if (source === undefined || typeof source.setData !== 'function') return
+
+      source.setData((networkOverviewUrl ?? emptyTrailOverview()) as never)
+    },
+    'Network overview',
+  )
+}
+
 /** What the overview source holds before there is one and after it is done.
  *  A function rather than a shared constant: MapLibre's typings want a
  *  mutable feature list, and one object handed to both the style and every
@@ -767,6 +810,36 @@ function trailWidthExpression(extra: number): unknown[] {
 
 export const TRAIL_WIDTH_EXPRESSION = trailWidthExpression(0)
 export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHANG * 2)
+
+/**
+ * The network overview's width, tapering across the representational band
+ * (#1135) - the one paint expression that layer does not share with the
+ * lines it sketches, and the reason is drawn rather than argued: at the
+ * side-trail width the opening camera's dense park clusters render as a
+ * cloud of coloured dots over New York, which is the exact texture #1135
+ * just took off this view (a sub-pixel segment under round caps IS a dot).
+ * Measured on a local serve_processed.py build, 2026-08-27.
+ *
+ * The seam-end stop is DEFAULT_TRAIL_LINE_WIDTH by name, not by value:
+ * every source in the overview takes the side-trail tier from
+ * TRAIL_WIDTH_EXPRESSION (none is a through-route), so landing on that
+ * constant at the seam makes the handoff to the full network's layers
+ * pixel-seamless - and style.test.ts pins it so the two cannot drift apart.
+ *
+ * The far-end 0.8 px is picked against the same local build, not measured
+ * against a phone; it is the mockup's own weight for the mass
+ * (features/mockups/opening-map.html drew it at 1.1 px and this canvas
+ * renders denser than that page's thinned SVG).
+ */
+export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  4,
+  0.8,
+  POI_PIN_MIN_ZOOM,
+  DEFAULT_TRAIL_LINE_WIDTH,
+]
 
 export interface MapStyleOptions {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -974,6 +1047,16 @@ export function buildMapStyle({
         data: emptyTrailOverview(),
         attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT} · ${DEC_CREDIT}`,
       },
+      // The same network as a corridor-view sketch (#1135), empty until
+      // lib/nearbyTrailData.ts hands one over. The SAME attribution string as
+      // its parent above, and that is a licence condition rather than
+      // tidiness: OPRHP's credit is owed whenever their lines are drawn, and
+      // below the seam these are the only drawing of them.
+      [NETWORK_OVERVIEW_SOURCE_ID]: {
+        type: 'geojson',
+        data: emptyTrailOverview(),
+        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT} · ${DEC_CREDIT}`,
+      },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and
       // OpenStreetMap-derived, only one of those two has a settled credit to
@@ -1082,6 +1165,57 @@ export function buildMapStyle({
       // sit in the style unconditionally - see lib/droughtStyle.ts for why the
       // switch is a visibility flip rather than an add and remove.
       buildDroughtLayer(DROUGHT_SOURCE_ID, sheetIsDark(appearance), showDrought),
+      {
+        // The whole network's corridor-view sketch (#1135), UNDER everything
+        // the A.T. draws - the ordering argument the full network's layers
+        // make below, one zoom band earlier: a nearby trail must never cover
+        // the trail the map is about, and below the seam that includes the
+        // A.T.'s own sketch.
+        //
+        // `maxzoom` is the A.T. sketch's safety rule, unchanged: no point on
+        // this line is more than 100 m from the exported line
+        // (pipeline/export_nearby_trails.py's write_overview), which is a
+        // fraction of a pixel down here and a line in the wrong place at
+        // navigation zooms. At the seam the full network's own layers take
+        // over - same properties, same expressions, so the handoff is not a
+        // restyle.
+        //
+        // No casing pair, exactly like the A.T. sketch and unlike the full
+        // lines: one layer, the shared colour and ghost expressions - so
+        // every organization's trails read as context around the A.T. from
+        // the first frame.
+        //
+        // WIDTH IS THE ONE EXPRESSION THIS LAYER DOES NOT SHARE, and the
+        // deviation was drawn before it was coded: rendered at the full
+        // side-trail width, the opening camera's dense park clusters - DEC's
+        // and OPRHP's short segments, sub-pixel long at z5 under round caps -
+        // read as a cloud of coloured dots over New York, which is the exact
+        // texture #1135 just took off this view (measured on a local
+        // serve_processed.py build, 2026-08-27). So the width tapers across
+        // the representational band and lands on the side-trail width AT the
+        // seam, where the full network's layers take over - the handoff stays
+        // pixel-seamless, and the deviation cannot leak into a zoom a hiker
+        // navigates by.
+        id: NETWORK_OVERVIEW_LAYER_ID,
+        type: 'line',
+        source: NETWORK_OVERVIEW_SOURCE_ID,
+        maxzoom: POI_PIN_MIN_ZOOM,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': blazeLineColor(appearance) as unknown as string,
+          'line-width': NETWORK_OVERVIEW_WIDTH_EXPRESSION as unknown as number,
+          'line-opacity': nearbyTrailOpacityExpression() as unknown as number,
+        },
+      },
+      // Closed ground stays closed-looking below the seam: the sketch keeps
+      // `trail_status` per feature (48.4 line-miles of it, measured
+      // 2026-08-27), so the same barrier tape draws over it - over its own
+      // ghosted line, under everything the A.T. draws, and capped at the
+      // seam where the full network's own tape takes over.
+      ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
+        bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }).map((layer) => ({ ...layer, maxzoom: POI_PIN_MIN_ZOOM })),
       {
         // The corridor-view sketch (#869), UNDER the real trail's casing, so
         // on the one frame where both exist the real line is what a hiker

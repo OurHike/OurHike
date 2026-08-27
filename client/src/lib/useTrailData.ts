@@ -26,7 +26,11 @@ import {
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
-import { loadNearbyTrails, type NearbyTrailsAnswer } from './nearbyTrailData'
+import {
+  loadNearbyTrails,
+  loadNetworkOverview,
+  type NearbyTrailsAnswer,
+} from './nearbyTrailData'
 import {
   isSettledAbsence,
   loadTrailGraph,
@@ -161,6 +165,22 @@ export interface TrailData {
    * their own.
    */
   nearbyTrailsUrl: string | null
+  /**
+   * The corridor-view sketch of that whole network, as an object URL, or null
+   * (#1135, lib/nearbyTrailData.ts's loadNetworkOverview).
+   *
+   * What the OPENING camera draws: below the pin seam the full network's
+   * layers do not draw at all (map/style.ts's minzoom on them), so without
+   * this the map's first screen shows the A.T. alone however many
+   * organizations' trails the phone holds. 255 KB gzipped for all of them,
+   * measured 2026-08-27 (pipeline/spike_network_overview.py).
+   *
+   * Like `nearbyTrailsUrl` and unlike `overviewTrailsUrl`: never withdrawn
+   * once set, because nothing better replaces it - it IS the below-seam
+   * network, not a stand-in for one. Null is ordinary: an older release, or
+   * a bucket holding the artifact back with its parent.
+   */
+  networkOverviewUrl: string | null
   /** The junction graph's routing half, indexed - or null while this phone
    *  has not got one, which PlanKindSheet reads as "no day hikes yet". The
    *  two heavy halves are NOT here: the edge vertices and the per-edge climb
@@ -243,6 +263,96 @@ export interface TrailDataOptions {
   centerlineOnly?: boolean
 }
 
+/**
+ * One verified network artifact's state machine, shared by the nearby-trail
+ * network and its corridor-view sketch (#1082, #1135) so the two cannot
+ * drift - every guard below is load-bearing and was tuned on the first of
+ * them.
+ *
+ * One refresh attempt per online spell, cleared when signal drops. This is
+ * the loop guard the loaders' contract asks their caller for: every failed
+ * refresh answers `revalidated: false` so the asking can RESUME on the next
+ * real reconnection - a captive portal at a trailhead says "online" while
+ * carrying nothing, and treating its failure as final would hold yesterday's
+ * closures off the map all day - but re-asking within the same online spell
+ * would loop against a manifest that is simply down. And never again once an
+ * answer has actually been verified against the manifest.
+ *
+ * `ready` is the caller's sequencing gate (#1117), applied ONLINE ONLY: the
+ * offline path always falls through to the store read, so a phone with no
+ * signal draws its last verified copy on the first tick whatever the gate
+ * says. `load` must be module-stable - it is in the dependency list, and a
+ * closure would re-arm this on every render.
+ */
+function useVerifiedNetworkArtifact(
+  load: (online: boolean, signal?: AbortSignal) => Promise<NearbyTrailsAnswer | null>,
+  online: boolean,
+  ready: boolean,
+): NearbyTrailsAnswer | null {
+  const [answer, setAnswer] = useState<NearbyTrailsAnswer | null>(null)
+  const tried = useRef(false)
+  useEffect(() => {
+    if (!online) tried.current = false
+  }, [online])
+
+  useEffect(() => {
+    // The state is in the dependency list so that setting it re-runs this
+    // and takes one of the early returns.
+    if (!DATA_CONFIGURED) return
+    if (online && !ready) return
+    if (answer !== null && answer.revalidated) return
+    if (!online && answer !== null) return
+    if (online && tried.current) return
+    if (online) tried.current = true
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void load(online, controller.signal).then((fresh) => {
+      if (fresh === null) return
+      // An object URL nothing will draw is a blob the page holds until it is
+      // closed - the same reason the A.T. overview revokes an answer it no
+      // longer wants.
+      if (!wanted) {
+        URL.revokeObjectURL(fresh.url)
+        return
+      }
+      setAnswer((previous) => {
+        // Same bytes, by hash: keep the URL the map has already parsed and
+        // throw the new one away, carrying over only what the refresh
+        // learned. Swapping URLs here would make MapLibre re-fetch and
+        // re-tile megabytes of identical GeoJSON mid-hike for pixels that
+        // cannot change. Returning `previous` unchanged when nothing was
+        // learned lets React bail out entirely.
+        if (previous !== null && previous.hash === fresh.hash) {
+          URL.revokeObjectURL(fresh.url)
+          // OR, never overwrite: a verified answer stays verified even if a
+          // later attempt failed - which the guards above make unreachable,
+          // and cheap insurance against the day they move.
+          const revalidated = previous.revalidated || fresh.revalidated
+          return revalidated === previous.revalidated
+            ? previous
+            : { ...previous, revalidated }
+        }
+        // A new release arrived: the old URL is revoked - safe at this
+        // point: MapLibre reads a blob URL once, when `setData` hands it
+        // over, and a URL this state has held has either been read by now
+        // or is being replaced before any map mounted. Parsed tiles outlive
+        // the URL either way.
+        if (previous !== null) URL.revokeObjectURL(previous.url)
+        return fresh
+      })
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [load, online, answer, ready])
+
+  return answer
+}
+
 export function useTrailData(
   online: boolean,
   { centerlineOnly = false }: TrailDataOptions = {},
@@ -258,7 +368,6 @@ export function useTrailData(
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
-  const [nearbyTrails, setNearbyTrails] = useState<NearbyTrailsAnswer | null>(null)
   const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
   /** Why there is no graph, or null while nothing has answered yet. The two
    *  are different on screen: "looking" is not "there isn't one". */
@@ -668,82 +777,30 @@ export function useTrailData(
    * **#552 — Decide the unit of offline coverage, and write it down**'s
    * decision - see that module's header for the line between this cache and
    * that machinery.
+   *
+   * Behind the trail line, never beside it (#1117): the gate holds the online
+   * fetch until the launch fetch settles either way. On the cold run where
+   * the refetch would be the whole 7.5 MB artifact, there is no stored copy
+   * to draw in the meantime either, so the wait costs a hiker nothing
+   * visible and buys `trails.geojson` the pipe.
    */
-  // One refresh attempt per online spell, cleared when signal drops. This is
-  // the loop guard loadNearbyTrails' contract asks its caller for: every
-  // failed refresh answers `revalidated: false` so the asking can RESUME on
-  // the next real reconnection - a captive portal at a trailhead says
-  // "online" while carrying nothing, and treating its failure as final would
-  // hold yesterday's closures off the map all day - but re-asking within the
-  // same online spell would loop against a manifest that is simply down.
-  const nearbyTried = useRef(false)
-  useEffect(() => {
-    if (!online) nearbyTried.current = false
-  }, [online])
+  const nearbyTrails = useVerifiedNetworkArtifact(
+    loadNearbyTrails,
+    online,
+    trailFetchSettled,
+  )
 
-  useEffect(() => {
-    // Once per online spell, not once per reconnection tick - and never
-    // again once an answer has actually been verified against the manifest.
-    // The state is in the dependency list so that setting it re-runs this
-    // and takes one of the early returns.
-    if (!DATA_CONFIGURED) return
-    // Behind the trail line, never beside it (#1117). ONLINE ONLY, and the
-    // asymmetry is the whole design: offline this falls through to the store
-    // read below, so a phone with no signal still draws its last verified
-    // nearby lines on the first tick, exactly as before. What waits is the
-    // 7.5 MB refetch - and on the cold run where that is the whole artifact,
-    // there is no stored copy to draw in the meantime either, so the wait
-    // costs a hiker nothing visible and buys `trails.geojson` the pipe.
-    if (online && !trailFetchSettled) return
-    if (nearbyTrails !== null && nearbyTrails.revalidated) return
-    if (!online && nearbyTrails !== null) return
-    if (online && nearbyTried.current) return
-    if (online) nearbyTried.current = true
-
-    const controller = new AbortController()
-    let wanted = true
-
-    void loadNearbyTrails(online, controller.signal).then((answer) => {
-      if (answer === null) return
-      // An object URL nothing will draw is a blob the page holds until it is
-      // closed - the same reason the overview revokes an answer it no longer
-      // wants.
-      if (!wanted) {
-        URL.revokeObjectURL(answer.url)
-        return
-      }
-      setNearbyTrails((previous) => {
-        // Same bytes, by hash: keep the URL the map has already parsed and
-        // throw the new one away, carrying over only what the refresh
-        // learned. Swapping URLs here would make MapLibre re-fetch and
-        // re-tile 23.5 MB of identical GeoJSON mid-hike for pixels that
-        // cannot change. Returning `previous` unchanged when nothing was
-        // learned lets React bail out entirely.
-        if (previous !== null && previous.hash === answer.hash) {
-          URL.revokeObjectURL(answer.url)
-          // OR, never overwrite: a verified answer stays verified even if a
-          // later attempt failed - which the guards above make unreachable,
-          // and cheap insurance against the day they move.
-          const revalidated = previous.revalidated || answer.revalidated
-          return revalidated === previous.revalidated
-            ? previous
-            : { ...previous, revalidated }
-        }
-        // A new release arrived: the old URL is revoked - safe at this
-        // point: MapLibre reads a blob URL once, when `setData` hands it
-        // over, and a URL this state has held has either been read by now
-        // or is being replaced before any map mounted. Parsed tiles outlive
-        // the URL either way.
-        if (previous !== null) URL.revokeObjectURL(previous.url)
-        return answer
-      })
-    })
-
-    return () => {
-      wanted = false
-      controller.abort()
-    }
-  }, [online, nearbyTrails, trailFetchSettled])
+  /**
+   * The corridor-view sketch of that network (#1135), through the same state
+   * machine and deliberately NOT behind #1117's gate: this is what the
+   * OPENING camera draws - below the pin seam the full network's layers do
+   * not draw at all - and at 255 KB gzipped (measured 2026-08-27,
+   * pipeline/spike_network_overview.py) it is the A.T. sketch's kind of
+   * fetch, not the 7.5 MB kind that gate exists to sequence. Ungated, the
+   * first screen's lines arrive in the overview class of seconds; gated,
+   * they would wait ~30 s behind a fetch they do not need.
+   */
+  const networkOverview = useVerifiedNetworkArtifact(loadNetworkOverview, online, true)
 
   // The junction graph's routing half, on the nearby-lines pattern above -
   // once, not once per reconnection, with the state itself as the guard. No
@@ -865,6 +922,7 @@ export function useTrailData(
     // effect above), not a consumer's - the map draws a stored copy and a
     // fresh one identically.
     nearbyTrailsUrl: nearbyTrails?.url ?? null,
+    networkOverviewUrl: networkOverview?.url ?? null,
     graphIndex,
     trailNetwork,
     retryTrailNetwork,

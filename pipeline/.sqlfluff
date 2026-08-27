@@ -11,8 +11,20 @@
 #
 # - ST06 (column order): off. The staging models feed a positional
 #   `union all`, so column order is a semantic contract shared across
-#   models, not a style choice - mechanically reordering one model's select
-#   is exactly the silent-breakage the reconciliation tests exist to catch.
+#   models, not a style choice - a linter that mechanically reordered one
+#   model's select would move every row's longitude into its latitude.
+#
+#   THE SECOND HALF OF THIS NOTE USED TO BE FALSE AND IS CORRECTED HERE
+#   (#100, Phase D review). It said reordering was "exactly the silent-
+#   breakage the reconciliation tests exist to catch". Those tests compare
+#   ROW COUNTS, and a transposition changes none. A verifier proved it by
+#   swapping `st_x`/`st_y` in one staging model and rebuilding: PASS=145,
+#   ERROR=0, every DEC lean-to in Antarctica. Turning ST06 off is still
+#   right - the contract is real - but what actually catches a breach is
+#   dbt/tests/singular/assert_pois_land_in_the_region_this_build_covers.sql,
+#   added alongside this correction. A rule switched off on the strength of
+#   a guard that does not exist is worse than one switched off for a stated
+#   reason, which is why the sentence is replaced rather than softened.
 # - RF04 for `name` and `source` only: these are lib/poi_schema.py's own
 #   unified record keys, and the models' whole job is to land on that
 #   schema; renaming to appease a keyword list would put a second

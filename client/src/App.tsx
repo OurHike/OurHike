@@ -52,6 +52,7 @@ import {
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type MorePage, type StuckReport } from './screens/More'
 import { Moderation } from './screens/Moderation'
+import { Registry } from './screens/Registry'
 import { InstallPrompt } from './screens/InstallPrompt'
 import {
   ENTRY_CARD_MAX_VIEWPORT_FRACTION,
@@ -64,7 +65,12 @@ import { disputeFor } from './lib/disputes'
 import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
-import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
+import {
+  ReportWindow,
+  UNDO_WINDOW_MS,
+  type ReportWindowAnchor,
+} from './reporting/ReportWindow'
+import { type ReportTypeId } from './reporting/categories'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -218,7 +224,7 @@ import {
   fetchTrailGraphGeometry,
   fetchTrailGraphProfile,
 } from './lib/trailGraphData'
-import { orgLabelFrom } from './lib/stewards'
+import { orgLabelFrom, orgProviderFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
@@ -301,7 +307,8 @@ import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
-import { useAtcNoticesPanel } from './chrome/atcNoticesPanel'
+import { ATC_SOURCE_KEY } from './lib/notices'
+import { useNoticesPanel } from './chrome/noticesPanel'
 import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
@@ -419,7 +426,7 @@ function cardDetail(poi: StoredPoi, searchable: readonly SearchablePoi[]): PoiDe
 
 type ReportingState =
   | null
-  | { step: 'pick'; anchor?: ReportAnchor }
+  | { step: 'window'; anchor?: ReportAnchor }
   | { step: 'form'; type: ReportTypeId; anchor?: ReportAnchor }
 
 // Sign-in is its own flow rather than another step of the reporting one,
@@ -767,6 +774,10 @@ function App() {
   // read once per sign-in (lib/useModerator.ts) and decides only whether the
   // entry point exists - the backend gates every call regardless (#235).
   const [moderating, setModerating] = useState(false)
+  /** Whether the source registry is open (#929). Local to the shell like every
+   *  other Settings-reached screen, and there is no router to put it in - see
+   *  this file's opening comment. */
+  const [browsingRegistry, setBrowsingRegistry] = useState(false)
   const isModerator = useModerator(account !== null)
   /**
    * Which of More's pages is showing (screens/More.tsx). Shell state rather
@@ -823,6 +834,7 @@ function App() {
     reportState,
     atcUpdates,
     atcReviewedAt,
+    orgNotices,
     drought,
     droughtWeek,
     workProjects,
@@ -962,6 +974,7 @@ function App() {
     trailsUrl,
     overviewTrailsUrl,
     nearbyTrailsUrl,
+    networkOverviewUrl,
     graphIndex,
     trailNetwork,
     retryTrailNetwork,
@@ -1506,6 +1519,11 @@ function App() {
    * silent for exactly the first quarter mile of a closed section, which is
    * where the warning matters most. closureBanner.ts owns that split.
    */
+  /** Each organization's own short name for the header's one line, off the
+   *  published registry (#1083). Memoized here rather than inside the banner
+   *  memo so it is built once per stewards change and not once per fix. */
+  const noticeOrg = useMemo(() => orgProviderFrom(stewards), [stewards])
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
     if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
@@ -1545,7 +1563,20 @@ function App() {
       if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
         return closureBanner(closure.closure, fixMile, heading, units)
       }
-      if (atc !== null) return atcUpdateBanner(atc.update, fixMile, heading, units)
+      if (atc !== null) {
+        // The organization's own short name, off the registry rather than out
+        // of a string in lib/atcUpdates.ts (#1083). `provider` is the registry's
+        // short form - "ATC", "NYNJTC" - which is what a line read while
+        // walking needs, and it is theirs rather than an abbreviation this app
+        // invented.
+        return atcUpdateBanner(
+          atc.update,
+          fixMile,
+          heading,
+          noticeOrg(ATC_SOURCE_KEY),
+          units,
+        )
+      }
       return null
     }
 
@@ -1663,18 +1694,30 @@ function App() {
   }, [clubSections, highlights, trailIndex])
 
   /**
-   * The ATC's notices: bands, dots, the tapped sheet, the full list and the
-   * "new alerts" banner - chrome/atcNoticesPanel.tsx owns all of it (#327).
+   * Trail notices from every organization that publishes them: bands, dots,
+   * the tapped sheet, the full list and the "new notices" banner -
+   * chrome/noticesPanel.tsx owns all of it (#327, generalized in #1083).
    *
    * What is left here is the header's one line, which is a different
-   * question: `atcUpdateLanes` below ranks an ATC notice against a closure
-   * for the single sentence a walking hiker gets, and that comparison is the
-   * shell's precisely because neither feature can make it alone.
+   * question: `atcUpdateLanes` below ranks a notice against a closure for the
+   * single sentence a walking hiker gets, and that comparison is the shell's
+   * precisely because neither feature can make it alone.
+   *
+   * THE HEADER LINE IS STILL ATC-ONLY, and that is a fact about the data
+   * rather than an omission. That line says how far ahead something is, and
+   * only an `at_miles` notice carries a mile - every NYNJTC row is `unplaced`
+   * today (features/ORG_NOTICES.md §3), so there is no distance to print and
+   * inventing a lane for them would put a notice in the one place a walking
+   * hiker looks with nothing true to say about where it is. They reach a hiker
+   * through the list and the banner, which need no mile.
    */
-  const atc = useAtcNoticesPanel({
+  const atc = useNoticesPanel({
     updates: atcUpdates,
+    orgNotices,
     reviewedAt: atcReviewedAt,
+    stewards,
     trailIndex,
+    bbox,
     now,
   })
 
@@ -3066,7 +3109,7 @@ function App() {
     selectedPoiId !== null ||
     line.mapScreen.lineSheet != null ||
     atc.mapScreen.atcUpdateSheet != null ||
-    atc.mapScreen.atcNoticeList != null ||
+    atc.mapScreen.noticeList != null ||
     workday.mapScreen.workdaySheet != null
 
   const dayHikesHereNode =
@@ -4185,10 +4228,183 @@ function App() {
     (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => {
       setSelectedPoiId(null)
       setReporting(
-        type === undefined ? { step: 'pick', anchor } : { step: 'form', type, anchor },
+        type === undefined ? { step: 'window', anchor } : { step: 'form', type, anchor },
       )
     },
     [],
+  )
+
+  /**
+   * A thanks from a place's card (#1133).
+   *
+   * STRAIGHT TO THE FORM, not through the window, for the reason
+   * reporting/categories.ts states as `filesOnTap`: a thanks is one of the two
+   * things that must never be filed by a tap. It is a message to a person, and
+   * an empty one sent by accident is worse than none - so it gets the form,
+   * where there is something to write and a Cancel to change your mind with.
+   *
+   * The anchor is the card's own, so the club lookup has a `poiId` to work
+   * from. Same shape as `handleReportFromPoi`'s escalation arm, deliberately:
+   * this is that path with the type already picked.
+   */
+  const handleThanksFromPoi = useCallback((anchor: ReportAnchor) => {
+    setSelectedPoiId(null)
+    setReporting({ step: 'form', type: 'thanks', anchor })
+  }, [])
+
+  /**
+   * What the report window's header prints for where this is going (#1133).
+   *
+   * A place's NAME when the report started from its card, because that is
+   * what a hiker is looking at; otherwise the mile, because that is what they
+   * can check against the header. "here" only when neither is known, which is
+   * a real state - no fix yet, no trail index downloaded - and one the window
+   * has to be able to say rather than printing "mi 0.0", which is Springer
+   * Mountain (chrome/Header.tsx keeps the same rule about the mile readout).
+   */
+  const reportAnchorWords = useCallback(
+    (anchor?: ReportAnchor): { label: string; phrase: string } => {
+      if (anchor?.poiId !== undefined) {
+        const place = searchablePois.find((poi) => poi.id === anchor.poiId)
+        if (place !== undefined) return { label: place.name, phrase: `at ${place.name}` }
+      }
+      const mile = anchor?.mile ?? fix?.mile ?? undefined
+      // "here" is an adverb where the other two are nouns, which is why the
+      // window takes both forms rather than composing `at ${label}` itself.
+      // That naive version reads perfectly for a mile and produced "Filed —
+      // blow down at here" the first time anybody photographed the screen
+      // with no fix.
+      if (mile === undefined) return { label: 'here', phrase: 'here' }
+      const shown = `mi ${mile.toLocaleString('en-US', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}`
+      return { label: shown, phrase: `at ${shown}` }
+    },
+    [searchablePois, fix?.mile],
+  )
+
+  /**
+   * File a report from the window, held back for its undo window (#1133).
+   *
+   * `beginContribution` first and always, exactly as `handleSubmitReport`
+   * does: saved before anything is asked about who the contributor is. The
+   * difference is the fourth argument - without it, the `syncOutbox` below
+   * would routinely send the report before the countdown on screen finished,
+   * and the Undo button would be a lie.
+   *
+   * The sign-in and identity steps are deliberately NOT taken here. Under 1a
+   * the tap is the whole interaction for most hikers, and putting an account
+   * question between somebody and the map they were reading - for a report
+   * they may be about to undo - is the interruption this window exists to
+   * remove. They are asked when the window closes instead.
+   */
+  const handleFileFromWindow = useCallback(
+    async (type: ReportTypeId, note: string, holdUntil: Date): Promise<string> => {
+      const anchor = reporting !== null ? reporting.anchor : undefined
+      // WHERE THE REPORT SAYS IT IS, and the rule is `ReportForm`'s own,
+      // carried over rather than reinvented: the ANCHOR when the report
+      // started from a place card, and otherwise the hiker's own fix.
+      //
+      // Dropping the second half is a regression that looks like nothing -
+      // the report still files, the receipt still says "Filed" - and leaves a
+      // maintainer a blow-down with no location. App.flows.test.tsx names the
+      // behaviour exactly ("files the report at the position the hiker is
+      // actually standing"), which is how it was caught here.
+      //
+      // The mile is separately unknown from the coordinates: a fix off the
+      // centerline, or a trail index not downloaded yet, has one and not the
+      // other. Absent rather than zero, always - "mi 0.0" is Springer
+      // Mountain and 0,0 is the Atlantic off West Africa, so neither is a
+      // stand-in for "we do not know".
+      const at =
+        anchor?.lat !== undefined && anchor.lon !== undefined
+          ? { lat: anchor.lat, lon: anchor.lon }
+          : gps.status === 'located'
+            ? { lat: gps.at.lat, lon: gps.at.lon }
+            : null
+      const mile = anchor?.mile ?? fix?.mile
+
+      const item = await beginContribution(
+        {
+          type,
+          reporter_type: signReportAs(preferences.reporter_type),
+          ...(note === '' ? {} : { note }),
+          ...(anchor?.poiId !== undefined ? { poi_id: anchor.poiId } : {}),
+          ...(at !== null ? at : {}),
+          ...(mile !== undefined ? { mile } : {}),
+        },
+        new Date(),
+        undefined,
+        holdUntil,
+      )
+      return item.id
+    },
+    [reporting, preferences.reporter_type, gps, fix?.mile],
+  )
+
+  /** Undo: the same `removeQueued` everything else uses. There is no second
+   *  withdrawal path, because the report was a real queue entry all along. */
+  const handleUndoFromWindow = useCallback(
+    async (outboxId: string) => {
+      await removeQueued(outboxId)
+      await refreshOutbox()
+    },
+    [refreshOutbox],
+  )
+
+  /**
+   * Closing the window is where the account question finally gets asked - and
+   * only if something was actually filed, which `refreshOutbox` has already
+   * counted.
+   */
+  const handleCloseWindow = useCallback(
+    (filedAnything: boolean) => {
+      setReporting(null)
+      // NOTHING WAS FILED, so nothing is owed. Somebody who opened the window,
+      // read it and closed it has not contributed - and asking them to sign in
+      // for a report they did not write is the interruption this whole change
+      // exists to remove. The old flow could not get this wrong, because
+      // reaching its save path meant submitting a form; a window you can open
+      // and close for free can, which is what the test asserts.
+      if (!filedAnything) return
+
+      void syncOutbox().then((result) => {
+        if (result === null) return
+        if (result.sent > 0) markSynced()
+        // AND AGAIN ONCE THE UNDO WINDOW HAS SHUT (#1133), which is #640
+        // re-opening quietly if this is left out.
+        //
+        // #640 is the rule that a freshly filed report goes NOW rather than
+        // waiting for the connection to flap: `useOutboxSync`'s effect fires
+        // on `online` or the account CHANGING, and filing a report changes
+        // neither. The flush above is what satisfies it - except that under
+        // 1a the report it was filed for is usually still HELD when it runs,
+        // because `Done` sits right there and a hiker presses it in about two
+        // seconds. So the flush drains everything except the one report the
+        // hiker just wrote, and that one then sits as "waiting to send"
+        // exactly as #640 described.
+        //
+        // `held` is why FlushResult counts it apart from `stuck`: this is the
+        // one caller that can do something about it. One follow-up, not a
+        // loop - the hold is bounded and a second held report would be a
+        // second window, with its own close and its own follow-up.
+        if (result.held > 0) {
+          setTimeout(() => {
+            void syncOutbox().then((later) => {
+              if (later !== null && later.sent > 0) markSynced()
+            })
+          }, UNDO_WINDOW_MS)
+        }
+      })
+      const next = stepAfterSaving({
+        hasAccount: account !== null,
+        hasIdentity: hasStatedReporterType(preferences.reporter_type),
+      })
+      if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
+      else if (next === 'identity') askForIdentity()
+    },
+    [account, preferences.reporter_type, askForIdentity, markSynced],
   )
 
   /**
@@ -4216,6 +4432,7 @@ function App() {
       onAddNote: (draft: FieldNoteDraft, photo?: Blob) =>
         void handleAddFieldNote(draft, photo),
       onReportProblem: handleReportFromPoi,
+      onSayThanks: handleThanksFromPoi,
       now,
     }),
     [
@@ -4750,30 +4967,16 @@ function App() {
       />
     )
   } else if (reporting !== null) {
-    if (reporting.step === 'pick') {
-      const anchor = reporting.anchor
-      flowScreen = (
-        <ReportTypePicker
-          // The anchor rides through the pick (FIELD_NOTES.md step 1): a
-          // report that started from a place card stays about that place
-          // whichever type gets chosen.
-          onPick={(type) =>
-            setReporting(
-              anchor === undefined
-                ? { step: 'form', type }
-                : { step: 'form', type, anchor },
-            )
-          }
-          // A closure leaves the report flow rather than continuing it: it
-          // is a different record with a different form (#832).
-          onReportClosure={() => {
-            setReporting(null)
-            setReportingClosure(true)
-          }}
-          onCancel={() => setReporting(null)}
-        />
-      )
-    } else {
+    // THE PICKER IS NO LONGER A ROUTE (#1133). `step: 'window'` renders the
+    // report window at the foot of this component's return instead, as an
+    // OVERLAY - the whole point being that the screen underneath stays
+    // mounted and visible rather than being replaced. So there is nothing to
+    // assign to `flowScreen` here, and assigning one would undo the change.
+    //
+    // `step: 'form'` is still a route, and still needs to be: it is reached
+    // only by `bad_hikers` and `thanks`, both of which are long forms with
+    // things to type, and neither of which files on a tap.
+    if (reporting.step === 'form') {
       flowScreen = (
         <ReportForm
           type={reporting.type}
@@ -4987,7 +5190,12 @@ function App() {
       }}
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
-      onStartReport={() => setReporting({ step: 'pick' })}
+      onStartReport={() => setReporting({ step: 'window' })}
+      // A thanks goes straight to its form rather than through the window: it
+      // is not a problem, and the window is a list of problems
+      // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
+      // splitting it out of one.
+      onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
       // ONLY WHAT IS STILL AHEAD (#982, the maintainer's decision of
       // 2026-08-27: "Today shouldn't have other day hikes. I think the
       // previous hikes need to live on a different screen"). Today is the day
@@ -5066,7 +5274,12 @@ function App() {
                 a resetKey={activeTab} here could never change while mounted
                 (#175). */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              {moderating ? (
+              {browsingRegistry ? (
+                // Replaces More, like Moderation beside it and for the same
+                // reason: reached from here and nowhere else, so there is
+                // nothing behind it worth keeping visible.
+                <Registry onClose={() => setBrowsingRegistry(false)} />
+              ) : moderating ? (
                 // Replaces More rather than covering it, for the same reason
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
@@ -5120,9 +5333,10 @@ function App() {
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   onEditHike={() => setPickingHike(true)}
-                  onStartReport={() => setReporting({ step: 'pick' })}
+                  onStartReport={() => setReporting({ step: 'window' })}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
+                  onOpenRegistry={() => setBrowsingRegistry(true)}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}
@@ -5430,6 +5644,7 @@ function App() {
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
               nearbyTrailsUrl={nearbyTrailsUrl}
+              networkOverviewUrl={networkOverviewUrl}
               background={effectiveBackground(
                 preferences.background_source,
                 saveData,
@@ -5465,7 +5680,12 @@ function App() {
               // the USGS survey only while there are USGS tiles on the phone to
               // draw, and a hiking-sheet-only download has none.
               hasRasterArchive={archiveDownloaded}
-              hasNearbyTrails={nearbyTrailsUrl !== null}
+              // Either representation of the network: the corridor-view sketch
+              // draws the same stewards' lines below the seam (#1135), and
+              // OPRHP's terms require credit whenever their lines are drawn -
+              // a credit keyed to the full artifact alone would lapse for the
+              // opening view.
+              hasNearbyTrails={nearbyTrailsUrl !== null || networkOverviewUrl !== null}
               // Decided here rather than on the screen (#334): the same failing
               // source has to reach the downloads window, which opens over the
               // More tab where the map screen is not rendered at all. What the
@@ -5765,6 +5985,89 @@ function App() {
           over one, and a dialog floating over somebody's half-typed report
           is not an arrangement worth inventing now. */}
       {flowScreen === null && downloadsWindow}
+
+      {/* THE REPORT WINDOW (#1133), last in the fragment so it stacks over
+          everything - including the tab screen it is deliberately NOT
+          replacing. That is the whole change: `flowScreen` swaps the screen
+          out, and this leaves it there, dimmed behind the scrim, so closing
+          costs a hiker nothing and `Cancel` stops being load-bearing.
+
+          Not rendered while a full-screen flow is up, for the reason the
+          downloads window above gives: a dialog floating over somebody's
+          half-typed report is not an arrangement worth inventing. In practice
+          the two cannot coexist anyway - `bad_hikers` LEAVES the window for
+          the form - but the guard is what makes that a fact rather than a
+          coincidence of the current flow. */}
+      {flowScreen === null && reporting !== null && reporting.step === 'window' && (
+        <ReportWindow
+          anchor={
+            {
+              ...(reporting.anchor ?? {}),
+              ...reportAnchorWords(reporting.anchor),
+            } satisfies ReportWindowAnchor
+          }
+          // Re-anchoring, from today's own walked miles (#1133). The window
+          // orders them by how far back each one is; `passedPlaces` itself
+          // keeps sorting by mile, which is what its two other readers want.
+          //
+          // Each one is resolved against `pois` HERE rather than at pick time,
+          // so the picker only ever offers a place that can become a real
+          // anchor. Nothing is dropped by that in practice and the `flatMap`
+          // is not a filter in disguise: `passedPlacesToday` comes from
+          // `searchablePois`, which is `pois.map(...)` a few thousand lines
+          // up, so every id in this list is a `pois` id by construction. The
+          // empty arm exists because that fact lives in another `useMemo` and
+          // TypeScript cannot see it - not because a place might be missing.
+          passedPlaces={passedPlacesToday.flatMap((place) => {
+            const found = pois.find((poi) => poi.id === place.id)
+            return found === undefined || place.mile === undefined
+              ? []
+              : [
+                  {
+                    id: place.id,
+                    name: place.name,
+                    mile: place.mile,
+                    lat: found.lat,
+                    lon: found.lon,
+                  },
+                ]
+          })}
+          {...(fix?.mile !== undefined ? { fixMile: fix.mile } : {})}
+          units={units}
+          onPickAnchor={(place) =>
+            setReporting({
+              step: 'window',
+              anchor: {
+                poiId: place.id,
+                lat: place.lat,
+                lon: place.lon,
+                mile: place.mile,
+              },
+            })
+          }
+          reporterType={signReportAs(preferences.reporter_type)}
+          onFile={handleFileFromWindow}
+          onUndo={handleUndoFromWindow}
+          // A closure leaves the report flow rather than continuing it: it is
+          // a different record with a different form (#832), and it is not a
+          // `ReportTypeId` at all.
+          onReportClosure={() => {
+            setReporting(null)
+            setReportingClosure(true)
+          }}
+          // And something unsafe leaves for the long form, keeping the anchor.
+          // Private to moderators, never a public pin, and never filed by a
+          // thumb brushing a tile.
+          onReportUnsafe={() =>
+            setReporting({
+              step: 'form',
+              type: 'bad_hikers',
+              ...(reporting.anchor !== undefined ? { anchor: reporting.anchor } : {}),
+            })
+          }
+          onClose={handleCloseWindow}
+        />
+      )}
     </>
   )
 }

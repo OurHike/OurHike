@@ -300,14 +300,75 @@ export interface OutboxItem {
    * a phone with a wrong clock would otherwise tell indefinitely.
    */
   failure?: OutboxFailure
+  /**
+   * ISO timestamp before which this must not be sent (#1133), or absent.
+   *
+   * THE ONLY REASON THIS EXISTS IS UNDO. The report window files on the tap
+   * itself - one tap while standing in front of the thing - and offers an
+   * 8-second Undo instead of a form to complete. That promise is only worth
+   * making if it can be kept, and without this it cannot: a phone that finds
+   * signal two seconds after the tap flushes the report, and the Undo button
+   * is then a lie still counting down on screen. The design handoff this
+   * came from puts it plainly - "an undo that cannot undo is worse than no
+   * undo".
+   *
+   * A HOLD, NOT A DRAFT. The item is in the queue, complete, and is the only
+   * copy of what somebody wrote down; nothing about it is provisional except
+   * the moment it becomes eligible to leave. Storing it any other way - a
+   * separate pending area, a flag meaning "not really queued yet" - would put
+   * a hiker's report somewhere the outbox's own guarantees do not reach, on
+   * the one path where the report is most likely to be the only record.
+   *
+   * Optional, for the reason `payload` gives above: every item already in a
+   * phone's IndexedDB predates it, and they are all sendable immediately.
+   */
+  holdUntil?: string
+}
+
+/**
+ * The longest hold {@link flushOutbox} will honour, past which it sends.
+ *
+ * A guard against the clock rather than against the caller. `holdUntil` is
+ * compared to the device's own clock, and a phone whose clock jumps backwards
+ * - a timezone flight, a manual change, a cold boot before NTP - would
+ * otherwise hold a report for as long as the jump, which for the queue's
+ * actual subject means a washout nobody hears about. Anything claiming to be
+ * held longer than this is a clock that moved, not a hiker mid-undo, and the
+ * safe answer there is to send: the report is real and unretracted.
+ *
+ * A minute, against an 8-second window, so nothing legitimate is near it.
+ */
+export const MAX_UNDO_HOLD_MS = 60_000
+
+/** Whether this item is inside a live undo window. Exported for the tests
+ *  and for anything that needs to render "waiting" honestly. */
+export function isHeld(item: OutboxItem, now: number = Date.now()): boolean {
+  if (item.holdUntil === undefined) return false
+  const until = Date.parse(item.holdUntil)
+  // An unparseable stamp is not a hold. It came off disk, and refusing to
+  // send on the strength of a string nobody can read is how a queue stops
+  // being a queue.
+  if (Number.isNaN(until)) return false
+  if (until - now > MAX_UNDO_HOLD_MS) return false
+  return until > now
 }
 
 export interface FlushResult {
   sent: number
-  /** Everything not delivered this time round, `stuck` included. */
+  /** Everything not delivered this time round, `stuck` and `held` included. */
   failed: number
   /** Refused permanently and now marked. A subset of `failed`. */
   stuck: number
+  /**
+   * Inside a live undo window, and deliberately left alone. A subset of
+   * `failed`, the way `stuck` is - "not delivered this time round" is what
+   * `failed` has always meant, and a held item genuinely was not.
+   *
+   * Counted separately because the two are opposite news: `stuck` is a report
+   * that will never send without a person, and `held` is one that will send
+   * in a few seconds without anybody doing anything.
+   */
+  held: number
 }
 
 export type SendFn = (item: OutboxItem) => Promise<unknown>
@@ -354,6 +415,10 @@ export async function enqueue(
   payload: ReportDraft,
   authoredAt: Date = new Date(),
   photo?: Blob,
+  /** Hold it back until this moment, for the report window's Undo (#1133).
+   *  Absent means sendable now, which is what every caller but that one
+   *  wants and what every item written before it had. */
+  holdUntil?: Date,
 ): Promise<OutboxItem> {
   const item: OutboxItem = {
     id: crypto.randomUUID(),
@@ -363,6 +428,7 @@ export async function enqueue(
     // at all. The queue is compared and rewritten in several places, and an
     // explicit `photo: undefined` is a difference that reads as one.
     ...(photo !== undefined ? { photo } : {}),
+    ...(holdUntil !== undefined ? { holdUntil: holdUntil.toISOString() } : {}),
   }
 
   await mutateQueue((queue) => [...queue, item])
@@ -537,13 +603,29 @@ export async function flushOutbox(
   classify: ClassifyFn = RETRY_EVERYTHING,
 ): Promise<FlushResult> {
   const queue = await readQueue()
-  if (queue.length === 0) return { sent: 0, failed: 0, stuck: 0 }
+  if (queue.length === 0) return { sent: 0, failed: 0, stuck: 0, held: 0 }
 
   let sent = 0
   let failed = 0
   let stuck = 0
+  let held = 0
+
+  // One clock reading for the whole pass, rather than one per item. A flush
+  // over a long queue on a slow link can take seconds, and an item should not
+  // become sendable partway down a list because the loop got to it late.
+  const now = Date.now()
 
   for (const item of queue) {
+    // Inside a live undo window (#1133). Skipped without touching it: the
+    // hiker has not retracted it and nothing is wrong with it, it is simply
+    // not eligible yet. The next flush - and there is always a next flush,
+    // this is the offline path - picks it up.
+    if (isHeld(item, now)) {
+      failed += 1
+      held += 1
+      continue
+    }
+
     // Already known to be unacceptable. Retrying it would spend signal to
     // be refused again, and would keep resetting a failure the hiker is
     // being shown.
@@ -583,7 +665,7 @@ export async function flushOutbox(
     }
   }
 
-  return { sent, failed, stuck }
+  return { sent, failed, stuck, held }
 }
 
 async function markFailed(id: string, reason: string): Promise<void> {

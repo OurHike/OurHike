@@ -697,14 +697,22 @@ describe('App shell', () => {
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
 
     expect(
-      await screen.findByRole('heading', { name: 'Report a problem' }),
+      await screen.findByRole('dialog', { name: 'What did you find?' }),
     ).toBeInTheDocument()
+    // AND THE TAB BAR IS STILL THERE (#1133), which is the change: the old
+    // picker was a route that replaced the whole shell.
+    expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
   })
 
   it('backs out of the report flow without filing anything', async () => {
-    // The reporting flow replaces the whole shell, tab bar included, so the
-    // type picker was a screen with no exit: the only way off it was to pick a
-    // report type and then cancel the form behind it.
+    // THIS USED TO BE A TEST ABOUT AN EXIT EXISTING AT ALL (#1133). The old
+    // comment: "The reporting flow replaces the whole shell, tab bar included,
+    // so the type picker was a screen with no exit: the only way off it was to
+    // pick a report type and then cancel the form behind it."
+    //
+    // A window has an exit by construction, so what is worth holding now is
+    // the other half of that sentence - that leaving writes nothing, and that
+    // the screen underneath was never taken away in the first place.
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
@@ -715,10 +723,15 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-    await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
+
+    // Still standing behind the window, rather than replaced by it.
+    expect(screen.getByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('report-close'))
 
     expect(await screen.findByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
+    expect(store.get('ourhike:outbox')).toBeUndefined()
   })
 
   it('saves a report to the outbox rather than asking to sign in first', async () => {
@@ -733,7 +746,9 @@ describe('App shell', () => {
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The tap files (#1133); this closes the window, which is when the
+    // account question is asked rather than during the receipt's undo.
+    await user.click(screen.getByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{ payload: { type: string } }>
@@ -757,7 +772,9 @@ describe('App shell', () => {
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The tap files (#1133); this closes the window, which is when the
+    // account question is asked rather than during the receipt's undo.
+    await user.click(screen.getByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{

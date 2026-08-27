@@ -2136,6 +2136,32 @@
   color: var(--fg-2);
 }
 
+/* The heading over each half of the list (#1083). Two sections, split on
+   whether a notice has a mile at all rather than on who published it - so the
+   heading is a claim about the DATA, and the rows carry the organization.
+
+   Uppercased in CSS rather than in the string, like the category above, so a
+   screen reader announces "On the A.T." and not the letters. */
+.atc-notices__section {
+  margin: var(--space-3, 12px) 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* Weight and not hue, for the same reason .atc-notices__offmap gives: this
+   line carries the honesty the eighteen rows below it would otherwise repeat
+   one by one, and a caveat dimmed to look like an aside is a caveat nobody
+   reads at arm's length in direct sun. */
+.atc-notices__section-note {
+  margin: 2px 0 var(--space-2, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
 /* ---------- Waypoint card (tapped pin) ---------- */
 
 /* Floats beside the pin it describes rather than docking at the bottom edge -
@@ -3093,6 +3119,74 @@ a.poi-card__credit::after {
 .poi-card__report-hint {
   font-size: 11px;
   color: var(--fg-2);
+}
+
+/* The thanks plate (#1133): the report plate's construction, its accent
+   swapped from `--danger` to `--success`, stacked directly under it.
+
+   THE TINT IS 8% AND NOT MORE, which is the same figure the report plate
+   above carries and is measured here rather than matched. `--success` on
+   `color-mix(in srgb, var(--success) 8%, var(--bg-surface))`, both themes,
+   measured 2026-08-27:
+
+     tint    light    dark
+      6%     4.79     4.65
+      8%     4.67     4.53   <- shipped
+     10%     4.55     4.40
+     12%     4.43     4.28
+
+   The 13px title is normal text, so the floor is AA's 4.5:1 and the dark
+   theme is the half that sets it: 10% already fails there while the light
+   theme is still passing, and 12% fails both. Neither has much room, which
+   is the point of writing the table down - the next person who wants a
+   stronger wash is one step from an unreadable one.
+
+   WHAT THIS DOES NOT FIX, said rather than left for somebody to find: the
+   40% border resolves to 1.83:1 against its own wash in dark and 1.70:1 in
+   light, well under 1.4.11's 3:1 for a component boundary. The report plate
+   above has exactly the same property with `--danger`, so this is a matched
+   pre-existing shortfall rather than a new one - and in both plates the
+   control is identified by its title text, which passes, not by its edge.
+   Worth a pass over both together; not worth diverging one from the other
+   here. @unvalidated that a hiker in low light finds the edge at all - that
+   is a field question, not an arithmetic one. */
+.poi-card__thank-here {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  /* Half the report plate's 12px, because these two are a pair and a full gap
+     between them would read as two unrelated controls that happen to be
+     adjacent. The 12px above the pair still separates it from the card. */
+  margin-top: var(--space-1, 6px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  text-align: left;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.poi-card__thank-here:hover {
+  border-color: var(--success);
+}
+
+/* 16px against the flag's 15px: a stroked outline reads a shade smaller than
+   a solid glyph at the same nominal size, and these two sit one above the
+   other where any difference is visible. */
+.poi-card__thank-mark {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--success);
+}
+
+.poi-card__thank-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--success);
 }
 
 /* Now a span on the coordinates' own line rather than a paragraph under it

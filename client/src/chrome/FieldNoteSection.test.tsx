@@ -42,6 +42,7 @@ function context(overrides: Partial<FieldNoteContext> = {}): FieldNoteContext {
     contributeConditions: false,
     onAddNote: vi.fn(),
     onReportProblem: vi.fn(),
+    onSayThanks: vi.fn(),
     now: NOW,
     ...overrides,
   }
@@ -810,5 +811,66 @@ describe('the quick answers, reworked (#1122)', () => {
     // The hint carries the feature's own name, so the screen it lands on -
     // titled "Report a problem" - is not a surprise.
     expect(entry).toHaveTextContent(/report it/i)
+  })
+})
+
+// The thanks plate (#1133) - the third place saying thanks is reachable from,
+// and the only one that knows which place is being thanked for.
+describe('the thanks entry on a place card', () => {
+  it('carries the place, so the thanks reaches whoever looks after THIS one', () => {
+    // The whole reason this exists rather than being left to Today's button:
+    // a thanks with a `poiId` on it can be routed by the same club lookup a
+    // report is, instead of landing on whatever stretch the hiker is standing
+    // on when they remember to send it.
+    const onSayThanks = vi.fn()
+    renderSection(context({ onSayThanks }), {
+      poiType: 'shelter',
+      poiId: 'atc_shelters:9',
+    })
+
+    fireEvent.click(screen.getByTestId('poi-card-thank-here'))
+
+    expect(onSayThanks).toHaveBeenCalledWith(
+      expect.objectContaining({ poiId: 'atc_shelters:9' }),
+    )
+  })
+
+  it('claims nothing about who maintains the place', () => {
+    // lib/maintainerLookup.ts returns null for a stretch with nobody assigned,
+    // and this card has not asked it. A hint reading "thank the crew who look
+    // after this shelter" would be the card asserting a fact it has not looked
+    // up - the failure CLAUDE.md's evidence standard exists to prevent, on a
+    // surface where the reader cannot tell a checked claim from a warm one.
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    const entry = screen.getByTestId('poi-card-thank-here')
+    expect(entry).toHaveTextContent('Glad it’s here?')
+    expect(entry).toHaveTextContent(/whoever keeps it up/i)
+    expect(entry.textContent).not.toMatch(/club|crew|maintainer|volunteer|ridgerunner/i)
+  })
+
+  it('survives a filed note, exactly as the report entry does', () => {
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    expect(screen.getByTestId('poi-card-thank-here')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('poi-card-observe-fine'))
+    expect(screen.getByTestId('poi-card-thank-here')).toBeTruthy()
+  })
+
+  it('steps aside for the escalation, for the report entry’s reason', () => {
+    // A hiker who has just said the shelter is damaged is being asked one
+    // question - do you want to write that up - and a "Glad it's here?" under
+    // it would be the card arguing with itself.
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-damaged'))
+
+    expect(screen.queryByTestId('poi-card-thank-here')).toBeNull()
+  })
+
+  it('is not on the peek, where neither entry is', () => {
+    renderSection(context(), { variant: 'peek' })
+
+    expect(screen.queryByTestId('poi-card-thank-here')).toBeNull()
   })
 })

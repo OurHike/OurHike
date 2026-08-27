@@ -12,11 +12,20 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 
 ## The first map a hiker ever sees is an empty line
 
-> **Partly fixed, 2026-08-15 (#603).** The dot rank now draws all the way down
-> (`POI_DOT_MIN_ZOOM = 0`), so the opening view carries a stipple of every waypoint on the trail
-> rather than nothing, and the legend's sentence is corrected to match. **The club sections this
+> **Partly fixed, 2026-08-15 (#603).** The dot rank drew all the way down
+> (`POI_DOT_MIN_ZOOM = 0`), so the opening view carried a stipple of every waypoint on the trail
+> rather than nothing, and the legend's sentence was corrected to match. **The club sections this
 > doc argues for are still the subject it is missing** — dots are texture, not a subject, and
 > nothing below answers itself. `CORRIDOR_BOUNDS` is untouched and the section below stands.
+>
+> **And answered, 2026-08-27 (#1135 — Decide what the opening map draws: every mapped trail, and
+> no waypoints below the seam).** The subject this doc argued for having since arrived — the
+> thirty clubs (#594), the highlights (#595) — the maintainer inverted #603's stopgap: the view
+> below the seam is now **every organization's trails and no waypoints**. The A.T. draws with the
+> whole network around it (a 255 KB overview of all 7,670 line-miles,
+> `pipeline/export_nearby_trails.py`'s `write_overview`), and the dot rank stops at the pin seam
+> with the pins. `features/mockups/opening-map.html` is the drawn record of the options and the
+> measurements behind that call.
 
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
 corridor, which lands at **z4.87** on a phone — `fitBounds` over `[[-84.73, 34.2], [-68.3, 46.34]]`

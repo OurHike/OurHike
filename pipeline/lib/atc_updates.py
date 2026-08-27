@@ -111,7 +111,25 @@ REVIEWED = "reviewed"
 UNREVIEWED = "unreviewed"
 REVIEW_STATES = frozenset({REVIEWED, UNREVIEWED})
 
-PUBLISHED_FIELDS = (*REQUIRED_FIELDS, "review_state")
+#: The registry key this source is filed under, carried onto every published
+#: row (#1083). `pipeline/sources.json`'s own key, verbatim.
+#:
+#: WHY A ROW SAYS WHO PUBLISHED IT, when the file it lives in already does.
+#: The client resolves an organization's NAME by joining this against
+#: `stewards.json` (client/src/lib/stewards.ts), so a row that carries it can
+#: be attributed without any component knowing who the ATC are - which is
+#: features/ORG_NOTICES.md §6's rule, and the reason NYNJTC's exporter has
+#: carried `source_key` since it was written. This artifact is the older of the
+#: two and did not, so the client had to hard-code the key for ATC's rows and
+#: read it for everyone else's - half of the fix, wearing the shape of the
+#: problem. It carries it now.
+#:
+#: NOT DERIVED FROM THE FILENAME anywhere. A constant a reader can grep for
+#: against sources.json is the point; inferring it would make the join a
+#: convention rather than a fact.
+SOURCE_KEY = "atc_trail_updates"
+
+PUBLISHED_FIELDS = (*REQUIRED_FIELDS, "source_key", "review_state")
 
 
 def _mile_problem(row: dict, field: str) -> str | None:
@@ -264,10 +282,8 @@ def published_rows(document: dict) -> list[dict]:
     working - cannot reach the bucket by accident. What ships is the field
     list this module names and nothing else.
     """
-    return [
-        {field: (REVIEWED if field == "review_state" else row[field]) for field in PUBLISHED_FIELDS}
-        for row in document["updates"]
-    ]
+    defaults = {"review_state": REVIEWED, "source_key": SOURCE_KEY}
+    return [{field: defaults.get(field, row.get(field)) for field in PUBLISHED_FIELDS} for row in document["updates"]]
 
 
 # WHY THERE IS NO ALL-CLEAR REFUSAL HERE ANY MORE.
@@ -441,5 +457,6 @@ def auto_row(parsed) -> dict:
         "obstructs_trail": False,
         "updated_at": _as_utc_stamp(parsed.date_modified),
         "source_url": parsed.source_url,
+        "source_key": SOURCE_KEY,
         "review_state": UNREVIEWED,
     }

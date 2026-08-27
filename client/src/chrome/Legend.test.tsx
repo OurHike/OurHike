@@ -912,40 +912,40 @@ describe('the way to every ATC notice (#687)', () => {
   // this is the row itself.
 
   it('is not there when the app holds no ATC notices', () => {
-    render(<Legend {...PROPS} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} onOpenNotices={vi.fn()} />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBeNull()
   })
 
   it('draws no such row where the shell offers no handler', () => {
-    render(<Legend {...PROPS} atcNoticeCount={6} />)
+    render(<Legend {...PROPS} noticeCount={6} />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBeNull()
   })
 
   it('names every notice it holds', () => {
-    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+      screen.getByRole('button', { name: 'Read all 6 trail notices' }),
     ).toBeInTheDocument()
   })
 
   it('counts one notice without pluralising it', () => {
-    render(<Legend {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} noticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+      screen.getByRole('button', { name: 'Read the 1 trail notice' }),
     ).toBeInTheDocument()
   })
 
   it('reports the tap up to the shell', async () => {
-    const onOpenAtcNotices = vi.fn()
-    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />)
+    const onOpenNotices = vi.fn()
+    render(<Legend {...PROPS} noticeCount={6} onOpenNotices={onOpenNotices} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+    await userEvent.click(screen.getByRole('button', { name: /trail notices/ }))
 
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('sits above the downloaded-map block, not inside it', () => {
@@ -954,13 +954,13 @@ describe('the way to every ATC notice (#687)', () => {
     const { container } = render(
       <Legend
         {...PROPS}
-        atcNoticeCount={6}
-        onOpenAtcNotices={vi.fn()}
+        noticeCount={6}
+        onOpenNotices={vi.fn()}
         onOpenDownloads={vi.fn()}
       />,
     )
 
-    const atcLink = screen.getByRole('button', { name: /ATC trail updates/ })
+    const atcLink = screen.getByRole('button', { name: /trail notices/ })
     const foot = container.querySelector('.legend__downloads')
     expect(foot).not.toBeNull()
     expect(atcLink.compareDocumentPosition(foot as HTMLElement)).toBe(
@@ -1333,11 +1333,46 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
-    // Reworded by #603. The dot rank draws below the seam now, so the panel
-    // must not say waypoints are absent here - it says what a hiker is looking
-    // at (dots) and what zooming in buys (knowing which is which).
-    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
+    // Reworded by #1135, its third flip - each time with the layer it
+    // describes (#528, then #603's dots, now the trails-only corridor view).
+    // Both ranks stop at the seam again, so "appear from a closer zoom" is
+    // the true sentence, and "pan or zoom out" stays the wrong direction.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('says it over a viewport full of waypoints too, because none of them draw', () => {
+    // The dots-era sentence rendered only on an empty viewport - dots WERE
+    // the below-seam answer everywhere else. With the floor shared (#1135)
+    // the sentence describes every below-seam rectangle, so it must not
+    // vanish behind the counted rows; and the rows keep their plain in-view
+    // counts rather than `0/N` fractions, because down here "drawn" would
+    // measure the floor, not the collision engine.
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[{ id: 'p1', type: 'shelter', lat: 0, lon: 0, confidence: 'high' }]}
+        drawnCounts={new Map()}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
+    // Plain names, no "none of 1 shown" fractions: the fraction is the
+    // collision engine's report, and it was not consulted. (Two shelter
+    // listitems are expected - the row, and its inner toggle button both
+    // carry the name.)
+    expect(
+      screen.getAllByRole('listitem', { name: /^shelter$/i }).length,
+    ).toBeGreaterThan(0)
+    // Narrow enough to spare the safety rows' "Always shown" tag, which is
+    // not a fraction and stays.
+    expect(screen.queryByText(/of \d+ shown/)).not.toBeInTheDocument()
   })
 
   it('still says "nothing here" when that is the true one', () => {

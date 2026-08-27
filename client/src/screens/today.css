@@ -441,3 +441,56 @@
   color: var(--fg-3);
   text-align: center;
 }
+
+/* The crew row (#1133): report a problem, and say thanks, at equal width.
+
+   `flex: 1` is applied to the Button component through its `style` prop,
+   which lands because Button.jsx spreads `style` LAST over its own variant
+   and size rules. The design handoff warned it did not work in the
+   prototype's copy of that component and asked for wrapper elements instead
+   - checked against this one rather than taken on trust, and it does, so the
+   row is two buttons rather than two buttons inside two divs.
+
+   `align-items: stretch` so the two match height as well as width when one
+   label wraps and the other does not. */
+.today__crew {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: stretch;
+}
+
+/* What is still in the outbox, and the way to it.
+
+   A button rather than the paragraph this used to be: it says something a
+   hiker might want to act on, and until now it said it with nowhere to go.
+   Grey rather than alert-coloured, for the reason More.tsx gives about the
+   same count - "waiting to send" is the ordinary state of an offline-first
+   outbox, not a fault, and painting it in alert orange would cry wolf on
+   every ridge. The dot carries the blaze accent because it is a mark nothing
+   sits on; the words stay readable ink. */
+.today__outbox {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  gap: var(--space-2, 6px);
+  min-height: 32px;
+  padding: 0 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.today__outbox-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--accent-blaze-orange);
+}
+
+.today__outbox-chevron {
+  font-size: 13px;
+  color: var(--fg-3);
+}

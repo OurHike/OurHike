@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: mohonk
+    description: >
+      Mohonk Preserve's public trails-and-carriage-roads extract on their own
+      ArcGIS org, fetched by fetch_external_layers.py into
+      data/raw/external/. Transcribed from sources.json's measured notes.
+    schema: raw
+    loaded_at_field: _loaded_at
+    freshness:
+      # As for every source here: this measures load_raw.py's cadence, not
+      # Mohonk's. @unvalidated, same threshold and same open question as
+      # _atc__sources.yml.
+      warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_mohonk__mohonk_trails
+        description: >
+          Mohonk Preserve Trails and Carriage Roads (sources.json: discovered
+          2026-08-25). 304 polyline segments, measured live that day via
+          returnCountOnly. ALREADY A FILTERED VIEW - the layer's own
+          definitionQuery keeps only General_Classification 'Carriage Road'
+          or 'Trail' with Manager 'Mohonk Preserve' - so this is Mohonk's
+          curated public extract rather than their internal dataset.
+          editingInfo.dataLastEditDate read 2026-08-24, the day before
+          registration, while the AGOL item's own container metadata last
+          changed 2025-07-28: a read of the item alone would have missed how
+          current the layer is.
+        columns:
+          - name: Blaze
+            description: >
+              A genuine coded field, unlike NYNJTC's plain string and unlike
+              the Highlands Trail's absent one. Values present on the fetched
+              304 rows - not the domain's declared possibilities - are N/A
+              124, Blue 61, Red 49, Other 33, Yellow 30, plus 7 rows with no
+              value at all. No accepted_values test, for the same reason
+              stg_atc__side_trails has none: the domain is the finding.
+          - name: Name
+            description: The segment's name as Mohonk publishes it.

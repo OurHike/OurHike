@@ -57,12 +57,51 @@ So two fields ship and one does not:
     and never composed, shortened or prettified here.
   - Where no block matches, `licence` is null and the card shows attribution
     alone. That is a registry gap rather than a rendering decision, and it is
-    real today: `osm_water` has no block at all, and `usdm_licence`'s `author`
-    ("National Drought Mitigation Center, USDA, NOAA and NASA") does not match
-    its source's `steward` ("National Drought Mitigation Center, University of
-    Nebraska-Lincoln"), so neither resolves to a short licence. Recording one
-    is a data change somebody reviews; inventing one here would be this file
+    real today for `osm_water`, which has no block at all. Recording one is a
+    data change somebody reviews; inventing one here would be this file
     authoring a licence statement, which it has no standing to do.
+
+    IT WAS ALSO REAL FOR THE U.S. DROUGHT MONITOR UNTIL 2026-08-27, and how
+    that went unnoticed is the reason for `test_every_licence_block_joins_a
+    _steward`. `usdm_licence`'s `author` read "National Drought Mitigation
+    Center, USDA, NOAA and NASA" while its source's `steward` read "National
+    Drought Mitigation Center, University of Nebraska-Lincoln", so the block
+    matched nothing and NDMC's recorded terms never reached the sources
+    screen - while every test passed, this docstring described the state
+    accurately, and the entry's own `licence` prose said "See usdm_licence
+    above". A gap that is written down in three places and still ships is not
+    documented, it is decorated. The block's author is now the steward's own
+    name and a test fails if any block goes unjoinable again.
+
+HOW TO SUPPORT THE ORGANIZATION, AND THE ONE FIELD THAT BOUNDS IT (#932)
+
+A steward record can now carry `support`: a destination, the organization's
+own call to action, and `donate_surfaces` - the list of screens on which the
+line may appear. Read from a top-level `<x>_support` block, joined on `author`
+exactly the way `<x>_licence` is, because supporting an organization is a fact
+about the ORGANIZATION and not about any one of its thirteen layers.
+
+`donate_surfaces` is the point of the schema rather than a detail of it. The
+v2 frames are explicit that a placement is a permission the ORG GRANTS, not
+something the app decides, and equally explicit about the one value that has
+to be expressible: on the map, never. So the vocabulary below is a CLOSED
+opt-in list of the surfaces that exist, and there is no map member to grant -
+the refusal is enforced by the vocabulary rather than by a check somebody has
+to keep passing. A surface added later needs a new member here AND a fresh
+answer from every org, because nobody has granted a value that did not exist
+when they answered. That is the intended cost.
+
+Money on a safety app is value #1 territory: these fields make a fundraising
+ask renderable on a screen a hiker opens when they are lost. A malformed
+support block is therefore a HARD FAILURE here rather than a field quietly
+dropped - a block with no `donate_surfaces` would otherwise be indistinguish-
+able from one whose org granted every surface.
+
+A steward with no block publishes `support: null` and renders exactly as it
+does today - no button, no empty section, no placeholder. Absent means the
+organization has not asked for support, which is not the same as an
+organization that wants none, and neither is a thing to guess at on a hiker's
+screen. Same rule the pipeline already applies to shelter capacity.
 
 WHAT IT REFUSES TO GUESS
 
@@ -97,14 +136,51 @@ SOURCES_PATH = ROOT / "sources.json"
 OUT_PATH = ROOT / "data" / "processed" / "stewards.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "stewards_manifest.json"
 
+# The second artifact, and the reason it is a second one rather than a wider
+# `stewards.json` (#929).
+#
+# `stewards.json` answers "whose data is on this phone", and its whole
+# discipline is credits.ts's rule taken whole: name what is actually there,
+# never what could be. A held-back steward in that file would be the quiet
+# inaccuracy value #4 exists to prevent, printed under a LICENCE.
+#
+# The org console asks the opposite question - "what is registered, including
+# what does not ship" - and it is an admin surface rather than a hiker's. Two
+# questions, two files. Widening the first to answer the second would have put
+# GATC on a sources card the day somebody wanted to count registrations.
+REGISTRY_OUT_PATH = ROOT / "data" / "processed" / "registry.json"
+REGISTRY_MANIFEST_PATH = ROOT / "data" / "processed" / "registry_manifest.json"
+
 # The registry's own key for "who publishes this", and the field naming the
 # organization in full where an entry carries one.
 PROVIDER_FIELD = "provider"
 STEWARD_FIELD = "steward"
 
+# The surfaces an organization can grant a support line on (#932). CLOSED, and
+# deliberately holding no member for the map: the v2 frames say "on the map,
+# never", and a vocabulary that cannot express the map is a stronger guarantee
+# than a validator that rejects it, because a validator can be edited in one
+# line while adding a member here is a conversation with every org that has
+# already answered.
+DONATE_SURFACES = frozenset(
+    {
+        # frame `1h` - "Where this map comes from", the settings screen (#927).
+        "sources_screen",
+        # frame `1f` - the card for one trail: "NYNJTC - Maintains this trail".
+        "trail_card",
+        # frame `1l` - the day-hike summary, where several orgs share a loop.
+        "day_hike_summary",
+    }
+)
 
-def _licence_block(registry: dict, provider_sources: list[dict]) -> dict:
-    """The top-level `<x>_licence` block a steward's sources point at, if any.
+# What a `<x>_support` block must carry to be publishable at all. `donate_blurb`
+# is deliberately NOT here: the org's own words about what the money does are
+# their writing, and this project ships facts and a link until they send them.
+REQUIRED_SUPPORT_FIELDS = ("author", "donate_url", "donate_cta", "donate_surfaces")
+
+
+def _block(registry: dict, provider_sources: list[dict], suffix: str) -> dict:
+    """The top-level `<x>{suffix}` block a steward's sources point at, if any.
 
     Matched by the block's `author` against the entries' `steward`, rather than
     by guessing a key name from the provider string - `atc_licence` is keyed on
@@ -112,15 +188,76 @@ def _licence_block(registry: dict, provider_sources: list[dict]) -> dict:
     and a future block will not necessarily follow either convention.
 
     Returns `{}` when nothing matches, which is the ordinary case for a steward
-    whose sources each carry their own licence.
+    whose sources each carry their own licence, and for every steward that has
+    not been asked about support.
+
+    THE FAILURE MODE THIS MATCHING HAS: an author string that matches nothing
+    is silent here and correct-looking in the registry. It happened - see this
+    module's docstring on `usdm_licence` - so
+    `tests/test_export_sources.py::test_every_block_joins_a_steward` reads the
+    real registry and fails on an unjoinable block. That check cannot live in
+    this function, because a block for a steward whose data does not ship is
+    legitimate and looks identical from in here.
     """
     stewards = {s[STEWARD_FIELD] for s in provider_sources if s.get(STEWARD_FIELD)}
     for key, value in registry.items():
-        if not key.endswith("_licence") or not isinstance(value, dict):
+        if not key.endswith(suffix) or not isinstance(value, dict):
             continue
         if value.get("author") in stewards:
             return value
     return {}
+
+
+def _licence_block(registry: dict, provider_sources: list[dict]) -> dict:
+    return _block(registry, provider_sources, "_licence")
+
+
+def _support_record(block: dict) -> dict | None:
+    """One steward's support line, or None where the org has not asked for one.
+
+    Raises rather than dropping a malformed block. A support block missing
+    `donate_surfaces` is not a block with no permissions - it is a block whose
+    permissions nobody wrote down, and the two must never render the same.
+    """
+    if not block:
+        return None
+
+    missing = [f for f in REQUIRED_SUPPORT_FIELDS if not block.get(f)]
+    if missing:
+        raise SystemExit(
+            f"support block for {block.get('author') or '(no author)'} is missing: "
+            + ", ".join(missing)
+            + "\nA support block records a fundraising ask on a hiker's screen. "
+            "Every field above is required; see export_sources.py's docstring."
+        )
+
+    surfaces = block["donate_surfaces"]
+    if not isinstance(surfaces, list):
+        raise SystemExit(f"donate_surfaces for {block['author']} must be a list, got {type(surfaces).__name__}")
+    unknown = sorted(set(surfaces) - DONATE_SURFACES)
+    if unknown:
+        raise SystemExit(
+            f"donate_surfaces for {block['author']} names surfaces that do not exist: "
+            + ", ".join(unknown)
+            + "\nThe vocabulary is closed and holds no member for the map, deliberately - "
+            "see export_sources.py's DONATE_SURFACES."
+        )
+
+    record = {
+        "donate_url": block["donate_url"],
+        "donate_cta": block["donate_cta"],
+        "donate_surfaces": sorted(set(surfaces)),
+    }
+    # Only where the money does not reach the steward the card names. Absent on
+    # the ordinary case, present and REQUIRED TO RENDER where it is not - see
+    # oprhp_support, whose destination is a separate 501(c)(3).
+    if block.get("donate_recipient"):
+        record["donate_recipient"] = block["donate_recipient"]
+    # The org's own words about what the money does, when an org sends them.
+    # Absent everywhere today, and that is the honest state rather than a gap.
+    if block.get("donate_blurb"):
+        record["donate_blurb"] = block["donate_blurb"]
+    return record
 
 
 def _unanimous(values: list, absent_counts: bool = True) -> str | None:
@@ -136,6 +273,89 @@ def _unanimous(values: list, absent_counts: bool = True) -> str | None:
         return None
     unique = {v for v in values if v is not None}
     return unique.pop() if len(unique) == 1 else None
+
+
+def _organizations(registry: dict) -> dict[str, dict]:
+    """The `organizations` block, keyed by provider rather than by id.
+
+    Returns `{}` for a registry that predates the block, which is every
+    synthetic fixture in the test suite - the id is additive and its absence is
+    not an error.
+    """
+    orgs = registry.get("organizations", {}).get("orgs", {})
+    return {
+        org["provider"]: {"steward_id": steward_id, **org}
+        for steward_id, org in orgs.items()
+        if isinstance(org, dict) and org.get("provider")
+    }
+
+
+def build_registry(registry: dict | None = None) -> dict:
+    """Every registered source, shipping or not, for the org console (#929).
+
+    ONE ROW PER SOURCE, not per organization, and that is the difference from
+    `build_output` below rather than an inconsistency with it. A console is
+    looking at registrations; a hiker is looking at organizations.
+
+    NOTHING IS COMPOSED HERE. Every field is a field the registry already
+    carries, copied. The console's job is to show what is recorded, and a
+    number this file worked out - "seems well licensed", "probably fresh" -
+    would be an opinion wearing the registry's authority. Where a source does
+    not carry a field, the row carries null and the table shows a gap, which is
+    the answer: twelve entries declare no `kind` at all, and a console that
+    filled that in from the ArcGIS default would hide the twelve registrations
+    a probe cannot describe.
+    """
+    registry = registry if registry is not None else json.loads(SOURCES_PATH.read_text())
+    sources = registry.get("sources", [])
+    orgs = _organizations(registry)
+    marks = registry.get("org_marks", {}).get("orgs", {})
+
+    rows = []
+    for source in sources:
+        provider = source.get(PROVIDER_FIELD, "")
+        org = orgs.get(provider, {})
+        block = _block(registry, [source], "_support")
+        rows.append(
+            {
+                "key": source["key"],
+                "title": source.get("title"),
+                "provider": provider,
+                # Null where the registry predates the organizations block, or
+                # where a provider was added without one - which the test suite
+                # refuses, so a null here on the real file is a bug rather than
+                # a state.
+                "steward_id": org.get("steward_id"),
+                "steward": source.get(STEWARD_FIELD) or org.get("name"),
+                # Null is the honest answer for the twelve ATC entries that
+                # declare none: lib/source_registry.py reads an absent `kind`
+                # as an ArcGIS feature layer, and that DEFAULT is a fact about
+                # the fetcher rather than about the registration.
+                "kind": source.get("kind"),
+                "trust": source.get("trust"),
+                "reaches_hikers": source["reaches_hikers"],
+                "licence_basis": source.get("licence_basis"),
+                "freshness_kind": (source.get("freshness") or {}).get("kind"),
+                "supports_donation": bool(block),
+                "mark_state": (marks.get(provider) or {}).get("state"),
+            }
+        )
+
+    return {
+        "sources": sorted(rows, key=lambda row: (row["provider"], row["key"])),
+        "organizations": sorted(
+            (
+                {
+                    "steward_id": org["steward_id"],
+                    "provider": provider,
+                    "name": org.get("name"),
+                    "note": org.get("note"),
+                }
+                for provider, org in orgs.items()
+            ),
+            key=lambda org: org["provider"],
+        ),
+    }
 
 
 def build_output(registry: dict | None = None) -> dict:
@@ -195,16 +415,38 @@ def build_output(registry: dict | None = None) -> dict:
                 # vocabularies. Joining them positionally is the mistake this
                 # comment exists to prevent.
                 "keys": sorted(e["key"] for e in entries),
+                # How to support this organization, or null where it has not
+                # asked (#932). Null renders exactly as today: no button, no
+                # empty section, no placeholder.
+                "support": _support_record(_block(registry, entries, "_support")),
+                # The stable id #929 introduces. Null on a registry that
+                # predates the `organizations` block; never derived from the
+                # provider string, which is the thing an id exists not to be.
+                "steward_id": _organizations(registry).get(provider, {}).get("steward_id"),
             }
         )
 
     return {"stewards": stewards}
 
 
+def _write(path: Path, manifest_path: Path, payload: dict) -> dict:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    # ABSOLUTE, like every sibling manifest - publish.py resolves this against
+    # its own CWD (export_club_sections.py's comment has the incident).
+    manifest = {"path": str(path), "sha256": digest}
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
 def main() -> dict:
     output = build_output()
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
+
+    registry_out = build_registry()
+    _write(REGISTRY_OUT_PATH, REGISTRY_MANIFEST_PATH, registry_out)
 
     digest = hashlib.sha256(OUT_PATH.read_bytes()).hexdigest()
     # ABSOLUTE, like every sibling manifest - publish.py resolves this against
@@ -219,6 +461,13 @@ def main() -> dict:
         print(f"  {steward['name']}")
         print(f"    {len(steward['layers'])} layers · {tier}")
         print(f"    {licence}")
+
+    shipped = sum(1 for row in registry_out["sources"] if row["reaches_hikers"])
+    print(
+        f"\n{len(registry_out['sources'])} registered sources across "
+        f"{len(registry_out['organizations'])} organizations -> {REGISTRY_OUT_PATH}"
+    )
+    print(f"  {shipped} reach a hiker, {len(registry_out['sources']) - shipped} do not")
     return manifest
 
 

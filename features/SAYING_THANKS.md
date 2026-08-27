@@ -45,7 +45,7 @@ to come.
   they remember to send it.
 - **The map's long-press plate**, for a stretch of trail with no waypoint on
   it — the "someone cleared forty blowdowns out of this mile" case this doc
-  opens with. Not built yet.
+  opens with. Not built yet: [#1137](https://github.com/OurHike/OurHike/issues/1137).
 
 **A thanks never files on a tap**, unlike the six condition types that do
 (REPORT_A_PROBLEM.md's core flow). It always opens the form. The reason is not

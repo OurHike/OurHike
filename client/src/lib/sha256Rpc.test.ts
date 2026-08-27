@@ -188,6 +188,58 @@ describe('the worker boundary itself', () => {
     expect(await hasher.state()).toBeUndefined()
   })
 
+  /** A state whose `buffered` is longer than the 64-byte block. `fromState`
+   *  does `buffer.set(state.buffered)` on a 64-byte target, so this throws
+   *  RangeError inside `init` - and archiveDownload's `resumeHash` validates
+   *  only `byteLength <= held.size`, so it hands such a state straight over. */
+  const poisonedState = (): Sha256State => ({
+    ...new Sha256().toState(),
+    buffered: new Uint8Array(128),
+  })
+
+  /** Fails fast and legibly rather than at vitest's timeout. The regression
+   *  below is a promise that never settles, and "never" is the assertion. */
+  const settles = <T>(promise: Promise<T>): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('the request never settled')), 250),
+      ),
+    ])
+
+  it('refuses a digest when a request threw, instead of never answering', async () => {
+    // The queue is a promise chain, and `queue.then(...)` on a REJECTED queue
+    // never runs its callback - so one throwing handler used to skip every
+    // request after it. Silently: an unhandled rejection in a worker is not an
+    // `error` event, so `lost` stayed false and nothing ever rejected. The
+    // download sat in `checking` forever with nothing on screen to act on.
+    const { worker } = fakeChannel()
+    const hasher = createWorkerHasher(worker, poisonedState())
+
+    await expect(settles(hasher.digest())).rejects.toThrow(/could not finish checking/)
+  })
+
+  it('answers state() with undefined after a request threw, not never', async () => {
+    // The documented degradation: an absent state is a shape resumeHash has
+    // always handled by re-reading the held bytes - slower, never weaker.
+    const { worker } = fakeChannel()
+    const hasher = createWorkerHasher(worker, poisonedState())
+
+    await expect(settles(hasher.state())).resolves.toBeUndefined()
+  })
+
+  it('keeps refusing after the first failure rather than answering from a half-built fold', async () => {
+    // `init` can throw part-way through restoring a state, so what `hash` holds
+    // afterwards is unknowable. A digest computed from it would be worse than
+    // no digest: it would be a confident wrong answer about whether the
+    // archive on this phone matches what was published.
+    const { worker } = fakeChannel()
+    const hasher = createWorkerHasher(worker, poisonedState())
+
+    await expect(settles(hasher.digest())).rejects.toThrow(/could not finish checking/)
+    await expect(settles(hasher.digest())).rejects.toThrow(/could not finish checking/)
+  })
+
   it('lets the worker go on dispose', () => {
     const channel = fakeChannel()
     const hasher = createWorkerHasher(channel.worker)

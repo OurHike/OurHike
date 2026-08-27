@@ -120,19 +120,31 @@ class DisputeState:
     maintainer_said: bool
 
 
-def _distinct_accounts_on_distinct_days(notes: list[DisputeInput]) -> int:
-    """How many independent observations these notes really are.
+def _distinct_accounts(notes: list[DisputeInput]) -> int:
+    """How many independent observations these notes really are: one per account.
 
-    Distinctness matters more than count, and in two directions the doc
-    names: two notes from one account is one observation, and two from
-    hikers walking together on the same afternoon is close to one. So a
-    (reporter, day) pair is counted once, and then accounts are counted -
-    which collapses both cases without needing to know who walked with whom.
+    THE DAY IS NOT PART OF THIS RULE, and used to look like it was. This
+    function built a `(reporter, day)` set and then counted reporters out of
+    it, which is arithmetically identical to counting reporters - collapsing
+    on the pair first cannot change how many distinct reporters remain. The
+    docstring claimed the pairing collapsed "two from hikers walking together
+    on the same afternoon"; it never did, and
+    `test_two_hikers_on_one_afternoon_are_close_to_one` has asserted the real
+    behaviour (two accounts, one day, counts as 2) the whole time.
+
+    So the dead half is gone rather than completed, and that is a decision
+    rather than a tidy-up (maintainer, 2026-08-27). Requiring distinct DAYS
+    would have made the rule stricter, and stricter is the dangerous direction
+    for water: two hikers finding one spring dry on one afternoon in a drought
+    is exactly the signal a map should act on, and suppressing it leaves a pin
+    promising water that is not there. features/FIELD_NOTES.md §4 said
+    "distinct accounts on distinct days" and now says what this does.
+
+    What the rule still refuses is the thing it was always for: two notes from
+    one account are one observation, however many days apart - see
+    `test_the_same_account_twice_is_one_observation`.
     """
-    seen: set[tuple[str, str]] = set()
-    for note in notes:
-        seen.add((note.reporter_id, note.observed_at.date().isoformat()))
-    return len({reporter for reporter, _ in seen})
+    return len({note.reporter_id for note in notes})
 
 
 def dispute_state(notes: list[DisputeInput], now: datetime) -> DisputeState:
@@ -156,14 +168,14 @@ def dispute_state(notes: list[DisputeInput], now: datetime) -> DisputeState:
         return DisputeState(reported_missing=False, accounts=0, latest=latest, maintainer_said=False)
 
     live = [note for note in disputing if now - note.observed_at <= timedelta(days=DISPUTE_DECAY_DAYS)]
-    accounts = _distinct_accounts_on_distinct_days(live)
+    accounts = _distinct_accounts(live)
     maintainer_said = any(note.maintainer for note in live)
     entered = maintainer_said or accounts >= CORROBORATING_NOTES
 
     # Then clearing, and only from evidence NEWER than the last dispute: an
     # older confirmation is not an answer to a claim made after it.
     confirming = [note for note in notes if not note.disputes and note.observed_at > latest]
-    cleared = any(note.maintainer for note in confirming) or (_distinct_accounts_on_distinct_days(confirming) >= CLEARING_NOTES)
+    cleared = any(note.maintainer for note in confirming) or (_distinct_accounts(confirming) >= CLEARING_NOTES)
 
     return DisputeState(
         reported_missing=entered and not cleared,

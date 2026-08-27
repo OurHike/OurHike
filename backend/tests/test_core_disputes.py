@@ -3,9 +3,12 @@
 Pure, so these cases are the rule itself rather than a route exercising it.
 What they hold, in the doc's own order:
 
-  - **Distinctness beats count.** Two notes from one account is one
-    observation; two from hikers walking together on one afternoon is close
-    to one. A count-only rule would let either raise a dispute.
+  - **Distinctness beats count, and distinctness means ACCOUNTS.** Two notes
+    from one account is one observation, however many days apart. Two from
+    hikers walking together on one afternoon are two - correlated, and the
+    rule does not try to detect a group. FIELD_NOTES.md §4 described a
+    distinct-DAYS rule until 2026-08-27; no code ever implemented one, and
+    the doc was corrected to match these tests rather than the reverse.
   - **A covering maintainer outweighs the count**, in both directions. They
     are the person who would know.
   - **Decay goes to normal, never to confirmed.** One stale claim cannot
@@ -44,7 +47,7 @@ def test_one_hiker_is_not_enough():
     assert dispute_state([note("a", days_ago=1)], NOW).reported_missing is False
 
 
-def test_two_distinct_accounts_on_distinct_days_enter_it():
+def test_two_distinct_accounts_enter_it():
     state = dispute_state([note("a", days_ago=5), note("b", days_ago=1)], NOW)
 
     assert state.reported_missing is True
@@ -67,6 +70,24 @@ def test_two_hikers_on_one_afternoon_are_close_to_one():
     # ^ they are still two accounts; what the pairing collapses is the same
     # account reporting twice in a day. The doc says "close to one" rather
     # than "one", and this rule deliberately does not try to detect a group.
+
+
+def test_the_day_is_not_part_of_the_rule():
+    """Pins the shape rather than only the outcome.
+
+    `_distinct_accounts` used to collect a `(reporter, day)` pair and then
+    count reporters out of it - the same number by construction, dead
+    arithmetic that read like a distinct-days rule and was documented as one
+    for months. These two cases have identical accounts and a different
+    spread of days, so they part company the moment somebody restores it.
+    """
+    one_afternoon = [note("a", days_ago=1), note("b", days_ago=1)]
+    two_days = [note("a", days_ago=5), note("b", days_ago=1)]
+
+    assert dispute_state(one_afternoon, NOW).accounts == 2
+    assert dispute_state(two_days, NOW).accounts == 2
+    assert dispute_state(one_afternoon, NOW).reported_missing is True
+    assert dispute_state(two_days, NOW).reported_missing is True
 
 
 def test_one_covering_maintainer_is_enough_on_their_own():

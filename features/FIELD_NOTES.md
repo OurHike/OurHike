@@ -179,10 +179,22 @@ because §11's own rule is that the visual channel never carries the meaning alo
 
 ### What corroborates, and what decays
 
-- **Enter** on two `not_found` notes from **distinct accounts on distinct days**, or on one
-  from a maintainer whose `MaintainerAssignment` ([VOLUNTEERING.md](VOLUNTEERING.md)) covers
-  that mile. Distinctness matters more than count: two notes from one account is one
-  observation, and two from hikers walking together on the same afternoon is close to one.
+- **Enter** on two `not_found` notes from **distinct accounts**, or on one from a
+  maintainer whose `MaintainerAssignment` ([VOLUNTEERING.md](VOLUNTEERING.md)) covers that
+  mile. Distinctness matters more than count: two notes from one account is one
+  observation, however many days apart.
+
+  *This line said "distinct accounts on distinct days" until 2026-08-27, and no code ever
+  did that. `_distinct_accounts` built a `(reporter, day)` set and then counted reporters
+  out of it, which is arithmetically the same as counting reporters — the day changed
+  nothing, and `test_two_hikers_on_one_afternoon_are_close_to_one` has asserted the real
+  behaviour all along. The gap was closed toward the looser rule rather than the stricter
+  one, deliberately (maintainer, 2026-08-27): two hikers who find one spring dry on the
+  same afternoon are correlated observers, but in a drought they are also right, and
+  requiring a second day leaves a pin promising water that is not there. That is the
+  direction [../CLAUDE.md](../CLAUDE.md)'s "four ways this app can hurt somebody" cares
+  about. Two notes from hikers walking together are still, in this section's original
+  words, "close to one" — the rule simply does not try to detect a group.*
 - **Leave** on two independent confirming observations, or one maintainer's.
 - **Decay** to normal — never to *confirmed* — after a window with no corroboration, so one
   stale claim cannot mark a place forever.

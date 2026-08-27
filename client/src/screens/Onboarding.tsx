@@ -50,6 +50,7 @@ import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingStep
 import type { HikingDetailLevel } from '../lib/userPreferences'
 import { HIKING_SHEET, offeredSheets, USGS_SHEET } from '../lib/packages'
 import { DetailPicker, hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
+import { usePublishedSizes } from '../lib/usePublishedSizes'
 import { useAvailableBytes } from '../lib/useAvailableBytes'
 import {
   downloadFillPercent,
@@ -197,6 +198,11 @@ export function Onboarding({
   // So a level this phone cannot hold is greyed before it is chosen, rather
   // than refused after the newcomer has committed to it (#555).
   const { bytes: availableBytes } = useAvailableBytes()
+  // The sizes this step prints come from what the bucket published, not from a
+  // constant kept by hand (#505). Empty until latest.json lands - and on first
+  // run it usually lands after the card paints - so the ladder shows its
+  // fallback figures and then re-renders with the measured ones.
+  const publishedSizes = usePublishedSizes()
 
   const step = ONBOARDING_STEPS[stepIndex]
   const progress = buildOnboardingProgress({
@@ -213,7 +219,7 @@ export function Onboarding({
       <>
         <p className="onboarding__sheet-summary">{HIKING_SHEET.summary}</p>
         <DetailPicker
-          options={hikingDetailOptions()}
+          options={hikingDetailOptions(publishedSizes)}
           value={hikingLevel}
           onChange={(level) => {
             setHikingLevel(level as HikingDetailLevel)
@@ -230,7 +236,7 @@ export function Onboarding({
             than absent so the newcomer can see what the optional map
             would cost before deciding they want it at all. */}
         <DetailPicker
-          options={rasterDetailOptions()}
+          options={rasterDetailOptions(publishedSizes)}
           value=""
           onChange={() => undefined}
           name="onboarding-usgs-detail"

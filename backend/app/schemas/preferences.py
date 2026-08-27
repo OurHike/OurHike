@@ -115,17 +115,27 @@ class LayerDetailLevel(str, Enum):
 
 
 class HikingDetailLevel(str, Enum):
-    """The hiking sheet's download level (#276) - which basemap cut the
-    default background fetches: the z13 Standard package or the full z14
-    Fine one. Mirrors client/src/lib/userPreferences.ts
-    `HIKING_DETAIL_LEVELS` exactly, like every enum in this module.
+    """The hiking sheet's download level (#276) - which pair of archives the
+    default background fetches. Standard and Fine differ in the basemap cut
+    (the z13 package or the full z14 one); Light differs in the DEM, whose
+    corridor tapers harder with depth (#1088). Mirrors
+    client/src/lib/userPreferences.ts `HIKING_DETAIL_LEVEL_VALUES` exactly,
+    like every enum in this module.
 
     Defaulted, unlike `max_background_zoom`, because Standard has a
     documented recommendation behind it: it is the level a hiker who never
     made the choice should get - the sheet that fits the storage envelope -
     and it is what pre-#276 blobs, which have no such key, must read back
-    as."""
+    as.
 
+    `light` is accepted here before anything publishes its archives, and that
+    ordering is deliberate rather than premature: this schema is `extra=forbid`
+    and a stored value it does not know is rejected outright, so the value has
+    to be storable before the first phone can choose it. What stops it being
+    OFFERED meanwhile is client-side - hikingDetail.ts's `published` - not this
+    enum, which only says what may be persisted."""
+
+    light = "light"
     standard = "standard"
     fine = "fine"
 

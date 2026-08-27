@@ -119,9 +119,11 @@ describe('downloadPercent', () => {
 
 describe('downloadFillPercent', () => {
   it('steps in tenths of a percent, where the whole-percent figure sits still (#449)', () => {
-    // 1% of the first sheet is 7.9 MB; the fill has to move inside that.
+    // 1% of the first sheet is 4.6 MB since the taper (#1088); the fill has to
+    // move inside that. The total is the real published sheet so the comment
+    // above stays checkable rather than becoming a number nobody can place.
     expect(downloadFillPercent(1, 3)).toBe(33.3)
-    expect(downloadFillPercent(4_000_000, 789_552_460)).toBe(0.5)
+    expect(downloadFillPercent(2_300_000, 458_212_397)).toBe(0.5)
   })
 
   it('floors, so the fill never overstates a stalled transfer', () => {
@@ -130,8 +132,8 @@ describe('downloadFillPercent', () => {
     expect(downloadFillPercent(2, 3)).toBe(66.6)
     // And never 100% before the last byte - a full bar over an unfinished
     // download is the lie the floor exists to prevent.
-    expect(downloadFillPercent(789_552_459, 789_552_460)).toBeLessThan(100)
-    expect(downloadFillPercent(789_552_460, 789_552_460)).toBe(100)
+    expect(downloadFillPercent(458_212_396, 458_212_397)).toBeLessThan(100)
+    expect(downloadFillPercent(458_212_397, 458_212_397)).toBe(100)
   })
 
   it('calls an undeclared length the start of something, like downloadPercent', () => {

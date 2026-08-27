@@ -23,6 +23,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { archiveKey, archiveUrl, dataUrl } from './config'
 import { getDownloadDetail, type DetailLevel } from './downloadDetail'
 import { getHikingDetail } from './hikingDetail'
+import { NO_PUBLISHED_SIZES, type PublishedSizes } from './usePublishedSizes'
 import type { HikingDetailLevel } from './userPreferences'
 
 /**
@@ -46,14 +47,24 @@ export type PackageSource =
    */
   | { kind: 'tiered' }
   /**
-   * One published artifact per HIKING level (#276) - the basemap's z13
-   * Standard cut or its z14 Fine one, resolved through hikingDetail.ts the
-   * same way 'tiered' resolves through downloadDetail.ts. A separate kind
-   * because the two sheets' level choices are separate preferences and must
-   * never share one dial.
+   * One published artifact per HIKING level (#276), resolved through
+   * hikingDetail.ts the same way 'tiered' resolves through downloadDetail.ts.
+   * A separate kind because the two sheets' level choices are separate
+   * preferences and must never share one dial.
+   *
+   * `of` says WHICH of the level's two artifacts this package is. Both the
+   * basemap and the DEM vary by level since #1088 - the basemap by its zoom
+   * cut, the DEM by how hard its corridor tapers - so the kind alone no longer
+   * identifies the artifact. Spelled as a discriminant rather than inferred
+   * from the package id, because the id is a display concern and this is a
+   * fetch one: getting it wrong downloads the wrong archive under the right
+   * hash and fails verification on a mountain.
    */
-  | { kind: 'leveled' }
-  /** One artifact, one size - what the DEM is. */
+  | { kind: 'leveled'; of: 'basemap' | 'dem' }
+  /** One artifact, one size. Nothing in the hiking sheet is this any more -
+   *  the DEM became leveled with #1088 - but the raster sheet's future
+   *  siblings may be, and removing the case would make the union a
+   *  single-member one that says nothing. */
   | { kind: 'artifact'; artifact: string; sizeBytes: number }
 
 export interface MapPackage {
@@ -111,7 +122,7 @@ export const BASEMAP_PACKAGE: MapPackage = {
   idbKey: 'ourhike:basemap',
   title: 'Hiking sheet',
   summary: 'The styled topographic sheet, so the good map works offline too.',
-  source: { kind: 'leveled' },
+  source: { kind: 'leveled', of: 'basemap' },
 }
 
 /**
@@ -121,17 +132,24 @@ export const BASEMAP_PACKAGE: MapPackage = {
  * falls through to AWS Terrain Tiles where it does not answer (#187) - the
  * same local-first shape basemap.ts gives the vector sheet.
  *
- * The artifact name is publish.py's OFFLINE_SHEET_ARCHIVES key, and the
- * size is the published artifact's exact bytes (build-dem.yml run of
- * 2026-08-06: 21,758 corridor tiles z0-13, 0 absent, 0.5 m quantize per
- * #186's banding check) - measured, never an estimate.
+ * Leveled since #1088, and NOT by zoom the way the basemap is: capping the
+ * DEM at z12 measured worse than the 1 m quantize step already rejected
+ * (66.4% of hillshade pixels shifted in the Smokies - pipeline/LIGHT_DOWNLOAD.md).
+ * What differs per level is how hard the terrain CORRIDOR tapers - 30 miles
+ * through z11, 15 at z12, 6 at z13 at Standard, harder at Light - so every
+ * level is z0-13 and they differ in ground covered, not in detail. A hiker who
+ * drops to Light loses hillshade out on the flank, never sharpness underfoot.
+ *
+ * The artifact names are publish.py's OFFLINE_SHEET_ARCHIVES keys and the
+ * sizes are the published artifacts' exact bytes (lib/hikingDetail.ts, which
+ * also carries the `published` gate keeping an unbuilt level off the screen).
  */
 export const DEM_PACKAGE: MapPackage = {
   id: 'dem',
   idbKey: 'ourhike:dem',
   title: 'Terrain',
   summary: 'Hillshade and contours, drawn on the phone from downloaded elevation.',
-  source: { kind: 'artifact', artifact: 'dem.pmtiles', sizeBytes: 607_265_661 },
+  source: { kind: 'leveled', of: 'dem' },
 }
 
 /** Every package this build knows how to store and resolve, in the order
@@ -336,8 +354,11 @@ export function offlineBackgroundAvailable(rasterArchiveDownloaded: boolean): bo
  *  option. The raster detail argument is irrelevant to this sheet (none of
  *  its packages are tiered), so any value yields the same sum; 'standard'
  *  is passed as the arbitrary constant. */
-export function hikingSheetSizeBytes(level: HikingDetailLevel): number {
-  return sheetSizeBytes(HIKING_SHEET, 'standard', level)
+export function hikingSheetSizeBytes(
+  level: HikingDetailLevel,
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
+): number {
+  return sheetSizeBytes(HIKING_SHEET, 'standard', level, published)
 }
 
 /** What one sheet will cost in total: every archive of it that is actually
@@ -347,9 +368,10 @@ export function sheetSizeBytes(
   sheet: BackgroundSheet,
   detail: DetailLevel,
   hikingLevel: HikingDetailLevel,
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
 ): number {
   return offeredPackages(sheet).reduce(
-    (total, pkg) => total + packageSizeBytes(pkg, detail, hikingLevel),
+    (total, pkg) => total + packageSizeBytes(pkg, detail, hikingLevel, published),
     0,
   )
 }
@@ -386,7 +408,10 @@ export function packageArtifactKey(
   hikingLevel: HikingDetailLevel,
 ): string {
   if (pkg.source.kind === 'tiered') return archiveKey(detail)
-  if (pkg.source.kind === 'leveled') return getHikingDetail(hikingLevel).artifact
+  if (pkg.source.kind === 'leveled') {
+    const detail = getHikingDetail(hikingLevel)
+    return pkg.source.of === 'dem' ? detail.demArtifact : detail.artifact
+  }
   return pkg.source.artifact
 }
 
@@ -402,8 +427,36 @@ export function packageSizeBytes(
   pkg: OfferedPackage,
   detail: DetailLevel,
   hikingLevel: HikingDetailLevel,
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
 ): number {
+  // The bucket's own measurement wins wherever it exists (#505). The constants
+  // below stop being the source of truth and become the answer for a phone
+  // that has not been able to ask - which is a real state, not a degenerate
+  // one: first run on a slow connection reads them before latest.json lands,
+  // and a build with no bucket at all never gets to ask.
+  //
+  // Looked up by packageArtifactKey rather than by a second mapping from
+  // package to key, because that function is already "the catalog's answer to
+  // give" and the cost of two spellings drifting apart is a size that silently
+  // describes a different archive.
+  const measured = published[packageArtifactKey(pkg, detail, hikingLevel)]
+  if (measured !== undefined) return measured
+
   if (pkg.source.kind === 'tiered') return getDownloadDetail(detail).sizeBytes
-  if (pkg.source.kind === 'leveled') return getHikingDetail(hikingLevel).basemapSizeBytes
+  if (pkg.source.kind === 'leveled') {
+    const detail = getHikingDetail(hikingLevel)
+    const size = pkg.source.of === 'dem' ? detail.demSizeBytes : detail.basemapSizeBytes
+    if (size === null) {
+      // Unreachable through the UI - offeredHikingDetails() keeps an
+      // unpublished level off every screen that offers one - so reaching it
+      // means a caller resolved a size for a level nobody may choose. Throwing
+      // names that at the seam rather than letting a NaN reach a hiker's
+      // remaining-storage sum, which is the number they decide on.
+      throw new Error(
+        `Hiking level '${hikingLevel}' has no published ${pkg.source.of} size`,
+      )
+    }
+    return size
+  }
   return pkg.source.sizeBytes
 }

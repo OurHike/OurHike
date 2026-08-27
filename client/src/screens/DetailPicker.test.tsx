@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import {
   DetailPicker,
   hikingDetailOptions,
+  noDetailOptions,
   rasterDetailOptions,
   type DetailOption,
 } from './DetailPicker'
@@ -219,11 +220,17 @@ describe('a level this phone has no room for (#555)', () => {
 describe('the three greyed cases stay distinguishable', () => {
   it('says "Not offered" for a level the sheet does not publish, whatever the room', () => {
     // A rung that does not exist cannot be a storage problem, so the map's fact
-    // wins - and it must, or the hiker frees up space for a Light hiking sheet
-    // the pipeline has never cut (lib/hikingDetail.ts).
+    // wins - and it must, or the hiker clears space for a cut the pipeline has
+    // never made.
+    //
+    // Driven through noDetailOptions() since #1107. This used to read
+    // hikingDetailOptions() and point at its Light rung, which was null-sized
+    // only because #1088 named artifacts nothing had built; a sheet with no
+    // dial wired at all is the case that remains, and it exercises the same
+    // precedence with a real catalog rather than a hand-built one.
     render(
       <DetailPicker
-        options={hikingDetailOptions()}
+        options={noDetailOptions()}
         value="standard"
         onChange={() => {}}
         availableBytes={1_000}
@@ -231,7 +238,26 @@ describe('the three greyed cases stay distinguishable', () => {
     )
 
     expect(rung(/light/i)).toBeDisabled()
-    expect(group().getByText(/not offered/i)).toBeInTheDocument()
+    expect(group().getAllByText(/not offered/i)).toHaveLength(3)
+    expect(group().queryByText(/no room on this phone/i)).toBeNull()
+  })
+
+  it('offers every rung of the hiking sheet on a phone with room (#1107)', () => {
+    // The catalog's own ladder, and the assertion that keeps the case above
+    // honest: nothing about hikingDetailOptions() is inherently greyed, so
+    // "Not offered" appearing on it again would be a real finding rather than
+    // the status quo.
+    render(
+      <DetailPicker
+        options={hikingDetailOptions()}
+        value="standard"
+        onChange={() => {}}
+        availableBytes={4_000_000_000}
+      />,
+    )
+
+    for (const radio of group().getAllByRole('radio')) expect(radio).toBeEnabled()
+    expect(group().queryByText(/not offered/i)).toBeNull()
   })
 
   it('greys everything when locked, without claiming the phone is full', () => {

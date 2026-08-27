@@ -258,10 +258,25 @@ export function ReportWindow({
   // under the other two variants: by the time there is anything to lose, the
   // report is already in the outbox. The only unsaved thing is the note, and
   // it is optional detail on a report that already stands.
+  //
+  // ESCAPE PEELS ONE LAYER, and the anchor picker is the layer. Closing the
+  // whole window from inside an open list would lose the screen behind it,
+  // which is the single thing this change exists to prevent - and it is what
+  // a hiker gets by reflex, because Escape is how you back out of a list.
+  //
+  // The filter compounds it: `<input type="search">` clears itself on Escape
+  // in WebKit and Blink, so somebody who typed three letters and pressed
+  // Escape expecting the field to empty would instead lose the window. Both
+  // are the same fix.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
+        if (picking) {
+          setPicking(false)
+          setPlaceFilter('')
+          return
+        }
         close()
         return
       }
@@ -290,7 +305,7 @@ export function ReportWindow({
 
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [close])
+  }, [close, picking])
 
   // The countdown. Re-read from the clock each tick rather than decremented,
   // so a tab that was backgrounded comes back with the right answer instead of

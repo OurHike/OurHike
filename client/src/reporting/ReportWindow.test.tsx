@@ -484,6 +484,48 @@ describe('changing where the report lands', () => {
     expect(screen.getByText('Nothing by that name today.')).toBeTruthy()
   })
 
+  it('closes the picker on Escape, and the window only on the second one', async () => {
+    // THE REFLEX THIS PROTECTS. Escape is how a person backs out of a list,
+    // and closing the whole window from inside one would lose the screen
+    // behind it - the single thing this change exists to prevent. The filter
+    // compounds it: `<input type="search">` clears itself on Escape in WebKit
+    // and Blink, so somebody expecting an empty field would instead lose the
+    // window.
+    const onClose = vi.fn()
+    setup({ passedPlaces: PLACES, fixMile: 628.4, onPickAnchor: vi.fn(), onClose })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    expect(screen.getByTestId('report-places')).toBeTruthy()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('report-places')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('forgets a typed filter when the picker is dismissed', async () => {
+    // Reopening onto somebody's abandoned three letters is a list that looks
+    // short for a reason nobody can see.
+    const many = Array.from({ length: 7 }, (_, index) => ({
+      id: `p-${index}`,
+      name: `Place ${index}`,
+      mile: 600 + index,
+      lat: 37,
+      lon: -80,
+    }))
+    setup({ passedPlaces: many, fixMile: 628.4, onPickAnchor: vi.fn() })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    fireEvent.change(screen.getByTestId('report-place-filter'), {
+      target: { value: 'Place 3' },
+    })
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    expect(screen.getByTestId('report-place-filter')).toHaveValue('')
+    expect(screen.getByTestId('report-place-p-0')).toBeTruthy()
+  })
+
   it('takes Change away once the report is filed', async () => {
     // After a tap the window is a receipt, and the report it describes is
     // already in the outbox at the anchor it was filed with. Re-anchoring

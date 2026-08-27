@@ -4,9 +4,10 @@
 // in screens/Onboarding.tsx's header. Photographed BEFORE "Keep going" is
 // tapped: the shot is the offer, and tapping it in a preview would start a
 // transfer against whatever the preview serves.
-export const caption = 'First run, step 2 — the download starts here now (#1054)'
+export const caption =
+  'First run, step 2 — the size offer, with Light still greyed (#1054/#1088)'
 export const alt =
-  'The second first-run card over the hero photo: "Take the whole trail with you", the Standard and Fine size options, a Keep going button and a Decide this later link'
+  'The second first-run card over the hero photo: "Take the whole trail with you", a Light rung greyed and reading Not offered, the Standard and Fine size options, a Keep going button and a Decide this later link'
 
 // First run is the subject, so the runner must not skip it.
 export const entry = true

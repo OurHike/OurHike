@@ -74,6 +74,37 @@ required_status_checks:
       is drawn and how far along it a hiker is, so a red run here is the
       safety-critical set in RELEASING.md §8b rather than an inconvenience.
 
+  dbt:
+    workflow: pipeline-tests.yml
+    why: >-
+      The warehouse transform layer - pipeline/DBT.md's Phase C, promoted
+      2026-08-27 (#100 - Build the dbt ELT transform layer before NYNJTC's own
+      trail network arrives). The job builds 27 staging models, one
+      intermediate and one mart off synthetic fixtures and runs 115 data tests
+      over them, including the two reconciliation tests that are the whole
+      point of the design: a union branch silently dropped, or a filter added
+      where none belongs, changes a row count and fails here rather than
+      publishing quietly.
+
+      PROMOTED ALONE RATHER THAN IN THE PAIR DBT.md ASKED FOR, and the reason
+      is that the pair is already half-done: that document says to promote
+      this and `pytest` together, mirroring `pytest`'s then-non-required
+      status rather than jumping ahead of it. `pytest` was promoted first and
+      is the entry above; the mirroring argument ends there, and this entry is
+      the other half arriving late rather than a new decision.
+
+      It shares pipeline-tests.yml's trigger block, so the `merge_group:`
+      condition this section exists to enforce is the same fact for both jobs.
+      It also carries no job-level `if:` - the scoping lives in the steps, so
+      a pull request touching nothing under pipeline/dbt/ still reports
+      success having done nothing, which is what makes requiring it safe.
+
+      What it does NOT prove, said here because a required check reads as a
+      guarantee: the job builds against code-generated fixtures, never a real
+      fetch, so it proves the transforms are correct in their own terms and
+      says nothing about whether upstream still publishes the columns they
+      read. That question belongs to the fetchers.
+
   pytest-postgres:
     workflow: backend-tests.yml
     why: >-
@@ -85,7 +116,7 @@ required_status_checks:
   PR has a linked issue:
     workflow: pr-issue-link.yml
     why: >-
-      CONTRIBUTING.md's tracker rule, and the only one of the five that is
+      CONTRIBUTING.md's tracker rule, and the only one of the six that is
       about process rather than correctness. Required because the exemption it
       polices is a label - a pull request with no issue and no `no-issue` label
       is the case it exists for, and a check nobody has to satisfy does not

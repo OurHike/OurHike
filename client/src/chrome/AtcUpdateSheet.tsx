@@ -10,7 +10,7 @@
 //
 // Three things here are therefore not optional detail:
 //
-// **The ATC's name, on the claim.** Not in a map corner, not in a settings
+// **The organization's name, on the claim.** Not in a map corner, not in a settings
 // screen - on the thing being claimed, next to the date they last edited it.
 //
 // **Both dates, because there are two and they differ.** ATC's own
@@ -27,34 +27,54 @@
 // actually is has nowhere else to go, which is exactly why the scheme is
 // checked before it is rendered.
 
-// The formatting lives in lib/atcNoticeText.ts, shared with AtcNoticeList.tsx.
+// The formatting lives in lib/atcNoticeText.ts, shared with NoticeList.tsx.
 // Two surfaces rendering the same mile marker to different precision is a
 // hiker reading two claims where there is one.
 import { atcUpdatedAt, isSafeLink, longDate, mileRange } from '../lib/atcNoticeText'
 import type { AtcUpdate } from '../lib/atcUpdates'
+import { ATC_SOURCE_KEY } from '../lib/notices'
+import { orgLabelFrom, type Stewards } from '../lib/stewards'
 
 export interface AtcUpdateSheetProps {
   update: AtcUpdate
   /** When a person last checked the reviewed file against ATC's page, or null
    *  if the artifact does not say. */
   reviewedAt: Date | null
+  /**
+   * The published registry, which is where the organization's name comes from
+   * (#1083, features/ORG_NOTICES.md §6).
+   *
+   * This sheet only ever shows an ATC row today - it is the only publisher
+   * whose notices carry a mile, so the only one whose notices can be tapped on
+   * the map - and the name is STILL read rather than written. The rule is
+   * about where a claim about an organization comes from, not about how many
+   * organizations there happen to be: a literal here is a literal somebody
+   * copies into the second sheet.
+   *
+   * Empty is ordinary (lib/stewards.ts) and renders the raw registry key,
+   * which is ugly and true.
+   */
+  stewards: Stewards
   onClose: () => void
 }
 
-export function AtcUpdateSheet({ update, reviewedAt, onClose }: AtcUpdateSheetProps) {
+export function AtcUpdateSheet({
+  update,
+  reviewedAt,
+  stewards,
+  onClose,
+}: AtcUpdateSheetProps) {
   const updatedAt = atcUpdatedAt(update)
   const range = mileRange(update)
+  const org = orgLabelFrom(stewards)(ATC_SOURCE_KEY)
+  const orgs = org.endsWith('s') ? `${org}’` : `${org}’s`
 
   return (
-    <div
-      className="closure-sheet"
-      role="dialog"
-      aria-label="Appalachian Trail Conservancy trail update"
-    >
+    <div className="closure-sheet" role="dialog" aria-label={`${org} trail update`}>
       <div className="legend__head">
-        {/* ATC's own category, verbatim. Not mapped onto ClosureReason: that
-            enum would render a Detour as "Closed", which is a claim they did
-            not make. */}
+        {/* The organization's own category, verbatim. Not mapped onto
+            ClosureReason: that enum would render a Detour as "Closed", which
+            is a claim they did not make. */}
         <h2 className="legend__title">{update.category}</h2>
         <button type="button" className="legend__close" onClick={onClose}>
           <span className="visually-hidden">Close</span>
@@ -72,9 +92,7 @@ export function AtcUpdateSheet({ update, reviewedAt, onClose }: AtcUpdateSheetPr
 
       {/* The attribution, and the whole point of a separate component. */}
       <p className="closure-sheet__meta">
-        {updatedAt === null
-          ? 'Appalachian Trail Conservancy'
-          : `Appalachian Trail Conservancy — updated ${longDate(updatedAt)}`}
+        {updatedAt === null ? org : `${org} — updated ${longDate(updatedAt)}`}
       </p>
 
       {isSafeLink(update.source_url) && (
@@ -84,22 +102,22 @@ export function AtcUpdateSheet({ update, reviewedAt, onClose }: AtcUpdateSheetPr
           target="_blank"
           rel="noreferrer"
         >
-          Read the ATC&rsquo;s notice
+          Read {orgs} notice
         </a>
       )}
 
       <p className="closure-sheet__limit" role="note">
-        This is the ATC&rsquo;s notice, not OurHike&rsquo;s. OurHike has not checked the
-        trail itself, and does not work out detours &mdash; follow their notice, or the
-        signage on the ground.
+        This is {orgs} notice, not OurHike&rsquo;s. OurHike has not checked the trail
+        itself, and does not work out detours &mdash; follow their notice, or the signage
+        on the ground.
       </p>
 
       {/* The second age. Deliberately last and deliberately plain: it is the
           one a hiker only needs when something looks wrong. */}
       <p className="closure-sheet__age">
         {reviewedAt === null
-          ? 'OurHike can’t tell when it last checked ATC’s updates.'
-          : `OurHike last checked ATC’s updates on ${longDate(reviewedAt)}.`}
+          ? `OurHike can’t tell when it last checked ${orgs} updates.`
+          : `OurHike last checked ${orgs} updates on ${longDate(reviewedAt)}.`}
       </p>
     </div>
   )

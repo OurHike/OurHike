@@ -52,6 +52,7 @@ import {
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type MorePage, type StuckReport } from './screens/More'
 import { Moderation } from './screens/Moderation'
+import { Registry } from './screens/Registry'
 import { InstallPrompt } from './screens/InstallPrompt'
 import {
   ENTRY_CARD_MAX_VIEWPORT_FRACTION,
@@ -223,7 +224,7 @@ import {
   fetchTrailGraphGeometry,
   fetchTrailGraphProfile,
 } from './lib/trailGraphData'
-import { orgLabelFrom } from './lib/stewards'
+import { orgLabelFrom, orgProviderFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
@@ -306,7 +307,8 @@ import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
-import { useAtcNoticesPanel } from './chrome/atcNoticesPanel'
+import { ATC_SOURCE_KEY } from './lib/notices'
+import { useNoticesPanel } from './chrome/noticesPanel'
 import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
@@ -772,6 +774,10 @@ function App() {
   // read once per sign-in (lib/useModerator.ts) and decides only whether the
   // entry point exists - the backend gates every call regardless (#235).
   const [moderating, setModerating] = useState(false)
+  /** Whether the source registry is open (#929). Local to the shell like every
+   *  other Settings-reached screen, and there is no router to put it in - see
+   *  this file's opening comment. */
+  const [browsingRegistry, setBrowsingRegistry] = useState(false)
   const isModerator = useModerator(account !== null)
   /**
    * Which of More's pages is showing (screens/More.tsx). Shell state rather
@@ -828,6 +834,7 @@ function App() {
     reportState,
     atcUpdates,
     atcReviewedAt,
+    orgNotices,
     drought,
     droughtWeek,
     workProjects,
@@ -1511,6 +1518,11 @@ function App() {
    * silent for exactly the first quarter mile of a closed section, which is
    * where the warning matters most. closureBanner.ts owns that split.
    */
+  /** Each organization's own short name for the header's one line, off the
+   *  published registry (#1083). Memoized here rather than inside the banner
+   *  memo so it is built once per stewards change and not once per fix. */
+  const noticeOrg = useMemo(() => orgProviderFrom(stewards), [stewards])
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
     if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
@@ -1550,7 +1562,20 @@ function App() {
       if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
         return closureBanner(closure.closure, fixMile, heading, units)
       }
-      if (atc !== null) return atcUpdateBanner(atc.update, fixMile, heading, units)
+      if (atc !== null) {
+        // The organization's own short name, off the registry rather than out
+        // of a string in lib/atcUpdates.ts (#1083). `provider` is the registry's
+        // short form - "ATC", "NYNJTC" - which is what a line read while
+        // walking needs, and it is theirs rather than an abbreviation this app
+        // invented.
+        return atcUpdateBanner(
+          atc.update,
+          fixMile,
+          heading,
+          noticeOrg(ATC_SOURCE_KEY),
+          units,
+        )
+      }
       return null
     }
 
@@ -1668,18 +1693,30 @@ function App() {
   }, [clubSections, highlights, trailIndex])
 
   /**
-   * The ATC's notices: bands, dots, the tapped sheet, the full list and the
-   * "new alerts" banner - chrome/atcNoticesPanel.tsx owns all of it (#327).
+   * Trail notices from every organization that publishes them: bands, dots,
+   * the tapped sheet, the full list and the "new notices" banner -
+   * chrome/noticesPanel.tsx owns all of it (#327, generalized in #1083).
    *
    * What is left here is the header's one line, which is a different
-   * question: `atcUpdateLanes` below ranks an ATC notice against a closure
-   * for the single sentence a walking hiker gets, and that comparison is the
-   * shell's precisely because neither feature can make it alone.
+   * question: `atcUpdateLanes` below ranks a notice against a closure for the
+   * single sentence a walking hiker gets, and that comparison is the shell's
+   * precisely because neither feature can make it alone.
+   *
+   * THE HEADER LINE IS STILL ATC-ONLY, and that is a fact about the data
+   * rather than an omission. That line says how far ahead something is, and
+   * only an `at_miles` notice carries a mile - every NYNJTC row is `unplaced`
+   * today (features/ORG_NOTICES.md §3), so there is no distance to print and
+   * inventing a lane for them would put a notice in the one place a walking
+   * hiker looks with nothing true to say about where it is. They reach a hiker
+   * through the list and the banner, which need no mile.
    */
-  const atc = useAtcNoticesPanel({
+  const atc = useNoticesPanel({
     updates: atcUpdates,
+    orgNotices,
     reviewedAt: atcReviewedAt,
+    stewards,
     trailIndex,
+    bbox,
     now,
   })
 
@@ -3071,7 +3108,7 @@ function App() {
     selectedPoiId !== null ||
     line.mapScreen.lineSheet != null ||
     atc.mapScreen.atcUpdateSheet != null ||
-    atc.mapScreen.atcNoticeList != null ||
+    atc.mapScreen.noticeList != null ||
     workday.mapScreen.workdaySheet != null
 
   const dayHikesHereNode =
@@ -5228,7 +5265,12 @@ function App() {
                 a resetKey={activeTab} here could never change while mounted
                 (#175). */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              {moderating ? (
+              {browsingRegistry ? (
+                // Replaces More, like Moderation beside it and for the same
+                // reason: reached from here and nowhere else, so there is
+                // nothing behind it worth keeping visible.
+                <Registry onClose={() => setBrowsingRegistry(false)} />
+              ) : moderating ? (
                 // Replaces More rather than covering it, for the same reason
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
@@ -5285,6 +5327,7 @@ function App() {
                   onStartReport={() => setReporting({ step: 'window' })}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
+                  onOpenRegistry={() => setBrowsingRegistry(true)}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}

@@ -153,3 +153,28 @@ export function orgLabelFrom(stewards: Stewards): (source: string | null) => str
     return byKey.get(source) ?? source
   }
 }
+
+/**
+ * A graph edge's or a notice's `source` key, as the organization's SHORT name.
+ *
+ * `orgLabelFrom`'s sibling, and the difference is the surface. That one
+ * answers a card, where "New York-New Jersey Trail Conference" is what a hiker
+ * should read. This one answers the header's single line, which a hiker reads
+ * while walking - `pipeline/sources.json`'s `provider` is the registry's own
+ * short form for exactly that ("ATC", "NYNJTC", "NYS OPRHP"), so the
+ * abbreviation is the organization's rather than one this app shortened.
+ *
+ * Same three honesty tiers as `orgLabelFrom`, for the same reasons: the
+ * provider where a steward claims the key, the raw key where none does, and
+ * "Unattributed" for no key at all.
+ */
+export function orgProviderFrom(stewards: Stewards): (source: string | null) => string {
+  const byKey = new Map<string, string>()
+  for (const steward of stewards) {
+    for (const key of steward.keys) byKey.set(key, steward.provider)
+  }
+  return (source) => {
+    if (source === null) return 'Unattributed'
+    return byKey.get(source) ?? source
+  }
+}

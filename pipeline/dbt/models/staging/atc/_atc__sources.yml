@@ -15,6 +15,14 @@ sources:
       # staleness - the fetchers own real upstream change-detection
       # (dataLastEditDate, ETags). DBT.md is explicit that this narrower
       # signal must be labelled as such.
+      #
+      # @unvalidated - 7 days is picked, not derived. Nobody has measured
+      # what load cadence makes this warehouse stale, and there is no bake
+      # schedule to derive one from yet: load_raw.py runs when somebody runs
+      # it. What would settle it is a decided cadence for the warehouse
+      # build, at which point the threshold is that cadence plus a margin.
+      # The same tag sits on the four Phase D source files, which inherited
+      # this number rather than measuring their own.
       warn_after: {count: 7, period: day}
     tables:
       - name: raw_atc__shelters

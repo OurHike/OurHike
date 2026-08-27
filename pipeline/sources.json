@@ -24,7 +24,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/APPA_Trail_Club_Sections/FeatureServer/0",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "centerline",
@@ -38,7 +39,8 @@
       "owns_route_names": [
         "Appalachian Trail"
       ],
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "side_trails",
@@ -48,7 +50,8 @@
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
       "blaze_field": "Blaze",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "campsites",
@@ -57,7 +60,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/1",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "shelters",
@@ -66,7 +70,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/4",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "parking",
@@ -75,7 +80,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/2",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "viewpoints",
@@ -84,7 +90,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/5",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "communities",
@@ -93,7 +100,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/AT_Communities/FeatureServer/0",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "half_mile_points_from_springer",
@@ -102,7 +110,8 @@
       "url": "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services/Half_Mile_Points040726_NoM/FeatureServer/18",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "bridges",
@@ -112,7 +121,8 @@
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
       "notes": "Added to registry for later - not yet fetched.",
-      "reaches_hikers": false
+      "reaches_hikers": false,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "privies",
@@ -122,7 +132,8 @@
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
       "notes": "Added to registry for later - not yet fetched.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "at_treadway",
@@ -132,7 +143,8 @@
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
       "notes": "Added to registry for later - not yet fetched. Unclear yet how this differs from the ANST_Centerline layer already in use - worth checking when fetched.",
-      "reaches_hikers": false
+      "reaches_hikers": false,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "atc_trail_updates",
@@ -154,7 +166,8 @@
       "discovered_via": "features/ATC_TRAIL_UPDATES.md - read from ATC's public website, not from an ArcGIS service. Registered by hand because discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-12",
       "notes": "Not fetched by fetch_all.py and has no data/raw/<key>.geojson - the build input is the reviewed file named in `reviewed_input`, which a human edits and a merged pull request releases (#460). The freshness marker is what tells that human ATC has published something since they last looked.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "gatc_water_sources",
@@ -170,7 +183,8 @@
       "discovered_via": "SOURCE_SURVEY.md \u00a75's club sweep (the 'water-sources PDF (2026-03-02)' row); fetched and parsed live 2026-08-13 (#669). Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
       "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md \u00a74's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement.",
-      "reaches_hikers": false
+      "reaches_hikers": false,
+      "licence_basis": "unresolved"
     },
     {
       "key": "osm_water",
@@ -186,7 +200,8 @@
       "discovered_via": "WATER_SOURCES.md's census for #529 (spike_osm_water_census.py) measured OSM point sources within 250 m of 26% of shelters trail-wide and 40% in the south, against 8% for the shipped supply. Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
       "notes": "Fetched by fetch_osm_water.py to data/raw/osm_water.geojson (never by fetch_all.py): nodes tagged natural=spring, amenity=drinking_water, man_made=water_tap or man_made=water_well across the fourteen Geofabrik state extracts export_basemap.py already downloads - 7,574 nodes on the first full scan (2026-08-13). No freshness entry on purpose: Geofabrik republishes the extracts daily, so a changed-marker would always say yes (export_basemap.py's docstring holds the reasoning; the fetch is skip-if-present with --refetch). export_poi.py folds these into poi_type water at low confidence, dropping each point within 25 m of an opentrail water point as the same node arriving twice.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "stated_by_org"
     },
     {
       "key": "usgs_3dhp",
@@ -208,7 +223,8 @@
       "discovered_via": "WATER_SOURCES.md \u00a75, following USGS's retirement of the NHD on 2023-10-01. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this is not in it.",
       "discovered_date": "2026-08-14",
       "notes": "Nothing fetches this. It is registered because the pipeline's water derivation (fetch_trail_water.py) reads a dataset USGS no longer maintains, and this is where its replacement will appear. Measured 2026-08-14: for the corridor, 3DHP IS NHD - identical geometry (1,265 flowlines in a box in central Virginia against NHD's 1,265, same vertex count, worst-case separation 0.086 mm) and identical springs (1,796 features, every one within 1 m of an NHD spring) - with the perennial/intermittent FCode collapsed away into an undifferentiated `Channel Line`. Migrating now would trade the only structured seasonality signal the pipeline has for the same geometry, so the entry holds a watch instead of a fetch.",
-      "reaches_hikers": false
+      "reaches_hikers": false,
+      "licence_basis": "stated_by_org"
     },
     {
       "key": "usdm_drought",
@@ -224,7 +240,8 @@
       "discovered_via": "WATER_CONDITIONS.md's survey for #716 measured it against the centerline: 877.1 of 2,172.0 trail miles at least abnormally dry on 2026-08-11, 205.8 of them in severe drought. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-15",
       "notes": "Fetched by fetch_drought.py to data/raw/drought/usdm_YYYYMMDD.json, the DATED file rather than usdm_current.json: the polygons carry no date inside them, and a weekly product whose artifact cannot name its week leaves the client with only the bake's clock. A USDM week runs Tuesday to Monday and is released on the Thursday, so the fetcher walks back a week at a time - a midweek 404 is 'not published yet', not a failure. export_drought.py clips to a 10 km corridor (27.6 MB national file to about 10 KB gzipped, losslessly - WATER_CONDITIONS.md \u00a74), un-nests the classes so each published band is disjoint, and publishes conditions/drought.json.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "oprhp_trails",
@@ -244,7 +261,8 @@
       "discovered_via": "The NY State Parks Explorer mobile app's per-park Web Maps on OPRHP's public AGOL org 'nysparks' (org id 1xFZPtKn1wKC6POA) - read 'Old Croton Parks App' item 36c9404f8fad4dfc9df0e0037e1fb96b's operationalLayers, then probed live 2026-08-18 (#768/#769). Registered by hand - discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-18",
       "notes": "16,641 polyline segments statewide, measured 2026-08-18: per-segment Unit (OPRHP's eleven administrative regions - registered as `unit_field` until #1019 removed the Long Island exclusion that was the only thing reading it, and left described here because it is how OPRHP's own stewards talk about where a trail is)/Name/Alt_Name, up to three Blaze colours plus Map_Blaze, Surface, Status, Public_, per-use flags (Foot/Bike/Horse/XC/SS/Snowmb) and Miles. editingInfo.dataLastEditDate verified live 2026-08-18 - then reading 2026-08-17T19:43Z, edited the day before this registration, so the layer is actively maintained. This is the layer the Parks Explorer app syncs its offline data from (capabilities Query,Extract,Sync,ChangeTracking; a literal ParksApp column). What Public_ and Status gate is unmeasured - #771 measures before anything filters on them, and until then the fetch takes every row rather than guessing.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "stated_by_org"
     },
     {
       "key": "oprhp_trail_closures",
@@ -264,7 +282,8 @@
       "discovered_via": "Sibling of oprhp_trails on the same org, surfaced by an AGOL search for the org's trail services, probed live 2026-08-18 (#768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
       "notes": "TEMPORARY closure polygons - 4 features on 2026-08-18, and an honest count of zero is the expected answer in a good week, which is what may_be_empty records and why this layer could never sit behind fetch_all.py's non-empty completeness gate. dataLastEditDate verified live 2026-08-18 (then 2026-06-16). A safety surface: if OPRHP data ever ships, this is the layer whose freshness matters most (CLAUDE.md's closures path).",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "stated_by_org"
     },
     {
       "key": "oprhp_facilities",
@@ -288,7 +307,8 @@
       "name_field": "Name",
       "facility_field": "Facility",
       "asset_field": "Sub_Asset",
-      "name_field_comment": "`Name` is populated on 1,631 of 8,823 rows (18%, measured 2026-08-27) and is flagged '(Legacy Field)' in the layer's own alias. The other 82% export with no name and the client renders them 'Unnamed', which is the honest outcome: `Facility` (populated on all 8,823) is the PARK's name, not the feature's, and publishing 'Beaver Island State Park' as the name of a bridge inside it would be a different fact than the one a hiker reads. It goes into the composed description instead - export_nearby_poi.py's compose_description, which is lib/poi_description.py's idea applied to another org's columns."
+      "name_field_comment": "`Name` is populated on 1,631 of 8,823 rows (18%, measured 2026-08-27) and is flagged '(Legacy Field)' in the layer's own alias. The other 82% export with no name and the client renders them 'Unnamed', which is the honest outcome: `Facility` (populated on all 8,823) is the PARK's name, not the feature's, and publishing 'Beaver Island State Park' as the name of a bridge inside it would be a different fact than the one a hiker reads. It goes into the composed description instead - export_nearby_poi.py's compose_description, which is lib/poi_description.py's idea applied to another org's columns.",
+      "licence_basis": "stated_by_org"
     },
     {
       "key": "oprhp_park_polygons",
@@ -304,7 +324,8 @@
       "discovered_via": "The first layer every per-park 'Parks App' Web Map draws (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
       "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30).",
-      "reaches_hikers": false
+      "reaches_hikers": false,
+      "licence_basis": "stated_by_org"
     },
     {
       "key": "nynjtc_long_path",
@@ -325,7 +346,8 @@
       "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a74's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-24",
       "notes": "43 polyline segments, measured live 2026-08-24 - the same count and the same field list NYC_SOURCE_SURVEY.md \u00a74 read on 2026-08-18, so the shelf has not moved under the survey. Fields Trail_Name/Blaze/Maintainer/Mileage/Source/Comments/LP_Section/GuideURL; all 43 rows read Trail_Name 'Long Path', Maintainer 'NYNJTC' and Source 'NYNJTC'. THE BLAZE FIELD IS A PLAIN STRING WITH NO CODED DOMAIN, and reads the lowercase 'aqua' on all 43 rows (measured 2026-08-24) - unlike side_trails' and oprhp_trails' coded fields, which is why export_nearby_trails.py sends it straight to reference/blaze_mapping.json's reviewed table instead of decoding a domain first. NYNJTC updates the same service in place each season - the layer inside is named Long_Path_2025Sep - which is the property a registry URL wants. dataLastEditDate verified live 2026-08-24, then reading 2026-08-04T17:36:44Z. capabilities are Query only, with no Extract or Sync, unlike OPRHP's. The trail runs north past the Catskills toward Albany, which is the open northern cut NYC_SOURCE_SURVEY.md \u00a71 leaves to the maintainer rather than deciding.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "nynjtc_highlands_trail",
@@ -343,7 +365,8 @@
       "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a74's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-24",
       "notes": "12 section features, measured live 2026-08-24 - again matching NYC_SOURCE_SURVEY.md \u00a74's 2026-08-18 reading. Fields Trail_Name/Section_Name/Source/MapOrder; all 12 rows read Trail_Name 'Highlands' and Source 'NYNJTC', and Section_Name is a per-section label ('NJ 2'..'NJ 9' among the sampled twelve). dataLastEditDate verified live 2026-08-24, then reading 2025-12-04T21:03:02Z - eight months older than the Long Path's, which is what the survey meant by 'thinner'. THIS LAYER PUBLISHES NO BLAZE AT ALL: there is no blaze field, so blaze_default 'Unknown' states that absence rather than asserting a paint. That is deliberate and is the omit-rather-than-guess rule applied to a colour - the Highlands Trail does wear a blaze on the ground, and this pipeline has read it from no source it registered, so painting one here would be a display outrunning its source. What would settle it: the same NYNJTC conversation the licence waits on, or a blaze field appearing in one of the seasonal republishes this service does in place.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "nynjtc_trail_alerts",
@@ -364,7 +387,8 @@
       "discovered_via": "pipeline/ALERTS_NOTICES_SURVEY.md \u00a75b - the alerts survey #1073 ran across every org whose trails this build draws. Registered by hand: discover_sources.py walks ATC's Experience Builder app and this is a WordPress category, not a layer.",
       "discovered_date": "2026-08-27",
       "notes": "Fetched by fetch_nynjtc_alerts.py to data/raw/nynjtc_alerts.json (never by fetch_all.py, which fetches ArcGIS layers only) and exported by export_nynjtc_alerts.py to conditions/nynjtc_alerts.json, which publish.py uploads. WHAT `reaches_hikers: true` MEANS HERE, stated because this source reached it by a different road from every other one: an exporter reads it and its rows reach a release, which is the field's definition (reaches_hikers_comment). Every row ships in the WEAKEST form the design allows - `place: unplaced`, `obstructs_trail: false`, `review_state: unreviewed` - because reference/notice_places.json does not exist yet and nobody has reviewed NYNJTC's page. So the map draws none of these and the client surfaces them as a list a hiker reads, which is features/ORG_NOTICES.md \u00a73's first-class unplaced state rather than a gap. 18 alerts on 2026-08-27, published 2024-01-11 to 2026-06-16, read from the WordPress REST API - `/wp-json/wp/v2/posts?categories=6` - rather than scraped, which is the whole difference from `atc_trail_updates`: there is no markup to misread, and `per_page`/`modified_after`/`_fields` are query parameters rather than things to reimplement. THE FIND THE SURVEY ITSELF MISSED, corrected in \u00a75b the same day: NYNJTC tags each alert from its own CLOSED taxonomies, so placement is a join against tens of terms rather than a fuzzy match of prose against the 21,805 exported network features. Coverage measured on those 18 - park on 17, trail on 10, region and state on 7 each - and the trail vocabulary is 45 terms, the park vocabulary 125. That last number is why the fetcher pages every list route: `park` answers exactly 100 to a single per_page=100 request, and a vocabulary truncated there would drop placements with no error anywhere. ONE HYGIENE WART, recorded so it is not mistaken for a parser bug: `highlands-trail` is a term in BOTH the trail and park taxonomies (ids 31 and 405), so a join table must key on `taxonomy:slug` and never on the slug alone. features/ORG_NOTICES.md is the delivery design and holds the placement, dedup and voice questions; none of them is settled by this registration.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "mohonk_trails",
@@ -382,7 +406,8 @@
       "discovered_via": "Web search for the trail/carriage-road GIS data behind the suggested NYS GIS Clearinghouse listing gis.ny.gov/gisdata/inventories/details.cfm?DSID=295 (dead - 404, and the inventory system it belonged to has moved to data.gis.ny.gov with no working listing for this dataset found there). Led to the 'GIS and Mapping Activities at Mohonk Preserve' write-up (espatiallynewyork.com, Nov 2023), then to this item directly on Mohonk Preserve's own public AGOL org via arcgis.com's sharing/rest search. Probed live 2026-08-25 (#992).",
       "discovered_date": "2026-08-25",
       "notes": "304 polyline segments, measured live 2026-08-25 via returnCountOnly. Fields Name/General_Classification/Classification/Use_/Blaze/Mileage/Surface/Owner/Manager - Blaze is a genuine coded field, unlike nynjtc_long_path's plain string or nynjtc_highlands_trail's absent one; actual values on the fetched 304 rows (not just the domain's declared possibilities) are N/A 124, Blue 61, Red 49, Other 33, Yellow 30, plus 7 rows with no Blaze value at all - see reference/blaze_mapping.json's mohonk_trails entry. The layer is already a filtered VIEW - its own definitionQuery is \\\"(General_Classification = 'Carriage Road' OR General_Classification = 'Trail') AND (Manager = 'Mohonk Preserve')\\\" - so this is Mohonk's own curated public extract, not their full internal dataset; 298 of 304 rows carry Owner 'Mohonk Preserve', the other 6 ('Marakill Woods North/South') carry Owner 'NYS OPRHP/PIPC' with Manager still 'Mohonk Preserve'. editingInfo.dataLastEditDate verified live 2026-08-25, then reading 2026-08-24T20:52:57Z - edited the day before, while the AGOL item's own container metadata (title/sharing) last changed 2025-07-28; a read of the item alone would have missed how current the layer actually is. blaze_field/name_field added and reaches_hikers flipped true 2026-08-25 on the maintainer's direct authorisation, the same shape #950 gave NYNJTC's extracts - export_nearby_trails.py's network_line_sources() and publish.py's shared-artifact gate needed no code change to pick this source up.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_hiking_trails",
@@ -406,7 +431,8 @@
       "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md \u00a73's verdict - 'register next', written 2026-08-18 from the maintainer's own lead (gisservices.dec.ny.gov/gis/dil/, 'Outdoor Activity') - acted on under #1019, whose scope decision is what made a Catskills source non-optional. Registered by hand: this is an on-prem ArcGIS server rather than an AGOL org, so there is no item to discover and discover_sources.py has nothing to walk.",
       "discovered_date": "2026-08-25",
       "notes": "5,286 polyline segments (4,931 LineString, 355 MultiLineString), fetched whole and counted 2026-08-25 - against the 5,277 NYC_SOURCE_SURVEY.md \u00a73 read on 2026-08-11, so the layer moves. Fields UNIT/FACILITY/NAME/ASSET/MILES/DESCRIP/PUBLICUSE/UPDATED plus the per-use CORRIDOR USE matrix (FOOT/HORSE/BIKE/XC/SNOWMB/ATV/MOTORV/ADMIN/ACCESSIBLE/MAPPWD) and MARKER, which DEC aliases 'Trail Marker Color' and is this pipeline's blaze. FOUR THINGS A READER SHOULD NOT HAVE TO RE-FETCH TO LEARN. (1) MARKER is a genuine coded domain whose codes ARE the words (Red/Yellow/Blue/Orange/Green/White/Other), like oprhp_trails' Blaze and unlike side_trails' integers, so no domain decode stands in front of reference/blaze_mapping.json; live values on the 5,286 rows are 2,929 blank or null, Yellow 704, Blue 692, Red 622, White 128, Other 97, Orange 78, Green 35, and one 'ORANGE AND RED' that DEC's own domain does not declare. (2) FOOT reads Y on 4,050 rows and M on 1,236, and nothing else - see foot_allowed and foot_allowed_comment above. (3) THERE IS NO STATUS COLUMN, so every kept row exports as open under export_nearby_trails.py's DEFAULT_STATUS: DEC publishes no closure state here, and inventing one would be the failure that module's closure treatment exists to avoid. PUBLICUSE reads 'Y' on all 5,286, which is a layer-wide constant rather than a filter worth having. (4) IDS FALL BACK TO OBJECTID, because DEC spells the column GLOBALID and lib/feature_id.py looks for GlobalID - the ids are unique across the fetched 5,286 and stable within a fetch, but a DEC republish that renumbers OBJECTIDs would renumber ours; the stable column is there for the taking if that ever bites. FRESHNESS: no editingInfo (a classic on-prem MapServer), so fetch_external_layers.py's change-aware skip cannot fire for this entry and it is re-fetched every run - accepted rather than fixed, because the layer is 13 MB and the alternative is machinery nothing else needs. The marker the survey identified does work and costs one request: max(UPDATED) via outStatistics answered in 0.5 s on 2026-08-25 and returned 2026-08-20. THE LAYER'S OWN SCOPE, stated because the name oversells it: 'Hiking Trails' is DEC's per-use split, so a row is here because foot travel is allowed on it, not because it is a footpath - 446 rows are ASSET 'SNOWMOBILE TRAIL' with FOOT 'Y', 456 are unpaved roads, and they are walkable corridors on DEC land rather than mistakes. UNIT mixes preserve codes (AFP 2,293, CFP 312) with hundreds of per-county state-forest codes and some dirt (blank, misspellings), exactly as the survey warned; nothing filters on it, per #1019.",
-      "reaches_hikers": true
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_lean_tos",
@@ -435,7 +461,8 @@
       "public_value": "Y",
       "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_primitive_campsites",
@@ -464,7 +491,8 @@
       "public_value": "Y",
       "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_scenic_vistas",
@@ -493,7 +521,8 @@
       "public_value": "Y",
       "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_firetowers",
@@ -522,7 +551,8 @@
       "public_value": "Y",
       "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_viewing_areas",
@@ -551,7 +581,8 @@
       "public_value": "Y",
       "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_parking_areas",
@@ -580,7 +611,8 @@
       "public_value": "Y",
       "public_field_comment": "PUBLICUSE FILTERS on every DEC layer - an N row is not a weaker POI, it is an internal maintenance asset (the big layer's N side is 4,290 culverts, gates and sign posts). These per-type services are already DEC's own Y slice, so the filter is expected to drop nothing here; it is applied anyway so that a service DEC later widens cannot quietly bring internal assets with it. export_nearby_poi.py prints what it drops.",
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     },
     {
       "key": "dec_backcountry_features",
@@ -608,17 +640,19 @@
         "notes": "max(UPDATED) across the layer, read 2026-08-27 over the 21,445 of 21,468 rows that carry a date (the range runs back to 2002-08-24). An on-prem MapServer has no editingInfo, so this substitute is the only freshness signal the layer offers. Nothing reads it automatically; changing `recorded` is how a person acknowledges having looked."
       },
       "facility_field": "FACILITY",
-      "asset_field": "ASSET"
+      "asset_field": "ASSET",
+      "licence_basis": "maintainer_authorisation"
     }
   ],
   "usdm_licence": {
     "_comment": "The basis on which the U.S. Drought Monitor's POLYGONS may be republished from OurHike's own bucket, which is a different act from reproducing NDMC's map image. NDMC's permission page (read 2026-08-15) explicitly allows reproducing the MAP given the credit line below, and is silent on redistributing the underlying data - which is what conditions/drought.json does. Recorded on the maintainer's declaration of 2026-08-15, the same footing as atc_licence above: a federally co-produced dataset published for open download is reusable with the required credit. Scope: the weekly USDM class polygons and nothing else. It is NOT a grant to sublicense NDMC's work onward, and it does not extend to any other NDMC or drought.gov product.",
-    "author": "National Drought Mitigation Center, USDA, NOAA and NASA",
+    "author": "National Drought Mitigation Center, University of Nebraska-Lincoln",
     "license": "Reproduction permitted with NDMC's required credit; redistribution recorded by maintainer declaration",
     "basis": "Maintainer authorisation, 2026-08-15",
     "recorded_date": "2026-08-15",
     "attribution": "The U.S. Drought Monitor is jointly produced by the National Drought Mitigation Center at the University of Nebraska-Lincoln, the United States Department of Agriculture, the National Oceanic and Atmospheric Administration and the National Aeronautics and Space Administration. Map courtesy of NDMC.",
-    "open_question": "NDMC has not been asked directly whether redistributing the polygons is in scope. The wording above is theirs, verbatim from droughtmonitor.unl.edu/About/Permission.aspx; an email to DroughtMonitor@unl.edu would turn this declaration into a confirmation. Until then this is the maintainer's reading, recorded as such rather than as NDMC's."
+    "open_question": "NDMC has not been asked directly whether redistributing the polygons is in scope. The wording above is theirs, verbatim from droughtmonitor.unl.edu/About/Permission.aspx; an email to DroughtMonitor@unl.edu would turn this declaration into a confirmation. Until then this is the maintainer's reading, recorded as such rather than as NDMC's.",
+    "author_note": "The steward's own name, and it must stay byte-equal to the `steward` field on usdm_drought: export_sources.py joins a licence block to an organization by matching this against that. It read 'National Drought Mitigation Center, USDA, NOAA and NASA' until 2026-08-27, which matched nothing, so this block's terms never reached the sources screen while every test passed. The four-agency phrasing that used to live here is carried in full by `attribution` below, which is the string a hiker actually reads. tests/test_export_sources.py now fails on an unjoinable block rather than emitting a null licence."
   },
   "oprhp_licence": {
     "_comment": "The basis on which the four oprhp_* layers above may be fetched, and the bar their data has to clear before any of it is republished to hikers. CORRECTED 2026-08-24 (#950). This block previously said OPRHP's terms were UNSTATED and that the item's licenseInfo was 'a no-warranty disclaimer'. THAT WAS WRONG, and the way it was wrong is worth recording: the licenseInfo was read through a 200-character truncation on 2026-08-18, which cut off exactly at the sentence where the disclaimer ends and the actual terms begin. The full field is 1,095 characters of plain text on AGOL item a89dcd37f8bc41929e490dacd872e288 (the item whose `url` is the registered NY_State_Parks_Trails FeatureServer), re-read in full 2026-08-24 and quoted verbatim in `terms_verbatim` below. SO THERE IS A GRANT, WITH TWO CONDITIONS ON IT. Reuse is permitted; attribution to OPRHP is REQUIRED on 'any maps, reports, or other materials created using OPRHP data'; and the data is provided 'for informational and NON-COMMERCIAL purposes'. The second condition is the one that needs a human: features/PRICING_MODEL.md designs a paid thru-hike pass and regional passes, so whether shipping these lines inside OurHike is a non-commercial use is a judgement about the product, not a fact about the layer. The reading that says yes is PRICING_MODEL.md's own pricing value #5 - the trail line is in the tier that 'stay[s] free forever, for everyone, regardless of ability to pay', and what is sold is the convenience layer above it. That reading is not recorded here as settled, because nobody with authority to settle it has written it down.",
@@ -672,7 +706,164 @@
     "recorded_date": "2026-08-25",
     "open_question": "https://github.com/OurHike/OurHike/issues/768 - DEC's own stated terms should replace the maintainer's authorisation above, the way atc_licence's, nynjtc_licence's and mohonk_licence's open questions read. NYC_SOURCE_SURVEY.md \u00a73's suggestion stands: the OPRHP ask and the DEC ask are one state and belong in one conversation. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line."
   },
+  "atc_support": {
+    "_comment": "How a hiker supports the Appalachian Trail Conservancy, and the bounds on where OurHike may say so (#932). THE PRODUCT COMMITMENT THIS SCHEMA EXISTS TO KEEP: OurHike links out and never holds the money. A block that can express nothing but a destination, a call to action and a permission is the cheapest way to keep that true - there is no field here that could hold a payment processor, an amount, or a share, and adding one should read as the product change it would be. Separate from #107 - Web-only donation/payment flow, which is about OurHike taking money and is deliberately a different thing. WHERE THE WORDS COME FROM: `donate_cta` is ATC's own button, read verbatim from their page on 2026-08-27, not a house string - a trail conservancy and a state parks department do not ask for support in the same voice, and flattening them into one button is the app speaking for an organization it does not represent. There is NO `donate_blurb` here, and its absence is the same rule the notices ship on: a destination and a button label are facts about an organization, a paragraph about what the money does is that organization's writing, and #458's facts-and-a-link split says OurHike carries the first and links to the second. It arrives when ATC sends words, not when somebody lifts them.",
+    "author": "Appalachian Trail Conservancy",
+    "donate_url": "https://appalachiantrail.org/get-involved/become-a-member/",
+    "donate_cta": "Become a Member",
+    "donate_surfaces": [
+      "sources_screen",
+      "trail_card",
+      "day_hike_summary"
+    ],
+    "basis": "Read live from appalachiantrail.org 2026-08-27: the site's own header and hero link to /get-involved/become-a-member/ under the label 'Become a Member'. ATC has not been asked to confirm the placement.",
+    "recorded_date": "2026-08-27",
+    "open_question": "https://github.com/OurHike/OurHike/issues/98 - ATC's terms are unresolved in general, and the same conversation should confirm that ATC wants this line shown and on which surfaces. Until then `donate_surfaces` records the maintainer's reading of the v2 design, not ATC's grant."
+  },
+  "nynjtc_support": {
+    "_comment": "How a hiker supports the New York-New Jersey Trail Conference (#932). Same bounds as atc_support above - a destination, their own button, and where it may appear; no `donate_blurb`, because their words about what the money does are theirs to send. WHICH PAGE, AND WHY THIS ONE: nynjtc.org/support/ is the org's own umbrella page and its top button reads 'Donate Today'; nynjtc.org/membership/ leads with 'Join or Renew Now!'. Both were read live 2026-08-27. The support page is the destination here because it offers both roads and lets the hiker pick, which is the org making the ask rather than OurHike deciding that a NYNJTC supporter is a member rather than a donor.",
+    "author": "New York-New Jersey Trail Conference",
+    "donate_url": "https://www.nynjtc.org/support/",
+    "donate_cta": "Donate Today",
+    "donate_surfaces": [
+      "sources_screen",
+      "trail_card",
+      "day_hike_summary"
+    ],
+    "basis": "Read live from nynjtc.org/support/ 2026-08-27; 'Donate Today' is the page's own leading button. NYNJTC has not been asked to confirm the placement.",
+    "recorded_date": "2026-08-27",
+    "open_question": "https://github.com/OurHike/OurHike/issues/768 - the NYNJTC conversation already in flight covers their data terms; confirming this line and its surfaces belongs to it. Nothing here is a grant from NYNJTC."
+  },
+  "oprhp_support": {
+    "_comment": "How a hiker supports New York State's parks, and THE ONE THING ABOUT THIS ENTRY THAT MUST NOT BE SMOOTHED OVER (#932): the money does not go to the steward this block is joined to. NYS OPRHP is a state agency and has no donation destination of its own. The 'Donate' link on parks.ny.gov points at the NATURAL HERITAGE TRUST, a separate 501(c)(3) that is the parks system's philanthropic partner - a different legal organization from the one whose trail lines and closures this registry ships. Recording it as OPRHP's donate link and rendering 'Support NYS OPRHP' over it would tell a hiker their money reaches the agency, which is not what happens. So `donate_cta` is the state's own word and `donate_recipient` names who actually receives it, and any surface rendering this block MUST render the recipient too - that is what `donate_recipient` is for, and it is the reason this block is not simply the other two with a different URL. Same rule as everywhere else in this repository: never let a display outrun its source.",
+    "author": "New York State Office of Parks, Recreation and Historic Preservation",
+    "donate_url": "https://parks.ny.gov/about/leadership-partners/natural-heritage-trust",
+    "donate_cta": "Donate",
+    "donate_recipient": "Natural Heritage Trust",
+    "donate_surfaces": [
+      "sources_screen"
+    ],
+    "basis": "Read live from parks.ny.gov 2026-08-27: the site header's 'Donate' link resolves to /about/leadership-partners/natural-heritage-trust, and parks.ny.gov/get-involved carries no donation destination of the agency's own. OPRHP has not been asked to confirm the placement.",
+    "recorded_date": "2026-08-27",
+    "open_question": "Whether a state agency wants a support line in a third-party app at all, and whether the Natural Heritage Trust wants to be named as the recipient here, are both unasked. `donate_surfaces` is deliberately the narrowest of the three - the sources screen only - until somebody at OPRHP says otherwise, because the trail card is where a hiker is looking at a trail rather than at where the map came from."
+  },
+  "org_marks": {
+    "_comment": "Whether each organization has granted OurHike the right to SHIP ITS MARK, and the answer for every one of them today is no (#933). WHY THIS IS A LICENCE QUESTION AND NOT A DESIGN ONE: OurHike is offline-first, so an org's logo is not fetched when a card renders - it is copied into the download and carried on a hiker's phone, potentially for months, inside an application distributed under AGPL-3.0. That is redistribution, and it needs permission in writing the same way the trail geometry does. A logo is usually held MORE tightly than the data: trademark rather than copyright, with organizations that care a great deal about how their mark is used. WHY THE BLOCK EXISTS WHILE IT IS EMPTY OF GRANTS. The record has to be older than the first asset, or the first asset arrives with the question already forgotten - which is exactly how this repository already ships one trademarked third-party mark whose permission is recorded in a source comment and nowhere else (client/src/lib/trails.ts, the A.T. marker, see the ATC row below). tests/test_org_marks.py is what makes this block bite: it derives the org list from the registry's own providers, so a newly registered organization cannot slip past by not being added to a second place, and it FAILS if a mark asset exists in the client tree for an org whose state here is not `granted`. UNTIL A GRANT ARRIVES, THE SLOT RENDERS EMPTY - never a placeholder mark, never an initial, never a generated shape. An organization's identity is the one thing in this app that must not be approximated, and a visibly empty slot is also the thing most likely to prompt somebody to go and ask.",
+    "state_vocabulary": {
+      "not_asked": "Nobody has put the question to this organization. The default, and not a judgement about whether they would say yes.",
+      "asked": "The ask has been sent and no answer has come back. Carries `asked_date` so a silence can be aged rather than forgotten.",
+      "granted": "The organization has given permission in writing. Carries every field in `required_on_grant` below, and is the ONLY state under which a mark asset may exist in the tree.",
+      "refused": "The organization has said no. Recorded rather than deleted, so nobody asks twice and nobody assumes the silence in `not_asked` means this."
+    },
+    "required_on_grant": [
+      "redistribute_in_offline_bundle",
+      "display_beside_own_attribution",
+      "no_modification",
+      "brand_colour_chip_only"
+    ],
+    "permission_meanings": {
+      "redistribute_in_offline_bundle": "The mark may be copied into a downloadable map package and carried on a hiker's phone offline, inside an AGPL-3.0 application. This is the permission that makes the others necessary.",
+      "display_beside_own_attribution": "The mark appears beside the organization's own attribution string and never detached from it, so a mark can never read as an endorsement of something the org did not publish.",
+      "no_modification": "Not recoloured, not cropped, not composited, not redrawn at a size the org did not supply. `asset` records what they sent; the app renders that.",
+      "brand_colour_chip_only": "A brand colour may tint the organization's chip and NOTHING ELSE - above all never a trail line. The map's hue channel means WHICH BLAZE A HIKER FOLLOWS (features/TRAIL_BLAZE_COLORS.md), so an organization's brand colour touching a trail line would make the map say something false about paint on a tree. This is the one permission that is a constraint on OurHike rather than a grant from the org, and it is recorded here because it is the one an implementer is most likely to breach by accident."
+    },
+    "orgs": {
+      "ATC": {
+        "state": "not_asked",
+        "note": "NOT ASKED for an ORG mark - no ATC logo or wordmark is in the tree. But a TRAIL mark of theirs is: client/src/design-system/assets/trails/at-logo.png is the official Appalachian Trail / National Scenic Trail marker, it carries its own TM, it is committed to a public AGPL-3.0 repository, and it ships inside the bundle today. Its entire permission record is a comment at the top of client/src/lib/trails.ts saying it was 'supplied directly by the repo owner'. That is the maintainer's own decision and is recorded here so it stops living only in a source comment - which is #933 item 3, applied to the one mark that already needed it. It is NOT a grant from ATC as an organization and must not be read as one, and it does not extend to an ATC org mark on a steward card. See https://github.com/OurHike/OurHike/issues/933.",
+        "trail_mark_in_tree": {
+          "asset": "client/src/design-system/assets/trails/at-logo.png",
+          "basis": "Maintainer authorisation, recorded in client/src/lib/trails.ts's header comment; the maintainer is an ATC trail volunteer, the same footing atc_licence and photo_licence stand on.",
+          "recorded_date": "2026-08-27",
+          "scope": "This trail marker, in this application, on the trail-name surface it renders on today. Not an org mark, not a licence to sublicense onward, and not precedent for any other organization's mark."
+        }
+      },
+      "GATC": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "Mohonk Preserve": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "NYNJTC": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "NYS DEC": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "NYS OPRHP": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "National Drought Mitigation Center (UNL), USDA, NOAA, NASA": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "OpenStreetMap contributors": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "USGS": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      }
+    }
+  },
+  "organizations": {
+    "_comment": "The registered organizations, by stable id (#929). SOURCE_REGISTRY.md: \"`sources.json` therefore stores a stable steward id, not an address - `\\\"steward\\\": \\\"org:nynjtc\\\"` resolving to the backend record.\" This is that id, introduced as an ENTITY rather than as a per-source string, because `provider` already determines it one-to-one and thirty-three copies of a derivable value is thirty-three chances for one of them to be wrong. WHY IT IS WORTH HAVING AT ALL, stated because 'we already have `provider`' is the obvious objection: `provider` is a display string that has changed shape twice in this file's history (an abbreviation for ATC, four agency names for the drought monitor) and every join in the pipeline currently rests on one of those strings matching another one byte-for-byte. That has already failed silently once - see usdm_licence's `author_note`. An id is the thing that cannot be reworded. #929 calls this \"what the client has been missing\": `map/nearbyTrails.ts` keys ghosting off the pipeline's `source` because no feature carries a steward id, and `lib/source_registry.py`'s `poi_source_steward` exists purely to paper over twelve ATC entries that carry a `provider` and no `steward`. IDS ARE PERMANENT. Renaming one is a data migration, not an edit - a phone holding an older release joins on the id it was built with. tests/test_organizations.py pins the set both ways: every provider in `sources` has exactly one organization, and every organization has at least one source.",
+    "orgs": {
+      "org:atc": {
+        "provider": "ATC",
+        "name": "Appalachian Trail Conservancy",
+        "note": "The A.T.'s route owner and the source of twelve of the registry's layers. `provider` is the three-letter form the registry has always used; the id is stable and the name is what a hiker reads."
+      },
+      "org:gatc": {
+        "provider": "GATC",
+        "name": "Georgia Appalachian Trail Club",
+        "note": "One of the thirty maintaining clubs, registered for its water-source PDF. Nothing of theirs reaches a hiker until they answer a redistribution ask."
+      },
+      "org:nynjtc": {
+        "provider": "NYNJTC",
+        "name": "New York-New Jersey Trail Conference",
+        "note": "Maintains trails across the NY-NJ region. Two public trail extracts and their trail alerts ship on the maintainer's authorisation; the full network is deliberately withheld and is an agreement, not a scrape."
+      },
+      "org:nysoprhp": {
+        "provider": "NYS OPRHP",
+        "name": "New York State Office of Parks, Recreation and Historic Preservation",
+        "note": "The landowner inside Harriman, Fahnestock and every other state park the ring crosses. The only registered organization whose terms are STATED rather than authorised by the maintainer."
+      },
+      "org:nysdec": {
+        "provider": "NYS DEC",
+        "name": "New York State Department of Environmental Conservation",
+        "note": "The landowner on forest-preserve stretches, and the largest single block of layers after ATC's. Terms genuinely unstated; the ask is open (#1019)."
+      },
+      "org:mohonk": {
+        "provider": "Mohonk Preserve",
+        "name": "Mohonk Preserve",
+        "note": "A private preserve with a public trail extract. Terms unstated beyond a no-warranty disclaimer."
+      },
+      "org:osm": {
+        "provider": "OpenStreetMap contributors",
+        "name": "OpenStreetMap contributors",
+        "note": "Not an organization with a steward to contact - a project with a licence. ODbL, and the attribution is a condition rather than a courtesy. `community` trust, the only source that carries it."
+      },
+      "org:usgs": {
+        "provider": "USGS",
+        "name": "U.S. Geological Survey",
+        "note": "Watched rather than fetched. Public-domain federal data, registered so that a change in it is noticed rather than discovered."
+      },
+      "org:ndmc": {
+        "provider": "National Drought Mitigation Center (UNL), USDA, NOAA, NASA",
+        "name": "National Drought Mitigation Center, University of Nebraska-Lincoln",
+        "note": "The U.S. Drought Monitor's polygons. The `provider` string names all four co-producing agencies because the DATASET is jointly produced; the `name` names the one organization that publishes it, which is also the `steward` the licence block joins on."
+      }
+    }
+  },
   "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it.",
+  "licence_basis_comment": "WHAT A SOURCE'S LICENCE ACTUALLY RESTS ON, as a field rather than as prose (#929). Three values and they are not interchangeable: `stated_by_org` - the organization published terms of its own and they permit this (OPRHP's licenseInfo, ODbL, a federal public-domain work); `maintainer_authorisation` - the organization has stated nothing that reaches this use, and the maintainer authorised it as the person who carries the consequence. IT IS NOT A GRANT FROM THE ORGANIZATION and must never be rendered as one; `unresolved` - nobody has answered, and nothing ships. WHY IT IS A FIELD. Every one of these facts was already written down, in the per-source `licence` prose and the `<x>_licence` blocks - and only there. A screen or a report that wanted to say 'eleven of the thirty-three ship on your own authorisation rather than the org's terms' had to decide it by reading those sentences, which is exactly the failure `reaches_hikers_comment` records for the flag above: 'a screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded'. The same argument, one field over. IT IS NOT A JUDGEMENT ABOUT QUALITY and it does not replace the prose: the prose is where the reasoning, the dates, the read terms and the open questions live. This is one word saying which of the three shapes that reasoning has, so it can be counted. Measured 2026-08-27 against this file: 6 stated_by_org, 26 maintainer_authorisation, 1 unresolved.",
   "poi_coverage": {
     "_comment": "What each organization publishes for each of lib/poi_schema.POI_TYPES, and whether OurHike ships it (#1092). The maintainer's ask, 2026-08-27: \"We don't have POI for the org's outside of ATC. Search those sources for the POI types we have... Maybe we need to track each of the POI types for the org, and whether or not it is provided.\" This block is the second half of that - the answer in a form a test can read, so \"does DEC give us campsites\" stops being a question the next session re-probes from scratch. pipeline/POI_COVERAGE_SURVEY.md is the evidence and the argument; spike_org_poi_coverage.py is the script every count here came from, re-runnable in one command. THE COUNTS ARE OF WHAT THE ORG PUBLISHES, NOT OF WHAT A HIKER WOULD SEE: nothing here is clipped to a corridor, deduped against ATC's POIs, or filtered to walkable ground, because this block is a survey of supply and those are ingest decisions belonging to per-org issues. `org_flags_public` is the subset the org's OWN publication flag marks as visitor-facing - DEC's PUBLICUSE, OPRHP's ParksApp - and it is the more honest of the two numbers wherever the two disagree. Twelve of these cells became `shipping` on 2026-08-27 (#1097, export_nearby_poi.py -> nearby_poi.geojson): six DEC types and six OPRHP ones, 8,480 features. Neither org's water is among them. tests/test_poi_coverage.py enforces that every provider in `sources` has a verdict for every POI type, from the vocabulary below: no blanks, the same discipline NYC_SOURCE_SURVEY.md \u00a79 applies to licensing.",
     "status_vocabulary": {

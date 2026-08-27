@@ -711,6 +711,24 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(stewards_manifest.read_text())
         artifacts["stewards.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The registry itself, for the org console (#929) - every registered
+    # source, INCLUDING the ones that reach no hiker.
+    #
+    # Its sibling above is deliberately not this file. `stewards.json` answers
+    # "whose data is on this phone" and may only name what actually ships;
+    # this one answers "what is registered", which is an admin question with a
+    # different rule. Two files rather than one wider one, because widening
+    # the first would have put a held-back steward on a hiker's sources card
+    # the day somebody wanted to count registrations.
+    #
+    # Same optional treatment as every artifact above: absent from a release
+    # exported before it existed, and the console renders an empty registry
+    # rather than an error.
+    registry_manifest = PROCESSED_DIR / "registry_manifest.json"
+    if registry_manifest.exists():
+        manifest = json.loads(registry_manifest.read_text())
+        artifacts["registry.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The curated highlights, if export_highlights.py has run (#595,
     # features/CORRIDOR_VIEW.md). Same shape again, and the same reason a run
     # that changes nothing uploads nothing - which matters more here than for

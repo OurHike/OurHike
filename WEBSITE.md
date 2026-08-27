@@ -112,9 +112,19 @@ These are not nice-to-haves; they are why this surface has to be good.
 **Money.** FEATURES.md: *"No purchases, subscriptions, tips, or payment prompts
 inside the mobile app shell — this avoids the ~15-30% Apple/Google App Store
 cut... Any paid tier, donation flow, or sponsorship purchase lives on the web
-version only."* The entire funding mechanism for the ATC and its maintaining
-clubs — the stated point of the project — has exactly one available surface, and
-it is this one. A weak website is a weak business model, not a weak brochure.
+version only."* Any charge OurHike ever makes for itself therefore has exactly
+one available surface, and it is this one. A weak website is a weak business
+model, not a weak brochure.
+
+> *Corrected 2026-08-27.* This paragraph read *"The entire funding mechanism for
+> the ATC and its maintaining clubs — the stated point of the project"*, and that
+> was never true: no money reaches the ATC or a club through OurHike, and since
+> 2026-08-27 that is settled design rather than an unbuilt stage
+> ([features/PRICING_MODEL.md](features/PRICING_MODEL.md) pricing value #6). The
+> site's job for the organizations is real but different — it is where their own
+> donate and membership pages are linked, so a hiker can reach them in one click
+> and give them money that never touches us. That is a traffic job, not a
+> treasury one, and it is if anything harder to do well.
 
 **Being found.** An installed app is opaque to search engines. A website is not.
 Somebody typing "water sources near Harpers Ferry AT" or "AT shelters in the
@@ -275,12 +285,18 @@ reintroduces it silently. Carry the comment across with the code.
 ### 5.5 Support the trail — the money page
 The business model's only surface. Per `features/PRICING_MODEL.md`: the
 thru-hike pass, the regional pass, the all-access ceiling, the volunteer
-exemption, and a plain donation path. Structure the page now even though pricing
-is Post-MVP and deliberately un-timed — today it can be a donation path plus an
-honest statement of intent. What the page has to make unmistakable, because it
+exemption, and direct links to the organizations' own giving pages. Structure
+the page now even though pricing is Post-MVP and deliberately un-timed — today
+it is those links plus an honest statement of intent. (This read "a plain
+donation path… today it can be a donation path plus an honest statement of
+intent" until 2026-08-27. A donation path OurHike ran on an organization's
+behalf is the thing that got decided against, so the spec had to move with the
+page.) What the page has to make unmistakable, because it
 is the entire differentiator against FarOut: **where the money goes**, and that
-nothing safety-relevant is ever behind it. Pricing value #6 — "money follows the
-trail it came from" — is a design problem as much as a copy problem.
+nothing safety-relevant is ever behind it. Pricing value #6 — "money never
+passes through OurHike" — is a design problem as much as a copy problem. (It
+read "money follows the trail it came from" until 2026-08-27; the value keeps
+its number precisely so this citation still resolves.)
 
 ### 5.6 Get involved
 Volunteering with maintaining clubs, reporting conditions, contributing code and
@@ -517,9 +533,15 @@ a volunteer project, and none is needed for the jobs in §2.
    something NYNJTC/ATC-affiliated? The DS's voice notes assume an organisational
    "we" that does not yet map onto a real organisation, and every page's copy
    depends on the answer. This is the one open question that blocks writing.
-5. **Money, today.** Does Phase 2's Support page take donations now (needs a
+5. ~~**Money, today.** Does Phase 2's Support page take donations now (needs a
    Stripe account and an answer to "who receives it"), or state intent until
-   PRICING_MODEL.md's structure is built?
+   PRICING_MODEL.md's structure is built?~~ **Answered 2026-08-27.** Neither, as
+   posed. The page ships, it takes nothing, and it links to the organizations'
+   own giving pages — so "who receives it" stops being OurHike's question to
+   answer, which is the half of this that was actually hard. Whether OurHike
+   ever takes a donation toward **its own** costs is still open and is a
+   different question; see [features/PRICING_MODEL.md](features/PRICING_MODEL.md)
+   value #6 and its superseding banner.
 
 ---
 

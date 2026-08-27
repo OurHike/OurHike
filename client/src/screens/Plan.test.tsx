@@ -7,7 +7,7 @@
 // it - so the guardrail is held by a test rather than by vigilance.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
@@ -71,6 +71,10 @@ const PROPS = {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // The bench tests below stub matchMedia to answer "this is a wide screen".
+  // Unstubbed here so the width one test asked for cannot become the width
+  // the next one silently runs at.
+  vi.unstubAllGlobals()
 })
 
 /** Damascus → Atkins: two walking days, a zero between them, resupply at
@@ -991,5 +995,310 @@ describe('the day room and its list (#1008)', () => {
     expect(
       screen.getByText(/unfinished day hike on the map\. Starting a trip drops it/),
     ).toBeInTheDocument()
+  })
+})
+
+// --- The plan bench (#971, wireframe 3a) -------------------------------------
+//
+// Three panes over one selection, and the gesture the wide layout exists for.
+// What these hold is the composition and the SAFETY of the drag: that a
+// boundary move is visible, undoable, and never reaches a walked day - and
+// that none of it exists on a phone, which is the constraint WEBSITE.md §8
+// puts above the whole desktop workstream.
+
+/**
+ * A viewport wide enough for the bench.
+ *
+ * Matched on the query rather than answering true to everything, for
+ * App.test.tsx's reason: matchMedia is asked several other questions in this
+ * app, and a stub that says yes to all of them is testing a browser that does
+ * not exist.
+ */
+function onADesktop() {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query.includes('min-width: 900px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  )
+}
+
+/** The plot surface, measured as exactly 1,000px wide at x=0 - so on a plan
+ *  resting over miles 470.8 to 503.3, a clientX is a position in that window
+ *  rather than a mystery. */
+function stubChartGeometry() {
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 1000,
+    bottom: 150,
+    width: 1000,
+    height: 150,
+    toJSON: () => ({}),
+  } as DOMRect)
+}
+
+describe('the plan bench, on a wide screen', () => {
+  it('is not built at phone width, whatever else is true', () => {
+    // The guarantee is structural: useDesktop() is false wherever the media
+    // query does not match, which includes every environment that cannot
+    // answer at all. No bench, no chart, no boundary handles.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={profile()} />)
+
+    expect(document.querySelector('.plan-bench')).toBeNull()
+    expect(screen.queryByTestId('elevation-chart')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('slider')).toHaveLength(0)
+  })
+
+  it('lays the tree, the map and the timeline over one selection', async () => {
+    onADesktop()
+    const user = userEvent.setup()
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={smallPlan()}
+        elevation={profile()}
+        tripName="Damascus week"
+        mapPane={<div data-testid="the-map" />}
+      />,
+    )
+
+    // Three panes.
+    expect(screen.getByRole('navigation', { name: 'This hike' })).toBeInTheDocument()
+    expect(screen.getByTestId('the-map')).toBeInTheDocument()
+    expect(screen.getByText('DAY 1')).toBeInTheDocument()
+    // And the chart running beneath them.
+    expect(screen.getByTestId('elevation-chart')).toBeInTheDocument()
+
+    // Nothing is selected until something is picked, and the screen says what
+    // picking one would do rather than leaving a blank strip.
+    expect(screen.getByText(/Pick a day to see it on the map/)).toBeInTheDocument()
+
+    await user.click(screen.getByText('Damascus → Lost Mountain Shelter'))
+
+    // One selection, read back by the caption over the chart.
+    expect(
+      screen.getByText(/Day 1 · Damascus → Lost Mountain Shelter/),
+    ).toBeInTheDocument()
+  })
+
+  it('reports the selected day’s miles so the map can follow it', async () => {
+    onADesktop()
+    const onSelectStretch = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={smallPlan()}
+        elevation={profile()}
+        onSelectStretch={onSelectStretch}
+      />,
+    )
+
+    await user.click(screen.getByText('Damascus → Lost Mountain Shelter'))
+    expect(onSelectStretch).toHaveBeenLastCalledWith({
+      startMile: 470.8,
+      endMile: 486.2,
+    })
+  })
+
+  it('draws two panes rather than a framed empty box when there is no map to lend', () => {
+    onADesktop()
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={profile()} />)
+
+    expect(document.querySelector('.plan-bench')).not.toBeNull()
+    expect(document.querySelector('.plan-bench__map')).toBeNull()
+  })
+
+  it('says there is nothing to drag along when the download has no profile', () => {
+    onADesktop()
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={null} />)
+
+    expect(screen.queryByTestId('elevation-chart')).not.toBeInTheDocument()
+    expect(screen.getByText(/no elevation profile/)).toBeInTheDocument()
+  })
+
+  it('selects rather than opening a sheet, and keeps the actions one click away', async () => {
+    onADesktop()
+    const user = userEvent.setup()
+    render(<PlanScreen {...PROPS} plan={smallPlan()} elevation={profile()} />)
+
+    await user.click(screen.getByText('Damascus → Lost Mountain Shelter'))
+    // The sheet would cover the chart the whole layout exists for.
+    expect(screen.queryByRole('dialog', { name: 'Day actions' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Day actions…' }))
+    expect(screen.getByRole('dialog', { name: 'Day actions' })).toBeInTheDocument()
+  })
+})
+
+describe('dragging a day boundary', () => {
+  let rectSpy: ReturnType<typeof vi.spyOn>
+
+  afterEach(() => {
+    rectSpy?.mockRestore()
+  })
+
+  /**
+   * Three walking days, no zero: Damascus → Lost Mountain → Thomas Knob →
+   * Atkins.
+   *
+   * `smallPlan()` above has a zero in it, and a zero's two boundaries sit on
+   * one mile - which lib/planBench.ts fixes, deliberately and at a cost it
+   * states. So the drag needs a plan with room to drag in, and this is it.
+   */
+  function walkingPlan(): HikePlan {
+    return buildPlan(
+      [
+        { mile: 470.8, name: 'Damascus', resupply: false },
+        { mile: 486.2, name: 'Lost Mountain Shelter', resupply: false },
+        { mile: 503.3, name: 'Thomas Knob Shelter', resupply: false },
+        { mile: 516.1, name: 'Atkins', resupply: false },
+      ],
+      { walkingHours: 7 },
+      '2026-05-12',
+    )
+  }
+
+  /** A profile covering the whole of that plan. */
+  function longProfile(): ElevationProfile {
+    const miles: number[] = []
+    const feet: number[] = []
+    for (let mile = 470; mile <= 517; mile += 0.25) {
+      miles.push(mile)
+      feet.push(2000 + (mile % 2) * 400)
+    }
+    return {
+      distanceMi: Float32Array.from(miles),
+      elevationFt: Float32Array.from(feet),
+    }
+  }
+
+  /** Take the boundary at `fromX` and let it go at `toX`. */
+  function drag(fromX: number, toX: number) {
+    const plot = screen.getByRole('application')
+    fireEvent.pointerDown(plot, { clientX: fromX, pointerId: 1 })
+    fireEvent.pointerMove(plot, { clientX: toX, pointerId: 1 })
+    fireEvent.pointerUp(plot, { clientX: toX, pointerId: 1 })
+  }
+
+  it('moves the two days it sits between, says what it did, and offers the way back', async () => {
+    onADesktop()
+    rectSpy = stubChartGeometry()
+    const user = userEvent.setup()
+    const before = walkingPlan()
+    const terrain = longProfile()
+    // The shell owns the plan and hands it back down, so the test does too -
+    // the undo bar is offered only while the plan on screen is still the one
+    // the drag produced, which a spy that swallows the new plan would never
+    // show.
+    const { rerender } = render(
+      <PlanScreen {...PROPS} plan={before} elevation={terrain} />,
+    )
+
+    // The chart rests on the plan's own miles, 470.8 to 516.1 - so 1,000px
+    // spans 45.3 miles and the boundary at 486.2 sits at 340px. Let go at
+    // 500px: mi 493.45.
+    drag(340, 500)
+
+    const replaced = (PROPS.onReplacePlan as ReturnType<typeof vi.fn>).mock.calls.at(-1)
+    expect(replaced).toBeDefined()
+    const next = replaced![0] as HikePlan
+    expect(next.stops[1].mile).toBeCloseTo(493.45, 1)
+    // The plan handed in comes back untouched - nothing here mutates in place.
+    expect(before.stops[1].mile).toBe(486.2)
+
+    rerender(<PlanScreen {...PROPS} plan={next} elevation={terrain} />)
+
+    // BOTH days, before and after. A line naming only the day that grew would
+    // hide the one that shrank, and the shorter one is the half a hiker has
+    // already bought food for.
+    const said = screen.getByRole('status')
+    expect(said).toHaveTextContent(/Day 1: 15\.4 mi → 22\.7 mi/)
+    expect(said).toHaveTextContent(/Day 2: 17\.1 mi → 9\.8 mi/)
+    // And the timeline says it too, on both rows, without anybody scrolling
+    // to the strip.
+    expect(screen.getByText('was 15.4 mi')).toBeInTheDocument()
+    expect(screen.getByText('was 17.1 mi')).toBeInTheDocument()
+
+    // Reversible in one click.
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect((PROPS.onReplacePlan as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0]).toBe(
+      before,
+    )
+  })
+
+  it('retires the undo once anything else has replaced the plan', async () => {
+    // The way a remembered "was" could destroy work rather than save it: drag,
+    // then make some other edit, then press Undo and lose it. The offer is
+    // good only against the plan the drag itself produced.
+    onADesktop()
+    rectSpy = stubChartGeometry()
+    const terrain = longProfile()
+    const { rerender } = render(
+      <PlanScreen {...PROPS} plan={walkingPlan()} elevation={terrain} />,
+    )
+
+    drag(340, 500)
+    const dragged = (PROPS.onReplacePlan as ReturnType<typeof vi.fn>).mock.calls.at(
+      -1,
+    )![0]
+    rerender(<PlanScreen {...PROPS} plan={dragged as HikePlan} elevation={terrain} />)
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+
+    // Something else edits the plan - a zero inserted, a cascade, a re-target.
+    rerender(
+      <PlanScreen
+        {...PROPS}
+        plan={insertZeroAfter(dragged as HikePlan, 0)}
+        elevation={terrain}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('offers a handle only where the plan will actually move', () => {
+    onADesktop()
+    rectSpy = stubChartGeometry()
+    // Day 1 walked - the stop it ended at is a record - and the plan's own two
+    // ends are the walk rather than a day inside it. One boundary is left.
+    const walked = callItADay(walkingPlan(), 0, { mile: 486.2 })
+    render(<PlanScreen {...PROPS} plan={walked} elevation={longProfile()} />)
+
+    expect(
+      screen.getAllByRole('slider').map((h) => h.getAttribute('aria-label')),
+    ).toEqual(['Day boundary at Thomas Knob Shelter'])
+  })
+
+  it('never lets a drag rewrite a walked day', () => {
+    onADesktop()
+    rectSpy = stubChartGeometry()
+    const walked = callItADay(walkingPlan(), 0, { mile: 486.2 })
+    render(<PlanScreen {...PROPS} plan={walked} elevation={longProfile()} />)
+
+    // A press straight onto the boundary the walked day ended at. It is drawn
+    // - a hiker still needs to see where their days end - and it does not move.
+    drag(340, 200)
+    expect(PROPS.onReplacePlan).not.toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('nudges a boundary from the keyboard, which is the only way in without a pointer', () => {
+    onADesktop()
+    rectSpy = stubChartGeometry()
+    render(<PlanScreen {...PROPS} plan={walkingPlan()} elevation={longProfile()} />)
+
+    fireEvent.keyDown(screen.getByLabelText('Day boundary at Lost Mountain Shelter'), {
+      key: 'ArrowRight',
+      shiftKey: true,
+    })
+
+    const next = (PROPS.onReplacePlan as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0]
+    expect((next as HikePlan).stops[1].mile).toBeCloseTo(487.2, 6)
   })
 })

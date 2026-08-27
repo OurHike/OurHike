@@ -52,6 +52,12 @@ import {
   stopLabel,
   tripRowHeight,
 } from '../lib/planDisplay'
+import {
+  moveBoundary,
+  planBoundaries,
+  planStretch,
+  type BenchStretch,
+} from '../lib/planBench'
 import { legFigures, priceLeg, type PricedLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import type { TrailNetworkState } from '../lib/trailGraphData'
@@ -59,6 +65,8 @@ import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
+import { useDesktop } from '../lib/useDesktop'
+import { ElevationChart } from '../chrome/ElevationChart'
 import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
@@ -188,6 +196,24 @@ export interface PlanScreenProps {
   /** Start a route at one end of a gap, walking toward the other (#791).
    *  Which end is the start is the hiker's pick; the direction follows. */
   onPlanFrom: (start: PlaceRef, toward: PlaceRef) => void
+  /**
+   * The map, for the middle pane of the plan bench (#971, wireframe 3a).
+   *
+   * A SLOT rather than this screen knowing the map's props - MapScreen's own
+   * `journal` slot is the same move, for the same reason (#1054): the map has
+   * about sixty inputs and none of them are the planner's business. Absent
+   * and the bench is two panes rather than three, which is honest; a framed
+   * grey box captioned "map" would not be.
+   */
+  mapPane?: ReactNode
+  /**
+   * The bench's selection changed - the miles of the selected day, or null.
+   *
+   * "One plan, three views" (wireframe 3a) needs the map to follow a day the
+   * tree or the timeline picked, and the map is above this screen. Reported
+   * only from the bench: on a phone there is no third pane to keep in step.
+   */
+  onSelectStretch?: (stretch: BenchStretch | null) => void
 }
 
 export function PlanScreen({
@@ -234,6 +260,8 @@ export function PlanScreen({
   onOpenGroup,
   onPlanGap,
   onPlanFrom,
+  mapPane,
+  onSelectStretch,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -261,9 +289,56 @@ export function PlanScreen({
   const [atHome, setAtHome] = useState(
     trips.length > 1 || hikes.length > 0 || dayHikes.length > 0,
   )
+  /**
+   * THE BENCH'S ONE SELECTION (#971): the day the tree, the map and the
+   * timeline are all looking at.
+   *
+   * Its own state rather than a second meaning for `selectedDay`, which opens
+   * the actions sheet. On a desk, picking a day and acting on a day are
+   * separate moves - the sheet would cover the chart the whole screen is for -
+   * so a click here highlights, and the actions are one more click away.
+   */
+  const [benchDay, setBenchDay] = useState<number | null>(null)
+  /**
+   * The plan as it stood before the last boundary drag, and the line
+   * describing what that drag did.
+   *
+   * REQUIRED, not a nicety. A drag changes the miles and the climb of two
+   * days at once; CLAUDE.md's four-ways rule makes that a safety path, and a
+   * safety path's edit has to be visible and reversible. The days themselves
+   * carry "was 17.1 mi" out of `moveBoundary`, which is the visible half;
+   * this is the other one.
+   *
+   * `after` IS THE SAFETY CATCH, and it closes a way this could destroy work
+   * rather than save it: drag a boundary, then add a zero from the day's
+   * actions, then press Undo, and a bar that only remembered `was` would put
+   * back the pre-drag plan and take the zero with it. So the bar is offered
+   * only while the plan on screen is still exactly the one the drag produced.
+   * Anything else replacing it - another edit, a cascade, a re-target, a trip
+   * switch - retires the offer, because the thing it offered to undo is no
+   * longer what is there.
+   */
+  const [lastMove, setLastMove] = useState<{
+    was: HikePlan
+    after: HikePlan
+    line: string
+  } | null>(null)
+  const isDesktop = useDesktop()
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
+
+  // The bench's two derived inputs (#971), memoised HERE rather than beside
+  // the rest of the bench below - hooks cannot run after this component's
+  // early returns, and both of these are identity-sensitive downstream: the
+  // chart re-decimates its whole envelope whenever its resting domain is a
+  // new object, and a fresh array of boundaries on every render would do the
+  // same to the handles.
+  const benchStretch = useMemo(() => (plan === null ? null : planStretch(plan)), [plan])
+  const benchBoundaries = useMemo(
+    () => (plan === null ? [] : planBoundaries(plan)),
+    [plan],
+  )
 
   // One figures pass for every walking day - heights, terrain and labels all
   // read from it, so they cannot disagree about what a day costs.
@@ -548,6 +623,58 @@ export function PlanScreen({
   const current = currentDayIndex(plan)
   const anythingWalked = walkedDayCount(plan) > 0
 
+  // ---- The plan bench (#971, wireframe 3a) -------------------------------
+  //
+  // Only at the day zoom, and only above the breakpoint. Everything below
+  // this line is dead on a phone by construction rather than by promise -
+  // `useDesktop()` is false wherever the media query does not match, which
+  // includes every environment that cannot answer at all.
+  const onBench = isDesktop && zoom === 'days'
+  const benchSelected = benchDay === null ? null : (views[benchDay] ?? null)
+  const pickBenchDay = (index: number | null) => {
+    setBenchDay(index)
+    const day = index === null ? null : (views[index] ?? null)
+    onSelectStretch?.(
+      day === null
+        ? null
+        : {
+            startMile: Math.min(day.start.mile, day.end.mile),
+            endMile: Math.max(day.start.mile, day.end.mile),
+          },
+    )
+  }
+  const dragBoundary = (stopIndex: number, mile: number) => {
+    const move = moveBoundary(plan, stopIndex, mile, pois)
+    if (move === null) return
+    onReplacePlan(move.plan)
+    // Named off the RESULT's views rather than the plan that went in, because
+    // the timeline the hiker is about to read is the result's - and a move can
+    // change what a day is called (a walking day shortened to nothing becomes
+    // a zero, and zeros carry no day number).
+    const after = planDayViews(move.plan)
+    const name = (index: number) => {
+      const day = after[index]
+      if (day === undefined) return `Day ${index + 1}`
+      return day.dayNumber === null
+        ? `Zero at ${stopLabel(day.start)}`
+        : `Day ${day.dayNumber}`
+    }
+    setLastMove({
+      was: move.was,
+      after: move.plan,
+      // BOTH days, before and after. A line naming only the day that got
+      // longer would hide the one that got shorter, and the shorter one is
+      // the half a hiker has already bought food for.
+      line: `${name(move.days[0])}: ${formatDistance(move.before[0], units)} → ${formatDistance(
+        move.after[0],
+        units,
+      )} · ${name(move.days[1])}: ${formatDistance(move.before[1], units)} → ${formatDistance(
+        move.after[1],
+        units,
+      )}`,
+    })
+  }
+
   return (
     <div className="plan plan--trips">
       <header className="plan__head plan__head--trips">
@@ -609,15 +736,18 @@ export function PlanScreen({
         </ol>
       )}
 
-      {zoom === 'days' && elevation !== null && (
-        <p className="plan__legend">
-          <span className="plan__legend-swatch" aria-hidden="true" />
-          row height = walking hours
-        </p>
-      )}
+      {(() => {
+        if (zoom !== 'days') return null
 
-      {zoom === 'days' &&
-        sections.map((section, sectionIndex) => (
+        const legend =
+          elevation === null ? null : (
+            <p className="plan__legend">
+              <span className="plan__legend-swatch" aria-hidden="true" />
+              row height = walking hours
+            </p>
+          )
+
+        const timeline = sections.map((section, sectionIndex) => (
           <section className="plan__section" key={section.days[0].id}>
             <header className="plan__section-head">
               <div className="plan__section-title-row">
@@ -658,21 +788,150 @@ export function PlanScreen({
                     }
                     units={units}
                     elevation={elevation}
-                    onSelect={() =>
+                    picked={onBench && benchDay === day.index}
+                    onSelect={() => {
+                      // ON THE BENCH A CLICK SELECTS, and that is the whole
+                      // difference: three panes over one selection means a row
+                      // has somewhere to point, and opening a sheet over the
+                      // chart would cover the thing the layout exists for. The
+                      // actions are one more click, on the strip below.
+                      if (onBench) {
+                        pickBenchDay(day.index)
+                        return
+                      }
                       // A walked day has no actions on it and never gains
                       // any - it opens its own record instead (#966).
-                      day.walked ? setSummaryDay(day.index) : setSelectedDay(day.index)
-                    }
+                      if (day.walked) setSummaryDay(day.index)
+                      else setSelectedDay(day.index)
+                    }}
                   />
                 </li>
               ))}
             </ol>
           </section>
-        ))}
+        ))
 
-      {/* Days of food are days in every unit system, so this block takes no
-          units - the one figure on the Plan tab that does not convert. */}
-      {zoom !== 'hike' && <FoodBlock sections={sections} />}
+        if (!onBench) {
+          return (
+            <>
+              {legend}
+              {timeline}
+              {/* Days of food are days in every unit system, so this block
+                  takes no units - the one figure on the Plan tab that does
+                  not convert. */}
+              <FoodBlock sections={sections} />
+            </>
+          )
+        }
+
+        return (
+          <>
+            <div className="plan-bench">
+              <BenchTree
+                hike={hike}
+                tripName={tripName}
+                views={views}
+                sections={sections}
+                units={units}
+                selectedDay={benchDay}
+                onPickDay={pickBenchDay}
+                onOpenHike={hike === null ? null : () => setZoomWanted('hike')}
+              />
+              {/* Two panes rather than a framed grey box when the shell has no
+                  map to lend - see `mapPane`. */}
+              {mapPane !== undefined && <div className="plan-bench__map">{mapPane}</div>}
+              <div className="plan-bench__timeline">
+                {legend}
+                {timeline}
+                <FoodBlock sections={sections} />
+              </div>
+            </div>
+
+            <div className="plan-bench__strip">
+              <BenchCaption
+                day={benchSelected}
+                units={units}
+                onActions={
+                  benchSelected === null || benchSelected.walked
+                    ? null
+                    : () => setSelectedDay(benchSelected.index)
+                }
+                onSummary={
+                  benchSelected !== null && benchSelected.walked
+                    ? () => setSummaryDay(benchSelected.index)
+                    : null
+                }
+              />
+              {lastMove !== null && lastMove.after === plan && (
+                <p className="plan-bench__undo" role="status">
+                  <span className="plan-bench__undo-line">{lastMove.line}</span>
+                  <button
+                    type="button"
+                    className="plan-bench__undo-action"
+                    onClick={() => {
+                      onReplacePlan(lastMove.was)
+                      setLastMove(null)
+                    }}
+                  >
+                    Undo
+                  </button>
+                </p>
+              )}
+              {elevation !== null && benchStretch !== null ? (
+                <ElevationChart
+                  profile={elevation}
+                  units={units}
+                  pace={pace}
+                  currentMile={gpsMile}
+                  restingDomain={benchStretch}
+                  boundaries={benchBoundaries}
+                  onMoveBoundary={dragBoundary}
+                  // The chart's own selection IS the bench's, so a day picked
+                  // in the tree or the timeline bands here too - and it is
+                  // marked as coming from a plan, which is what stops a stray
+                  // click on the chart unmaking it.
+                  selection={
+                    benchSelected === null
+                      ? null
+                      : {
+                          startMile: Math.min(
+                            benchSelected.start.mile,
+                            benchSelected.end.mile,
+                          ),
+                          endMile: Math.max(
+                            benchSelected.start.mile,
+                            benchSelected.end.mile,
+                          ),
+                        }
+                  }
+                  selectionFromPlan={true}
+                  selectionLabel="day"
+                  // What a drag on this plot actually does. The chart's own two
+                  // invitations both promise a measurement or a route, and
+                  // neither is true here.
+                  hint="Drag a day boundary to move where a day ends"
+                />
+              ) : (
+                <p className="plan-bench__no-chart" role="note">
+                  {/* No promise that it turns up: a release can publish no
+                      profile at all, and #1049's lesson is that "it arrives
+                      with the next data sync" is a sentence four of the five
+                      ways of having no data cannot keep. The days and their
+                      miles beside this are unaffected, which is the part a
+                      hiker needs to know. */}
+                  This download has no elevation profile, so there is nothing to drag a
+                  day boundary along. The days and their miles are unaffected.
+                </p>
+              )}
+            </div>
+          </>
+        )
+      })()}
+
+      {/* The trip zoom's own copy. The days zoom renders its food block inside
+          the block above, because on the bench it belongs in the timeline
+          column rather than under three panes. */}
+      {zoom === 'trip' && <FoodBlock sections={sections} />}
 
       <div className="plan__foot">
         {/* Re-targeting replaces the whole plan, so it retires the moment
@@ -913,11 +1172,29 @@ interface DayRowProps {
   carryOut: number | null
   units: UnitSystem
   elevation: ElevationProfile | null
+  /** This row is the bench's selection (#971). False everywhere else, so the
+   *  phone timeline has no selected state at all - a row there opens a sheet
+   *  and closes it again, and there is nothing for a highlight to mean. */
+  picked?: boolean
   onSelect: () => void
 }
 
-function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowProps) {
+function DayRow({
+  day,
+  figures,
+  carryOut,
+  units,
+  elevation,
+  picked = false,
+  onSelect,
+}: DayRowProps) {
   const resupply = day.end.resupply
+  /** Marks the row for the eye AND for assistive tech. `aria-current` rather
+   *  than `aria-selected`, which is only meaningful inside a listbox or a
+   *  tablist - this is an ordinary list of days. */
+  const pickedProps = picked
+    ? ({ 'aria-current': 'true' } as const)
+    : ({} as Record<string, never>)
 
   // A walked day is a record, not a plan - grey and immutable, and there
   // are still no actions to take on the past. It became a button anyway
@@ -929,7 +1206,16 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     return (
       <div className="plan__row">
         <RowGutter day={day} />
-        <button type="button" className="plan__day plan__day--walked" onClick={onSelect}>
+        <button
+          type="button"
+          className={
+            picked
+              ? 'plan__day plan__day--walked plan__day--picked'
+              : 'plan__day plan__day--walked'
+          }
+          onClick={onSelect}
+          {...pickedProps}
+        >
           <span className="plan__day-top">
             <span className="plan__day-title">
               {stopLabel(day.start)} → {stopLabel(day.end)}
@@ -954,7 +1240,16 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     return (
       <div className="plan__row">
         <RowGutter day={day} />
-        <button type="button" className="plan__day plan__day--zero" onClick={onSelect}>
+        <button
+          type="button"
+          className={
+            picked
+              ? 'plan__day plan__day--zero plan__day--picked'
+              : 'plan__day plan__day--zero'
+          }
+          onClick={onSelect}
+          {...pickedProps}
+        >
           <span>Zero · {stopLabel(day.start)}</span>
           {/* Terrain, not judgement - and "rest" only where the hiker's own
               rhythm put it, never as the app's opinion of the day (#798). */}
@@ -989,9 +1284,13 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
       <RowGutter day={day} />
       <button
         type="button"
-        className={resupply ? 'plan__day plan__day--resupply' : 'plan__day'}
+        className={
+          `${resupply ? 'plan__day plan__day--resupply' : 'plan__day'}` +
+          (picked ? ' plan__day--picked' : '')
+        }
         style={{ minHeight: `${height}px` }}
         onClick={onSelect}
+        {...pickedProps}
       >
         {!resupply && elevation !== null && (
           <DayTerrain
@@ -1065,6 +1364,160 @@ function RowGutter({ day }: { day: PlanDayView }) {
       {day.date !== null && <span>{dayDateLabel(day.date)}</span>}
       {day.dayNumber !== null && <span>DAY {day.dayNumber}</span>}
     </span>
+  )
+}
+
+interface BenchTreeProps {
+  hike: Hike | null
+  tripName: string | null
+  views: PlanDayView[]
+  sections: PlanSection[]
+  units: UnitSystem
+  selectedDay: number | null
+  onPickDay: (index: number | null) => void
+  /** Zoom out to the hike, or null when this trip belongs to no hike - which
+   *  is the common case and not a degraded one (see `hike`'s own note). */
+  onOpenHike: (() => void) | null
+}
+
+/**
+ * The bench's left pane (#971, wireframe 3a): the hike as a tree.
+ *
+ * SEGMENTS.md's tree with nothing invented on top of it - a hike holds trips,
+ * a trip holds sections, a section holds days - and it is the same tree the
+ * zoom control already walks one level at a time (#790). What the wide layout
+ * changes is only that all of it is visible at once, which is the whole
+ * argument for the layout: on a phone you pick a level and lose the others.
+ *
+ * Days are NOT drawn here. They are the timeline pane, three feet to the
+ * right, and drawing them twice would make one of the two copies the real one.
+ * A section row selects its first day instead, which is what pointing at a
+ * section means when the selection is a day.
+ */
+function BenchTree({
+  hike,
+  tripName,
+  views,
+  sections,
+  units,
+  selectedDay,
+  onPickDay,
+  onOpenHike,
+}: BenchTreeProps) {
+  return (
+    <nav className="plan-bench__tree" aria-label="This hike">
+      {hike !== null && onOpenHike !== null && (
+        <button type="button" className="plan-bench__tree-hike" onClick={onOpenHike}>
+          {hike.name}
+        </button>
+      )}
+      {tripName !== null && <p className="plan-bench__tree-trip">{tripName}</p>}
+      <ol className="plan-bench__tree-sections">
+        {sections.map((section, sectionIndex) => {
+          const first = section.days[0]
+          const last = section.days[section.days.length - 1]
+          const holdsSelection =
+            selectedDay !== null &&
+            selectedDay >= first.index &&
+            selectedDay <= last.index
+          return (
+            <li key={first.id}>
+              <button
+                type="button"
+                className={
+                  holdsSelection
+                    ? 'plan-bench__tree-section plan-bench__tree-section--picked'
+                    : 'plan-bench__tree-section'
+                }
+                {...(holdsSelection ? { 'aria-current': 'true' } : {})}
+                onClick={() => onPickDay(first.index)}
+              >
+                <span className="plan-bench__tree-name">
+                  {stopLabel(first.start)} → {stopLabel(last.end)}
+                </span>
+                <span className="plan-bench__tree-figures">
+                  <span>SEC {sectionIndex + 1}</span>
+                  <span>{formatDistance(section.distanceMi, units, 'whole')}</span>
+                  <span>
+                    {section.days.length} {section.days.length === 1 ? 'day' : 'days'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+      {/* The one thing the tree says that the panes beside it do not: how many
+          of these days are already a record. A count, never a proportion and
+          never a bar - see this file's header for why that line is drawn
+          here rather than left to taste. */}
+      {views.some((day) => day.walked) && (
+        <p className="plan-bench__tree-walked">
+          {views.filter((day) => day.walked).length} of {views.length} days walked
+        </p>
+      )}
+    </nav>
+  )
+}
+
+interface BenchCaptionProps {
+  day: PlanDayView | null
+  units: UnitSystem
+  /** Open the day's actions, or null for a walked day (it has none) and for
+   *  no selection at all. */
+  onActions: (() => void) | null
+  /** Open a walked day's record instead (#966). */
+  onSummary: (() => void) | null
+}
+
+/**
+ * What the bench's three panes are all pointing at, printed once above the
+ * chart - and the way from a selection to the actions on it.
+ *
+ * IDENTITY AND DISTANCE ONLY, deliberately. The chart directly below carries
+ * the same selection, and it already prints the climb, the descent and the
+ * ≈time from `legFigures` - so a caption that repeated them would put the same
+ * four numbers on two adjacent lines, and a reader would have to check they
+ * agreed. The distance stays because it names the day rather than measures the
+ * window, and "was 17.1 mi" stays because nothing else on this strip says it.
+ */
+function BenchCaption({ day, units, onActions, onSummary }: BenchCaptionProps) {
+  if (day === null) {
+    return (
+      <p className="plan-bench__caption plan-bench__caption--empty">
+        Pick a day to see it on the map and the profile — then drag a boundary to move
+        where it ends.
+      </p>
+    )
+  }
+
+  return (
+    <p className="plan-bench__caption">
+      <span className="plan-bench__caption-title">
+        {day.dayNumber === null ? 'Zero' : `Day ${day.dayNumber}`} ·{' '}
+        {day.zero
+          ? stopLabel(day.start)
+          : `${stopLabel(day.start)} → ${stopLabel(day.end)}`}
+      </span>
+      <span className="plan-bench__caption-figure">
+        {formatDistance(Math.abs(day.end.mile - day.start.mile), units)}
+      </span>
+      {day.wasDistanceMi !== null && (
+        <span className="plan-bench__caption-was">
+          was {formatDistance(day.wasDistanceMi, units)}
+        </span>
+      )}
+      {onActions !== null && (
+        <button type="button" className="plan-bench__caption-action" onClick={onActions}>
+          Day actions…
+        </button>
+      )}
+      {onSummary !== null && (
+        <button type="button" className="plan-bench__caption-action" onClick={onSummary}>
+          Open this day&rsquo;s record
+        </button>
+      )}
+    </p>
   )
 }
 

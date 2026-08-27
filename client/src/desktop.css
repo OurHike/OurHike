@@ -34,6 +34,20 @@
  * Routing is still missing and named on purpose - §6 itself calls it "the
  * largest single change in this workstream", and it does not belong in a
  * layout pass.
+ *
+ * TWO WIDE ROOMS LIVE HERE, and they are different rooms with confusable
+ * names, so the difference is stated once here rather than guessed at from
+ * either section heading:
+ *
+ *   the planning station (#1054)   Today's journal docked beside the map.
+ *                                  What a hiker READS on the day.
+ *   the plan bench      (#971)     the Plan tab's three panes over one
+ *                                  selection, with the whole section's
+ *                                  elevation beneath them. Where a hiker
+ *                                  LAYS OUT a trip and moves its days.
+ *
+ * WIREFRAMES.md's 3a is the bench; WEBSITE.md §6's table above is the shell
+ * both of them sit in.
  */
 
 @media (min-width: 900px) {
@@ -286,6 +300,268 @@
     color: var(--fg-2);
   }
 
+  /* ---------- The plan bench (#971): one plan, three views ---------- */
+
+  /* WIREFRAMES.md 3a. Not the planning station above - see this file's header
+     for the two rooms and which is which.
+
+     THE WHOLE ARGUMENT FOR THIS LAYOUT, in one rule: on a phone the Plan tab
+     shows one depth of the tree at a time, because that is all there is room
+     for. Here the tree, the map and the timeline are three columns over ONE
+     selection, and the whole section's elevation runs the width underneath -
+     which is what makes a day boundary something a pointer can take hold of.
+     Ten miles of ribbon has nothing to drag a day between.
+
+     Gated at 900px like everything else in this file, and gated a second time
+     in the component (`useDesktop()`), because the bench is a different
+     COMPOSITION rather than a restyling: the phone renders the timeline on its
+     own, and no stylesheet can conjure the two panes beside it. */
+  .plan-bench {
+    display: flex;
+    /* Columns keep their own heights. Stretching them would make the map as
+       tall as a fifty-day timeline, which is a mile of empty canvas. */
+    align-items: flex-start;
+    gap: var(--space-4, 16px);
+  }
+
+  /* WHICH PANE SCROLLS, and it is the whole reason the other two are sticky:
+     the timeline is the long one, and a hiker scrolling to day 40 must not
+     lose the tree that says which section they are in or the map that says
+     where. The screen's own pane is the scroll container
+     (.app__screen > :first-child), so `top: 0` is the top of the visible
+     plan rather than the document. */
+  .plan-bench__tree,
+  .plan-bench__map {
+    position: sticky;
+    top: 0;
+  }
+
+  /* The tree: narrowest, because it is a table of contents rather than
+     content. 15rem holds "Damascus → Atkins" on one line at this size. */
+  .plan-bench__tree {
+    flex: 0 0 15rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+  }
+
+  .plan-bench__tree-hike {
+    align-self: flex-start;
+    padding: 0;
+    font: inherit;
+    font-family: var(--font-display, serif);
+    font-size: 15px;
+    color: var(--fg-2);
+    background: none;
+    border: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .plan-bench__tree-trip {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-3);
+  }
+
+  .plan-bench__tree-sections {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+  }
+
+  .plan-bench__tree-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2, 8px);
+    font: inherit;
+    text-align: left;
+    color: var(--fg-1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  /* The one selection, said the same way in all three panes: a blaze-orange
+     inside edge, the same ink as the chart's selected band - so a hiker's eye
+     can follow one thing across three columns without being told the three
+     marks mean one thing.
+
+     WEIGHT rather than colour alone is what carries it, and that is not
+     decoration: `.plan__day--resupply` already draws its whole border in this
+     exact token (plan.css), so a picked resupply row marked only by hue would
+     be marked by nothing. Four pixels down one edge is legible against a
+     one-pixel surround. `aria-current` carries the same fact for anyone not
+     reading either. */
+  .plan-bench__tree-section--picked,
+  .plan__day--picked {
+    border-left: 4px solid var(--accent-blaze-orange);
+  }
+
+  .plan-bench__tree-name {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .plan-bench__tree-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+
+  /* A COUNT, and deliberately nothing else. No bar, no percentage, no "on
+     track" - screens/Plan.tsx's header names this surface as where a progress
+     display would arrive without anyone deciding to add one. */
+  .plan-bench__tree-walked {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+
+  /* The map pane. Empty of rules beyond its share of the row, because what
+     goes in it is the shell's to decide (screens/Plan.tsx's `mapPane`) - and
+     it is not rendered at all when the shell has no map to lend. */
+  .plan-bench__map {
+    flex: 1 1 0;
+    min-width: 0;
+    /* A HEIGHT IS NOT OPTIONAL HERE: a map canvas has no intrinsic one, and a
+       sticky column that stretched would leave nothing on screen for the
+       chart. 55vh with an 18rem floor, and the arithmetic is against the
+       narrowest window this layout is photographed at (1280x800, the preview
+       camera's DESKTOP): 440px of map, ~44px of caption, ~200px of chart
+       strip, ~90px of header - about 774 of 800, so the chart is above the
+       fold at the width a reviewer sees. Below roughly 520px of viewport the
+       floor wins and the strip scrolls, which is the right way round: a short
+       window should cost the map, not the gesture. */
+    height: 55vh;
+    min-height: 18rem;
+    overflow: hidden;
+    border: 1px solid var(--border-1);
+    border-radius: 10px;
+  }
+
+  .plan-bench__timeline {
+    flex: 1 1 22rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 16px);
+  }
+
+  /* The strip beneath the three panes: what is selected, what the last drag
+     did, and the chart itself. Full width, because the chart is the whole
+     section and a section does not fit in a column. */
+  .plan-bench__strip {
+    /* Pinned to the bottom of the visible plan while the timeline scrolls
+       past it. The chart is what this screen exists for; scrolling away from
+       it to read day 40 and then back to move day 40's boundary is the
+       gesture made two-handed for no reason. */
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    /* Out to the screen's own edges, under the padding `.plan` sets. Sides
+       only: the plan's foot (re-target, delete) follows this in the DOM, and
+       a negative bottom margin would pull it up underneath the chart. */
+    margin: 0 calc(-1 * var(--space-4, 16px));
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-1);
+  }
+
+  .plan-bench__caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2, 8px);
+    margin: 0;
+    padding: var(--space-2, 8px) var(--space-4, 16px) 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--fg-2);
+  }
+
+  .plan-bench__caption--empty {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+
+  .plan-bench__caption-title {
+    font-weight: 600;
+    color: var(--fg-1);
+  }
+
+  .plan-bench__caption-was {
+    color: var(--fg-3);
+  }
+
+  .plan-bench__caption-action {
+    padding: 2px 8px;
+    font: inherit;
+    color: var(--fg-1);
+    background: none;
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  /* What the last drag did, and the way back out of it. `role="status"` in
+     the markup, so a screen reader hears the two days change rather than
+     having to go looking for them. */
+  .plan-bench__undo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2, 8px);
+    margin: var(--space-2, 8px) var(--space-4, 16px) 0;
+    padding: var(--space-2, 8px);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--fg-1);
+    background: color-mix(in srgb, var(--accent-blaze-orange) 12%, transparent);
+    border-radius: 8px;
+  }
+
+  .plan-bench__undo-action {
+    padding: 2px 10px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--fg-1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .plan-bench__no-chart {
+    margin: 0;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+
+  /* The chart is already bordered by the strip above it. */
+  .plan-bench__strip .elevation-chart {
+    background: none;
+    border-top: 0;
+  }
+
   /* ---------- Map screen: chrome down the side, map in the middle ---------- */
 
   .map-screen__main {
@@ -502,6 +778,51 @@
     stroke: var(--accent-blaze-orange);
     stroke-width: 1.5;
     vector-effect: non-scaling-stroke;
+  }
+
+  /* Day boundaries on the profile (#971). A DIFFERENT ink from the selection
+     wash above, deliberately: the orange band is a measurement somebody made,
+     these lines are the plan itself, and a hiker has to be able to tell the
+     two apart before dragging one. */
+  .elevation-chart__boundary {
+    stroke: var(--fg-1);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  /* An edge that cannot be taken: the plan's two ends, a walked day's, one
+     against a pin. Still drawn - a section whose first and last edges were
+     invisible reads as a plan running off both sides of the picture - and
+     dashed and dimmed, so "you cannot drag this" is legible before the
+     attempt rather than after it. */
+  .elevation-chart__boundary--fixed {
+    stroke: var(--fg-3);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+
+  /* The handle: a thin column over the line, wide enough to aim at with a
+     mouse and focusable for the keyboard path. Transparent at rest so the
+     picture is the line rather than a row of tabs; it shows itself on hover
+     and focus, which is what a desk pointer already expects. */
+  .elevation-chart__boundary-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    /* Centred on the line it moves, so the pointer's idea of the handle and
+       the eye's idea of the boundary are the same place. */
+    width: 13px;
+    margin-left: -6px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    cursor: ew-resize;
+  }
+
+  .elevation-chart__boundary-handle:hover,
+  .elevation-chart__boundary-handle:focus-visible {
+    background: color-mix(in srgb, var(--fg-1) 14%, transparent);
   }
 
   .elevation-chart__here {

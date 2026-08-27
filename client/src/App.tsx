@@ -5184,6 +5184,14 @@ function App() {
                 onOpenGroup={setOpenGroupId}
                 onPlanGap={routeBuilder.handlePlanGap}
                 onPlanFrom={routeBuilder.handlePlanFrom}
+                // The plan bench's selection (#971): the day the tree and the
+                // timeline are pointing at, so the third pane follows the
+                // other two. Straight into the state `handleChartStretch`
+                // already writes when no draft is open, which is what makes
+                // the Map tab and the desktop chart pick it up for free -
+                // rather than a second copy of "which stretch is selected"
+                // that could disagree with the first.
+                onSelectStretch={setFreeChartStretch}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
                 {...(openGroup !== null

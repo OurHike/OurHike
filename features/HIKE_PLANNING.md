@@ -526,3 +526,65 @@ python spike_day_planner.py --targets 12,15,18 --cap 25
 ```
 
 It reports what Q1 asks for: the real spacing distribution of designated stops, how close a generated plan gets to a range of targets, what the worst day looks like, and what campsites buy over shelters alone. It was **not** run while this document was written — the environment it was written in has no route to ATC's servers — so every number in it is still unmeasured, and the table in Finding 3 is arithmetic over counts from `pipeline/README.md` rather than a measurement of spacing. That is the first thing to close.
+
+## The plan bench — three panes over one selection, and a day boundary you can drag (#971, 2026-08-27)
+
+Everything above this section describes a planner that works on a phone. [WIREFRAMES.md](../WIREFRAMES.md)'s frame `3a` describes what a desk adds, and until this section nothing in the repository built it: above 900px the Plan tab was the phone's terrain-row timeline, widened.
+
+**The name, first, because the repository already has a confusable one.** `desktop.css:233` is headed *"The planning station (#1054): the journal beside the map"* — the **Today** screen docked beside the canvas, what a hiker reads on the day. This is a different room and is called the **plan bench**: where a trip gets laid out flat and its days get moved. Both names are stated together at the top of `desktop.css`, so a reader landing on either section heading is told which is which.
+
+### What it is
+
+Three panes over one selection, with the whole section's elevation running the width beneath them.
+
+- **The tree** (left) is [SEGMENTS.md](SEGMENTS.md)'s tree with nothing invented on top of it — the hike, the trip, and the trip's resupply sections. It is the same tree the zoom control (#790) already walks one level at a time; the wide layout only makes all of it visible at once, which is the argument for the layout. Days are *not* drawn here: they are the timeline pane, and drawing them twice would make one of the two copies the real one.
+- **The map** (middle) is a **slot**, `mapPane`, filled by the app shell — the same move `MapScreen`'s `journal` slot makes for the planning station, and for the same reason: the map has about sixty inputs and none of them are the planner's business. When the shell has no map to lend, the bench draws **two** panes. A framed grey box captioned "map" would be the display outrunning its source.
+- **The timeline** (right) is the existing day rows, unchanged except that a click **selects** rather than opening the actions sheet. On a desk those are separate moves — the sheet would cover the chart the whole screen exists for — so the actions live one click away, on the strip below.
+
+The tree and the map are sticky; the timeline is the pane that scrolls. A hiker scrolling to day 40 must not lose the section they are in or the ground they are on.
+
+### The gesture: a day boundary is draggable
+
+This is the one planning gesture a phone cannot offer. The phone's ribbon shows ten miles because that is all there is room for; there is nothing to drag a day *between* in ten miles. A desk shows the plan's whole section, so a boundary becomes a thing a pointer can take hold of.
+
+**It is a new writer of `plan.stops`, and #971's body says otherwise.** The issue says the drag *"has to land on the existing mutators, not a new path"*, because *"`cascade.ts` already owns what happens to the days either side"*. Checked against the code on 2026-08-27: it does not. Every mutator in `lib/plan.ts` and `lib/cascade.ts` either adds a boundary (`insertZeroAfter`), drops one (`removeDay`), flips a flag on one (`toggleResupply`, `togglePinned`), writes prose (`setDayNote`), or moves the single boundary at the end of the day being closed (`callItADay`). Nothing moves an arbitrary boundary in the middle of a plan. `lib/planBench.ts` is that writer, written as one rather than smuggled in behind an existing name.
+
+That makes it a hiker-safety path under [CLAUDE.md](../CLAUDE.md)'s four-ways rule — *unable to get off the trail quickly* is the one it touches — because moving one boundary changes the miles **and** the climb of the two days that meet at it. Four commitments follow, each enforced in code rather than remembered:
+
+1. **Two days, never more. The drag does not cascade.** `absorbPlan` and `shiftPlan` re-lay everything after the day they are given, which is right for *"I stopped early today"*: the hiker asked a question and the cascade sheet answers it with three outcomes to choose between. A drag asks no question — the handle promises that *this* line moves — so re-laying the next fortnight off a gesture nobody confirmed would be exactly the silent re-plan the cascade design exists to prevent. A hiker who wants the rest to follow still has the cascade.
+2. **Both changed days say so.** Each carries `wasDistanceMi` out of the move, so the timeline prints "was 17.1 mi" on both — the mechanism #758 already built for this, reused rather than reinvented. Written once and never overwritten, matching `shiftPlan`: "was" answers *what did the app lay out for me*, not *what was it three seconds ago*.
+3. **It is undoable.** The move returns the plan it was given alongside the new one, and the strip prints what changed on **both** days with an Undo beside it. A line naming only the day that grew would hide the one that shrank, and the shorter one is the half a hiker has already bought food for.
+4. **A moved stop loses its name.** A boundary dragged off "Lost Mountain Shelter" is not Lost Mountain Shelter, so the name and the POI reference are dropped unless the new mile lands on a real stop — `nearestStop`'s existing half-mile window, the one "call it a day" already uses. A bare mile marker is honest; a shelter name over ground three miles from the shelter is not. The snap never crosses a neighbouring stop, which would reorder the plan.
+
+### What cannot be dragged, and why each one
+
+Stated on the boundary rather than discovered on release: a fixed boundary is still **drawn** — dashed and dimmed — because a section whose first and last edges were invisible reads as a plan running off both sides of the picture, and because "you cannot drag this" has to be legible before the attempt.
+
+| | |
+|---|---|
+| `end` | The plan's first and last stops. Those are what the trip **is**; moving one re-routes the walk, which is the route builder's job. |
+| `walked` | At or behind the walked prefix. Where a walked day ended is a record, not a plan (SEGMENTS.md's completion model). |
+| `pinned` | Either adjacent day is pinned. "Nothing re-plans through a pin" — and a pin whose day a drag could lengthen is a pin that does not hold. |
+| `zero` | Either adjacent day is a zero, so **another stop sits on this exact mile**. Two boundaries draw as one line, so a hiker cannot see which they are taking; and moving either edge turns a rest day into a walking day of four miles off a gesture nobody confirmed. |
+
+**Each dashed line carries its own reason**, as the line's `<title>` — "A pinned day meets here, and a pin means the day does not move. Unpin it to move this." That is #1049's lesson applied here: a refusal that does not name *which* absence it is sends somebody looking for a fix that does not exist, and three of these four are states a hiker can undo.
+
+**The `zero` rule has a cost worth naming.** Every zero freezes the two boundaries around it, so a twenty-day plan with three rest days has six of its nineteen boundaries fixed. What would settle it is moving **both** coincident stops together, so the drag relocates the rest day along the trail and it stays a zero. That is a better answer and a bigger one — one gesture writing two stops — and it is not what shipped.
+
+A drag *can* still collapse a day to zero by clamping onto its neighbour. That is a real edit, the row says "Zero · no walking", Undo sits beside it, and "Remove this zero" is in the day's own actions.
+
+### Two things #971's body asks for that were re-derived rather than inherited
+
+**The "1.5% collapse threshold" concern does not apply to this chart.** #971 quotes the wireframe: *"the 1.5% collapse threshold becomes 2.5 mi so pills swallow real runs"*. `COLLAPSE_THRESHOLD_PCT` was deleted by #1054 (commit `1f54f426`, 2026-08-26), and the surviving arithmetic lives in `lib/ribbonView.ts` as `MAX_LANE_SPAN_MI = 8 / 0.015` — a bound on the **elevation ribbon's waypoint lanes**. `chrome/ElevationChart.tsx` has no lanes and no pills: `grep -i 'lane\|pill'` over it returns nothing, before this change and after. The concern was real about the ribbon and is not a property of the chart the bench draws.
+
+**"The desktop chart needs a selectable window" is answered, differently from how it was framed.** The chart now takes a `restingDomain` and the bench hands it the plan's own miles, so a 166-mile section fills the plot instead of being a sliver of 2,197. Zooming out of that says "Whole section" rather than "Whole trail", because on this screen the whole trail is not what zooming out means.
+
+### The keyboard, which is not an afterthought here
+
+A drag on a chart is the one gesture in this app with no keyboard equivalent, and #971 makes it the gesture a whole screen exists for. So every movable boundary is also a focusable `role="slider"` carrying its own `aria-valuemin`/`max`/`now` — the range is announced *before* it is moved rather than discovered by hitting it. Arrow keys nudge 0.1 mi, Shift 1 mi; both are `@unvalidated` in `chrome/ElevationChart.tsx` with the arithmetic for why there are two of them (0.1 mi is 0.6 px on a 166-mile domain, so the fine step moves the plan without visibly sliding anything, and a hiker placing a boundary precisely zooms first).
+
+### What this does not do
+
+- **No cascade off a drag**, by decision — see above.
+- **No routing.** The bench works without a URL and would be much more useful with one: [#970 — The website links at /app/ and the app has no router](https://github.com/OurHike/OurHike/issues/970) is adjacent, not blocking.
+- **No third pane until the shell fills the slot.** The component takes `mapPane` and renders two panes without it; wiring it is one prop in `App.tsx`.

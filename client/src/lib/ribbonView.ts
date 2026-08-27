@@ -382,8 +382,13 @@ export interface RibbonLanes {
  * REASONED, from the one figure this repository already stands behind: AT
  * shelters average about eight miles apart (features/ELEVATION_PROFILE.md
  * Decision 1, which sizes the fix window's nine-mile look-ahead on it). A pill
- * swallows `COLLAPSE_THRESHOLD_PCT` of whatever window it is drawn in, so over
- * a span of S miles it stands for 0.015 x S miles of trail. Where that reaches
+ * swallows 1.5% of whatever window it is drawn in - `waypointLanes.ts`'s
+ * `COLLAPSE_THRESHOLD_PCT`, "roughly one pin width", which #1054 deleted along
+ * with the lanes themselves when they became chrome/NextUpRail.tsx's cards.
+ * The number is written out here rather than imported because there is no
+ * longer anywhere to import it from, and the arithmetic below is the only
+ * thing that still depends on it. So over
+ * a span of S miles a pill stands for 0.015 x S miles of trail. Where that reaches
  * a lane's own spacing, that lane is all pills: it has stopped naming places
  * and started drawing density, which is a different picture and one nothing
  * here asked for. 8 / 0.015 is about 533 miles.

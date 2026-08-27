@@ -694,8 +694,11 @@ describe('reporting, with a fix to attach', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // THE TAP IS THE FILE now (#1133) - there is no second step for the six
+    // one-tap types. What used to be tile-then-Send is one click.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The account question waits for the window to close (#1133).
+    await user.click(screen.getByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{
@@ -707,7 +710,17 @@ describe('reporting, with a fix to attach', () => {
     })
   })
 
-  it('drops the draft and returns to the tab it came from when cancelled', async () => {
+  it('leaves the screen underneath it standing, and closing costs nothing', async () => {
+    // THIS TEST USED TO BE ABOUT DROPPING A DRAFT (#1133). Under the old
+    // two-screen flow, opening the picker replaced the whole shell and
+    // `Cancel` was how you got the app back - so the thing worth asserting was
+    // that backing out wrote nothing.
+    //
+    // Neither half is true now. The window is an overlay, so the screen it
+    // opened from was never taken away; and a tap has already filed, so
+    // closing is not a discard. What is worth asserting is the pair that
+    // replaced them: the screen behind is still there, and closing the window
+    // without tapping anything still writes nothing.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
@@ -717,10 +730,16 @@ describe('reporting, with a fix to attach', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-    await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
 
-    expect(await screen.findByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
+    // The window is up AND the screen it came from is still rendered behind
+    // it - which is the entire point of the change.
+    expect(await screen.findByRole('dialog', { name: /what did you find/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('report-close'))
+
+    expect(screen.queryByRole('dialog', { name: /what did you find/i })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
     expect(store.get('ourhike:outbox')).toBeUndefined()
   })
 
@@ -734,8 +753,12 @@ describe('reporting, with a fix to attach', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // THE TAP IS THE FILE now (#1133) - there is no second step for the six
+    // one-tap types. What used to be tile-then-Send is one click.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The account question waits for the window to close (#1133) rather than
+    // interrupting the receipt and its undo, which is the whole interaction.
+    await user.click(screen.getByTestId('report-done'))
 
     // Saving now hands over to the sign-in step (lib/contributionFlow.ts's
     // stepAfterSaving). Declining it is the path this test cares about: the
@@ -756,8 +779,11 @@ describe('reporting, with a fix to attach', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // THE TAP IS THE FILE now (#1133) - there is no second step for the six
+    // one-tap types. What used to be tile-then-Send is one click.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The account question waits for the window to close (#1133).
+    await user.click(screen.getByTestId('report-done'))
     await user.click(await screen.findByRole('button', { name: /not now/i }))
 
     // The promise the whole flow exists to keep: someone who cannot or will
@@ -777,8 +803,11 @@ describe('reporting, with a fix to attach', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // THE TAP IS THE FILE now (#1133) - there is no second step for the six
+    // one-tap types. What used to be tile-then-Send is one click.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The account question waits for the window to close (#1133).
+    await user.click(screen.getByTestId('report-done'))
 
     // Ordering is the design, not a detail - the screen says the report is
     // already saved, and it has to be true when it says it.
@@ -1555,8 +1584,11 @@ describe('who a report says it is from (#233)', () => {
       )
     }
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // THE TAP IS THE FILE now (#1133) - there is no second step for the six
+    // one-tap types. What used to be tile-then-Send is one click.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The account question waits for the window to close (#1133).
+    await user.click(screen.getByTestId('report-done'))
   }
 
   function queued() {

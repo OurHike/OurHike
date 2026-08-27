@@ -219,6 +219,48 @@ describe('undo', () => {
 })
 
 describe('getting out', () => {
+  it('tells the caller nothing was filed, so nothing is asked of the hiker', () => {
+    // Somebody who opened the window, read it and closed it has not
+    // contributed anything, and must not be asked to sign in for it. The old
+    // two-screen flow could not get this wrong - reaching its save path meant
+    // submitting a form - and a window you can open and close for free can.
+    const onClose = vi.fn()
+    setup({ onClose })
+
+    fireEvent.click(screen.getByTestId('report-close'))
+
+    expect(onClose).toHaveBeenCalledWith(false)
+  })
+
+  it('tells the caller when something IS standing', async () => {
+    const onClose = vi.fn()
+    setup({ onClose })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    fireEvent.click(screen.getByTestId('report-done'))
+
+    expect(onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('counts an undone report as nothing filed', async () => {
+    // The case a boolean flag would get wrong. Filed then taken back is not a
+    // contribution, and there is nothing in the queue to sign for.
+    const onClose = vi.fn()
+    setup({ onClose })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-undo'))
+    })
+    fireEvent.click(screen.getByTestId('report-close'))
+
+    expect(onClose).toHaveBeenCalledWith(false)
+  })
+
   it('closes on the close button, on Escape, and on the scrim', () => {
     const onClose = vi.fn()
     setup({ onClose })

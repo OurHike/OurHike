@@ -58,8 +58,14 @@ import './reportWindow.css'
  */
 export const UNDO_WINDOW_MS = 8_000
 
-/** Where the report lands, and how the header says so. */
-export interface ReportAnchor {
+/** Where the report lands, and how the header says so.
+ *
+ *  Named apart from chrome/FieldNoteSection.tsx's `ReportAnchor`, which App.tsx
+ *  already imports, because they are not the same thing: that one is the place
+ *  a report is ABOUT, and this one is that plus the words the header prints.
+ *  One name for both would make the header's `label` look optional on a type
+ *  where it is the whole reason this interface exists. */
+export interface ReportWindowAnchor {
   /** The POI this is about, when it started from a place card. */
   poiId?: string
   lat?: number
@@ -71,7 +77,7 @@ export interface ReportAnchor {
 }
 
 export interface ReportWindowProps {
-  anchor: ReportAnchor
+  anchor: ReportWindowAnchor
   /** Signed exactly as every other contribution is - the floor in
    *  lib/reporterIdentity.ts applies, and the caller has already applied it. */
   reporterType: 'thru' | 'section' | 'day' | 'maintainer'
@@ -88,8 +94,27 @@ export interface ReportWindowProps {
   /** Something unsafe opens the long form, which is what it has always been:
    *  private, moderated, and never a one-tap file. */
   onReportUnsafe: () => void
-  onClose: () => void
+  /**
+   * Closing. `filedAnything` is true only when at least one report was written
+   * AND not taken back, which is what the caller needs to decide whether this
+   * was a contribution at all - a hiker who opened the window, read it and
+   * closed it has not contributed anything, and must not be asked to sign in
+   * for it.
+   */
+  onClose: (filedAnything: boolean) => void
   now?: Date
+}
+
+/** When the undo window for a report filed right now would close.
+ *
+ *  A module function rather than a line inside the component, and not only to
+ *  quiet the purity lint: `Date.now()` written in a component body is genuinely
+ *  ambiguous about whether it runs on render or on the tap, and the answer
+ *  matters here - a hold computed at render time would start counting from
+ *  whenever React last drew the tiles rather than from the tap that filed.
+ *  Out here it can only be the tap, because only the tap calls it. */
+function undoWindowFromNow(): Date {
+  return new Date(Date.now() + UNDO_WINDOW_MS)
 }
 
 function Icon({ name }: { name: ReportIconName }) {
@@ -132,6 +157,11 @@ export function ReportWindow({
     undoUntil: number
   } | null>(null)
   const [note, setNote] = useState('')
+  // Everything filed by this window and not taken back. A list rather than a
+  // flag because both directions matter: "Note something else" files a second
+  // report without clearing the first, and Undo removes one without
+  // necessarily emptying the set.
+  const [standing, setStanding] = useState<readonly string[]>([])
   // Ticks only while an undo window is open, so a window sitting on the tiles
   // costs no timer at all.
   const [remaining, setRemaining] = useState(0)
@@ -153,9 +183,12 @@ export function ReportWindow({
     }
   }, [])
 
+  // `standing` rather than a ref: the identity of this callback changing when
+  // it changes is what keeps the Escape handler below closing over the right
+  // answer instead of the one from the render it was installed on.
   const close = useCallback(() => {
-    onClose()
-  }, [onClose])
+    onClose(standing.length > 0)
+  }, [onClose, standing])
 
   // Escape closes, and the scrim does too. Safe under 1a in a way it is not
   // under the other two variants: by the time there is anything to lose, the
@@ -220,14 +253,16 @@ export function ReportWindow({
       onReportUnsafe()
       return
     }
-    const holdUntil = new Date(Date.now() + UNDO_WINDOW_MS)
+    const holdUntil = undoWindowFromNow()
     const outboxId = await onFile(type, note.trim(), holdUntil)
+    setStanding((current) => [...current, outboxId])
     setFiled({ type, outboxId, undoUntil: holdUntil.getTime() })
   }
 
   const undo = async () => {
     if (filed === null) return
     await onUndo(filed.outboxId)
+    setStanding((current) => current.filter((id) => id !== filed.outboxId))
     setFiled(null)
     setRemaining(0)
   }

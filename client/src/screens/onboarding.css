@@ -100,14 +100,22 @@
    pointer's way. */
 /* A BAND, not a full-bleed fill, and the difference is the whole fix
    (maintainer, 2026-08-26: the full-bleed pool "doesn't look great on
-   mobile"). Sixteen of the seventeen pool photos are landscape frames; on a
-   portrait phone, covering the viewport scaled each ~2.4x and showed a
-   narrow vertical sliver of its middle - blur plus accidental framing,
-   because the composition lives in the width that crop threw away. Half a
-   screen tall, the same photos render near-native and keep their subjects.
-   The pine ground beneath the fade is what the rest of the overlay stands
-   on - it also means an OFFLINE first run (the drawn photo is not precached,
-   lib/heroPhotos.ts) opens on calm pine rather than a broken image. */
+   mobile"). Most of the pool is landscape frames; on a portrait phone,
+   covering the viewport scaled each ~2.4x and showed a narrow vertical
+   sliver of its middle - blur plus accidental framing, because the
+   composition lives in the width that crop threw away. Half a screen tall,
+   the same photos render near-native and keep their subjects. The pine
+   ground beneath the fade is what the rest of the overlay stands on - it
+   also means an OFFLINE first run (the drawn photo is not precached,
+   lib/heroPhotos.ts) opens on calm pine rather than a broken image.
+
+   THE BAND IS THE PHONE'S ANSWER AND ONLY THE PHONE'S (#1084). Turned
+   sideways it inverts - a 480px band across a 1920px window is a 4:1 slot
+   cut from a 3:2 photograph, which keeps 37.5% of the frame against the
+   93.7% a phone-shaped crop keeps. desktop.css overrides these three
+   declarations above 900px and the reasoning lives there with the numbers.
+   Nothing in this rule is wrong; it is simply about a portrait screen, so
+   read it as one. */
 .onboarding__hero {
   position: absolute;
   inset: 0;

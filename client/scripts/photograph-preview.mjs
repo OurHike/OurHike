@@ -42,6 +42,7 @@ import {
   DEFAULT_WAIT_MS,
   CAPTURE_SCALE,
   PHONE,
+  DESKTOP,
 } from './screenshot.mjs'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { resolve, dirname, basename, join } from 'node:path'
@@ -76,6 +77,28 @@ export const PREVIEW_BASE_PLACEHOLDER = '__PREVIEW_BASE__'
  * Moved here verbatim from pr-preview.yml when the markup moved (#998).
  */
 export const DISPLAY_WIDTH = 320
+
+/**
+ * The same arithmetic for a desktop shot, which is a different shape and so
+ * cannot share the phone's number (#1084).
+ *
+ * A desktop recipe is captured at DESKTOP's 1280x800 and at scale 1, not
+ * CAPTURE_SCALE's 2. Both halves are forced by the same two constraints the
+ * phone's numbers came from. Sharpness: displayed at 640 a 1280-wide capture
+ * is already 2x, which is what capturing a 390-wide phone at 2 buys. Bytes:
+ * 1280x800 at scale 2 is 2560x1600, four times the pixels of the 743,012-byte
+ * trail-screen frame screenshot.mjs measured, which would clear BYTE_BUDGET on
+ * its own before anything went wrong.
+ *
+ * 640 rather than 320 because a desktop frame IS the wide layout - the sidebar
+ * beside the map, the card beside the photograph - and at 320 the thing under
+ * review is four millimetres across. It takes a whole row for the same reason.
+ */
+export const DESKTOP_DISPLAY_WIDTH = 640
+
+/** What a desktop capture is worth per CSS pixel - see DESKTOP_DISPLAY_WIDTH
+ *  for why it is not CAPTURE_SCALE. */
+export const DESKTOP_CAPTURE_SCALE = 1
 
 export function usage() {
   return [
@@ -175,8 +198,9 @@ export function planShots({
  * clear sentence in the comment rather than as a puzzling frame. Everything
  * optional except that what is present has the right type: `caption` (table
  * heading) falls back to the shot name, `alt` to the caption, `entry` keeps
- * first run on screen, `wait` overrides the settle, and the default export
- * is the drive — absent for a screen the app opens on by itself.
+ * first run on screen, `desktop` photographs the wide layout instead of the
+ * phone, `wait` overrides the settle, and the default export is the drive —
+ * absent for a screen the app opens on by itself.
  */
 export function normaliseRecipe(module, name) {
   const wrong = (what, value) => {
@@ -192,7 +216,14 @@ export function normaliseRecipe(module, name) {
   const wait = module.wait ?? DEFAULT_WAIT_MS
   if (typeof wait !== 'number' || !Number.isFinite(wait))
     wrong('wait must be a number of milliseconds', module.wait)
-  return { drive, caption, alt, entry: module.entry === true, wait }
+  return {
+    drive,
+    caption,
+    alt,
+    entry: module.entry === true,
+    desktop: module.desktop === true,
+    wait,
+  }
 }
 
 /** Into an HTML attribute (the img alt). */
@@ -211,13 +242,25 @@ export function escapeCell(text) {
 
 const imageCell = (shot) =>
   `<img src="${PREVIEW_BASE_PLACEHOLDER}/__screenshot/${shot.name}.png" ` +
-  `width="${DISPLAY_WIDTH}" alt="${escapeAttr(shot.alt)}">`
+  `width="${shot.desktop === true ? DESKTOP_DISPLAY_WIDTH : DISPLAY_WIDTH}" ` +
+  `alt="${escapeAttr(shot.alt)}">`
 
-/** Tables of two — the most a comment's width holds (DISPLAY_WIDTH). */
+/**
+ * Tables of two — the most a comment's width holds (DISPLAY_WIDTH) — except
+ * that a desktop shot takes a row to itself, because at DESKTOP_DISPLAY_WIDTH
+ * two of them are twice what the comment has (#1084). Greedy rather than
+ * grouped: a desktop shot ends the row it lands in, so a mixed set keeps its
+ * order instead of being sorted into a phone half and a desktop half. The
+ * order is what says which shot the pull request is about.
+ */
 function tables(shots) {
   const lines = []
-  for (let i = 0; i < shots.length; i += 2) {
-    const row = shots.slice(i, i + 2)
+  for (let i = 0; i < shots.length;) {
+    const row =
+      shots[i].desktop === true || shots[i + 1]?.desktop === true
+        ? shots.slice(i, i + 1)
+        : shots.slice(i, i + 2)
+    i += row.length
     lines.push(
       `| ${row.map((shot) => escapeCell(shot.caption)).join(' | ')} |`,
       `| ${row.map(() => '---').join(' | ')} |`,
@@ -268,8 +311,11 @@ export function renderComment(results, { nudge = false } = {}) {
       '',
     )
   }
+  const sizes = taken.some((shot) => shot.desktop === true)
+    ? `${PHONE.width}x${PHONE.height}, the wide ones at ${DESKTOP.width}x${DESKTOP.height},`
+    : `${PHONE.width}x${PHONE.height}`
   lines.push(
-    `Photographed from this build at ${PHONE.width}x${PHONE.height}, and served ` +
+    `Photographed from this build at ${sizes} and served ` +
       'by this preview - so they go when it does. The camera goes where ' +
       `\`client/${RECIPE_DIR}/\` points it: a recipe this pull request adds or ` +
       'changes is photographed automatically.',
@@ -317,9 +363,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         dist: options.dist,
         skipEntry: !recipe.entry,
         waitMs: recipe.wait,
-        scale: CAPTURE_SCALE,
+        scale: recipe.desktop ? DESKTOP_CAPTURE_SCALE : CAPTURE_SCALE,
         fullPage: false,
-        viewport: PHONE,
+        viewport: recipe.desktop ? DESKTOP : PHONE,
         drive: recipe.drive,
       })
       const verdict = budgetVerdict(bytes)
@@ -328,6 +374,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         ...shot,
         caption: recipe.caption,
         alt: recipe.alt,
+        desktop: recipe.desktop,
         bytes,
         overBudget: verdict.overBudget,
       })

@@ -623,39 +623,99 @@
     border-radius: 14px;
   }
 
-  /* ---------- First run: a card on the map, not a band across it ---------- */
+  /* ---------- First run: the photograph fills the window (#1084) ---------- */
 
-  /* On a phone the entry card is anchored to the bottom edge, where the thumb
-     is. A 1440px browser has no thumb and no bottom edge worth reaching, and a
-     full-width strip of it there would bury the map under a band of paper for
-     three paragraphs of text. Centred instead, the same shape the download
-     window takes on this screen - so the map is visible all the way round the
-     steps rather than only above them. */
+  /* THE BAND IS THE PHONE'S ANSWER, and only the phone's. onboarding.css caps
+     the hero at `min(52svh, 480px)` because a portrait screen covered by a
+     landscape photo shows a blurred vertical sliver of its middle - measured
+     and reasoned there, and still right there.
+
+     Turned sideways the same rule inverts. A 480px band across a 1920px
+     window is a 4:1 slot cut from sources that are 1.33:1 to 1.5:1, so most
+     of the frame is thrown away and the rest of the screen is empty pine.
+     Measured 2026-08-27, by reading the rendered image's box back against its
+     naturalWidth/naturalHeight in Chromium and computing the visible share
+     from the object-fit scale - the figure is how much of the SOURCE
+     photograph is still on screen:
+
+                            band (was)      full bleed (is)
+       1440x900, 3:2            48.7%             93.7%
+       1920x1080, 3:2           37.5%             84.3%
+       1920x1080, 1:1           25.0%             56.3%
+
+     A landscape window and a landscape photograph want the same thing, so
+     stop cropping and let it fill. The 1:1 row is the pool's problem rather
+     than this rule's, and lib/heroPhotos.ts is where it is being answered. */
+  .onboarding__hero-image {
+    height: 100%;
+    /* Still off-centre, and still for onboarding.css's reason - a horizon or
+       a blaze sits in the upper-middle of a trail frame. Nearer the middle
+       than the band's 38% because there is no longer a crop deep enough for
+       38% to be rescuing anything from. */
+    object-position: center 45%;
+    /* The band's foot dissolved into pine because the pine was half the
+       screen. Nothing is below the photo now, so a fade at the bottom edge
+       would be a gradient to a colour nobody can see. */
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
+  /* The steps, docked to the right rather than centred on the photograph.
+     `.onboarding` is a COLUMN (onboarding.css), so `align-items` is its
+     horizontal axis and `justify-content` its vertical one - the pair below
+     reads as "centred vertically, against the right edge", which is the
+     opposite of how it scans.
+
+     Docked rather than centred because a photographer puts the subject in
+     the middle of the frame and this card is 448px of opaque paper: centred,
+     it sat on the Jefferson Rock signpost and on the hiker's head. The right
+     edge is also the one the opened waypoint card uses (.poi-card--open),
+     which is the same instinct - the left is where the sidebar and the brand
+     plate already live. */
   .onboarding {
     justify-content: center;
-    align-items: center;
+    align-items: flex-end;
     padding: var(--space-5, 20px);
   }
 
+  /* 25rem where the centred card was 28rem. At the 900px floor of this
+     breakpoint that leaves 460px of photograph beside it; at 28rem it would
+     leave 412px, which is less of the frame than the phone gets. */
   .onboarding__card {
-    width: min(28rem, 100%);
+    width: min(25rem, 100%);
     max-height: 100%;
     border-radius: 14px;
     box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
   }
 
-  /* The dim a floating card needs and a bottom sheet does not. On a phone the
-     card is attached to the bottom edge and reads as part of the frame, the
-     way the legend sheet does; here it is over the middle of a wide map, and
-     without something behind it the page reads as a card that has come loose.
-     Lighter than the download window's 35% (.downloads-dialog): that one is a
-     decision the map is no part of, and this one is about the map. */
-  .onboarding::before {
+  /* The dim a floating card needs and a bottom sheet does not: over the
+     middle of a bright sky, a white card with nothing behind it reads as a
+     card that has come loose.
+
+     ON THE HERO, NOT ON `.onboarding`, and that is the fix rather than a
+     preference. The rule this replaces was `.onboarding::before` - a
+     generated box first in `.onboarding`'s box tree, which puts it UNDER
+     `.onboarding__hero`, an opaque pine element at `inset: 0` painted after
+     it. So it dimmed nothing, in every desktop build since #1054. Checked
+     2026-08-27 rather than reasoned: set to `rgb(255 0 0 / 90%)` and
+     photographed, the frame comes back with no red pixel anywhere on it.
+     `.onboarding__hero::after` is last inside the hero, so it paints over
+     the photograph, which is the thing that needed dimming.
+
+     Dark at the two edges and near-clear through the middle: the card is at
+     one edge and the brand plate at the other, and the middle is the part of
+     the composition this whole change exists to stop covering. */
+  .onboarding__hero::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: rgb(0 0 0 / 22%);
+    background: linear-gradient(
+      90deg,
+      rgb(12 26 18 / 34%) 0%,
+      rgb(12 26 18 / 10%) 42%,
+      rgb(12 26 18 / 48%) 100%
+    );
   }
 }
 

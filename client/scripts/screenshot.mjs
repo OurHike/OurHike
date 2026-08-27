@@ -111,6 +111,15 @@ export const DEFAULT_WAIT_MS = 3500
  * than committed (#988) - so this is a smell test only: past here usually
  * means a capture that ran away, a `--full` page that kept scrolling, or a
  * map that rendered noise rather than a map.
+ *
+ * ONE HONEST EXCEEDANCE, so the next person past this line does not go
+ * looking for a bug that is not there: a desktop first-run frame clears it.
+ * Measured 1,698,683 bytes at 1280x800 scale 1 (2026-08-27, #1084). The
+ * subject is a photograph filling the whole window, and photographic noise
+ * is what PNG compresses worst - the same recipe on a phone, where the photo
+ * is a band over flat paper, comes back at 911,160. Nothing ran away; the
+ * frame is simply mostly photograph. The three causes above are still what
+ * this number is for.
  */
 export const BYTE_BUDGET = 1_200_000
 

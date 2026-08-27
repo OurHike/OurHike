@@ -431,11 +431,15 @@ The vector-first offline program — design, trade-offs and build numbers in
 twice-guarded `publish` inputs, upload the archives; `package-overlap-spike.yml`
 runs the overlap measurement. First published 2026-08-06.
 
-Measured per-zoom, `dem.pmtiles` as published (z0–13, 0.5 m quantize,
-21,758 tiles, none absent — 607,265,661 bytes total). **This is the untapered
-archive**: the taper landed after this build, so these are the figures the
-client still advertises and the ones the next build will move —
-[LIGHT_DOWNLOAD.md](LIGHT_DOWNLOAD.md) carries the projection and its grade.
+Measured per-zoom, `dem.pmtiles` **as it was before the taper** (z0–13, 0.5 m
+quantize, 21,758 tiles, none absent — 607,265,661 bytes total). This archive is
+no longer published and the client no longer advertises it: #1088 replaced it
+on 2026-08-27 with a corridor tapered 30/15/6 miles by zoom, 8,658 tiles and
+275,601,483 bytes, which is what is in the bucket now. The table is kept
+because it is the shape the taper was designed against — z13 alone is 65% of
+the untapered bytes, which is why buying width there rather than at z11 was the
+lever — and [LIGHT_DOWNLOAD.md](LIGHT_DOWNLOAD.md) carries that reasoning and
+its evidence. [BASEMAP.md](BASEMAP.md) carries what is published today.
 
 | zoom | tiles | MB |
 |---|---|---|
@@ -444,13 +448,14 @@ client still advertises and the ones the next build will move —
 | 12 | 4,176 | 138.9 |
 | 13 | 15,932 | 397.6 |
 
-`at_basemap_package.pmtiles` as published: 83,818 tiles, 532,459,439 bytes —
-per-zoom in [BASEMAP.md](BASEMAP.md)'s measured results. Its z13-capped
-sibling `at_basemap_package_z13.pmtiles` (21,721 tiles, 182,286,799 bytes)
-is the hiking sheet's Standard level (#276). With the DEM the sheet is
-≈ 790 MB at Standard and ≈ 1.14 GB at Fine (`client/src/lib/packages.ts`
-composing `lib/hikingDetail.ts`, sizes exact to the byte against these
-artifacts).
+The basemap is cut three ways, one per hiking level: `at_basemap_package.pmtiles`
+(z0–14, Fine), `at_basemap_package_z13.pmtiles` (Standard) and
+`at_basemap_package_z12.pmtiles` (Light, #1107). With each level's DEM the sheet
+is **257.7 MB at Light, 458.4 MB at Standard and 809.5 MB at Fine** —
+`client/src/lib/packages.ts` composing `lib/hikingDetail.ts`, exact to the byte
+against the published artifacts. [BASEMAP.md](BASEMAP.md) carries the per-zoom
+breakdown and the published byte counts; keeping them in one place is why they
+are not repeated here.
 
 ## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 

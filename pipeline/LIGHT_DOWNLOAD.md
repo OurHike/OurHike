@@ -496,7 +496,12 @@ elevation does not.
 
 **BUILT AND PUBLISHED 2026-08-27**
 ([run 33069162537](https://github.com/OurHike/OurHike/actions/runs/33069162537)),
-so every figure below is measured in UA's bucket:
+so every figure below is measured in UA's bucket — and **promoted to production
+the same day**, where all five artifacts re-measure identically. The two DEMs
+came out byte-for-byte and hash-for-hash equal to UA's from independent builds
+hours apart, which is the static AWS Open Data source and a deterministic
+encode path; the basemap has no such guarantee and happened to match because
+both builds drew the same OSM state:
 
 | level | basemap | DEM | sheet | vs its own original |
 |---|---|---|---|---|
@@ -527,9 +532,19 @@ understating is the direction that strands somebody who freed exactly enough.
 **Against the 40–80% the request asked for**: Light is 67.4% off the 789.6 MB
 Standard used to cost, inside the band; Standard's own 42.0% is at its floor.
 
-@unvalidated — 20/6/3 is still picked, and what Light gives up is stated in
-`export_dem.py`: terrain runs out at 3 miles from the trail, exactly
-`trailPosition.MAX_OFF_TRAIL_MILES`. #1107 carries the rest.
+@unvalidated — 20/6/3 is picked, not derived, and what Light gives up is stated
+in `export_dem.py`: terrain runs out at 3 miles from the trail, exactly
+`trailPosition.MAX_OFF_TRAIL_MILES`, so a hiker further off-trail than the app
+can locate them has no hillshade where they are.
+
+**What would settle it**, since #1107 closed without settling it and an
+`@unvalidated` tag pointing at a closed issue says nothing: how far off the
+centerline hikers actually go, which nobody here has measured. Two sources
+would answer it without a field trial — the off-trail distribution of the
+waypoints already in the corridor export, and how often `trailPosition.ts`
+reports a fix beyond each candidate width. Either would turn 3 miles from a
+number that matches a constant into a number that matches behaviour. Until one
+is run, Light is the rung to be most careful recommending.
 
 ## What was rejected, so nobody re-proposes it
 

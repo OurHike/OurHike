@@ -590,6 +590,27 @@ An agent may do everything up to that line: prepare the branch, generate the not
 run the battery, open the pull request, and create the GitHub release **as a draft**.
 Publishing the draft is a human action.
 
+**That last permission was unbuildable until 2026-08-27, and the sentence did not say
+so.** The only thing that drafts a release is `pages.yml`'s `release` job, and it
+`needs: build` — where `build` *is* the production deploy. So the draft could not exist
+until hikers already had the build, and the one action this section reserves for a human
+was the one that had to happen first. An agent asked to "just draft the release" had two
+choices, both wrong: push a tag, or decline.
+
+`pages.yml` now takes a **`draft_only`** dispatch, with the version as an input. It runs
+the same build and the same two gates a tag runs — gate 12's notes file and §4's version
+agreement, which is the half that matters, because a draft that skips them becomes a tag
+that skipped them the moment somebody presses publish — then **skips the deploy** and
+drafts the release. Publishing that draft creates the tag, which fires this workflow for
+real. So the order finally matches the rule: the agent drafts, the human publishes, and
+publishing is what ships.
+
+The exemption is deliberately narrow. [#644](https://github.com/OurHike/OurHike/issues/644)
+was a non-tag dispatch that *deployed* with both gates silently skipped; a `draft_only`
+run deploys nothing and runs both gates, which is the opposite case rather than a hole in
+that fix. `.github/tests/test_pages_publish.py`'s `TestDraftingWithoutDeploying` holds
+both halves, and nine of its ten assertions fail against the workflow as it stood before.
+
 The mechanism, so that it does not rest only on being followed: a GitHub **environment**
 named `production` with a required reviewer. `publish-vector-data.yml` already runs
 under `environment: production`, so the concept is in place; what it lacks is the

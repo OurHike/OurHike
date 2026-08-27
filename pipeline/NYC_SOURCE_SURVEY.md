@@ -340,7 +340,16 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
      from the A.T. survey, applied here before anyone fetches them.
    - (f) **PIPC's NJ section** — expected inside the NJ layers, unverified.
    - (g) Whether DEC's Back Country Features asset types include **water** — raises the
-     evidence bar if true (CLAUDE.md's four ways).
+     evidence bar if true (CLAUDE.md's four ways). **DEC's half is still unchecked.
+     OPRHP's half is answered, and the answer is yes** — measured live 2026-08-27:
+     `NY_State_Park_Facilities`'s `Sub_Asset` holds **136 `Water Spigot` and 15
+     `Drinking Fountain`** among 158 distinct values (`Mineral Spring`, `Water Tower`
+     and `Waterfall` also appear and are *not* drinking water). So that layer is a
+     water source, the evidence bar is live rather than hypothetical, and shipping it
+     needs `export_poi.py`'s confidence-and-provenance treatment rather than a point
+     dump. Carried in the `oprhp_facilities` entry. A second hazard found with it:
+     `Asset` is a coded integer 1–17 whose domain the service does not publish, so a
+     facility's type is legible only through `Sub_Asset`'s free text.
    - (h) **Mohonk Preserve's own stated terms** — still the ideal, per its licence
      block's open question; ships today on maintainer authorisation (#992). §11.
 

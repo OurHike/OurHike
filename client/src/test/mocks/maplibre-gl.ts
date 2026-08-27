@@ -146,8 +146,7 @@ export class MockMap {
    */
   private adoptStyleContents(options: Record<string, unknown>): void {
     const style = options.style as
-      | { layers?: Array<{ id?: unknown }>; sources?: Record<string, unknown> }
-      | undefined
+      { layers?: Array<{ id?: unknown }>; sources?: Record<string, unknown> } | undefined
     if (style === undefined || style === null) return
 
     if (Array.isArray(style.layers)) {

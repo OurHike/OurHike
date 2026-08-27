@@ -435,8 +435,7 @@ describe('what the first-run steps cost', () => {
       const opened = MockMap.live[0]
       expect(opened).toBeDefined()
       const pushed = opened.sourceData.get(POI_SOURCE_ID) as
-        | { features: Array<{ properties?: { poi_id?: string } }> }
-        | undefined
+        { features: Array<{ properties?: { poi_id?: string } }> } | undefined
       const style = opened.options.style as {
         sources: Record<
           string,

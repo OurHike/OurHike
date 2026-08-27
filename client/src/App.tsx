@@ -4268,7 +4268,15 @@ function App() {
         const place = searchablePois.find((poi) => poi.id === anchor.poiId)
         if (place !== undefined) return { label: place.name, phrase: `at ${place.name}` }
       }
-      const mile = anchor?.mile ?? fix?.mile ?? undefined
+      // THE FALLBACK IS FOR HAVING NO ANCHOR, NOT FOR AN ANCHOR WITH NO MILE.
+      // `anchor?.mile ?? fix?.mile` reads the same and is wrong in the one
+      // case #1137 introduced: a press held on the map two miles up the trail
+      // has a place but may have no mile - the trail index is not downloaded,
+      // or the point is off the corridor - and borrowing the HIKER's mile
+      // there would print "Filed - blow down at mi 628.4" over a report filed
+      // somewhere else entirely. A mile is a position claim; the wrong one
+      // resolves, which is what makes it worse than none.
+      const mile = anchor === undefined ? fix?.mile : anchor.mile
       // "here" is an adverb where the other two are nouns, which is why the
       // window takes both forms rather than composing `at ${label}` itself.
       // That naive version reads perfectly for a mile and produced "Filed —

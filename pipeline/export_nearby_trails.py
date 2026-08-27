@@ -621,19 +621,49 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     return out, stats
 
 
+def _drawable_after_cut(geom_type: str, coords) -> bool:
+    """Whether every line part still has two distinct vertices - the same
+    question export_trails' _has_drawable_geometry asks, re-asked here
+    because the answer can CHANGE at six decimals: two vertices less than
+    the rounding step apart land on the same grid point, and a zero-length
+    LineString draws as nothing while the run reports success."""
+    lines = coords if geom_type == "MultiLineString" else [coords]
+    return all(len({tuple(pair) for pair in line}) >= 2 for line in lines)
+
+
 def _rounded_geometry(geometry) -> dict:
     """`__geo_interface__` with every coordinate cut to
     NEARBY_COORDINATE_DECIMALS - see that constant for the derivation. A cut,
     not a re-derivation: the vertices are the simplified ones, minus digits
-    finer than the simplification's own tolerance."""
+    finer than the simplification's own tolerance.
+
+    With one exception, and it is simplify_records' own never-drop
+    convention: a feature the cut would degenerate - a closure sliver or a
+    source line shorter than ~0.1 m in both axes, whose two vertices round
+    onto one grid point - keeps its full-precision vertices instead. A few
+    dozen uncut characters against a trail marked closed by an invisible
+    zero-length line."""
     geo = geometry.__geo_interface__
 
-    def cut(coords):
+    def walk(coords, cut: bool):
+        if len(coords) == 0:
+            return []
         if isinstance(coords[0], (int, float)):
-            return [round(value, NEARBY_COORDINATE_DECIMALS) for value in coords]
-        return [cut(part) for part in coords]
+            if cut:
+                return [round(value, NEARBY_COORDINATE_DECIMALS) for value in coords]
+            return list(coords)
+        return [walk(part, cut) for part in coords]
 
-    return {"type": geo["type"], "coordinates": cut(geo["coordinates"])}
+    # Only the two line types reach here (build_records skips anything else,
+    # and the closure split merges back to them); a type this predicate does
+    # not understand is passed through uncut rather than guessed at.
+    if geo["type"] not in ("LineString", "MultiLineString"):
+        return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
+
+    rounded = walk(geo["coordinates"], cut=True)
+    if _drawable_after_cut(geo["type"], rounded):
+        return {"type": geo["type"], "coordinates": rounded}
+    return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
 
 
 def records_to_geojson(records: list[dict]) -> dict:

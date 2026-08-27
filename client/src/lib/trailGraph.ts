@@ -381,23 +381,35 @@ function projectOntoEdge(
  * so measuring a tap against the chord asks a hiker to aim at something that
  * is not on their screen.
  *
- * Measured on OPRHP's `NY_State_Parks_Trails` layer for the Harriman-Bear
- * Mountain envelope (2026-08-27, 1,009 lines through `build_trail_graph.py`
- * at the shipped 8 m endpoint tolerance: 1,059 edges, median edge 279 m, p90
- * 1,248 m). Five points along each edge's own published geometry - 5,295
- * taps, every one of them landing exactly on the drawn line:
+ * Measured against THE PUBLISHED ARTIFACT, not a re-derivation of one:
+ * `trail_graph.json` and `trail_graph_geometry.json` as served by
+ * data.ourhike.org on 2026-08-27 (release a6292547) - 31,545 nodes, 40,596
+ * edges, median edge 68 m, p90 996 m, longest 58,615 m. Five points along
+ * each of 4,000 randomly chosen edges (seed 1093) - 20,000 taps, every one
+ * landing exactly on the line the map draws:
  *
- *   against the chords    20% refused as off-network, 7% placed on a
+ *   against the chords    11.3% refused as off-network, 19.7% placed on a
  *                         DIFFERENT trail than the one tapped
- *   against the vertices  0% refused, 0.5% on a different trail (junctions
- *                         where two trails genuinely share ground)
+ *   against the vertices  0.0% refused, 5.9% on a different trail
  *
- * The 7% is what {@link MAX_OFF_NETWORK_FEET} is rounded small to prevent,
- * arriving by a route the tolerance cannot govern. The caveat on the figures:
- * OPRHP's layer alone, without the other stewards' lines or the A.T.'s, and
- * with nothing dropped as closed - so the wrong-trail row would move on the
- * real network and the refusal row, which is one line against its own chord,
- * would not.
+ * The trail leaves the 150 ft chord tolerance somewhere along 8,297 of those
+ * edges - 21% - with a p90 worst-case deviation of 462 ft and a worst of
+ * 46,461 ft.
+ *
+ * Two things the figures are not. The 5.9% floor is an UPPER BOUND on real
+ * error: "different trail" compares `trail_id` and `name`, so two stewards
+ * publishing the same ground as separate lines counts against it, and what
+ * remains is the corridor ambiguity {@link MAX_OFF_NETWORK_FEET} already
+ * names - #771's 48% of A.T. points within 150 m of a different marked
+ * trail. And 887 self-loop edges are excluded from the comparison, because a
+ * chord from a node to itself is degenerate and gives the baseline nothing
+ * to be compared against; every published edge carries at least two
+ * vertices, so the rule below excludes none of them.
+ *
+ * What the numbers say is that the chord more than triples the rate at which
+ * a tap lands on a trail the hiker did not point at, and refuses one tap in
+ * nine on top - and that is exactly what {@link MAX_OFF_NETWORK_FEET} is
+ * rounded small to prevent, arriving by a route the tolerance cannot govern.
  *
  * This is the rule lib/dayHikeFollow.ts already applies ("the geometry is a
  * requirement, not a nicety") and {@link routeGeometry} already applies to

@@ -74,9 +74,9 @@ export const OFF_NETWORK_REFUSAL =
  * fetched only when this builder opens, because they are much the heavier
  * half. In between, this phone knows the shape of the network and not where
  * any of it runs, and `nearestPointOnGraph` declines every tap rather than
- * measuring it against the straight chord between two junctions - measured at
- * 20% of on-trail taps refused and 7% placed on a different trail than the one
- * tapped, see its own note.
+ * measuring it against the straight chord between two junctions - measured on
+ * the published artifact at 11.3% of on-trail taps refused and 19.7% placed on
+ * a different trail than the one tapped, see its own note.
  *
  * Saying {@link OFF_NETWORK_REFUSAL} in that window would be the app telling a
  * hiker their aim was wrong when the aim was fine and the app was not ready -

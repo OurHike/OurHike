@@ -18,14 +18,15 @@
 // `trail_graph_elevation.json` (277,331), with `latest.json` naming a sha256
 // for each.
 //
-// This recipe's own first CI run is what found the rest. It photographed the
-// withheld door under "the trail network has not downloaded yet, and it needs
-// a connection" - a FETCH FAILURE, not a slow one - against a build that
-// plainly had the bucket. The cause was the camera's origin: screenshot.mjs
-// served the app from `127.0.0.1`, which is not on the bucket's CORS
-// allowlist while `localhost` is. Its `SHOT_HOST` note carries the
-// measurement. So this drive walks through the door now, and #1024's stated
-// cause was never the real one.
+// This recipe's own CI runs are what found the rest, over two rounds. Both
+// photographed the withheld door under "the trail network has not downloaded
+// yet, and it needs a connection" - a FETCH FAILURE, not a slow one - against
+// a build that plainly had the bucket. The cause was the camera's own origin,
+// and it had two halves: screenshot.mjs served from `127.0.0.1` rather than
+// `localhost`, AND on a port the OS picked, where the bucket's CORS allowlist
+// holds exact origins and only vite's own 4173 and 5173. Its `SHOT_HOST` note
+// carries the measurement. So #1024's stated cause - an unset
+// VITE_DATA_BASE_URL - was never the real one.
 //
 // TWO HONEST FRAMES, ONE RECIPE - the shape day-hike-card.mjs already ships.
 // Where the graph arrives, the picture is the builder bar over the map. Where

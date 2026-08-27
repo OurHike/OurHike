@@ -115,14 +115,30 @@ That was the right symptom and the wrong cause, and the wrong cause is what
 made it stick: a build variable is not something a recipe author can do
 anything about, so nobody looked again.
 
-The cause was the **camera's own origin**. `screenshot.mjs` served the app
-from `http://127.0.0.1:<port>`, and the R2 bucket answers a cross-origin
-request only for origins on its allowlist — reflecting `Origin` back rather
-than sending `*`. Measured against data.ourhike.org 2026-08-27: `localhost`
-allowed, `127.0.0.1` **not**, `ourhike.org` allowed. The loopback address and
-the name are the same machine and are not the same origin, so every artifact
-fetch failed CORS and every shot was of an app holding no data. It serves from
-`localhost` now.
+The cause was the **camera's own origin**, on both of its halves.
+`screenshot.mjs` served the app from `http://127.0.0.1:<a port the OS picked>`,
+and the R2 bucket answers a cross-origin request only for origins on an
+allowlist — reflecting `Origin` back rather than sending `*`, with entries
+that are exact origins down to the port. Measured against data.ourhike.org
+2026-08-27:
+
+| origin | |
+|---|---|
+| `http://localhost:4173` | allowed — `vite preview`'s default port |
+| `http://localhost:5173` | allowed — the dev server's |
+| `http://localhost:8080` | declined |
+| `http://localhost:45231` | declined — an ephemeral port |
+| `http://127.0.0.1:4173` | declined — same machine, other origin |
+| `https://ourhike.org` | allowed |
+
+So the camera missed on both counts and every artifact fetch failed CORS.
+Nothing local ever notices: the loopback address and the name are the same
+machine, and the ephemeral port serves the app perfectly. Only the bucket sees
+the difference, and it says so by staying silent. `screenshot.mjs` now serves
+from `localhost` on vite's own default port for the mode, falling back to an
+ephemeral one when that port is busy — a shot from the fallback is a shot
+with no artifacts again, which is worth knowing if a frame comes back empty
+on a machine already running a dev server.
 
 So aim a recipe at the screen your change touches, release artifacts and all.
 Two things still bound what a shot can show and both are worth saying in

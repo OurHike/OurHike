@@ -23,10 +23,14 @@
 // size, its own delete; taking or dropping one never touches the other.
 //
 // The trail's own data - the centerline, the spurs, the POIs, the elevation
-// profile - is deliberately not here at all. It is small, it is what makes
+// profile - is deliberately not a CARD here. It is small, it is what makes
 // the app an app rather than a map viewer, and it is fetched by default
 // whenever it is missing (lib/trailData.ts, App.tsx), so presenting it as a
 // decision would be offering someone a choice they have already been given.
+// Since #1103 it does get an ACCOUNT: a read-only list beside the sheets,
+// measured off the store (lib/onThisPhone.ts), because "what is on this
+// phone" is a question a hiker owns even about bytes they never chose -
+// and the two words "trail data" were the whole answer before it.
 //
 // ONE SHEET AT A TIME, UNDER TABS (#298).
 //
@@ -41,7 +45,8 @@
 // be a control.
 
 import { useEffect, useState } from 'react'
-import { formatBytes } from '../lib/formatBytes'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
+import { storedTrailData, type TrailDataAsset } from '../lib/onThisPhone'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { ownPhotoUsage } from '../lib/poiPhotos'
 import { useDesktop } from '../lib/useDesktop'
@@ -81,9 +86,28 @@ export interface SheetDownload {
     onChange: (id: string) => void
     name?: string
   }
+  /**
+   * The sheet's own archives, named, with the size and state the store
+   * reports for each (#1103). The card's one figure stays the sheet's - a
+   * sheet is one decision - and this is the detail under it, for the hiker
+   * who wants to know that "790 MB" is the vector cartography AND the
+   * terrain, and which of the two is still coming. Built in App.tsx from
+   * the same statuses the sheet figure is combined from, so the breakdown
+   * and the clump cannot disagree.
+   */
+  assets?: readonly SheetAsset[]
   onStart: () => void
   onResume: () => void
   onDelete: () => void
+}
+
+/** One named archive inside a sheet - see SheetDownload.assets. */
+export interface SheetAsset {
+  title: string
+  summary: string
+  /** null where the catalog cannot price this asset at the chosen level. */
+  sizeBytes: number | null
+  status: DownloadStatus
 }
 
 export interface DownloadsProps {
@@ -102,6 +126,75 @@ export interface DownloadsProps {
  * when the download window opens, which is exactly that moment. Null where
  * the browser will not say, and the warning simply does not render.
  */
+/**
+ * What vector trail data the store holds, read when the window opens - the
+ * same moment-of-asking reasoning as useAvailableBytes below. Null until the
+ * read lands, and the section simply does not render.
+ */
+function useStoredTrailData(): TrailDataAsset[] | null {
+  const [assets, setAssets] = useState<TrailDataAsset[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void storedTrailData().then((read) => {
+      if (!cancelled) setAssets(read)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return assets
+}
+
+/** One archive's state, in the card's own words (DownloadCard.tsx) - the
+ *  breakdown must never coin a new vocabulary for a state the card above it
+ *  already names. */
+function assetStateLine(asset: SheetAsset): string {
+  const { status } = asset
+  switch (status.state) {
+    case 'downloading':
+      return `${formatBytesLive(status.receivedBytes)} of ${formatBytes(status.totalBytes)} · arriving`
+    case 'checking':
+      return `${formatBytesLive(status.checkedBytes)} of ${formatBytes(status.totalBytes)} · checking`
+    case 'downloaded':
+      return asset.sizeBytes === null
+        ? 'downloaded'
+        : `${formatBytes(asset.sizeBytes)} · downloaded`
+    case 'failed':
+      return `stopped at ${formatBytesLive(status.receivedBytes)} of ${formatBytes(status.totalBytes)}`
+    case 'hash-mismatch':
+      return 'did not match what was published'
+    case 'evicted':
+      return 'removed by the phone to free space'
+    default:
+      return asset.sizeBytes === null
+        ? 'not downloaded'
+        : `${formatBytes(asset.sizeBytes)} · not downloaded`
+  }
+}
+
+/** The trail-data rows' names, hiker words for pipeline artifacts. */
+const TRAIL_DATA_LABEL: Record<TrailDataAsset['id'], string> = {
+  'trail-line': 'Trail line',
+  waypoints: 'Waypoints',
+  elevation: 'Elevation profile',
+  'nearby-trails': 'Nearby trails network',
+}
+
+/** One trail-data artifact's state: a measured figure where the store holds
+ *  one, presence where it does not, and a stated absence - absent means not
+ *  here, never zero. */
+function trailAssetLine(asset: TrailDataAsset): string {
+  if (!asset.present) return 'not here yet — arrives with signal'
+  if (asset.bytes !== null) return `${formatBytes(asset.bytes)} on this phone`
+  if (asset.count !== null)
+    return `${asset.count.toLocaleString('en-US')} ${
+      asset.id === 'waypoints' ? 'places' : 'samples'
+    }`
+  return 'on this phone'
+}
+
 function useAvailableBytes(): number | null {
   const [available, setAvailable] = useState<number | null>(null)
 
@@ -151,6 +244,7 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
   const ownPhotos = useOwnPhotoBytes()
+  const trailData = useStoredTrailData()
   const [openSheetId, setOpenSheetId] = useState(sheets[0]?.id ?? '')
 
   // The default sheet, whenever the id in state names none of the ones being
@@ -208,6 +302,20 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           onResume={sheet.onResume}
           onDelete={sheet.onDelete}
         />
+        {/* The detail under the card's one figure (#1103): which archives
+            the sheet's decision buys, each in the state the store reports.
+            Only where there is a breakdown to show - a sheet of one archive
+            IS its own detail, and a list of one would just repeat the card. */}
+        {sheet.assets !== undefined && sheet.assets.length > 1 && (
+          <ul className="downloads__assets" data-testid={`downloads-assets-${sheet.id}`}>
+            {sheet.assets.map((asset) => (
+              <li key={asset.title} className="downloads__asset">
+                <span className="downloads__asset-name">{asset.title}</span>
+                <span className="downloads__asset-state">{assetStateLine(asset)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </>
     )
   }
@@ -245,6 +353,34 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
             ownPhotos.bytes,
           )} on this phone. Remove one from its waypoint's card.`}
         </p>
+      )}
+
+      {/* The vector trail data, stated beside the sheets it is not part of
+          (#1103): the line, the waypoints, the elevation, the neighbouring
+          network - fetched on their own with signal and until now accounted
+          for by the two words "trail data". Every figure is measured off
+          what the store actually holds, never a size somebody expects; an
+          absent artifact gets a stated absence, because absent means not
+          here and never zero. The whole list renders, present or not - a
+          missing row would be an artifact this window forgot to answer
+          for. */}
+      {trailData !== null && (
+        <div className="downloads__trail-data" data-testid="downloads-trail-data">
+          <p className="downloads__trail-data-title">Trail data on this phone</p>
+          <ul className="downloads__assets">
+            {trailData.map((asset) => (
+              <li key={asset.id} className="downloads__asset">
+                <span className="downloads__asset-name">
+                  {TRAIL_DATA_LABEL[asset.id]}
+                </span>
+                <span className="downloads__asset-state">{trailAssetLine(asset)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="downloads__trail-data-note">
+            These arrive on their own when the app has signal — nothing here to press.
+          </p>
+        </div>
       )}
 
       {sheets.length > 1 ? (

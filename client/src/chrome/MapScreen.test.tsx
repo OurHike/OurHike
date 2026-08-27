@@ -906,7 +906,7 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   it('is not there when the app holds no ATC notices', () => {
     render(<MapScreen {...PROPS} legendOpen />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBe(null)
   })
 
   it('reaches the legend once open', () => {
@@ -914,7 +914,7 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
 
     const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
-      within(legend).getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+      within(legend).getByRole('button', { name: 'Read all 6 trail notices' }),
     ).toBeInTheDocument()
   })
 
@@ -923,7 +923,7 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
 
     const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
-      within(legend).getByRole('button', { name: 'Read the 1 ATC trail update' }),
+      within(legend).getByRole('button', { name: 'Read the 1 trail notice' }),
     ).toBeInTheDocument()
   })
 
@@ -933,7 +933,7 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
       <MapScreen {...PROPS} legendOpen noticeCount={6} onOpenNotices={onOpenNotices} />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+    await userEvent.click(screen.getByRole('button', { name: /trail notices/ }))
 
     expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
@@ -974,7 +974,7 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
     render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'ATC · 2 new alerts issued' }),
+      screen.getByRole('button', { name: '2 new trail notices issued' }),
     ).toBeInTheDocument()
   })
 
@@ -982,7 +982,7 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
     render(<MapScreen {...PROPS} newNoticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'ATC · New alert issued' }),
+      screen.getByRole('button', { name: 'New trail notice issued' }),
     ).toBeInTheDocument()
   })
 
@@ -990,7 +990,9 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
     const onOpenNotices = vi.fn()
     render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={onOpenNotices} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /new alerts issued/ }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /new trail notices issued/ }),
+    )
 
     expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
@@ -1007,7 +1009,9 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Silence new ATC alerts' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Silence new trail notices' }),
+    )
 
     expect(onSilenceNewNotices).toHaveBeenCalledTimes(1)
     expect(onOpenNotices).not.toHaveBeenCalled()

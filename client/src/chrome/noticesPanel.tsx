@@ -307,13 +307,24 @@ export function useNoticesPanel({
     [reviewedAt],
   )
 
-  /** The stretch of trail on screen, or null with no centerline and null when
-   *  the viewport holds no trail at all. Both scope nothing, which is the
-   *  conservative direction: showing every notice is what this screen did
-   *  before the rule existed. */
+  /**
+   * The stretch of trail on screen, or null with no centerline and null when
+   * the viewport holds no trail at all. Both scope nothing, which is the
+   * conservative direction: showing every notice is what this screen did
+   * before the rule existed.
+   *
+   * ONLY WHILE THE LIST IS OPEN, and that guard is load-bearing rather than
+   * tidy. `viewportMiles` walks the centerline's latitude buckets and `bbox`
+   * changes on every pan and zoom, so computing this unconditionally would
+   * make every map movement pay for a screen almost nobody has open. Measured
+   * here rather than reasoned about: without the guard, App.mapOverlays.test's
+   * first case went from passing to timing out at 5s on two runs in three.
+   *
+   * The list is the only reader, so a closed list needs no answer.
+   */
   const extent = useMemo(
-    () => (trailIndex === null ? null : viewportMiles(trailIndex, bbox)),
-    [trailIndex, bbox],
+    () => (!noticesOpen || trailIndex === null ? null : viewportMiles(trailIndex, bbox)),
+    [noticesOpen, trailIndex, bbox],
   )
 
   const mapScreen = useMemo<NoticesMapProps>(

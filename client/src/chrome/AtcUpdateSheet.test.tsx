@@ -58,7 +58,11 @@ describe('whose claim this is', () => {
       />,
     )
 
-    expect(screen.getByText(/Appalachian Trail Conservancy/)).toBeInTheDocument()
+    // Three places now, not one: the attribution line, the link, and the
+    // disclaimer all read the name off the registry since #1083, where two of
+    // them used to spell "ATC". `getAllByText` rather than a narrower matcher
+    // because the point of the case is that the org is named, not where.
+    expect(screen.getAllByText(/Appalachian Trail Conservancy/).length).toBeGreaterThan(0)
   })
 
   it('says plainly that OurHike has not checked the trail', () => {
@@ -134,7 +138,9 @@ describe('both dates, because there are two', () => {
     )
 
     expect(
-      screen.getByText(/OurHike last checked ATC’s updates on August 12, 2026/),
+      screen.getByText(
+        /OurHike last checked Appalachian Trail Conservancy’s updates on August 12, 2026/,
+      ),
     ).toBeInTheDocument()
   })
 

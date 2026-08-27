@@ -914,20 +914,20 @@ describe('the way to every ATC notice (#687)', () => {
   it('is not there when the app holds no ATC notices', () => {
     render(<Legend {...PROPS} onOpenNotices={vi.fn()} />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBeNull()
   })
 
   it('draws no such row where the shell offers no handler', () => {
     render(<Legend {...PROPS} noticeCount={6} />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBeNull()
   })
 
   it('names every notice it holds', () => {
     render(<Legend {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+      screen.getByRole('button', { name: 'Read all 6 trail notices' }),
     ).toBeInTheDocument()
   })
 
@@ -935,7 +935,7 @@ describe('the way to every ATC notice (#687)', () => {
     render(<Legend {...PROPS} noticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+      screen.getByRole('button', { name: 'Read the 1 trail notice' }),
     ).toBeInTheDocument()
   })
 
@@ -943,7 +943,7 @@ describe('the way to every ATC notice (#687)', () => {
     const onOpenNotices = vi.fn()
     render(<Legend {...PROPS} noticeCount={6} onOpenNotices={onOpenNotices} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+    await userEvent.click(screen.getByRole('button', { name: /trail notices/ }))
 
     expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
@@ -960,7 +960,7 @@ describe('the way to every ATC notice (#687)', () => {
       />,
     )
 
-    const atcLink = screen.getByRole('button', { name: /ATC trail updates/ })
+    const atcLink = screen.getByRole('button', { name: /trail notices/ })
     const foot = container.querySelector('.legend__downloads')
     expect(foot).not.toBeNull()
     expect(atcLink.compareDocumentPosition(foot as HTMLElement)).toBe(

@@ -29,15 +29,38 @@
 // or a real location fix — the four things a shot must never contain
 // (.claude/skills/pr-screenshot/SKILL.md). Every row is a public registration
 // already in `pipeline/sources.json`.
+// WHAT THIS SHOT WILL AND WILL NOT SHOW UNTIL A PUBLISH RUN HAPPENS, said
+// here because a reviewer will otherwise read an honest empty state as a
+// broken screen. The console reads `registry.json`, which
+// `pipeline/export_sources.py` writes and `publish.py` uploads — and which no
+// release has ever carried, because this pull request is the one that adds it.
+// Until a `publish-vector-data` run completes, this screen renders "OurHike
+// couldn't read the registry", which is its honest three-state answer (asking
+// / could not ask / here it is) rather than a failure.
+//
+// So the picture below is evidence that the screen exists, is reachable in two
+// taps from the More tab, and refuses to render "0 sources" for a phone that
+// simply could not ask. It is NOT yet evidence of the table. That arrives with
+// the next publish run and this recipe photographs it then, unchanged.
 export const caption =
-  'The source registry — every registration, including the ones no hiker sees (#929)'
+  'The source registry — reachable, and honest that it has nothing to read yet (#929)'
 export const alt =
-  'A read-only table of the source registry, grouped by organization. Each group has a heading, a stable id such as org:nynjtc, an empty dashed square where a licensed mark would go, and a table of that organization’s sources with columns for key, layer, kind, trust, what the licence rests on, whether it reaches a hiker, and freshness. Rows that ship on the maintainer’s own authorisation are tinted and read “Your call”; rows on the organization’s stated terms read “Their terms”. A note at the top says nothing on the screen changes what is on a hiker’s phone.'
+  'The source registry screen, read-only. A heading reading Sources, a note saying nothing on this screen changes what is on a hiker’s phone and that a source reaches one by a change to pipeline/sources.json that somebody merges, and — until a publish run carries registry.json — a line saying OurHike could not read the registry because it is fetched rather than carried offline. Once the artifact ships, the same screen fills with one section per organization: a stable id such as org:nynjtc, an empty dashed square where a licensed mark would go, and a table of that organization’s sources with columns for key, layer, kind, trust, what the licence rests on, whether it reaches a hiker, and freshness.'
 
 export default async function drive(page) {
-  // Settings, where the registry sits directly under "Where this map comes
-  // from" — the same question one level down.
-  await page.getByRole('tab', { name: 'Settings' }).click()
+  // "More", then its "Where this map comes from" page. TWO TAPS AND THE TAB
+  // IS NOT CALLED SETTINGS, both of which the first version of this recipe got
+  // wrong and the camera reported as a 30 s timeout — which is exactly the
+  // failure a recipe is supposed to make loud rather than a picture of the
+  // wrong screen.
+  //
+  // The tab reads "More": MORE_TAB.md (#795) argued for "Settings" and the
+  // argument was settled the other way, so the label is the one thing here not
+  // to guess at (chrome/tabs.ts). And the tab is five destination rows over a
+  // storage card since #796, so the sources card and the registry link live on
+  // a sub-page rather than on the tab itself.
+  await page.getByRole('tab', { name: 'More' }).click()
+  await page.getByRole('button', { name: /Where this map comes from/ }).click()
 
   // By its accessible name rather than by position: the section it sits in is
   // reordered by whatever else Settings gains, and a recipe pinned to an index
@@ -46,15 +69,25 @@ export default async function drive(page) {
   await open.scrollIntoViewIfNeeded()
   await open.click()
 
-  // Wait on the table itself rather than on a delay. The registry is FETCHED
-  // rather than carried offline — it is an admin screen read at a desk, and
-  // adding it to the download would spend a hiker's bytes on a table they will
-  // never open — so there is a real round trip between the tap and the rows.
+  // Wait on a SETTLED state rather than on a delay, and accept either of the
+  // two the screen can honestly reach. The registry is FETCHED rather than
+  // carried offline — it is an admin screen read at a desk, and adding it to
+  // the download would spend a hiker's bytes on a table they will never open —
+  // so there is a real round trip between the tap and the answer.
   //
-  // On the organization heading rather than on the dialog: the dialog appears
-  // as soon as the screen mounts, while it still says "Reading the registry…",
-  // and a shot taken then is a picture of a spinner.
-  await page
-    .getByRole('heading', { name: /Appalachian Trail Conservancy/, level: 3 })
-    .waitFor()
+  // Either arm ends the wait; neither is "Reading the registry…", which is
+  // the third state and the one a shot must never catch, because a picture of
+  // a spinner says nothing about anything.
+  //
+  // WHY NOT JUST THE TABLE. Waiting only on the organization heading is what
+  // the first version of this recipe did, and it timed out for a reason that
+  // is not a defect: `registry.json` is not in the bucket yet. A recipe that
+  // can only photograph the happy path reports "the pull request moved the
+  // screen" when what actually happened is that the artifact has not shipped.
+  await Promise.race([
+    page
+      .getByRole('heading', { name: /Appalachian Trail Conservancy/, level: 3 })
+      .waitFor(),
+    page.getByText(/couldn’t read the registry/).waitFor(),
+  ])
 }

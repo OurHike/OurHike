@@ -148,6 +148,15 @@ it found the same **43 segments** and the same six-field core —
 `Source` nor `Comments`, and saying nothing at all about what the 43 rows contain. The
 constancy below rests on the 2026-08-24 measurement alone.
 
+**And that difference contradicts the registry's own note about itself**, which is worth
+saying here rather than leaving for somebody to trip over. `sources.json`'s
+`nynjtc_long_path` entry claims it found "the same count and **the same field list**
+NYC_SOURCE_SURVEY.md §4 read on 2026-08-18". The count matches; the field list does not —
+the survey names six fields and the registry names eight. Nothing rests on the claim and
+nothing here is wrong because of it, but a note asserting an agreement that is not there is
+the kind of thing this document is supposed to notice rather than inherit. Fixing it is a
+one-line data change in a file this work does not otherwise touch.
+
 So the column exists and is real, and **its information content today is zero**: 43 of 43
 rows say the publisher's own name. That is not a defect in NYNJTC's data — it is what a
 single-organization extract of a single route looks like — but a design that reads
@@ -180,7 +189,7 @@ Distribution Agreement, which the survey flags **NEEDS REVIEW** before registrat
 
 > `Unit` is OPRHP's **eleven regions** — `Palisades` and `Taconic` are the ring's two […]
 > all `Facility: Hudson Highlands State Park Preserve`. NYNJTC *maintains* most of those
-> trails but publishes no data for them.
+> trails but publishes no data for them […]
 
 `Unit` is an **administrative region of the agency**, not a parcel and not a landowner
 name; `sources.json`'s `oprhp_trails` entry adds that it is "how OPRHP's own stewards talk
@@ -201,16 +210,20 @@ than flattening. The survey's, on the 5,277 segments it counted:
 > `ATV`/`MOTORV`), `MILES`, `ACCESSIBLE`, `DESCRIP` — and **`MARKER`**, DEC's word for the
 > blaze.
 
-The registry's, counted live 2026-08-25 on **5,286** rows — nine more than the survey found,
-which the entry itself reads as the layer moving rather than either count being wrong — is
+The registry's, counted live 2026-08-25 on **5,286** rows — a count
+`NYC_SOURCE_SURVEY.md:153` also records ("5,286 segments, up from 5,277, so the layer
+moves"), so the two reads agree that it moved rather than disagreeing about a number — is
 `UNIT`/`FACILITY`/`NAME`/`ASSET`/`MILES`/`DESCRIP`/`PUBLICUSE`/`UPDATED`, plus the
 `CORRIDOR USE` matrix
 (`FOOT`/`HORSE`/`BIKE`/`XC`/`SNOWMB`/`ATV`/`MOTORV`/`ADMIN`/`ACCESSIBLE`/`MAPPWD`), plus
-`MARKER`. Five of those fields are in no version of the survey's list — `ASSET`,
-`PUBLICUSE`, `UPDATED`, `ADMIN`, `MAPPWD` — and **neither carries `REGION` or `OFFICE`**.
-That the two reads disagree about five other columns is what makes their agreement here
-worth something: two independent looks at the layer, a week apart, and the two fields claim
-5 rests on are in neither.
+`MARKER`. Five of those fields are absent from the survey's field list at `:113-115` —
+`ASSET`, `PUBLICUSE`, `UPDATED`, `ADMIN`, `MAPPWD` — though two of them turn up elsewhere
+in the same survey (`UPDATED` at `:127`, `ASSET` at `:163`), so only `PUBLICUSE`, `ADMIN`
+and `MAPPWD` are genuinely unknown to it. **Neither read carries `REGION` or `OFFICE`.**
+That the two disagree about which columns belong in a field list is what makes their
+agreement here worth something: two independent looks at the layer a fortnight apart —
+2026-08-11 for the survey (`NYC_SOURCE_SURVEY.md:27`), 2026-08-25 for the registry — and
+the two fields claim 5 rests on are in neither.
 
 `UNIT` is there. **`REGION` and `OFFICE` appear nowhere** — not in
 `pipeline/NYC_SOURCE_SURVEY.md`, not in `pipeline/SOURCE_SURVEY.md`, not in the registered
@@ -629,8 +642,12 @@ issue rather than a paragraph in a design doc.
 
 [NEARBY_TRAILS.md](NEARBY_TRAILS.md) §6 owns the display voice and is half built: OPRHP's
 licence makes attribution a condition, so `client/src/map/credits.ts:182` names all four
-stewards whose lines are drawn — OPRHP, NYNJTC, Mohonk Preserve and NYS DEC, read
-2026-08-27 — and the per-trail line in the tap sheet is still missing (NEARBY_TRAILS.md:258
+stewards — OPRHP, NYNJTC, Mohonk Preserve and NYS DEC, read 2026-08-27 — whenever the
+nearby-trails artifact is loaded. *Whenever it is loaded*, not "whose lines are drawn": the
+push is gated on one `hasNearbyTrails` boolean, and the comment above it (`credits.ts:175-180`)
+says so outright — it knows the artifact loaded and not "which sources are in it", which it
+calls "the weak form of the failure this module was written to fix". The per-trail line in
+the tap sheet is still missing (NEARBY_TRAILS.md:258
 names that gap as its own). NEARBY_TRAILS.md:253 still says "both stewards"; it was written
 2026-08-24, before Mohonk and DEC were registered, and it is that line that is stale rather
 than the code. This section adds only what changes when a section has three organizations on
@@ -794,8 +811,8 @@ Both halves have to give:
   the existing table" — and lists "Generalising `Club` into `Organization`" as an open
   question because it touches `MaintainerAssignment` and SAYING_THANKS.md's attribution
   path. **#780 — Research route ownership: the AT in NY has thirty owners, a landowner with
-  final say per section, and a maintainer besides is the second independent reason to do
-  it**, which is worth recording on that open question rather than deciding here.
+  final say per section, and a maintainer besides** is the second independent reason to do
+  it, which is worth recording on that open question rather than deciding here.
 
 A fifth thing, smaller and worth a line: nothing constrains two assignments from covering
 the same miles on the same dates, and that is **deliberate** — SAYING_THANKS.md's "zero or
@@ -859,7 +876,9 @@ features and one of ATC's 33 easement parcels, which is an afternoon and has not
 
 **And the roles collapse the other way too.** On 298 of Mohonk Preserve's 304 shipped
 segments, owner and manager are the same organization (§1). The interesting rows are the six
-where they are not; the model has to make the 298 cheap.
+where they are not — `@unvalidated` per §1, since nobody has checked whether those six are a
+genuine split or an upstream entry artifact — and the model has to make the 298 cheap
+either way.
 
 ---
 
@@ -876,6 +895,11 @@ per-section role assertion from live data, on a source that already reaches hike
 forces the first real decision the model needs: `Owner: NYS OPRHP/PIPC` is two organizations
 in one string, and whatever splits it is the beginning of the reviewed table §3 says the
 thirty names will need.
+
+**And it is the experiment that settles §1's `@unvalidated` at the same time**, which is
+half of why it is worth doing first: nobody has checked whether those six rows are a real
+owner/manager split or an upstream entry artifact, and exporting them is the cheapest way to
+put the question in front of somebody who can answer it.
 
 Two things to check rather than assume before doing it. It rides Mohonk's existing
 maintainer authorisation, so no new licence question — but confirm that, because §7's whole

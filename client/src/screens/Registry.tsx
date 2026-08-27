@@ -49,11 +49,14 @@ const LICENCE_BASIS: Record<string, string> = {
   unresolved: 'Unanswered',
 }
 
-/** Whether a `licence_basis` is the organization's own word. Drives the one
- *  piece of colour on the table, because it is the one column where the
- *  difference between two values is a difference in who is exposed. */
-function isTheirTerms(basis: string | null): boolean {
-  return basis === 'stated_by_org'
+/** Which of three tints a `licence_basis` gets. THREE, not two: an
+ *  `unresolved` registration is not the maintainer's call, it is nobody's yet,
+ *  and painting it in the same colour as a decision somebody made would be
+ *  this screen agreeing with itself rather than with the registry. */
+function basisTone(basis: string | null): 'stated' | 'ours' | 'open' {
+  if (basis === 'stated_by_org') return 'stated'
+  if (basis === 'maintainer_authorisation') return 'ours'
+  return 'open'
 }
 
 function Row({ source }: { source: RegisteredSource }) {
@@ -70,9 +73,7 @@ function Row({ source }: { source: RegisteredSource }) {
       <td>{source.trust ?? <span className="registry__gap">none</span>}</td>
       <td>
         <span
-          className={`registry__pill registry__pill--${
-            isTheirTerms(source.licence_basis) ? 'stated' : 'ours'
-          }`}
+          className={`registry__pill registry__pill--${basisTone(source.licence_basis)}`}
         >
           {LICENCE_BASIS[source.licence_basis ?? ''] ?? 'Not recorded'}
         </span>
@@ -108,8 +109,18 @@ export function Registry({ onClose, load = fetchRegistry }: RegistryProps) {
 
   const groups = registry ? byOrganization(registry) : []
   const shipping = registry?.sources.filter((source) => source.reaches_hikers).length ?? 0
+  // COUNTED ON THE VALUE, NOT ON THE ABSENCE OF THE OTHER ONE. There are three
+  // bases, and `!stated_by_org` quietly folds `unresolved` in with
+  // `maintainer_authorisation` - which printed "27 ship on your own
+  // authorisation" over a set including GATC, whose terms nobody has answered
+  // and whose data ships nowhere. A sentence claiming a decision the
+  // maintainer never made is the display-outrunning-its-source failure, on the
+  // one screen whose whole job is saying what rests on what.
   const ourCall =
-    registry?.sources.filter((s) => !isTheirTerms(s.licence_basis)).length ?? 0
+    registry?.sources.filter((s) => s.licence_basis === 'maintainer_authorisation')
+      .length ?? 0
+  const unanswered =
+    registry?.sources.filter((s) => s.licence_basis === 'unresolved').length ?? 0
 
   return (
     <div className="registry" role="dialog" aria-label="The source registry">
@@ -145,6 +156,12 @@ export function Registry({ onClose, load = fetchRegistry }: RegistryProps) {
             <strong>{groups.length}</strong> organizations · <strong>{shipping}</strong>{' '}
             reach a hiker · <strong>{ourCall}</strong> ship on your own authorisation
             rather than the organization&rsquo;s stated terms
+            {unanswered > 0 && (
+              <>
+                {' '}
+                · <strong>{unanswered}</strong> waiting on an answer
+              </>
+            )}
           </p>
 
           {groups.map(({ provider, org, sources }) => (

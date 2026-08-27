@@ -906,3 +906,13 @@
   color: var(--fg-1);
   font-weight: 600;
 }
+
+/* An unresolved registration is not the maintainer's call, it is nobody's yet.
+   Painting it in the same colour as a decision somebody made would have this
+   screen agreeing with itself rather than with the registry. */
+.registry__pill--open {
+  background: transparent;
+  color: var(--fg-3);
+  border: 1px dashed var(--border-1);
+  font-style: italic;
+}

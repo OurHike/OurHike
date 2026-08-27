@@ -97,6 +97,22 @@ const REGISTRY: SourceRegistry = {
   ],
 }
 
+/** The third licence basis, which is neither of the other two: nobody has
+ *  answered, and nothing ships. GATC's club PDF is the real one. */
+const WITH_UNANSWERED: SourceRegistry = {
+  organizations: REGISTRY.organizations,
+  sources: [
+    REGISTRY.sources[0],
+    {
+      ...REGISTRY.sources[0],
+      key: 'gatc_water_sources',
+      title: 'GATC Water Sources',
+      licence_basis: 'unresolved',
+      reaches_hikers: false,
+    },
+  ],
+}
+
 function renderScreen(load: () => Promise<SourceRegistry | null>) {
   return render(<Registry onClose={vi.fn()} load={load} />)
 }
@@ -161,6 +177,26 @@ describe('what the console shows', () => {
     expect(counts).toHaveTextContent('4 registered sources across 3 organizations')
     expect(counts).toHaveTextContent('3 reach a hiker')
     expect(counts).toHaveTextContent('2 ship on your own authorisation')
+  })
+
+  it('does not fold an unanswered registration in with the maintainer-s call', async () => {
+    // Three bases, not two. Counting `!stated_by_org` printed one number over
+    // both, which claims a decision nobody made for the rows where nobody has
+    // answered - and this is the one screen whose whole job is saying what
+    // rests on what. Real: GATC's club PDF, unanswered and shipping nowhere.
+    renderScreen(() => Promise.resolve(WITH_UNANSWERED))
+
+    const counts = await screen.findByText(/ship on your own authorisation/)
+    expect(counts).toHaveTextContent('1 ship on your own authorisation')
+    expect(counts).toHaveTextContent('1 waiting on an answer')
+  })
+
+  it('says nothing about answers when every registration has one', async () => {
+    renderScreen(() => Promise.resolve(REGISTRY))
+
+    expect(
+      await screen.findByText(/ship on your own authorisation/),
+    ).not.toHaveTextContent(/waiting on an answer/)
   })
 
   it('shows an empty mark slot on every organization, because none is licensed', async () => {

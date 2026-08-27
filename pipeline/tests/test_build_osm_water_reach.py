@@ -459,9 +459,16 @@ def test_write_refuses_a_halving_against_the_previous_run(tmp_path, monkeypatch)
 
 
 def test_the_drop_guard_compares_against_the_previous_run_not_this_ones_checkpoint(tmp_path, monkeypatch):
-    """The regression this parameter exists for. apply_grade_gate checkpoints
-    over OUT_PATH as it goes, so a guard that re-read the file at the end would
-    be comparing the run against itself and could never fire."""
+    """The regression the `previous` parameter exists for.
+
+    Checkpoints no longer land on OUT_PATH - they go to CHECKPOINT_PATH - so a
+    guard that re-read the file would now get the right answer. The parameter
+    stays anyway, and this test with it: a guard that reads its own baseline
+    out of the file it is about to overwrite is the shape that failed, and it
+    is not worth rebuilding on the argument that nothing else writes there now.
+    This case still passes an unguarded write straight at OUT_PATH to prove the
+    parameter, not the paths.
+    """
     monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
     reach.write(_reachable_records(reach.MIN_REACHABLE * 10))
     previous = reach.read_previous_reachable_count()
@@ -474,6 +481,53 @@ def test_the_drop_guard_compares_against_the_previous_run_not_this_ones_checkpoi
     # The guarded write still fires, because the count was captured up front.
     with pytest.raises(SystemExit, match="drop guard"):
         reach.write(_reachable_records(reach.MIN_REACHABLE), previous=previous)
+
+
+def test_a_checkpoint_does_not_touch_the_finished_file(tmp_path, monkeypatch):
+    """The guard can only protect a file nothing else writes.
+
+    apply_grade_gate checkpointed to OUT_PATH every 25 points and once more at
+    the end, all with guard=False - so by the time the guarded write refused a
+    collapsed result, the collapse was already the file on disk, and
+    export_poi.py's next read would take it.
+    """
+    monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
+
+    good = reach.MIN_REACHABLE * 10
+    reach.write(_reachable_records(good))
+
+    reach.write(_reachable_records(1), guard=False, path=reach.checkpoint_path())
+
+    assert json.loads((tmp_path / "reach.json").read_text())["n_reachable"] == good
+    assert reach.checkpoint_path().exists()
+
+
+def test_a_failed_guard_leaves_the_baseline_the_next_run_reads(tmp_path, monkeypatch):
+    """The second half, and the worse half: a collapse used to launder itself.
+
+    `previous` comes from OUT_PATH. While checkpoints wrote there too, a
+    collapsed run left its own count behind - so the NEXT run compared the
+    collapse against itself and sailed through a guard the first run had just
+    failed (45 against a "previous" of 45 passes a 50% drop that 45 against 900
+    does not). A total collapse was worse again: `previous` became 0, and
+    `if previous and ...` is false for 0, so the drop guard switched itself off
+    and only MIN_REACHABLE was left standing.
+    """
+    monkeypatch.setattr(reach, "OUT_PATH", tmp_path / "reach.json")
+
+    good = reach.MIN_REACHABLE * 10
+    reach.write(_reachable_records(good))
+
+    # A run collapses: checkpoints land, then the guarded write refuses.
+    reach.write(_reachable_records(reach.MIN_REACHABLE), guard=False, path=reach.checkpoint_path())
+    with pytest.raises(SystemExit, match="drop guard"):
+        reach.write(
+            _reachable_records(reach.MIN_REACHABLE),
+            previous=reach.read_previous_reachable_count(),
+        )
+
+    # What the next run will measure itself against is still the last good run.
+    assert reach.read_previous_reachable_count() == good
 
 
 def test_the_floor_is_written_into_the_receipt(tmp_path, monkeypatch):

@@ -191,6 +191,7 @@ import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
+import { WalkedHike } from './screens/WalkedHike'
 import {
   canCloseLoop,
   canStartStretch,
@@ -1827,6 +1828,24 @@ function App() {
    * derivations of one question is the disagreement this file's own comments
    * keep refusing elsewhere.
    */
+  /**
+   * #979's opener, reached through a ref because of WHERE this file puts
+   * things rather than because of anything about the feature.
+   *
+   * `useTappedLinePanel` is called high in this component and `startDayHikeAt`
+   * is defined ~450 lines below it, after the builder state it needs. Moving
+   * either would mean moving everything between them, which is #937's
+   * subject and not this change's to take on. The indirection is one hop and
+   * is stable across renders, so the sheet does not re-memo on every graph
+   * attach - which the direct callback would have caused anyway.
+   */
+  const startDayHikeAtRef = useRef<((at: { lon: number; lat: number }) => void) | null>(
+    null,
+  )
+  const startDayHikeLater = useCallback((at: { lon: number; lat: number }) => {
+    startDayHikeAtRef.current?.(at)
+  }, [])
+
   const line = useTappedLinePanel({
     spurs,
     pois,
@@ -1841,6 +1860,17 @@ function App() {
     highlights,
     elevation,
     onCloseLegend: closeLegend,
+    // #979's door. Offered only when the router could actually use the tap:
+    // a graph WITH its trail lines. Undefined otherwise, so the sheet renders
+    // no control rather than a dead one - LineSheet's own rule.
+    //
+    // `dayHikeIndex` rather than `graphIndex` is the whole guard. The
+    // geometry artifact is fetched when the builder opens, so a phone holding
+    // the topology alone cannot snap anything (#1093): seeding the draft from
+    // there would hand the hiker NETWORK_STILL_ARRIVING for the point they
+    // just tapped on a line they can see, which reads as the app breaking
+    // rather than as a download finishing.
+    onStartDayHikeAt: dayHikeIndex !== null ? startDayHikeLater : undefined,
   })
 
   /**
@@ -2287,6 +2317,24 @@ function App() {
    */
   const [dayHikeDrawMode, setDayHikeDrawMode] = useState(false)
 
+  /**
+   * Which door the builder was entered by (#982): a plan, or a walk already
+   * done.
+   *
+   * SET BY THE DOOR, NOT INFERRED. A date in the past does not make a walk a
+   * walk - a hiker can plan next Saturday's hike and a hiker can lay out last
+   * Saturday's, and only they know which. The flag is what every past-tense
+   * screen reads, so guessing it here would put the guess in front of all of
+   * them.
+   */
+  const [dayHikeKind, setDayHikeKind] = useState<'planned' | 'walked'>('planned')
+
+  /** The hikes Today may show - see the prop's own note for the rule. */
+  const plannedDayHikes = useMemo(
+    () => dayHikeStore.hikes.filter((hike) => hike.recorded === 'planned'),
+    [dayHikeStore.hikes],
+  )
+
   const handleDayHikeStroke = useCallback(
     (stroke: Array<{ lon: number; lat: number }>) => {
       const graphForTaps = dayHikeIndex ?? graphIndex
@@ -2296,11 +2344,39 @@ function App() {
     [dayHikeIndex, graphIndex],
   )
 
+  /**
+   * Open the builder with one point already placed (#979, frame `1f`).
+   *
+   * THE TAP IS PROJECTED HERE rather than handed to the builder raw, because
+   * the projection can refuse and this is the layer that knows what to do
+   * about it. `tapAt` answers a tap it cannot place with a refusal SENTENCE,
+   * and a builder that opens already showing "that tap isn't on a marked
+   * hiking route" - about a line the hiker was looking at when they pressed
+   * the button - reads as the app breaking rather than as an honest edge
+   * case. So a refusal opens an empty builder instead, and the hiker taps.
+   *
+   * The caller has already established that this phone holds the trail lines
+   * (see the `onStartDayHikeAt` prop): without them nothing can be snapped at
+   * all, and the button is not offered.
+   */
+  const startDayHikeAt = useCallback(
+    (at: { lon: number; lat: number }) => {
+      openDayHike()
+      if (dayHikeIndex === null) return
+      const seeded = tapAt(dayHikeIndex, EMPTY_DRAFT, at)
+      if (seeded.refusal !== null) return
+      setDayHike(seeded)
+    },
+    [openDayHike, dayHikeIndex],
+  )
+  startDayHikeAtRef.current = startDayHikeAt
+
   const handleDayHikeCancel = useCallback(() => {
     setDayHikeReview(null)
     setDayHike(null)
     setDayHikeDraftDate(null)
     setDayHikeDrawMode(false)
+    setDayHikeKind('planned')
   }, [])
 
   // Derived once per state change, not per render - draftStatus runs the
@@ -2464,7 +2540,12 @@ function App() {
         climb: status.climb,
       },
       looped: dayHike.looped,
-      recorded: 'planned',
+      // The builder makes a PLAN. A walk already done enters through the
+      // third door and is marked there (#982) - the flag is set once, by the
+      // door that describes what the hiker is doing, rather than guessed at
+      // from a date in the past.
+      recorded: dayHikeKind,
+      note: '',
     }
     // Done no longer saves: it hands the record to frame `1l`'s card, and
     // "Save this day hike" there is the commit (#980). The draft stays live
@@ -2535,6 +2616,25 @@ function App() {
       const next = {
         ...store,
         hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, date } : hike)),
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
+  /**
+   * The hiker's own line about a walk they did (#982).
+   *
+   * The same read-modify-write `handleSetDayHikeDate` uses, and deliberately
+   * the same shape rather than a shared generic one: `lib/dayHikes.ts` is ONE
+   * DOCUMENT, ONE KEY, so every writer reloads before it writes and there is
+   * no pair of writes that can half-land.
+   */
+  const handleSetDayHikeNote = useCallback((id: string, note: string) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, note } : hike)),
       }
       setDayHikeStore(next)
       return saveDayHikes(next)
@@ -2775,7 +2875,25 @@ function App() {
   })()
 
   const dayHikeCardNode =
-    cardDayHike !== null ? (
+    // A WALK ALREADY DONE GETS ITS OWN SCREEN (#982). Branching here rather
+    // than inside DayHikeCard is the decision: a card that has to keep asking
+    // which tense it is in answers the question twice for every future
+    // addition, which is the failure #982 names when it argues against
+    // folding this into the A.T. day summary.
+    cardDayHike !== null && cardDayHike.recorded === 'walked' ? (
+      <WalkedHike
+        hike={cardDayHike}
+        resolved={cardResolution}
+        stewards={stewards}
+        units={units}
+        onClose={handleDayHikeCardClose}
+        onSetNote={(note) => handleSetDayHikeNote(cardDayHike.id, note)}
+        onSetDate={(date) => handleSetDayHikeDate(cardDayHike.id, date)}
+        onDelete={
+          dayHikeReview === null ? () => handleDeleteDayHike(cardDayHike.id) : undefined
+        }
+      />
+    ) : cardDayHike !== null ? (
       <DayHikeCard
         hike={cardDayHike}
         resolved={cardResolution}
@@ -4650,7 +4768,12 @@ function App() {
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
       onStartReport={() => setReporting({ step: 'pick' })}
-      dayHikes={dayHikeStore.hikes}
+      // ONLY WHAT IS STILL AHEAD (#982, the maintainer's decision of
+      // 2026-08-27: "Today shouldn't have other day hikes. I think the
+      // previous hikes need to live on a different screen"). Today is the day
+      // in front of the hiker; a walk from last Saturday belongs on the
+      // screen that keeps walks.
+      dayHikes={plannedDayHikes}
       onOpenDayHike={handleOpenDayHike}
       hasDownload={anySheetDownloaded}
       onOpenDownloads={openDownloads}
@@ -4839,13 +4962,23 @@ function App() {
                       // data sync that was not coming.
                       network={trailNetwork}
                       onRetryNetwork={retryTrailNetwork}
-                      walkedAvailable={false}
-                      onPickDayHike={openDayHike}
+                      walkedAvailable
+                      onPickDayHike={() => {
+                        setDayHikeKind('planned')
+                        openDayHike()
+                      }}
                       onPickTrip={() => {
                         setPlanKindOpen(false)
                         routeBuilder.openRouteBuilder()
                       }}
-                      onPickWalked={() => setPlanKindOpen(false)}
+                      onPickWalked={() => {
+                        // The SAME builder, entered in the past tense (#982's
+                        // own "this is that flow with a different entrance,
+                        // not a second implementation"). What differs is the
+                        // flag it saves under and the screen that reads it.
+                        setDayHikeKind('walked')
+                        openDayHike()
+                      }}
                       onClose={() => setPlanKindOpen(false)}
                     />
                   ) : null

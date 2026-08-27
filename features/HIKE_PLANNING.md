@@ -367,6 +367,24 @@ Also still waiting on their own issues: recording a finished walk (#982); freeha
 
 **The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
+## A walk already done (#982, 2026-08-27)
+
+Decided by the maintainer, against two drawn options — the same card in the past tense, or its own screen:
+
+> Today shouldn't have other day hikes. I think the previous hikes need to live on a different screen.
+
+Two rulings, and the second was not what the question asked about.
+
+**A finished walk gets its own surface.** Which is #982's own argument arriving one level down from the comparison it makes with `screens/DaySummary.tsx`: two surfaces that look similar and know different things is the cheaper mistake. A card that has to keep asking which tense it is in answers the question twice for every future addition. The differences are structural rather than cosmetic — a finished walk has no ways off, nothing to follow, nobody to leave it with, and a date rather than an optional one.
+
+**And Today does not carry finished walks.** Today is the day in front of the hiker; a walk from last Saturday belongs on the screen that keeps walks.
+
+**What it prints and what it will not.** The figures prefer the live resolution and fall back to the cache under the same sentence `DayHikeCard` uses. It prints **no walking time at all** — the hiker walked it, and telling somebody how long the app thinks their own finished walk took is the app arguing with them about their afternoon. It carries **the one line they write themselves**, which is the part of the screen the app did not write and is placed first to say so; the app never fills it, suggests it or completes it.
+
+The standing negative assertion — no *behind*, no *ahead*, no score — is carried by this screen's own suite, not only inherited by convention. `Plan.test.tsx` has it and `DaySummary.test.tsx` mirrors it, and a third copy earns its place because a screen about a walk somebody already finished is exactly where prescriptive gamification creeps in.
+
+**How a walk becomes one.** By the door, not by the date. `PlanKindSheet`'s third door — *"A walk I've already done"* — was wired to nothing (`walkedAvailable={false}`) and is now the same builder entered in the past tense, which is #982's own "this is that flow with a different entrance, not a second implementation". The flag is set there rather than inferred from a date, because a hiker can plan next Saturday's walk and lay out last Saturday's, and only they know which.
+
 ## The graph a phone keeps (#1050, 2026-08-27)
 
 The junction graph was fetched over the network on every launch and written nowhere, so a hiker who downloaded the corridor at home, drove to Harriman and opened the app at the trailhead with no signal got a day-hike builder that refused every tap. That is the situation this app exists for, and the builder worked at the hostel and not at the trailhead.

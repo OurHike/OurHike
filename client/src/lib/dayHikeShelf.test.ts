@@ -37,6 +37,7 @@ function hikeAt(
     figures: { miles: 3.4, legs: [] },
     looped: false,
     recorded: 'planned',
+    note: '',
     ...overrides,
   }
 }

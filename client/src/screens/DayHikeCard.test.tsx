@@ -70,6 +70,7 @@ const HIKE: DayHike = {
   },
   looped: true,
   recorded: 'planned',
+  note: '',
 }
 
 const RESOLVED: ResolvedDayHike = {

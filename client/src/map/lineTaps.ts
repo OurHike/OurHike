@@ -25,7 +25,12 @@ import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { atcBandIdAt } from './atcUpdateLayers'
 import { highlightIdAt } from './corridorLayers'
 import { poiIdAt } from './poiTaps'
-import { BLAZE_LAYER_ID, PRIMARY_TRAIL_SOURCES, PRIMARY_TRAIL_WIDTH } from './style'
+import {
+  BLAZE_LAYER_ID,
+  NEARBY_BLAZE_LAYER_ID,
+  PRIMARY_TRAIL_SOURCES,
+  PRIMARY_TRAIL_WIDTH,
+} from './style'
 
 /** `--min-touch-target` (chrome/chrome.css), same as every other control. */
 const MIN_TOUCH_TARGET_PX = 44
@@ -191,9 +196,23 @@ export function tappedLineAt(
   // hiker aimed at, sitting on the corridor line that is always under it.
   if (highlightIdAt(map, point) !== null) return null
 
-  const features = map.queryRenderedFeatures(lineTapBox(point), {
-    layers: [BLAZE_LAYER_ID],
-  })
+  // BOTH BLAZE LAYERS (#979). The chosen system's lines are on
+  // BLAZE_LAYER_ID and every other organization's are ghosted onto
+  // NEARBY_BLAZE_LAYER_ID, and querying only the first meant a tap on any
+  // trail this app does not call the through-route reported nothing at all.
+  // That is the sheet #134 built and #979 hangs an action on, unreachable on
+  // exactly the trails a day hike is made of.
+  //
+  // Rule 2 below is unchanged and is what makes adding the second layer safe:
+  // among several lines the narrow specific one wins, and a ghosted trail is
+  // never a PRIMARY_TRAIL_SOURCE - so where the two overlap the ghosted line
+  // is preferred, which is right. A hiker tapping the ground where the A.T.
+  // and Ramapo-Dunderberg share tread is asking about the line they can see
+  // as distinct.
+  const layers = [BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID].filter(
+    (layer) => map.getLayer(layer) !== undefined,
+  )
+  const features = map.queryRenderedFeatures(lineTapBox(point), { layers })
   if (features.length === 0) return null
 
   // Rule 2: the narrow, specific line over the wide, ambient one. Among

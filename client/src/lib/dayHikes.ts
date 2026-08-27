@@ -133,6 +133,21 @@ export interface DayHike {
   /** Planned ahead, or recorded from a walk - provenance that changes what a
    *  screen may say, exactly as a trip's `recorded` flag does. */
   recorded: 'planned' | 'walked'
+  /**
+   * The one line the hiker writes themselves about a walk they did (#982).
+   *
+   * Empty string rather than null for an absent one, because there is no
+   * meaningful difference between "wrote nothing" and "has not written yet"
+   * on a note - and a nullable string would put that distinction in front of
+   * every reader for no gain.
+   *
+   * WHAT IT IS NOT. Not a field the app ever fills, suggests or completes,
+   * and not something any surface counts, scores or compares. #982 says
+   * plainly that a screen about a walk somebody already finished is exactly
+   * where prescriptive gamification would creep in, and value #1 forbids it.
+   * This is the hiker's sentence and the app's only job is to keep it.
+   */
+  note: string
 }
 
 export interface DayHikeStore {
@@ -146,6 +161,18 @@ export const EMPTY_DAY_HIKES: DayHikeStore = { hikes: [], openId: null }
 
 /** plan.ts's own date shape - dates are stored the same way everywhere. */
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * How long the hiker's own line about a walk may be.
+ *
+ * @unvalidated - a ceiling, not a measurement, and it is about the STORE
+ * rather than about the writing: this record syncs, and a field with no cap
+ * is a field somebody can paste a book into. 500 characters is comfortably
+ * more than the one or two sentences #982 describes and comfortably less than
+ * anything that would make the document awkward. What would settle it is
+ * somebody actually filling one in.
+ */
+export const MAX_NOTE_CHARS = 500
 
 /**
  * An end, or null. Rebuilt field by field rather than passed through, which
@@ -296,6 +323,12 @@ function validDayHike(candidate: unknown): DayHike | null {
     figures,
     looped: hike.looped === true,
     recorded: hike.recorded === 'walked' ? 'walked' : 'planned',
+    // Trimmed and capped, because this rides the sync exchange and a record
+    // is not the place to discover somebody pasted a book into it. Anything
+    // that is not a string is the empty note - the sanitise-rather-refuse
+    // rule this module states: a note carries no invariant the arithmetic
+    // depends on, so junk costs the field and never the walk.
+    note: typeof hike.note === 'string' ? hike.note.slice(0, MAX_NOTE_CHARS) : '',
   }
 }
 

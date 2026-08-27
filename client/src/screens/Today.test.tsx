@@ -272,6 +272,7 @@ describe('the rest of the column', () => {
               figures: { miles: 3.4, legs: [] },
               looped: true,
               recorded: 'planned',
+              note: '',
             },
           ],
         })}

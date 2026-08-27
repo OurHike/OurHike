@@ -819,6 +819,7 @@ describe('the day room and its list (#1008)', () => {
     figures: { miles: 6.2, legs: [] },
     looped: true,
     recorded: 'planned' as const,
+    note: '',
   }
 
   it('All N › asks the shell for the full list, and the crumb asks to close it', async () => {

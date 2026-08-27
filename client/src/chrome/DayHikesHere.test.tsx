@@ -24,6 +24,7 @@ function nearby(id: string, miles: number, date: string | null = null): NearbyDa
     figures: { miles: 6.2, legs: [] },
     looped: true,
     recorded: 'planned',
+    note: '',
   }
   return { hike, miles }
 }

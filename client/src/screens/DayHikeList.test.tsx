@@ -26,6 +26,7 @@ function dayHike(id: string, overrides: Partial<DayHike> = {}): DayHike {
     },
     looped: false,
     recorded: 'planned',
+    note: '',
     ...overrides,
   }
 }

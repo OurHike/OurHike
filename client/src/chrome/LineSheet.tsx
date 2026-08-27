@@ -20,9 +20,30 @@ import type { LineDetail } from '../lib/lineDetail'
 export interface LineSheetProps {
   detail: LineDetail
   onClose: () => void
+  /**
+   * Add the tapped point on this trail to a day hike (#979, frame `1f`).
+   *
+   * OPTIONAL, AND ABSENT IS THE POINT. This sheet's own §2 refusal is this
+   * codebase's canonical "a sentence, never a dead button", cited by name in
+   * five other modules - so the action may not arrive as a control that is
+   * sometimes greyed out. The shell passes a handler only when the tap can
+   * genuinely become a point on a walk: a phone with the trail lines, a line
+   * the router can use, and no long-term closure on it. Otherwise there is
+   * nothing here, exactly as before.
+   *
+   * WHAT IT ADDS IS THE POINT, NOT THE TRAIL, and the copy says so. #979 asks
+   * for "add that trail to a day hike", and the draft cannot express a whole
+   * named trail: two endpoints plus a shortest path is not the trail (on a
+   * network the shortest way between a trail's ends frequently leaves it),
+   * and either workaround would be the app inventing a route the hiker did
+   * not draw. What is honest is the tap they already made, on the trail they
+   * already tapped - which is the useful half anyway, because the whole point
+   * of this door is that it starts from a line already on the screen.
+   */
+  onAddToDayHike?: () => void
 }
 
-export function LineSheet({ detail, onClose }: LineSheetProps) {
+export function LineSheet({ detail, onClose, onAddToDayHike }: LineSheetProps) {
   return (
     <div className="closure-sheet" role="dialog" aria-label="Trail line">
       <div className="legend__head">
@@ -75,6 +96,22 @@ export function LineSheet({ detail, onClose }: LineSheetProps) {
           in this sheet at all, which is the whole decision. */}
       {detail.switchNote !== null && (
         <p className="closure-sheet__meta">{detail.switchNote}</p>
+      )}
+
+      {/* #979's action, and the ONE thing this sheet does. It is not a
+          contradiction of the refusal above: adding a point to a walk is not
+          switching the map's subject, which is what §2 refuses and what the
+          picker owns.
+
+          Never over a closed trail, whatever the shell passed. The closure
+          line is right above this, and offering a hiker a walk down a trail
+          the router will then decline to route is worse than offering
+          nothing - it is the app promising with one sentence what it refuses
+          with the next. */}
+      {onAddToDayHike !== undefined && detail.closureLine === null && (
+        <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
+          Add this point to a day hike
+        </button>
       )}
     </div>
   )

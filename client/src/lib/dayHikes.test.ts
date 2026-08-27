@@ -30,6 +30,7 @@ import {
   adoptDayHikes,
   clearDayHikes,
   loadDayHikes,
+  MAX_NOTE_CHARS,
   saveDayHikes,
   validateDayHikeStore,
   type DayHike,
@@ -59,6 +60,7 @@ function hike(id = 'hike-1', over: Partial<DayHike> = {}): DayHike {
     },
     looped: false,
     recorded: 'planned',
+    note: '',
     ...over,
   }
 }
@@ -324,6 +326,25 @@ describe('validateDayHikeStore', () => {
     expect(validated?.hikes).toHaveLength(0)
   })
 
+  it("keeps the hiker's own line, and caps it rather than refusing it (#982)", () => {
+    // Trimmed because this record syncs, and a field with no cap is a field
+    // somebody can paste a book into. Junk reads as the empty note, per this
+    // module's sanitise-rather-refuse rule.
+    const long = 'x'.repeat(900)
+    const validated = validateDayHikeStore({
+      hikes: [
+        { ...hike('with-a-note'), note: 'Blueberries on the open rock.' },
+        { ...hike('too-long'), note: long },
+        { ...hike('junk-note'), note: { not: 'a string' } },
+      ],
+      openId: null,
+    })
+
+    expect(validated?.hikes[0].note).toBe('Blueberries on the open rock.')
+    expect(validated?.hikes[1].note).toHaveLength(MAX_NOTE_CHARS)
+    expect(validated?.hikes[2].note).toBe('')
+  })
+
   it('drops a junk figures leg, and only that leg', () => {
     const validated = validateDayHikeStore({
       hikes: [
@@ -453,6 +474,7 @@ describe('the ledger a save writes, and the one it must never touch', () => {
       figures: { miles: 9.1, legs: [] },
       looped: false,
       recorded: 'planned',
+      note: '',
     }
     await idb.set(DAY_HIKES_KEY, { hikes: [hike('a'), future], openId: null })
 

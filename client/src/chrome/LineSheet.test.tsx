@@ -127,3 +127,51 @@ describe('the line-detail sheet', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+describe('adding a point to a day hike (#979)', () => {
+  it('offers nothing when the shell did not pass a handler', () => {
+    // This sheet's own rule, and the one five other modules cite by name: a
+    // sentence, never a dead button. The shell knows whether the router could
+    // use the tap; the sheet does not guess.
+    render(<LineSheet detail={FULL} onClose={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
+  })
+
+  it('offers the action when it can genuinely be taken', () => {
+    const onAdd = vi.fn()
+    render(<LineSheet detail={FULL} onClose={vi.fn()} onAddToDayHike={onAdd} />)
+
+    screen.getByRole('button', { name: /Add this point to a day hike/ }).click()
+    expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('says POINT rather than trail, because that is what it adds', () => {
+    // The draft cannot express a whole named trail: two endpoints plus a
+    // shortest path is not the trail, and on a network the shortest way
+    // between a trail's ends frequently leaves it. The copy does not promise
+    // what the model cannot do.
+    render(<LineSheet detail={FULL} onClose={vi.fn()} onAddToDayHike={vi.fn()} />)
+
+    const label = screen.getByRole('button', { name: /day hike/i }).textContent ?? ''
+    expect(label).toContain('point')
+    expect(label).not.toMatch(/add this trail/i)
+  })
+
+  it('never offers it over a trail marked closed', () => {
+    // The closure line sits directly above this button. Offering a hiker a
+    // walk down a trail the router will then decline to route is the app
+    // promising with one sentence what it refuses with the next - worse than
+    // offering nothing.
+    render(
+      <LineSheet
+        detail={{ ...FULL, closureLine: 'Closed by NYS OPRHP' }}
+        onClose={vi.fn()}
+        onAddToDayHike={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Closed by NYS OPRHP')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
+  })
+})

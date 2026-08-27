@@ -714,6 +714,71 @@
     "recorded_date": "2026-08-27",
     "open_question": "Whether a state agency wants a support line in a third-party app at all, and whether the Natural Heritage Trust wants to be named as the recipient here, are both unasked. `donate_surfaces` is deliberately the narrowest of the three - the sources screen only - until somebody at OPRHP says otherwise, because the trail card is where a hiker is looking at a trail rather than at where the map came from."
   },
+  "org_marks": {
+    "_comment": "Whether each organization has granted OurHike the right to SHIP ITS MARK, and the answer for every one of them today is no (#933). WHY THIS IS A LICENCE QUESTION AND NOT A DESIGN ONE: OurHike is offline-first, so an org's logo is not fetched when a card renders - it is copied into the download and carried on a hiker's phone, potentially for months, inside an application distributed under AGPL-3.0. That is redistribution, and it needs permission in writing the same way the trail geometry does. A logo is usually held MORE tightly than the data: trademark rather than copyright, with organizations that care a great deal about how their mark is used. WHY THE BLOCK EXISTS WHILE IT IS EMPTY OF GRANTS. The record has to be older than the first asset, or the first asset arrives with the question already forgotten - which is exactly how this repository already ships one trademarked third-party mark whose permission is recorded in a source comment and nowhere else (client/src/lib/trails.ts, the A.T. marker, see the ATC row below). tests/test_org_marks.py is what makes this block bite: it derives the org list from the registry's own providers, so a newly registered organization cannot slip past by not being added to a second place, and it FAILS if a mark asset exists in the client tree for an org whose state here is not `granted`. UNTIL A GRANT ARRIVES, THE SLOT RENDERS EMPTY - never a placeholder mark, never an initial, never a generated shape. An organization's identity is the one thing in this app that must not be approximated, and a visibly empty slot is also the thing most likely to prompt somebody to go and ask.",
+    "state_vocabulary": {
+      "not_asked": "Nobody has put the question to this organization. The default, and not a judgement about whether they would say yes.",
+      "asked": "The ask has been sent and no answer has come back. Carries `asked_date` so a silence can be aged rather than forgotten.",
+      "granted": "The organization has given permission in writing. Carries every field in `required_on_grant` below, and is the ONLY state under which a mark asset may exist in the tree.",
+      "refused": "The organization has said no. Recorded rather than deleted, so nobody asks twice and nobody assumes the silence in `not_asked` means this."
+    },
+    "required_on_grant": [
+      "redistribute_in_offline_bundle",
+      "display_beside_own_attribution",
+      "no_modification",
+      "brand_colour_chip_only"
+    ],
+    "permission_meanings": {
+      "redistribute_in_offline_bundle": "The mark may be copied into a downloadable map package and carried on a hiker's phone offline, inside an AGPL-3.0 application. This is the permission that makes the others necessary.",
+      "display_beside_own_attribution": "The mark appears beside the organization's own attribution string and never detached from it, so a mark can never read as an endorsement of something the org did not publish.",
+      "no_modification": "Not recoloured, not cropped, not composited, not redrawn at a size the org did not supply. `asset` records what they sent; the app renders that.",
+      "brand_colour_chip_only": "A brand colour may tint the organization's chip and NOTHING ELSE - above all never a trail line. The map's hue channel means WHICH BLAZE A HIKER FOLLOWS (features/TRAIL_BLAZE_COLORS.md), so an organization's brand colour touching a trail line would make the map say something false about paint on a tree. This is the one permission that is a constraint on OurHike rather than a grant from the org, and it is recorded here because it is the one an implementer is most likely to breach by accident."
+    },
+    "orgs": {
+      "ATC": {
+        "state": "not_asked",
+        "note": "NOT ASKED for an ORG mark - no ATC logo or wordmark is in the tree. But a TRAIL mark of theirs is: client/src/design-system/assets/trails/at-logo.png is the official Appalachian Trail / National Scenic Trail marker, it carries its own TM, it is committed to a public AGPL-3.0 repository, and it ships inside the bundle today. Its entire permission record is a comment at the top of client/src/lib/trails.ts saying it was 'supplied directly by the repo owner'. That is the maintainer's own decision and is recorded here so it stops living only in a source comment - which is #933 item 3, applied to the one mark that already needed it. It is NOT a grant from ATC as an organization and must not be read as one, and it does not extend to an ATC org mark on a steward card. See https://github.com/OurHike/OurHike/issues/933.",
+        "trail_mark_in_tree": {
+          "asset": "client/src/design-system/assets/trails/at-logo.png",
+          "basis": "Maintainer authorisation, recorded in client/src/lib/trails.ts's header comment; the maintainer is an ATC trail volunteer, the same footing atc_licence and photo_licence stand on.",
+          "recorded_date": "2026-08-27",
+          "scope": "This trail marker, in this application, on the trail-name surface it renders on today. Not an org mark, not a licence to sublicense onward, and not precedent for any other organization's mark."
+        }
+      },
+      "GATC": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "Mohonk Preserve": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "NYNJTC": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "NYS DEC": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "NYS OPRHP": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "National Drought Mitigation Center (UNL), USDA, NOAA, NASA": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "OpenStreetMap contributors": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      },
+      "USGS": {
+        "state": "not_asked",
+        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+      }
+    }
+  },
   "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it.",
   "poi_coverage": {
     "_comment": "What each organization publishes for each of lib/poi_schema.POI_TYPES, and whether OurHike ships it (#1092). The maintainer's ask, 2026-08-27: \"We don't have POI for the org's outside of ATC. Search those sources for the POI types we have... Maybe we need to track each of the POI types for the org, and whether or not it is provided.\" This block is the second half of that - the answer in a form a test can read, so \"does DEC give us campsites\" stops being a question the next session re-probes from scratch. pipeline/POI_COVERAGE_SURVEY.md is the evidence and the argument; spike_org_poi_coverage.py is the script every count here came from, re-runnable in one command. THE COUNTS ARE OF WHAT THE ORG PUBLISHES, NOT OF WHAT A HIKER WOULD SEE: nothing here is clipped to a corridor, deduped against ATC's POIs, or filtered to walkable ground, because this block is a survey of supply and those are ingest decisions belonging to per-org issues. `org_flags_public` is the subset the org's OWN publication flag marks as visitor-facing - DEC's PUBLICUSE, OPRHP's ParksApp - and it is the more honest of the two numbers wherever the two disagree. Twelve of these cells became `shipping` on 2026-08-27 (#1097, export_nearby_poi.py -> nearby_poi.geojson): six DEC types and six OPRHP ones, 8,480 features. Neither org's water is among them. tests/test_poi_coverage.py enforces that every provider in `sources` has a verdict for every POI type, from the vocabulary below: no blanks, the same discipline NYC_SOURCE_SURVEY.md \u00a79 applies to licensing.",

@@ -288,12 +288,19 @@ export function DayHikePickBar({
         )}
       </div>
 
-      {/* #931, drawn rather than omitted - see the header. Deliberately a row
-          with a label and no control: there is nothing to press yet, and a
-          dead button would say something different from what is true. */}
+      {/* #931, and this row used to say LATER over something that already
+          ships. map/liveTopo.ts draws roads, tracks and OSM paths on the live
+          sheet, and its own comment calls forest roads "a real bail-out
+          option" - so the road under a Harriman loop has been on the map in
+          the hiker's hand the whole time.
+
+          What was actually missing was not cartography. It was that a tap on
+          one of those lines was answered with "that tap isn't on a marked
+          hiking route", which is true and reads as THERE IS NOTHING THERE.
+          That sentence is fixed (map/roadTaps.ts), and this row now says what
+          is true rather than promising a feature that is half here. */}
       <p className="day-hike-bar__later">
-        <span className="day-hike-bar__later-name">Roads and connectors</span>
-        <span className="day-hike-bar__later-tag">LATER</span>
+        <span className="day-hike-bar__later-name">Roads are drawn, never routed on</span>
       </p>
     </div>
   )

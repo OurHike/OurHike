@@ -238,10 +238,14 @@ export function attachRouteData(
  */
 export function attachRouteTaps(
   map: MapLibreMap,
-  onTap: (at: { lon: number; lat: number }) => void,
+  onTap: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void,
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
-    onTap({ lon: event.lngLat.lng, lat: event.lngLat.lat })
+    // The CANVAS POINT travels with the coordinate (#931). A refused tap has
+    // to be able to say what the hiker actually pointed at, and "what is
+    // drawn here" is a question only the screen position can ask - a
+    // coordinate alone cannot be handed to `queryRenderedFeatures`.
+    onTap({ lon: event.lngLat.lng, lat: event.lngLat.lat }, event.point)
   }
 
   map.on('click', onClick)

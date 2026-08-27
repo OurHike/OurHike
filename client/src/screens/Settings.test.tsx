@@ -382,11 +382,19 @@ describe('MapSettings', () => {
     expect(screen.getByText(/no background data is fetched/i)).toBeInTheDocument()
   })
 
-  it('disables the Later row so it cannot be operated, tagged so someone knows why', () => {
+  it('does not claim roads are off, because they are not (#931)', () => {
+    // This row was a disabled, unticked checkbox labelled "Roads &
+    // walkability" - the settings screen disagreeing with the map, which has
+    // drawn roads, tracks and OSM paths on the live sheet all along. There is
+    // still no control, and deliberately: the walkability tiers a toggle here
+    // would govern stay unbuilt for want of evidence.
     renderMap()
 
-    expect(screen.getByRole('checkbox', { name: /roads & walkability/i })).toBeDisabled()
-    expect(screen.getByText('Later')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('checkbox', { name: /roads & walkability/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/Roads and tracks are on the map/)).toBeInTheDocument()
+    expect(screen.getByText(/never routes a walk along one/)).toBeInTheDocument()
   })
 
   describe('waypoints shown', () => {

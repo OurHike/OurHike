@@ -229,7 +229,7 @@ export interface MapViewProps {
    * interpreter per touch (see routeLayers.ts's attachRouteTaps). Must be
    * stable across renders (useCallback), like `onSelectPoi`.
    */
-  onRouteTap?: (at: { lon: number; lat: number }) => void
+  onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
   /**
    * A drawn line, when the builder is in draw mode (#983, frame `1k`).
    *

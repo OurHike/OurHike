@@ -219,7 +219,7 @@ export interface MapScreenProps {
    */
   routeDrawing?: RouteDrawing | null
   dayHikeDrawing?: DayHikeDrawing | null
-  onRouteTap?: (at: { lon: number; lat: number }) => void
+  onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
   /** A drawn line, in the day-hike builder's draw mode (#983). Replaces the
    *  tap handler while set - see MapViewProps.onRouteStroke. */
   onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void

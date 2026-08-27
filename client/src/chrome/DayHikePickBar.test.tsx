@@ -249,13 +249,15 @@ describe('the controls', () => {
 })
 
 describe('roads and connectors', () => {
-  it('names the gap rather than omitting it', () => {
-    // #931. A missing capability the app is silent about reads as a bug; one
-    // the app names reads as a boundary.
+  it('says what is true rather than promising a feature that half ships', () => {
+    // #931's row used to read "Roads and connectors · LATER" over something
+    // that already shipped: map/liveTopo.ts draws roads, tracks and OSM paths
+    // on the live sheet. A LATER tag over a drawn road is the bar telling the
+    // hiker the opposite of what the map is showing them.
     renderBar()
 
-    expect(screen.getByText('Roads and connectors')).toBeInTheDocument()
-    expect(screen.getByText('LATER')).toBeInTheDocument()
+    expect(screen.getByText(/Roads are drawn, never routed on/)).toBeInTheDocument()
+    expect(screen.queryByText('LATER')).not.toBeInTheDocument()
   })
 
   it('gives it nothing to press', () => {

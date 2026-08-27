@@ -367,6 +367,24 @@ Also still waiting on their own issues: recording a finished walk (#982); freeha
 
 **The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
+## Roads: drawn already, and the sentence that was wrong (#931, 2026-08-27)
+
+The maintainer chose the middle option #931 asks not to be defaulted past — *draw walkable connectors as context a hiker can see and decide about, and never let the router choose one.* Building it turned up that **half of it already shipped, and the issue's premise was false.**
+
+#931 says *"a hiker still cannot see that the road is there, which is the whole point of its `LATER` row."* Measured 2026-08-27: `map/liveTopo.ts` draws four transportation classes on the live vector sheet — `topo-road-major`, `topo-road-minor`, `topo-track` and `topo-path` — and its own comment says why tracks get their own weight: *"Tracks are how you reach most trailheads, and forest roads are a real bail-out option."* The road under a Harriman loop has been on the map, in the hiker's hand, the whole time.
+
+**So what was missing was not cartography. It was a sentence.** The builder answered a tap on a clearly-drawn road with *"That tap isn't on a marked hiking route"* — true, and reading as **there is nothing there**, about a line the app itself had drawn. `map/roadTaps.ts` names what was tapped, says why it is not a route, and says what the hiker can do instead:
+
+> Seven Lakes Drive is a road, and no organization maintains it for walking — so OurHike won't route you along it. If you're walking it anyway, start a new stretch on the far side.
+
+Three things that sentence has to do, and the one it replaces failed the second: say what was tapped, say the refusal is about **evidence** rather than the road being unimportant, and point at #935's segments model, which is what actually closes a loop along a shoulder.
+
+**No walkability judgement, and a test that enforces it.** MAP_OPTIONS.md §2's tiers — `confirmed_sidewalk`, `no_sidewalk_low_traffic`, `no_sidewalk_high_speed` — stay unbuilt, because a road with a shoulder and a road with a guardrail at 55 mph are the same OSM line class. The refusal is asserted to contain none of *safe*, *dangerous*, *busy*, *quiet*, *shoulder*, *traffic* or *careful*.
+
+**Two surfaces were saying the opposite of what the map shows, and both are fixed.** The builder bar's `LATER` row, and a disabled unticked checkbox in Settings labelled "Roads & walkability" — the settings screen disagreeing with the map. The `show_roads` preference is still stored, synced and wired to nothing; wiring it as MAP_OPTIONS.md:204 specifies (off by default) would *hide* road context every hiker has today, which is a worse answer than the one those rows now give.
+
+**Nothing here reaches the router.** A road is never a candidate, never an edge, never part of a route or a total.
+
 ## A walk already done (#982, 2026-08-27)
 
 Decided by the maintainer, against two drawn options — the same card in the past tense, or its own screen:

@@ -191,6 +191,7 @@ import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
+import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import { WalkedHike } from './screens/WalkedHike'
 import {
   canCloseLoop,
@@ -200,6 +201,7 @@ import {
   EMPTY_DRAFT,
   drawStroke,
   loopDraft,
+  OFF_NETWORK_REFUSAL,
   startStretch,
   tapAt,
   undoTap,
@@ -2252,7 +2254,7 @@ function App() {
    * features rather than about either one.
    */
   const handleMapTap = useCallback(
-    (at: { lon: number; lat: number }) => {
+    (at: { lon: number; lat: number }, point: { x: number; y: number }) => {
       if (dayHike !== null) {
         // While frame `1l`'s card reviews the route, the map underneath is a
         // picture, not a control: a tap that edited the draft would desync
@@ -2260,12 +2262,27 @@ function App() {
         if (dayHikeReview !== null) return
         const graphForTaps = dayHikeIndex ?? graphIndex
         if (graphForTaps === null) return
-        setDayHike((draft) => (draft === null ? draft : tapAt(graphForTaps, draft, at)))
+        setDayHike((draft) => {
+          if (draft === null) return draft
+          const tapped = tapAt(graphForTaps, draft, at)
+          // #931: a tap that missed every trail may still have landed on
+          // something the app DREW. `map/liveTopo.ts` puts roads, tracks and
+          // OSM paths on the live sheet, so "that tap isn't on a marked
+          // hiking route" was being said about a line the hiker could see -
+          // true, and reading as "there is nothing there".
+          //
+          // Only when the tap was refused for being OFF the network. A
+          // refusal about the geometry still downloading is a different
+          // situation and keeps its own sentence.
+          if (tapped.refusal !== OFF_NETWORK_REFUSAL || map === null) return tapped
+          const road = tappedRoadAt(map, point)
+          return road === null ? tapped : { ...tapped, refusal: roadRefusal(road) }
+        })
         return
       }
-      routeBuilder.mapScreen.onRouteTap?.(at)
+      routeBuilder.mapScreen.onRouteTap?.(at, point)
     },
-    [dayHike, dayHikeReview, dayHikeIndex, graphIndex, routeBuilder],
+    [dayHike, dayHikeReview, dayHikeIndex, graphIndex, routeBuilder, map],
   )
   // Opening the day-hike builder repeats the route builder's sweep rather
   // than sharing one. That was argued when this door was written - "the

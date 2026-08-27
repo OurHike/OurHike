@@ -118,6 +118,7 @@ def make_args(tmp_path, region_path, **overrides):
         # None means export_dem's own CORRIDOR_TAPER_MILES, and these fixtures
         # all pass an explicit --region, which overrides the taper anyway.
         taper=None,
+        variant="canonical",
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -262,3 +263,67 @@ def test_a_region_argument_still_overrides_the_taper(tmp_path):
     assert widest is region
     assert tiles == sorted(tiles), "tiles must reach the writer in (z, x, y) order"
     assert {z for z, _, _ in tiles} == {0, 1, 2}
+
+
+# The light variant (#1088): the same archive shape at a harder taper.
+
+
+def test_every_variant_names_a_key_publish_actually_knows():
+    """A variant that builds an archive publish.py cannot name produces bytes
+    nothing uploads; a published key nothing builds is a 404 on a mountain.
+    The two tables are one fact, so they are pinned against each other."""
+    import publish
+
+    built = {filename for filename, _ in export_dem.VARIANTS.values()}
+    published = set(publish.OFFLINE_SHEET_ARCHIVES.values())
+
+    assert built <= published, f"variants build archives nothing publishes: {built - published}"
+    assert {"dem.pmtiles", "dem_light.pmtiles"} <= built
+
+
+def test_light_is_narrower_than_canonical_at_every_zoom():
+    """Not a preference: a "light" level whose corridor is wider anywhere is a
+    bigger download at that zoom, and the rung would be lying about itself."""
+    for zoom in range(export_dem.MIN_ZOOM, export_dem.MAX_ZOOM + 1):
+        light = export_dem.taper_miles(zoom, export_dem.LIGHT_TAPER_MILES)
+        canonical = export_dem.taper_miles(zoom, export_dem.CORRIDOR_TAPER_MILES)
+        assert light <= canonical, f"light is wider than canonical at z{zoom}: {light} > {canonical}"
+
+    assert export_dem.taper_miles(13, export_dem.LIGHT_TAPER_MILES) < export_dem.taper_miles(
+        13, export_dem.CORRIDOR_TAPER_MILES
+    ), "light must actually be lighter somewhere, or it is the same download"
+
+
+def test_light_keeps_z13_out_to_the_distance_the_app_can_still_locate_you():
+    """3 miles is trailPosition.MAX_OFF_TRAIL_MILES - past it the app already
+    declines to say where a hiker is on the trail. Light stopping the deep zoom
+    exactly there is the one number in it with an argument behind it, so a
+    change that quietly goes below it should have to edit this."""
+    assert export_dem.taper_miles(13, export_dem.LIGHT_TAPER_MILES) == 3.0
+
+
+def test_variant_picks_the_output_name_and_the_taper_together(tmp_path, requests_mock, monkeypatch):
+    """--variant is one knob for two things. Splitting them at a call site is
+    how dem_light.pmtiles ends up holding canonical bytes."""
+    monkeypatch.setattr(export_dem, "DEM_TILE_URL", "https://dem.test/{z}/{x}/{y}.png")
+    requests_mock.get(ANY_URL, content=terrarium_png(np.full((256, 256), 250.5)))
+    monkeypatch.setattr(export_dem, "PROCESSED_DIR", tmp_path)
+
+    args = make_args(tmp_path, region_file(tmp_path), out=None, variant="light")
+    export_dem.main(args)
+
+    assert (tmp_path / "dem_light.pmtiles").exists()
+    assert not (tmp_path / "dem.pmtiles").exists()
+
+
+def test_an_explicit_out_still_wins_over_the_variant(tmp_path, requests_mock, monkeypatch):
+    """So a spike can build any shape anywhere without inventing a variant."""
+    monkeypatch.setattr(export_dem, "DEM_TILE_URL", "https://dem.test/{z}/{x}/{y}.png")
+    requests_mock.get(ANY_URL, content=terrarium_png(np.full((256, 256), 250.5)))
+    monkeypatch.setattr(export_dem, "PROCESSED_DIR", tmp_path)
+
+    out = tmp_path / "spike.pmtiles"
+    export_dem.main(make_args(tmp_path, region_file(tmp_path), out=out, variant="light"))
+
+    assert out.exists()
+    assert not (tmp_path / "dem_light.pmtiles").exists()

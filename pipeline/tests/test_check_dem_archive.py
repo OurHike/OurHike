@@ -44,6 +44,7 @@ def build_archive(tmp_path, requests_mock, monkeypatch, **overrides):
         limit=0,
         name="test DEM",
         taper=None,
+        variant="canonical",
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -85,6 +86,7 @@ def rebuild_with_404(tmp_path, requests_mock, monkeypatch, archive):
             limit=0,
             name="test DEM",
             taper=None,
+            variant="canonical",
         )
     )
 

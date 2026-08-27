@@ -434,6 +434,43 @@ no signal must reach the network zero times, not once-and-fail, and
 `App.trailData.test.tsx` pins that. It then shows the constant, which is the
 right answer for a phone that cannot ask.
 
+## Building the Light rung
+
+`build-dem.yml` takes a `variant` input since #1088: **canonical** builds
+`dem.pmtiles` at 30/15/6, **light** builds `dem_light.pmtiles` at **20/6/3**.
+The taper tables live in `export_dem.py` (`CORRIDOR_TAPER_MILES`,
+`LIGHT_TAPER_MILES`) rather than in YAML, so the numbers sit where they are
+documented and tested.
+
+What Light trades, stated plainly because it is not the trade Standard makes:
+Standard already narrows to 6 miles of z13 either side of the trail; Light
+halves that to **3 — exactly `trailPosition.MAX_OFF_TRAIL_MILES`, the distance
+past which the app already refuses to say where a hiker is.** So terrain runs
+out closer to the trail at every zoom, and a hiker who wanders further than the
+app can locate them has no hillshade where they are.
+
+Two things the workflow does that are not conveniences:
+
+- **A light build does not cut stretches.** `cut_stretches.py` names its output
+  from the family, so a light run would overwrite `dem_stretch_NN.pmtiles` with
+  light bytes under the canonical keys — a quieter version of the
+  wrong-bytes-behind-the-right-name failure the publish gate exists to prevent.
+  A light stretch set needs its own family before it can be cut at all.
+- **The artifact is named per variant**, so the publish job cannot download one
+  variant's archive and upload it under the other's key.
+
+`publish.py` already knew `dem_light.pmtiles`; what was missing was any way to
+produce it. **It is still unbuilt**, so `hikingDetail.ts` keeps the Light level
+at `published: false` with a null size. The rung lights up when a build has run
+and its bytes have been measured — not before, for the reason `packages.ts`
+records as "a 404 on a mountain".
+
+@unvalidated — 20/6/3 is picked. Against a tapered Standard at 458.1 MB, a
+Light sheet lands around 342 MB on the same reasoning that projected Standard,
+which the build above showed to be trustworthy in total and not per band. That
+is a ~116 MB gap for a choice a hiker has to understand, and whether it is
+worth a rung at all is still the open question at the end of this document.
+
 ## What was rejected, so nobody re-proposes it
 
 | proposal | why not |

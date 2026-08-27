@@ -39,6 +39,11 @@ on:
         description: "Refuse to fetch more tiles than this"
         type: string
         default: "30000"
+      variant:
+        description: "canonical = dem.pmtiles; light = dem_light.pmtiles at a harder taper (#1088)"
+        type: choice
+        options: [canonical, light]
+        default: canonical
       publish:
         description: "Upload to R2. Only canonical builds (z0-13, 0.5 m) are allowed through."
         type: boolean
@@ -91,6 +96,7 @@ jobs:
       - name: Build the DEM archive
         run: |
           python export_dem.py \
+            --variant "${{ inputs.variant }}" \
             --max-zoom "${{ inputs.max_zoom }}" \
             --quantize-step "${{ inputs.quantize_step }}" \
             --limit "${{ inputs.tile_limit }}"
@@ -99,7 +105,10 @@ jobs:
       # not. Runs on every build, not only publishing ones, so a measure run
       # that would have been refused says so while it is cheap to rerun.
       - name: Verify the archive is shippable
-        run: python check_dem_archive.py --max-zoom "${{ inputs.max_zoom }}"
+        run: |
+          python check_dem_archive.py \
+            --archive "data/processed/${{ inputs.variant == 'light' && 'dem_light.pmtiles' || 'dem.pmtiles' }}" \
+            --max-zoom "${{ inputs.max_zoom }}"
 
       # To the log AND the summary: a number that exists only in a rendered
       # summary cannot be quoted by anything reading the logs later.
@@ -109,13 +118,15 @@ jobs:
         # report success on a build that produced nothing (#514).
         shell: bash
         run: |
+          ARCHIVE="data/processed/${{ inputs.variant == 'light' && 'dem_light.pmtiles' || 'dem.pmtiles' }}"
           python -c "
+          import sys
           from pathlib import Path
           from export_basemap import report_archive
-          report_archive(Path('data/processed/dem.pmtiles'))
-          " | tee measure.txt
+          report_archive(Path(sys.argv[1]))
+          " "$ARCHIVE" | tee measure.txt
           {
-            echo "## DEM build (quantize ${{ inputs.quantize_step }} m, z0-${{ inputs.max_zoom }})"
+            echo "## DEM build (${{ inputs.variant }}, quantize ${{ inputs.quantize_step }} m, z0-${{ inputs.max_zoom }})"
             echo '```'
             cat measure.txt
             echo '```'
@@ -126,16 +137,26 @@ jobs:
       # archive, the context-zoom mechanism #552 notes the DEM never had.
       # fetch_all.py above supplies the centerline and half-mile markers the
       # axis calibration reads (#652).
+      #
+      # CANONICAL ONLY, and this condition is load-bearing rather than a
+      # saving: cut_stretches writes `dem_stretch_NN.pmtiles` from the family
+      # name, so a light build running it would overwrite the canonical
+      # stretches with light ones under the canonical keys - a quieter version
+      # of the wrong-bytes-behind-the-right-name failure the publish gate
+      # below exists to prevent. A light stretch set needs its own family
+      # before it can be cut at all.
       - name: Cut the stretch units from the archive
+        if: inputs.variant == 'canonical'
         run: |
           python cut_stretches.py data/processed/dem.pmtiles \
             --family dem
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dem-archive
+          name: dem-archive-${{ inputs.variant }}
           path: |
             pipeline/data/processed/dem.pmtiles
+            pipeline/data/processed/dem_light.pmtiles
             pipeline/data/processed/dem_stretch_*.pmtiles
             pipeline/data/processed/dem_context.pmtiles
             pipeline/data/processed/dem_stretches.json
@@ -159,16 +180,27 @@ jobs:
       run:
         working-directory: pipeline
     steps:
-      # The client's DEM package declares one shape (z0-13, 0.5 m quantize,
+      # The client's DEM packages declare a shape each (z0-13, 0.5 m quantize,
       # measured size). Publishing any other build would silently hand every
       # hiker a different archive than the one those numbers describe - a
       # spike stays a spike, so a non-canonical publish fails loudly rather
       # than being quietly skipped.
+      #
+      # THE VARIANT IS NOT CHECKED HERE and does not need to be: it is a
+      # `choice` input, so only names export_dem.VARIANTS knows can be passed,
+      # and each maps to its own published key. What this step still guards is
+      # the two dimensions a hiker's advertised size depends on and which are
+      # free-text - the pyramid depth and the quantize step - either of which
+      # would put different bytes behind an unchanged key.
+      #
+      # What it deliberately does NOT check is the corridor taper, because the
+      # archive declares its own (export_dem's `corridor_taper_miles` metadata)
+      # and check_dem_archive.py in the build job has already held it to that.
       - name: Refuse a non-canonical shape
         if: inputs.max_zoom != '13' || inputs.quantize_step != '0.5'
         working-directory: .
         run: |
-          echo "::error::publish is only for the canonical DEM (z0-13, 0.5 m quantize); this run built z0-${{ inputs.max_zoom }} at ${{ inputs.quantize_step }} m"
+          echo "::error::publish is only for a canonical DEM (z0-13, 0.5 m quantize); this run built z0-${{ inputs.max_zoom }} at ${{ inputs.quantize_step }} m"
           exit 1
 
       - uses: actions/checkout@v7
@@ -188,7 +220,7 @@ jobs:
       # runner that produced them - and the build job never holds a secret.
       - uses: actions/download-artifact@v4
         with:
-          name: dem-archive
+          name: dem-archive-${{ inputs.variant }}
           path: pipeline/data/processed/
 
       - name: What will be published

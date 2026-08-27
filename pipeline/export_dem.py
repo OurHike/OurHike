@@ -67,7 +67,10 @@ from extract_package import load_region, tiles_intersecting, to_mercator
 from lib.http_retry import request_with_retry
 
 ROOT = Path(__file__).parent
-OUT_PATH = ROOT / "data" / "processed" / "dem.pmtiles"
+PROCESSED_DIR = ROOT / "data" / "processed"
+# The canonical variant's output. Kept as a module constant because
+# check_dem_archive.py imports it as its own default archive.
+OUT_PATH = PROCESSED_DIR / "dem.pmtiles"
 
 # The same bucket, path and encoding the client streams from live
 # (client/src/map/terrain.ts DEM_TILE_URL) - this stage repackages the data
@@ -127,6 +130,37 @@ QUANTIZE_STEP_M = 0.5
 # from bucket-search geometry rather than from how far hikers actually wander. What would settle it: what a hiker pans to when they are
 # lost and off-trail, which nothing in this project measures yet.
 CORRIDOR_TAPER_MILES = {0: 30.0, 12: 15.0, 13: 6.0}
+
+# The hiking sheet's LIGHT level: the same archive shape at a harder taper
+# (#1088). Its own artifact rather than a cut the client performs, for the
+# reason publish.py's basemap_z13 is one - "a download must be exactly the
+# bytes its advertised size and published hash describe".
+#
+# WHAT LIGHT TRADES, said plainly, because it is not the trade Standard makes.
+# Standard already narrows: 6 miles of z13 either side of the trail. Light
+# halves that to 3 - which is exactly trailPosition.MAX_OFF_TRAIL_MILES, the
+# distance past which the app already refuses to say where a hiker is - and
+# pulls z12 in to 6 miles and the shallow corridor to 20. So terrain runs out
+# closer to the trail at every zoom, and a hiker who wanders further than the
+# app can locate them has no hillshade where they are. That is the honest
+# summary of the rung, and the reason it is not the default.
+#
+# @unvalidated AS NUMBERS, more so than Standard's. 20/6/3 is picked to sit a
+# meaningful distance below Standard while keeping z13 out to the locating
+# limit; nothing has measured what a hiker on the Light rung actually loses.
+# What would settle it is the same thing Standard's taper waits on: where
+# people pan when they are lost.
+LIGHT_TAPER_MILES = {0: 20.0, 12: 6.0, 13: 3.0}
+
+# The variants this exporter knows how to build, as (output filename, taper).
+# The names are publish.py's OFFLINE_SHEET_ARCHIVES spellings, which are the
+# flat R2 keys the client requests - so a variant added here and not there
+# builds an archive nothing publishes, and one added there and not here names
+# an artifact nothing produces. test_export_dem.py pins the pair.
+VARIANTS = {
+    "canonical": ("dem.pmtiles", CORRIDOR_TAPER_MILES),
+    "light": ("dem_light.pmtiles", LIGHT_TAPER_MILES),
+}
 
 # Below and including this zoom the corridor is not applied at all: the archive
 # keeps every tile in the corridor's BOUNDING BOX, so panning out offline shows
@@ -333,7 +367,11 @@ def build_header(region_4326, min_zoom: int) -> dict:
 def main(args: argparse.Namespace):
     unit = quantize_unit(args.quantize_step)
 
-    taper = parse_taper(args.taper) if args.taper else CORRIDOR_TAPER_MILES
+    # --variant names a shape; --out and --taper override it, so a spike can
+    # still build anything without inventing a variant for it.
+    variant_out, variant_taper = VARIANTS[args.variant]
+    taper = parse_taper(args.taper) if args.taper else variant_taper
+    out = args.out if args.out is not None else PROCESSED_DIR / variant_out
     region = load_region(args.region) if args.region else None
 
     if region is None:
@@ -350,7 +388,7 @@ def main(args: argparse.Namespace):
         )
     print(f"{len(tiles)} tiles to fetch (quantize step {args.quantize_step} m, {args.workers} workers)")
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
     written = 0
     absent: list[list[int]] = []
     session = requests.Session()
@@ -359,7 +397,7 @@ def main(args: argparse.Namespace):
         png = fetch_tile(session, *zxy)
         return None if png is None else encode_tile(png, unit)
 
-    with write(str(args.out)) as writer:
+    with write(str(out)) as writer:
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             # executor.map preserves submission order, so tiles are written in
             # the sorted (z, x, y) walk order - keeping the archive clustered
@@ -397,13 +435,19 @@ def main(args: argparse.Namespace):
         )
 
     print(f"{written} tiles written, {len(absent)} absent from source")
-    report_archive(args.out)
+    report_archive(out)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--region", type=Path, default=None, help="GeoJSON region (default: build the AT corridor)")
-    parser.add_argument("--out", type=Path, default=OUT_PATH, help=f"Output .pmtiles path (default {OUT_PATH})")
+    parser.add_argument("--out", type=Path, default=None, help="Output .pmtiles path (default: the variant's)")
+    parser.add_argument(
+        "--variant",
+        choices=sorted(VARIANTS),
+        default="canonical",
+        help="Which published shape to build; --out and --taper override it",
+    )
     parser.add_argument("--min-zoom", type=int, default=MIN_ZOOM)
     parser.add_argument("--max-zoom", type=int, default=MAX_ZOOM, help=f"Default {MAX_ZOOM}; see module docstring before raising")
     parser.add_argument("--quantize-step", type=float, default=QUANTIZE_STEP_M, help="Vertical floor in meters (1.0, 0.5, 0.25)")

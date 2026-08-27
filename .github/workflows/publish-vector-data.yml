@@ -402,6 +402,27 @@ jobs:
       - name: Export the trails other organizations maintain
         run: python export_nearby_trails.py
 
+      # The waypoints those same organizations publish (#1097) - NYS DEC's
+      # lean-tos, primitive campsites and privies, NYS OPRHP's vistas, parking
+      # areas and trail bridges. Beside its sibling above rather than anywhere
+      # else because it reads the same fetched layers, from the same
+      # `data/raw/external/` the step above restored, and would be exporting
+      # against nothing if it ran before the fetch.
+      #
+      # NOT under continue-on-error, for the reason the comment above gives its
+      # own export: an outage at DEC must not fail an A.T. publish, and it
+      # cannot - the fetch above absorbs that. What this step failing means is
+      # that layers ARE on disk and the export refused them, which is a schema
+      # change or a bad allowlist, and a publish that carried on past it would
+      # ship a silently thinner map.
+      #
+      # .github/tests/test_exporters_are_published.py is what made this step
+      # exist rather than a reviewer noticing: it caught export_nearby_poi.py
+      # wired into publish.py, marked reaches_hikers true, and invoked by
+      # nothing - #940's pattern, on its second outing in one day.
+      - name: Export the waypoints other organizations publish
+        run: python export_nearby_poi.py
+
       # OSM water points (#529): the fourteen Geofabrik state extracts, the
       # same files the basemap build downloads, scanned for the four
       # point-source tags. The extracts are NOT in FETCH_OUTPUTS - caching

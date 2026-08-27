@@ -276,6 +276,39 @@ parking rows carry `3 Vehicle Capacity`, which is exactly what a hiker planning 
 start wants, and getting it out means parsing free text against a pattern nobody has
 measured coverage for.
 
+## 4b. What 8,480 waypoints do to a screen, and the rule they break
+
+Found after the export was written, not before, which is the honest order to record it in.
+[#1105](https://github.com/OurHike/OurHike/issues/1105) landed on `main` the same day and
+re-confirmed a display rule with evidence: **amenity POIs stay chosen-trail-only**
+([features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §10, §11). It measured 50 OPRHP
+amenities on one Harriman screen against POI_VISIBILITY.md's ~16, and concluded the rule
+should stand.
+
+Six of the types this survey ships are amenities, clipped to nothing. Measured with
+#1105's own arithmetic (`spike_oprhp_poi_density.py --artifact`):
+
+| densest z12 screen, 390 × 700 | every category on | default visibility |
+|---|---:|---:|
+| Harriman / Bear Mountain | 64 | 26 |
+| Catskills | 34 | 22 |
+| **Adirondacks** | **114** | **107** |
+
+The worst screen is not Harriman and not on any ground this program set out to cover: 105
+of those 107 are DEC primitive tent sites along the Saranac lake shores.
+
+Two mitigations, neither of which makes it fine: MapLibre culls colliding symbols rather
+than stacking them and #597 draws a culled waypoint as a dot, so that screen is ~16 pins
+and ~91 dots; and four of the six types start hidden under #865's default. What neither
+changes is how many waypoints compete for the screen — which is exactly what #1105 was
+counting when it decided fifty was too many.
+
+**The maintainer's call, 2026-08-27, with these figures in front of them: ship, and record
+the collision.** NEARBY_TRAILS.md §10 carries it in full, including what would close it
+properly — clipping the amenity types to `NETWORK_BUFFER_FEET` around
+`nearby_trails.geojson`, the way §11 already buffers water. That is a follow-up with its
+own issue, not something this change did quietly either way.
+
 ## 5. NYS OPRHP — the richest, and the least curated where it matters most
 
 The only org publishing something for all eight types, all in one layer registered since
@@ -407,7 +440,12 @@ a fetcher or extending `export_poi.py` each needs its own issue and its own revi
 6. **Measure OSM's POI coverage over this ground** — seven of OSM's eight cells read
    `unprobed`, which is honest and unsatisfying.
    [#771](https://github.com/OurHike/OurHike/issues/771) is the runnable place for it.
-7. **Get `N Vehicle Capacity` out of DEC's `DESCRIP`** (§4a). It is exactly what a hiker
+7. **Clip the amenity types to the trail ring** (§4b) — the follow-up that closes the
+   rule collision #1105 exposed, using §11's existing `NETWORK_BUFFER_FEET` machinery.
+   Ranked here rather than higher because the maintainer took the ship-and-record decision
+   knowingly; ranked at all because 107 waypoints competing for a 16-pin screen is a real
+   cost somebody should get to weigh with a number for what the clip would drop.
+8. **Get `N Vehicle Capacity` out of DEC's `DESCRIP`** (§4a). It is exactly what a hiker
    planning a trailhead start wants, it is in a free-text column 27% of which is
    maintenance shorthand, and #806's lesson is that a plausible read of an uncounted column
    ships wrong data quietly. Needs a coverage measurement before a regex.

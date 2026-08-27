@@ -373,6 +373,54 @@ what fills it is unremarkable: 49 `Scenic View`, 36 `Group Camp`, 25 `Parking Ar
 and no `Water Spigot` in either park — not few, none — so the always-draw rule costs this
 layer nothing at all, and POI_VISIBILITY.md's dot rank is not needed to absorb it.
 
+### The rule got an exception the same day, and it is bigger than the fear
+
+**Everything above is about a layer OurHike did not publish. Hours later it published one**
+— [#1097](https://github.com/OurHike/OurHike/issues/1097), acting on
+[pipeline/POI_COVERAGE_SURVEY.md](../pipeline/POI_COVERAGE_SURVEY.md), ships **8,480 of
+NYS DEC's and NYS OPRHP's waypoints** as `nearby_poi.geojson`: shelters, campsites,
+privies, viewpoints, parking areas and trail bridges, statewide, with **no clip at all**.
+Six of those types are amenities. So the chosen-trail-only rule this section had just
+finished supporting now has a named exception, and pretending otherwise would leave the
+strongest argument in this file pointing at a world that ended.
+
+Measured the same way, by the same file (`spike_oprhp_poi_density.py --artifact`, so the
+figures are comparable by construction rather than by assertion):
+
+| densest z12 screen, 390 × 700 | every category on | default visibility |
+|---|---:|---:|
+| Harriman / Bear Mountain | 64 | **26** |
+| Catskills | 34 | 22 |
+| Adirondacks | 114 | **107** |
+
+Against **~16 pins down the column**. The Adirondack figure is the one to look at and is
+not Harriman's problem at all: 105 of those 107 are DEC primitive tent sites strung along
+the Saranac lake shores, which no survey starting at the A.T. corridor would have
+predicted.
+
+**Two things stop this being as bad as the numbers read, and neither makes it fine.**
+MapLibre culls rather than stacks (`icon-allow-overlap: false`), and since
+[#597](https://github.com/OurHike/OurHike/issues/597) a culled waypoint draws as a dot
+rather than vanishing — so the Adirondack screen is ~16 pins and ~91 dots, not 107 pins.
+And four of the six types (resupply, crossing, viewpoint, parking) start hidden under
+[#865](https://github.com/OurHike/OurHike/issues/865)'s default, which is what the second
+column measures. What neither fixes is the count competing for the screen, which is what
+this section was measuring when it concluded fifty was too many.
+
+**The maintainer took this decision knowingly on 2026-08-27**, after being shown these
+figures and the contradiction: ship, and record the collision here rather than quietly
+widen the rule or quietly break it. Recorded, then, in the plainest form — **the amenity
+half of #783's split is no longer true of every organization on the map.** It holds for
+the A.T. corridor, where `export_poi.py` still clips amenities to it; it does not hold for
+DEC and OPRHP, whose amenities ship statewide.
+
+**What would close it properly**, and is not done: clip `nearby_poi.geojson`'s amenity
+types to `NETWORK_BUFFER_FEET` around `nearby_trails.geojson`, exactly as §11 already
+buffers water — the machinery exists and the ring is already computed. That would keep the
+waypoints near a trail somebody could be walking and drop the lake-shore clusters that
+produce the Adirondack figure. It wants its own issue and its own measurement of what it
+costs.
+
 ### What this does not measure, and it is the bigger half
 
 **This answers the question §10 asked, which was about OPRHP's facilities layer. It is not

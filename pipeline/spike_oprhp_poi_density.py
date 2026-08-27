@@ -26,13 +26,24 @@ this is the "may be fetched for review" case #936 names. The fetch is cached
 under data/spike/oprhp_density/, which is gitignored like everything under
 data/ - CONTRIBUTING.md's "Data does not go in commits".
 
+SECOND QUESTION, ADDED 2026-08-27 (#1097), and it is the one that turned out
+to matter. The measurement above is about a LAYER OurHike does not publish. The
+same day it landed, export_nearby_poi.py started publishing 8,480 of DEC's and
+OPRHP's waypoints - so the question stopped being hypothetical and became "how
+many pins does the artifact we actually ship put on a screen". `--artifact`
+answers that against data/processed/nearby_poi.geojson, reusing every helper
+below unchanged so the two numbers are comparable by construction rather than
+by assertion.
+
 Run:  python spike_oprhp_poi_density.py
+      python spike_oprhp_poi_density.py --artifact
 """
 
 from __future__ import annotations
 
 import json
 import math
+import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -192,7 +203,86 @@ def load() -> list[Point]:
     return points
 
 
+# What a fresh install draws, from client/src/lib/waypointVisibility.py's
+# DEFAULT_SHOWN_TYPES (#865). The other four - resupply, crossing, viewpoint,
+# parking - start hidden and are reachable through Settings or the legend, so
+# a density figure over all eight describes a screen nobody has by default and
+# a figure over these four describes the one most hikers will see. Both are
+# printed, because "what a hiker sees" and "what the artifact can put there"
+# are different questions and each has a reader.
+DEFAULT_SHOWN_TYPES = frozenset({"shelter", "water", "campsite", "privy"})
+
+# The regions worth a number of their own. Harriman is #936's own ground, so
+# its figure is the one directly comparable with the measurement above; the
+# Adirondacks is where the artifact's worst screen actually is, which nobody
+# would have guessed from a survey that began at the A.T. corridor.
+ARTIFACT_REGIONS = (
+    ("Harriman / Bear Mtn", (-74.30, 41.20, -73.95, 41.35), 41.24),
+    ("Catskills", (-74.70, 41.90, -74.00, 42.35), 42.10),
+    ("Adirondacks", (-74.60, 44.20, -74.10, 44.50), 44.35),
+)
+
+ARTIFACT_PATH = Path("data/processed/nearby_poi.geojson")
+
+
+def load_artifact() -> list[Point]:
+    """export_nearby_poi.py's output as Points, or an empty list with a word why.
+
+    `sub_asset` carries the poi_type here rather than an org's own column name -
+    the field is the type this file counts by, and renaming it would be a
+    bigger edit than the reuse is worth.
+    """
+    if not ARTIFACT_PATH.exists():
+        print(f"{ARTIFACT_PATH} is not on disk - run export_nearby_poi.py first.")
+        return []
+    collection = json.loads(ARTIFACT_PATH.read_text())
+    return [
+        Point(
+            lon=feature["geometry"]["coordinates"][0],
+            lat=feature["geometry"]["coordinates"][1],
+            sub_asset=feature["properties"]["poi_type"],
+            park=feature["properties"]["source"],
+        )
+        for feature in collection.get("features", [])
+    ]
+
+
+def report_artifact() -> None:
+    points = load_artifact()
+    if not points:
+        return
+    shown = [p for p in points if p.sub_asset in DEFAULT_SHOWN_TYPES]
+    print(f"{len(points):,} published waypoints; {len(shown):,} in the four a fresh install draws\n")
+
+    for label, subset in (("every category on", points), ("default visibility", shown)):
+        print(f"  {label}:")
+        for name, (west, south, east, north), latitude in ARTIFACT_REGIONS:
+            here = [p for p in subset if west <= p.lon <= east and south <= p.lat <= north]
+            if not here:
+                print(f"    {name:22} no waypoints")
+                continue
+            lon_deg, lat_deg = viewport_degrees(latitude)
+            best, where = densest_window(here, lon_deg, lat_deg)
+            counts: dict[str, int] = {}
+            if where is not None:
+                w, s = where[0] - lon_deg / 2, where[1] - lat_deg / 2
+                for p in here:
+                    if w <= p.lon <= w + lon_deg and s <= p.lat <= s + lat_deg:
+                        counts[p.sub_asset] = counts.get(p.sub_asset, 0) + 1
+            fill = ", ".join(f"{n} {t}" for t, n in sorted(counts.items(), key=lambda kv: -kv[1])[:4])
+            print(f"    {name:22} {len(here):>4} in region · densest z{ZOOM} screen {best:>4}   {fill}")
+    print(
+        f"\n  POI_VISIBILITY.md puts ~16 pins down the column at z{ZOOM}. MapLibre culls the rest"
+        "\n  rather than stacking them (icon-allow-overlap: false), and #597's dot layer draws a"
+        "\n  culled waypoint as a dot - so these are counts of what COMPETES for the screen, not"
+        "\n  of pins a hiker sees at once. features/NEARBY_TRAILS.md §10 carries what that means."
+    )
+
+
 def main() -> None:
+    if "--artifact" in sys.argv:
+        report_artifact()
+        return
     points = load()
     print(f"{len(points)} facility points across {len(PARKS)} parks\n")
 

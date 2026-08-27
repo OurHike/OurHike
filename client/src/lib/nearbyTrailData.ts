@@ -79,10 +79,19 @@
 // A stored copy is served when there is no signal, and kept when a refresh
 // fails. Both are drawing lines that were verified against the manifest of an
 // earlier day, which is exactly what the fetch-only version drew for the whole
-// of a session that started before a publish landed. The refresh runs once per
-// online launch (and once when signal arrives, for a launch that had none), so
-// staleness is bounded by the hiker's own launch cadence - the cadence the
-// fetch-only version was already bound to.
+// of a session that started before a publish landed - and the artifact
+// carries `trail_status`, so a stale copy can be missing a closure, which is
+// why a failed refresh must not be the end of the matter.
+//
+// It is not: `revalidated` is true ONLY when the manifest genuinely answered
+// and the answer verified - the stored copy still carries the published hash,
+// or fresh bytes matched it. Every failure - no manifest, a 404, bytes that
+// match nothing - answers `revalidated: false`, and the caller
+// (lib/useTrailData.ts) tries again when the phone next comes online. That
+// mirrors what the fetch-only version actually did: it retried on every
+// reconnection until a fetch succeeded, and only success ended the asking. A
+// captive portal that says "online" while carrying nothing must not silence
+// this module for the rest of the day.
 
 import { get, set } from 'idb-keyval'
 import { dataUrl, DATA_CONFIGURED, NEARBY_TRAILS_KEY } from './config'
@@ -113,11 +122,20 @@ type StoredNearbyTrails = { bytes: Blob; hash: string }
 export type NearbyTrailsAnswer = {
   url: string
   /**
-   * True when this session compared the answer against the published
-   * manifest - whether that kept the stored copy, replaced it, or fell back
-   * to it after a failed refresh. False only for a copy served without
-   * signal, which is the caller's cue (lib/useTrailData.ts) to ask again
-   * when signal arrives.
+   * The published hash these bytes matched when they crossed the network.
+   * Carried so the caller can tell "the refresh handed back the same bytes"
+   * from "a new release arrived" without touching either blob - and keep
+   * the object URL the map has already parsed in the first case, instead of
+   * making MapLibre re-tile 23.5 MB of identical GeoJSON.
+   */
+  hash: string
+  /**
+   * True only when the manifest genuinely answered this session and the
+   * answer verified - the stored copy still carries the published hash, or
+   * fresh bytes matched it. False for a copy served without signal AND for
+   * every failed refresh, which is the caller's cue (lib/useTrailData.ts)
+   * to ask again when the phone next comes online - see the header's
+   * "stale is served" section for why a failure may not be terminal.
    */
   revalidated: boolean
 }
@@ -138,15 +156,19 @@ async function readStored(): Promise<StoredNearbyTrails | null> {
   return null
 }
 
-function urlFor(stored: StoredNearbyTrails): NearbyTrailsAnswer {
-  return { url: URL.createObjectURL(stored.bytes), revalidated: false }
+function urlFor(stored: StoredNearbyTrails, revalidated: boolean): NearbyTrailsAnswer {
+  return { url: URL.createObjectURL(stored.bytes), hash: stored.hash, revalidated }
 }
 
 /**
  * Loads the nearby-trail network: from the store when there is no signal,
  * and against the published manifest when there is - re-fetching the
  * artifact only when the manifest names a hash the stored copy does not
- * carry. See the module header for what is stored and what stale means.
+ * carry. See the module header for what is stored, what stale means, and
+ * what `revalidated` promises. Looping on a failure that never resolves is
+ * the CALLER's problem to prevent, and lib/useTrailData.ts does - one
+ * attempt per online spell - which is what frees every failure path here to
+ * answer `revalidated: false` honestly.
  */
 export async function loadNearbyTrails(
   online: boolean,
@@ -156,7 +178,7 @@ export async function loadNearbyTrails(
 
   const stored = await readStored()
   if (!online) {
-    return stored === null ? null : urlFor(stored)
+    return stored === null ? null : urlFor(stored, false)
   }
 
   try {
@@ -165,31 +187,30 @@ export async function loadNearbyTrails(
       // No manifest, or a manifest naming no hash. Fresh bytes would be
       // unverifiable and are not drawn (the header's #197 stance) - but the
       // stored copy was verified when it was fetched, so it is served, as it
-      // would be offline. `revalidated` is true because the question was
-      // ASKED this session; answering false here would re-ask on a loop for
-      // as long as the manifest stays unreachable.
-      return stored === null ? null : { ...urlFor(stored), revalidated: true }
+      // would be offline: unrevalidated, because the question got no answer.
+      return stored === null ? null : urlFor(stored, false)
     }
 
     if (stored !== null && stored.hash === expected) {
       // The common launch since #1082: the manifest still names the hash the
       // store carries, and the 23.5 MB artifact is not fetched at all.
-      return { ...urlFor(stored), revalidated: true }
+      return urlFor(stored, true)
     }
 
     const response = await fetch(dataUrl(NEARBY_TRAILS_KEY), { signal })
     // A release exported before this artifact existed, or a bucket a publish
     // has not reached. Not a failure - see the header. The stored copy, where
-    // one exists, outlives a bucket that has gone quiet.
+    // one exists, outlives a bucket that has gone quiet - and stays
+    // unrevalidated, so the asking resumes when the phone next comes online.
     if (!response.ok) {
-      return stored === null ? null : { ...urlFor(stored), revalidated: true }
+      return stored === null ? null : urlFor(stored, false)
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     if ((await sha256Of(bytes)) !== expected) {
       // Bytes that are not what was published are not drawn - and not
-      // stored. The last verified copy stands.
-      return stored === null ? null : { ...urlFor(stored), revalidated: true }
+      // stored. The last verified copy stands, unrevalidated.
+      return stored === null ? null : urlFor(stored, false)
     }
 
     const fresh: StoredNearbyTrails = {
@@ -205,15 +226,14 @@ export async function loadNearbyTrails(
       // verified bytes in hand still draw, and the next launch fetches again
       // exactly as every launch did before this cache existed.
     }
-    return { url: URL.createObjectURL(fresh.bytes), revalidated: true }
+    return { url: URL.createObjectURL(fresh.bytes), hash: expected, revalidated: true }
   } catch (error) {
     // The abort is the caller unmounting - nothing should be handed back,
     // because nothing would revoke it.
     if ((error as { name?: string } | null)?.name === 'AbortError') return null
     // Every other way the refresh can fail - no signal after all, a refused
     // origin - lands where the offline branch already stands: the last
-    // verified copy, or nothing. Revalidated, because the attempt was made;
-    // the next launch tries again.
-    return stored === null ? null : { ...urlFor(stored), revalidated: true }
+    // verified copy, or nothing, unrevalidated either way.
+    return stored === null ? null : urlFor(stored, false)
   }
 }

@@ -639,18 +639,28 @@ export function useTrailData(
    * decision - see that module's header for the line between this cache and
    * that machinery.
    */
+  // One refresh attempt per online spell, cleared when signal drops. This is
+  // the loop guard loadNearbyTrails' contract asks its caller for: every
+  // failed refresh answers `revalidated: false` so the asking can RESUME on
+  // the next real reconnection - a captive portal at a trailhead says
+  // "online" while carrying nothing, and treating its failure as final would
+  // hold yesterday's closures off the map all day - but re-asking within the
+  // same online spell would loop against a manifest that is simply down.
+  const nearbyTried = useRef(false)
   useEffect(() => {
-    // Once, not once per reconnection - with one deliberate exception. An
-    // answer served from the store without signal (`revalidated: false`) is
-    // re-asked when `online` flips true, so a launch in a dead spot still
-    // picks up a publish once signal returns. A revalidated answer is final
-    // for the session: `online` flips whenever the phone loses and regains
-    // signal, which on a trail is often, and re-checking on each would spend
-    // manifest reads answering a question this session already asked. The
-    // state itself is the guard, and it is in the dependency list so that
-    // setting it re-runs this and takes the early return.
+    if (!online) nearbyTried.current = false
+  }, [online])
+
+  useEffect(() => {
+    // Once per online spell, not once per reconnection tick - and never
+    // again once an answer has actually been verified against the manifest.
+    // The state is in the dependency list so that setting it re-runs this
+    // and takes one of the early returns.
     if (!DATA_CONFIGURED) return
-    if (nearbyTrails !== null && (nearbyTrails.revalidated || !online)) return
+    if (nearbyTrails !== null && nearbyTrails.revalidated) return
+    if (!online && nearbyTrails !== null) return
+    if (online && nearbyTried.current) return
+    if (online) nearbyTried.current = true
 
     const controller = new AbortController()
     let wanted = true
@@ -665,16 +675,28 @@ export function useTrailData(
         return
       }
       setNearbyTrails((previous) => {
-        // The upgrade path: a stored copy served offline, replaced or
-        // re-verified once signal arrived. Where the refresh minted a NEW
-        // url, the old one is revoked - safe at this point, not the leak the
-        // guard comment above warns about: MapLibre reads a blob URL once,
-        // when `setData` hands it over, and a URL this state has held has
-        // either been read by now or is being replaced before any map
-        // mounted. Parsed tiles outlive the URL either way.
-        if (previous !== null && previous.url !== answer.url) {
-          URL.revokeObjectURL(previous.url)
+        // Same bytes, by hash: keep the URL the map has already parsed and
+        // throw the new one away, carrying over only what the refresh
+        // learned. Swapping URLs here would make MapLibre re-fetch and
+        // re-tile 23.5 MB of identical GeoJSON mid-hike for pixels that
+        // cannot change. Returning `previous` unchanged when nothing was
+        // learned lets React bail out entirely.
+        if (previous !== null && previous.hash === answer.hash) {
+          URL.revokeObjectURL(answer.url)
+          // OR, never overwrite: a verified answer stays verified even if a
+          // later attempt failed - which the guards above make unreachable,
+          // and cheap insurance against the day they move.
+          const revalidated = previous.revalidated || answer.revalidated
+          return revalidated === previous.revalidated
+            ? previous
+            : { ...previous, revalidated }
         }
+        // A new release arrived: the old URL is revoked - safe at this
+        // point: MapLibre reads a blob URL once, when `setData` hands it
+        // over, and a URL this state has held has either been read by now
+        // or is being replaced before any map mounted. Parsed tiles outlive
+        // the URL either way.
+        if (previous !== null) URL.revokeObjectURL(previous.url)
         return answer
       })
     })

@@ -136,6 +136,7 @@ describe('the nearby-trail network, online with nothing stored', () => {
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
+      hash: await networkHash(),
       revalidated: true,
     })
     // The half that makes the next launch cheap and the next dead spot lit:
@@ -214,6 +215,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
 
     await expect(loadNearbyTrails(false)).resolves.toEqual({
       url: 'blob:nearby',
+      hash: await networkHash(),
       revalidated: false,
     })
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()
@@ -234,6 +236,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
+      hash: await networkHash(),
       revalidated: true,
     })
     expect(fetchedUrls()).not.toContain(`https://data.example/${NEARBY_TRAILS_KEY}`)
@@ -250,6 +253,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
+      hash: await networkHash(),
       revalidated: true,
     })
     expect(fetchedUrls()).toContain(`https://data.example/${NEARBY_TRAILS_KEY}`)
@@ -259,25 +263,32 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     )
   })
 
-  it('keeps the stored copy when the refresh cannot verify what it fetched', async () => {
+  it('keeps the stored copy when the refresh cannot verify what it fetched - unrevalidated', async () => {
     // The manifest moved on but the bucket serves bytes that match neither
     // hash - a publish half-landed, or a tampered response. The fresh bytes
     // are not drawn and not stored (#197); the last verified copy stands,
-    // exactly as it would have offline.
+    // exactly as it would have offline - and `revalidated: false` is what
+    // lets the caller ask again on the next reconnection, because the
+    // artifact carries trail_status and a stale copy can be missing a
+    // closure. The fetch-only version retried on every online flip until a
+    // fetch succeeded; a failure being terminal would be the regression.
     await aStoredCopy('an-earlier-release')
     serve({ manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: 'newer-still' } } } })
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
-      revalidated: true,
+      hash: 'an-earlier-release',
+      revalidated: false,
     })
     expect(vi.mocked(set)).not.toHaveBeenCalled()
   })
 
-  it('keeps the stored copy when the bucket has gone quiet', async () => {
+  it('keeps the stored copy when the bucket has gone quiet - unrevalidated', async () => {
     // The 404 that is ordinary for a fresh phone outlives its ordinariness
     // once a copy is held: the lines were verified on the day they were
-    // fetched, and a bucket mid-publish is no reason to take them down.
+    // fetched, and a bucket mid-publish is no reason to take them down. Not
+    // revalidated: the manifest promised newer bytes the bucket did not
+    // serve, so the question is still open.
     await aStoredCopy('an-earlier-release')
     serve({
       network: 'missing',
@@ -286,20 +297,23 @@ describe('the nearby-trail network, from the store (#1082)', () => {
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
-      revalidated: true,
+      hash: 'an-earlier-release',
+      revalidated: false,
     })
   })
 
-  it('keeps the stored copy when the manifest names no hash any more', async () => {
-    // Revalidated: the question was asked and this is the answer it got.
-    // Answering false would re-ask on a loop for as long as the manifest
-    // stays unreachable.
+  it('keeps the stored copy when the manifest names no hash any more - unrevalidated', async () => {
+    // The question was asked and got NO answer, which is not the same as an
+    // answer: `revalidated: false`, and the loop that answering false here
+    // could cause is the caller's to prevent (useTrailData asks once per
+    // online spell), not this module's to paper over with a wrong claim.
     await aStoredCopy()
     serve({ manifest: { artifacts: {} } })
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
-      revalidated: true,
+      hash: await networkHash(),
+      revalidated: false,
     })
   })
 
@@ -314,6 +328,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
+      hash: await networkHash(),
       revalidated: true,
     })
   })
@@ -328,6 +343,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
 
     await expect(loadNearbyTrails(true)).resolves.toEqual({
       url: 'blob:nearby',
+      hash: await networkHash(),
       revalidated: true,
     })
   })

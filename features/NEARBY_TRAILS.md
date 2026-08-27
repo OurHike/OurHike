@@ -322,8 +322,10 @@ an oversight — what a download contains is #552's decision, and building a sec
 beside `lib/trailData.ts`'s in advance of it would be a shape to unpick later. #1082 closed
 the half that was a launch cost rather than a coverage decision: the last verified copy of
 the **whole** artifact is now kept and served with or without signal, refreshed only when
-the manifest's hash moves. So a phone that has launched online once draws every nearby
-trail offline — a superset of any boundary, with no boundary machinery to unpick. What
+the manifest's hash moves. So a phone that has once fetched and verified the network — an
+online launch where the manifest answered, which is every ordinary one — draws every
+nearby trail offline thereafter: a superset of any boundary, with no boundary machinery
+to unpick. What
 remains outstanding is the paragraph above as written: a **named** download whose contents
 a hiker can reason about, the safety POIs inside it included, cut to #552's unit. The
 cache is not that and does not claim to be — it appears in no download UI and answers no

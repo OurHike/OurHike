@@ -28,7 +28,7 @@
 // Mode re-ranks and re-emphasises; it never hides. Every section below
 // renders in every mode - what changes is the order and which card leads.
 
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import shelterPhoto from '../design-system/assets/photos/section-shelter.jpg'
 import { StatusStrip } from '../chrome/StatusStrip'
 import { ModeSwitch } from '../chrome/ModeSwitch'
@@ -196,7 +196,18 @@ export function Today({
   hasDownload = true,
   onOpenDownloads,
 }: TodayProps) {
-  const entries = journalEntries(pois, currentMile, direction)
+  // Memoized because this screen re-renders for reasons that have nothing to do
+  // with it (#1090). It is the home screen now, so it is mounted while the GPS
+  // clock, the 60-second clock and the hourly conditions check each re-render
+  // the shell above it - and `journalEntries` filters, maps and sorts all 2,837
+  // POIs on the phone to put at most seven rows on screen. Keyed on everything
+  // it reads, so a hiker who is actually walking still gets a rebuilt list on
+  // the fix that moves their mile: this buys back the renders where nothing it
+  // depends on moved, and nothing else.
+  const entries = useMemo(
+    () => journalEntries(pois, currentMile, direction),
+    [pois, currentMile, direction],
+  )
   const readout = splitPosition(position)
 
   // The greeting's estimate: only when the ribbon is the fix window (its

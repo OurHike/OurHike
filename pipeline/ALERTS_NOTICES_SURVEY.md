@@ -124,13 +124,45 @@ against the four polygons.
 
 **No aggregate exists to fetch instead:** `/alerts` 404, `/api/alerts` 404, Drupal's
 JSON:API disabled (`/jsonapi` 404), and `rss.xml` is a six-item site-section index with no
-alerts in it (all probed 2026-08-27). The alerts are per-park pages or nothing —
-parks.ny.gov lists ~250 facilities, so a full scrape is ~250 requests on some cadence,
-against markup with no API contract. Feasible (the ATC scraper's shape: listing-as-content,
-fail-loud parse), not free. The alert mix is also broader than trails — Minnewaska's five
-include no-smoking and a weather-page link — so a scrape needs the same
-mechanically-unambiguous-subset thinking `lib/atc_updates.py` encodes, or the same human
-review, before anything renders as a safety notice.
+alerts in it (all probed 2026-08-27). The alerts are per-park pages or nothing.
+
+**What a scrape would actually cost, measured 2026-08-27** — the "~250 requests on some
+cadence" this section first estimated was a guess, and the real numbers are better in one
+way and decisively worse in another:
+
+| | measured |
+|---|---|
+| park pages | **194** under `/visit/state-parks/` (plus 37 historic sites, 20 nature centers), enumerable from `sitemap.xml` in one request |
+| `robots.txt` | **permits it** — only Drupal internals (`/core/`, `/profiles/`, READMEs) are disallowed, and there is no `Crawl-delay` |
+| page weight | **358 KB** each, so a full sweep is **≈ 68 MB** |
+| parks carrying trails we draw | **187 of 194**, so scoping to "parks we ship" saves nothing |
+
+**And there is no change-aware path, which is the finding that decides it.** The sitemap
+carries `<lastmod>` on every entry and looks like the answer. It is not:
+**Minnewaska's `lastmod` reads 2026-08-04 while its page carries an alert posted
+2026-08-13.** Alerts are referenced entities in Drupal and do not touch the park node's
+timestamp, so a fetcher trusting `lastmod` would skip that park and silently miss a new
+notice — the worst failure available to a safety source, and invisible without testing
+against a park known to have a recent alert. Nor do the pages offer a validator: no
+`ETag`, a `Last-Modified` that is the render time (it answers *now*), and Drupal's own
+`x-drupal-dynamic-cache: UNCACHEABLE (poor cacheability)`.
+
+So a sweep cannot ask "has this changed?" — it can only fetch all 194 and hash the bodies.
+Narrowing by geography is not the escape either: [#1019](https://github.com/OurHike/OurHike/issues/1019)'s
+standing decision is *"Don't limit data from orgs based on geography."*
+
+The alert mix is also broader than trails — Minnewaska's five include no-smoking and a
+weather-page link — so a scrape needs the same mechanically-unambiguous-subset thinking
+`lib/atc_updates.py` encodes, or the same human review, before anything renders as a
+safety notice.
+
+**Verdict: ask OPRHP for a feed before building this.** They run Drupal; a view exposing
+these alerts as JSON is small work for them and would give what NYNJTC's API gives for
+free (§5b). That ask belongs in the licence conversation already open with them
+([#769](https://github.com/OurHike/OurHike/issues/769)). The scrape stays buildable — a
+daily sweep, body-hashed, human-reviewed before publication — and if it is built, the
+68 MB a day and the reason for it belong in the registry entry's notes rather than in
+anybody's memory.
 
 ## 4. NYS DEC — real notices, published like it is 1998
 
@@ -349,7 +381,12 @@ Candidate follow-ups, deliberately not done in this survey:
    OPRHP's full alert list** (§3b) — one sentence of honesty available immediately, ahead
    of any scraper. The measured instance: Lake Awosting closed on OPRHP's own site since
    2025-10, absent from the layer.
-3. **Decide whether the OPRHP per-park alert scrape is worth ~250 pages of surface**
+3. **Ask OPRHP for an alerts feed, and decide the scrape only if they decline** (§3b's
+   measurements): 194 pages at 358 KB with **no usable change signal** — the sitemap's
+   `lastmod` does not move when an alert is posted, and the pages carry no `ETag` — so a
+   sweep is ≈68 MB every time it runs. The old wording of this item, kept so the
+   correction is visible, read: **~~Decide whether the OPRHP per-park alert scrape is
+   worth ~250 pages of surface~~**
    (§3b), or a pilot scoped to the parks whose ground carries the most shipped trail.
    Posted dates and stable ids exist; a feed does not. **NEEDS REVIEW** — this is a
    maintainer-sized cost/benefit call.
@@ -367,7 +404,7 @@ Candidate follow-ups, deliberately not done in this survey:
 | item | why it needs eyes | where |
 |---|---|---|
 | OPRHP web-alert coverage vs. the 4-polygon layer | safety under-coverage, measured on one park only | §3b |
-| OPRHP per-park scrape breadth | ~250 pages, no API contract | §3b, §10(3) |
+| OPRHP per-park scrape breadth | 194 pages × 358 KB ≈ 68 MB a sweep, and **no change signal exists** — measured §3b. Ask for a feed first | §3b, §10(3) |
 | CVC weekly trail conditions | Cloudflare-walled; partner-tier trust question too | §4 |
 | DEC GovDelivery archive | bulletin pages 403 scripted fetches | §4 |
 | NYNJTC alert republication | unstated terms; same call #458 settled for ATC | §5b |

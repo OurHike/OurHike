@@ -52,7 +52,12 @@
 
 import { DOWNLOAD_DETAIL_LEVELS, type DetailLevel } from '../lib/downloadDetail'
 import { offeredHikingDetails } from '../lib/hikingDetail'
-import { hikingSheetSizeBytes } from '../lib/packages'
+import {
+  CORRIDOR_BACKGROUND_PACKAGE,
+  hikingSheetSizeBytes,
+  packageSizeBytes,
+} from '../lib/packages'
+import { NO_PUBLISHED_SIZES, type PublishedSizes } from '../lib/usePublishedSizes'
 import { formatBytes } from '../lib/formatBytes'
 
 export interface DetailOption {
@@ -79,13 +84,23 @@ const LEVEL_LADDER: ReadonlyArray<{ id: DetailLevel; label: string }> = [
 
 /** The USGS raster's tiers, sizes from downloadDetail.ts. Published at all
  *  three, so nothing here is greyed. */
-export function rasterDetailOptions(): DetailOption[] {
+export function rasterDetailOptions(
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
+): DetailOption[] {
   return LEVEL_LADDER.map(({ id, label }) => {
     const detail = DOWNLOAD_DETAIL_LEVELS.find((level) => level.level === id)
     return {
       id,
       label,
-      sizeBytes: detail?.sizeBytes ?? null,
+      // Priced through the package rather than off the tier table, so the
+      // bucket's own figure wins where latest.json carries one and the tier
+      // table is the fallback (#505). Same resolution the hiking sheet gets
+      // below - one path, so the two ladders cannot drift into disagreeing
+      // about where a size comes from.
+      sizeBytes:
+        detail === undefined
+          ? null
+          : packageSizeBytes(CORRIDOR_BACKGROUND_PACKAGE, id, 'standard', published),
       recommended: detail?.recommended ?? false,
     }
   })
@@ -104,14 +119,17 @@ export function rasterDetailOptions(): DetailOption[] {
  * artifact and nothing has built it. Either way the rung is still drawn,
  * greyed, rather than left out - see the header.
  */
-export function hikingDetailOptions(): DetailOption[] {
+export function hikingDetailOptions(
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
+): DetailOption[] {
   const offered = offeredHikingDetails()
   return LEVEL_LADDER.map(({ id, label }) => {
     const detail = offered.find((level) => level.level === id)
     return {
       id,
       label,
-      sizeBytes: detail === undefined ? null : hikingSheetSizeBytes(detail.level),
+      sizeBytes:
+        detail === undefined ? null : hikingSheetSizeBytes(detail.level, published),
       recommended: detail?.recommended ?? false,
     }
   })

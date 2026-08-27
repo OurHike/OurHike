@@ -366,6 +366,48 @@ What this document contributes to that decision rather than beside it:
   artifacts, six `.pmtiles`, zero stretch or context keys. The stretch cut has
   never run at full size.
 
+## The sizes a hiker is shown come from the bucket now (#505)
+
+`downloadDetail.ts` has carried this defect in its own header for a while: its
+figures were copied from a build log, drifted from what was served, and the
+advertised Standard tier was 14.8 MB smaller than the object behind it — "in
+the direction that strands somebody who freed up exactly enough space". The fix
+it names is the one now implemented: `publish.py` measures every artifact it
+uploads, so the figure comes from `latest.json` and the constants become the
+fallback for a phone that has not been able to ask.
+
+**Measured 2026-08-27 against UA** (`environments/ua`, 131 artifacts), which is
+where the drift is visible without running anything:
+
+| artifact | client constant | UA measured | delta |
+|---|---|---|---|
+| `at_basemap_package_z13.pmtiles` | 182,286,799 | 182,610,914 | +324,115 |
+| `at_basemap_package.pmtiles` | 532,459,439 | 533,455,195 | +995,756 |
+| `dem.pmtiles` | 607,265,661 | 607,265,672 | +11 |
+| **Standard sheet, as displayed** | **789.6 MB** | **789.9 MB** | |
+
+One wrinkle that decided the implementation. `PublishedSnapshot.sizes` read
+`transfer_bytes` and only that, which is right for the gzipped text artifacts —
+`size_bytes` is the decoded figure and overstates a download about 4×. But
+`transfer_bytes` exists only on artifacts uploaded since #919: of UA's 131
+entries, **131 carry `size_bytes` and 6 carry `transfer_bytes`, none of them an
+archive.** So the map archives — the only sizes the entrance page actually
+prints — would have gone on reading their constants forever.
+
+`size_bytes` is therefore used where the bucket stores the artifact
+uncompressed, and that is not a guess: `lib/content_types.py` keeps `.pmtiles`
+and `.fgb` out of `COMPRESSIBLE_TYPES` deliberately, because both are read by
+byte range and a stored `Content-Encoding` would make ranges refer to
+compressed offsets. Stored and served are the same bytes by construction. A
+gzipped text artifact with no `transfer_bytes` still yields nothing, because
+there is no honest download figure for one.
+
+**Offline it asks nothing at all.** The read is gated on `online`, the same gate
+`useTrailData.ts` puts on its own manifest fetch — a phone at a trailhead with
+no signal must reach the network zero times, not once-and-fail, and
+`App.trailData.test.tsx` pins that. It then shows the constant, which is the
+right answer for a phone that cannot ask.
+
 ## What was rejected, so nobody re-proposes it
 
 | proposal | why not |

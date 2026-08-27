@@ -11,10 +11,21 @@
 // are composed (lib/packages.ts).
 //
 // Sizes are the published artifacts' exact bytes, per the same honesty bar as
-// everything in packages.ts. Standard is recommended for the same reason it is
-// the preference default (userPreferences.ts): it is the level that fits the
-// storage envelope, and z14 is individual-building detail MapLibre renders
-// acceptably by overzooming z13 anyway.
+// everything in packages.ts - and since #505 they are the FALLBACK rather than
+// the figure: lib/usePublishedSizes.ts reads what publish.py measured on upload
+// out of `latest.json`, and packageSizeBytes prefers that wherever the manifest
+// carries one. These remain because a phone that has not been able to ask still
+// has to print something, and they must stay accurate for exactly that reader.
+//
+// Today the manifest carries no size for any .pmtiles - the six entries were
+// published by the build workflows before sizes were measured, and publish.py's
+// merge lets such an entry "survive without one rather than gaining a guess" -
+// so these numbers are what every hiker currently sees. That changes with no
+// client edit the first time build-basemap.yml and build-dem.yml publish again.
+//
+// Standard is recommended for the same reason it is the preference default
+// (userPreferences.ts): it is the level that fits the storage envelope, and z14
+// is individual-building detail MapLibre renders acceptably by overzooming z13.
 //
 // A LEVEL WHOSE ARTIFACT IS NOT IN THE BUCKET CARRIES `published: false` AND A
 // NULL SIZE, and that is this file's version of packages.ts's `source: null`

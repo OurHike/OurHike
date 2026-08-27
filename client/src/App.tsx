@@ -103,6 +103,7 @@ import {
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
 import { useAvailableBytes } from './lib/useAvailableBytes'
+import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
@@ -1188,6 +1189,10 @@ function App() {
   // below: freeing space is the app's own printed remedy, and #554 measured
   // that the browser's accounting may never notice on its own.
   const { bytes: availableBytes, refresh: refreshAvailableBytes } = useAvailableBytes()
+  // Every size this shell prints for a download comes from the published
+  // manifest where it carries one, and from the catalog's constants where it
+  // does not (#505) - see lib/usePublishedSizes.ts for why both are needed.
+  const publishedSizes = usePublishedSizes()
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -4339,7 +4344,7 @@ function App() {
           title: sheet.title,
           summary: sheet.summary,
           status: sheetStatus(sheet),
-          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel),
+          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel, publishedSizes),
           error: sheetError(sheet),
           // Answered against the card's OWN status, not a second reading of
           // what is downloaded: this notice exists to contradict a card that
@@ -4360,7 +4365,7 @@ function App() {
           detail:
             sheet.id === USGS_SHEET.id
               ? {
-                  options: rasterDetailOptions(),
+                  options: rasterDetailOptions(publishedSizes),
                   value: detailLevel,
                   name: 'usgs-detail',
                   availableBytes,
@@ -4371,7 +4376,7 @@ function App() {
                 }
               : sheet.id === HIKING_SHEET.id
                 ? {
-                    options: hikingDetailOptions(),
+                    options: hikingDetailOptions(publishedSizes),
                     value: hikingLevel,
                     name: 'hiking-detail',
                     availableBytes,

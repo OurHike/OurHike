@@ -23,6 +23,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { archiveKey, archiveUrl, dataUrl } from './config'
 import { getDownloadDetail, type DetailLevel } from './downloadDetail'
 import { getHikingDetail } from './hikingDetail'
+import { NO_PUBLISHED_SIZES, type PublishedSizes } from './usePublishedSizes'
 import type { HikingDetailLevel } from './userPreferences'
 
 /**
@@ -353,8 +354,11 @@ export function offlineBackgroundAvailable(rasterArchiveDownloaded: boolean): bo
  *  option. The raster detail argument is irrelevant to this sheet (none of
  *  its packages are tiered), so any value yields the same sum; 'standard'
  *  is passed as the arbitrary constant. */
-export function hikingSheetSizeBytes(level: HikingDetailLevel): number {
-  return sheetSizeBytes(HIKING_SHEET, 'standard', level)
+export function hikingSheetSizeBytes(
+  level: HikingDetailLevel,
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
+): number {
+  return sheetSizeBytes(HIKING_SHEET, 'standard', level, published)
 }
 
 /** What one sheet will cost in total: every archive of it that is actually
@@ -364,9 +368,10 @@ export function sheetSizeBytes(
   sheet: BackgroundSheet,
   detail: DetailLevel,
   hikingLevel: HikingDetailLevel,
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
 ): number {
   return offeredPackages(sheet).reduce(
-    (total, pkg) => total + packageSizeBytes(pkg, detail, hikingLevel),
+    (total, pkg) => total + packageSizeBytes(pkg, detail, hikingLevel, published),
     0,
   )
 }
@@ -422,7 +427,21 @@ export function packageSizeBytes(
   pkg: OfferedPackage,
   detail: DetailLevel,
   hikingLevel: HikingDetailLevel,
+  published: PublishedSizes = NO_PUBLISHED_SIZES,
 ): number {
+  // The bucket's own measurement wins wherever it exists (#505). The constants
+  // below stop being the source of truth and become the answer for a phone
+  // that has not been able to ask - which is a real state, not a degenerate
+  // one: first run on a slow connection reads them before latest.json lands,
+  // and a build with no bucket at all never gets to ask.
+  //
+  // Looked up by packageArtifactKey rather than by a second mapping from
+  // package to key, because that function is already "the catalog's answer to
+  // give" and the cost of two spellings drifting apart is a size that silently
+  // describes a different archive.
+  const measured = published[packageArtifactKey(pkg, detail, hikingLevel)]
+  if (measured !== undefined) return measured
+
   if (pkg.source.kind === 'tiered') return getDownloadDetail(detail).sizeBytes
   if (pkg.source.kind === 'leveled') {
     const detail = getHikingDetail(hikingLevel)

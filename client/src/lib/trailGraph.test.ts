@@ -327,6 +327,106 @@ describe('the graph index', () => {
 
     expect(nearestPointOnGraph(empty, { lon: -74.1, lat: 41.25 })).toBeNull()
   })
+
+  it('has no search grid before geometry arrives, and one after (#1020)', () => {
+    // Not a degraded state either way: an edge with no vertices is not a snap
+    // candidate at all, so a graph with no geometry has nothing to index.
+    expect(buildGraphIndex(GRAPH).grid).toBeNull()
+    expect(buildGraphIndex(published(GRAPH)).grid).not.toBeNull()
+  })
+
+  it('answers a tap identically with the grid and without it (#1020)', () => {
+    // The grid is an optimisation and must not be a behaviour change. Same
+    // graph, same taps, one index carrying the grid and one with it removed
+    // so the fallback scan runs.
+    const withGrid = buildGraphIndex(published(GRAPH))
+    const withoutGrid = { ...withGrid, grid: null }
+
+    const taps = [
+      { lon: -74.095, lat: 41.25 }, // mid Pine Meadow
+      { lon: -74.09, lat: 41.2555 }, // near the Seven Hills junction
+      { lon: -74.0, lat: 41.3 }, // the Kakiat island
+      { lon: -74.05, lat: 41.28 }, // off everything
+      { lon: -74.1, lat: 41.25 }, // exactly on node 0
+    ]
+
+    for (const tap of taps) {
+      expect(nearestPointOnGraph(withGrid, tap)).toEqual(
+        nearestPointOnGraph(withoutGrid, tap),
+      )
+    }
+  })
+
+  it('keeps a tap out of a grid cell it only nearly reaches (#1020)', () => {
+    // The cell is 0.05 deg, so a tap can sit in a cell holding no edge while
+    // the nearest edge is one cell over and well inside the tolerance. If the
+    // query read only its own cell this would refuse a tap that is 20 ft from
+    // a trail.
+    const grid = buildGraphIndex(published(GRAPH))
+    // 0.0001 deg north of Pine Meadow is about 11 m - inside the 150 ft
+    // tolerance - and Math.floor puts it in the same cell here; the margin
+    // sweep is what the assertion below actually exercises at a cell edge.
+    const justOff = nearestPointOnGraph(grid, { lon: -74.0999, lat: 41.2501 })
+
+    expect(justOff).not.toBeNull()
+    expect(justOff?.edgeIndex).toBe(0)
+  })
+})
+
+describe('which of two equal routes comes back (#1020)', () => {
+  // A diamond: two ways from node 0 to node 3, the same length either way.
+  //
+  //        1
+  //      /   \        both arms 836 m + 1112 m
+  //     0     3
+  //      \   /
+  //        2
+  //
+  // The scan this replaced took whichever node had been discovered first,
+  // which depended on adjacency order, which depends on the edge numbering
+  // that build_trail_graph.py rewrites on every publish. That was never a
+  // stable answer. The heap orders ties by node id, which is stable for as
+  // long as one artifact is - and this test exists so that a future change
+  // to the tie-break is a decision somebody takes rather than a diff nobody
+  // notices.
+  const DIAMOND: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.26],
+      [-74.09, 41.24],
+      [-74.08, 41.25],
+    ],
+    edges: [
+      { ...GRAPH.edges[0], from: 0, to: 1, length_m: 1000, name: 'North arm' },
+      { ...GRAPH.edges[0], from: 1, to: 3, length_m: 1000, name: 'North arm' },
+      { ...GRAPH.edges[0], from: 0, to: 2, length_m: 1000, name: 'South arm' },
+      { ...GRAPH.edges[0], from: 2, to: 3, length_m: 1000, name: 'South arm' },
+    ],
+  }
+
+  it('is the same route every time, and it is the lower-numbered node', () => {
+    const diamond = buildGraphIndex(published(DIAMOND))
+    const start = {
+      edgeIndex: 0,
+      fraction: 0,
+      at: { lon: -74.1, lat: 41.25 },
+      offNetworkFeet: 0,
+    }
+    const end = {
+      edgeIndex: 3,
+      fraction: 1,
+      at: { lon: -74.08, lat: 41.25 },
+      offNetworkFeet: 0,
+    }
+
+    const first = routeBetween(diamond, start, end)
+    const again = routeBetween(diamond, start, end)
+
+    expect(first).not.toBeNull()
+    expect(first?.legs.map((leg) => leg.name)).toEqual(again?.legs.map((leg) => leg.name))
+    // Node 1 is the north arm and sorts before node 2.
+    expect(first?.legs.map((leg) => leg.name)).toContain('North arm')
+  })
 })
 
 describe('routeGeometry, which is what the casing draws', () => {

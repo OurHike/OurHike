@@ -408,8 +408,8 @@ FieldNote                        (new — supersedes DATA_NUDGES.md's ConditionC
   lat, lon, mile   fallback anchor, and what re-anchors an orphan
   observation      optional tag, by poi_type (#1122 for the last three rows):
                      water     flowing | trickling | dry      | not_found
-                     shelter   fine    | damaged   | trash    | not_found
-                     campsite  fine    | damaged   | trash    | not_found
+                     shelter   fine    | problem   | trash    | not_found
+                     campsite  fine    | problem   | trash    | not_found
                      resupply  open    | limited   | closed   | not_found
                      parking   open    | full      | trash    | not_found
                    Four each, which is what the card's two-per-row grid holds.
@@ -417,6 +417,14 @@ FieldNote                        (new — supersedes DATA_NUDGES.md's ConditionC
                    is a fact at a trailhead and a guess at a shelter. It stays
                    in the server's enum either way — an old client still sends
                    it, and a narrowed request enum is a break, not a tidy-up.
+                   `problem` replaced `damaged` on both overnight rows (#1140),
+                   and `damaged` stays in the enum for the same reason `full`
+                   does. The word implied structural damage, so a hiker with
+                   mice in the food box or a fouled privy had no button — and
+                   it was ALSO the only thing licensing the escalation to skip
+                   the picker and open the shelter_repair form directly. That
+                   shortcut went with the word: `problem` opens the picker, as
+                   `dry` already did, because no report type is "mice".
                    The pair the PEEK carries is named per type rather than read
                    off the ends of these rows; client/src/lib/fieldNotes.ts's
                    QUICK_ANSWERS is that table and the reasoning.

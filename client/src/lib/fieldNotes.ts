@@ -86,7 +86,7 @@ export function isNoteScopedType(poiType: string): poiType is NoteScopedType {
  * (backend/scripts/check_openapi_compat.py).
  */
 export type WaterObservation = 'flowing' | 'trickling' | 'dry'
-export type ShelterObservation = 'fine' | 'damaged' | 'trash'
+export type ShelterObservation = 'fine' | 'problem' | 'trash'
 export type ResupplyObservation = 'open' | 'limited' | 'closed'
 export type ParkingObservation = 'open' | 'full' | 'trash'
 /** The one value every type shares: the field contradicting upstream on
@@ -129,13 +129,13 @@ export const OBSERVATION_OPTIONS: Record<NoteScopedType, ObservationOption[]> = 
   ],
   shelter: [
     { id: 'fine', label: 'Good shape' },
-    { id: 'damaged', label: 'Damaged' },
+    { id: 'problem', label: 'Problem' },
     TRASH,
     NOT_FOUND,
   ],
   campsite: [
     { id: 'fine', label: 'Good shape' },
-    { id: 'damaged', label: 'Damaged' },
+    { id: 'problem', label: 'Problem' },
     TRASH,
     NOT_FOUND,
   ],
@@ -162,7 +162,7 @@ export const OBSERVATION_OPTIONS: Record<NoteScopedType, ObservationOption[]> = 
  * {@link OBSERVATION_OPTIONS} - "the ends of the scale" - which worked while
  * every list happened to be ordered best-to-worst. It stops working the
  * moment a list holds two different problems: with `trash` added, the ends
- * rule puts *Trash* on a shelter's peek and hides *Damaged*, and puts *Trash*
+ * rule puts *Trash* on a shelter's peek and hides *Problem*, and puts *Trash*
  * on parking's peek instead of *Full*. A derived rule that is wrong for two
  * of five types is a table wearing a function's clothes, so this is the
  * table.
@@ -184,8 +184,8 @@ export const QUICK_ANSWERS: Record<
   { good: NoteObservation; problem: NoteObservation }
 > = {
   water: { good: 'flowing', problem: 'dry' },
-  shelter: { good: 'fine', problem: 'damaged' },
-  campsite: { good: 'fine', problem: 'damaged' },
+  shelter: { good: 'fine', problem: 'problem' },
+  campsite: { good: 'fine', problem: 'problem' },
   resupply: { good: 'open', problem: 'closed' },
   parking: { good: 'open', problem: 'full' },
 }
@@ -373,6 +373,12 @@ export function observationLabel(observation: string): string {
     // "Fine - 6 days ago, thru-hiker" was the flattest sentence on the card
     // and this one is a sentence.
     fine: 'Good shape',
+    problem: 'Problem',
+    // Kept for notes filed before #1140, exactly as `full` is kept below for
+    // shelter notes filed before #1122. The word narrowed what a thumbs-down
+    // could say - a hiker with mice in the food box had no button - so the
+    // value it stored is not one this build writes any more. It still has to
+    // READ, and it still means what it meant when somebody tapped it.
     damaged: 'Damaged',
     trash: 'Trash',
     full: 'Full',
@@ -392,10 +398,26 @@ export function observationLabel(observation: string): string {
  * Problem's machinery exactly where it is needed (FIELD_NOTES.md §5's
  * hand-off) rather than duplicating problem handling here.
  *
- * `damaged` and `trash` each go straight to the one report type that names
- * them. `dry` opens the picker instead of guessing: no report type is "a dry
- * spring", and pre-picking a wrong one would file a flooding report about the
- * absence of water.
+ * `trash` goes straight to the one report type that names it. `dry` and
+ * `problem` open the picker instead of guessing.
+ *
+ * `PROBLEM` MOVED TO THE PICKER IN #1140, AND THE WORD IS WHY. It used to be
+ * `damaged`, which went straight to the `shelter_repair` form - honest while
+ * the label promised structural damage, because the form matched what had
+ * been tapped. "Problem" covers mice in the food box, a fouled privy, a
+ * missing bear hang, a spring that stopped. Pre-picking a repair form for any
+ * of those is the same mistake this docstring already refuses one line down:
+ * no report type is "a dry spring", and pre-picking a wrong one would file a
+ * flooding report about the absence of water. Broadening the word without
+ * moving the escalation would have made the narrow answer the only one a
+ * hiker could give, one screen later.
+ *
+ * NO `damaged` ARM, and its absence is the point rather than an oversight.
+ * This function is only ever called on a tap in the current session
+ * (`chrome/FieldNoteSection.tsx` holds the tapped answer in state and passes
+ * it straight here), so a value nothing files any more cannot reach it. The
+ * one place a stored `damaged` still surfaces is {@link observationLabel},
+ * which is typed on `string` for exactly that reason.
  *
  * `full` NO LONGER ESCALATES (#1122), and that is a change to the sentence
  * DATA_NUDGES.md wrote rather than a drift from it. `full` now exists only on
@@ -408,9 +430,8 @@ export function observationLabel(observation: string): string {
 export function escalationFor(
   observation: NoteObservation,
 ): { kind: 'form'; type: 'shelter_repair' | 'trash' } | { kind: 'pick' } | null {
-  if (observation === 'damaged') return { kind: 'form', type: 'shelter_repair' }
   if (observation === 'trash') return { kind: 'form', type: 'trash' }
-  if (observation === 'dry') return { kind: 'pick' }
+  if (observation === 'dry' || observation === 'problem') return { kind: 'pick' }
   return null
 }
 

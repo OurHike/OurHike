@@ -1,11 +1,19 @@
-// A shelter's peek, and the two answers it now asks for (#1122).
+// A shelter's peek, and the two answers it now asks for (#1122, #1140).
 //
 // THE SCREEN THIS CHANGE IS ABOUT. The peek is what a hiker sees while still
 // holding the phone at arm's length in front of the thing it describes, and it
 // is where #1122 lands hardest: a shelter used to be asked "Fine or Full?" and
-// is now asked "All good, or Damaged?", with the two ends tinted so which is
+// is now asked "All good, or Problem?", with the two ends tinted so which is
 // which reads before the words do. Nothing photographed the peek's answer row
 // before this recipe existed.
+//
+// THE DOWN END READS "PROBLEM" AND NOT "DAMAGED" SINCE #1140, and that is
+// what this frame is being re-taken for. The point is only visible beside the
+// green word: both ends are now generic, which is what a thumbs-up and a
+// thumbs-down are. "Damaged" was the one word left on this row still making a
+// claim - it named structural damage, so a hiker with mice in the food box or
+// a fouled privy had a card with no button for them. A picture shows the pair
+// reading as a pair, which is a claim about balance that prose cannot make.
 //
 // SEARCH RATHER THAN A TAP ON THE MAP, because a drive cannot aim a canvas
 // click at a pin - the lon/lat under a fixed pixel depends on where the camera
@@ -35,9 +43,9 @@
 // about.
 
 export const caption =
-  'A shelter’s peek — Damaged where Full used to be, and the two ends tinted (#1122)'
+  'A shelter’s peek — a generic thumbs-down where Full used to be (#1122, #1140)'
 export const alt =
-  'Either a waypoint card peeking over the map for a shelter, showing a condition line and two answer buttons — a green one carrying one of the rotating good words and an orange “Damaged” — above a “Notes & details” expander; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'Either a waypoint card peeking over the map for a shelter, showing a condition line and two answer buttons — a green one carrying one of the rotating good words and an orange “Problem” — above a “Notes & details” expander; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 // The POI artifacts are several megabytes and are hashed before they are
 // trusted, so results can take a moment on a cold preview. The drive waits on

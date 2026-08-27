@@ -196,17 +196,30 @@ describe('FieldNoteSection', () => {
     )
   })
 
-  it('routes a damaged shelter straight to the shelter_repair form', () => {
+  it('sends a shelter problem to the picker, not to a form it did not pick', () => {
+    // INVERTED BY #1140, and the inversion is the change. This used to assert
+    // `shelter_repair`, which was right while the button read "Damaged": the
+    // word promised structural damage and the form matched it. "Problem" also
+    // covers mice in the food box, a fouled privy, a missing bear hang - so
+    // the pre-pick would put a repair form in front of somebody who did not
+    // ask for one, which is what lib/fieldNotes.ts refuses for `dry`.
+    //
+    // `undefined` is the picker: chrome/FieldNoteSection.tsx passes the type
+    // only for `{ kind: 'form' }`, so the absent second argument IS the
+    // assertion that no type was chosen for the hiker.
     const onReportProblem = vi.fn()
     renderSection(context({ onReportProblem }), {
       poiType: 'shelter',
       poiId: 'atc_shelters:9',
     })
 
-    fireEvent.click(screen.getByTestId('poi-card-observe-damaged'))
+    fireEvent.click(screen.getByTestId('poi-card-observe-problem'))
     fireEvent.click(screen.getByTestId('poi-card-escalate'))
 
-    expect(onReportProblem.mock.calls[0][1]).toBe('shelter_repair')
+    expect(onReportProblem.mock.calls[0][1]).toBeUndefined()
+    // Still an escalation, though - the offer has to survive, or a broadened
+    // word would have quietly cost a hiker the hand-off entirely.
+    expect(onReportProblem).toHaveBeenCalledTimes(1)
   })
 
   it('offers no escalation after an answer that is not a problem', () => {
@@ -610,7 +623,7 @@ describe('the quick answers, reworked (#1122)', () => {
       })
 
       expect(screen.getByTestId('poi-card-observe-fine')).toBeTruthy()
-      expect(screen.getByTestId('poi-card-observe-damaged')).toBeTruthy()
+      expect(screen.getByTestId('poi-card-observe-problem')).toBeTruthy()
       expect(screen.queryByTestId('poi-card-observe-full')).toBeNull()
       unmount()
     }
@@ -631,7 +644,7 @@ describe('the quick answers, reworked (#1122)', () => {
 
     renderSection(context(), { poiType: 'campsite', poiId: 'atc_campsites:xyz' })
     expect(screen.getByTestId('poi-card-conditions')).toBeTruthy()
-    for (const id of ['fine', 'damaged', 'trash', 'not_found']) {
+    for (const id of ['fine', 'problem', 'trash', 'not_found']) {
       expect(screen.getByTestId(`poi-card-observe-${id}`)).toBeTruthy()
     }
   })
@@ -783,7 +796,7 @@ describe('the quick answers, reworked (#1122)', () => {
     // Two buttons into one flow, stacked, would read as two different reports.
     renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
 
-    fireEvent.click(screen.getByTestId('poi-card-observe-damaged'))
+    fireEvent.click(screen.getByTestId('poi-card-observe-problem'))
 
     expect(screen.getByTestId('poi-card-escalate')).toBeTruthy()
     expect(screen.queryByTestId('poi-card-report-here')).toBeNull()

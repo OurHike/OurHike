@@ -20,30 +20,8 @@ import { DayHikeCard } from './DayHikeCard'
 import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
-import type { Stewards } from '../lib/stewards'
 
 afterEach(cleanup)
-
-const STEWARDS: Stewards = [
-  {
-    provider: 'NYS OPRHP',
-    name: 'NYS Parks',
-    trust: null,
-    licence: null,
-    attribution: null,
-    layers: [],
-    keys: ['oprhp_trails'],
-  },
-  {
-    provider: 'NYNJTC',
-    name: 'NY–NJ Trail Conference',
-    trust: null,
-    licence: null,
-    attribution: null,
-    layers: [],
-    keys: ['nynjtc_long_path'],
-  },
-]
 
 const HIKE: DayHike = {
   id: 'hike-1',
@@ -108,7 +86,6 @@ function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) 
       hike={HIKE}
       resolved={RESOLVED}
       bailOuts={BAIL_OUTS}
-      stewards={STEWARDS}
       units="imperial"
       pace={STANDARD_PACE}
       networkAvailable={true}
@@ -131,10 +108,16 @@ describe('the sourced blocks', () => {
     // Per-leg miles, back since #1002 priced them at the walked metres.
     expect(screen.getByText('2.1 mi')).toBeInTheDocument()
     expect(screen.getByText('4.3 mi')).toBeInTheDocument()
-    // The steward join's names, never the export's raw keys.
-    expect(screen.getByText('NYS Parks')).toBeInTheDocument()
+    // The maintaining organization is NOT on the row any more (#1112): it
+    // repeated per leg, it is the least actionable part of a row read to walk
+    // by, and the published names are long enough to break the layout. Both
+    // spellings are asserted absent, because the bug was the resolved NAME
+    // and the fallback is the raw KEY - dropping one and leaving the other
+    // would look fixed on a phone with no stewards export and nowhere else.
+    expect(screen.queryByText(/NYS Parks/)).not.toBeInTheDocument()
     expect(screen.queryByText(/oprhp_trails/)).not.toBeInTheDocument()
-    // Both orgs counted, in the frame's own sentence.
+    // The credit survives as a COUNT, which is what it always was - orgCount
+    // reads leg.source, so it never depended on the labels that left.
     expect(
       screen.getByText(/Two organizations keep this loop walkable/),
     ).toBeInTheDocument()
@@ -148,6 +131,11 @@ describe('the sourced blocks', () => {
     // "mi 3.2" marker voice, which names a point that never converts.
     expect(screen.getByText('at 3.2 mi')).toBeInTheDocument()
     expect(screen.getByText(/Kakiat Trail \(white\)/)).toBeInTheDocument()
+    // The blaze stays and the organization goes, which is the split #1112
+    // settled: a hiker leaving a route in a hurry navigates by the blaze, and
+    // whose ground it is does not help them get down.
+    expect(screen.queryByText(/NY–NJ Trail Conference/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nynjtc_long_path/)).not.toBeInTheDocument()
   })
 
   it('says so when no marked trail leaves the route, rather than omitting the block', () => {

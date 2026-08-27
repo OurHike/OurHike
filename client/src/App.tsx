@@ -2706,7 +2706,6 @@ function App() {
         hike={cardDayHike}
         resolved={cardResolution}
         bailOuts={cardBailOuts}
-        stewards={stewards}
         units={units}
         pace={pace}
         networkAvailable={graphIndex !== null}

@@ -1,12 +1,28 @@
 // The finished day hike (#980, frame `1l`) - the blocks with a source today.
 //
 // The frame is the richest in its group and this card deliberately renders
-// LESS of it than it draws. What ships: the legs with each organization's own
-// name on its trail, the walked miles, the LOOP badge, the ± elevation and
-// ≈time (#1011), the ways off, and the one-line credit to the orgs that keep
-// the ground walkable - and, since #1008, a date field, the gap rows for a
-// multi-segment walk, and the "Leave this with someone" door (frame D6,
-// screens/LeaveWithSomeone.tsx).
+// LESS of it than it draws. What ships: the legs with their walked miles, the
+// LOOP badge, the ± elevation and ≈time (#1011), the ways off, and the
+// one-line credit to the orgs that keep the ground walkable - and, since
+// #1008, a date field, the gap rows for a multi-segment walk, and the "Leave
+// this with someone" door (frame D6, screens/LeaveWithSomeone.tsx).
+//
+// WHAT CAME BACK OFF, and why (#1112, maintainer's call 2026-08-27): each
+// leg used to name its maintaining organization, and each way off did too.
+// Three things were wrong with it at once. It repeated - one row per leg,
+// usually the same org twice over. It was the least actionable part of a row
+// a hiker reads to walk by: the trail's name and its length are what the
+// walking is done with. And the published names are long enough to break the
+// row - `oprhp_trails` is 68 characters, and #1112 is what that did to the
+// layout.
+//
+// It is NOT an attribution obligation, and that was checked rather than
+// assumed: chrome/SourcesSection.tsx renders each steward's licence and
+// attribution string verbatim, which is where features/SOURCE_REGISTRY.md's
+// "required at submission" text is actually discharged. This card credits by
+// COUNT - "Two organizations keep this loop walkable" - which survives
+// unchanged, and `orgCount` reads `leg.source` rather than a steward name, so
+// the sentence never depended on the labels that left.
 //
 // What waits, and on what (#980 keeps the ledger): the turn list (a naming
 // rule #934 left open), "Starts at · Parking" (#981's pipeline data), the
@@ -47,7 +63,6 @@ import type { DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { dayLongDateLabel } from '../lib/planDisplay'
-import { orgLabelFrom, type Stewards } from '../lib/stewards'
 import { paceEstimate, type PaceProfile } from '../lib/pace'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
@@ -62,7 +77,6 @@ export interface DayHikeCardProps {
    *  stored figures and says which of the two happened. */
   resolved: ResolvedDayHike | null
   bailOuts: BailOut[]
-  stewards: Stewards
   units: UnitSystem
   /**
    * The hiker's own pace (#880), which this card used to ignore (#1040).
@@ -99,7 +113,6 @@ export function DayHikeCard({
   hike,
   resolved,
   bailOuts,
-  stewards,
   units,
   pace,
   networkAvailable,
@@ -117,7 +130,6 @@ export function DayHikeCard({
   // sheet frame - one surface continuing, the bar-to-card convention.
   const [leaving, setLeaving] = useState(false)
 
-  const orgLabel = orgLabelFrom(stewards)
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
   const gaps = dayHikeGaps(hike)
@@ -316,7 +328,6 @@ export function DayHikeCard({
               <span className="day-hike-card__row-figures">
                 {formatDistance(leg.miles, units)}
               </span>
-              <span className="day-hike-card__row-org">{orgLabel(leg.source)}</span>
             </div>
           ))}
         </section>
@@ -344,7 +355,6 @@ export function DayHikeCard({
                   {bailOut.name ?? 'Unnamed trail'}
                   {bailOut.blaze_color !== null && ` (${bailOut.blaze_color})`}
                 </span>
-                <span className="day-hike-card__row-org">{orgLabel(bailOut.source)}</span>
               </div>
             ))
           )}

@@ -2704,30 +2704,32 @@
   color: var(--fg-2);
 }
 
-/* A leg, or a way off it: what the trail is called, how far, and who keeps it
-   walkable - on one line while the three of them fit, and the organization
-   dropping to a line of its own when they do not.
+/* A leg, or a way off it: what the trail is called, and how far.
 
-   FLEX RATHER THAN GRID, BECAUSE THE GRID IS WHAT BROKE (#1112). This row was
-   `1fr auto auto` with both trailing columns `white-space: nowrap`. An `auto`
-   track sized by text that cannot break takes whatever width that text needs
-   and then overflows the card: the `1fr` name track is squeezed to its
-   `min-width: 0` floor, its own text wraps and draws OVER the mileage beside
-   it, and the organization still runs off the right edge and is cut. Reported
-   from a desktop build, where the frame is wider and it happens anyway.
+   WHAT BROKE, AND WHAT ACTUALLY FIXED IT (#1112) - they are two different
+   things, and the second one is not this rule. The row used to carry a THIRD
+   part, the maintaining organization's name, and was `1fr auto auto` with
+   both trailing columns `white-space: nowrap`. An `auto` track sized by text
+   that cannot break takes whatever width that text needs and then overflows
+   the card: the `1fr` name track squeezed to its `min-width: 0` floor, its
+   own text wrapped and drew OVER the mileage, and the organization still ran
+   off the right edge and was cut. Measured against the published
+   `stewards.json` (2026-08-27), `oprhp_trails` carries 68 characters - "New
+   York State Office of Parks, Recreation and Historic Preservation" - so no
+   unusual name was needed to get there.
 
-   No unusual name is needed to reach that state. Measured against the
-   published `stewards.json` (2026-08-27): `oprhp_trails` carries "New York
-   State Office of Parks, Recreation and Historic Preservation" at 68
-   characters, `usdm_drought` 66, `dec_hiking_trails` 55 - three of the six
-   published stewards past 55, and the first two of those cover much of the
-   ground day hikes actually get built on.
+   The organization came OFF this row (maintainer's call, 2026-08-27: it is
+   repeated per leg, it is the least actionable part of the row, and the
+   attribution obligation is `SourcesSection`'s, which renders each steward's
+   licence and attribution verbatim). With it gone the collision has no cause
+   left: two parts, one of which can wrap inside its own box.
 
-   Wrapping flex items cannot collide that way: an item too long for the line
-   moves to the next line instead of drawing over its neighbour. So the row
-   degrades into two lines rather than into a pile-up, and the name keeps the
-   slack (`flex: 1 1 auto`), which holds the arrangement the grid had wherever
-   the row still fits on one line.
+   FLEX ANYWAY, rather than reverting to a two-column grid. A wrapping flex
+   line cannot produce that pile-up whatever is added to it later - an item
+   too long for the line moves to the next line instead of drawing over its
+   neighbour - so this is the guard that keeps a future third part from
+   reintroducing #1112. The name keeps the slack (`flex: 1 1 auto`), which is
+   what holds the one-line arrangement.
 
    The `--mile` variant's rule went with the grid rather than being ported:
    it existed only to re-order the columns so a way-off row leads with its
@@ -2761,17 +2763,7 @@
   white-space: nowrap;
 }
 
-.day-hike-card__row-org {
-  /* NO `nowrap` here, deliberately - it is what this rule is for. A steward's
-     name is the thing being credited, so it wraps onto as many lines as it
-     needs. Clipping it, or an ellipsis, would name an organization and then
-     decline to name it. */
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.day-hike-card__row-figures,
-.day-hike-card__row-org {
+.day-hike-card__row-figures {
   font-size: 0.8125rem;
   color: var(--fg-2);
 }

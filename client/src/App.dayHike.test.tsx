@@ -507,8 +507,10 @@ describe('the day-hike builder, end to end', () => {
     expect(within(card).getByText('If you need to get off')).toBeInTheDocument()
     expect(within(card).getByText(/Seven Hills Trail \(white\)/)).toBeInTheDocument()
     expect(within(card).queryByText(/7\.0 mi/)).not.toBeInTheDocument()
-    // The steward join reaches the card too - names, never raw keys.
-    expect(within(card).getByText('NYS Parks')).toBeInTheDocument()
+    // No organization on the rows since #1112, in either spelling - not the
+    // steward join's name and not the raw key it falls back to. The card
+    // still credits by count, and screens/DayHikeCard.test.tsx holds that.
+    expect(within(card).queryByText('NYS Parks')).not.toBeInTheDocument()
     expect(
       within(card).queryByText(/oprhp_trails|nynjtc_long_path/),
     ).not.toBeInTheDocument()

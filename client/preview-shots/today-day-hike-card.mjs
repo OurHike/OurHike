@@ -23,28 +23,21 @@
 // App.dayHike.test.tsx pins the wiring; say so rather than reading this shot
 // as covering both.
 //
-// SECOND, AND ADDED WITH #1112: that the legs row no longer piles up on
-// itself. It used to be a grid whose two trailing columns could not break, so
-// a long steward name overflowed the card - the trail name squeezed to a
-// stack under the mileage, the organization cut off at the edge. The row is a
-// wrapping flex line now, and this shot is where that is visible.
+// SECOND, AND ADDED WITH #1112: that the legs read as a list again. Each row
+// used to end with its maintaining organization's name, and the published
+// names are long enough to break the row - `oprhp_trails` is 68 characters,
+// and what that did to the layout was pile the trail name up under the
+// mileage and cut the organization off at the card's edge. The organization
+// came off the row; the credit survives as the count sentence under the list,
+// which is in frame here too.
 //
-// WHICH ROW WRAPS DEPENDS ON WHERE THIS RUNS, and only CI can show the
-// defect. `orgLabelFrom` falls back to the raw source key when no steward
-// matches, so a build with no data source prints `oprhp_trails` - 12
-// characters, fits anywhere, and photographs a row that was never broken. CI
-// resolves the real export and prints "New York State Office of Parks,
-// Recreation and Historic Preservation" instead, at 68 characters, which is
-// the row that used to collide. This recipe cannot seed its way past that:
-// `loadTrailData` returns early when the phone holds no trail lines, so a
-// stewards record planted in the store is never even read.
-//
-// So the fixture carries TWO legs on purpose, one per organization - 68
-// characters against 36 - and in CI they photograph as the row that has to
-// wrap and the row that still fits, side by side. That pairing is the whole
-// argument for wrapping the name rather than truncating it. In a sandbox both
-// print short keys and the frame says nothing about #1112; judge that half on
-// the preview comment, not locally.
+// THE FIXTURE KEEPS TWO LEGS, and the reason changed with the fix rather than
+// going away. It used to be one steward of each length, to photograph the row
+// that had to wrap beside the row that fitted. Now it is so the frame shows a
+// LIST - two rows reading `name … miles`, and the "Two organizations keep
+// this loop walkable" sentence beneath them, which is the whole of what the
+// card says about stewards now and is the thing worth checking a reviewer can
+// still see.
 //
 // The card's own contents are day-hike-card.mjs's subject and its header has
 // the three honest states the figures can be in - a preview without

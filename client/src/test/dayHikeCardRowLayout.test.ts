@@ -6,30 +6,27 @@
 // parts are on screen and cannot prove they are not drawn on top of each
 // other, which is the entire defect this file exists for.
 //
-// WHAT BROKE. The row was `grid-template-columns: 1fr auto auto` with both
+// WHAT BROKE. The row used to carry a THIRD part - the maintaining
+// organization - and was `grid-template-columns: 1fr auto auto` with both
 // trailing columns `white-space: nowrap`. An `auto` track sized by unbreakable
 // text claims whatever width that text needs and then overflows the card: the
-// `1fr` name track collapses to its `min-width: 0` floor, its text wraps and
-// draws OVER the mileage, and the organization runs off the right edge and is
+// `1fr` name track collapsed to its `min-width: 0` floor, its text wrapped and
+// drew OVER the mileage, and the organization ran off the right edge and was
 // cut. A hiker reported it from a desktop build, where the frame is wider and
-// it collides anyway.
+// it collided anyway. Measured against the published `stewards.json`
+// (2026-08-27), `oprhp_trails` carries 68 characters, so no unusual name was
+// needed to get there.
 //
-// WHY IT IS THE ORDINARY CASE AND NOT AN EDGE ONE. Measured against the
-// published `stewards.json` (2026-08-27):
+// WHAT FIXED IT is not this file's subject: the organization came off the row
+// (screens/DayHikeCard.tsx's header has the reasoning and the check that it is
+// not an attribution obligation), and with it gone the collision has no cause.
+// screens/DayHikeCard.test.tsx is where THAT is pinned, in both spellings.
 //
-//     oprhp_trails       New York State Office of Parks,
-//                        Recreation and Historic Preservation      68 chars
-//     usdm_drought       National Drought Mitigation Center,
-//                        University of Nebraska-Lincoln            66
-//     dec_hiking_trails  New York State Department of
-//                        Environmental Conservation                55
-//
-// Three of the six published stewards are past 55 characters, and the first
-// and third cover much of the ground day hikes get built on. Nothing local
-// reproduces it - a sandbox build has no stewards export, so `orgLabelFrom`
-// falls back to the raw key (`oprhp_trails`, 12 characters) and the row fits.
-// That is why this is pinned in the stylesheet rather than left to a preview
-// somebody might not look at.
+// WHAT THIS FILE PINS is the guard that keeps it from coming back: the row is
+// a wrapping flex line, so an item too long for it moves to the next line
+// rather than drawing over its neighbour - whatever a later change adds to the
+// row. A two-column grid would render correctly today and quietly reintroduce
+// #1112 the first time a third part is added back.
 //
 // Resolved from the Vitest root (client/), which vite.config.ts pins.
 
@@ -58,7 +55,6 @@ describe('the day-hike card’s rows', () => {
     expect(CARD).toMatch(/className="day-hike-card__row"/)
     expect(CARD).toMatch(/className="day-hike-card__row-name"/)
     expect(CARD).toMatch(/className="day-hike-card__row-figures"/)
-    expect(CARD).toMatch(/className="day-hike-card__row-org"/)
   })
 
   it('lets a row wrap instead of overflowing, which is the fix', () => {
@@ -72,19 +68,13 @@ describe('the day-hike card’s rows', () => {
     expect(row).not.toMatch(/grid-template-columns/)
   })
 
-  it('never lets the organization be clipped at the card’s edge', () => {
-    // The assertion this whole file is for. `nowrap` on a steward's name is
-    // what pushed it off the card - and an ellipsis would be no better, which
-    // is why the rule wraps the name rather than shortening it: naming an
-    // organization and then declining to name it is a display outrunning its
-    // source in the other direction.
-    const org = declarationsOf('.day-hike-card__row-org')
-
-    expect(org).not.toMatch(/white-space:\s*nowrap/)
-    expect(org).not.toMatch(/text-overflow:\s*ellipsis/)
-    // Allowed below its longest word, so a 68-character name wraps inside its
-    // own box rather than widening the row until something overflows.
-    expect(org).toMatch(/min-width:\s*0/)
+  it('keeps no rule for the organization that left the row', () => {
+    // The org came off the row, so its rule went with it. Asserted rather than
+    // just deleted: a stylesheet keeping `.day-hike-card__row-org` alive is an
+    // invitation to put the span back without re-reading why it went, which is
+    // how #1112 would return wearing the same 68-character name.
+    expect(CSS).not.toMatch(/\.day-hike-card__row-org\s*\{/)
+    expect(CARD).not.toMatch(/day-hike-card__row-org/)
   })
 
   it('still refuses to break the mileage, which is a different kind of text', () => {

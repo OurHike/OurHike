@@ -1,7 +1,7 @@
 # OurHike client
 
-The PWA a hiker installs: an offline-first topo map of five trail
-organizations' networks, built with React + Vite + MapLibre, reading a
+The PWA a hiker installs: an offline-first topo map of the Appalachian Trail
+and the trails around it, built with React + Vite + MapLibre, reading a
 downloaded PMTiles archive out of IndexedDB.
 
 The Appalachian Trail is where this started and is still the trail the app is

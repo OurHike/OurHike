@@ -88,11 +88,51 @@ export function useGeolocation(enabled: boolean): GeolocationState {
 
     const id = navigator.geolocation.watchPosition(
       (position) =>
-        setState({
-          status: 'located',
-          at: { lon: position.coords.longitude, lat: position.coords.latitude },
-          accuracyFeet: position.coords.accuracy * METERS_TO_FEET,
-          fixedAt: new Date(position.timestamp),
+        setState((current) => {
+          const at = { lon: position.coords.longitude, lat: position.coords.latitude }
+          // THE STATE WE ALREADY HAVE, where the fix says the phone is exactly
+          // where it was (#1090). React bails out of the render when an updater
+          // returns the state it was given, and every consumer of this hook
+          // reads `status` and `at` and nothing else - so an identical position
+          // arriving as a NEW object is a full re-render of a ~5,100-line App
+          // component, every memo keyed on the fix recomputed, for an answer
+          // that has not moved.
+          //
+          // WHAT THIS CATCHES, AND WHAT IT DOES NOT. It catches the platform
+          // re-delivering an unchanged fix, which `maximumAge: 5_000` below
+          // explicitly permits it to do. It does NOT catch GNSS jitter: a
+          // stationary phone under tree cover reports coordinates that wobble,
+          // and those are not equal. @unvalidated - nobody has measured how
+          // often a watch here repeats a position exactly, so the size of this
+          // is unknown and could be nothing.
+          //
+          // A NOISE RADIUS IS THE THING THAT WOULD CATCH JITTER, and it is
+          // deliberately not written here. Suppressing every move smaller than
+          // some threshold also suppresses the first N feet of somebody
+          // starting to walk, and this app's four ways of hurting a hiker start
+          // with "lost". Picking that number is the field measurement
+          // HIKER_SAFETY.md §5 declines to guess at and #93 is already waiting
+          // on, not something to infer from a fix cadence.
+          //
+          // `accuracyFeet` and `fixedAt` freeze along with the position when
+          // this fires. Nothing reads either one today (grep: this file only),
+          // and a fix at identical coordinates is the same answer about where
+          // somebody is - but a caller that starts reading `fixedAt` as "how
+          // fresh is this" needs to know that it stops advancing here.
+          if (
+            current.status === 'located' &&
+            current.at.lon === at.lon &&
+            current.at.lat === at.lat
+          ) {
+            return current
+          }
+
+          return {
+            status: 'located',
+            at,
+            accuracyFeet: position.coords.accuracy * METERS_TO_FEET,
+            fixedAt: new Date(position.timestamp),
+          }
         }),
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {

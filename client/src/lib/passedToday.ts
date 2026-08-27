@@ -23,7 +23,10 @@ export interface PassedToday {
   /** The hiker's own calendar day, local time - a day on the trail ends when
    *  theirs does, not at UTC midnight over Greenwich. */
   day: string
-  ranges: MileRange[]
+  /** Readonly for lib/walkedMiles.ts's reason: an unchanged step hands back
+   *  the array it was given rather than a copy of it (#1090), so mutating one
+   *  of these would reach into React state. */
+  ranges: readonly MileRange[]
 }
 
 /** The hiker's local date as YYYY-MM-DD. `en-CA` formats exactly that. */
@@ -49,6 +52,15 @@ export function advanceToday(
   const today = localDay(now)
   const base = current !== null && current.day === today ? current : emptyDay(now)
   const ranges = recordStep(base.ranges, fromMile, toMile)
+  // The RECORD THAT CAME IN, where the step changed nothing and the day has
+  // not turned (#1090). `recordStep` hands back the same array on a no-op, so
+  // this is the wrapper keeping the same promise: a jittering fix that records
+  // no new ground costs no re-render and no `localStorage` write.
+  //
+  // `base === current` is the whole of "the day has not turned" - it holds only
+  // where the record passed in was today's, and a new day has to change the
+  // state whatever the step did.
+  if (base === current && ranges === base.ranges) return current
   return { day: today, ranges }
 }
 

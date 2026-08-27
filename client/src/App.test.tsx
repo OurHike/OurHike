@@ -498,14 +498,15 @@ describe('App shell', () => {
   })
 
   it('comes back to the view the hiker left, not to the whole trail, after another tab', async () => {
-    // The bug: the map screen unmounts whenever another tab is showing, so
-    // coming back builds a new map - and the new one was handed the opening
-    // corridor bounds again. Checking the download progress threw away where
-    // someone had zoomed to, every time, and the first-fix jump was a one-way
-    // latch that never brought them back.
-    //
-    // The download is a window now and no longer costs a rebuild at all, but
-    // More still does, and the camera has to survive that trip the same way.
+    // The bug, and then the bug behind it. First pass: the map screen
+    // unmounted whenever another tab was showing, so coming back built a new
+    // map - and the new one was handed the opening corridor bounds again,
+    // throwing away where someone had zoomed to. The fix then was to hand the
+    // REBUILT map the saved camera. #1081 removed the rebuild itself: a trip
+    // through another tab hides the map without unmounting it, so the same
+    // map survives with its camera untouched - the stronger form of the same
+    // promise, and what this test asserts now. If the shell ever goes back
+    // to a rebuild per tab switch, the identity check below is what fails.
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
@@ -524,12 +525,13 @@ describe('App shell', () => {
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    const rebuilt = await liveMap()
-    expect(rebuilt).not.toBe(opening)
-    expect(rebuilt.options.center).toEqual([-78.4, 38.6])
-    expect(rebuilt.options.zoom).toBe(15)
-    // Bounds would re-fit the whole corridor and win over the centre.
-    expect(rebuilt.options.bounds).toBeUndefined()
+    // The same map, still up, still where the hiker put it - not a second
+    // build that was handed the camera back.
+    const survivor = await liveMap()
+    expect(survivor).toBe(opening)
+    expect(MockMap.instances).toHaveLength(1)
+    expect(survivor.center).toEqual({ lng: -78.4, lat: 38.6 })
+    expect(survivor.zoom).toBe(15)
   })
 
   it('opens on the whole corridor when there is no view to come back to', async () => {

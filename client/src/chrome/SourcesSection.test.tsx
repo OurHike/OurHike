@@ -82,9 +82,12 @@ describe('the sources section', () => {
 
   it('does not promise anything about donations while no card carries one', () => {
     // The wireframe's framing sentence continues "...and takes its own
-    // donations — OurHike takes no cut and holds no money". The registry has
-    // no donate fields at all (#932), so that half would be a promise about
-    // something not on the screen.
+    // donations — OurHike takes no cut and holds no money". The registry now
+    // DOES carry donate fields for three of its seven stewards, added on this
+    // branch - so the reason changed on 2026-08-27 even though the assertion
+    // did not. What is still missing is a rendered link on the card, and that
+    // half would be a promise about something not on the screen. See the
+    // component's own comment, which carries the full version.
     render(<SourcesSection stewards={BOTH} />)
 
     expect(screen.queryByText(/donation|donate|money/i)).not.toBeInTheDocument()

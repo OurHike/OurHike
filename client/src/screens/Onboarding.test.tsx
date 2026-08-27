@@ -69,12 +69,38 @@ describe('Onboarding', () => {
     expect(screen.getByText(/no account\. nothing to sign up for\./i)).toBeInTheDocument()
   })
 
-  it('says memberships fund the ATC and the other organizations, not the ATC alone', () => {
+  // This test used to be titled "says memberships fund the ATC and the other
+  // organizations, not the ATC alone", and it demanded the claim rather than
+  // guarding against it: a /fund/i node containing both /ATC/i and /other
+  // organizations/i. A test that pins a false sentence is worse than no test,
+  // because it makes the sentence expensive to fix and looks like diligence
+  // while doing it. Both halves are replaced - the title as much as the
+  // matchers, since the title is what the next reader takes as the contract.
+  it('sends a hiker to the organizations instead of claiming OurHike funds them', () => {
     render(<Onboarding {...PROPS} />)
 
-    const fundingNote = screen.getByText(/fund/i)
-    expect(fundingNote).toHaveTextContent(/ATC/i)
-    expect(fundingNote).toHaveTextContent(/other organizations/i)
+    const money = screen.getByText(/takes no cut and holds no money/i)
+    expect(money).toHaveTextContent(/ATC/i)
+    expect(money).toHaveTextContent(/other organizations/i)
+    expect(money).toHaveTextContent(/directly/i)
+  })
+
+  // The guard, and the reason this file is in the diff rather than only the
+  // component. OurHike sends no money to any organization (maintainer,
+  // 2026-08-27), so no sentence on this step may put OurHike, or anything a
+  // hiker would buy from OurHike, in front of the verb "fund". Asserted against
+  // the value-prop step's whole rendered text rather than one node, because the
+  // defect this replaces spanned two lines and any node-scoped matcher can be
+  // walked around by reflowing the JSX. Scope is that step alone: Onboarding
+  // renders one step at a time and this test never advances past the first.
+  // It is a guard against the sentence coming back, not a proof that no other
+  // screen can say it.
+  it('never puts OurHike or a purchase in front of "fund"', () => {
+    const { container } = render(<Onboarding {...PROPS} />)
+
+    expect(container.textContent).not.toMatch(
+      /\b(OurHike|membership|memberships|donation|donations|revenue|purchase|purchases|subscription|subscriptions|pass|passes)\b[^.]{0,80}\bfund(s|ed|ing)?\b/i,
+    )
   })
 
   it('offers the hiking sheet\u2019s three levels on the map-size step, with the real figures', async () => {

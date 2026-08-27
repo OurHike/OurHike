@@ -107,10 +107,47 @@ that draws it ("Bear Parks App w/ Closures"), and two false positives. The two
 ### 3b. The website, measured against the layer
 
 parks.ny.gov is Drupal 10 (its own generator tag), and **every park page carries an
-Alerts block, server-rendered** — title, a "Posted <date>" stamp, body, and stable
-per-alert element ids (`alert--<park>-<alert>--…`), which is what a scraper would key on.
-Minnewaska's page on 2026-08-27: five alerts, posted 2025-01-01 through **2026-08-13**,
-including "Lake Awosting Carriage Road Closed for Restoration" (posted 2025-10-24).
+Alerts block, server-rendered**. Minnewaska's page on 2026-08-27: five alerts, posted
+2025-01-01 through **2026-08-13**, including "Lake Awosting Carriage Road Closed for
+Restoration" (posted 2025-10-24).
+
+**The markup is better than a scrape usually gets, and this section first understated
+it.** One alert, verbatim off the live page:
+
+```html
+<section class="c-alert is-dismissible" id="40611-110711"
+         aria-labelledby="alert--40611-110711--label">
+  <div class="c-alert__content">
+    <h2 class="c-alert__title" id="alert--40611-110711--label">
+      Boating and SCUBA diving will have a delayed start time on August 30th
+    </h2>
+    <div class="c-alert__message" id="alert--40611-110711--description">…</div>
+    <div class="c-alert__date">
+      Posted <time datetime="2026-08-13T04:02:00Z">August 13, 2026 12:02 am</time>
+    </div>
+  </div>
+</section>
+```
+
+Three properties that decide what a parser costs:
+
+- **A stable per-alert identity.** The `id` is `{park node}-{alert node}` — `40611-110711`
+  — so a notice has a real `notice_id` without one being minted, and an alert can be
+  followed across bakes.
+- **A machine-readable date.** `<time datetime="…Z">` is ISO 8601 in UTC, so `updated_at`
+  is read rather than parsed out of the printed "August 13, 2026 12:02 am".
+- **Semantic BEM classes** — `c-alert__title` / `__message` / `__date` — rather than
+  positional guesswork.
+
+So the parse would be *cheaper and less fragile than ATC's*, which needs a regex over
+prose to find a mile. What it would not get is a category: the icon is `sprite…#bell` on
+all five alerts, carrying no severity or type, so `category` would be null exactly as it
+is for NYNJTC (features/ORG_NOTICES.md §2).
+
+**And the same five alerts show why review is not optional.** "No Smoking" and "Live
+Minnewaska Weather" sit in identical markup to the carriage-road closure. Nothing in the
+page distinguishes a trail closure from a park rule, which is the mechanically-unambiguous
+-subset problem `lib/atc_updates.py` solves for ATC by hand.
 
 **That closure is not in the GIS layer.** Four polygons, none of them Minnewaska — so a
 hiker reading OurHike's OPRHP-derived closure marks sees the Harriman and Breakneck areas
@@ -158,7 +195,9 @@ safety notice.
 
 **Verdict: ask OPRHP for a feed before building this.** They run Drupal; a view exposing
 these alerts as JSON is small work for them and would give what NYNJTC's API gives for
-free (§5b). That ask belongs in the licence conversation already open with them
+free (§5b) — and the alerts are already structured entities with their own node ids and
+ISO timestamps, so such a view would be exposing what the page markup above proves they
+hold, not asking them to author anything new. That ask belongs in the licence conversation already open with them
 ([#769](https://github.com/OurHike/OurHike/issues/769)). The scrape stays buildable — a
 daily sweep, body-hashed, human-reviewed before publication — and if it is built, the
 68 MB a day and the reason for it belong in the registry entry's notes rather than in

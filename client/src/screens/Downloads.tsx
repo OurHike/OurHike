@@ -180,6 +180,11 @@ const TRAIL_DATA_LABEL: Record<TrailDataAsset['id'], string> = {
   waypoints: 'Waypoints',
   elevation: 'Elevation profile',
   'nearby-trails': 'Nearby trails network',
+  // Named for what it DOES rather than for what it is. "Junction graph" is the
+  // pipeline's word and answers no question a hiker has; this row exists so
+  // somebody can tell whether the day-hike builder will work at a trailhead
+  // with no signal (#1050).
+  'day-hike-routing': 'Day-hike routing',
 }
 
 /** One trail-data artifact's state: a measured figure where the store holds

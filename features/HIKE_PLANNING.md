@@ -367,6 +367,31 @@ Also still waiting on their own issues: recording a finished walk (#982); freeha
 
 **The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
+## The graph a phone keeps (#1050, 2026-08-27)
+
+The junction graph was fetched over the network on every launch and written nowhere, so a hiker who downloaded the corridor at home, drove to Harriman and opened the app at the trailhead with no signal got a day-hike builder that refused every tap. That is the situation this app exists for, and the builder worked at the hostel and not at the trailhead.
+
+**All three artifacts ride with the corridor download** — the maintainer's decision, taken against two findings that both point the same way.
+
+**There is no cheap "routing only" option, and there was when the issue was written.** #1050's body proposes `trail_graph.json` alone as the minimum that routes. #1093 removed the chord fallback from snapping the same week, so `nearestPointOnGraph` now skips every edge with no vertices, `canSnapToGraph` is false for the routing half alone, and `tapAt` returns `NETWORK_STILL_ARRIVING` for every tap. A phone holding graph-without-geometry opens a builder that refuses everything with *"OurHike hasn't got this area's trail lines yet… Try again in a moment"* — a sentence `lib/dayHikeDraft.ts` already documents as false when the geometry is never coming. **The minimum set that works offline is graph plus geometry.**
+
+**And the sizes in the issue are decoded rather than wire.** Measured against `data.ourhike.org` on 2026-08-27 with `Accept-Encoding: gzip`:
+
+| artifact | wire | decoded |
+|---|---|---|
+| `trail_graph.json` | 1,204,136 B | 7,475,349 B |
+| `trail_graph_geometry.json` | 4,695,479 B | 17,285,133 B |
+| `trail_graph_elevation.json` | 54,902 B | 277,331 B |
+| **all three** | **5.95 MB** | **25.04 MB** |
+
+So taking everything costs about **2% on top of a corridor package that is already ~314 MB of tiles**. The issue's reasoning — "a hiker on the A.T. who never builds a day hike should probably not pay 17 MB for geometry" — was priced against the wrong number: they pay 4.7 MB once, on a download they have already agreed to. What 25 MB actually costs is IndexedDB, which is a different argument.
+
+**The store is `{bytes, sha256, manifest version, fetchedAt}`, verified on write.** A phone offline cannot reach `latest.json`, so it cannot re-derive what the bytes it holds should hash to — it has to trust a hash recorded at write time, which is safe because nothing is written that did not match the manifest when it was fetched. The template is `lib/nearbyTrailData.ts`, which already stores a 7.3 MB artifact against its published hash. It is **not** `lib/conditionsCache.ts`, which #1050's own comment names: that module stores `{document, storedAt}` — no bytes, no hash, no version — and its `MAX_CACHED_BYTES = 2 MB` would silently delete a 7.5 MB graph on every write.
+
+**Two things the store does that nothing else in the client did.** It records the **manifest version**, which is what lets a phone tell *the graph I hold* from *the graph my saved hike was priced against* — the same hazard `lib/dayHikes.ts` refuses to persist an `edgeIndex` over, one level up. It is recorded rather than acted on: what it enables is a card that can say its cached figures came from a different release, and that is a change to what a screen **says**, which wants its own before-and-after. And it **checks for room before writing**, which nothing in this codebase did for a vector artifact. A quota error is caught either way, so this is not about correctness — it is about not letting a browser under pressure evict a hiker's 314 MB downloaded map to make room for a routing graph.
+
+The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it.
+
 ## Where a plan lives
 
 On the phone, in the same IndexedDB the map already uses — SEGMENTS.md's answer, and nothing here changes it.

@@ -54,7 +54,12 @@ import {
   TRAIL_GRAPH_GEOMETRY_KEY,
   TRAIL_GRAPH_KEY,
 } from './config'
-import { publishedHash } from './dataManifest'
+import { publishedHash, publishedSnapshot } from './dataManifest'
+import {
+  readStoredGraph,
+  writeStoredGraph,
+  type StoredGraphArtifact,
+} from './trailGraphStore'
 import { sha256Of } from './trailData'
 import { buildGraphIndex, type TrailGraph, type TrailGraphIndex } from './trailGraph'
 
@@ -156,8 +161,28 @@ export function isSettledAbsence(because: TrailNetworkAbsence): boolean {
  * is that it is a DIFFERENT ordinary state each time, and the caller is told
  * which.
  */
-export async function loadTrailGraph(signal?: AbortSignal): Promise<TrailGraphLoad> {
+export async function loadTrailGraph(
+  signal?: AbortSignal,
+  online = true,
+): Promise<TrailGraphLoad> {
   if (!DATA_CONFIGURED) return { kind: 'absent', because: 'unconfigured' }
+
+  // STORE FIRST WHEN THERE IS NO CONNECTION (#1050), which is the whole point
+  // of the store: a hiker at a trailhead with no signal is the situation this
+  // app exists for, and until this branch existed they got the builder's
+  // refusal there and a working one at the hostel.
+  //
+  // The stored bytes are trusted without re-asking the manifest, because a
+  // phone offline cannot reach it - and nothing is ever written that did not
+  // match the manifest when it was fetched. See lib/trailGraphStore.ts.
+  if (!online) {
+    const stored = await readStoredGraph(TRAIL_GRAPH_KEY)
+    if (stored === null) return { kind: 'absent', because: 'unreachable' }
+    const parsed = await parseStoredGraph(stored)
+    return parsed === null
+      ? { kind: 'absent', because: 'not-a-graph' }
+      : { kind: 'graph', index: parsed }
+  }
 
   try {
     const response = await fetch(dataUrl(TRAIL_GRAPH_KEY), { signal })
@@ -179,6 +204,11 @@ export async function loadTrailGraph(signal?: AbortSignal): Promise<TrailGraphLo
     // published ones are a graph - a manifest and an artifact can be right
     // about each other and still be the wrong file.
     if (!isTrailGraph(parsed)) return { kind: 'absent', because: 'not-a-graph' }
+
+    // Kept for the next launch, verified. A refusal here costs nothing: the
+    // bytes in hand still route this session, exactly as they did before the
+    // store existed.
+    void keepVerified(TRAIL_GRAPH_KEY, bytes, expected, response, signal)
 
     return { kind: 'graph', index: buildGraphIndex(parsed) }
   } catch {
@@ -241,12 +271,17 @@ function isGraphGeometry(value: unknown): value is Array<Array<[number, number]>
 export async function fetchTrailGraphGeometry(
   edgeCount: number,
   signal?: AbortSignal,
+  online = true,
 ): Promise<Array<Array<[number, number]>> | null> {
   if (!DATA_CONFIGURED) return null
 
+  if (!online)
+    return await readStoredJson(TRAIL_GRAPH_GEOMETRY_KEY, isGraphGeometry, edgeCount)
+
   try {
     const response = await fetch(dataUrl(TRAIL_GRAPH_GEOMETRY_KEY), { signal })
-    if (!response.ok) return null
+    if (!response.ok)
+      return await readStoredJson(TRAIL_GRAPH_GEOMETRY_KEY, isGraphGeometry, edgeCount)
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     const expected = await publishedHash(TRAIL_GRAPH_GEOMETRY_KEY, { signal })
@@ -257,9 +292,13 @@ export async function fetchTrailGraphGeometry(
     if (!isGraphGeometry(parsed)) return null
     if (parsed.length !== edgeCount) return null
 
+    void keepVerified(TRAIL_GRAPH_GEOMETRY_KEY, bytes, expected, response, signal)
     return parsed
   } catch {
-    return null
+    // A refused origin, a dropped connection, a signal that turned out not to
+    // be one. The stored copy answers where there is one - the same fallback
+    // the offline branch above takes, arrived at from the other direction.
+    return await readStoredJson(TRAIL_GRAPH_GEOMETRY_KEY, isGraphGeometry, edgeCount)
   }
 }
 
@@ -312,12 +351,19 @@ function isGraphElevation(value: unknown): value is Array<[number, number] | nul
 export async function fetchTrailGraphElevation(
   edgeCount: number,
   signal?: AbortSignal,
+  online = true,
 ): Promise<Array<[number, number] | null> | null> {
   if (!DATA_CONFIGURED) return null
 
+  if (!online) {
+    return await readStoredJson(TRAIL_GRAPH_ELEVATION_KEY, isGraphElevation, edgeCount)
+  }
+
   try {
     const response = await fetch(dataUrl(TRAIL_GRAPH_ELEVATION_KEY), { signal })
-    if (!response.ok) return null
+    if (!response.ok) {
+      return await readStoredJson(TRAIL_GRAPH_ELEVATION_KEY, isGraphElevation, edgeCount)
+    }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     const expected = await publishedHash(TRAIL_GRAPH_ELEVATION_KEY, { signal })
@@ -328,7 +374,80 @@ export async function fetchTrailGraphElevation(
     if (!isGraphElevation(parsed)) return null
     if (parsed.length !== edgeCount) return null
 
+    void keepVerified(TRAIL_GRAPH_ELEVATION_KEY, bytes, expected, response, signal)
     return parsed
+  } catch {
+    return await readStoredJson(TRAIL_GRAPH_ELEVATION_KEY, isGraphElevation, edgeCount)
+  }
+}
+
+/**
+ * Keep a verified artifact for the next launch, and never let that failing
+ * cost the session the bytes it already holds.
+ *
+ * The manifest version is read from the same snapshot the hash came from where
+ * one is available. It is recorded rather than acted on - see
+ * lib/trailGraphStore.ts's header for what it is for.
+ */
+async function keepVerified(
+  publishedKey: string,
+  bytes: Uint8Array,
+  hash: string,
+  response: Response,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    const snapshot = await publishedSnapshot({ signal })
+    await writeStoredGraph(publishedKey, {
+      bytes: new Blob([bytes as unknown as BlobPart], {
+        type: response.headers.get('content-type') ?? 'application/json',
+      }),
+      hash,
+      version: snapshot.version,
+    })
+  } catch {
+    // Storing is an improvement on the NEXT launch, never a condition of this
+    // one. Every way this can fail ends here on purpose.
+  }
+}
+
+/**
+ * A stored artifact, parsed and held to the same shape and edge-count checks a
+ * fresh fetch is.
+ *
+ * The checks are not skipped for stored bytes, and the edge-count one is the
+ * reason: a phone can hold a graph from one release and a geometry file from
+ * the next, and edge 40 drawn from edge 41's vertices is a route on the wrong
+ * trail. That check is what makes a mismatched PAIR degrade to no highlight
+ * rather than to a wrong one, and it matters more offline than online, because
+ * offline there is no fresh copy coming to correct it.
+ */
+async function readStoredJson<T>(
+  publishedKey: string,
+  isShape: (value: unknown) => value is T & { length: number },
+  edgeCount: number,
+): Promise<T | null> {
+  const stored = await readStoredGraph(publishedKey)
+  if (stored === null) return null
+  try {
+    const parsed: unknown = JSON.parse(await stored.bytes.text())
+    if (!isShape(parsed)) return null
+    if (parsed.length !== edgeCount) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/** A stored graph, parsed and shape-checked - {@link readStoredJson} without
+ *  an edge count to check against, because this file IS what defines one. */
+async function parseStoredGraph(
+  stored: StoredGraphArtifact,
+): Promise<TrailGraphIndex | null> {
+  try {
+    const parsed: unknown = JSON.parse(await stored.bytes.text())
+    if (!isTrailGraph(parsed)) return null
+    return buildGraphIndex(parsed)
   } catch {
     return null
   }

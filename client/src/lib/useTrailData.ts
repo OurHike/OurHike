@@ -717,12 +717,13 @@ export function useTrailData(
       return
     }
     // Offline is not a fetch worth making, and it is not a fault either: it
-    // is the one absence a connection cures, so it is recorded as that and
-    // the effect will run again when `online` flips.
-    if (!online) {
-      setGraphAbsence('unreachable')
-      return
-    }
+    // OFFLINE NO LONGER MEANS ABSENT (#1050). Until the graph was stored,
+    // this branch set 'unreachable' and returned: a hiker at a trailhead with
+    // no signal got a builder that refused every tap, having downloaded the
+    // corridor at home the night before. `loadTrailGraph` now reads the store
+    // when there is no connection, and 'unreachable' is what it answers when
+    // the store is empty too - which is the same sentence, arrived at only
+    // when it is true.
     // A settled absence is not re-requested. Without this the reason below
     // becoming a dependency would put the app back on the bucket every time
     // React re-ran the effect, for an answer that cannot have changed.
@@ -731,7 +732,7 @@ export function useTrailData(
     const controller = new AbortController()
     let wanted = true
 
-    void loadTrailGraph(controller.signal).then((load) => {
+    void loadTrailGraph(controller.signal, online).then((load) => {
       if (!wanted) return
       if (load.kind === 'graph') {
         // A VALID GRAPH IS NOT THE SAME AS A ROUTABLE ONE (#1044 review). An

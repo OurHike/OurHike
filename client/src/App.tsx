@@ -2947,8 +2947,11 @@ function App() {
 
     const edgeCount = graphIndex.graph.edges.length
     void Promise.all([
-      fetchTrailGraphGeometry(edgeCount, controller.signal),
-      fetchTrailGraphElevation(edgeCount, controller.signal),
+      // `online` is passed rather than assumed (#1050): offline both read the
+      // store, which is what makes a drawn or followed walk work at a
+      // trailhead with no signal instead of only at the hostel.
+      fetchTrailGraphGeometry(edgeCount, controller.signal, online),
+      fetchTrailGraphElevation(edgeCount, controller.signal, online),
     ]).then(([geometry, elevation]) => {
       if (!wanted) return
       let next = graphIndex
@@ -2963,7 +2966,7 @@ function App() {
       wanted = false
       controller.abort()
     }
-  }, [wantsGraphGeometry, graphIndex, dayHikeIndex])
+  }, [wantsGraphGeometry, graphIndex, dayHikeIndex, online])
 
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to

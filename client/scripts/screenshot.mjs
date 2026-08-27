@@ -227,6 +227,33 @@ async function launchChromium() {
   }
 }
 
+/**
+ * `localhost`, NOT `127.0.0.1`, and the difference is the whole of what a
+ * shot can see (#1093).
+ *
+ * The R2 bucket the app fetches its release artifacts from answers a
+ * cross-origin request only for origins on its allowlist, and it reflects the
+ * `Origin` header back rather than sending `*`. Measured against
+ * data.ourhike.org on 2026-08-27:
+ *
+ *   Origin: http://localhost:4173   ->  access-control-allow-origin: http://localhost:4173
+ *   Origin: http://127.0.0.1:4173   ->  (none)
+ *   Origin: https://ourhike.org     ->  access-control-allow-origin: https://ourhike.org
+ *   Origin: https://evil.example    ->  (none)
+ *
+ * So an app served from `127.0.0.1` has every artifact fetch fail CORS, and
+ * the frame is of an app holding no trail data - which is what
+ * #1024 describes and had attributed to an unset `VITE_DATA_BASE_URL`. That
+ * was not it: this pull request's own preview build carries
+ * `https://data.ourhike.org` and its camera still photographed a data-less
+ * app, because the camera's own origin was the one the bucket declines.
+ *
+ * The loopback address and the name are the same machine and are NOT the same
+ * origin, which is the part that makes this invisible: everything works, the
+ * server is right there, and only the bucket ever notices the difference.
+ */
+const SHOT_HOST = 'localhost'
+
 /** A port the OS says is free, rather than a guess.
  *
  *  Guessing is what this replaced, and the failure it produced was slow and
@@ -240,7 +267,9 @@ async function freePort() {
   return await new Promise((done, fail) => {
     const probe = createServer()
     probe.on('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
+    // The same host vite is about to bind, so "free" is free on the address
+    // that will actually be listened on rather than on its sibling.
+    probe.listen(0, SHOT_HOST, () => {
       const { port } = probe.address()
       probe.close(() => done(port))
     })
@@ -262,13 +291,13 @@ async function startServer({ dist }) {
   const args = dist ? ['preview'] : []
   const child = spawn(
     bin,
-    [...args, '--port', String(port), '--strictPort', '--host', '127.0.0.1'],
+    [...args, '--port', String(port), '--strictPort', '--host', SHOT_HOST],
     {
       cwd: CLIENT_DIR,
       stdio: 'ignore',
     },
   )
-  const url = `http://127.0.0.1:${port}/`
+  const url = `http://${SHOT_HOST}:${port}/`
   let exited = null
   child.on('exit', (code) => {
     exited = code

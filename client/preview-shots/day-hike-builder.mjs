@@ -6,17 +6,26 @@
 // card, the saved list and a walk under way; the builder itself - the surface
 // a tap is answered on - had no shot.
 //
-// THE PREVIEW CAN REACH IT NOW, WHICH IS NEW AND WAS CHECKED RATHER THAN
-// ASSUMED. `day-hike-card.mjs` and `following-a-day-hike.mjs` both say the
+// THE CAMERA CAN REACH IT NOW, AND FINDING OUT WHY IT COULD NOT TOOK TWO
+// TRIES. `day-hike-card.mjs` and `following-a-day-hike.mjs` both say the
 // builder is unreachable because "no preview holds `trail_graph.json`" and
 // "the preview build carries an empty VITE_DATA_BASE_URL (#1024, measured
-// 2026-08-25)". Measured again 2026-08-27 against this pull request's own
-// deployed preview and both halves have changed: the built page preloads
+// 2026-08-25)". Measured again 2026-08-27 and neither half survives: this
+// pull request's own deployed preview preloads
 // `https://data.ourhike.org/trails_overview.geojson`, so the build DOES carry
 // a data source, and that bucket answers 200 for `trail_graph.json`
 // (7,475,349 bytes), `trail_graph_geometry.json` (17,285,133) and
 // `trail_graph_elevation.json` (277,331), with `latest.json` naming a sha256
-// for each. So the door opens and this drive can walk through it.
+// for each.
+//
+// This recipe's own first CI run is what found the rest. It photographed the
+// withheld door under "the trail network has not downloaded yet, and it needs
+// a connection" - a FETCH FAILURE, not a slow one - against a build that
+// plainly had the bucket. The cause was the camera's origin: screenshot.mjs
+// served the app from `127.0.0.1`, which is not on the bucket's CORS
+// allowlist while `localhost` is. Its `SHOT_HOST` note carries the
+// measurement. So this drive walks through the door now, and #1024's stated
+// cause was never the real one.
 //
 // TWO HONEST FRAMES, ONE RECIPE - the shape day-hike-card.mjs already ships.
 // Where the graph arrives, the picture is the builder bar over the map. Where

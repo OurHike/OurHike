@@ -103,18 +103,35 @@ the pull request's file list; every recipe the pull request adds or changes is
 photographed from the same build being deployed and leads the comment,
 captioned, above the standing two.
 
-**The tiles in CI are real; the trail data is not, and this sentence used to
-say otherwise.** It read "in CI the map data is real, so the shot can show
-actual tiles — the one thing no sandbox capture can", and half of that holds:
-the basemap comes from OpenFreeMap, which the style fetches, so a CI shot does
-show a real map. The release artifacts do not arrive at all — the preview build
-carries an empty `VITE_DATA_BASE_URL`, measured 2026-08-25 in two deployed
-previews, so the app comes up with no trail line, no waypoints and no steward
-credits ([#1024](https://github.com/OurHike/OurHike/issues/1024)). A recipe
-aimed at anything downstream of the release will drive correctly and photograph
-its absence. Aim one there anyway if that is the screen your change touches —
-it is right for the day #1024 is fixed — and say in `## Screenshot` what the
-shot cannot show meanwhile.
+**The tiles in CI are real, and since #1093 the trail data is too — this
+paragraph has now been wrong twice and each correction is worth keeping.** It
+first read "in CI the map data is real, so the shot can show actual tiles —
+the one thing no sandbox capture can". Half held: the basemap comes from
+OpenFreeMap, which the style fetches, so a CI shot does show a real map. It
+was then rewritten to say the release artifacts never arrive because the
+preview build carries an empty `VITE_DATA_BASE_URL`
+([#1024](https://github.com/OurHike/OurHike/issues/1024), measured 2026-08-25).
+That was the right symptom and the wrong cause, and the wrong cause is what
+made it stick: a build variable is not something a recipe author can do
+anything about, so nobody looked again.
+
+The cause was the **camera's own origin**. `screenshot.mjs` served the app
+from `http://127.0.0.1:<port>`, and the R2 bucket answers a cross-origin
+request only for origins on its allowlist — reflecting `Origin` back rather
+than sending `*`. Measured against data.ourhike.org 2026-08-27: `localhost`
+allowed, `127.0.0.1` **not**, `ourhike.org` allowed. The loopback address and
+the name are the same machine and are not the same origin, so every artifact
+fetch failed CORS and every shot was of an app holding no data. It serves from
+`localhost` now.
+
+So aim a recipe at the screen your change touches, release artifacts and all.
+Two things still bound what a shot can show and both are worth saying in
+`## Screenshot` rather than discovering in review: the corridor archive lives
+in IndexedDB and nothing downloads it, so the map canvas is still paper; and a
+fork's pull request gets no secrets, so it gets no data source at all. Write
+the recipe so the frame is honest in both states — `day-hike-builder.mjs` and
+`day-hike-card.mjs` are the worked examples of a caption that names more than
+one true frame.
 
 Three consequences worth knowing before writing one:
 

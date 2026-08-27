@@ -344,13 +344,47 @@ question and keeps the stored copy — but every phone still parses the whole st
 any of it. A per-region cut is the obvious answer and it is
 [#552](https://github.com/OurHike/OurHike/issues/552)'s to make, not this doc's.
 
-## 10. POI density, honestly
+## 10. POI density, measured
 
-Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI density.
-It is still unmeasured — OPRHP's facilities layer holds 8,823 points statewide and nobody
-has counted the two parks' safety-relevant subset at z12. If safety-only still overwhelms
-the screen, the dot rank (POI_VISIBILITY.md) absorbs it before anything new is invented.
-Measuring this is the registration follow-up's job, not this doc's guess.
+Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI
+density. **Measured 2026-08-27 ([#936](https://github.com/OurHike/OurHike/issues/936)),
+against OPRHP's live facilities layer — `pipeline/spike_oprhp_poi_density.py`, re-runnable.**
+The layer still holds 8,823 points statewide, and the two parks hold **312** of them, every
+row flagged `Public_ = Y`.
+
+**The fear was right about amenities and empty about safety**, which is the opposite way
+round from how it was carried:
+
+| on one 390 × 700 phone screen at z12 | in the two parks | most in one screen |
+|---|---|---|
+| water — the safety kind this layer could supply | **0** | **0** |
+| toilets — #936's wider reading of safety-relevant | 9 | 5 |
+| amenities OurHike has a pin for | 148 | **50** |
+
+Read the last row against [POI_VISIBILITY.md](POI_VISIBILITY.md)'s own table, which puts
+**~16 pins down the column** at z12: relaxing the chosen-trail-only rule over Harriman
+would ask a screen with room for sixteen to draw fifty. **So the amenity half of the split
+now stands on evidence rather than on a worry** — this is the first number behind it, and
+it supports the rule as shipped. The densest screen is centred near 41.2431, −74.1158, and
+what fills it is unremarkable: 49 `Scenic View`, 36 `Group Camp`, 25 `Parking Area`, 11
+`Lean-to` across Harriman.
+
+**The safety half needs nothing.** OPRHP's facilities layer carries no `Drinking Fountain`
+and no `Water Spigot` in either park — not few, none — so the always-draw rule costs this
+layer nothing at all, and POI_VISIBILITY.md's dot rank is not needed to absorb it.
+
+### What this does not measure, and it is the bigger half
+
+**This answers the question §10 asked, which was about OPRHP's facilities layer. It is not
+the density of safety pins over Harriman.** Since §11 widened the water gate, a nearby
+trail's water comes from NHD and OSM rather than from a park's own facilities inventory —
+so the number that decides whether the always-draw rule crowds a screen is a count of NHD
+crossings and OSM water over 316 miles of Harriman trails, which nobody has run.
+[#1028](https://github.com/OurHike/OurHike/issues/1028) is the nearest thing to a hint at
+its scale (3,370 unnamed `nhd_crossing` rows in the ledger) and is about a different
+question. **That count is the real follow-up**, and it is worth being explicit that the
+zero above does not stand in for it: this layer contributing no water is a fact about
+OPRHP's inventory, not a fact about how much water Harriman has.
 
 ## 11. Water on every trail on screen, and what it is measured against
 

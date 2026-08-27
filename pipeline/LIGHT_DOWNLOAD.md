@@ -217,8 +217,19 @@ So the corridor **tapers**: `export_dem.py`'s `CORRIDOR_TAPER_MILES` is
 | z13 (6 mi) | 4,054 | 106.2 |
 | **dem.pmtiles** | **8,658** | **275.6** |
 
-Against UA's untapered 607.3 MB that is **54.6% off the DEM**, and the Standard
-hiking sheet goes 789.9 → **458.1 MB, 42.0% off**, with the basemap untouched.
+**PUBLISHED TO UA 2026-08-27** ([run 33065561782](https://github.com/OurHike/OurHike/actions/runs/33065561782)):
+`dem.pmtiles` is **275,601,483 bytes** in the bucket, and now carries
+`transfer_bytes` beside `size_bytes` as well.
+
+| sheet | before | after |
+|---|---|---|
+| **Standard** (z13 basemap + DEM) | 789,876,586 — 789.9 MB | **458,212,397 — 458.2 MB** |
+| **Fine** (z14 basemap + DEM) | 1,140,720,867 — 1.14 GB | **809,056,678 — 809.1 MB** |
+
+**42.0% off Standard, 29.1% off Fine**, with the basemap untouched. Fine
+dropping under a gigabyte has a consequence beyond the number: `DetailPicker`'s
+iOS note was written when the hiking sheet's worst case was 1.14 GB and over
+WebKit's per-origin allowance. It is not any more, and that comment now says so.
 
 The projection this replaces said 275.4 MB, which is 0.1 MB out — and that
 agreement is luckier than it looks. Per band it was wrong in both directions

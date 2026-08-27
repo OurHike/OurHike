@@ -30,11 +30,18 @@
 // AND A THIRD: A LEVEL THIS PHONE HAS NO ROOM FOR (#555).
 //
 // Every browser on iOS is WebKit, whose per-origin allowance starts around a
-// gigabyte and prompts beyond it. The Fine raster tier is 1.18 GB and the hiking
-// sheet at Fine is 1.14 GB, so both are over before the origin is holding
-// anything else - and nothing in the download path branched on platform, so the
-// rung was offered with a size and a radio button on a phone that could never
-// store it. #547 made the tap a truthful refusal in about 30 ms instead of a
+// gigabyte and prompts beyond it. The Fine raster tier is 1.18 GB, over that
+// before the origin is holding anything else - and nothing in the download path
+// branched on platform, so the rung was offered with a size and a radio button
+// on a phone that could never store it.
+//
+// THE HIKING SHEET AT FINE NO LONGER IS, and the change is worth naming rather
+// than quietly dropping: it was 1.14 GB when this was written, and the corridor
+// taper (#1088) brought it to 809.1 MB. That does not make this check
+// redundant - it is a reading of what the browser says is free, never a
+// threshold anybody typed, so a phone already holding a raster tier still fails
+// it. What changed is that the default sheet's own worst case now fits where it
+// did not. #547 made the tap a truthful refusal in about 30 ms instead of a
 // wasted transfer, which is a real improvement over spending someone's data and
 // still worse than not offering a rung that cannot work.
 //

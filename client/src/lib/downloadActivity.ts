@@ -115,10 +115,12 @@ export function downloadPercent(doneBytes: number, totalBytes: number): number {
  *
  * The whole-percent answer above stays what the text says and what a screen
  * reader hears, but a bar whose width steps in whole percents sits still for
- * 7.9 MB at a time on the first sheet (789,552,460 bytes - #449 measured),
- * about four seconds per step at trailhead speeds - and a bar that does not
- * move is this app's own signal for "stalled", a distinction the `checking`
- * state (#197) exists to keep trustworthy.
+ * megabytes at a time on the first sheet - 7.9 MB when #449 measured it at
+ * 789,552,460 bytes, 4.6 MB now the corridor taper has brought that sheet to
+ * 458,212,397 (#1088) - which is still seconds per step at trailhead speeds,
+ * and a bar that does not move is this app's own signal for "stalled", a
+ * distinction the `checking` state (#197) exists to keep trustworthy. The
+ * argument narrows with the sheet and does not go away with it.
  *
  * One decimal rather than the raw ratio, on lib/formatBytes.ts's reasoning
  * about figures that change faster than anyone can read: a tenth of a percent

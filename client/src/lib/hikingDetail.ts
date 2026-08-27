@@ -60,42 +60,50 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
   {
     // NOT OFFERED YET, and the null DEM size is the honest reason rather than
     // an oversight. `dem_light.pmtiles` is a real artifact name publish.py
-    // knows (#1088), but no build has produced it, so nobody can state its
-    // bytes. The projection from the measured per-zoom tile counts is ~249 MB
-    // of terrain against Standard's 607 - reasoned, not measured, which is
-    // exactly the grade that may not be shown to a hiker deciding whether they
-    // have room. Flip `published` when build-dem.yml has run with the harder
-    // taper and the object has been weighed in the bucket, and put its exact
-    // bytes here in the same change.
+    // knows and build-dem.yml can now produce (`variant: light`, #1088), but no
+    // build has produced it - checked against UA's manifest 2026-08-27, where
+    // it is absent while `dem.pmtiles` is present at its tapered size. So
+    // nobody can state its bytes, and a projection is exactly the grade that
+    // may not be shown to a hiker deciding whether they have room.
+    //
+    // Flip `published` when a light build has run and its object has been
+    // weighed in the bucket, and put its exact bytes here in the same change.
     level: 'light',
     artifact: 'at_basemap_package_z13.pmtiles',
-    basemapSizeBytes: 182_286_799,
+    basemapSizeBytes: 182_610_914,
     demArtifact: 'dem_light.pmtiles',
     demSizeBytes: null,
     recommended: false,
     published: false,
   },
   {
-    // THE DEM SIZE HERE IS THE UNTAPERED ARCHIVE, and it is correct until the
-    // rebuild lands. #1088 narrows Standard's terrain too, which will move
-    // this number - so the tapered build and this constant have to change in
-    // one go. verify_release.py check 18 fails a release where an advertised
-    // size drifts more than 2% from the bucket, which is what stops the two
-    // separating quietly.
+    // THE TAPERED DEM, measured in the bucket rather than projected: 275,601,483
+    // bytes, published to UA 2026-08-27 by build-dem.yml run 33065561782 at the
+    // shipped 30/15/6 schedule (#1088). It replaces the untapered 607,265,661,
+    // and the two had to move together - verify_release.py check 18 fails a
+    // release where an advertised size drifts more than 2% from the bucket, and
+    // 607 against 276 is not close.
+    //
+    // The basemap figure is UA's measured 182,610,914, replacing a 182,286,799
+    // copied from an older build log. Nothing rebuilt the basemap; the constant
+    // was simply 324,115 bytes out, in the direction downloadDetail.ts warns
+    // about - understating, so a hiker who freed exactly enough is stranded.
     level: 'standard',
     artifact: 'at_basemap_package_z13.pmtiles',
-    basemapSizeBytes: 182_286_799,
+    basemapSizeBytes: 182_610_914,
     demArtifact: 'dem.pmtiles',
-    demSizeBytes: 607_265_661,
+    demSizeBytes: 275_601_483,
     recommended: true,
     published: true,
   },
   {
+    // Same measured DEM; the basemap is UA's z14 cut at 533,455,195 against a
+    // constant of 532,459,439 - 995,756 bytes out, same direction.
     level: 'fine',
     artifact: 'at_basemap_package.pmtiles',
-    basemapSizeBytes: 532_459_439,
+    basemapSizeBytes: 533_455_195,
     demArtifact: 'dem.pmtiles',
-    demSizeBytes: 607_265_661,
+    demSizeBytes: 275_601_483,
     recommended: false,
     published: true,
   },

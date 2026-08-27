@@ -80,8 +80,10 @@ describe('Onboarding', () => {
 
     expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
     expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
-    expect(screen.getByText('789.6 MB')).toBeInTheDocument()
-    expect(screen.getByText('1.14 GB')).toBeInTheDocument()
+    // The tapered DEM's published sizes (#1088): 458.2 MB and 809.1 MB, where
+    // these read 789.6 MB and 1.14 GB before the corridor narrowed.
+    expect(screen.getByText('458.2 MB')).toBeInTheDocument()
+    expect(screen.getByText('809.1 MB')).toBeInTheDocument()
   })
 
   it('asks the map-size question in the download window\u2019s shape (#298, #855)', async () => {

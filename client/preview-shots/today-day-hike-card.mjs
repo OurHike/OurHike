@@ -69,13 +69,13 @@ const DAY_HIKES = {
           {
             name: 'Pine Meadow Trail',
             source: 'oprhp_trails',
-            blaze_color: 'blue',
+            blaze_color: 'Blue',
             miles: 4.1,
           },
           {
             name: 'Long Path',
             source: 'nynjtc_long_path',
-            blaze_color: 'aqua',
+            blaze_color: 'Aqua',
             miles: 2.3,
           },
         ],

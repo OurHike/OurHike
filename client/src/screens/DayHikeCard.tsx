@@ -61,6 +61,7 @@ import { useState } from 'react'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
+import { blazeLabel, blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { paceEstimate, type PaceProfile } from '../lib/pace'
@@ -322,6 +323,36 @@ export function DayHikeCard({
               agree about the same ground. */}
           {legs.map((leg, at) => (
             <div className="day-hike-card__row" key={`${leg.name ?? 'leg'}-${at}`}>
+              {/* The blaze, as the paint and nothing else - the legend's own
+                  swatch, back with a caller (#1112). Through
+                  `blazePaintColor` rather than a second table, so a leg's
+                  swatch and the line the map draws for that leg are the same
+                  hue by construction; lib/blaze.ts holds the closed palette
+                  and #782's admission bar.
+
+                  The WORD rides underneath for a screen reader, which is the
+                  freshness dots' arrangement on Today (screens/Today.tsx) and
+                  is not decoration: half the network has no hue to show
+                  (measured against the published graph, 2026-08-27: 48.1% of
+                  edges are `Unknown`, 1.8% `None`, 1.3% `Other`), and those
+                  all paint the same neutral grey. Grey is the app's own
+                  sentence for "we do not know this" - the colour the map
+                  paints such a line, and the corridor view spends on miles
+                  with no club recorded - so the swatch agrees with the map
+                  rather than inventing a fourth meaning. `blazeLabel` is
+                  what tells the three neutrals apart in words: "Blaze not
+                  recorded", "Unblazed", "Other blaze". */}
+              <span
+                className="day-hike-card__blaze"
+                style={{
+                  backgroundColor:
+                    leg.blaze_color === null
+                      ? NEUTRAL_BLAZE_COLOR
+                      : blazePaintColor(leg.blaze_color),
+                }}
+              >
+                <span className="visually-hidden">{blazeLabel(leg.blaze_color)}</span>
+              </span>
               <span className="day-hike-card__row-name">
                 {leg.name ?? 'Unnamed trail'}
               </span>

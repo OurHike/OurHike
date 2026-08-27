@@ -20,6 +20,7 @@ import { DayHikeCard } from './DayHikeCard'
 import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
+import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 
 afterEach(cleanup)
 
@@ -41,7 +42,7 @@ const HIKE: DayHike = {
       {
         name: 'Pine Meadow Trail',
         source: 'oprhp_trails',
-        blaze_color: 'blue',
+        blaze_color: 'Blue',
         miles: 5,
       },
     ],
@@ -62,14 +63,14 @@ const RESOLVED: ResolvedDayHike = {
     {
       name: 'Pine Meadow Trail',
       source: 'oprhp_trails',
-      blaze_color: 'blue',
+      blaze_color: 'Blue',
       trail_id: 'oprhp_trails:1',
       miles: 2.1,
     },
     {
       name: 'Seven Hills Trail',
       source: 'nynjtc_long_path',
-      blaze_color: 'white',
+      blaze_color: 'White',
       trail_id: 'nynjtc_long_path:2',
       miles: 4.3,
     },
@@ -77,7 +78,7 @@ const RESOLVED: ResolvedDayHike = {
 }
 
 const BAIL_OUTS: BailOut[] = [
-  { miles: 3.2, name: 'Kakiat Trail', blaze_color: 'white', source: 'nynjtc_long_path' },
+  { miles: 3.2, name: 'Kakiat Trail', blaze_color: 'White', source: 'nynjtc_long_path' },
 ]
 
 function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) {
@@ -130,12 +131,61 @@ describe('the sourced blocks', () => {
     // A walked length, so it converts for a metric hiker - not the A.T.'s
     // "mi 3.2" marker voice, which names a point that never converts.
     expect(screen.getByText('at 3.2 mi')).toBeInTheDocument()
-    expect(screen.getByText(/Kakiat Trail \(white\)/)).toBeInTheDocument()
+    // Capitalised, because that is what the pipeline publishes and what the
+    // ways-off row prints verbatim. The fixtures here said 'white' until
+    // #1112 and were masking it: nothing keyed on the string, so the wrong
+    // case rendered as plausible prose. `blaze.ts`'s palette IS keyed on it.
+    expect(screen.getByText(/Kakiat Trail \(White\)/)).toBeInTheDocument()
     // The blaze stays and the organization goes, which is the split #1112
     // settled: a hiker leaving a route in a hurry navigates by the blaze, and
     // whose ground it is does not help them get down.
     expect(screen.queryByText(/NY–NJ Trail Conference/)).not.toBeInTheDocument()
     expect(screen.queryByText(/nynjtc_long_path/)).not.toBeInTheDocument()
+  })
+
+  it('paints each leg’s blaze as the map paints that line, and nothing else', () => {
+    const { container } = renderCard()
+
+    // The paint, not the word: a hiker reads this list against the blazes in
+    // front of them, and the swatch is the same hue map/style.ts gives the
+    // line - both through lib/blaze.ts's closed palette, so they cannot drift.
+    const swatches = container.querySelectorAll('.day-hike-card__blaze')
+    expect(swatches).toHaveLength(2)
+    expect(swatches[0]).toHaveStyle({ backgroundColor: blazePaintColor('Blue') })
+    expect(swatches[1]).toHaveStyle({ backgroundColor: blazePaintColor('White') })
+
+    // The colour is never the only carrier. The word rides underneath for a
+    // screen reader - Today's freshness dots' arrangement - which is what
+    // makes a grey swatch legible at all (see the next test).
+    expect(screen.getByText('Blue blaze')).toBeInTheDocument()
+    expect(screen.getByText('White blaze')).toBeInTheDocument()
+  })
+
+  it('paints the neutral grey for the three values that name no hue', () => {
+    // Not an edge case: measured against the published graph (2026-08-27),
+    // 48.1% of edges are `Unknown`, 1.8% `None` and 1.3% `Other` - half the
+    // network has no hue to show. All three take the grey the map already
+    // spends on a line whose blaze it does not know, so the card agrees with
+    // the canvas rather than inventing a fourth meaning; the words are what
+    // tell them apart, and they say different things.
+    renderCard({
+      resolved: {
+        ...RESOLVED,
+        legs: [
+          { ...RESOLVED.legs[0], blaze_color: 'Unknown' },
+          { ...RESOLVED.legs[1], blaze_color: 'None' },
+        ],
+      },
+    })
+
+    const swatches = document.querySelectorAll('.day-hike-card__blaze')
+    expect(swatches[0]).toHaveStyle({ backgroundColor: NEUTRAL_BLAZE_COLOR })
+    expect(swatches[1]).toHaveStyle({ backgroundColor: NEUTRAL_BLAZE_COLOR })
+    // Same grey, different sentence - "not recorded" is not "confirmed to
+    // have no blazes", and a hiker looking for paint on a tree needs the
+    // difference.
+    expect(screen.getByText('Blaze not recorded')).toBeInTheDocument()
+    expect(screen.getByText('Unblazed')).toBeInTheDocument()
   })
 
   it('says so when no marked trail leaves the route, rather than omitting the block', () => {

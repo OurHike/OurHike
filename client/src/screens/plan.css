@@ -2743,6 +2743,24 @@
   font-size: 0.9375rem;
 }
 
+/* The blaze, as the legend used to paint it: a short length of the line
+   itself, 22x4 with a hairline border so White and Yellow still read against
+   the card's paper. Those numbers are the legend's own - `.legend__swatch`,
+   removed 2026-08-25 when the blaze rows came off that panel - rather than
+   picked again here, so the one thing this app has ever drawn to mean "this
+   blaze" keeps one shape. */
+.day-hike-card__blaze {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-2);
+  /* The row is baseline-aligned and this box has no text in it to sit on, so
+     it would hang off the bottom of the line. Nudged to sit against the
+     name's x-height instead. */
+  align-self: center;
+}
+
 .day-hike-card__row-mile {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;

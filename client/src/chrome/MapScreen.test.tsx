@@ -1318,3 +1318,66 @@ describe('the journal slot', () => {
     expect(container.querySelector('.map-screen__journal')).toBeNull()
   })
 })
+
+describe('the download note (#1103)', () => {
+  // The hour a sheet spends arriving, admitted in the float column - below
+  // the safety alerts, above the canvas whose thinness it explains.
+  it('says the map is still arriving while a sheet downloads, one tap from the window', async () => {
+    const user = userEvent.setup()
+    const onOpenDownloads = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        onOpenDownloads={onOpenDownloads}
+        downloadActivity={{
+          kind: 'downloading',
+          doneBytes: 331_000_000,
+          totalBytes: 790_000_000,
+        }}
+      />,
+    )
+
+    const note = screen.getByRole('button', { name: /map still arriving/i })
+    // The same words and figures the window's card prints: what is
+    // happening, how much of how much - and never an invented ETA.
+    expect(note).toHaveTextContent(/downloading/i)
+    expect(note).toHaveTextContent(/of 790 MB/)
+    expect(note).toHaveTextContent(/live tiles meanwhile/i)
+
+    await user.click(note)
+    expect(onOpenDownloads).toHaveBeenCalled()
+  })
+
+  it('keeps the checking read-back distinct from a transfer, as the card does', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        downloadActivity={{
+          kind: 'checking',
+          doneBytes: 100_000_000,
+          totalBytes: 790_000_000,
+        }}
+      />,
+    )
+
+    const note = screen.getByRole('button', { name: /map still arriving/i })
+    expect(note).toHaveTextContent(/checking/i)
+    expect(note).not.toHaveTextContent(/downloading/i)
+  })
+
+  it('prints no figure for the trail-data step, which honestly has none', () => {
+    // Four fetches of unannounced size (lib/downloadActivity.ts): the note
+    // says what is happening and refuses to invent a percent for it.
+    render(<MapScreen {...PROPS} downloadActivity={{ kind: 'preparing' }} />)
+
+    const note = screen.getByRole('button', { name: /map still arriving/i })
+    expect(note).toHaveTextContent(/getting trail data/i)
+    expect(note).not.toHaveTextContent(/%|MB/)
+  })
+
+  it('is absent the moment nothing is arriving, which is most of the year', () => {
+    render(<MapScreen {...PROPS} downloadActivity={null} />)
+
+    expect(screen.queryByRole('button', { name: /map still arriving/i })).toBe(null)
+  })
+})

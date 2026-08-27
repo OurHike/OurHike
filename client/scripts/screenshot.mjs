@@ -227,20 +227,76 @@ async function launchChromium() {
   }
 }
 
-/** A port the OS says is free, rather than a guess.
+/**
+ * THE CAMERA'S OWN ORIGIN IS LOAD-BEARING, and it is the whole of #1024 (see
+ * #1093, where it was found).
  *
- *  Guessing is what this replaced, and the failure it produced was slow and
- *  confusing: `--strictPort` turns a collision with an already-running dev
- *  server into a vite that exits immediately, and the caller then waits the
- *  full 30s poll before reporting a timeout that says nothing about the real
- *  cause. Asking for port 0 and reading back what was bound leaves only the
- *  gap between closing this listener and vite opening its own. */
-async function freePort() {
+ * The R2 bucket the app fetches its release artifacts from answers a
+ * cross-origin request only for origins on an allowlist, reflecting `Origin`
+ * back rather than sending `*` - and the entries are exact origins, scheme,
+ * host AND port. Measured against data.ourhike.org on 2026-08-27:
+ *
+ *   http://localhost:4173   ->  allowed      (vite preview's default port)
+ *   http://localhost:5173   ->  allowed      (vite dev's default port)
+ *   http://localhost:8080   ->  declined
+ *   http://localhost:45231  ->  declined     (an ephemeral port)
+ *   http://127.0.0.1:4173   ->  declined     (same machine, other origin)
+ *   https://ourhike.org     ->  allowed
+ *   https://evil.example    ->  declined
+ *
+ * This script used to serve from `127.0.0.1` on a port the OS picked, so it
+ * missed on both counts and EVERY artifact fetch failed CORS. That is the
+ * data-less app #1024 describes, and the cause it names - an unset
+ * `VITE_DATA_BASE_URL` - was never it: the preview build that found this
+ * carried `https://data.ourhike.org` and still photographed an app with no
+ * trail data.
+ *
+ * What made it invisible for so long is that nothing local ever notices. The
+ * loopback address and the name are the same machine; the ephemeral port
+ * serves the app perfectly. Only the bucket ever sees the difference, and it
+ * says so by staying silent.
+ */
+const SHOT_HOST = 'localhost'
+
+/** vite's own defaults, which are the two ports the bucket allows. `dist`
+ *  runs `vite preview` (4173); without it, the dev server (5173). */
+const PREFERRED_PORT = { preview: 4173, dev: 5173 }
+
+/** Whether this port can be bound on {@link SHOT_HOST} right now. */
+async function portIsFree(port) {
+  const { createServer } = await import('node:net')
+  return await new Promise((done) => {
+    const probe = createServer()
+    probe.on('error', () => done(false))
+    // The same host vite is about to bind, so "free" is free on the address
+    // that will actually be listened on rather than on its sibling.
+    probe.listen(port, SHOT_HOST, () => probe.close(() => done(true)))
+  })
+}
+
+/**
+ * The port to shoot on: vite's default for this mode where it is free, and
+ * one the OS picks where it is not.
+ *
+ * PREFERRED RATHER THAN REQUIRED, because the two costs are not symmetrical.
+ * Insisting on 4173 while a colleague's `vite preview` holds it is a run that
+ * cannot take a picture at all; falling back costs the artifacts, and the
+ * recipes that need them already carry a second honest frame for a build that
+ * has none. The fallback is exactly the behaviour this script had before, and
+ * the ephemeral port is still what stops a collision being the slow, confusing
+ * failure it was before `freePort` existed: `--strictPort` turns a collision
+ * into a vite that exits immediately, and the caller then waits the full 30s
+ * poll before reporting a timeout that says nothing about the real cause.
+ */
+async function shotPort({ dist }) {
+  const preferred = dist ? PREFERRED_PORT.preview : PREFERRED_PORT.dev
+  if (await portIsFree(preferred)) return preferred
+
   const { createServer } = await import('node:net')
   return await new Promise((done, fail) => {
     const probe = createServer()
     probe.on('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
+    probe.listen(0, SHOT_HOST, () => {
       const { port } = probe.address()
       probe.close(() => done(port))
     })
@@ -257,18 +313,18 @@ async function freePort() {
  * to find out about (minification, the service worker, the PWA manifest).
  */
 async function startServer({ dist }) {
-  const port = await freePort()
+  const port = await shotPort({ dist })
   const bin = join(CLIENT_DIR, 'node_modules', '.bin', 'vite')
   const args = dist ? ['preview'] : []
   const child = spawn(
     bin,
-    [...args, '--port', String(port), '--strictPort', '--host', '127.0.0.1'],
+    [...args, '--port', String(port), '--strictPort', '--host', SHOT_HOST],
     {
       cwd: CLIENT_DIR,
       stdio: 'ignore',
     },
   )
-  const url = `http://127.0.0.1:${port}/`
+  const url = `http://${SHOT_HOST}:${port}/`
   let exited = null
   child.on('exit', (code) => {
     exited = code

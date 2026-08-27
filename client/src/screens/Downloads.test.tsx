@@ -3,6 +3,15 @@ import { act, render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Downloads, type SheetDownload } from './Downloads'
 import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
+import { storedTrailData } from '../lib/onThisPhone'
+
+// The store read is the module's own business (onThisPhone.test.ts); here it
+// answers instantly so the window under test is never waiting on jsdom's
+// absent IndexedDB. The factory default survives clearAllMocks; the one test
+// about the section overrides it for one call.
+vi.mock('../lib/onThisPhone', () => ({
+  storedTrailData: vi.fn(() => Promise.resolve([])),
+}))
 
 // WIREFRAMES.md §4 as amended by its own Known Deviations #1: the wireframe
 // drew a per-section list, and ROADMAP.md Phase 2 had already decided on ONE
@@ -486,5 +495,102 @@ describe('room for the download (#190)', () => {
       await estimated
     })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})
+
+describe('the asset breakdown (#1103)', () => {
+  // The card's one figure stays the sheet's; this is the detail under it -
+  // which archives the decision buys, each in the state the store reports.
+  it('breaks a two-archive sheet into its named parts, states and all', async () => {
+    const user = userEvent.setup()
+    const [hiking, usgs] = twoSheets()
+    render(
+      <Downloads
+        sheets={[
+          {
+            ...hiking,
+            assets: [
+              {
+                title: 'Hiking sheet',
+                summary: 'The styled topographic sheet.',
+                sizeBytes: 182_286_799,
+                status: {
+                  state: 'downloaded' as const,
+                  totalBytes: 182_286_799,
+                  completedAt: new Date('2026-08-26T09:00:00'),
+                },
+              },
+              {
+                title: 'Terrain',
+                summary: 'Hillshade and contours.',
+                sizeBytes: 607_265_661,
+                status: {
+                  state: 'downloading' as const,
+                  receivedBytes: 250_000_000,
+                  totalBytes: 607_265_661,
+                },
+              },
+            ],
+          },
+          usgs,
+        ]}
+      />,
+    )
+    await openTab(user, /hiking sheet/i)
+
+    const list = screen.getByTestId('downloads-assets-hiking-sheet')
+    expect(within(list).getByText('Terrain')).toBeInTheDocument()
+    expect(list).toHaveTextContent(/downloaded/)
+    expect(list).toHaveTextContent(/arriving/)
+  })
+
+  it('gives a one-archive sheet no breakdown - the card already is one', async () => {
+    const user = userEvent.setup()
+    const [hiking, usgs] = twoSheets()
+    render(
+      <Downloads
+        sheets={[
+          hiking,
+          {
+            ...usgs,
+            assets: [
+              {
+                title: 'USGS sheet',
+                summary: 'The official quads.',
+                sizeBytes: 314_000_000,
+                status: { state: 'not-downloaded' as const },
+              },
+            ],
+          },
+        ]}
+      />,
+    )
+    await openTab(user, /usgs/i)
+
+    expect(screen.queryByTestId('downloads-assets-usgs-sheet')).toBe(null)
+  })
+})
+
+describe('the trail data account (#1103)', () => {
+  // The vector data the two words "trail data" used to cover whole: stated
+  // beside the sheets, measured off the store, absences included.
+  it('lists every artifact with its measured figure, and states what is absent', async () => {
+    vi.mocked(storedTrailData).mockResolvedValueOnce([
+      { id: 'trail-line', bytes: 12_300_000, count: null, present: true },
+      { id: 'waypoints', bytes: null, count: 2837, present: true },
+      { id: 'elevation', bytes: null, count: 141_000, present: true },
+      { id: 'nearby-trails', bytes: null, count: null, present: false },
+    ])
+    render(<Downloads sheets={[sheet()]} />)
+
+    const section = await screen.findByTestId('downloads-trail-data')
+    expect(within(section).getByText('Trail line')).toBeInTheDocument()
+    expect(section).toHaveTextContent(/12\.3 MB on this phone/)
+    expect(section).toHaveTextContent(/2,837 places/)
+    // Absent means not here, never zero - and never a missing row.
+    expect(within(section).getByText('Nearby trails network')).toBeInTheDocument()
+    expect(section).toHaveTextContent(/not here yet — arrives with signal/)
+    // Nothing in this section is a button: these arrive on their own.
+    expect(within(section).queryByRole('button')).toBe(null)
   })
 })

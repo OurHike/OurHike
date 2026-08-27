@@ -72,6 +72,7 @@ describe('UserPreferences schema', () => {
         'download_choice_made',
         'drought_layer_shown',
         'hiking_detail_level',
+        'impact_panel_shown',
         'layer_detail_level',
         'location_permission_requested',
         'map_style',

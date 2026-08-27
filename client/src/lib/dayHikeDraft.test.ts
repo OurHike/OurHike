@@ -21,6 +21,7 @@ import {
   draftStatus,
   EMPTY_DRAFT,
   loopDraft,
+  NETWORK_STILL_ARRIVING,
   OFF_NETWORK_REFUSAL,
   tapAt,
   undoTap,
@@ -80,7 +81,28 @@ const GRAPH: TrailGraph = {
   ],
 }
 
-const index = buildGraphIndex(GRAPH)
+/**
+ * The fixture with each edge's vertex list filled in, which is what every
+ * published graph actually carries (`build_trail_graph.py` writes one per
+ * edge, always). Every trail here is straight, so an edge's vertices are its
+ * two nodes and no assertion below moves.
+ *
+ * Not cosmetic: since #1093 `nearestPointOnGraph` will not snap a tap to an
+ * edge with no vertices, because the only line such an edge offers is the
+ * chord between its junctions and the map is drawing the published one. A
+ * fixture without geometry is a phone mid-download, not a network.
+ */
+function published(graph: TrailGraph): TrailGraph {
+  return {
+    nodes: graph.nodes,
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      geometry: [graph.nodes[edge.from], graph.nodes[edge.to]],
+    })),
+  }
+}
+
+const index = buildGraphIndex(published(GRAPH))
 
 /** On Pine Meadow, halfway along its first edge. */
 const ON_TRAIL = { lon: -74.095, lat: 41.25 }
@@ -106,6 +128,31 @@ describe('tapping', () => {
 
     expect(draft.points).toHaveLength(0)
     expect(draft.refusal).toBe(OFF_NETWORK_REFUSAL)
+  })
+
+  it('does not call a tap off-network when it is the LINES that are missing', () => {
+    // #1093. `trail_graph.json` lands at launch and carries no vertices;
+    // `trail_graph_geometry.json` is fetched only when this builder opens.
+    // In between, a tap dead on the drawn trail cannot be answered at all -
+    // and the sentence a hiker gets must not be the one that says their aim
+    // was wrong, because it was not.
+    const arriving = buildGraphIndex(GRAPH)
+    const draft = tapAt(arriving, EMPTY_DRAFT, ON_TRAIL)
+
+    expect(draft.points).toHaveLength(0)
+    expect(draft.refusal).toBe(NETWORK_STILL_ARRIVING)
+    expect(draft.refusal).not.toBe(OFF_NETWORK_REFUSAL)
+  })
+
+  it('says the same thing whether the tap was on a trail or off one, in that window', () => {
+    // The distinction it CANNOT draw, stated so nobody adds it back. With no
+    // vertices the app does not know where any trail runs, so it cannot know
+    // which of the two happened - and guessing would put it back to telling
+    // some hikers their aim was wrong on no evidence.
+    const arriving = buildGraphIndex(GRAPH)
+
+    expect(tapAt(arriving, EMPTY_DRAFT, ON_TRAIL).refusal).toBe(NETWORK_STILL_ARRIVING)
+    expect(tapAt(arriving, EMPTY_DRAFT, OFF_TRAIL).refusal).toBe(NETWORK_STILL_ARRIVING)
   })
 
   it('keeps the points it already had when one tap is refused', () => {

@@ -16,6 +16,15 @@
 // its own copy of the list, which is where somebody setting the app up rather
 // than reading a map will look.
 //
+// AND TWO ROWS THAT COUNT NOTHING AT ALL (#1051). Below the eight sit a closure
+// row and a serious-warning row, and they are a KEY rather than a tally: an
+// icon, a name, the tag, and no number in any state. Neither layer is a
+// `MapPoint`, so neither has ever appeared on this panel - a hiker who saw the
+// barred red band across the trail, or the red triangle pin bigger than every
+// other mark on the map, had nowhere in the app to look up what either one was.
+// `withSafetyKey` appends them and `lib/legendContents.ts` carries why they
+// carry no count, which is that nobody measures those layers.
+//
 // NO BLAZE ROWS, AND WHAT THAT COSTS (maintainer's call, 2026-08-25).
 //
 // The panel used to open with one row per blaze in view - a painted line
@@ -51,7 +60,8 @@
 // Closure and serious-warning rows still render with no hide control of their
 // own - plain text with a tag beside them, where a hideable row is a button
 // edge to edge. That much is unchanged and is why the row is not uniformly a
-// button.
+// button. What #1051 changed is that a hiker can now see one: they rendered
+// here and in chrome/Legend.test.tsx and nowhere a hiker could reach.
 //
 // WHAT CHANGED IS THE RULE BEHIND IT (#1047, maintainer's call). "A safety
 // layer has no off switch anywhere in the app" was the whole answer until this
@@ -83,6 +93,7 @@ import {
   GHOSTED_TRAILS_NOTE,
   legendDropSummary,
   withEveryType,
+  withSafetyKey,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
@@ -336,7 +347,12 @@ export function Legend({
   // reading `Privy 0` is an accurate statement about this rectangle and a
   // working switch; no row at all was neither.
   const inView = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
-  const rows = withEveryType(inView, HIDEABLE_TYPES)
+  // Padded for the toggles, then keyed for the two symbols that have no toggle
+  // and had no row at all (#1051). `withSafetyKey` is last because it OWNS those
+  // two rows - it replaces whatever the viewport produced for them, so a closure
+  // row means the same thing on every panel rather than changing shape with what
+  // the shell happened to feed in.
+  const rows = withSafetyKey(withEveryType(inView, HIDEABLE_TYPES))
   // Minus the categories the hiker hid (#777): their absence is the filter's
   // doing, not the camera's, so they belong in neither half of the fraction -
   // "zoom in to see the rest" must only promise what zooming in delivers.
@@ -473,7 +489,10 @@ export function Legend({
             // Only where it differs, which keeps the panel quiet at the zooms
             // where nothing is being dropped: `Water 14` and `Water 13/14` are
             // the same row saying as much as is true.
-            const short = row.drawnCount !== undefined && row.drawnCount < row.count
+            const short =
+              row.count !== undefined &&
+              row.drawnCount !== undefined &&
+              row.drawnCount < row.count
 
             // The pin, the name and the count, in that order. On a hideable
             // row all three go inside the button, which is the whole point:
@@ -506,9 +525,17 @@ export function Legend({
                     which the two-badge version never did - `9` beside `3 shown`
                     is two numbers with nothing saying one is a subset of the
                     other. Maintainer's call between six renderings, PR #706. */}
-                <span className="legend__count">
-                  {short ? `${row.drawnCount}/${row.count}` : row.count}
-                </span>
+                {/* NO SLOT AT ALL on a key entry, rather than an empty one
+                    (#1051). A safety row names its symbol and counts nothing -
+                    see lib/legendContents.ts's `withSafetyKey` for why neither
+                    layer has an honest number - and an empty `.legend__count`
+                    would hold the mono-spaced gutter open beside the tag on the
+                    two rows that must not look like a rendering accident. */}
+                {row.count !== undefined && (
+                  <span className="legend__count">
+                    {short ? `${row.drawnCount}/${row.count}` : row.count}
+                  </span>
+                )}
               </>
             )
 

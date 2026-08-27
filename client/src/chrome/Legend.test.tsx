@@ -323,17 +323,52 @@ describe('every hideable category has a row, in view or not', () => {
     expect(first.slice(0, HIDEABLE_TYPES.length)).toEqual(HIDEABLE_TYPES.map(typeLabel))
   })
 
-  it('never invents a safety row for a stretch with no closure on it', () => {
-    // Closures and serious warnings are not in HIDEABLE_TYPES, have no switch to
-    // reach, and a standing "Closure 0" would be this panel making a claim about
-    // closures that nothing asked it to make.
+  it('names both safety symbols on a stretch that holds neither (#1051)', () => {
+    // The key is the whole point. These rows were unreachable for as long as
+    // they existed - `computeLegendContents` counts `MapPoint`s, and a closure
+    // is a `ClosureBand` and a serious warning a `WarningPoint` - so a hiker who
+    // saw the barred red band across the trail, or the red triangle pin bigger
+    // than every other mark on the map, had nowhere in the app to look up what
+    // it was. A key that appears only once you are already looking at the thing
+    // you did not recognise is not a key, so these two do not wait for the
+    // viewport the way every other row does.
     render(<Legend {...PROPS} points={[]} />)
 
-    expect(screen.queryByRole('listitem', { name: 'Closure' })).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('listitem', { name: 'Serious warning' }),
-    ).not.toBeInTheDocument()
+    expect(rowFor('Closure')).toBeInTheDocument()
+    expect(rowFor('Serious warning')).toBeInTheDocument()
   })
+
+  it.each(['Closure', 'Serious warning'])(
+    'puts no number on the %s row, on a stretch that holds none',
+    (label) => {
+      // What the old rule was protecting, kept: "Closure 0" is a claim about
+      // closures that nothing asked this panel to make, and nothing measures
+      // either layer to make it with - `map/drawnPois.ts` measures the pin
+      // layers, a closure is a line, and `warningLayers.ts` sets
+      // `icon-allow-overlap: true` on purpose. A key entry makes no claim about
+      // the rectangle at all, which is what lets the row stand on every panel.
+      render(<Legend {...PROPS} points={[]} />)
+
+      expect(rowFor(label).querySelector('.legend__count')).toBe(null)
+      // The contrast is the assertion: an ordinary row still says `0` here, and
+      // that number is true about this rectangle.
+      expect(rowFor('Water')).toHaveTextContent('0')
+    },
+  )
+
+  it.each(['Closure', 'Serious warning'])(
+    'puts no number on the %s row with one of each in view either',
+    (label) => {
+      // PROPS holds a closure and a serious warning inside the bbox, so this is
+      // the case where a count could be rendered and must not be. The row means
+      // one thing rather than changing shape with whatever the shell fed it -
+      // and no shell feeds these today, which is exactly how the two rows went
+      // unseen for as long as they did.
+      render(<Legend {...PROPS} />)
+
+      expect(rowFor(label).querySelector('.legend__count')).toBe(null)
+    },
+  )
 
   it('still says the map is empty here, with eight rows of zero on screen', () => {
     // `isEmpty` is decided by the viewport, not by the grid. Decided by the grid
@@ -1170,7 +1205,22 @@ describe('reporting waypoints that did not fit', () => {
     // is one slot per row and no second badge beside it.
     const rows = container.querySelectorAll('.legend__pins .legend__row')
     expect(rows.length).toBeGreaterThan(0)
-    expect(container.querySelectorAll('.legend__count')).toHaveLength(rows.length)
+    // One slot on every row that has a number, and no slot at all on the two
+    // that do not (#1051). Subtracting the key rows rather than a literal, for
+    // the same reason the total is counted rather than written down: what is
+    // being asserted is one slot per counted row, not how many categories the
+    // app ships.
+    const keyRows = container.querySelectorAll('.legend__pins .legend__row--always')
+    expect(keyRows).toHaveLength(2)
+    expect(container.querySelectorAll('.legend__count')).toHaveLength(
+      rows.length - keyRows.length,
+    )
+    // And never two in one row, which is the wrap this design replaced. The
+    // total above cannot catch that on its own: a row with two badges and a row
+    // with none sum to the same figure.
+    for (const row of rows) {
+      expect(row.querySelectorAll('.legend__count').length).toBeLessThanOrEqual(1)
+    }
     expect(container.querySelector('.legend__drawn')).toBe(null)
   })
 

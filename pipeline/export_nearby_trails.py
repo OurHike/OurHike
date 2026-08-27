@@ -185,6 +185,33 @@ SOURCES_PATH = ROOT / "sources.json"
 ARTIFACT_NAME = "nearby_trails.geojson"
 MANIFEST_NAME = "nearby_trails_manifest.json"
 
+# Coordinates are written at six decimals - about 0.11 m of longitude at
+# these latitudes - by export_trails.py's own precision rule: an order finer
+# than the tolerance the geometry was simplified to, which is 1 m here (the
+# `simplify_records` call in main()). OVERVIEW_COORDINATE_DECIMALS states the
+# rule for its 100 m sketch and lands on four; 1 m lands on six.
+#
+# This was the one artifact writing coordinates with no precision floor at
+# all: records_to_geojson serialises shapely's __geo_interface__, and the
+# EPSG:5070 round trip inside simplify_records hands back full-precision
+# doubles, ~17 significant digits each. The A.T.'s trails.geojson never had
+# this problem because GDAL's GeoJSON driver caps it at seven decimals
+# (export_trails.py's "why it is written here" block); this export writes its
+# own JSON, so it caps its own. The digits dropped describe less ground than
+# the simplification already discarded - and less than a tenth of the 1 m the
+# simplification is allowed to move a vertex, so nothing downstream can tell
+# the difference: build_trail_graph.py's ENDPOINT_SNAP_M is 8 m, and the
+# off-route thresholds lib/dayHikeFollow.ts holds against derived geometry
+# are 90 ft out / 45 ft back.
+#
+# What it buys, measured 2026-08-27 on the vertex bytes themselves (10,000
+# uniform pairs in the artifact's own lon/lat range, JSON with the compact
+# separators this export uses): 39.0 characters per full-precision pair
+# against 22.8 at six decimals, 0.58x. The artifact is coordinates almost
+# entirely, so the whole-file ratio should land near that; the run itself
+# prints the byte count, which is where the measured after comes from.
+NEARBY_COORDINATE_DECIMALS = 6
+
 # What a `foot_field` has to read for a segment to be a hiking trail, where
 # the source's entry does not say otherwise. OPRHP's domain also declares
 # U/M/I/-99; none of the four appears in its live data (measured 2026-08-24,
@@ -594,9 +621,55 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     return out, stats
 
 
+def _drawable_after_cut(geom_type: str, coords) -> bool:
+    """Whether every line part still has two distinct vertices - the same
+    question export_trails' _has_drawable_geometry asks, re-asked here
+    because the answer can CHANGE at six decimals: two vertices less than
+    the rounding step apart land on the same grid point, and a zero-length
+    LineString draws as nothing while the run reports success."""
+    lines = coords if geom_type == "MultiLineString" else [coords]
+    return all(len({tuple(pair) for pair in line}) >= 2 for line in lines)
+
+
+def _rounded_geometry(geometry) -> dict:
+    """`__geo_interface__` with every coordinate cut to
+    NEARBY_COORDINATE_DECIMALS - see that constant for the derivation. A cut,
+    not a re-derivation: the vertices are the simplified ones, minus digits
+    finer than the simplification's own tolerance.
+
+    With one exception, and it is simplify_records' own never-drop
+    convention: a feature the cut would degenerate - a closure sliver or a
+    source line shorter than ~0.1 m in both axes, whose two vertices round
+    onto one grid point - keeps its full-precision vertices instead. A few
+    dozen uncut characters against a trail marked closed by an invisible
+    zero-length line."""
+    geo = geometry.__geo_interface__
+
+    def walk(coords, cut: bool):
+        if len(coords) == 0:
+            return []
+        if isinstance(coords[0], (int, float)):
+            if cut:
+                return [round(value, NEARBY_COORDINATE_DECIMALS) for value in coords]
+            return list(coords)
+        return [walk(part, cut) for part in coords]
+
+    # Only the two line types reach here (build_records skips anything else,
+    # and the closure split merges back to them); a type this predicate does
+    # not understand is passed through uncut rather than guessed at.
+    if geo["type"] not in ("LineString", "MultiLineString"):
+        return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
+
+    rounded = walk(geo["coordinates"], cut=True)
+    if _drawable_after_cut(geo["type"], rounded):
+        return {"type": geo["type"], "coordinates": rounded}
+    return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """The FeatureCollection the client draws. Properties only - no geometry
-    re-derivation - so what is written is what was clipped and simplified."""
+    re-derivation - so what is written is what was clipped and simplified,
+    at the precision NEARBY_COORDINATE_DECIMALS caps."""
     from shapely import wkt as shapely_wkt
 
     features = []
@@ -619,7 +692,7 @@ def records_to_geojson(records: list[dict]) -> dict:
                     **({"closure_kind": record["closure_kind"]} if record.get("closure_kind") else {}),
                     **({"closure_reason": record["closure_reason"]} if record.get("closure_reason") else {}),
                 },
-                "geometry": json.loads(json.dumps(geometry.__geo_interface__)),
+                "geometry": _rounded_geometry(geometry),
             }
         )
     return {"type": "FeatureCollection", "features": features}

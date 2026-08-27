@@ -94,3 +94,52 @@ describe('passedPlaces', () => {
     expect(passedPlaces([], POIS, NOTE_SCOPED_TYPES)).toEqual([])
   })
 })
+
+describe('costing nothing when nothing was passed (#1090)', () => {
+  // walkedMiles.ts's identity rule, kept by the wrapper around it. This record
+  // is React state too, with its own persisting effect, so a fresh object on an
+  // unchanged step is the second of the two `localStorage` writes a jittering
+  // fix used to pay for.
+
+  it('hands back the record it was given when the step adds nothing', () => {
+    const now = new Date('2026-08-27T12:00:00')
+    const current = { day: localDay(now), ranges: [{ startMile: 940, endMile: 941 }] }
+
+    expect(advanceToday(current, now, 940.2, 940.6)).toBe(current)
+  })
+
+  it('hands it back when the pair is too far apart to be walking', () => {
+    const now = new Date('2026-08-27T12:00:00')
+    const current = { day: localDay(now), ranges: [{ startMile: 940, endMile: 941 }] }
+
+    expect(advanceToday(current, now, 940, 940 + MAX_FIX_GAP_MILES + 0.1)).toBe(current)
+  })
+
+  it('still turns the day over on the first step after midnight', () => {
+    // The identity check is "the day has not turned AND the step added
+    // nothing". A record from yesterday has to be replaced whatever the step
+    // did, or a hiker's "places you passed today" would still be yesterday's at
+    // breakfast - and the step itself is measured against the NEW day's empty
+    // record, so ground they walked yesterday is ground they have walked again.
+    const yesterday = { day: '2026-08-26', ranges: [{ startMile: 940, endMile: 941 }] }
+    const now = new Date('2026-08-27T07:00:00')
+
+    const next = advanceToday(yesterday, now, 940.2, 940.6)
+
+    expect(next).not.toBe(yesterday)
+    expect(next).toEqual({
+      day: localDay(now),
+      ranges: [{ startMile: 940.2, endMile: 940.6 }],
+    })
+  })
+
+  it('still records new ground', () => {
+    const now = new Date('2026-08-27T12:00:00')
+    const current = { day: localDay(now), ranges: [{ startMile: 940, endMile: 941 }] }
+
+    const next = advanceToday(current, now, 940.9, 941.3)
+
+    expect(next).not.toBe(current)
+    expect(next.ranges).toEqual([{ startMile: 940, endMile: 941.3 }])
+  })
+})

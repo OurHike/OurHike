@@ -77,6 +77,50 @@
   color: var(--fg-3);
   font-size: 12px;
 }
+
+/* The per-asset breakdowns (#1103): the archives under a sheet's card, and
+   the trail-data list beside the sheets. One list style for both - the same
+   claim, "this is what the store holds", should read the same wherever it
+   is made. */
+.downloads__assets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.downloads__asset {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  font-size: 12px;
+}
+.downloads__asset-name {
+  color: var(--fg-2);
+}
+.downloads__asset-state {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--fg-3);
+  text-align: right;
+}
+.downloads__trail-data {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+.downloads__trail-data-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.downloads__trail-data-note {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: 12px;
+}
 /* One downloadable thing (#192). */
 .downloads__item {
   display: flex;

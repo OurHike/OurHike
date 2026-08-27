@@ -259,3 +259,82 @@ describe('the watch in the pack (#313)', () => {
     expect(watchPosition).not.toHaveBeenCalled()
   })
 })
+
+describe('a fix that says the phone has not moved (#1090)', () => {
+  // The state object IS the re-render. Every consumer of this hook reads
+  // `status` and `at` and nothing else, so an identical position arriving as a
+  // new object re-renders a ~5,100-line App component and recomputes every memo
+  // keyed on the fix, for an answer that has not moved. React bails out only
+  // when an updater hands back the state it was given, which is what `toBe`
+  // below is asserting and why `toEqual` would not do.
+
+  it('keeps the state it already had', () => {
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    const first = result.current
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 }, 60_000)
+
+    expect(result.current).toBe(first)
+  })
+
+  it('keeps it even when the accuracy and the clock have moved', () => {
+    // The position is what this hook is asked for, and it is the only thing a
+    // caller reads. A fix at the same coordinates with a better accuracy figure
+    // is the same answer about where somebody is - and `fixedAt` freezing with
+    // it is the documented cost of that, stated on the bail-out itself.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 40 })
+    const first = result.current
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 4 }, 90_000)
+
+    expect(result.current).toBe(first)
+  })
+
+  it('still moves on the smallest change to either coordinate', () => {
+    // The other half, and the half that matters for a hiker: this suppresses a
+    // repeat, never a movement. There is no threshold here on purpose -
+    // suppressing small moves would suppress the first feet of somebody
+    // starting to walk, and "lost" is the first of this app's four ways of
+    // hurting someone.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    const first = result.current
+
+    reportFix({ longitude: -77, latitude: 39.000001, accuracy: 5 })
+    expect(result.current).not.toBe(first)
+
+    const second = result.current
+    reportFix({ longitude: -77.000001, latitude: 39.000001, accuracy: 5 })
+    expect(result.current).not.toBe(second)
+  })
+
+  it('reports the repeat as located after a lost signal, rather than staying unavailable', () => {
+    // The bail-out is gated on the CURRENT state being `located`, so a repeat
+    // arriving after a timeout is a real change and has to be taken. Missing
+    // that gate would leave a hiker on "Looking for GPS..." over a phone that
+    // is being told exactly where it is.
+    const { reportFix, reportFailure } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    reportFailure(3)
+    expect(result.current.status).toBe('unavailable')
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(result.current).toEqual({
+      status: 'located',
+      at: { lon: -77, lat: 39 },
+      accuracyFeet: 5 * 3.28084,
+      fixedAt: new Date(0),
+    })
+  })
+})

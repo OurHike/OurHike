@@ -71,11 +71,33 @@ export const NOTHING_WALKED: readonly MileRange[] = []
  * stored set without bound over a thru-hike - one entry per fix pair, tens of
  * thousands of them, to describe a single line.
  */
-export function mergeRange(covered: readonly MileRange[], range: MileRange): MileRange[] {
+export function mergeRange(
+  covered: readonly MileRange[],
+  range: MileRange,
+): readonly MileRange[] {
   const startMile = Math.min(range.startMile, range.endMile)
   const endMile = Math.max(range.startMile, range.endMile)
-  if (!Number.isFinite(startMile) || !Number.isFinite(endMile)) return [...covered]
-  if (endMile === startMile) return [...covered]
+  if (!Number.isFinite(startMile) || !Number.isFinite(endMile)) return covered
+  if (endMile === startMile) return covered
+
+  // Already inside a range this set holds, so there is nothing to merge and -
+  // the part that matters - nothing to hand back a new array for (#1090).
+  //
+  // WHY IDENTITY IS THE POINT. This is React state. `setWalked` is called once
+  // per GPS fix whose mile differs from the last, a jittering fix under tree
+  // cover flips between adjacent centerline vertices without anybody moving,
+  // and a fresh array on an unchanged answer is a re-render of the whole shell
+  // plus a synchronous `localStorage` write from the effect that persists it -
+  // twice over, since `advanceToday` runs the same arithmetic for today's
+  // slice. React bails out of the render when an updater returns the state it
+  // was given, so returning `covered` is what makes a no-op cost nothing.
+  //
+  // The returned set is `readonly` for exactly this reason: a caller that
+  // mutated the array it got back would now be mutating the state it came
+  // from. Nothing does, and the type is what keeps it that way.
+  if (covered.some((held) => startMile >= held.startMile && endMile <= held.endMile)) {
+    return covered
+  }
 
   // Sort-then-sweep rather than find-the-insertion-point-and-splice. The
   // second is what this was written as first, and it needed four branches to
@@ -108,15 +130,19 @@ function byStart(a: MileRange, b: MileRange): number {
  * walking - which is the rule, and the only place it is applied. A caller that
  * wants to record a walk it is sure of should still come through here, so
  * there is exactly one gate rather than one per call site.
+ *
+ * "Unchanged" means the SAME ARRAY, not an equal one (#1090). See `mergeRange`.
  */
 export function recordStep(
   covered: readonly MileRange[],
   fromMile: number | null,
   toMile: number | null,
-): MileRange[] {
-  if (fromMile === null || toMile === null) return [...covered]
-  if (!Number.isFinite(fromMile) || !Number.isFinite(toMile)) return [...covered]
-  if (Math.abs(toMile - fromMile) > MAX_FIX_GAP_MILES) return [...covered]
+): readonly MileRange[] {
+  // The set ITSELF back on every refusal, not a copy of it (#1090) - see
+  // `mergeRange` for why the reference is the whole point.
+  if (fromMile === null || toMile === null) return covered
+  if (!Number.isFinite(fromMile) || !Number.isFinite(toMile)) return covered
+  if (Math.abs(toMile - fromMile) > MAX_FIX_GAP_MILES) return covered
   return mergeRange(covered, { startMile: fromMile, endMile: toMile })
 }
 

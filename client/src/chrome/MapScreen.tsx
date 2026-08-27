@@ -54,7 +54,8 @@ import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
-import type { DownloadActivity } from '../lib/downloadActivity'
+import { downloadFillPercent, type DownloadActivity } from '../lib/downloadActivity'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
@@ -480,6 +481,18 @@ export interface MapScreenProps {
    * as text; the rail needs it as data.
    */
   direction?: HikeDirection
+  /**
+   * The hiker's own mile on the centerline, or undefined where there is not
+   * one (#953).
+   *
+   * The waypoint card is the only thing that reads it, and it is a number here
+   * rather than a string for the reason #953 names: what crossed this boundary
+   * before was `positionLine`'s finished sentence, so by the time a card
+   * existed the figure had already been spent. Undefined covers every state
+   * that module has its own wording for - and the card's answer to all of them
+   * is the same silence, so they arrive here as one absence rather than six.
+   */
+  hikerMile?: number
 
   showZoomButtons?: boolean
   /**
@@ -722,6 +735,7 @@ export function MapScreen({
   chart,
   waypoints,
   direction,
+  hikerMile,
   position,
   locationEnabled = false,
   showZoomButtons = false,
@@ -766,6 +780,13 @@ export function MapScreen({
   // the shell above owns the POI data, not the canvas. Tee'd rather than
   // intercepted: the owner's `onMapReady` still sees every hand-over.
   const [liveMap, setLiveMap] = useState<MapLibreMap | null>(null)
+
+  // This screen's own root element, for the share sheet's portal: the sheet
+  // must land inside the subtree App.tsx hides and inerts when another
+  // screen covers the held map (#1081), and the root is the highest box
+  // that is - see PoiShareSheet.tsx's header. State rather than a plain
+  // ref so the card re-renders with the element once it exists.
+  const [screenRoot, setScreenRoot] = useState<HTMLDivElement | null>(null)
   const handleMapReady = useCallback(
     (map: MapLibreMap | null) => {
       setLiveMap(map)
@@ -985,6 +1006,7 @@ export function MapScreen({
     // which would put the OS location prompt on screen ahead of the step whose
     // entire job is to explain why we are asking.
     <div
+      ref={setScreenRoot}
       className={entering ? 'map-screen map-screen--entering' : 'map-screen'}
       inert={entering || undefined}
       // Paired with `inert` rather than standing in for it. `inert` is what
@@ -1105,6 +1127,58 @@ export function MapScreen({
                   )}
                 </div>
               )}
+
+              {/* The hour a download spends arriving, admitted where its
+                  thinner map is felt (#1103). Below the alerts on purpose:
+                  those are the ground itself, this is housekeeping. A
+                  button because the window is where the detail lives - the
+                  per-asset list this card deliberately does not carry. No
+                  live role, like the visible alert cards above (#315): the
+                  figures change too often to announce. Absent the moment
+                  nothing is arriving, which is the DownloadsLink's rule and
+                  most of the year. */}
+              {downloadActivity !== null && (
+                <button
+                  type="button"
+                  className="map-screen__download-note"
+                  onClick={onOpenDownloads}
+                >
+                  <span className="map-screen__download-title">Map still arriving</span>
+                  {downloadActivity.kind === 'preparing' ? (
+                    // The canary step: four fetches of unannounced size, so
+                    // the honest figure is no figure (lib/downloadActivity.ts).
+                    <span className="map-screen__download-figures">
+                      Getting trail data first
+                    </span>
+                  ) : (
+                    <>
+                      <span className="map-screen__download-bar">
+                        <span
+                          className="map-screen__download-fill"
+                          style={{
+                            width: `${downloadFillPercent(
+                              downloadActivity.doneBytes,
+                              downloadActivity.totalBytes,
+                            )}%`,
+                          }}
+                        ></span>
+                      </span>
+                      {/* The same words and figures the window's card prints
+                          (DownloadCard.tsx), so the two surfaces can never
+                          disagree about one transfer. */}
+                      <span className="map-screen__download-figures">
+                        {`${downloadActivity.kind === 'downloading' ? 'Downloading' : 'Checking'} · ${formatBytesLive(
+                          downloadActivity.doneBytes,
+                        )} of ${formatBytes(downloadActivity.totalBytes)}`}
+                      </span>
+                      <span className="map-screen__download-line">
+                        Drawing live tiles meanwhile — some detail is missing until this
+                        lands.
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             <MapView
@@ -1193,7 +1267,10 @@ export function MapScreen({
                 map={liveMap}
                 units={units}
                 noteContext={noteContext}
+                {...(hikerMile === undefined ? {} : { hikerMile })}
+                {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
+                sheetContainer={screenRoot}
               />
             )}
 

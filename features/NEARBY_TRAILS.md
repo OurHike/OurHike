@@ -314,14 +314,22 @@ safety-always rule is a promise about the screen, and a unit cut trail-shaped wo
 it exactly where trails cross. (The spike's scale numbers make this cheap: the two parks'
 full trail geometry is 0.7 MB gzipped.)
 
-**Not met by what shipped, and this is the gap to know about.**
-[#950](https://github.com/OurHike/OurHike/issues/950) drew this map from a network artifact
-`client/src/lib/nearbyTrailData.ts` fetches and does **not** store, so a phone with no
-signal draws no nearby trails at all. That was a deliberate hold rather than an oversight —
-what a download contains is #552's decision, and building a second store beside
-`lib/trailData.ts`'s in advance of it would be a shape to unpick later — but the paragraph
-above is a requirement this build does not satisfy, and it should be read as outstanding
-rather than as described-and-done.
+**Half met since [#1082](https://github.com/OurHike/OurHike/issues/1082), and the half
+matters.** [#950](https://github.com/OurHike/OurHike/issues/950) drew this map from a
+network artifact `client/src/lib/nearbyTrailData.ts` fetched and did **not** store, so a
+phone with no signal drew no nearby trails at all. That was a deliberate hold rather than
+an oversight — what a download contains is #552's decision, and building a second store
+beside `lib/trailData.ts`'s in advance of it would be a shape to unpick later. #1082 closed
+the half that was a launch cost rather than a coverage decision: the last verified copy of
+the **whole** artifact is now kept and served with or without signal, refreshed only when
+the manifest's hash moves. So a phone that has once fetched and verified the network — an
+online launch where the manifest answered, which is every ordinary one — draws every
+nearby trail offline thereafter: a superset of any boundary, with no boundary machinery
+to unpick. What
+remains outstanding is the paragraph above as written: a **named** download whose contents
+a hiker can reason about, the safety POIs inside it included, cut to #552's unit. The
+cache is not that and does not claim to be — it appears in no download UI and answers no
+question about what is on the phone.
 
 **The number that decision has to weigh has moved, and it is the reason to take it.** The
 whole exported network was 1.72 MB gzipped on 2026-08-24, when the export clipped every
@@ -329,18 +337,54 @@ organization's layer to a bounding box around New York City. The maintainer remo
 clip on 2026-08-25 and registered NYS DEC in the same change
 ([#1019](https://github.com/OurHike/OurHike/issues/1019)) — *"Include all of DEC, NYNJTC &
 NYSP. Don't limit data from orgs based on geography"* — and the artifact measured **7.34 MB
-gzipped, 23.5 MB raw, 21,805 features** the same day. That is what a phone pulls in one
-request today, for the whole of New York state, on a screen whose only offline story is
-still "it does not store it". A per-region cut is the obvious answer and it is
+gzipped, 23.5 MB raw, 21,805 features** the same day. Since
+[#1082](https://github.com/OurHike/OurHike/issues/1082) a phone pulls that once per
+*publish* rather than once per launch — the ordinary launch asks the manifest a ~KB
+question and keeps the stored copy — but every phone still parses the whole state to draw
+any of it. A per-region cut is the obvious answer and it is
 [#552](https://github.com/OurHike/OurHike/issues/552)'s to make, not this doc's.
 
-## 10. POI density, honestly
+## 10. POI density, measured
 
-Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI density.
-It is still unmeasured — OPRHP's facilities layer holds 8,823 points statewide and nobody
-has counted the two parks' safety-relevant subset at z12. If safety-only still overwhelms
-the screen, the dot rank (POI_VISIBILITY.md) absorbs it before anything new is invented.
-Measuring this is the registration follow-up's job, not this doc's guess.
+Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI
+density. **Measured 2026-08-27 ([#936](https://github.com/OurHike/OurHike/issues/936)),
+against OPRHP's live facilities layer — `pipeline/spike_oprhp_poi_density.py`, re-runnable.**
+The layer still holds 8,823 points statewide, and the two parks hold **312** of them, every
+row flagged `Public_ = Y`.
+
+**The fear was right about amenities and empty about safety**, which is the opposite way
+round from how it was carried:
+
+| on one 390 × 700 phone screen at z12 | in the two parks | most in one screen |
+|---|---|---|
+| water — the safety kind this layer could supply | **0** | **0** |
+| toilets — #936's wider reading of safety-relevant | 9 | 5 |
+| amenities OurHike has a pin for | 148 | **50** |
+
+Read the last row against [POI_VISIBILITY.md](POI_VISIBILITY.md)'s own table, which puts
+**~16 pins down the column** at z12: relaxing the chosen-trail-only rule over Harriman
+would ask a screen with room for sixteen to draw fifty. **So the amenity half of the split
+now stands on evidence rather than on a worry** — this is the first number behind it, and
+it supports the rule as shipped. The densest screen is centred near 41.2431, −74.1158, and
+what fills it is unremarkable: 49 `Scenic View`, 36 `Group Camp`, 25 `Parking Area`, 11
+`Lean-to` across Harriman.
+
+**The safety half needs nothing.** OPRHP's facilities layer carries no `Drinking Fountain`
+and no `Water Spigot` in either park — not few, none — so the always-draw rule costs this
+layer nothing at all, and POI_VISIBILITY.md's dot rank is not needed to absorb it.
+
+### What this does not measure, and it is the bigger half
+
+**This answers the question §10 asked, which was about OPRHP's facilities layer. It is not
+the density of safety pins over Harriman.** Since §11 widened the water gate, a nearby
+trail's water comes from NHD and OSM rather than from a park's own facilities inventory —
+so the number that decides whether the always-draw rule crowds a screen is a count of NHD
+crossings and OSM water over 316 miles of Harriman trails, which nobody has run.
+[#1028](https://github.com/OurHike/OurHike/issues/1028) is the nearest thing to a hint at
+its scale (3,370 unnamed `nhd_crossing` rows in the ledger) and is about a different
+question. **That count is the real follow-up**, and it is worth being explicit that the
+zero above does not stand in for it: this layer contributing no water is a fact about
+OPRHP's inventory, not a fact about how much water Harriman has.
 
 ## 11. Water on every trail on screen, and what it is measured against
 

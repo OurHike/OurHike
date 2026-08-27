@@ -145,6 +145,64 @@ def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypat
     }
 
 
+def test_coordinates_are_cut_to_six_decimals_not_written_as_survey_noise(tmp_path, monkeypatch):
+    # The EPSG:5070 round trip inside simplify_records hands back doubles
+    # ~17 significant digits long, and this export writes its own JSON, so
+    # nothing capped them - 39.0 characters a coordinate pair against 22.8
+    # at six decimals (measured 2026-08-27; the NEARBY_COORDINATE_DECIMALS
+    # block carries the method). Six decimals is ~0.11 m of longitude here,
+    # an order finer than the 1 m the simplification is already allowed to
+    # move a vertex - the digits cut describe ground the artifact never held.
+    survey_noise = [(-74.123456789012345, 41.254321098765432), (-74.09, 41.26)]
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(survey_noise, _oprhp_properties())]},
+    )
+
+    (feature,) = body["features"]
+    geometry = feature["geometry"]
+    lines = geometry["coordinates"] if geometry["type"] == "MultiLineString" else [geometry["coordinates"]]
+    written = [pair for line in lines for pair in line]
+    for lon, lat in written:
+        assert lon == round(lon, 6)
+        assert lat == round(lat, 6)
+    # And the cut moved nothing it may not: every written vertex sits within
+    # the rounding step of a source vertex (the fixture is two points, so
+    # simplification removes none of them), not merely within the 1 m the
+    # simplification could have spent on top.
+    for (lon, lat), (src_lon, src_lat) in zip(written, survey_noise, strict=True):
+        assert abs(lon - src_lon) < 1.5e-6
+        assert abs(lat - src_lat) < 1.5e-6
+
+
+def test_a_line_the_cut_would_collapse_keeps_its_full_precision_vertices(tmp_path, monkeypatch):
+    # The review of the first cut caught this: every degenerate-geometry
+    # guard in the pipeline runs at full precision, so a line shorter than
+    # the rounding step in both axes - a closure sliver, or a source segment
+    # of a few centimetres - sailed through them all and was then written as
+    # two identical grid points. A zero-length LineString draws as nothing,
+    # while the run reports success; on a ':closed' record that is a closure
+    # marking rendered invisible. The fallback is simplify_records' own
+    # never-drop convention: such a feature keeps its full-precision
+    # vertices, a few dozen uncut characters against a safety marking that
+    # silently disappears.
+    a_few_centimetres = [(-74.1000002, 41.2500002), (-74.0999998, 41.2500002)]
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(a_few_centimetres, _oprhp_properties())]},
+    )
+
+    (feature,) = body["features"]
+    geometry = feature["geometry"]
+    lines = geometry["coordinates"] if geometry["type"] == "MultiLineString" else [geometry["coordinates"]]
+    for line in lines:
+        assert len({tuple(pair) for pair in line}) >= 2, f"zero-length line published: {line}"
+
+
 def test_the_source_key_is_the_registry_key_so_the_client_ghosts_it(tmp_path, monkeypatch):
     # map/nearbyTrails.ts ghosts every `source` outside CHOSEN_SYSTEM_SOURCES
     # (['centerline', 'side_trails']). Nothing in this export is in that list,

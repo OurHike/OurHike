@@ -158,8 +158,16 @@ async function hashOf(body: string): Promise<string> {
     .join('')
 }
 
-/** Serve the graph pair (hashed) and 404 everything else the shell asks for. */
-async function serveGraph({ withGraph = true } = {}) {
+/**
+ * Serve the graph pair (hashed) and 404 everything else the shell asks for.
+ *
+ * `withGeometry: false` is the phone that has the network's TOPOLOGY and not
+ * its LINES (#1093) - a release that published one half, a hash that does not
+ * match, or simply the seconds before the lazy fetch lands. It is a state the
+ * builder has to be able to speak about, so it is a state this harness can
+ * produce.
+ */
+async function serveGraph({ withGraph = true, withGeometry = true } = {}) {
   const manifest = {
     artifacts: {
       [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) },
@@ -180,7 +188,9 @@ async function serveGraph({ withGraph = true } = {}) {
         } as unknown as Response)
       }
       const body = key.includes(TRAIL_GRAPH_GEOMETRY_KEY)
-        ? GEOMETRY
+        ? withGeometry
+          ? GEOMETRY
+          : null
         : key.includes(TRAIL_GRAPH_KEY)
           ? GRAPH
           : null
@@ -348,6 +358,58 @@ describe('the day-hike builder, end to end', () => {
     )
     // Placed nothing: still no route total on the bar.
     expect(screen.queryByText(/leg ·/)).not.toBeInTheDocument()
+  })
+
+  it('does not call a tap off-network when it is the LINES that have not arrived', async () => {
+    // #1093, end to end. The routing artifact is on the phone and the
+    // geometry one is not, which is every phone for the first seconds after
+    // this door opens. A tap dead on Pine Meadow cannot be answered - and the
+    // sentence must not be the one that says the hiker aimed wrong, because
+    // they did not.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    await serveGraph({ withGeometry: false })
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    const map = await liveMap()
+
+    await tap(map, -74.095, 41.25)
+
+    const said = await screen.findByRole('alert')
+    expect(said).toHaveTextContent(/hasn.t got this area.s trail lines/)
+    expect(said).not.toHaveTextContent(/isn.t on a marked hiking route/)
+    // And placed nothing, which is the half that was never in doubt.
+    expect(screen.queryByText(/leg ·/)).not.toBeInTheDocument()
+  })
+
+  it('does not restart the geometry fetch every time the hiker taps', async () => {
+    // The other half of #1093. `tapAt` returns a NEW draft on every tap, a
+    // refused one included, and the effect that fetches the geometry used to
+    // carry the draft in its dependency list - so each tap aborted the
+    // in-flight request and started it again. The taps that most need the
+    // artifact are the refused ones, which is what makes somebody tap again.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    const requested = await serveGraph({ withGeometry: false })
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    const map = await liveMap()
+
+    const asked = () =>
+      requested.filter((url) => url.includes(TRAIL_GRAPH_GEOMETRY_KEY)).length
+    await waitFor(() => {
+      expect(asked()).toBe(1)
+    })
+
+    await tap(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    await tap(map, -74.09, 41.255)
+
+    expect(asked()).toBe(1)
   })
 
   it('fetches the heavy geometry only after the door opens', async () => {

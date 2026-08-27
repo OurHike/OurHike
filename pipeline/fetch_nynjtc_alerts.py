@@ -9,22 +9,33 @@ of it reaches a hiker using OurHike. `pipeline/ALERTS_NOTICES_SURVEY.md` §5
 is the reconnaissance; features/ORG_NOTICES.md is the delivery design; this
 is the first step of it, and deliberately only the first.
 
-THE OUTPUT IS A CACHE, NOT AN ARTIFACT, and here it is not even a proposal.
-It lands in `data/raw/`, which is gitignored and is where CONTRIBUTING.md
-puts anything fetched. `fetch_atc_updates.py` writes its cache for a
-publisher to read; this one writes its cache for a PERSON to read, because
-nothing downstream may consume it yet:
+THE OUTPUT IS A CACHE, NOT AN ARTIFACT. It lands in `data/raw/`, which is
+gitignored and is where CONTRIBUTING.md puts anything fetched.
 
-  - `nynjtc_licence` in sources.json covers NYNJTC's two public trail
-    extracts "and nothing else", and says in its own words that it must not
-    be read as precedent. Republishing their notices is a separate question
-    inside the maintainer's NYNJTC conversation (#768).
-  - The term-to-feature join table features/ORG_NOTICES.md specifies does not
-    exist yet, so an alert has no way onto the map even once it may ship.
+WHO READS IT CHANGED ON 2026-08-27, and this is a correction rather than a
+rewrite, because the reasoning it replaces was right when it was written.
+#1078 shipped this fetcher with the registry entry at `reaches_hikers: false`
+and said so here - "this one writes its cache for a PERSON to read, because
+nothing downstream may consume it yet" - on two grounds: that `nynjtc_licence`
+covers NYNJTC's two trail extracts "and nothing else", and that the
+term-to-feature join table features/ORG_NOTICES.md specifies does not exist.
 
-So the registry entry carries `reaches_hikers: false` and no export reads
-this file. That is enforced by absence, the same way `fetch_club_pdfs.py`'s
-output is.
+The first was answered. The maintainer gave a separate authorisation for the
+NOTICES, recorded as `nynjtc_alerts_licence` in sources.json, and what it
+authorises publishing is narrower than what this fetches: the headline, the
+locality their own tags give, the `modified` date and the URL - never their
+body text, which is their writing. `export_nynjtc_alerts.py` applies that
+split and reads this cache.
+
+The second was not answered and did not need to be. Every row ships
+`place: unplaced`, which features/ORG_NOTICES.md §3 makes a first-class state
+rather than a gap: the map draws none of them and the client surfaces them as
+a list a hiker reads. The join table is still what would put one on the map.
+
+So `reaches_hikers` is `true`, an export does read this file, and
+publish-conditions.yml runs both - which it did not until #940, three weeks
+after the authorisation, with `conditions/nynjtc_alerts.json` 404 on
+production the whole time.
 
 BEING POLITE TO SOMEBODY ELSE'S SERVER. One request for the alerts plus one
 per place taxonomy - five in the steady state, against ATC's ten-plus-one-per

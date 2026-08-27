@@ -812,10 +812,13 @@ describe('preferences from the More screen', () => {
     // built in the same theme rather than staying paper-white inside a dark
     // app.
     //
-    // The map is unmounted while More is showing (it is a different screen,
-    // not a hidden one), so what this can observe on the way back is the style
-    // the canvas was built with. That a theme change on a LIVE map repaints in
-    // place instead of rebuilding is map/style.test.ts's attachMapAppearance block.
+    // The map stays mounted while More is showing - hidden and inert, never
+    // torn down (#1081) - so a theme change taken from More reaches the live
+    // canvas as a repaint in place (attachMapAppearance, whose unit coverage
+    // is map/style.test.ts). What this asserts on the way back is therefore
+    // the live paint write, not the style the canvas was built with: the
+    // built style legitimately stays light, because the map was built before
+    // the tap and never rebuilt after it.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
@@ -844,15 +847,17 @@ describe('preferences from the More screen', () => {
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    // Waited on the built style rather than on a tick: the map is constructed
-    // inside an effect, so what proves the sequence completed is a live map
-    // carrying the dark backdrop, not time passing. Field/night's backdrop
+    // Waited on the live paint write rather than on a tick: the repaint runs
+    // in an effect, so what proves the sequence completed is the map carrying
+    // the dark backdrop, not time passing. Field/night's backdrop
     // specifically: dark CHOSEN from the control reaches field's own night
     // sheet, where an auto theme resolving dark would land on night_hike -
     // liveTopo.ts's sheetVariant owns that distinction.
     await waitFor(() => {
       expect(MockMap.live.length).toBeGreaterThan(0)
-      expect(backdropOf(MockMap.live[0])).toBe(SHEET_VARIANTS.field.night.backdrop)
+      expect(
+        MockMap.live[0].paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`),
+      ).toBe(SHEET_VARIANTS.field.night.backdrop)
     })
   })
 })
@@ -1310,19 +1315,23 @@ describe('a download that finished and cannot be read (#334)', () => {
     return map
   }
 
-  /** The download window reached from the More tab, which is the path that
-   *  unmounts the map on the way - see the test below. */
+  /** The download window reached from the More tab - which used to unmount
+   *  the map on the way, and since #1081 puts it away hidden and inert
+   *  instead. See the two tests below for what each half of that means. */
   async function openDownloadsFromMore(user: ReturnType<typeof userEvent.setup>) {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
     return screen.findByRole('dialog', { name: /offline map/i })
   }
 
-  it('tells the Downloads card, even though reaching it unmounts the map', async () => {
+  it('tells the Downloads card, even though the map screen is put away to reach it', async () => {
     // The whole reason the shell holds this rather than the map screen. A
     // hiker reads "Downloaded map not drawing" on the map, goes looking for
-    // the fix, and the only door on the More tab takes the map down on the
-    // way - taking the observation with it, if the observation lived there.
+    // the fix, and the only door is on the More tab - where the map screen is
+    // not presented. When this was written the trip unmounted the map
+    // entirely; #1081 keeps it mounted but hidden and inert, and the flag
+    // must reach the card either way, because the report screens and the
+    // next launch still confront this state with no live map at all.
     const user = userEvent.setup()
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['damaged']))
@@ -1336,9 +1345,10 @@ describe('a download that finished and cannot be read (#334)', () => {
     await openDownloadsFromMore(user)
     const usgsCard = await usgsSheetCard(user)
 
-    // The map really is gone by now - otherwise this proves nothing about
-    // surviving the teardown.
-    expect(MockMap.live).toHaveLength(0)
+    // The map screen really is out of reach by now - held inert under More,
+    // out of the accessibility tree - so the card below cannot be leaning on
+    // a presented map screen for its answer.
+    expect(screen.queryByRole('region', { name: /trail map/i })).not.toBeInTheDocument()
     expect(within(usgsCard).getByRole('alert')).toHaveTextContent(
       /could not draw from it/i,
     )
@@ -1397,12 +1407,19 @@ describe('a remembered failure that stopped being true (#352)', () => {
     return screen.findByRole('dialog', { name: /offline map/i })
   }
 
-  it('lets a later, healthy map retract what an earlier one reported', async () => {
+  it('lets a later, healthy read retract what an earlier one reported', async () => {
     // The shipped bug. A map that only ever SUCCEEDS used to say nothing at
     // all - `report()` fires on change and a healthy map computes the answer
     // it started with - so the flag an earlier map raised was never
     // contradicted. One transient error marked a good 314 MB archive damaged
     // for the rest of the session, on both screens.
+    //
+    // When this was written the trip through More tore the map down, so the
+    // healthy read had to come from a REBUILT map - the case liveSourceHealth's
+    // own suite still covers, and the one the report screens still produce.
+    // #1081 keeps the map mounted across that trip, so the session-shaped
+    // path is now the SAME map recovering: one transient error, then the
+    // archive reads fine, and the flag comes down.
     const user = userEvent.setup()
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['fine']))
@@ -1410,23 +1427,21 @@ describe('a remembered failure that stopped being true (#352)', () => {
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    await sourceFails('usgs-topo')
+    const map = await sourceFails('usgs-topo')
     await screen.findByText(/downloaded map not drawing/i)
 
-    // Away to the More tab and back: the map is torn down and a new one built,
-    // which is what used to make this permanent.
+    // Away to the More tab and back: the map survives the trip (#1081) -
+    // which is itself worth pinning here, because this flag being remembered
+    // by the SHELL is what the two screens read either way.
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await waitFor(() => expect(MockMap.live).toHaveLength(0))
+    await screen.findByRole('heading', { name: 'More' })
     await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.live[0]).toBe(map)
 
-    // The new map reads the archive perfectly.
-    const rebuilt = await waitFor(() => {
-      const live = MockMap.live[0]
-      expect(live?.listenerCount('sourcedata')).toBeGreaterThan(0)
-      return live!
-    })
+    // The same map now reads the archive perfectly.
     act(() => {
-      rebuilt.emit('sourcedata', { sourceId: 'usgs-topo', tile: { state: 'loaded' } })
+      map.emit('sourcedata', { sourceId: 'usgs-topo', tile: { state: 'loaded' } })
     })
 
     await waitFor(() =>

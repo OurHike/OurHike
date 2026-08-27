@@ -314,14 +314,20 @@ safety-always rule is a promise about the screen, and a unit cut trail-shaped wo
 it exactly where trails cross. (The spike's scale numbers make this cheap: the two parks'
 full trail geometry is 0.7 MB gzipped.)
 
-**Not met by what shipped, and this is the gap to know about.**
-[#950](https://github.com/OurHike/OurHike/issues/950) drew this map from a network artifact
-`client/src/lib/nearbyTrailData.ts` fetches and does **not** store, so a phone with no
-signal draws no nearby trails at all. That was a deliberate hold rather than an oversight —
-what a download contains is #552's decision, and building a second store beside
-`lib/trailData.ts`'s in advance of it would be a shape to unpick later — but the paragraph
-above is a requirement this build does not satisfy, and it should be read as outstanding
-rather than as described-and-done.
+**Half met since [#1082](https://github.com/OurHike/OurHike/issues/1082), and the half
+matters.** [#950](https://github.com/OurHike/OurHike/issues/950) drew this map from a
+network artifact `client/src/lib/nearbyTrailData.ts` fetched and did **not** store, so a
+phone with no signal drew no nearby trails at all. That was a deliberate hold rather than
+an oversight — what a download contains is #552's decision, and building a second store
+beside `lib/trailData.ts`'s in advance of it would be a shape to unpick later. #1082 closed
+the half that was a launch cost rather than a coverage decision: the last verified copy of
+the **whole** artifact is now kept and served with or without signal, refreshed only when
+the manifest's hash moves. So a phone that has launched online once draws every nearby
+trail offline — a superset of any boundary, with no boundary machinery to unpick. What
+remains outstanding is the paragraph above as written: a **named** download whose contents
+a hiker can reason about, the safety POIs inside it included, cut to #552's unit. The
+cache is not that and does not claim to be — it appears in no download UI and answers no
+question about what is on the phone.
 
 **The number that decision has to weigh has moved, and it is the reason to take it.** The
 whole exported network was 1.72 MB gzipped on 2026-08-24, when the export clipped every
@@ -329,9 +335,11 @@ organization's layer to a bounding box around New York City. The maintainer remo
 clip on 2026-08-25 and registered NYS DEC in the same change
 ([#1019](https://github.com/OurHike/OurHike/issues/1019)) — *"Include all of DEC, NYNJTC &
 NYSP. Don't limit data from orgs based on geography"* — and the artifact measured **7.34 MB
-gzipped, 23.5 MB raw, 21,805 features** the same day. That is what a phone pulls in one
-request today, for the whole of New York state, on a screen whose only offline story is
-still "it does not store it". A per-region cut is the obvious answer and it is
+gzipped, 23.5 MB raw, 21,805 features** the same day. Since
+[#1082](https://github.com/OurHike/OurHike/issues/1082) a phone pulls that once per
+*publish* rather than once per launch — the ordinary launch asks the manifest a ~KB
+question and keeps the stored copy — but every phone still parses the whole state to draw
+any of it. A per-region cut is the obvious answer and it is
 [#552](https://github.com/OurHike/OurHike/issues/552)'s to make, not this doc's.
 
 ## 10. POI density, honestly

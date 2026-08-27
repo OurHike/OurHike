@@ -26,7 +26,7 @@ import {
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
-import { fetchNearbyTrails } from './nearbyTrailData'
+import { loadNearbyTrails, type NearbyTrailsAnswer } from './nearbyTrailData'
 import {
   isSettledAbsence,
   loadTrailGraph,
@@ -258,7 +258,7 @@ export function useTrailData(
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
-  const [nearbyTrailsUrl, setNearbyTrailsUrl] = useState<string | null>(null)
+  const [nearbyTrails, setNearbyTrails] = useState<NearbyTrailsAnswer | null>(null)
   const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
   /** Why there is no graph, or null while nothing has answered yet. The two
    *  are different on screen: "looking" is not "there isn't one". */
@@ -625,50 +625,65 @@ export function useTrailData(
   }, [haveTrailLines, overviewUrl])
 
   /**
-   * The other organizations' trails (#950), fetched once per launch.
+   * The other organizations' trails (#950), from the store first and checked
+   * against the manifest once per online launch (#1082).
    *
-   * NOT GATED ON WHAT THE PHONE HOLDS, unlike the overview above, because
-   * there is nothing on the phone for this to race: lib/nearbyTrailData.ts
-   * stores nothing, so a returning hiker has no more of this than a first-run
-   * one does. That is a gap rather than a design, and its home is
-   * **#552 — Decide the unit of offline coverage, and write it down** - see
-   * that module's header for why guessing at a store now would be the wrong
-   * shape to unpick later.
-   *
-   * Runs only when online, and gives up quietly on every failure. Today the
-   * usual outcome is a 404 and a null, which is the licence gate working
-   * rather than anything being wrong.
+   * NOT GATED ON WHAT THE PHONE HOLDS the way the overview above is, because
+   * the store IS what the phone holds: lib/nearbyTrailData.ts keeps the last
+   * verified copy, serves it with or without signal, and re-fetches the
+   * 7.3 MB artifact only when the manifest names a hash the stored copy does
+   * not carry - a ~KB question on the ordinary launch, where this used to be
+   * the whole artifact every time (pipeline/README.md's "one number wants
+   * watching"). What a named download CONTAINS is still
+   * **#552 — Decide the unit of offline coverage, and write it down**'s
+   * decision - see that module's header for the line between this cache and
+   * that machinery.
    */
   useEffect(() => {
-    // Once, not once per reconnection. `online` flips whenever the phone
-    // loses and regains signal, which on a trail is often, and without this
-    // guard each flip would spend another 1.7 MB re-fetching lines already on
-    // the map AND drop the previous object URL without revoking it - a leak
-    // the map cannot even see, because MapLibre is still drawing the blob it
-    // was handed. The state itself is the guard, and it is in the dependency
-    // list so that setting it re-runs this and takes the early return.
-    if (!DATA_CONFIGURED || !online || nearbyTrailsUrl !== null) return
+    // Once, not once per reconnection - with one deliberate exception. An
+    // answer served from the store without signal (`revalidated: false`) is
+    // re-asked when `online` flips true, so a launch in a dead spot still
+    // picks up a publish once signal returns. A revalidated answer is final
+    // for the session: `online` flips whenever the phone loses and regains
+    // signal, which on a trail is often, and re-checking on each would spend
+    // manifest reads answering a question this session already asked. The
+    // state itself is the guard, and it is in the dependency list so that
+    // setting it re-runs this and takes the early return.
+    if (!DATA_CONFIGURED) return
+    if (nearbyTrails !== null && (nearbyTrails.revalidated || !online)) return
 
     const controller = new AbortController()
     let wanted = true
 
-    void fetchNearbyTrails(controller.signal).then((url) => {
-      if (url === null) return
+    void loadNearbyTrails(online, controller.signal).then((answer) => {
+      if (answer === null) return
       // An object URL nothing will draw is a blob the page holds until it is
       // closed - the same reason the overview revokes an answer it no longer
       // wants.
       if (!wanted) {
-        URL.revokeObjectURL(url)
+        URL.revokeObjectURL(answer.url)
         return
       }
-      setNearbyTrailsUrl(url)
+      setNearbyTrails((previous) => {
+        // The upgrade path: a stored copy served offline, replaced or
+        // re-verified once signal arrived. Where the refresh minted a NEW
+        // url, the old one is revoked - safe at this point, not the leak the
+        // guard comment above warns about: MapLibre reads a blob URL once,
+        // when `setData` hands it over, and a URL this state has held has
+        // either been read by now or is being replaced before any map
+        // mounted. Parsed tiles outlive the URL either way.
+        if (previous !== null && previous.url !== answer.url) {
+          URL.revokeObjectURL(previous.url)
+        }
+        return answer
+      })
     })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [online, nearbyTrailsUrl])
+  }, [online, nearbyTrails])
 
   // The junction graph's routing half, on the nearby-lines pattern above -
   // once, not once per reconnection, with the state itself as the guard. No
@@ -775,7 +790,10 @@ export function useTrailData(
     // here rather than in the shell means one place decides which line the map
     // is drawing.
     overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
-    nearbyTrailsUrl,
+    // The url alone: whether it was revalidated is this hook's business (the
+    // effect above), not a consumer's - the map draws a stored copy and a
+    // fresh one identically.
+    nearbyTrailsUrl: nearbyTrails?.url ?? null,
     graphIndex,
     trailNetwork,
     retryTrailNetwork,

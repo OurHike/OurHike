@@ -2851,12 +2851,19 @@ function App() {
   // route" framed nothing, and lib/dayHikeFollow.ts (which now refuses
   // without vertices rather than measuring off a chord) could say nothing at
   // all. Either door opening, or a walk under way, is what these are for.
+  //
+  // KEYED ON A BOOLEAN, NEVER ON THE DRAFT ITSELF (#1093). `dayHike` was in
+  // this list, and `tapAt` returns a NEW draft object on every tap - a refused
+  // one included. So each tap re-ran the effect, the cleanup aborted the
+  // in-flight request, and the fetch restarted from the top: re-download,
+  // re-hash. A hiker tapping every second or two while being refused could
+  // keep cancelling the very fetch that would stop the refusals, and the
+  // refusals are what makes somebody tap again. `wantsGraphGeometry` flips
+  // once, when a door opens.
+  const wantsGraphGeometry =
+    dayHike !== null || cardDayHike !== null || followingId !== null
   useEffect(() => {
-    if (
-      (dayHike === null && cardDayHike === null && followingId === null) ||
-      graphIndex === null ||
-      dayHikeIndex !== null
-    ) {
+    if (!wantsGraphGeometry || graphIndex === null || dayHikeIndex !== null) {
       return
     }
 
@@ -2881,7 +2888,7 @@ function App() {
       wanted = false
       controller.abort()
     }
-  }, [dayHike, cardDayHike, followingId, graphIndex, dayHikeIndex])
+  }, [wantsGraphGeometry, graphIndex, dayHikeIndex])
 
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to

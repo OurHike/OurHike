@@ -66,7 +66,17 @@ describe('dayHikeTurns', () => {
   })
 
   it('withholds the side rather than reading it off a chord', () => {
-    const turns = turnsFor(NETWORK_WITHOUT_GEOMETRY)
+    // Resolved against the network that HAS vertices and then asked of the
+    // one that has not (#1093). The two steps have to be separated now:
+    // since a tap will not snap to a geometry-less edge at all, resolving
+    // the saved ends against the bare graph refuses one layer earlier and
+    // this module's own withholding would never be reached to be tested.
+    const resolved = resolveDayHike(
+      buildGraphIndex(NETWORK),
+      hikeThrough([WEST_END, NORTH_END]),
+    )
+    expect(resolved).not.toBeNull()
+    const turns = dayHikeTurns(buildGraphIndex(NETWORK_WITHOUT_GEOMETRY), resolved!)
 
     // The turn is still there - which trail to take is known without any
     // vertices - and every direction is absent. Across a switchback the

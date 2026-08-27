@@ -32,6 +32,7 @@ import type { ResolvedDayHike } from './dayHikeCard'
 import {
   cutPolyline,
   enteredNodes,
+  hasVertices,
   metresToMiles,
   routeBetween,
   walkedMetresPerEdge,
@@ -183,7 +184,7 @@ export function stepPolyline(
   step: WalkStep,
 ): Array<[number, number]> | null {
   const edge = index.graph.edges[step.edgeIndex]
-  if (edge?.geometry === undefined || edge.geometry.length < 2) return null
+  if (edge === undefined || !hasVertices(edge)) return null
 
   // Oriented so the list runs the way the hiker does. Fractions are measured
   // from the edge's own `from`, so a backwards traversal flips them with it.

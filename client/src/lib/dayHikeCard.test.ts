@@ -69,7 +69,28 @@ const GRAPH: TrailGraph = {
   ],
 }
 
-const index = buildGraphIndex(GRAPH)
+/**
+ * The fixture with each edge's vertex list filled in, which is what every
+ * published graph actually carries (`build_trail_graph.py` writes one per
+ * edge, always). Every trail here is straight, so an edge's vertices are its
+ * two nodes and no assertion below moves.
+ *
+ * Not cosmetic: since #1093 `nearestPointOnGraph` will not snap a tap to an
+ * edge with no vertices, because the only line such an edge offers is the
+ * chord between its junctions and the map is drawing the published one. A
+ * fixture without geometry is a phone mid-download, not a network.
+ */
+function published(graph: TrailGraph): TrailGraph {
+  return {
+    nodes: graph.nodes,
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      geometry: [graph.nodes[edge.from], graph.nodes[edge.to]],
+    })),
+  }
+}
+
+const index = buildGraphIndex(published(GRAPH))
 
 const end = (lon: number, lat: number): DayHikeEnd => ({ coord: [lon, lat], poiId: null })
 

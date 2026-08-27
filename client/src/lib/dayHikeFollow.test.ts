@@ -245,8 +245,14 @@ describe('what it measures against', () => {
     // standing squarely on it. lib/dayHikeTurns.ts withholds a turn's SIDE in
     // this state; there is no part of the answer here a chord does not
     // poison, so the whole answer is withheld.
+    //
+    // Resolved against the network that HAS vertices and then followed on the
+    // one that has not (#1093). The two steps have to be separated now: since
+    // a tap will not snap to a geometry-less edge at all, resolving the saved
+    // ends against the bare graph refuses one layer earlier, and this
+    // module's own refusal - the one under test - would never be reached.
     const bare = buildGraphIndex(NETWORK_WITHOUT_GEOMETRY)
-    const resolved = resolveDayHike(bare, hikeThrough([WEST_END, NORTH_END]))
+    const resolved = resolveDayHike(INDEX, hikeThrough([WEST_END, NORTH_END]))
     expect(resolved).not.toBeNull()
 
     expect(
@@ -256,6 +262,16 @@ describe('what it measures against', () => {
         at: { lon: -74.095, lat: 41.25 },
       }),
     ).toBeNull()
+  })
+
+  it('never gets that far in practice, because the ends will not claim', () => {
+    // The layer above, pinned so the pair reads as one rule rather than two
+    // guards that happen to agree. A phone holding the topology and not the
+    // lines cannot re-claim a saved hike's ends at all, so the card falls
+    // back to its stored figures - labelled as the cache they are - instead
+    // of re-deriving them off chords onto whatever trail is nearest.
+    const bare = buildGraphIndex(NETWORK_WITHOUT_GEOMETRY)
+    expect(resolveDayHike(bare, hikeThrough([WEST_END, NORTH_END]))).toBeNull()
   })
 
   it('measures to the part of an edge the walk covers, not to the whole edge', () => {

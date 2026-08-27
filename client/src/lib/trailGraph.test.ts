@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildGraphIndex,
+  canSnapToGraph,
   closeTheLoop,
   legsFromEdges,
   MAX_OFF_NETWORK_FEET,
@@ -90,7 +91,28 @@ const GRAPH: TrailGraph = {
   ],
 }
 
-const index = buildGraphIndex(GRAPH)
+/**
+ * The fixture with each edge's vertex list filled in, which is what every
+ * published graph actually carries (`build_trail_graph.py` writes one per
+ * edge, always). Every trail here is straight, so an edge's vertices are its
+ * two nodes and no assertion below moves.
+ *
+ * Not cosmetic: since #1093 `nearestPointOnGraph` will not snap a tap to an
+ * edge with no vertices, because the only line such an edge offers is the
+ * chord between its junctions and the map is drawing the published one. A
+ * fixture without geometry is a phone mid-download, not a network.
+ */
+function published(graph: TrailGraph): TrailGraph {
+  return {
+    nodes: graph.nodes,
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      geometry: [graph.nodes[edge.from], graph.nodes[edge.to]],
+    })),
+  }
+}
+
+const index = buildGraphIndex(published(GRAPH))
 
 /** A point on an edge at a known fraction, without going through a tap. */
 function pointOn(edgeIndex: number, fraction: number) {
@@ -518,6 +540,95 @@ describe('projection onto a bent edge', () => {
     expect(found).not.toBeNull()
     expect(found?.offNetworkFeet).toBeLessThan(5)
     expect(found?.fraction).toBeCloseTo(0.5, 1)
+  })
+})
+
+// #1093. The state above with its vertices taken away, which is not an old
+// artifact - it is every phone between the day-hike door opening and
+// `trail_graph_geometry.json` landing, and every phone whose fetch of it
+// never resolves.
+describe('a graph that has arrived without its lines', () => {
+  //         2 ------------- 3      Kakiat Trail, straight, 22 m north of the
+  //                                bend's apex
+  //             (apex)
+  //            /       \            Pine Meadow Trail, bowing 445 m north of
+  //   0 - - - - chord - - - 1       the chord between its own two junctions
+  const NETWORK: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      [-74.1, 41.2542],
+      [-74.09, 41.2542],
+    ],
+    edges: [
+      {
+        from: 0,
+        to: 1,
+        length_m: 1200,
+        trail_id: 'oprhp_trails:1',
+        source: 'oprhp_trails',
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+        geometry: [
+          [-74.1, 41.25],
+          [-74.095, 41.254],
+          [-74.09, 41.25],
+        ],
+      },
+      {
+        from: 2,
+        to: 3,
+        length_m: 836,
+        trail_id: 'nynjtc_long_path:9',
+        source: 'nynjtc_long_path',
+        name: 'Kakiat Trail',
+        blaze_color: 'yellow',
+        geometry: [
+          [-74.1, 41.2542],
+          [-74.09, 41.2542],
+        ],
+      },
+    ],
+  }
+  const bare: TrailGraph = {
+    nodes: NETWORK.nodes,
+    edges: NETWORK.edges.map(({ geometry: _geometry, ...edge }) => edge),
+  }
+
+  /** The apex of Pine Meadow's bend - dead on the line the map is drawing. */
+  const ON_THE_BEND = { lon: -74.095, lat: 41.254 }
+
+  it('says so, rather than answering', () => {
+    expect(canSnapToGraph(buildGraphIndex(bare))).toBe(false)
+    expect(canSnapToGraph(buildGraphIndex(NETWORK))).toBe(true)
+  })
+
+  it('refuses a tap it cannot place instead of placing it on the wrong trail', () => {
+    // WITH the lines, the tap is where the finger was: on Pine Meadow, at no
+    // measurable distance off it.
+    const placed = nearestPointOnGraph(buildGraphIndex(NETWORK), ON_THE_BEND)
+    expect(placed?.edgeIndex).toBe(0)
+    expect(placed?.offNetworkFeet).toBeLessThan(5)
+
+    // WITHOUT them, Pine Meadow offers only the chord between its junctions,
+    // 445 m south of the finger - and Kakiat's chord runs 22 m north of it.
+    // The nearest chord is therefore a DIFFERENT TRAIL, inside the tolerance,
+    // and the old code returned it with no sign that anything had happened:
+    // a walk starting on a trail the hiker never touched. Measured across
+    // Harriman that was 7% of on-trail taps, against 20% refused outright.
+    expect(nearestPointOnGraph(buildGraphIndex(bare), ON_THE_BEND)).toBeNull()
+  })
+
+  it('refuses even a tap on a junction node, which it could have answered', () => {
+    // Node 0 is a published coordinate and its fraction would be 0 either
+    // way, so this one case a chord could have got right. Refused anyway:
+    // the rule is about what the graph can be trusted to say, not about the
+    // handful of points where a wrong answer happens to coincide with a
+    // right one, and a tolerance that admits nodes admits everything within
+    // 150 ft of one.
+    expect(
+      nearestPointOnGraph(buildGraphIndex(bare), { lon: -74.1, lat: 41.25 }),
+    ).toBeNull()
   })
 })
 

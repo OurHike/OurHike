@@ -158,10 +158,16 @@ def client_keys() -> dict[str, str]:
     for tier, name in client_background_archives().items():
         keys[name] = f"config.ts BACKGROUND_ARCHIVES.{tier}"
 
-    for artifact in re.findall(r"artifact: '([^']+)'", _read(HIKING_DETAIL)):
+    # `[Aa]rtifact` rather than `artifact`, so `demArtifact` is caught too.
+    # The DEM became per-level with #1088 and its name moved out of packages.ts
+    # into hikingDetail.ts beside the basemap cut's; a regex that only knew the
+    # old spelling went on passing while it matched one artifact fewer, which
+    # is the exact way this guard could rot without going red. What caught it
+    # was test_this_is_actually_reading_the_client naming dem.pmtiles outright.
+    for artifact in re.findall(r"[Aa]rtifact: '([^']+)'", _read(HIKING_DETAIL)):
         keys[artifact] = "hikingDetail.ts"
 
-    for artifact in re.findall(r"artifact: '([^']+)'", _read(PACKAGES)):
+    for artifact in re.findall(r"[Aa]rtifact: '([^']+)'", _read(PACKAGES)):
         keys[artifact] = "packages.ts"
 
     return keys

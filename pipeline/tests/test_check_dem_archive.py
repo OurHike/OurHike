@@ -43,6 +43,7 @@ def build_archive(tmp_path, requests_mock, monkeypatch, **overrides):
         workers=1,
         limit=0,
         name="test DEM",
+        taper=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -83,6 +84,7 @@ def rebuild_with_404(tmp_path, requests_mock, monkeypatch, archive):
             workers=1,
             limit=0,
             name="test DEM",
+            taper=None,
         )
     )
 
@@ -203,3 +205,72 @@ def test_header_checks_cover_tile_type_and_compression():
 
 def test_quantize_unit_agrees_with_the_exporters():
     assert quantize_unit(0.5) == 128
+
+
+# Which shape the gate holds an archive to (#1088). The taper made this a real
+# question: before it, "the region" was one shape and the only way to get it
+# wrong was to pass the wrong file.
+
+
+def test_the_gate_walks_the_taper_the_archive_declares(monkeypatch):
+    """Not the exporter's current default. An archive built to one taper and
+    checked against another is either failed for tiles it was never meant to
+    hold, or - the dangerous direction - passed while missing tiles it was."""
+    seen = {}
+
+    def fake_tapered(min_zoom, max_zoom, taper, context_zoom=None):
+        seen["taper"] = taper
+        seen["context_zoom"] = context_zoom
+        return [(1, 0, 0)], None
+
+    monkeypatch.setattr(check_dem_archive, "tapered_tiles", fake_tapered)
+    monkeypatch.setattr(
+        check_dem_archive, "load_corridor_4326", lambda *a, **k: pytest.fail("must not rebuild the default corridor")
+    )
+
+    hits = check_dem_archive.expected_hits({"corridor_taper_miles": {"0": 30, "13": 6}}, None, 0, 2)
+
+    assert seen["taper"] == {0: 30.0, 13: 6.0}, "the declared taper is used verbatim, keys coerced to ints"
+    assert seen["context_zoom"] == 9, "an archive declaring no context zoom falls back to the exporter's"
+    assert hits == {0: [], 1: [(0, 0)], 2: []}
+
+
+def test_the_gate_honours_a_context_zoom_the_archive_declares(monkeypatch):
+    """The taper alone does not describe the shape: z0-9 hold the whole
+    bounding box. A gate that walked the corridor there would call every one of
+    those tiles stray."""
+    seen = {}
+
+    def fake_tapered(min_zoom, max_zoom, taper, context_zoom=None):
+        seen["context_zoom"] = context_zoom
+        return [(1, 0, 0)], None
+
+    monkeypatch.setattr(check_dem_archive, "tapered_tiles", fake_tapered)
+
+    check_dem_archive.expected_hits({"corridor_taper_miles": {"0": 30}, "context_zoom": 7}, None, 0, 2)
+
+    assert seen["context_zoom"] == 7
+
+
+def test_an_explicit_region_still_beats_a_declared_taper(tmp_path, monkeypatch):
+    """--region is a maintainer checking one hand-drawn shape and has never
+    meant a taper."""
+    monkeypatch.setattr(
+        check_dem_archive, "tapered_tiles", lambda *a, **k: pytest.fail("an explicit region must not consult the taper")
+    )
+    region = shape(json.loads(region_file(tmp_path).read_text()))
+
+    hits = check_dem_archive.expected_hits({"corridor_taper_miles": {"0": 30}}, region, 0, 1)
+
+    assert set(hits) == {0, 1}
+
+
+def test_an_archive_with_no_declared_taper_is_walked_the_old_way(monkeypatch):
+    """An archive built before #1088 carries no taper, and must still verify
+    against the full corridor rather than being waved through."""
+    built = []
+    monkeypatch.setattr(check_dem_archive, "load_corridor_4326", lambda *a, **k: built.append(True) or NE_QUADRANT_BOX)
+
+    check_dem_archive.expected_hits({}, None, 0, 1)
+
+    assert built == [True], "no declared taper falls back to the default corridor build"

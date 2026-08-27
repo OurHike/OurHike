@@ -87,14 +87,25 @@ export const MAX_BACKGROUND_ZOOM_VALUES = [
 ] as const satisfies readonly MaxBackgroundZoom[]
 export type LayerDetailLevel = 'minimal' | 'standard' | 'full'
 /**
- * The hiking sheet's download level (#276): which basemap cut the default
- * background fetches - the z13 Standard package or the full z14 Fine one.
+ * The hiking sheet's download level (#276): which pair of archives the default
+ * background fetches. Standard and Fine differ in the basemap cut - the z13
+ * package or the full z14 one - and, since #1088, Light differs in the DEM:
+ * its terrain corridor tapers harder, narrowing with depth rather than
+ * stopping at a shallower zoom.
+ *
  * Its own key rather than an overload of `max_background_zoom`, which is the
  * USGS raster's tier choice with its own zoom range; the two sheets'
  * decisions must not share one dial. The backend's `HikingDetailLevel`
  * mirrors this exactly.
+ *
+ * A VALUE HERE IS NOT AN OFFER. This enum says what a stored preference may
+ * hold; whether a level can be CHOSEN is hikingDetail.ts's `published`, which
+ * is gated on its artifacts actually being in the bucket. Light is storable
+ * and unofferable today, and the order matters: the enum has to accept the
+ * value before any build can publish behind it, or the first phone to store
+ * one would fail its own preference guard.
  */
-export const HIKING_DETAIL_LEVEL_VALUES = ['standard', 'fine'] as const
+export const HIKING_DETAIL_LEVEL_VALUES = ['light', 'standard', 'fine'] as const
 export type HikingDetailLevel = (typeof HIKING_DETAIL_LEVEL_VALUES)[number]
 
 /**

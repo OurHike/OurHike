@@ -15,7 +15,7 @@ from PIL import Image
 from pmtiles.reader import MmapSource, all_tiles
 from pmtiles.tile import Compression, TileType, deserialize_header
 from requests_mock import ANY as ANY_URL
-from shapely.geometry import box, mapping
+from shapely.geometry import box, mapping, shape
 
 import export_dem
 from export_dem import encode_tile, fetch_tile, quantize_unit
@@ -115,6 +115,9 @@ def make_args(tmp_path, region_path, **overrides):
         workers=1,
         limit=0,
         name="test DEM",
+        # None means export_dem's own CORRIDOR_TAPER_MILES, and these fixtures
+        # all pass an explicit --region, which overrides the taper anyway.
+        taper=None,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -166,3 +169,96 @@ def test_main_refuses_to_exceed_the_tile_limit(tmp_path, requests_mock, monkeypa
 
     with pytest.raises(SystemExit, match="exceed --limit"):
         export_dem.main(make_args(tmp_path, region_file(tmp_path), limit=2))
+
+
+# The corridor taper (#1088): the DEM's corridor narrows with depth, because a
+# mile of buffer costs ~9x more at z13 than at z11.
+
+
+def test_taper_reads_as_a_step_function_over_zoom():
+    """Each entry holds from its own zoom until the next one - so the eleven
+    shallow zooms that carry the pan-out context inherit the widest entry
+    rather than needing eleven copies of it."""
+    taper = {0: 30.0, 12: 15.0, 13: 6.0}
+
+    assert [export_dem.taper_miles(z, taper) for z in range(14)] == [30.0] * 12 + [15.0, 6.0]
+
+
+def test_taper_narrows_monotonically_with_depth():
+    """Not an arbitrary preference: a corridor that widened at a deeper zoom
+    would buy width at exactly the price this taper exists to avoid paying."""
+    widths = [export_dem.taper_miles(z) for z in range(export_dem.MIN_ZOOM, export_dem.MAX_ZOOM + 1)]
+
+    assert widths == sorted(widths, reverse=True), f"taper widens somewhere: {widths}"
+    assert widths[-1] < widths[0], "a taper whose deepest zoom is as wide as its shallowest is not a taper"
+
+
+def test_taper_covers_every_zoom_the_exporter_builds():
+    """taper_miles() must be total over MIN_ZOOM..MAX_ZOOM. A zoom with no
+    entry is not a narrower corridor, it is a KeyError mid-build - or, if it
+    were made to default, a silent hole in the map."""
+    for zoom in range(export_dem.MIN_ZOOM, export_dem.MAX_ZOOM + 1):
+        assert export_dem.taper_miles(zoom) > 0
+
+
+def test_parse_taper_reads_a_command_line_schedule():
+    assert export_dem.parse_taper("0:30,12:15,13:6") == {0: 30.0, 12: 15.0, 13: 6.0}
+    assert export_dem.parse_taper(" 0:30 , 13:6.5 ") == {0: 30.0, 13: 6.5}
+
+
+@pytest.mark.parametrize(
+    "spec, why",
+    [
+        ("0:30,13", "an entry that is not zoom:miles"),
+        ("12:15,13:6", "no zoom-0 entry, so the shallow zooms have no width"),
+        ("0:30,13:0", "a zero width is an empty corridor, not a narrow one"),
+        ("0:30,13:-6", "a negative width"),
+        ("-1:30,0:30", "a negative zoom"),
+    ],
+)
+def test_parse_taper_refuses_a_schedule_that_would_ship_a_hole(spec, why):
+    """A typo here is a map with nothing in it at some zoom, found by a hiker
+    with no signal. Every one of these fails loudly at parse time instead."""
+    with pytest.raises(ValueError):
+        export_dem.parse_taper(spec)
+
+
+def test_the_shallow_zooms_escape_the_corridor_entirely():
+    """z0-9 keep the corridor's whole bounding box, not the corridor - the
+    boundary extract_package.DEFAULT_CONTEXT_ZOOM already draws for the vector
+    sheet. Before this the hillshade stopped at a 60-mile ribbon while the
+    basemap under it showed the whole region, and panned out with no signal the
+    two disagreed on screen."""
+    assert export_dem.CONTEXT_ZOOM == 9
+
+    calls = []
+
+    def fake_corridor(buffer_miles=None):
+        calls.append(buffer_miles)
+        return box(-84.2, 34.6, -68.9, 45.9)
+
+    import unittest.mock as mock
+
+    with mock.patch.object(export_dem, "load_corridor_4326", fake_corridor):
+        tiles, widest = export_dem.tapered_tiles(0, 11, {0: 30.0, 11: 6.0})
+
+    by_zoom = {}
+    for z, x, y in tiles:
+        by_zoom.setdefault(z, []).append((x, y))
+    # z9 is context (whole bbox); z10-11 are corridor-clipped. With a box
+    # standing in for the corridor the two coincide in extent, so what this
+    # pins is that every zoom is populated and none was dropped by the split.
+    assert set(by_zoom) == set(range(12))
+    assert widest is not None
+
+
+def test_a_region_argument_still_overrides_the_taper(tmp_path):
+    """--region has always meant "this exact shape", and it keeps meaning it:
+    one shape at every zoom, no corridor build, no taper."""
+    region = shape(json.loads(region_file(tmp_path).read_text()))
+
+    tiles, widest = export_dem.tapered_tiles(0, 2, export_dem.CORRIDOR_TAPER_MILES, region)
+
+    assert widest is region
+    assert tiles == sorted(tiles), "tiles must reach the writer in (z, x, y) order"
+    assert {z for z, _, _ in tiles} == {0, 1, 2}

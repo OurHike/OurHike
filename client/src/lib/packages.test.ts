@@ -279,13 +279,41 @@ describe('what a sheet will cost', () => {
   })
 
   it('composes the hiking sheet’s total per level (#276)', () => {
-    // What the sheet's picker shows: the level's basemap cut plus the DEM,
-    // which never changes across levels.
+    // What the sheet's picker shows: the level's basemap cut plus its DEM.
+    // The DEM became per-level with #1088 - the corridor tapers harder at
+    // Light - so this sums the level's own two artifacts rather than adding a
+    // constant, which is the thing that would silently stop being true.
     for (const level of ['standard', 'fine'] as const) {
+      const detail = getHikingDetail(level)
       expect(hikingSheetSizeBytes(level)).toBe(
-        getHikingDetail(level).basemapSizeBytes + 607_265_661,
+        (detail.basemapSizeBytes ?? 0) + (detail.demSizeBytes ?? 0),
       )
     }
+  })
+
+  it('resolves each leveled package to its own artifact, not the other one', () => {
+    // The 'of' discriminant earns its place here: both packages are leveled
+    // now, so a resolver that keyed off the kind alone would hand the DEM's
+    // download the basemap's key - the right hash against the wrong bytes.
+    for (const level of ['standard', 'fine'] as const) {
+      const detail = getHikingDetail(level)
+      expect(
+        packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'standard', level),
+      ).toBe(detail.artifact)
+      expect(packageArtifactKey(DEM_PACKAGE as OfferedPackage, 'standard', level)).toBe(
+        detail.demArtifact,
+      )
+    }
+  })
+
+  it('refuses to price a level whose artifact nobody has published', () => {
+    // packages.ts's own memory: "the app was offering a Light tier that did
+    // not exist". Light is catalogued and unbuilt, so asking what it costs has
+    // no honest answer - and a NaN in the remaining-storage sum is exactly the
+    // silent wrong number that rule exists to prevent.
+    expect(() =>
+      packageSizeBytes(DEM_PACKAGE as OfferedPackage, 'standard', 'light'),
+    ).toThrow(/no published dem size/i)
   })
 
   it('sums every archive the sheet is made of', () => {

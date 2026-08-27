@@ -317,7 +317,16 @@ def test_offline_sheet_archives_are_the_basemap_cuts_and_the_dem():
         "basemap": "at_basemap_package.pmtiles",
         "basemap_z13": "at_basemap_package_z13.pmtiles",
         "dem": "dem.pmtiles",
+        "dem_light": "dem_light.pmtiles",
     }
+
+
+def test_the_light_dem_is_not_named_as_a_zoom_capped_cut():
+    """R2_LAYOUT.md reserves `_z<maxzoom>` for an archive that really stops at
+    that zoom. The Light DEM is z0-13 like its sibling and narrows at the deep
+    end instead (#1088), so a `_z12` spelling would promise a ceiling that is
+    not there - and the additive-only merge means a wrong name is permanent."""
+    assert "z" not in publish.OFFLINE_SHEET_ARCHIVES["dem_light"].removesuffix(".pmtiles").split("_")[-1]
 
 
 def test_offline_sheet_archives_do_not_collide_with_the_raster_tiers():

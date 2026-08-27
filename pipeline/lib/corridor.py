@@ -110,7 +110,12 @@ def _has_features(con: duckdb.DuckDBPyConnection, path: Path) -> bool:
     return True
 
 
-def build_corridor(con: duckdb.DuckDBPyConnection, centerline_path: Path, network_path: Path | None = None) -> bool:
+def build_corridor(
+    con: duckdb.DuckDBPyConnection,
+    centerline_path: Path,
+    network_path: Path | None = None,
+    buffer_miles: float = BUFFER_MILES,
+) -> bool:
     """Build the 'corridor' table fresh from `centerline_path` - the
     ST_Buffer(30mi) + ST_Union_Agg pattern spike_corridor.py proved and
     export_poi.py/export_trails.py each duplicated verbatim before this
@@ -134,6 +139,13 @@ def build_corridor(con: duckdb.DuckDBPyConnection, centerline_path: Path, networ
     OMITTING network_path IS STILL CORRECT and is what export_trails.py does -
     its subject is ATC's own two layers, and clipping them to a wider world
     would keep nothing extra, because there is nothing of theirs out there.
+
+    `buffer_miles` OVERRIDES THE 30, and exists for one caller: export_dem.py,
+    which needs a NARROWER shape than the POI corridor and a different one per
+    zoom (#1088). BUFFER_MILES stays the default, so every existing caller
+    builds the corridor it always did. See export_dem.CORRIDOR_TAPER_MILES for
+    why terrain wants its own width - the 30 above is argued from resupply
+    POIs, which is not an argument about hillshade.
     """
     centerline_posix = centerline_path.as_posix()
     con.execute(f"CREATE OR REPLACE TABLE centerline_raw AS SELECT * FROM ST_Read('{centerline_posix}')")
@@ -150,7 +162,7 @@ def build_corridor(con: duckdb.DuckDBPyConnection, centerline_path: Path, networ
     # One branch when there is no network, which is the same set of geometries
     # ST_Union_Agg saw before this parameter existed - so an A.T.-only call
     # produces the same corridor it always did.
-    branches = [buffered("centerline_raw", BUFFER_MILES * METERS_PER_MILE)]
+    branches = [buffered("centerline_raw", buffer_miles * METERS_PER_MILE)]
     widened = network_path is not None and _has_features(con, network_path)
     if widened:
         branches.append(buffered("network_raw", NETWORK_BUFFER_FEET * METERS_PER_FOOT))

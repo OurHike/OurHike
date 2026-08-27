@@ -187,10 +187,60 @@ trail — though note its derivation is bucket-search geometry (it must fit insi
 `BUCKET_DEGREES`, ~3.45 miles), not a finding about how far hikers wander. So it
 anchors the *shape* of the answer, not the number.
 
-@unvalidated — **no width is recommended here.** Picking it needs the thing
-nobody has: what a hiker actually pans to when they are lost. Until then the
-table above is the menu, and 6 miles (2× `MAX_OFF_TRAIL_MILES`) is the obvious
-opening bid rather than a finding.
+### 1a. Decided: the width is a function of zoom, not one number
+
+Maintainer's call, 2026-08-27. A uniform buffer was the wrong shape, and the
+per-zoom price says why — **measured**, from the same run:
+
+| | z11 | z12 | z13 |
+|---|---|---|---|
+| tile width | 9.31 mi | 4.66 mi | 2.33 mi |
+| **MB per mile of buffer** | **1.36** | **4.12** | **12.37** |
+
+Width is ~9× more expensive at z13 than at z11, because tile count quadruples
+per level while tile width halves. A uniform corridor therefore spends nearly
+all its bytes buying width at the zoom a hiker uses to look at the ground under
+their feet, and nearly none at the zoom they pan out to for orientation.
+
+So the corridor **tapers**: `export_dem.py`'s `CORRIDOR_TAPER_MILES` is
+`{0: 30, 12: 15, 13: 6}` — z0–11 at 30 miles, z12 at 15, z13 at 6. Shipped
+schedules, DEM MB **reasoned** from measured tile counts × the published
+per-zoom mean bytes/tile, basemap held at z13:
+
+| schedule z11/z12/z13 | DEM MB | off DEM | sheet MB | off sheet |
+|---|---|---|---|---|
+| shipped, uniform 30 | 607.6 | — | 789.9 | — |
+| **30/15/6 (the default)** | 248.9 | 59.0% | 431.2 | **45.4%** |
+| 30/10/6 | 228.5 | 62.3% | 410.8 | 48.0% |
+| 20/6/3 | 159.3 | 73.8% | 341.6 | 56.7% |
+
+**And the shallow zooms stop being clipped at all.** `extract_package.py` has
+kept the vector sheet's *entire* footprint through z9 since #189 — "panning out
+offline shows the ground around the trail instead of blank paper" — while the
+DEM under it clipped at every zoom. Panned out with no signal the two
+disagreed on screen, and the disagreement was a packaging artefact rather than
+a fact about the ground. `CONTEXT_ZOOM = 9` closes it.
+
+**Measured** 2026-08-27, corridor tiles against the corridor's bounding box:
+
+| zoom | corridor | bbox | ratio | cumulative cost of unclipping |
+|---|---|---|---|---|
+| z9 | 107 | 576 | 5.4× | **+26.5 MB** |
+| z10 | 329 | 2,256 | 6.9× | +106.5 MB |
+| z11 | 1,139 | 8,740 | 7.7× | +435.5 MB |
+
+z9 is where it stops being cheap — so the boundary the project already drew
+twice (`DEFAULT_CONTEXT_ZOOM`, `STRETCH_CONTEXT_ZOOM`) is also where the
+measurement puts it, rather than being a coincidence. Unclipping z11 as well
+would spend more than the whole taper saves.
+
+@unvalidated **as numbers.** The shape is measured; 30/15/6 are picked. 6 is
+2× `trailPosition.ts`'s `MAX_OFF_TRAIL_MILES`, the distance past which the app
+already declines to say where a hiker is — though that constant is itself
+derived from bucket-search geometry rather than from how far hikers wander, so
+it anchors the shape of the answer and not the number. What would settle it:
+what a hiker pans to when they are lost and off-trail, which nothing in this
+project measures yet.
 
 ### 2. The basemap carries seven layers the style never draws
 
@@ -263,9 +313,23 @@ fact — *"`BASEMAP_MAX_ZOOM` is 14, so that is the zoom an offline hiker lives
 at"* — which is true only at Fine. **Worth an issue whether or not anything
 here ships.**
 
-The fix is one shape: the source's declared `maxzoom` comes from the archive's
-own header. `lib/archiveCoverage.ts` already reads header zooms and carries the
-camera-vs-tile offset; it is wired to one package today.
+**A taper cannot be expressed through the source declaration at all**, which is
+what forced the fix rather than merely motivating it: MapLibre's `raster-dem`
+carries one `maxzoom`, so it cannot be told "z13 near the trail, z12 out on the
+flank". It asks for z13 wherever the camera is deep enough.
+
+So the fix lives in the `getTile` shim instead (#1088, `demTiles.ts`): on a
+miss, walk up the pyramid to the nearest ancestor the archive does hold and
+return an upscaled crop — **after** the network attempt, so a hiker with signal
+still gets the sharp tile and this only ever replaces a throw.
+
+The upscale is **nearest-neighbour, and that is a correctness constraint rather
+than a quality setting.** Terrarium's red channel is a 256 m band index, so
+interpolating between two pixels either side of a band boundary averages the
+indices and invents an elevation hundreds of metres wrong — the same arithmetic
+that made lossy compression measure 2,771 m RMSE above. Replicating whole
+pixels cannot do that. MapLibre's own overzoom is safe for the opposite reason:
+it decodes to elevation first and interpolates there.
 
 ## Where this leaves the answer
 

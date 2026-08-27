@@ -51,7 +51,7 @@
 // absent API.
 
 import { DOWNLOAD_DETAIL_LEVELS, type DetailLevel } from '../lib/downloadDetail'
-import { HIKING_DETAIL_LEVELS } from '../lib/hikingDetail'
+import { offeredHikingDetails } from '../lib/hikingDetail'
 import { hikingSheetSizeBytes } from '../lib/packages'
 import { formatBytes } from '../lib/formatBytes'
 
@@ -96,14 +96,18 @@ export function rasterDetailOptions(): DetailOption[] {
  * that level - the basemap cut plus the DEM - because that is the number a
  * hiker weighs against their storage, not one archive's share of it.
  *
- * Light comes back with a null size: the pipeline cuts the basemap at z13
- * and z14 and nothing below (lib/hikingDetail.ts), so there is no lighter
- * hiking sheet to offer. It is still drawn, greyed, rather than left out -
- * see the header.
+ * A level comes back with a null size when it is not OFFERED - either the
+ * ladder has a rung this sheet has no level for at all, or the level exists in
+ * the catalog but its artifacts are not in the bucket yet (hikingDetail.ts's
+ * `published`, the same 404-on-a-mountain rule packages.ts's `source: null`
+ * enforces one level up). Light is the second case today: #1088 named its
+ * artifact and nothing has built it. Either way the rung is still drawn,
+ * greyed, rather than left out - see the header.
  */
 export function hikingDetailOptions(): DetailOption[] {
+  const offered = offeredHikingDetails()
   return LEVEL_LADDER.map(({ id, label }) => {
-    const detail = HIKING_DETAIL_LEVELS.find((level) => level.level === id)
+    const detail = offered.find((level) => level.level === id)
     return {
       id,
       label,

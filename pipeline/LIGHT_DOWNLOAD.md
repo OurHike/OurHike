@@ -476,11 +476,39 @@ at `published: false` with a null size. The rung lights up when a build has run
 and its bytes have been measured — not before, for the reason `packages.ts`
 records as "a 404 on a mountain".
 
-@unvalidated — 20/6/3 is picked. Against a tapered Standard at 458.1 MB, a
-Light sheet lands around 342 MB on the same reasoning that projected Standard,
-which the build above showed to be trustworthy in total and not per band. That
-is a ~116 MB gap for a choice a hiker has to understand, and whether it is
-worth a rung at all is still the open question at the end of this document.
+**BUILT 2026-08-27** ([run 33067212006](https://github.com/OurHike/OurHike/actions/runs/33067212006)):
+`dem_light.pmtiles` is 5,553 tiles and **182.2 MB** — z9 18.4, z10 9.2, z11
+36.3, z12 41.8, z13 66.8. Note the context band shrank too (z9 552 tiles
+against the canonical build's 576): the bbox follows the widest corridor, which
+is 20 miles here rather than 30.
+
+**And Light takes the z12 basemap cut** (#1107). The taper only ever touched
+terrain, so both rungs were still carrying the same 182.6 MB of vector
+basemap and Light came out only ~93 MB below Standard — thin for a choice a
+hiker has to understand. `at_basemap_package_z12.pmtiles` is the other ~107 MB.
+
+Capping the *basemap* at z12 is safe where capping the *DEM* there was not, and
+the asymmetry is measured rather than assumed: BASEMAP.md's own finding is that
+MapLibre overzooms z13 vector cleanly, while the same cap on the raster-dem
+measured worse than a quantize step already rejected (see the table above).
+Geometry and labels survive magnification; a hillshade computed from magnified
+elevation does not.
+
+| level | basemap | DEM | sheet | vs original |
+|---|---|---|---|---|
+| Fine | z14, 533.5 | 275.6 | 809.1 MB | −29.1% |
+| Standard | z13, 182.6 | 275.6 | 458.2 MB | −42.0% |
+| **Light** | **z12, ~75** | **182.2** | **~257 MB** | **~−67%** |
+
+Light's basemap figure is **reasoned** from BASEMAP.md's per-zoom table
+(31.0 + 44.1) and nothing has built it yet; its DEM figure is measured. The
+rung stays `published: false` with null sizes until both objects are in the
+bucket and weighed — a size shown before a download is what a hiker weighs
+against their remaining storage, and a projection may not appear there.
+
+@unvalidated — 20/6/3 is still picked, and what Light gives up is stated in
+`export_dem.py`: terrain runs out at 3 miles from the trail, exactly
+`trailPosition.MAX_OFF_TRAIL_MILES`. #1107 carries the rest.
 
 ## What was rejected, so nobody re-proposes it
 

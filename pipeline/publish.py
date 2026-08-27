@@ -126,6 +126,13 @@ OFFLINE_SHEET_ARCHIVES = {
     # because a download must be exactly the bytes its advertised size and
     # published hash describe.
     "basemap_z13": "at_basemap_package_z13.pmtiles",
+    # The same cut capped at z12 - the hiking sheet's Light level (#1088/#1107).
+    # The taper narrowed Standard's terrain and left both rungs carrying the
+    # same basemap, so Light needed the other half of its saving here. Safe
+    # where the DEM's z12 cap was not: MapLibre overzooms z13 vector cleanly
+    # (BASEMAP.md), and a hillshade computed from magnified elevation does not
+    # survive the same treatment (LIGHT_DOWNLOAD.md).
+    "basemap_z12": "at_basemap_package_z12.pmtiles",
     "dem": "dem.pmtiles",
     # The same terrain at a harder taper - the hiking sheet's Light level
     # (#1088). Its own artifact rather than a cut the client performs, for the

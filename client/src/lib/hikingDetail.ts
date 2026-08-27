@@ -66,11 +66,27 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
     // nobody can state its bytes, and a projection is exactly the grade that
     // may not be shown to a hiker deciding whether they have room.
     //
-    // Flip `published` when a light build has run and its object has been
-    // weighed in the bucket, and put its exact bytes here in the same change.
+    // BOTH ARTIFACTS ARE LIGHT'S OWN since #1107, and that is the point of the
+    // rung. The taper narrowed Standard's TERRAIN and left both levels carrying
+    // the same 182.6 MB of vector basemap, so Light came out only ~93 MB below
+    // Standard - thin for a choice a hiker has to understand. The z12 cut is
+    // the other ~107 MB.
+    //
+    // Capping the BASEMAP at z12 is safe where capping the DEM there was not,
+    // and the asymmetry is measured rather than assumed: MapLibre overzooms
+    // z13 vector cleanly (BASEMAP.md), while the same cap on the raster-dem
+    // measured worse than a quantize step already rejected
+    // (pipeline/LIGHT_DOWNLOAD.md). Geometry and labels survive magnification;
+    // a hillshade computed from magnified elevation does not.
+    //
+    // Flip `published` when both objects are in the bucket and have been
+    // weighed, and put their exact bytes here in the same change. Neither
+    // exists yet, which is why both sizes are null rather than projected -
+    // a size shown before a download is what a hiker weighs against their
+    // remaining storage, and a projection may not appear there.
     level: 'light',
-    artifact: 'at_basemap_package_z13.pmtiles',
-    basemapSizeBytes: 182_610_914,
+    artifact: 'at_basemap_package_z12.pmtiles',
+    basemapSizeBytes: null,
     demArtifact: 'dem_light.pmtiles',
     demSizeBytes: null,
     recommended: false,

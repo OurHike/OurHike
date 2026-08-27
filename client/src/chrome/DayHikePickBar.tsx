@@ -31,7 +31,7 @@
 // road is there and does not route on it - not wonder why the loop will not
 // close.
 
-import type { DayHikeDraft, DraftStatus } from '../lib/dayHikeDraft'
+import { draftPoints, type DayHikeDraft, type DraftStatus } from '../lib/dayHikeDraft'
 import type { PaceEstimate } from '../lib/pace'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
@@ -55,9 +55,12 @@ export interface DayHikePickBarProps {
   walking: PaceEstimate | null
   onUndo: () => void
   onCloseLoop: () => void
+  /** #935: end this stretch here, and pick the walk up somewhere else. */
+  onStartStretch: () => void
   onDone: () => void
   onCancel: () => void
   canCloseLoop: boolean
+  canStartNew: boolean
 }
 
 /**
@@ -86,12 +89,15 @@ export function DayHikePickBar({
   walking,
   onUndo,
   onCloseLoop,
+  onStartStretch,
   onDone,
   onCancel,
   canCloseLoop,
+  canStartNew,
 }: DayHikePickBarProps) {
-  const route = status.kind === 'routed' ? status.route : null
+  const routed = status.kind === 'routed' ? status : null
   const time = walkingTime(walking)
+  const stretches = routed?.stretches.length ?? 0
 
   return (
     <div className="day-hike-bar" role="region" aria-label="Build a day hike">
@@ -117,13 +123,28 @@ export function DayHikePickBar({
         </p>
       )}
 
-      {route !== null && (
+      {routed !== null && (
         <>
           <p className="day-hike-bar__total">
-            {route.legs.length} {route.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
-            {formatDistance(route.miles, units)}
+            {routed.legs.length} {routed.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
+            {formatDistance(routed.miles, units)}
             {time !== null && <> · {time}</>}
           </p>
+
+          {/* THE GAP IS PRINTED APART FROM THE MILES, NEVER ADDED TO THEM.
+              One is ground an organization maintains and measures; the other
+              is ground the app declined to route and nobody has walked for
+              us. A single total would launder the second into the first, and
+              the ≈time above is priced on trail miles alone for the same
+              reason - the app has no idea what that ground is. */}
+          {routed.gapMiles > 0 && (
+            <p className="day-hike-bar__gap">
+              Plus {formatDistance(routed.gapMiles, units, 'fine')} with no trail under
+              it, across {stretches > 2 ? `${stretches - 1} gaps` : 'the gap'} between
+              your {stretches} stretches. You cross that on your own — we haven&rsquo;t
+              checked it.
+            </p>
+          )}
           {/* Whose pace that time is, when it is not the standard one (#851).
               Absent for a hiker who never moved a control, which is most of
               them - the line has to keep its weight for the ones who did. */}
@@ -131,7 +152,7 @@ export function DayHikePickBar({
             <p className="day-hike-bar__baseline">{walking.relativeLine}</p>
           )}
           <ul className="day-hike-bar__orgs">
-            {route.legsBySource.map((tally) => (
+            {routed.legsBySource.map((tally) => (
               <li key={tally.source ?? 'unattributed'} className="day-hike-bar__org">
                 {orgLabel(tally.source)} · {tally.legs}{' '}
                 {tally.legs === 1 ? 'leg' : 'legs'}
@@ -150,7 +171,7 @@ export function DayHikePickBar({
           is not teaches a hiker the app is broken. A control that does not
           apply yet is absent, like Close the loop always was. */}
       <div className="day-hike-bar__actions">
-        {(draft.points.length > 0 || draft.refusal !== null) && (
+        {(draftPoints(draft).length > 0 || draft.refusal !== null) && (
           <button type="button" className="day-hike-bar__action" onClick={onUndo}>
             Undo
           </button>
@@ -160,7 +181,16 @@ export function DayHikePickBar({
             Close the loop
           </button>
         )}
-        {route !== null && (
+        {/* #935's other half, in one control. The wording is what the hiker
+            is actually telling the app - not "add a segment", which is the
+            model's word for it, but that the walk carries on somewhere the
+            app will not claim to know. */}
+        {canStartNew && (
+          <button type="button" className="day-hike-bar__action" onClick={onStartStretch}>
+            Start a new stretch
+          </button>
+        )}
+        {routed !== null && (
           <button
             type="button"
             className="day-hike-bar__action day-hike-bar__action--done"

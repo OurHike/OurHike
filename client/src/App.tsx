@@ -193,9 +193,12 @@ import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
 import {
   canCloseLoop,
+  canStartStretch,
+  draftPoints,
   draftStatus,
   EMPTY_DRAFT,
   loopDraft,
+  startStretch,
   tapAt,
   undoTap,
   type DayHikeDraft,
@@ -2312,11 +2315,15 @@ function App() {
   // it, which is not.
   const dayHikeWalking = useMemo(() => {
     if (dayHikeStatus === null || dayHikeStatus.kind !== 'routed') return null
-    const climb = dayHikeStatus.route.climb
+    const climb = dayHikeStatus.climb
     if (climb === null) return null
     return paceEstimate(
       {
-        distanceMi: dayHikeStatus.route.miles,
+        // Trail miles only. The gap a hiker crosses on their own is not
+        // priced - the app has no idea what that ground is, which is why it
+        // declined to route it - and folding it in would put a number on the
+        // one stretch nobody measured.
+        distanceMi: dayHikeStatus.miles,
         ascentFt: climb.gainFt,
         descentFt: climb.lossFt,
       },
@@ -2326,7 +2333,10 @@ function App() {
 
   const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (dayHike === null) return null
-    const points = dayHike.points.map((point, index) => ({
+    // Numbered across the whole walk rather than per stretch: the labels are
+    // the order the hiker tapped, and restarting at 1 after a gap would say
+    // the second stretch is a second hike.
+    const points = draftPoints(dayHike).map((point, index) => ({
       lon: point.at.lon,
       lat: point.at.lat,
       label: String(index + 1),
@@ -2348,7 +2358,13 @@ function App() {
     // trimmed between two taps - and for a LOOP, whose first and last tap are
     // the same point, trimmed to nothing. Measured: a 0.62 mi out-and-back
     // drew null, so the bar priced a walk the map did not show.
-    const lines = routeLines(dayHikeIndex.graph, dayHikeStatus.route) ?? []
+    // STRETCH BY STRETCH, and that is the load-bearing part rather than a
+    // detail of the loop: each stretch draws from its own geometry, so there
+    // is no path through this function that can put a line across a gap the
+    // app declined to route.
+    const lines = dayHikeStatus.stretches.flatMap(
+      (stretch) => routeLines(dayHikeIndex.graph, stretch.route) ?? [],
+    )
     return { lines, points }
   }, [dayHike, dayHikeIndex, dayHikeStatus])
 
@@ -2368,22 +2384,32 @@ function App() {
     if (dayHike === null || dayHikeStatus === null || dayHikeStatus.kind !== 'routed') {
       return
     }
-    const route = dayHikeStatus.route
+    const status = dayHikeStatus
     const hike: DayHike = {
       id: crypto.randomUUID(),
-      name: dayHikeName(route),
+      // Named off the longest leg of the whole walk, gaps included in the
+      // sense that they contribute no leg to be named after - which is right:
+      // a walk is named for the trail it spends most of its miles on.
+      name: dayHikeName({ legs: status.legs }),
       // Whatever the hiker set on a review card before "Back to the map"
       // discarded it - see dayHikeDraftDate.
       date: dayHikeDraftDate,
-      segments: [
-        dayHike.points.map((point) => ({
-          coord: [point.at.lon, point.at.lat] as [number, number],
-          poiId: null,
-        })),
-      ],
+      // Each stretch stored as its own run of ends, which is what makes the
+      // gap survive a save. A stretch of fewer than two ends is dropped: a
+      // "start a new stretch" the hiker never finished describes a place
+      // rather than a walk, and lib/dayHikeCard.ts cannot resolve one - so
+      // storing it would guarantee the hike falls back to its cache for ever.
+      segments: dayHike.segments
+        .filter((stretch) => stretch.length >= 2)
+        .map((stretch) =>
+          stretch.map((point) => ({
+            coord: [point.at.lon, point.at.lat] as [number, number],
+            poiId: null,
+          })),
+        ),
       figures: {
-        miles: route.miles,
-        legs: route.legs.map((leg) => ({
+        miles: status.miles,
+        legs: status.legs.map((leg) => ({
           name: leg.name,
           source: leg.source,
           blaze_color: leg.blaze_color,
@@ -2391,10 +2417,10 @@ function App() {
         })),
         // The climb as this phone's graph priced it, cached so that the two
         // surfaces which may only read the cache - the day-hike list and the
-        // trailhead door - can print a ≈time at all. `route.climb` is already
-        // null-or-nothing across every segment, so caching it verbatim
+        // trailhead door - can print a ≈time at all. `status.climb` is already
+        // null-or-nothing across every stretch, so caching it verbatim
         // inherits that rule rather than restating it.
-        climb: route.climb,
+        climb: status.climb,
       },
       looped: dayHike.looped,
       recorded: 'planned',
@@ -5135,9 +5161,15 @@ function App() {
                     onCloseLoop={() =>
                       setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
                     }
+                    onStartStretch={() =>
+                      setDayHike((draft) =>
+                        draft === null ? draft : startStretch(draft),
+                      )
+                    }
                     onDone={handleDayHikeDone}
                     onCancel={handleDayHikeCancel}
                     canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
+                    canStartNew={dayHike !== null && canStartStretch(dayHike)}
                   />
                 ) : followSheetNode !== null ? (
                   // Following outranks both doors below and neither builder above:

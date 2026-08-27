@@ -89,20 +89,37 @@ const ROUTE: GraphRoute = {
   climb: null,
 }
 
-const DRAFT: DayHikeDraft = { points: [], refusal: null, looped: false }
+const DRAFT: DayHikeDraft = { segments: [[]], refusal: null, looped: false }
+
+/** One routed stretch, which is what a single-stretch walk now looks like to
+ *  the bar. The totals travel beside the stretches rather than inside one
+ *  combined route - see lib/dayHikeDraft.ts on why there is no such thing. */
+function routedFrom(route: GraphRoute, gapMiles = 0): DraftStatus {
+  return {
+    kind: 'routed',
+    stretches: [{ points: [], route }],
+    miles: route.miles,
+    legs: route.legs,
+    legsBySource: route.legsBySource,
+    climb: route.climb,
+    gapMiles,
+  }
+}
 
 function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}) {
   const props = {
     draft: DRAFT,
-    status: { kind: 'routed', route: ROUTE } as DraftStatus,
+    status: routedFrom(ROUTE),
     units: 'imperial' as const,
     orgLabel,
     walking: flatWalk(135),
     onUndo: vi.fn(),
     onCloseLoop: vi.fn(),
+    onStartStretch: vi.fn(),
     onDone: vi.fn(),
     onCancel: vi.fn(),
     canCloseLoop: true,
+    canStartNew: false,
     ...overrides,
   }
   const view = render(<DayHikePickBar {...props} />)
@@ -134,14 +151,11 @@ describe('the running total', () => {
 
   it('says one leg rather than 1 legs', () => {
     renderBar({
-      status: {
-        kind: 'routed',
-        route: {
-          ...ROUTE,
-          legs: [ROUTE.legs[0]],
-          legsBySource: [{ source: 'oprhp_trails', legs: 1 }],
-        },
-      },
+      status: routedFrom({
+        ...ROUTE,
+        legs: [ROUTE.legs[0]],
+        legsBySource: [{ source: 'oprhp_trails', legs: 1 }],
+      }),
     })
 
     expect(screen.getByText(/1 leg ·/)).toBeInTheDocument()
@@ -158,10 +172,7 @@ describe('the live organization tally', () => {
 
   it('has something to say about a leg no organization is named on', () => {
     renderBar({
-      status: {
-        kind: 'routed',
-        route: { ...ROUTE, legsBySource: [{ source: null, legs: 1 }] },
-      },
+      status: routedFrom({ ...ROUTE, legsBySource: [{ source: null, legs: 1 }] }),
     })
 
     expect(screen.getByText(/Unattributed · 1 leg/)).toBeInTheDocument()
@@ -206,7 +217,7 @@ describe('the controls', () => {
   })
 
   it('undoes, closes the loop, finishes and cancels', () => {
-    const props = renderBar({ draft: { ...DRAFT, points: [{} as never] } })
+    const props = renderBar({ draft: { ...DRAFT, segments: [[{} as never]] } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     expect(props.onUndo).toHaveBeenCalledTimes(1)
@@ -296,5 +307,41 @@ describe('walkingTime', () => {
     // 120 standard minutes of flat ground at 2 mph rather than 3.107.
     expect(walkingTime(walk)).toBe('≈3h 5m walking')
     expect(walk.relativeLine).toBe('was ≈2h · 1.6× standard')
+  })
+})
+
+describe('several stretches (#935, #983)', () => {
+  it('prints the gap apart from the miles, and never inside them', () => {
+    // The assertion this whole model exists for. One figure is ground an
+    // organization maintains and measures; the other is ground the app
+    // declined to route. A single total would launder the second into the
+    // first.
+    renderBar({ status: routedFrom(ROUTE, 0.3), canStartNew: true })
+
+    expect(screen.getByText(/4\.8 mi/)).toBeInTheDocument()
+    expect(screen.getByText(/no trail under it/)).toBeInTheDocument()
+    expect(screen.getByText(/on your own/)).toBeInTheDocument()
+    expect(screen.queryByText(/5\.1 mi/)).not.toBeInTheDocument()
+  })
+
+  it('says nothing about a gap on a walk that has none', () => {
+    renderBar({ status: routedFrom(ROUTE, 0) })
+
+    expect(screen.queryByText(/no trail under it/)).not.toBeInTheDocument()
+  })
+
+  it('offers the new-stretch control only when a stretch is ready to end', () => {
+    // The no-dead-controls rule this bar already keeps: absent, not disabled.
+    renderBar({ canStartNew: false })
+    expect(
+      screen.queryByRole('button', { name: 'Start a new stretch' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('starts a new stretch when asked', () => {
+    const props = renderBar({ canStartNew: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new stretch' }))
+    expect(props.onStartStretch).toHaveBeenCalledTimes(1)
   })
 })

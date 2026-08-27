@@ -79,13 +79,27 @@ export interface NearbyDayHike {
  * what a GPS fix under canopy contributes, so nothing here earns a great
  * circle.
  */
-function straightLineMetres(a: LonLat, b: LonLat): number {
+export function straightLineMetres(a: LonLat, b: LonLat): number {
   const EARTH_RADIUS_M = 6_371_000
   const toRad = Math.PI / 180
   const midLatRad = ((a.lat + b.lat) / 2) * toRad
   const dLat = (b.lat - a.lat) * toRad
   const dLon = (b.lon - a.lon) * toRad * Math.cos(midLatRad)
   return Math.sqrt(dLat * dLat + dLon * dLon) * EARTH_RADIUS_M
+}
+
+/**
+ * Straight-line miles between two points - the ONE home for the measurement a
+ * gap is described by.
+ *
+ * A gap between two stretches has no route by definition, so a straight line
+ * is the only thing there is to measure. Both the builder (lib/dayHikeDraft.ts,
+ * while a hiker is laying a walk out) and the saved record ({@link dayHikeGaps})
+ * must print the same figure for the same gap, and two copies of this is how
+ * they would stop doing that without anybody deciding it.
+ */
+export function straightLineMiles(a: LonLat, b: LonLat): number {
+  return metresToMiles(straightLineMetres(a, b))
 }
 
 /** Straight-line miles from the fix to a hike's first tapped end, or null

@@ -194,6 +194,33 @@ export interface GraphRoute {
  */
 export const MAX_OFF_NETWORK_FEET = 150
 
+/**
+ * How far a DRAWN line may be from a trail and still be matched to it.
+ *
+ * The maintainer's answer on #935, 2026-08-27, verbatim: *"Ask which trail.
+ * But only match to trails within 25M."*
+ *
+ * TIGHTER THAN A TAP, AND THAT IS THE POINT. {@link MAX_OFF_NETWORK_FEET} is
+ * 150 ft (45.7 m) and governs a finger aimed at one spot; this governs a
+ * stroke swept across a map, where every sample is a candidate and a generous
+ * radius reaches two trails at once far more often than a single tap does.
+ *
+ * WHAT THE NUMBER DOES AND DOES NOT BUY, stated because the two are easy to
+ * conflate. It is a REACH limit: past 25 m nothing matches, which under the
+ * segments model ends a stretch rather than refusing the walk. It is NOT a
+ * disambiguation rule - inside 25 m two marked trails can still both be
+ * candidates, and #935's other half is that the app ASKS rather than taking
+ * the nearer. See {@link trailsNear}.
+ *
+ * @unvalidated - nobody has drawn on this outdoors, which is what #935 says
+ * would settle it. What can be said with evidence is the direction: through
+ * Harriman-Bear Mountain, 48% of sampled A.T. points sit within 150 m of a
+ * different marked trail (features/NEARBY_TRAILS.md, measured by #771), so 25
+ * m reduces the ambiguous fraction - by how much, nobody has measured. What
+ * would settle it is somebody drawing a route on a phone in that park.
+ */
+export const DRAWN_SNAP_METRES = 25
+
 const FEET_PER_METRE = 3.280839895
 const METRES_PER_MILE = 1609.344
 
@@ -632,6 +659,163 @@ function snapCandidates(
     if (hasVertices(index.graph.edges[edgeIndex])) all.push(edgeIndex)
   }
   return all
+}
+
+/**
+ * Every distinct TRAIL within reach of a point, nearest first.
+ *
+ * WHY TRAILS RATHER THAN EDGES. `build_trail_graph.py` splits a line at every
+ * crossing, so one trail near a point is typically several edges of it, and a
+ * list of edges would ask a hiker "which of these four pieces of the Pine
+ * Meadow Trail did you mean" - a question about the artifact rather than about
+ * the ground. Grouping on `trail_id` asks the question they can answer, which
+ * is which blaze they were following.
+ *
+ * WHY IT EXISTS. {@link nearestPointOnGraph} keeps one `best` and drops every
+ * other candidate inside its loop, so it cannot express "two trails are
+ * equally plausible" - it just picks. That is fine for a tap, which is one
+ * deliberate aim, and it is #935's whole problem for a drawn line: through
+ * Harriman-Bear Mountain 48% of sampled A.T. points have a second marked trail
+ * within 150 m (#771), so a stroke sweeping that corridor is repeatedly
+ * choosing between two real trails on a margin of metres and saying nothing.
+ * The maintainer's answer (2026-08-27) is that the app asks, and this is what
+ * it asks with.
+ *
+ * The best point on each trail is returned - not the trail's nearest edge but
+ * the nearest point on it - so a caller that takes one can use it directly.
+ */
+/**
+ * What makes two pieces of tread the SAME ANSWER to "which trail did you
+ * mean" - which is not the same question {@link sameTrail} answers.
+ *
+ * `sameTrail` compares `trail_id` and `name`, and it is right to: it decides
+ * where one LEG ends and the next begins, and a leg is a run of one published
+ * line. But a publisher routinely splits one trail into many lines with
+ * different ids, and asking a hiker to choose between four candidates all
+ * labelled "Pine Meadow Trail" is a question about the artifact rather than
+ * about the ground. Measured on the published network (data.ourhike.org,
+ * 2026-08-27): grouping on `trail_id` made 68.5% of sampled Harriman points
+ * ambiguous; grouping on what a hiker can read - the name, the blaze and the
+ * organization - is what the figure recorded in features/HIKE_PLANNING.md
+ * measures instead.
+ *
+ * An UNNAMED piece falls back to its own edge, which is the conservative
+ * direction: two unnamed trails stay two candidates rather than collapsing
+ * into one answer that would be wrong for at least one of them. The cost is a
+ * choice a hiker cannot make well, and it is the lesser cost - the app never
+ * pretends to know which unnamed line somebody meant.
+ */
+function askableIdentity(edge: GraphEdge, edgeIndex: number): string {
+  if (edge.name === null) return `edge:${edgeIndex}`
+  return `${edge.source ?? ''}\u0000${edge.name}\u0000${edge.blaze_color ?? ''}`
+}
+
+export function trailsNear(
+  index: TrailGraphIndex,
+  at: LonLat,
+  maxOffMetres: number = DRAWN_SNAP_METRES,
+): GraphPoint[] {
+  const maxOffFeet = maxOffMetres * FEET_PER_METRE
+  const best = new Map<string, GraphPoint>()
+
+  for (const edgeIndex of snapCandidates(index, at, maxOffFeet)) {
+    const projected = projectOntoEdge(index, edgeIndex, at)
+    const offNetworkFeet = projected.offMetres * FEET_PER_METRE
+    if (offNetworkFeet > maxOffFeet) continue
+    const key = askableIdentity(index.graph.edges[edgeIndex], edgeIndex)
+    const known = best.get(key)
+    if (known !== undefined && known.offNetworkFeet <= offNetworkFeet) continue
+    best.set(key, {
+      edgeIndex,
+      fraction: projected.fraction,
+      at: projected.point,
+      offNetworkFeet,
+    })
+  }
+
+  return Array.from(best.values()).sort((a, b) => {
+    if (a.offNetworkFeet !== b.offNetworkFeet) return a.offNetworkFeet - b.offNetworkFeet
+    // A stable order for an exact tie, for the reason NodeHeap gives: input
+    // order here is edge numbering, which the pipeline rewrites on every
+    // publish.
+    return a.edgeIndex - b.edgeIndex
+  })
+}
+
+/**
+ * When two candidate trails are close enough that choosing between them does
+ * not change where a hiker walks.
+ *
+ * DERIVED, NOT PICKED. `pipeline/build_trail_graph.py`'s `ENDPOINT_SNAP_M` is
+ * 8.0 m and its own comment states what the number means: "Two vertices closer
+ * together than this are the same place." This is that sentence read from the
+ * other end - if the pipeline would weld two line-ends this far apart into one
+ * node, the app has no business asking a hiker which of two lines this far
+ * apart they meant. One home for "the same place", used twice.
+ *
+ * WHY IT MATTERS, MEASURED. Against the published network on 2026-08-27,
+ * 4,000 points sampled on real trail vertices inside Harriman-Bear Mountain:
+ * 64.3% have more than one marked trail within #935's 25 m, and the median
+ * separation between the top two candidates is **0.0 m**. 70% of those pairs
+ * are within 1 m of each other. They are trails sharing tread - the A.T. runs
+ * concurrently with Ramapo-Dunderberg (red), 1777 East (white) and the Long
+ * Path (aqua) through that park, and OPRHP publishes its own line for ground
+ * ATC's centerline already covers. Asking "which trail did you mean" there is
+ * asking about a label, not about a walk: both answers route the hiker over
+ * the identical ground.
+ *
+ * Filtering on this threshold takes the ask from 64.3% of sampled points to
+ * **17.3%** in Harriman and 20.6% across the whole network - measured, not
+ * predicted, by running {@link trailChoice} over the same 4,000 points.
+ *
+ * Two things that figure is NOT. It is not the rate at which a hiker gets
+ * asked: these are points sampled exactly on a trail's own vertices, one
+ * question per point, and a drawn stroke resolves a run of samples into one
+ * stretch before anything is asked - so this is an upper bound on the ask
+ * rate, not the ask rate. And it is not a claim about a real drawn line,
+ * because nobody has drawn one on this yet, which is what #935 says would
+ * settle the tolerance.
+ */
+export const SAME_TREAD_METRES = 8.0
+
+/**
+ * What the app should do about a point on a drawn line: take it, ask about it,
+ * or refuse it.
+ *
+ * #935's decision (maintainer, 2026-08-27) in one function - *"Ask which
+ * trail. But only match to trails within 25M."* Both halves, and a third rule
+ * that follows from measuring the first two rather than from anybody's
+ * preference: **an ask is only worth making when the answer changes where
+ * somebody walks.** See {@link SAME_TREAD_METRES} for the figures.
+ *
+ * `ask` hands back every distinct candidate, nearest first, and the caller
+ * puts them in front of the hiker with the blaze colour - which is the thing
+ * they will be checking against the paint on the tree, and the only thing that
+ * tells two concurrent trails apart on the ground.
+ */
+export type TrailChoice =
+  | { kind: 'none' }
+  | { kind: 'one'; point: GraphPoint }
+  | { kind: 'ask'; options: GraphPoint[] }
+
+export function trailChoice(
+  index: TrailGraphIndex,
+  at: LonLat,
+  maxOffMetres: number = DRAWN_SNAP_METRES,
+): TrailChoice {
+  const near = trailsNear(index, at, maxOffMetres)
+  if (near.length === 0) return { kind: 'none' }
+
+  const nearest = near[0]
+  const elsewhere = near.filter(
+    (candidate) =>
+      Math.hypot(
+        localMetres(nearest.at, candidate.at).x,
+        localMetres(nearest.at, candidate.at).y,
+      ) > SAME_TREAD_METRES,
+  )
+  if (elsewhere.length === 0) return { kind: 'one', point: nearest }
+  return { kind: 'ask', options: [nearest, ...elsewhere] }
 }
 
 /**

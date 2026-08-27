@@ -287,6 +287,43 @@ describe('validateDayHikeStore', () => {
     })
   })
 
+  it('drops a stretch of one end rather than leaving the hike unresolvable', () => {
+    // The lesser of two bad answers. lib/dayHikeCard.ts needs two ends to
+    // route anything, so keeping a one-end stretch would make the whole hike
+    // print its cache for ever with no re-download able to fix it. Losing a
+    // stretch that describes a place rather than a walk is the cheaper loss.
+    const validated = validateDayHikeStore({
+      hikes: [
+        hike('stranded', {
+          segments: [
+            [
+              { coord: [-73.98, 41.31], poiId: null },
+              { coord: [-73.97, 41.32], poiId: null },
+            ],
+            [{ coord: [-73.95, 41.33], poiId: null }],
+          ],
+        }),
+      ],
+      openId: null,
+    })
+
+    expect(validated?.hikes[0].segments).toHaveLength(1)
+    expect(validated?.hikes[0].segments[0]).toHaveLength(2)
+  })
+
+  it('drops the hike when every stretch of it is one end', () => {
+    const validated = validateDayHikeStore({
+      hikes: [
+        hike('nothing-walkable', {
+          segments: [[{ coord: [-73.95, 41.33], poiId: null }]],
+        }),
+      ],
+      openId: null,
+    })
+
+    expect(validated?.hikes).toHaveLength(0)
+  })
+
   it('drops a junk figures leg, and only that leg', () => {
     const validated = validateDayHikeStore({
       hikes: [

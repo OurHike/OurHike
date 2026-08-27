@@ -2597,6 +2597,21 @@
   color: var(--fg-on-dark);
 }
 
+/* The gap between two stretches (#935/#983), on the builder bar.
+   Dashed like the finished card's `.day-hike-card__gap`, and for the same
+   reason rather than for consistency's sake: a dashed border is the app's
+   one visual word for "this is a boundary, not a route". */
+.day-hike-bar__gap {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
 /* #931's row: named, not omitted, and with nothing to press. */
 .day-hike-bar__later {
   display: flex;

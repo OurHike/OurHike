@@ -186,8 +186,18 @@ function validSegments(candidate: unknown): DayHikeSegment[] | null {
       if (end === null) return null
       ends.push(end)
     }
+    // A STRETCH OF ONE END IS NOT A STRETCH, and dropping it is the lesser of
+    // two bad answers rather than an obvious one. `lib/dayHikeCard.ts` needs
+    // two ends to route anything, so keeping a one-end stretch would leave the
+    // whole hike permanently unresolvable - it would print its cache for ever
+    // and no re-download could fix it, which is a worse outcome for the hiker
+    // than losing a stretch that describes a place rather than a walk. The
+    // builder cannot produce one (App.tsx filters on save), so this is about a
+    // record arriving over sync from some other client.
+    if (ends.length < 2) continue
     segments.push(ends)
   }
+  if (segments.length === 0) return null
   return segments
 }
 

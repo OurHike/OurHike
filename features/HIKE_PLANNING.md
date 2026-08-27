@@ -320,7 +320,26 @@ The trail leaves the 150 ft tolerance of its own chord somewhere along **21% of 
 
 So `nearestPointOnGraph` now considers only edges that carry vertices, and a phone that cannot answer a tap says **that** rather than saying the tap was off the network — two situations, two sentences. This is the rule `lib/dayHikeFollow.ts` and `routeGeometry` already applied to following and drawing; the snap was the last place a chord was still accepted.
 
-**Still undecided: the tolerance itself — and the decision above changes what kind of number it is.** Nobody has measured one, and "always snap to a marked path" removes the walkable/unwalkable ambiguity without touching the one that bites in a park: *which marked path*. Along the A.T. through Harriman–Bear Mountain, **48% of sampled points sit within 150 m of a different marked trail** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured from the #771 spike). A tolerance generous enough to catch a line drawn with a thumb on a moving bus is therefore, across roughly half that corridor, generous enough to reach two trails at once. So this is a **disambiguation** problem rather than a reach problem, and a single number will not settle it. Whatever lands carries `@unvalidated` and what would settle it until somebody has drawn on it outdoors; #935 stays open for that half.
+**The tolerance is 25 m, and inside it the app asks (#935, maintainer, 2026-08-27).** Verbatim:
+
+> Ask which trail. But only match to trails within 25M.
+
+Two rules, and the second is the one the paragraph this replaces was arguing for. **25 m is a REACH limit** — past it nothing matches, which under the segments model above ends a stretch rather than refusing the walk. It is deliberately tighter than a tap's `MAX_OFF_NETWORK_FEET` (150 ft, 45.7 m), because a tap is one deliberate aim and a stroke is a sweep across the map where every sample is a candidate. **Inside 25 m, proximity does not decide** — where two marked trails are both plausible, the app asks, and it asks with the blaze colour, which is the thing a hiker will be checking against the paint on the tree.
+
+**A third rule, which came from measuring the first two rather than from anybody's preference: an ask is only worth making when the answer changes where somebody walks.** Measured against the published network as `data.ourhike.org` served it on 2026-08-27, 4,000 points sampled on real trail vertices inside Harriman–Bear Mountain:
+
+| | within 150 ft | within 25 m |
+|---|---|---|
+| more than one marked trail in reach | 71.5% | **64.3%** |
+| nothing in reach | 0.0% | 0.0% |
+
+Tightening to 25 m barely moves it, and the reason is visible in the pairs themselves: **the median separation between the top two candidates is 0.0 m, and 70% of them are within 1 m of each other.** They are trails sharing tread. Through that park the A.T. runs concurrently with Ramapo-Dunderberg (red), 1777 East (white) and the Long Path (aqua), and OPRHP publishes its own line over ground ATC's centerline already covers — 57.9% of the ambiguous points are two organizations' lines within 5 m of each other, none of them sharing a name. Asking "which trail did you mean" there is asking about a **label**, not about a walk: both answers route the hiker over identical ground.
+
+So a candidate closer than `SAME_TREAD_METRES` to the nearest one is not a separate answer. That constant is **8 m, derived rather than picked**: `build_trail_graph.py`'s `ENDPOINT_SNAP_M` is 8.0 and its own comment says what the number means — *"Two vertices closer together than this are the same place."* If the pipeline would weld two line-ends that far apart into one node, the app has no business asking which of two lines that far apart somebody meant. One home for "the same place", read from both ends.
+
+With that filter, measured on the same 4,000 points: **17.3% of points would ask** in Harriman, 20.6% across the whole network. Two things that figure is not. It is not the rate at which a hiker gets asked — these are one question per sampled point, and a drawn stroke resolves a run of samples into one stretch before anything is asked, so it is an **upper bound**. And it is not a claim about a real drawn line.
+
+**All three numbers ship `@unvalidated`, and what would settle them is unchanged: somebody drawing a route on a phone in Harriman.** The 25 m is the maintainer's, the 8 m is the pipeline's own, and the ask rate is a property of the published data rather than of anybody's hand.
 
 ## Two rooms, one tab — the mode is the chrome (#1008, 2026-08-25)
 

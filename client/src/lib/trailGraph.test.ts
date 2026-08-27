@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildGraphIndex,
+  DRAWN_SNAP_METRES,
   canSnapToGraph,
   closeTheLoop,
   legsFromEdges,
@@ -28,6 +29,9 @@ import {
   routeGeometry,
   routeLines,
   routeThrough,
+  SAME_TREAD_METRES,
+  trailChoice,
+  trailsNear,
   type TrailGraph,
 } from './trailGraph'
 
@@ -831,5 +835,98 @@ describe('pricing the climb of a walk', () => {
     const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: null }))
     const route = routeThrough(priced, [pointOn(0, 0), pointOn(1, 1), pointOn(2, 1)])
     expect(route?.climb).toBeNull()
+  })
+})
+
+describe('which trail a drawn line meant (#935)', () => {
+  // Two trails on the SAME tread - the Harriman case, where the A.T. runs
+  // concurrently with Ramapo-Dunderberg and OPRHP publishes its own line over
+  // ground ATC's centerline already covers. Measured on the published network
+  // (2026-08-27): the median separation between the top two candidates at a
+  // sampled Harriman point is 0.0 m.
+  const CONCURRENT: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      // A third trail, 20 m north - inside 25 m and well outside the 8 m that
+      // means "the same place".
+      [-74.1, 41.2502],
+      [-74.09, 41.2502],
+    ],
+    edges: [
+      {
+        ...GRAPH.edges[0],
+        from: 0,
+        to: 1,
+        name: 'Appalachian Trail',
+        blaze_color: 'white',
+        trail_id: 'centerline:at',
+        source: 'centerline',
+      },
+      {
+        ...GRAPH.edges[0],
+        from: 0,
+        to: 1,
+        name: 'Ramapo-Dunderberg',
+        blaze_color: 'red',
+        trail_id: 'oprhp:rd',
+        source: 'oprhp_trails',
+      },
+      {
+        ...GRAPH.edges[0],
+        from: 2,
+        to: 3,
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+        trail_id: 'oprhp:pm',
+        source: 'oprhp_trails',
+      },
+    ],
+  }
+  const concurrent = buildGraphIndex(published(CONCURRENT))
+  const onTheTread = { lon: -74.095, lat: 41.25 }
+
+  it('finds every distinct trail in reach, not every edge of them', () => {
+    // A hiker can answer "which blaze were you following". They cannot answer
+    // "which of these four pieces of the Pine Meadow Trail", which is a
+    // question about the artifact rather than about the ground.
+    const near = trailsNear(concurrent, onTheTread, DRAWN_SNAP_METRES)
+
+    expect(near).toHaveLength(3)
+    expect(near[0].offNetworkFeet).toBeLessThanOrEqual(near[1].offNetworkFeet)
+  })
+
+  it('matches nothing past 25 m, which ends a stretch rather than refusing the walk', () => {
+    // 0.0001 deg of latitude is about 11.1 m here, so this sits 66 m from the
+    // concurrent pair and 44 m from the third trail - outside what a drawn
+    // line may reach, on either.
+    const wellOff = { lon: -74.095, lat: 41.2506 }
+
+    expect(trailsNear(concurrent, wellOff, DRAWN_SNAP_METRES)).toHaveLength(0)
+    expect(trailChoice(concurrent, wellOff).kind).toBe('none')
+  })
+
+  it('asks when the answer changes where somebody walks', () => {
+    const choice = trailChoice(concurrent, onTheTread)
+
+    expect(choice.kind).toBe('ask')
+    if (choice.kind !== 'ask') return
+    // The two on one tread collapse to their nearest; the trail 20 m away is
+    // the second option, because taking it is a different walk.
+    expect(choice.options).toHaveLength(2)
+  })
+
+  it('does not ask when both answers are the same ground', () => {
+    // The concurrency alone, with the third trail removed. Both candidates
+    // are within SAME_TREAD_METRES, so the choice is about a label rather
+    // than about a walk - and a question with no consequence is one a hiker
+    // learns to dismiss.
+    const tread = buildGraphIndex(
+      published({ nodes: CONCURRENT.nodes, edges: CONCURRENT.edges.slice(0, 2) }),
+    )
+    const choice = trailChoice(tread, onTheTread)
+
+    expect(SAME_TREAD_METRES).toBe(8)
+    expect(choice.kind).toBe('one')
   })
 })

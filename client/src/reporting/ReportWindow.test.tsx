@@ -22,7 +22,7 @@ const NOW = new Date('2026-08-27T07:42:00Z')
 
 function setup(overrides: Partial<ReportWindowProps> = {}) {
   const props: ReportWindowProps = {
-    anchor: { label: 'mi 628.4', mile: 628.4 },
+    anchor: { label: 'mi 628.4', phrase: 'at mi 628.4', mile: 628.4 },
     reporterType: 'thru',
     onFile: vi.fn().mockResolvedValue('outbox-1'),
     onUndo: vi.fn().mockResolvedValue(undefined),
@@ -125,6 +125,23 @@ describe('filing on the tap', () => {
     // And the tiles are gone: there is nothing left to tap by accident on a
     // surface that files on taps.
     expect(screen.queryByTestId('report-tile-flooding')).toBeNull()
+  })
+
+  it('does not say “at here”', async () => {
+    // THE FIRST PHOTOGRAPH OF THIS SCREEN CAUGHT THIS, and no test had.
+    // Every case above uses a mile anchor, where composing `at ${label}` reads
+    // perfectly - and a build with no GPS fix anchors to "here", where it
+    // reads "Filed — blow down at here". "here" is an adverb; the other two
+    // forms are nouns. So the window takes the finished phrase rather than
+    // building one, and this is the case that says why.
+    setup({ anchor: { label: 'here', phrase: 'here' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down here')
+    expect(screen.getByRole('status')).not.toHaveTextContent('at here')
   })
 
   it('holds it back for less than the outbox is willing to hold anything', () => {

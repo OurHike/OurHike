@@ -71,9 +71,25 @@ export interface ReportWindowAnchor {
   lat?: number
   lon?: number
   mile?: number
-  /** What the header prints - "Bailey Gap Shelter", or "here". The caller
-   *  knows which; this file must not guess a place's name from a mile. */
+  /** What the header prints - "Bailey Gap Shelter", "mi 628.4", or "here".
+   *  The caller knows which; this file must not guess a place's name from a
+   *  mile. */
   label: string
+  /**
+   * The same place as a phrase the receipt can end a sentence with - "at
+   * Bailey Gap Shelter", "at mi 628.4", or plain "here".
+   *
+   * A SECOND FIELD RATHER THAN `at ${label}`, because "here" is an adverb and
+   * the other two are nouns. Composing the preposition here produced "Filed —
+   * blow down at here", which is what the first photograph of this screen
+   * showed and no test had caught: every test used a mile anchor, where the
+   * naive version reads perfectly.
+   *
+   * Supplied rather than derived, for `label`'s reason: sniffing for the
+   * string "here" would be this file guessing at a distinction the caller
+   * already knows.
+   */
+  phrase: string
 }
 
 export interface ReportWindowProps {
@@ -354,7 +370,7 @@ export function ReportWindow({
           Polite rather than assertive - it is confirmation, not an alarm. */}
         <div className="report-window__receipt" role="status" aria-live="polite">
           <p className="report-window__receipt-headline">
-            {`Filed — ${categoryLabel(filed.type).toLowerCase()} at ${anchor.label}`}
+            {`Filed — ${categoryLabel(filed.type).toLowerCase()} ${anchor.phrase}`}
           </p>
           <p className="report-window__receipt-sub">
             {`It waits in your outbox and sends itself, keeping ${now.toLocaleTimeString(

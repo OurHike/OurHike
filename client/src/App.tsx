@@ -4198,18 +4198,24 @@ function App() {
    * has to be able to say rather than printing "mi 0.0", which is Springer
    * Mountain (chrome/Header.tsx keeps the same rule about the mile readout).
    */
-  const reportAnchorLabel = useCallback(
-    (anchor?: ReportAnchor): string => {
+  const reportAnchorWords = useCallback(
+    (anchor?: ReportAnchor): { label: string; phrase: string } => {
       if (anchor?.poiId !== undefined) {
         const place = searchablePois.find((poi) => poi.id === anchor.poiId)
-        if (place !== undefined) return place.name
+        if (place !== undefined) return { label: place.name, phrase: `at ${place.name}` }
       }
       const mile = anchor?.mile ?? fix?.mile ?? undefined
-      if (mile === undefined) return 'here'
-      return `mi ${mile.toLocaleString('en-US', {
+      // "here" is an adverb where the other two are nouns, which is why the
+      // window takes both forms rather than composing `at ${label}` itself.
+      // That naive version reads perfectly for a mile and produced "Filed —
+      // blow down at here" the first time anybody photographed the screen
+      // with no fix.
+      if (mile === undefined) return { label: 'here', phrase: 'here' }
+      const shown = `mi ${mile.toLocaleString('en-US', {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
       })}`
+      return { label: shown, phrase: `at ${shown}` }
     },
     [searchablePois, fix?.mile],
   )
@@ -5920,7 +5926,7 @@ function App() {
           anchor={
             {
               ...(reporting.anchor ?? {}),
-              label: reportAnchorLabel(reporting.anchor),
+              ...reportAnchorWords(reporting.anchor),
             } satisfies ReportWindowAnchor
           }
           reporterType={signReportAs(preferences.reporter_type)}

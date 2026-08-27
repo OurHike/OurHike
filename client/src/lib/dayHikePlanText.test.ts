@@ -39,6 +39,7 @@ function hike(overrides: Partial<DayHike> = {}): DayHike {
     },
     looped: true,
     recorded: 'planned',
+    note: '',
     ...overrides,
   }
 }

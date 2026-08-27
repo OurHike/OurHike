@@ -8,7 +8,7 @@
 // will carry is asking the desk's question, and until this module existed the
 // phone answered it with nothing at all.
 //
-// So the ribbon now has FOUR things it can be showing, and exactly one of them
+// So the ribbon now has FIVE things it can be showing, and exactly one of them
 // is true at a time. The precedence, highest first, with what each is for:
 //
 //   planned-stretch  The route being built. The hiker is laying out this
@@ -16,11 +16,32 @@
 //   map-view         The trail inside the map's viewport, once the hiker has
 //                    taken the map themselves. "Always in sync": if they
 //                    panned to the Whites, the ribbon is the Whites.
-//   ahead            The ten-mile field window. Outranked by the two above
-//                    because both are things the hiker just DID, and
+//   todays-walk      Today end to end - the whole route on a day hike being
+//                    followed, camp to camp on a trip (#1045). Below the two
+//                    above because those are gestures the hiker just made and
+//                    this is a mode they are in.
+//   ahead            The ten-mile field window. Outranked by the three above
+//                    because the first two are things the hiker just DID, and
 //                    outranking the fix is what makes the sync visible.
 //   whole-trail      Everything else, including the ordinary case of a phone
 //                    that has never had a fix. The desk's resting view, here.
+//
+// **A FOLLOWED DAY HIKE STOPS THE FALL-THROUGH, and that half is a bug fix
+// rather than a feature.** Before #1045 nothing in this module knew a day hike
+// was being followed, so a hiker walking a Harriman loop - where the A.T. runs
+// through the same woods, so `fix.mile` is a real number - got the A.T.'s
+// ten-mile `ahead` window under a header about their loop. That is a picture
+// of a different walk, announced as "ahead", on the band a hiker reads to
+// judge daylight. #1041 chose "no ribbon at all" as the honest state and this
+// keeps that promise: where today's walk is a route off the trail and there is
+// no profile to draw it from, the ribbon is absent rather than borrowed.
+//
+// A TRIP DAY FALLS THROUGH AND A DAY HIKE DOES NOT, which is the one asymmetry
+// here worth reading twice. Both are "today". But a trip day is a stretch of
+// the SAME trail the fix window is cut from, so `ahead` under a trip is a
+// different window of the hiker's own ground, correctly labelled - honest, if
+// less useful. A day hike is different ground entirely, and there `ahead` is
+// not a worse answer but a wrong one.
 //
 // **Only the fix window carries the upcoming-climb callout, and that is a
 // definition rather than a preference.** upcomingClimb() finds the next >=300 ft
@@ -30,6 +51,11 @@
 // domain there may be a walker but the domain is not their ground - at whole
 // trail a 300 ft climb is under a pixel (see TrailRibbon.tsx's arithmetic for
 // the same span), so a callout would caption terrain nobody can see.
+//
+// `todays-walk` carries none either, and for a third reason again: on a day
+// hike the samples are the WALK's own, so upcomingClimb() - which reads the
+// A.T. profile against an A.T. mile - has nothing to say about them, and
+// saying it anyway would caption one walk with another's climb.
 //
 // What no domain carries: distance, climb or a time. Those belong to
 // RouteStopsPanel and RouteEntranceSheet, which price the walk at the hiker's
@@ -83,14 +109,64 @@ export interface RibbonView {
   source: RibbonSource
   /** What the ribbon is drawing, for the buttons that frame it on the map. */
   domain: ChartDomain
+  /**
+   * WHICH RULER `domain` AND `currentMile` ARE MEASURED WITH, which is not
+   * decidable from `source` and is the reason this field exists.
+   *
+   * `trail` is a mile on the published centerline - what every POI in this
+   * app carries and what four of the five subjects are cut from. `walk` is
+   * miles from the hiker's first step on a route of their own (#1045), where
+   * "mile 2" is a place in Harriman and has nothing to do with the A.T.'s
+   * mile 2 in Georgia.
+   *
+   * `todays-walk` is BOTH, depending on which shape of today it is, so a
+   * consumer reading the source alone would place a pin from Georgia under a
+   * Harriman loop - see {@link ribbonLanes}, which is exactly where that would
+   * have happened.
+   */
+  axis: 'trail' | 'walk'
 }
 
 /** Two samples is the least that has a shape; one is a dot and none is a blank
  *  ribbon reading as "no terrain here", which is a claim. */
 const MIN_DRAWABLE_SAMPLES = 2
 
+/**
+ * Today's walk, when the hiker is on one - the domain #1045 asks the ribbon to
+ * prefer over its ten-mile sliding window, in the two shapes "today" comes in.
+ *
+ * `trail` is a stretch of the published centerline on the PIPELINE axis: a
+ * trip day, camp to camp, which `lib/plan.ts` already computes. It needs no
+ * new data - the profile the ribbon has always drawn is the right one, cut at
+ * the right two miles instead of at a window whose edges are arbitrary and can
+ * hide the climb that decides whether somebody makes the shelter before dark.
+ *
+ * `route` is a day hike, on ITS OWN axis - miles from the hiker's first step
+ * rather than from Springer - and carries its samples with it, because no cut
+ * of the A.T. profile is a picture of a Harriman loop.
+ *
+ * **`samples: null` is a real state and the load-bearing one.** It means the
+ * hiker is following a walk this phone cannot draw: no `trail_graph_profile.
+ * json`, or an edge of the route the DEM never covered. The ribbon then draws
+ * nothing at all rather than falling through to the A.T., which is what makes
+ * the fall-through stop.
+ */
+export type TodaysWalk =
+  | { kind: 'trail'; domain: ChartDomain }
+  | {
+      kind: 'route'
+      samples: ElevationSample[] | null
+      /** Miles walked so far, on the samples' own axis, or null when this
+       *  phone does not know where the hiker is on their route. */
+      alongMi: number | null
+    }
+
 export interface RibbonInputs {
   profile: ElevationProfile | null
+  /** Today's walk, or null when the hiker is not on one. See {@link
+   *  TodaysWalk} - and note that a `route` with null samples is NOT the same
+   *  as no walk, because it suppresses the fix window and no walk does not. */
+  todaysWalk: TodaysWalk | null
   /** The route draft's stretch, on the PIPELINE axis (#753) - the axis the
    *  profile and every route stop's `mile` share. */
   planStretch: ChartDomain | null
@@ -140,6 +216,7 @@ export interface RibbonInputs {
  */
 export function ribbonView({
   profile,
+  todaysWalk,
   planStretch,
   mapStretch,
   fixClientMile,
@@ -147,6 +224,11 @@ export function ribbonView({
   fixWindow,
   direction,
 }: RibbonInputs): RibbonView | undefined {
+  // A followed day hike answers before the profile is even consulted, because
+  // it does not need one: its samples came off the walk's own edges. A phone
+  // with no A.T. profile in its download can still draw a Harriman loop.
+  if (todaysWalk?.kind === 'route') return routeView(todaysWalk)
+
   if (profile === null || profile.distanceMi.length === 0) return undefined
 
   if (planStretch !== null) {
@@ -154,6 +236,14 @@ export function ribbonView({
   }
   if (mapStretch !== null) {
     return stretchView(profile, mapStretch, fixPlanMile, 'map-view')
+  }
+
+  if (todaysWalk !== null) {
+    // A trip day, on the trail the profile measures. Falling through to the
+    // fix window where this cannot be drawn is deliberate - see the header's
+    // asymmetry paragraph.
+    const today = stretchView(profile, todaysWalk.domain, fixPlanMile, 'todays-walk')
+    if (today !== undefined) return today
   }
 
   if (fixClientMile !== null && fixWindow !== null) {
@@ -173,6 +263,7 @@ export function ribbonView({
       ...(climb === undefined ? {} : { upcomingClimb: climb }),
       source: 'ahead',
       domain: { startMile: window.startMile, endMile: window.endMile },
+      axis: 'trail',
     }
   }
 
@@ -185,6 +276,44 @@ export function ribbonView({
     fixPlanMile,
     'whole-trail',
   )
+}
+
+/**
+ * A followed day hike, drawn from the samples the walk brought with it.
+ *
+ * The domain is the walk end to end - zero to its last sample - because that
+ * is what "today" means here and what the storyboard asked for: "the whole
+ * route on a day hike". No decimation and no envelope: lib/walkProfile.ts
+ * explains why (~390 samples over six miles is already about one per device
+ * pixel, which is the density the chart's envelope exists to reduce TO).
+ *
+ * Undefined on null samples, and that is the bug fix rather than a degraded
+ * state - see the header. Undefined too on a single sample, which is a dot.
+ */
+function routeView(walk: {
+  samples: ElevationSample[] | null
+  alongMi: number | null
+}): RibbonView | undefined {
+  const samples = walk.samples
+  if (samples === null || samples.length < MIN_DRAWABLE_SAMPLES) return undefined
+
+  const endMile = samples[samples.length - 1].mile
+  if (endMile <= 0) return undefined
+
+  return {
+    samples,
+    // Only where this phone knows. Off-route, or before the first fix, the
+    // rule would otherwise clamp to an edge and read as "you are at the start
+    // of your walk" - the confident wrong answer about somebody's position
+    // that stretchView refuses for the same reason.
+    currentMile:
+      walk.alongMi !== null && walk.alongMi >= 0 && walk.alongMi <= endMile
+        ? walk.alongMi
+        : null,
+    source: 'todays-walk',
+    domain: { startMile: 0, endMile },
+    axis: 'walk',
+  }
 }
 
 /**
@@ -224,6 +353,7 @@ function stretchView(
       hereMile !== null && hereMile >= startMile && hereMile <= endMile ? hereMile : null,
     source,
     domain: { startMile, endMile },
+    axis: 'trail',
   }
 }
 
@@ -252,8 +382,13 @@ export interface RibbonLanes {
  * REASONED, from the one figure this repository already stands behind: AT
  * shelters average about eight miles apart (features/ELEVATION_PROFILE.md
  * Decision 1, which sizes the fix window's nine-mile look-ahead on it). A pill
- * swallows `COLLAPSE_THRESHOLD_PCT` of whatever window it is drawn in, so over
- * a span of S miles it stands for 0.015 x S miles of trail. Where that reaches
+ * swallows 1.5% of whatever window it is drawn in - `waypointLanes.ts`'s
+ * `COLLAPSE_THRESHOLD_PCT`, "roughly one pin width", which #1054 deleted along
+ * with the lanes themselves when they became chrome/NextUpRail.tsx's cards.
+ * The number is written out here rather than imported because there is no
+ * longer anywhere to import it from, and the arithmetic below is the only
+ * thing that still depends on it. So over
+ * a span of S miles a pill stands for 0.015 x S miles of trail. Where that reaches
  * a lane's own spacing, that lane is all pills: it has stopped naming places
  * and started drawing density, which is a different picture and one nothing
  * here asked for. 8 / 0.015 is about 533 miles.
@@ -305,6 +440,14 @@ export const MAX_LANE_SPAN_MI = 8 / 0.015
  * Undefined - never empty lanes - when the pins cannot be placed honestly:
  *
  *   - No ribbon. There is nothing to sit under.
+ *   - A ribbon on the WALK's own axis (#1045). Every POI this app holds
+ *     carries a mile on the published centerline, and a followed day hike's
+ *     domain is miles from the hiker's first step - so "mile 2" of a Harriman
+ *     loop would collect the POIs at mile 2 of the A.T., in Georgia. Nothing
+ *     about the loop would look wrong; the pins would just be from a
+ *     different state. What would fix it is placing a walk's own POIs on its
+ *     own axis, which lib/dayHikeCard.ts's bail-out arithmetic already
+ *     demonstrates for junctions and which is its own issue.
  *   - A domain past MAX_LANE_SPAN_MI, where the lanes stop naming places.
  *   - A POI set with no usable mile in it at all: a download published before
  *     #753 on the pipeline side, a centerline index that placed nothing on the
@@ -318,6 +461,7 @@ export function ribbonLanes(
   pois: { onPipelineAxis: readonly LanePoi[]; onClientAxis: readonly LanePoi[] },
 ): RibbonLanes | undefined {
   if (view === undefined) return undefined
+  if (view.axis === 'walk') return undefined
 
   const { startMile, endMile } = view.domain
   if (endMile - startMile > MAX_LANE_SPAN_MI) return undefined

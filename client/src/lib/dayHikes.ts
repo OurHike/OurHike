@@ -38,6 +38,7 @@
 
 import { del, get, set } from 'idb-keyval'
 import { recordDayHikeEdits } from './dayHikeSyncState'
+import type { RouteClimb } from './trailGraph'
 
 export const DAY_HIKES_KEY = 'ourhike:day-hikes'
 
@@ -89,6 +90,33 @@ export interface DayHikeLeg {
 export interface DayHikeFigures {
   miles: number
   legs: DayHikeLeg[]
+  /**
+   * The climb, or null when this walk has an edge nobody measured.
+   *
+   * ADDED 2026-08-27, on the maintainer's decision, and it is a stored-shape
+   * change rather than a nicety. features/HIKE_PLANNING.md had it as an open
+   * question: #1011 gave the network its climb without giving it to THIS
+   * record, so the two surfaces that may only read the cache - the day-hike
+   * list and the trailhead door - had miles and no ascent, and could not
+   * price a walk at all. The storyboard's "fits my time" sort needs the same
+   * field.
+   *
+   * NULL IS ALL OR NOTHING, exactly as {@link RouteClimb} is on the live
+   * resolution: a walk with one unmeasured edge caches no climb, because
+   * pricing that edge at zero ascent is a flat-ground claim about real ground
+   * and pricing only the measured edges understates by the same amount with a
+   * number attached. Both fail SHORT, which is the direction that gets
+   * somebody caught by the dark.
+   *
+   * ABSENT IS NOT NULL, and the difference is why this is optional rather
+   * than `RouteClimb | null`. A hike saved before this field existed has
+   * `undefined` here - the app never knew - while `null` means the app asked
+   * and the graph had no answer. A surface that showed "no climb data" for
+   * the first would be reporting a limit of the artifact when the truth is a
+   * limit of the record, and a re-resolution against a live graph fixes one
+   * and not the other.
+   */
+  climb?: RouteClimb | null
 }
 
 export interface DayHike {
@@ -105,6 +133,21 @@ export interface DayHike {
   /** Planned ahead, or recorded from a walk - provenance that changes what a
    *  screen may say, exactly as a trip's `recorded` flag does. */
   recorded: 'planned' | 'walked'
+  /**
+   * The one line the hiker writes themselves about a walk they did (#982).
+   *
+   * Empty string rather than null for an absent one, because there is no
+   * meaningful difference between "wrote nothing" and "has not written yet"
+   * on a note - and a nullable string would put that distinction in front of
+   * every reader for no gain.
+   *
+   * WHAT IT IS NOT. Not a field the app ever fills, suggests or completes,
+   * and not something any surface counts, scores or compares. #982 says
+   * plainly that a screen about a walk somebody already finished is exactly
+   * where prescriptive gamification would creep in, and value #1 forbids it.
+   * This is the hiker's sentence and the app's only job is to keep it.
+   */
+  note: string
 }
 
 export interface DayHikeStore {
@@ -118,6 +161,18 @@ export const EMPTY_DAY_HIKES: DayHikeStore = { hikes: [], openId: null }
 
 /** plan.ts's own date shape - dates are stored the same way everywhere. */
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * How long the hiker's own line about a walk may be.
+ *
+ * @unvalidated - a ceiling, not a measurement, and it is about the STORE
+ * rather than about the writing: this record syncs, and a field with no cap
+ * is a field somebody can paste a book into. 500 characters is comfortably
+ * more than the one or two sentences #982 describes and comfortably less than
+ * anything that would make the document awkward. What would settle it is
+ * somebody actually filling one in.
+ */
+export const MAX_NOTE_CHARS = 500
 
 /**
  * An end, or null. Rebuilt field by field rather than passed through, which
@@ -158,8 +213,18 @@ function validSegments(candidate: unknown): DayHikeSegment[] | null {
       if (end === null) return null
       ends.push(end)
     }
+    // A STRETCH OF ONE END IS NOT A STRETCH, and dropping it is the lesser of
+    // two bad answers rather than an obvious one. `lib/dayHikeCard.ts` needs
+    // two ends to route anything, so keeping a one-end stretch would leave the
+    // whole hike permanently unresolvable - it would print its cache for ever
+    // and no re-download could fix it, which is a worse outcome for the hiker
+    // than losing a stretch that describes a place rather than a walk. The
+    // builder cannot produce one (App.tsx filters on save), so this is about a
+    // record arriving over sync from some other client.
+    if (ends.length < 2) continue
     segments.push(ends)
   }
+  if (segments.length === 0) return null
   return segments
 }
 
@@ -195,7 +260,38 @@ function validFigures(candidate: unknown): DayHikeFigures | null {
       })
     }
   }
-  return { miles, legs }
+
+  const climb = validClimb(figures.climb)
+  // The key is omitted rather than set to undefined, so that a record written
+  // before the field existed round-trips as the same object it went in as -
+  // which is what lets `'climb' in figures` mean "the app has looked".
+  return climb === undefined ? { miles, legs } : { miles, legs, climb }
+}
+
+/**
+ * A cached climb, distinguishing all three states.
+ *
+ * `undefined` - the field was never written (a hike saved before it existed,
+ * or junk, which is treated the same way because the honest reading of junk
+ * here is "this record does not tell us").
+ * `null` - the app asked the graph and the graph could not price this walk.
+ * A pair - the figures, when both halves are finite and non-negative.
+ *
+ * Sanitising rather than refusing, per this file's own rule: a climb carries
+ * no invariant the rest of the record's arithmetic depends on, so a broken
+ * one costs the field and never the hike.
+ */
+function validClimb(candidate: unknown): RouteClimb | null | undefined {
+  if (candidate === undefined) return undefined
+  if (candidate === null) return null
+  if (typeof candidate !== 'object') return undefined
+  const climb = candidate as Partial<RouteClimb>
+  const { gainFt, lossFt } = climb
+  if (typeof gainFt !== 'number' || !Number.isFinite(gainFt) || gainFt < 0)
+    return undefined
+  if (typeof lossFt !== 'number' || !Number.isFinite(lossFt) || lossFt < 0)
+    return undefined
+  return { gainFt, lossFt }
 }
 
 /**
@@ -227,6 +323,12 @@ function validDayHike(candidate: unknown): DayHike | null {
     figures,
     looped: hike.looped === true,
     recorded: hike.recorded === 'walked' ? 'walked' : 'planned',
+    // Trimmed and capped, because this rides the sync exchange and a record
+    // is not the place to discover somebody pasted a book into it. Anything
+    // that is not a string is the empty note - the sanitise-rather-refuse
+    // rule this module states: a note carries no invariant the arithmetic
+    // depends on, so junk costs the field and never the walk.
+    note: typeof hike.note === 'string' ? hike.note.slice(0, MAX_NOTE_CHARS) : '',
   }
 }
 

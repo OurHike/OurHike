@@ -29,6 +29,7 @@ const HIKE: DayHike = {
   },
   looped: true,
   recorded: 'planned',
+  note: '',
 }
 
 /** The live derivation, which is what the card gets in the normal case: one

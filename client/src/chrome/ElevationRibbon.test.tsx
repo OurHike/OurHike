@@ -225,6 +225,50 @@ describe('ElevationRibbon', () => {
     expect(screen.queryByRole('img', { name: /ahead/i })).not.toBeInTheDocument()
   })
 
+  it('calls a followed walk "your whole walk today" and not "ahead"', () => {
+    // #1045. "Ahead" is the strongest claim these five labels make and it is
+    // about the A.T.; a screen reader saying it over a Harriman loop has told
+    // a hiker something false about where they are going.
+    render(<ElevationRibbon samples={SAMPLES} currentMile={null} subject="todays-walk" />)
+
+    expect(screen.getByRole('img', { name: /whole walk today/i })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /ahead/i })).not.toBeInTheDocument()
+  })
+
+  it('breaks the line at ground it has no shape for, rather than sloping across it', () => {
+    // #1045, #983: a day hike built from two stretches has ground between
+    // them OurHike will not route - a road walk, most often. A line drawn
+    // across it would be a picture of terrain nobody measured.
+    render(
+      <ElevationRibbon
+        samples={[
+          { mile: 0, elevationFt: 1000 },
+          { mile: 1, elevationFt: 1400 },
+          { mile: 1, elevationFt: 900, partStart: true },
+          { mile: 2, elevationFt: 1100 },
+        ]}
+        currentMile={null}
+        subject="todays-walk"
+      />,
+    )
+
+    // Two subpaths, so nothing is stroked between the two `M`s.
+    const line = screen.getByTestId('profile-area').getAttribute('d') ?? ''
+    expect(line.match(/M/g)).toHaveLength(2)
+    // And two closed areas, so the shading does not fill the gap either.
+    expect(line.match(/Z/g)).toHaveLength(2)
+  })
+
+  it('draws one unbroken path when nothing is marked, exactly as it always did', () => {
+    // Every ribbon that existed before #1045 carries no marker at all, and
+    // this is what says the marker costs them nothing.
+    render(<ElevationRibbon {...PROPS} />)
+
+    const line = screen.getByTestId('profile-area').getAttribute('d') ?? ''
+    expect(line.match(/M/g)).toHaveLength(1)
+    expect(line.match(/Z/g)).toHaveLength(1)
+  })
+
   it('draws the framing buttons the screen hands it, and none of its own', () => {
     const zoom = vi.fn()
     render(

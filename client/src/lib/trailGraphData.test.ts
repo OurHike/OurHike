@@ -12,7 +12,15 @@
 // with each other and still be the wrong file, and the failure that produces
 // is a route down a trail that is not there.
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// The store, mocked at its own boundary rather than at idb-keyval's, so these
+// tests say what the LOADER does with a stored copy rather than re-testing
+// lib/trailGraphStore.test.ts's decisions about IndexedDB.
+vi.mock('./trailGraphStore', () => ({
+  readStoredGraph: vi.fn(async () => null),
+  writeStoredGraph: vi.fn(async () => true),
+}))
 
 vi.mock('./config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./config')>()),
@@ -32,6 +40,7 @@ const {
 } = await import('./trailGraphData')
 const { TRAIL_GRAPH_KEY, TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_ELEVATION_KEY } =
   await import('./config')
+const { readStoredGraph, writeStoredGraph } = await import('./trailGraphStore')
 
 // Two nodes and the edge between them, carrying exactly what
 // pipeline/build_trail_graph.py writes.
@@ -481,5 +490,146 @@ describe('why there is no graph', () => {
     ] as const) {
       expect(isSettledAbsence(because)).toBe(true)
     }
+  })
+})
+
+describe('the phone that has no signal (#1050)', () => {
+  beforeEach(() => {
+    vi.mocked(writeStoredGraph).mockClear()
+    vi.mocked(readStoredGraph).mockClear()
+  })
+
+  /** A stored copy of `body`, as the store would hand one back. */
+  function held(body: string) {
+    vi.mocked(readStoredGraph).mockResolvedValue({
+      bytes: new Blob([body]),
+      hash: 'whatever-it-was-when-it-was-fetched',
+      version: 'release-9',
+      fetchedAt: 1,
+    })
+  }
+
+  it('routes from the store rather than refusing', async () => {
+    // The whole point. A hiker who downloaded the corridor at home, drove to
+    // Harriman and opened the app at the trailhead used to get a builder that
+    // refused every tap.
+    held(GRAPH)
+
+    const load = await loadTrailGraph(undefined, false)
+
+    expect(load.kind).toBe('graph')
+    if (load.kind !== 'graph') return
+    expect(load.index.graph.edges).toHaveLength(1)
+  })
+
+  it('does not go to the network to do it', async () => {
+    // A phone offline cannot reach latest.json, so the stored hash is what it
+    // has to trust - and nothing is ever written that did not match the
+    // manifest when it was fetched.
+    held(GRAPH)
+    serve({})
+
+    await loadTrailGraph(undefined, false)
+
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+  })
+
+  it('says unreachable when there is nothing stored either', async () => {
+    // The same sentence as before this store existed, arrived at only when it
+    // is true.
+    vi.mocked(readStoredGraph).mockResolvedValue(null)
+
+    const load = await loadTrailGraph(undefined, false)
+
+    expect(load).toEqual({ kind: 'absent', because: 'unreachable' })
+  })
+
+  it('refuses stored bytes that are not a graph', async () => {
+    // The store is written by every past version of this module there will
+    // ever be, and the shape check is not skipped just because the bytes are
+    // ours.
+    held('{"nodes": "not a list"}')
+
+    expect(await loadTrailGraph(undefined, false)).toEqual({
+      kind: 'absent',
+      because: 'not-a-graph',
+    })
+  })
+
+  it('refuses a stored geometry whose edge count disagrees with the graph', async () => {
+    // The check that matters MORE offline than online: a phone can hold a
+    // graph from one release and a geometry file from the next, and edge 40
+    // drawn from edge 41's vertices is a route on the wrong trail. Offline
+    // there is no fresh copy coming to correct it.
+    held(
+      JSON.stringify([
+        [
+          [-74.1, 41.25],
+          [-74.09, 41.25],
+        ],
+      ]),
+    )
+
+    expect(await fetchTrailGraphGeometry(2, undefined, false)).toBeNull()
+    expect(await fetchTrailGraphGeometry(1, undefined, false)).toHaveLength(1)
+  })
+})
+
+describe('keeping a verified copy (#1050)', () => {
+  // The store is module-level, so its call record outlives a test unless it
+  // is cleared - and "was it written" is exactly what these assert.
+  beforeEach(() => {
+    vi.mocked(writeStoredGraph).mockClear()
+    vi.mocked(writeStoredGraph).mockResolvedValue(true)
+    vi.mocked(readStoredGraph).mockResolvedValue(null)
+  })
+
+  it('stores the graph it just verified, with the release it came from', async () => {
+    serve({
+      manifest: {
+        version: 'release-9',
+        artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } },
+      },
+    })
+
+    await loadTrailGraph()
+
+    // WAITED ON, NOT SLEPT THROUGH. The write is fire-and-forget by design, so
+    // there is a real ordering here - and CLAUDE.md's rule is that a test
+    // waits on something observable rather than on a timer, because a timer
+    // passes on an idle machine and fails on CI. `vi.waitFor` retries the
+    // assertion until it holds.
+    await vi.waitFor(() =>
+      expect(vi.mocked(writeStoredGraph)).toHaveBeenCalledWith(
+        TRAIL_GRAPH_KEY,
+        expect.objectContaining({ hash: expect.any(String), version: 'release-9' }),
+      ),
+    )
+    expect(vi.mocked(writeStoredGraph).mock.calls[0][1].hash).toBe(await hashOf(GRAPH))
+  })
+
+  it('routes this session even when the store refuses the write', async () => {
+    // Storing is an improvement on the NEXT launch, never a condition of this
+    // one.
+    vi.mocked(writeStoredGraph).mockRejectedValue(new Error('full'))
+    serve({
+      manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) } } },
+    })
+
+    expect((await loadTrailGraph()).kind).toBe('graph')
+  })
+
+  it('stores nothing it could not verify', async () => {
+    // Bytes that are not what was published are not drawn - and not kept.
+    serve({ manifest: { artifacts: { [TRAIL_GRAPH_KEY]: { sha256: 'not-the-hash' } } } })
+
+    // An ASSERTION OF ABSENCE cannot be waited on, so it is anchored to
+    // something that can: the load completing is what would have triggered a
+    // write, and a verified load in the same file proves the write happens by
+    // then. If that ordering ever changes, the positive test above fails
+    // first and this one is not left silently passing on a race.
+    expect((await loadTrailGraph()).kind).toBe('absent')
+
+    expect(vi.mocked(writeStoredGraph)).not.toHaveBeenCalled()
   })
 })

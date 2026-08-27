@@ -46,6 +46,7 @@ function props(overrides: Partial<TodayProps> = {}): TodayProps {
       samples: SAMPLES,
       currentMile: 712.4,
       source: 'ahead',
+      axis: 'trail',
       domain: { startMile: 712, endMile: 722 },
     },
     units: 'imperial',
@@ -272,6 +273,7 @@ describe('the rest of the column', () => {
               figures: { miles: 3.4, legs: [] },
               looped: true,
               recorded: 'planned',
+              note: '',
             },
           ],
         })}

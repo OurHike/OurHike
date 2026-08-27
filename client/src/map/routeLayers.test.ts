@@ -5,7 +5,9 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { MockMap } from '../test/mocks/maplibre-gl'
 import {
+  attachRouteStroke,
   buildRouteLayers,
   buildRouteSource,
   ROUTE_CASING_LAYER_ID,
@@ -103,5 +105,86 @@ describe('routeFeatureCollection', () => {
     expect(
       points.map((feature) => feature.properties[ROUTE_POINT_LABEL_PROPERTY]),
     ).toEqual(['470.8 mi', '486.2 mi'])
+  })
+})
+
+describe('drawing a stroke (#983, frame 1k)', () => {
+  /** The mock, typed as the map the module wants - it implements the parts
+   *  this function touches and nothing beyond them. */
+  function mapWithStroke(
+    onStroke: (stroke: Array<{ lon: number; lat: number }>) => void,
+  ) {
+    const map = new MockMap({ center: [-74.1, 41.25], zoom: 13 })
+    const detach = attachRouteStroke(map as never, onStroke)
+    return { map, detach }
+  }
+
+  const at = (lng: number, lat: number) => ({ lngLat: { lng, lat } })
+
+  it('collects the drag and reports it once, on the way up', () => {
+    const strokes: Array<Array<{ lon: number; lat: number }>> = []
+    const { map } = mapWithStroke((stroke) => strokes.push(stroke))
+
+    map.emit('mousedown', at(-74.1, 41.25))
+    map.emit('mousemove', at(-74.099, 41.25))
+    map.emit('mousemove', at(-74.098, 41.25))
+    expect(strokes).toHaveLength(0)
+
+    map.emit('mouseup', {})
+
+    expect(strokes).toHaveLength(1)
+    expect(strokes[0]).toHaveLength(3)
+    expect(strokes[0][0]).toEqual({ lon: -74.1, lat: 41.25 })
+  })
+
+  it('ignores a move that is not part of a drag', () => {
+    // A pointer crossing the map with nothing pressed is not a stroke, and
+    // collecting it would hand the matcher a line nobody drew.
+    const strokes: unknown[] = []
+    const { map } = mapWithStroke((stroke) => strokes.push(stroke))
+
+    map.emit('mousemove', at(-74.1, 41.25))
+    map.emit('mouseup', {})
+
+    expect(strokes).toHaveLength(0)
+  })
+
+  it('reports nothing for a stroke of one point', () => {
+    // A tap that happened inside draw mode. Reporting it would ask the
+    // matcher to find a trail along a line with no direction, which is a
+    // different question from the one it answers.
+    const strokes: unknown[] = []
+    const { map } = mapWithStroke((stroke) => strokes.push(stroke))
+
+    map.emit('mousedown', at(-74.1, 41.25))
+    map.emit('mouseup', {})
+
+    expect(strokes).toHaveLength(0)
+  })
+
+  it('stops the map panning under the finger, and puts it back', () => {
+    // Two interpreters per touch is the failure routeLayers.ts's tap handler
+    // already records; a drag and a pan are that failure one level up.
+    const { map, detach } = mapWithStroke(() => {})
+
+    expect(map.dragPan.isEnabled()).toBe(false)
+    expect(map.touchZoomRotate.isEnabled()).toBe(false)
+
+    detach()
+
+    expect(map.dragPan.isEnabled()).toBe(true)
+    expect(map.touchZoomRotate.isEnabled()).toBe(true)
+  })
+
+  it('leaves a gesture the hiker had already turned off, off', () => {
+    // The detach puts back what it found rather than assuming both were on.
+    const map = new MockMap({ center: [-74.1, 41.25], zoom: 13 })
+    map.touchZoomRotate.disable()
+
+    const detach = attachRouteStroke(map as never, () => {})
+    detach()
+
+    expect(map.dragPan.isEnabled()).toBe(true)
+    expect(map.touchZoomRotate.isEnabled()).toBe(false)
   })
 })

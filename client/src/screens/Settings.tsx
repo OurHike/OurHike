@@ -733,11 +733,23 @@ export function MapSettings({
         </p>
       </fieldset>
 
-      <label className="settings__row settings__row--later">
-        <span className="settings__label">Roads &amp; walkability</span>
-        <LaterTag />
-        <input type="checkbox" name="show_roads" disabled checked={false} readOnly />
-      </label>
+      {/* #931: this row claimed roads were off. They are not - map/liveTopo.ts
+          has drawn roads, tracks and OSM paths on the live sheet all along, so
+          an unticked box next to "Roads & walkability" was the settings screen
+          disagreeing with the map.
+
+          The control is still absent rather than wired, and deliberately.
+          MAP_OPTIONS.md §2's walkability tiers are what a toggle here would
+          govern, and they stay unbuilt for want of evidence: a road with a
+          shoulder and a road with a guardrail at 55 mph are the same OSM line
+          class. Wiring the preference as MAP_OPTIONS.md:204 specifies - off by
+          default - would also HIDE road context every hiker has today, which
+          is a worse answer than the one this row now gives. */}
+      <p className="settings__note">
+        <strong>Roads and tracks are on the map.</strong> OurHike draws them so you can
+        see them, and never routes a walk along one — nobody maintains a road for walking,
+        so there is nothing we can stand behind about it.
+      </p>
     </section>
   )
 }

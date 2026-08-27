@@ -13,6 +13,8 @@ import {
   buildDayHikeCasingLayers,
   buildDayHikePointLayers,
   DAY_HIKE_CASING_LAYER_ID,
+  DAY_HIKE_GAP_LAYER_ID,
+  DAY_HIKE_GAP_PROPERTY,
   DAY_HIKE_POINT_LAYER_ID,
   dayHikeFeatureCollection,
 } from './dayHikeLayers'
@@ -133,5 +135,68 @@ describe('the feature collection', () => {
 
   it('draws nothing for an empty draft', () => {
     expect(dayHikeFeatureCollection({ lines: [], points: [] }).features).toHaveLength(0)
+  })
+})
+
+describe('the gap between stretches (#983)', () => {
+  it('is drawn as neither a route nor a closure', () => {
+    // The route is a solid casing because it is a statement about trail; a
+    // dash is the map's word for a barrier. A gap is neither - it is the app
+    // saying it has no evidence about this ground - so it borrows neither
+    // vocabulary.
+    const gap = buildDayHikePointLayers().find(
+      (layer) => layer.id === DAY_HIKE_GAP_LAYER_ID,
+    )
+
+    expect(gap).toBeDefined()
+    expect(JSON.stringify(gap?.paint)).toContain('line-dasharray')
+    expect(JSON.stringify(gap?.paint)).not.toContain(ROUTE_INK)
+  })
+
+  it('is kept out of the route casing, which filters on a flag not a shape', () => {
+    // MapLibre reports a MultiLineString as 'LineString', so a filter on
+    // geometry alone would give the gap the route's own solid band.
+    const casing = buildDayHikeCasingLayers()[0]
+
+    expect(JSON.stringify(casing)).toContain(DAY_HIKE_GAP_PROPERTY)
+  })
+
+  it('rides the one source, flagged, so it cannot drift from the route', () => {
+    const collection = dayHikeFeatureCollection({
+      lines: [
+        [
+          [-74.1, 41.25],
+          [-74.09, 41.25],
+        ],
+      ],
+      points: [],
+      gaps: [
+        [
+          [-74.09, 41.25],
+          [-74.08, 41.26],
+        ],
+      ],
+    })
+
+    expect(collection.features).toHaveLength(2)
+    const flagged = collection.features.filter(
+      (feature) =>
+        (feature.properties as Record<string, unknown>)[DAY_HIKE_GAP_PROPERTY] === true,
+    )
+    expect(flagged).toHaveLength(1)
+  })
+
+  it('draws nothing extra for a walk with no gap in it', () => {
+    const collection = dayHikeFeatureCollection({
+      lines: [
+        [
+          [-74.1, 41.25],
+          [-74.09, 41.25],
+        ],
+      ],
+      points: [],
+    })
+
+    expect(collection.features).toHaveLength(1)
   })
 })

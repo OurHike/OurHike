@@ -7,6 +7,21 @@
 // precedent applied to a park, where the thing being searched is a real graph
 // rather than one line's mile axis.
 //
+// The graph outgrew that estimate: 40,596 edges and 755,326 vertices on the
+// published artifact (data.ourhike.org, 2026-08-27), thirteen times #757's
+// figure. #1020 is where that was measured rather than feared, and the answer
+// was not the one the issue expected. Timed here against those bytes, 400
+// taps on real vertices and 200 fixed journeys:
+//
+//   a tap    85.5 ms  ->  0.021 ms   (median, {@link EdgeGrid})
+//   a route   0.057 ms ->  0.041 ms  (median, Harriman-sized, {@link NodeHeap})
+//   a long route  0.108 ms -> 0.055 ms   (median, >40 km apart)
+//
+// Both changes return the same answers - 400 of 400 taps identical, and the
+// 200 journeys identical to six decimal places. The tap was the whole cost
+// and the search was never it, which is worth stating because a reader coming
+// from #757's sentence would assume the opposite.
+//
 // EVERY MILE HERE IS THE GRAPH'S METRE, CONVERTED ONCE
 //
 // HIKE_PLANNING.md Finding 1 exists because this codebase has two different
@@ -179,6 +194,33 @@ export interface GraphRoute {
  */
 export const MAX_OFF_NETWORK_FEET = 150
 
+/**
+ * How far a DRAWN line may be from a trail and still be matched to it.
+ *
+ * The maintainer's answer on #935, 2026-08-27, verbatim: *"Ask which trail.
+ * But only match to trails within 25M."*
+ *
+ * TIGHTER THAN A TAP, AND THAT IS THE POINT. {@link MAX_OFF_NETWORK_FEET} is
+ * 150 ft (45.7 m) and governs a finger aimed at one spot; this governs a
+ * stroke swept across a map, where every sample is a candidate and a generous
+ * radius reaches two trails at once far more often than a single tap does.
+ *
+ * WHAT THE NUMBER DOES AND DOES NOT BUY, stated because the two are easy to
+ * conflate. It is a REACH limit: past 25 m nothing matches, which under the
+ * segments model ends a stretch rather than refusing the walk. It is NOT a
+ * disambiguation rule - inside 25 m two marked trails can still both be
+ * candidates, and #935's other half is that the app ASKS rather than taking
+ * the nearer. See {@link trailsNear}.
+ *
+ * @unvalidated - nobody has drawn on this outdoors, which is what #935 says
+ * would settle it. What can be said with evidence is the direction: through
+ * Harriman-Bear Mountain, 48% of sampled A.T. points sit within 150 m of a
+ * different marked trail (features/NEARBY_TRAILS.md, measured by #771), so 25
+ * m reduces the ambiguous fraction - by how much, nobody has measured. What
+ * would settle it is somebody drawing a route on a phone in that park.
+ */
+export const DRAWN_SNAP_METRES = 25
+
 const FEET_PER_METRE = 3.280839895
 const METRES_PER_MILE = 1609.344
 
@@ -240,9 +282,23 @@ interface Adjacency {
 export interface TrailGraphIndex {
   graph: TrailGraph
   adjacency: Adjacency[][]
+  /**
+   * The edges that carry vertices, bucketed by where they are (#1020).
+   *
+   * Null until geometry attaches, which is not a degraded state: an edge with
+   * no vertices is not a snap candidate at all ({@link nearestPointOnGraph}),
+   * so before `trail_graph_geometry.json` lands there is nothing to index and
+   * nothing to search.
+   */
+  grid: EdgeGrid | null
 }
 
-/** Adjacency lists, built once per loaded artifact. */
+/**
+ * Adjacency lists and the spatial grid, built once per loaded artifact.
+ *
+ * Called again by lib/trailGraphData.ts when geometry attaches, which is
+ * where the grid actually gets built - see {@link buildEdgeGrid}.
+ */
 export function buildGraphIndex(graph: TrailGraph): TrailGraphIndex {
   const adjacency: Adjacency[][] = graph.nodes.map(() => [])
   graph.edges.forEach((edge, edgeIndex) => {
@@ -250,7 +306,143 @@ export function buildGraphIndex(graph: TrailGraph): TrailGraphIndex {
     adjacency[edge.from].push({ edgeIndex, to: edge.to })
     adjacency[edge.to].push({ edgeIndex, to: edge.from })
   })
-  return { graph, adjacency }
+  return { graph, adjacency, grid: buildEdgeGrid(graph) }
+}
+
+/**
+ * A cell of the search grid, in degrees.
+ *
+ * The same 0.05 deg lib/trailPosition.ts buckets the A.T. centerline into,
+ * and picked there for the same reason: it is comfortably larger than any
+ * search radius this module uses, so a query reads one or two cells rather
+ * than a neighbourhood of them. About 5.5 km of latitude, and 4.2 km of
+ * longitude at Harriman's 41.2 deg.
+ *
+ * Unlike trailPosition.ts, this buckets on BOTH axes. That file indexes one
+ * linear trail, where a band of latitude holds only the piece of trail at
+ * that latitude; this indexes a statewide network, where a band at 41.2 deg
+ * would hold every edge from the Delaware Water Gap to the Connecticut line.
+ */
+const GRID_DEGREES = 0.05
+
+/** Key range wide enough for every longitude bucket on Earth (-3600..3600). */
+const GRID_STRIDE = 20_000
+
+/**
+ * Every edge that carries vertices, filed under each grid cell its bounding
+ * box touches, with those bounding boxes kept alongside.
+ *
+ * WHY THIS EXISTS. {@link nearestPointOnGraph} projected a tap onto every
+ * edge in the graph and kept the nearest - 40,596 edges and 755,326 vertices
+ * on the published artifact (data.ourhike.org, 2026-08-27), for an answer
+ * that can only come from the handful of edges within 150 ft of the finger.
+ * #1093 made that worse rather than better by moving the projection onto each
+ * edge's own vertices, which is the right rule and the more expensive one.
+ *
+ * The cost was never noticeable while a tap was the only thing that asked.
+ * A drawn line (#983) asks once per sample.
+ *
+ * An edge is filed under every cell its BOX touches rather than every cell it
+ * crosses, so a long diagonal edge is over-filed and never under-filed. The
+ * error is candidates that the box test then rejects, which is the direction
+ * that cannot lose an answer.
+ */
+export interface EdgeGrid {
+  cells: Map<number, number[]>
+  minLon: Float64Array
+  minLat: Float64Array
+  maxLon: Float64Array
+  maxLat: Float64Array
+}
+
+function buildEdgeGrid(graph: TrailGraph): EdgeGrid | null {
+  const count = graph.edges.length
+  const minLon = new Float64Array(count)
+  const minLat = new Float64Array(count)
+  const maxLon = new Float64Array(count)
+  const maxLat = new Float64Array(count)
+  const cells = new Map<number, number[]>()
+  let indexed = 0
+
+  for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
+    const edge = graph.edges[edgeIndex]
+    if (!hasVertices(edge)) continue
+    indexed += 1
+
+    let loLon = Infinity
+    let loLat = Infinity
+    let hiLon = -Infinity
+    let hiLat = -Infinity
+    for (const [lon, lat] of edge.geometry) {
+      if (lon < loLon) loLon = lon
+      if (lat < loLat) loLat = lat
+      if (lon > hiLon) hiLon = lon
+      if (lat > hiLat) hiLat = lat
+    }
+    minLon[edgeIndex] = loLon
+    minLat[edgeIndex] = loLat
+    maxLon[edgeIndex] = hiLon
+    maxLat[edgeIndex] = hiLat
+
+    const latFrom = Math.floor(loLat / GRID_DEGREES)
+    const latTo = Math.floor(hiLat / GRID_DEGREES)
+    const lonFrom = Math.floor(loLon / GRID_DEGREES)
+    const lonTo = Math.floor(hiLon / GRID_DEGREES)
+    for (let latBucket = latFrom; latBucket <= latTo; latBucket += 1) {
+      for (let lonBucket = lonFrom; lonBucket <= lonTo; lonBucket += 1) {
+        const key = latBucket * GRID_STRIDE + lonBucket + GRID_STRIDE / 2
+        const cell = cells.get(key)
+        if (cell === undefined) cells.set(key, [edgeIndex])
+        else cell.push(edgeIndex)
+      }
+    }
+  }
+
+  if (indexed === 0) return null
+  return { cells, minLon, minLat, maxLon, maxLat }
+}
+
+/**
+ * The edges worth projecting a point onto, in ASCENDING EDGE ORDER.
+ *
+ * The order is not a tidiness preference. {@link nearestPointOnGraph} keeps
+ * the first of two edges at an equal distance (its comparison is `>=`), so
+ * handing it candidates in cell order rather than edge order would change
+ * which trail an exactly-ambiguous tap lands on. Cells are read in an order
+ * that depends on the query point; edge order does not.
+ */
+function edgesNear(grid: EdgeGrid, at: LonLat, marginMetres: number): number[] {
+  const latMargin = marginMetres / 111_320
+  const cosLat = Math.max(0.01, Math.cos((at.lat * Math.PI) / 180))
+  const lonMargin = latMargin / cosLat
+
+  const found = new Set<number>()
+  const latFrom = Math.floor((at.lat - latMargin) / GRID_DEGREES)
+  const latTo = Math.floor((at.lat + latMargin) / GRID_DEGREES)
+  const lonFrom = Math.floor((at.lon - lonMargin) / GRID_DEGREES)
+  const lonTo = Math.floor((at.lon + lonMargin) / GRID_DEGREES)
+
+  for (let latBucket = latFrom; latBucket <= latTo; latBucket += 1) {
+    for (let lonBucket = lonFrom; lonBucket <= lonTo; lonBucket += 1) {
+      const cell = grid.cells.get(latBucket * GRID_STRIDE + lonBucket + GRID_STRIDE / 2)
+      if (cell === undefined) continue
+      for (const edgeIndex of cell) {
+        // The box test, which is what makes an over-filed long edge cheap:
+        // a diagonal edge spanning ten cells is in all of them and near the
+        // point in at most one.
+        if (
+          at.lon < grid.minLon[edgeIndex] - lonMargin ||
+          at.lon > grid.maxLon[edgeIndex] + lonMargin ||
+          at.lat < grid.minLat[edgeIndex] - latMargin ||
+          at.lat > grid.maxLat[edgeIndex] + latMargin
+        )
+          continue
+        found.add(edgeIndex)
+      }
+    }
+  }
+
+  return Array.from(found).sort((a, b) => a - b)
 }
 
 // Equirectangular metres, which is what every distance in this module's
@@ -429,8 +621,7 @@ export function nearestPointOnGraph(
 ): GraphPoint | null {
   let best: GraphPoint | null = null
 
-  for (let edgeIndex = 0; edgeIndex < index.graph.edges.length; edgeIndex += 1) {
-    if (!hasVertices(index.graph.edges[edgeIndex])) continue
+  for (const edgeIndex of snapCandidates(index, at, maxOffFeet)) {
     const projected = projectOntoEdge(index, edgeIndex, at)
     const offNetworkFeet = projected.offMetres * FEET_PER_METRE
     if (best !== null && offNetworkFeet >= best.offNetworkFeet) continue
@@ -444,6 +635,187 @@ export function nearestPointOnGraph(
 
   if (best === null || best.offNetworkFeet > maxOffFeet) return null
   return best
+}
+
+/**
+ * The edges a point could possibly snap to, in ascending edge order.
+ *
+ * Exactly the edges the full scan would have considered and kept, because
+ * everything the grid drops is further than `maxOffFeet` and the caller
+ * refuses that anyway. The fallback is the full scan, for a graph with no
+ * grid - which today means a graph with no geometry, where the vertex rule
+ * leaves nothing to consider either way.
+ */
+function snapCandidates(
+  index: TrailGraphIndex,
+  at: LonLat,
+  maxOffFeet: number,
+): number[] {
+  if (index.grid !== null) {
+    return edgesNear(index.grid, at, maxOffFeet / FEET_PER_METRE)
+  }
+  const all: number[] = []
+  for (let edgeIndex = 0; edgeIndex < index.graph.edges.length; edgeIndex += 1) {
+    if (hasVertices(index.graph.edges[edgeIndex])) all.push(edgeIndex)
+  }
+  return all
+}
+
+/**
+ * Every distinct TRAIL within reach of a point, nearest first.
+ *
+ * WHY TRAILS RATHER THAN EDGES. `build_trail_graph.py` splits a line at every
+ * crossing, so one trail near a point is typically several edges of it, and a
+ * list of edges would ask a hiker "which of these four pieces of the Pine
+ * Meadow Trail did you mean" - a question about the artifact rather than about
+ * the ground. Grouping on `trail_id` asks the question they can answer, which
+ * is which blaze they were following.
+ *
+ * WHY IT EXISTS. {@link nearestPointOnGraph} keeps one `best` and drops every
+ * other candidate inside its loop, so it cannot express "two trails are
+ * equally plausible" - it just picks. That is fine for a tap, which is one
+ * deliberate aim, and it is #935's whole problem for a drawn line: through
+ * Harriman-Bear Mountain 48% of sampled A.T. points have a second marked trail
+ * within 150 m (#771), so a stroke sweeping that corridor is repeatedly
+ * choosing between two real trails on a margin of metres and saying nothing.
+ * The maintainer's answer (2026-08-27) is that the app asks, and this is what
+ * it asks with.
+ *
+ * The best point on each trail is returned - not the trail's nearest edge but
+ * the nearest point on it - so a caller that takes one can use it directly.
+ */
+/**
+ * What makes two pieces of tread the SAME ANSWER to "which trail did you
+ * mean" - which is not the same question {@link sameTrail} answers.
+ *
+ * `sameTrail` compares `trail_id` and `name`, and it is right to: it decides
+ * where one LEG ends and the next begins, and a leg is a run of one published
+ * line. But a publisher routinely splits one trail into many lines with
+ * different ids, and asking a hiker to choose between four candidates all
+ * labelled "Pine Meadow Trail" is a question about the artifact rather than
+ * about the ground. Measured on the published network (data.ourhike.org,
+ * 2026-08-27): grouping on `trail_id` made 68.5% of sampled Harriman points
+ * ambiguous; grouping on what a hiker can read - the name, the blaze and the
+ * organization - is what the figure recorded in features/HIKE_PLANNING.md
+ * measures instead.
+ *
+ * An UNNAMED piece falls back to its own edge, which is the conservative
+ * direction: two unnamed trails stay two candidates rather than collapsing
+ * into one answer that would be wrong for at least one of them. The cost is a
+ * choice a hiker cannot make well, and it is the lesser cost - the app never
+ * pretends to know which unnamed line somebody meant.
+ */
+function askableIdentity(edge: GraphEdge, edgeIndex: number): string {
+  if (edge.name === null) return `edge:${edgeIndex}`
+  return `${edge.source ?? ''}\u0000${edge.name}\u0000${edge.blaze_color ?? ''}`
+}
+
+export function trailsNear(
+  index: TrailGraphIndex,
+  at: LonLat,
+  maxOffMetres: number = DRAWN_SNAP_METRES,
+): GraphPoint[] {
+  const maxOffFeet = maxOffMetres * FEET_PER_METRE
+  const best = new Map<string, GraphPoint>()
+
+  for (const edgeIndex of snapCandidates(index, at, maxOffFeet)) {
+    const projected = projectOntoEdge(index, edgeIndex, at)
+    const offNetworkFeet = projected.offMetres * FEET_PER_METRE
+    if (offNetworkFeet > maxOffFeet) continue
+    const key = askableIdentity(index.graph.edges[edgeIndex], edgeIndex)
+    const known = best.get(key)
+    if (known !== undefined && known.offNetworkFeet <= offNetworkFeet) continue
+    best.set(key, {
+      edgeIndex,
+      fraction: projected.fraction,
+      at: projected.point,
+      offNetworkFeet,
+    })
+  }
+
+  return Array.from(best.values()).sort((a, b) => {
+    if (a.offNetworkFeet !== b.offNetworkFeet) return a.offNetworkFeet - b.offNetworkFeet
+    // A stable order for an exact tie, for the reason NodeHeap gives: input
+    // order here is edge numbering, which the pipeline rewrites on every
+    // publish.
+    return a.edgeIndex - b.edgeIndex
+  })
+}
+
+/**
+ * When two candidate trails are close enough that choosing between them does
+ * not change where a hiker walks.
+ *
+ * DERIVED, NOT PICKED. `pipeline/build_trail_graph.py`'s `ENDPOINT_SNAP_M` is
+ * 8.0 m and its own comment states what the number means: "Two vertices closer
+ * together than this are the same place." This is that sentence read from the
+ * other end - if the pipeline would weld two line-ends this far apart into one
+ * node, the app has no business asking a hiker which of two lines this far
+ * apart they meant. One home for "the same place", used twice.
+ *
+ * WHY IT MATTERS, MEASURED. Against the published network on 2026-08-27,
+ * 4,000 points sampled on real trail vertices inside Harriman-Bear Mountain:
+ * 64.3% have more than one marked trail within #935's 25 m, and the median
+ * separation between the top two candidates is **0.0 m**. 70% of those pairs
+ * are within 1 m of each other. They are trails sharing tread - the A.T. runs
+ * concurrently with Ramapo-Dunderberg (red), 1777 East (white) and the Long
+ * Path (aqua) through that park, and OPRHP publishes its own line for ground
+ * ATC's centerline already covers. Asking "which trail did you mean" there is
+ * asking about a label, not about a walk: both answers route the hiker over
+ * the identical ground.
+ *
+ * Filtering on this threshold takes the ask from 64.3% of sampled points to
+ * **17.3%** in Harriman and 20.6% across the whole network - measured, not
+ * predicted, by running {@link trailChoice} over the same 4,000 points.
+ *
+ * Two things that figure is NOT. It is not the rate at which a hiker gets
+ * asked: these are points sampled exactly on a trail's own vertices, one
+ * question per point, and a drawn stroke resolves a run of samples into one
+ * stretch before anything is asked - so this is an upper bound on the ask
+ * rate, not the ask rate. And it is not a claim about a real drawn line,
+ * because nobody has drawn one on this yet, which is what #935 says would
+ * settle the tolerance.
+ */
+export const SAME_TREAD_METRES = 8.0
+
+/**
+ * What the app should do about a point on a drawn line: take it, ask about it,
+ * or refuse it.
+ *
+ * #935's decision (maintainer, 2026-08-27) in one function - *"Ask which
+ * trail. But only match to trails within 25M."* Both halves, and a third rule
+ * that follows from measuring the first two rather than from anybody's
+ * preference: **an ask is only worth making when the answer changes where
+ * somebody walks.** See {@link SAME_TREAD_METRES} for the figures.
+ *
+ * `ask` hands back every distinct candidate, nearest first, and the caller
+ * puts them in front of the hiker with the blaze colour - which is the thing
+ * they will be checking against the paint on the tree, and the only thing that
+ * tells two concurrent trails apart on the ground.
+ */
+export type TrailChoice =
+  | { kind: 'none' }
+  | { kind: 'one'; point: GraphPoint }
+  | { kind: 'ask'; options: GraphPoint[] }
+
+export function trailChoice(
+  index: TrailGraphIndex,
+  at: LonLat,
+  maxOffMetres: number = DRAWN_SNAP_METRES,
+): TrailChoice {
+  const near = trailsNear(index, at, maxOffMetres)
+  if (near.length === 0) return { kind: 'none' }
+
+  const nearest = near[0]
+  const elsewhere = near.filter(
+    (candidate) =>
+      Math.hypot(
+        localMetres(nearest.at, candidate.at).x,
+        localMetres(nearest.at, candidate.at).y,
+      ) > SAME_TREAD_METRES,
+  )
+  if (elsewhere.length === 0) return { kind: 'one', point: nearest }
+  return { kind: 'ask', options: [nearest, ...elsewhere] }
 }
 
 /**
@@ -499,14 +871,96 @@ interface Reached {
 }
 
 /**
+ * A binary min-heap over (distance, node), ties broken by the lower node id.
+ *
+ * WHY THE TIE-BREAK IS PART OF THE STRUCTURE. The scan this replaced took the
+ * first node in Map insertion order at the lowest distance, so which of two
+ * equal-length routes came back depended on the order nodes happened to be
+ * discovered - which depends on adjacency order, which depends on edge
+ * numbering, which `build_trail_graph.py` renumbers wholesale between
+ * publishes. That is not a stable answer, it only looked like one. Ordering
+ * on the node id instead is stable for as long as the artifact is, which is
+ * the most any tie-break here can honestly promise.
+ *
+ * Lazy deletion rather than a decrease-key: a node whose distance improves is
+ * pushed again and the stale entry is skipped when it surfaces, which is
+ * cheaper than maintaining positions and is why `settled` is consulted on pop
+ * rather than only on relax.
+ */
+class NodeHeap {
+  private nodes: number[] = []
+  private distances: number[] = []
+
+  get size(): number {
+    return this.nodes.length
+  }
+
+  private before(a: number, b: number): boolean {
+    if (this.distances[a] !== this.distances[b])
+      return this.distances[a] < this.distances[b]
+    return this.nodes[a] < this.nodes[b]
+  }
+
+  private swap(a: number, b: number): void {
+    const node = this.nodes[a]
+    const distance = this.distances[a]
+    this.nodes[a] = this.nodes[b]
+    this.distances[a] = this.distances[b]
+    this.nodes[b] = node
+    this.distances[b] = distance
+  }
+
+  push(node: number, distance: number): void {
+    this.nodes.push(node)
+    this.distances.push(distance)
+    let at = this.nodes.length - 1
+    while (at > 0) {
+      const parent = (at - 1) >> 1
+      if (!this.before(at, parent)) break
+      this.swap(at, parent)
+      at = parent
+    }
+  }
+
+  pop(): { node: number; distance: number } | null {
+    if (this.nodes.length === 0) return null
+    const node = this.nodes[0]
+    const distance = this.distances[0]
+    const lastNode = this.nodes.pop() as number
+    const lastDistance = this.distances.pop() as number
+    if (this.nodes.length > 0) {
+      this.nodes[0] = lastNode
+      this.distances[0] = lastDistance
+      let at = 0
+      for (;;) {
+        const left = at * 2 + 1
+        const right = left + 1
+        let smallest = at
+        if (left < this.nodes.length && this.before(left, smallest)) smallest = left
+        if (right < this.nodes.length && this.before(right, smallest)) smallest = right
+        if (smallest === at) break
+        this.swap(at, smallest)
+        at = smallest
+      }
+    }
+    return { node, distance }
+  }
+}
+
+/**
  * Dijkstra from two seeded nodes - the ends of the edge the start point sits
  * on, each already `fraction` of that edge away.
  *
- * A plain binary-heap-free scan is used because #757's measurement is the
- * budget this module is written against: at ~3,000 edges the constant factor
- * of a heap costs more to maintain than it saves. pipeline/build_trail_graph.py
- * reports the ring's real edge count, and if that lands well past 3,000 this
- * is the function to revisit first.
+ * WAS a heap-free scan over the whole frontier, on #757's budget: "at ~3,000
+ * edges the constant factor of a heap costs more to maintain than it saves."
+ * The published graph is 40,596 edges (data.ourhike.org, 2026-08-27) and the
+ * scan is O(frontier) per pop, so #1020 is where that budget was revisited.
+ *
+ * Worth being straight about the size of the win, because the issue's own
+ * framing expected it to be the headline and it is not: a heap is worth
+ * roughly 15% of the search, and the search was never the expensive half of
+ * answering a tap. {@link EdgeGrid} is. Both landed together and the grid is
+ * the one a hiker would have felt.
  */
 function shortestPath(
   index: TrailGraphIndex,
@@ -515,29 +969,28 @@ function shortestPath(
 ): { node: number; total: number; reached: Map<number, Reached> } | null {
   const reached = new Map<number, Reached>()
   const settled = new Set<number>()
-  const frontier = new Map<number, number>()
+  const frontier = new NodeHeap()
 
   for (const seed of seeds) {
-    const existing = frontier.get(seed.node)
-    if (existing === undefined || seed.distance < existing) {
-      frontier.set(seed.node, seed.distance)
+    const existing = reached.get(seed.node)
+    if (existing === undefined || seed.distance < existing.distance) {
       reached.set(seed.node, { distance: seed.distance, viaEdge: -1, fromNode: -1 })
+      frontier.push(seed.node, seed.distance)
     }
   }
 
   let bestTarget: { node: number; total: number } | null = null
 
   while (frontier.size > 0) {
-    let current = -1
-    let currentDistance = Infinity
-    for (const [node, distance] of frontier) {
-      if (distance < currentDistance) {
-        current = node
-        currentDistance = distance
-      }
-    }
-    if (current === -1) break
-    frontier.delete(current)
+    const top = frontier.pop()
+    if (top === null) break
+    const current = top.node
+    const currentDistance = top.distance
+    // A stale entry: this node was reached again more cheaply after this one
+    // was pushed, or has already been settled from a better pop.
+    if (settled.has(current)) continue
+    const known = reached.get(current)
+    if (known !== undefined && known.distance < currentDistance) continue
     settled.add(current)
 
     const tail = targets.get(current)
@@ -553,10 +1006,10 @@ function shortestPath(
     for (const step of index.adjacency[current] ?? []) {
       if (settled.has(step.to)) continue
       const next = currentDistance + index.graph.edges[step.edgeIndex].length_m
-      const known = reached.get(step.to)
-      if (known !== undefined && known.distance <= next) continue
+      const reachedTo = reached.get(step.to)
+      if (reachedTo !== undefined && reachedTo.distance <= next) continue
       reached.set(step.to, { distance: next, viaEdge: step.edgeIndex, fromNode: current })
-      frontier.set(step.to, next)
+      frontier.push(step.to, next)
     }
   }
 

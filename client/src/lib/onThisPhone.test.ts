@@ -31,6 +31,11 @@ describe('storedTrailData', () => {
       [POIS_KEY]: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
       [ELEVATION_STORE_KEY]: { samples: [1, 2, 3, 4] },
       [NEARBY_TRAILS_STORE_KEY]: { bytes: new Blob(['y'.repeat(999)]), hash: 'h' },
+      // Two of the four graph artifacts, which is a real state: the routing
+      // half arrives at launch and the geometry only when a builder opens.
+      // They sum into one row - see storedTrailData for why.
+      'ourhike:trail-graph': { bytes: new Blob(['g'.repeat(500)]), hash: 'g' },
+      'ourhike:trail-graph-geometry': { bytes: new Blob(['v'.repeat(200)]), hash: 'v' },
     })
 
     const assets = await storedTrailData()
@@ -39,6 +44,7 @@ describe('storedTrailData', () => {
       { id: 'trail-line', bytes: 1234, count: null, present: true },
       { id: 'waypoints', bytes: null, count: 3, present: true },
       { id: 'elevation', bytes: null, count: 4, present: true },
+      { id: 'day-hike-routing', bytes: 700, count: null, present: true },
       { id: 'nearby-trails', bytes: 999, count: null, present: true },
     ])
   })
@@ -46,7 +52,7 @@ describe('storedTrailData', () => {
   it('reports the whole list on an empty phone, each row a stated absence', async () => {
     const assets = await storedTrailData()
 
-    expect(assets).toHaveLength(4)
+    expect(assets).toHaveLength(5)
     for (const asset of assets) {
       expect(asset.present).toBe(false)
       expect(asset.bytes).toBe(null)
@@ -58,7 +64,7 @@ describe('storedTrailData', () => {
 
     const assets = await storedTrailData()
 
-    expect(assets).toHaveLength(4)
+    expect(assets).toHaveLength(5)
     expect(assets.every((asset) => !asset.present)).toBe(true)
   })
 

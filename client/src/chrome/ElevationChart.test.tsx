@@ -339,3 +339,266 @@ describe('ElevationChart', () => {
     expect(onZoomDomain).toHaveBeenLastCalledWith(null)
   })
 })
+
+// --- Day boundaries (#971) ---------------------------------------------------
+//
+// The gesture the wide Plan layout exists for. What these pin is the division
+// of labour: the chart draws what it is handed and reports where a pointer let
+// go, and every rule about whether that move is ALLOWED lives in
+// lib/planBench.ts. So the chart is driven here with boundaries whose limits
+// are stated in the fixture, and what is asserted is that it respects them and
+// never invents a move of its own.
+//
+// Geometry is the stub above: a clientX is a mile times ten.
+
+describe('day boundaries on the chart', () => {
+  /** Three days across the ramp: fixed ends at mi 0 and 100, movable
+   *  boundaries at 20 and 70, each free to travel between its neighbours. */
+  function boundaries() {
+    return [
+      { stopIndex: 0, mile: 0, label: 'Springer', movable: false },
+      {
+        stopIndex: 1,
+        mile: 20,
+        label: 'Hawk Mountain',
+        movable: true,
+        minMile: 0,
+        maxMile: 70,
+      },
+      {
+        stopIndex: 2,
+        mile: 70,
+        label: 'Neels Gap',
+        movable: true,
+        minMile: 20,
+        maxMile: 100,
+      },
+      { stopIndex: 3, mile: 100, label: 'Unicoi Gap', movable: false },
+    ]
+  }
+
+  function dragBoundary(fromX: number, toX: number): void {
+    fireEvent.pointerDown(plot(), { clientX: fromX, pointerId: 1 })
+    fireEvent.pointerMove(plot(), { clientX: toX, pointerId: 1 })
+    fireEvent.pointerUp(plot(), { clientX: toX, pointerId: 1 })
+  }
+
+  it('draws every boundary, fixed ones included, and says why a fixed one is', () => {
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries().map((b) =>
+          b.movable ? b : { ...b, fixedReason: 'Where the trip starts and ends.' },
+        )}
+      />,
+    )
+
+    for (const at of [0, 1, 2, 3]) {
+      expect(screen.getByTestId(`chart-boundary-${at}`)).toBeInTheDocument()
+    }
+    // A dashed line that says only "not this one" sends somebody looking for a
+    // fix that does not exist (#1049's lesson). The reason rides on the line.
+    expect(screen.getByTestId('chart-boundary-0')).toHaveTextContent(
+      'Where the trip starts and ends.',
+    )
+    expect(screen.getByTestId('chart-boundary-1')).toBeEmptyDOMElement()
+    // Only the movable ones get a handle. A focus stop that refuses every key
+    // is worse than no focus stop.
+    expect(screen.getAllByRole('slider')).toHaveLength(2)
+    expect(screen.queryByTestId('chart-boundary-handle-0')).not.toBeInTheDocument()
+  })
+
+  it('reports where a dragged boundary was let go, and never writes a plan itself', () => {
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+      />,
+    )
+
+    dragBoundary(200, 350)
+
+    expect(onMoveBoundary).toHaveBeenCalledTimes(1)
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(1, 35)
+    // The boundary has NOT moved on screen: the chart redraws from the
+    // boundaries it is handed back, so a shell that refuses the move leaves
+    // the picture telling the truth about the plan.
+    expect(screen.getByTestId('chart-boundary-1')).toHaveAttribute('x1', '200')
+  })
+
+  it('clamps a drag to the travel the plan allows', () => {
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+      />,
+    )
+
+    // Dragged well past mi 70, where the next boundary is.
+    dragBoundary(200, 950)
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(1, 70)
+  })
+
+  it('takes a boundary rather than starting a measurement, and clears nothing', () => {
+    const onSelectStretch = vi.fn()
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+        onSelectStretch={onSelectStretch}
+      />,
+    )
+
+    // A press within the grab region of the boundary at mi 20, dragged.
+    dragBoundary(203, 300)
+
+    expect(onMoveBoundary).toHaveBeenCalledTimes(1)
+    // No measurement settled and none cleared - a slip while aiming at a
+    // handle must not also unmake whatever was selected.
+    expect(onSelectStretch).not.toHaveBeenCalled()
+  })
+
+  it('leaves a fixed boundary alone - a drag from one measures instead', () => {
+    const onSelectStretch = vi.fn()
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+        onSelectStretch={onSelectStretch}
+      />,
+    )
+
+    // mi 0 is the plan's own start.
+    dragBoundary(0, 300)
+
+    expect(onMoveBoundary).not.toHaveBeenCalled()
+    expect(onSelectStretch).toHaveBeenLastCalledWith({ startMile: 0, endMile: 30 })
+  })
+
+  it('reports nothing for a press on a handle that never travelled', () => {
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+      />,
+    )
+
+    fireEvent.pointerDown(plot(), { clientX: 200, pointerId: 1 })
+    fireEvent.pointerUp(plot(), { clientX: 200, pointerId: 1 })
+
+    // Nothing to write, so nothing to undo either.
+    expect(onMoveBoundary).not.toHaveBeenCalled()
+  })
+
+  it('takes the NEAREST boundary when two are closer together than the grab region', () => {
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={[
+          { stopIndex: 0, mile: 0, label: 'A', movable: false },
+          { stopIndex: 1, mile: 20, label: 'B', movable: true, minMile: 0, maxMile: 21 },
+          {
+            stopIndex: 2,
+            mile: 21,
+            label: 'C',
+            movable: true,
+            minMile: 20,
+            maxMile: 100,
+          },
+          { stopIndex: 3, mile: 100, label: 'D', movable: false },
+        ]}
+        onMoveBoundary={onMoveBoundary}
+      />,
+    )
+
+    // The two sit 10px apart. A press at 208 is inside both grab regions and
+    // belongs to the one at 210.
+    fireEvent.pointerDown(plot(), { clientX: 208, pointerId: 1 })
+    fireEvent.pointerMove(plot(), { clientX: 400, pointerId: 1 })
+    fireEvent.pointerUp(plot(), { clientX: 400, pointerId: 1 })
+
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(2, 40)
+  })
+
+  it('nudges a boundary from the keyboard, coarsely with Shift, and says its range', () => {
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+      />,
+    )
+
+    const handle = screen.getByTestId('chart-boundary-handle-1')
+    // The range is announced BEFORE it is moved, not discovered by hitting it.
+    expect(handle).toHaveAttribute('aria-valuemin', '0')
+    expect(handle).toHaveAttribute('aria-valuemax', '70')
+    expect(handle).toHaveAttribute('aria-valuenow', '20')
+    expect(handle).toHaveAccessibleName('Day boundary at Hawk Mountain')
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(1, 20.1)
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight', shiftKey: true })
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(1, 21)
+
+    // Clamped the same way the drag is - one rule, two ways in.
+    fireEvent.keyDown(screen.getByTestId('chart-boundary-handle-2'), {
+      key: 'ArrowLeft',
+      shiftKey: true,
+    })
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(2, 69)
+  })
+
+  it('rests on the plan’s own miles when given a resting domain', () => {
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        restingDomain={{ startMile: 20, endMile: 70 }}
+        boundaries={boundaries()}
+      />,
+    )
+
+    // The whole published profile is 100 miles; this chart shows fifty.
+    expect(screen.getByText('mi 20.0 – 70.0')).toBeInTheDocument()
+    expect(screen.getByText('50.0 mi')).toBeInTheDocument()
+  })
+
+  it('calls zooming out “Whole section” where the whole trail is not what it means', async () => {
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        restingDomain={{ startMile: 20, endMile: 70 }}
+        selection={{ startMile: 30, endMile: 40 }}
+        southbound={false}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom to stretch' }))
+    expect(screen.getByRole('button', { name: 'Whole section' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Whole trail' })).not.toBeInTheDocument()
+
+    // And it goes back to the plan's miles rather than the trail's: the
+    // button retires, which is what "no zoom" means here.
+    await userEvent.click(screen.getByRole('button', { name: 'Whole section' }))
+    expect(
+      screen.queryByRole('button', { name: 'Whole section' }),
+    ).not.toBeInTheDocument()
+    // The axis runs the plan's fifty miles again, not the trail's hundred.
+    expect(screen.getByText('mi 20')).toBeInTheDocument()
+    expect(screen.getByText('mi 70')).toBeInTheDocument()
+    expect(screen.queryByText('mi 100')).not.toBeInTheDocument()
+  })
+})

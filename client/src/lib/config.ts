@@ -162,6 +162,36 @@ export const TRAIL_GRAPH_GEOMETRY_KEY = 'trail_graph_geometry.json'
  */
 export const TRAIL_GRAPH_ELEVATION_KEY = 'trail_graph_elevation.json'
 
+/**
+ * The SHAPE of the ground along each graph edge - a dense sampled profile,
+ * index-aligned with TRAIL_GRAPH_KEY's `edges` (#1045,
+ * pipeline/export_network_profile.py).
+ *
+ * THE FOURTH FILE ON THAT SHELF, AND IT ANSWERS A DIFFERENT QUESTION FROM THE
+ * THIRD. `TRAIL_GRAPH_ELEVATION_KEY` above is the sanctioned TOTAL - what a
+ * card prices a walk from. This is what a ribbon draws, on a walk somebody is
+ * following, and the two must not be swapped: the totals here would disagree
+ * with the card's, because a per-edge profile cannot see across a node join
+ * (see below) and the scalars are measured whole.
+ *
+ * FETCHED ONLY WHEN A CHART OPENS, never with the builder. The pipeline
+ * measured it at 3.47 MB raw / 1.22 MB over the wire at 25 m sampling, against
+ * the geometry file's 17.29 / 4.70 - small, and still not something to spend
+ * on every hiker who opens the builder and draws nothing.
+ *
+ * TWO RULES A READER MUST NOT GET WRONG, both measured by the pipeline:
+ *
+ * - **Take the sample count from the array's own length**, never by dividing
+ *   `length_m` by the interval: 63 of 40,596 edges disagree, because the
+ *   published length and the walked geometry differ by up to 1.5 m.
+ * - **A null is unknown and never zero**, in both of its shapes: a whole
+ *   entry null means the DEM covers no part of that edge, and a null INSIDE
+ *   an array is one missing sample with its place on the axis kept. Either
+ *   one means no ribbon for that walk, on the all-or-nothing rule the climb
+ *   already follows.
+ */
+export const TRAIL_GRAPH_PROFILE_KEY = 'trail_graph_profile.json'
+
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
 // A separate artifact rather than properties on trails.geojson because the

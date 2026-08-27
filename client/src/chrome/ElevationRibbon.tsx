@@ -36,6 +36,7 @@ import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 /** Written out one per line, so each has to be read as the claim it is. */
 const SUBJECT_LABELS: Record<RibbonSubject, string> = {
   ahead: 'Elevation profile ahead',
+  'todays-walk': 'Elevation profile of your whole walk today',
   'planned-stretch': 'Elevation profile of the stretch being planned',
   'map-view': 'Elevation profile of the trail shown on the map',
   'whole-trail': 'Elevation profile of the whole trail',
@@ -44,6 +45,30 @@ const SUBJECT_LABELS: Record<RibbonSubject, string> = {
 export interface ElevationSample {
   mile: number
   elevationFt: number
+  /**
+   * The first sample after ground this ribbon has no shape for, so the drawn
+   * line BREAKS here instead of sloping across it.
+   *
+   * The name and the convention are `lib/elevationGain.ts`'s `ProfileSample.
+   * partStart`, deliberately, rather than a second marker meaning the same
+   * thing: that field already tells `cumulativeGainOverProfile` where a seam
+   * in the trail is rather than a slope, and `pipeline/export_network_profile.
+   * py` names both sides of the language boundary as the documented way to
+   * flatten a route without inventing climb across a join.
+   *
+   * WHAT IT MARKS HERE IS A STRETCH BOUNDARY, NOT AN EDGE BOUNDARY, and the
+   * difference is the whole reason this is safe to draw at all. A day hike
+   * built from several stretches (#983) has ground between them that OurHike
+   * will not route - a road walk, most often - and a line sloping across it
+   * would be a picture of terrain nobody measured. A junction between two
+   * edges INSIDE a stretch is not marked: this ribbon prices nothing, so the
+   * vertical step an endpoint weld can leave (up to 19.06 m of horizontal
+   * separation, measured by export_network_profile.py) is a step in a drawing
+   * rather than climbing in a total, and it is sub-pixel on a 54 px band. A
+   * route crosses a median 23 of those junctions, so marking them all would
+   * render the ribbon as dots.
+   */
+  partStart?: boolean
 }
 
 export interface UpcomingClimb {
@@ -57,7 +82,8 @@ export interface UpcomingClimb {
  * accessible name. lib/ribbonView.ts decides which, and its `source` IS this
  * type - one value, not a field here and a field there that can drift apart.
  */
-export type RibbonSubject = 'ahead' | 'planned-stretch' | 'map-view' | 'whole-trail'
+export type RibbonSubject =
+  'ahead' | 'todays-walk' | 'planned-stretch' | 'map-view' | 'whole-trail'
 
 /** One map-framing button under the ribbon (#910 review). The screen decides
  *  WHICH exist - they depend on what the ribbon is currently showing - so this

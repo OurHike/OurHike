@@ -6,6 +6,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { DayHikesHere, type DayHikesHereProps } from './DayHikesHere'
+import { STANDARD_PACE } from '../lib/pace'
 import type { NearbyDayHike } from '../lib/dayHikeShelf'
 import type { DayHike } from '../lib/dayHikes'
 
@@ -23,6 +24,7 @@ function nearby(id: string, miles: number, date: string | null = null): NearbyDa
     figures: { miles: 6.2, legs: [] },
     looped: true,
     recorded: 'planned',
+    note: '',
   }
   return { hike, miles }
 }
@@ -30,6 +32,7 @@ function nearby(id: string, miles: number, date: string | null = null): NearbyDa
 const PROPS: DayHikesHereProps = {
   near: [nearby('Pine Meadow loop', 0.04, '2026-09-12')],
   units: 'imperial',
+  pace: STANDARD_PACE,
   today: '2026-09-12',
   onOpen: vi.fn(),
   onAll: vi.fn(),

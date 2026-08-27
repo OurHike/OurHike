@@ -27,7 +27,8 @@
 
 import { useState } from 'react'
 
-import type { NearbyDayHike } from '../lib/dayHikeShelf'
+import { cachedEstimate, type NearbyDayHike } from '../lib/dayHikeShelf'
+import type { PaceProfile } from '../lib/pace'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
@@ -35,6 +36,9 @@ import '../screens/plan.css'
 export interface DayHikesHereProps {
   near: readonly NearbyDayHike[]
   units: UnitSystem
+  /** The hiker's own pace (#1040), so this door's ≈time is the one the card
+   *  it opens will print rather than the standard rule's. */
+  pace: PaceProfile
   /** YYYY-MM-DD today, for the one sentence worth adding to a row - passed
    *  in so the derivation is testable against a fixed day. */
   today: string
@@ -47,6 +51,7 @@ export interface DayHikesHereProps {
 export function DayHikesHere({
   near,
   units,
+  pace,
   today,
   onOpen,
   onAll,
@@ -136,6 +141,13 @@ export function DayHikesHere({
                   figure on the same row, a bare "4.2 mi" reads as more of
                   the same kind of distance. */}
               {formatDistance(hike.figures.miles, units)} to walk
+              {/* Priced from the cache, because this door opens over the map
+                  and may not load the routing graph to answer. Absent when
+                  the record carries no climb - the honest state for a walk
+                  saved before the climb was cached, and for one the graph
+                  could not price. */}
+              {cachedEstimate(hike, pace) !== null &&
+                ` · ${cachedEstimate(hike, pace)?.text}`}
               {hike.date !== null &&
                 ` · planned ${dayLongDateLabel(hike.date)}${
                   hike.date === today ? '. That’s today.' : ''

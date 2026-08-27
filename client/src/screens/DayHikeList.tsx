@@ -9,10 +9,22 @@
 // walked** - with the store's own cached figures, so the list never loads
 // the routing graph to say "3.4 mi" (the rule PlanHome's rows established).
 //
-// TWO SORTS, THE SECOND ONLY WHEN IT CAN BE HONEST. "Recent" is the store's
+// THREE SORTS, EACH ONLY WHEN IT CAN BE HONEST. "Recent" is the store's
 // existing ordering. "Nearest me" sorts by straight-line distance from the
 // GPS fix to each hike's saved start, so it exists only while a fix does -
 // no fix, no chip, per the no-dead-controls rule every sheet here keeps.
+// "Shortest first" is the storyboard's "fits my time", and it appears only
+// once at least one hike carries a cached climb to price a walk from - which
+// before 2026-08-27 was none of them, because `DayHikeFigures` held miles and
+// legs and no ascent (features/HIKE_PLANNING.md recorded that as the thing
+// blocking this sort and the ≈time below).
+//
+// WHY IT IS "SHORTEST FIRST" AND NOT "FITS MY TIME". The storyboard's phrase
+// implies the app knows how long a hiker has, and it does not: there is no
+// field for it, and asking would be a planner that keeps a schedule, which
+// value #1 rules out. What the app can honestly offer is the list in order of
+// how long each walk takes at this hiker's own pace, and let them stop reading
+// when the numbers get too big.
 //
 // The walked shelf renders only when it holds something. Nothing in the
 // client marks a hike walked yet (#982 builds that flow), so that section
@@ -22,7 +34,13 @@
 import { useState } from 'react'
 
 import type { DayHike } from '../lib/dayHikes'
-import { sortedByNearest, splitDayHikes } from '../lib/dayHikeShelf'
+import {
+  cachedEstimate,
+  sortedByNearest,
+  sortedByTime,
+  splitDayHikes,
+} from '../lib/dayHikeShelf'
+import type { PaceProfile } from '../lib/pace'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import type { LonLat } from '../lib/trailGraph'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -33,6 +51,9 @@ export interface DayHikeListProps {
   units: UnitSystem
   /** The GPS fix, or null - decides whether "nearest me" is offered. */
   at: LonLat | null
+  /** The hiker's own pace, so a row's time is the one the card would print
+   *  rather than the standard rule's (#1040). */
+  pace: PaceProfile
   onOpen: (id: string) => void
   onBack: () => void
   /** Start the builder, or null when the phone has no junction graph - the
@@ -41,12 +62,13 @@ export interface DayHikeListProps {
   onNewDayHike: (() => void) | null
 }
 
-type ListSort = 'recent' | 'nearest'
+type ListSort = 'recent' | 'nearest' | 'shortest'
 
 export function DayHikeList({
   dayHikes,
   units,
   at,
+  pace,
   onOpen,
   onBack,
   onNewDayHike,
@@ -54,8 +76,16 @@ export function DayHikeList({
   const [sort, setSort] = useState<ListSort>('recent')
 
   const shelf = splitDayHikes(dayHikes)
+  // Offered only when a walk here can actually be priced. A hike saved before
+  // the climb was cached carries none, and a "shortest first" that silently
+  // put every such hike last would be sorting on the record's age.
+  const canPrice = shelf.toWalk.some((hike) => cachedEstimate(hike, pace) !== null)
   const toWalk =
-    sort === 'nearest' && at !== null ? sortedByNearest(shelf.toWalk, at) : shelf.toWalk
+    sort === 'nearest' && at !== null
+      ? sortedByNearest(shelf.toWalk, at)
+      : sort === 'shortest' && canPrice
+        ? sortedByTime(shelf.toWalk, pace)
+        : shelf.toWalk
 
   return (
     <div className="day-hike-list">
@@ -73,7 +103,7 @@ export function DayHikeList({
           container clips exactly that - which is what put a half-drawn band
           on this screen the first time the list was made to scroll. */}
       <div className="day-hike-list__scroll">
-        {at !== null && shelf.toWalk.length > 1 && (
+        {(at !== null || canPrice) && shelf.toWalk.length > 1 && (
           // The group label WhatsLeft.tsx already gives the identical pattern:
           // without it these announce as two unrelated toggles rather than one
           // exclusive choice, and say nothing about what they order.
@@ -86,14 +116,26 @@ export function DayHikeList({
             >
               recent
             </button>
-            <button
-              type="button"
-              className="whats-left__sort"
-              aria-pressed={sort === 'nearest'}
-              onClick={() => setSort('nearest')}
-            >
-              nearest me
-            </button>
+            {at !== null && (
+              <button
+                type="button"
+                className="whats-left__sort"
+                aria-pressed={sort === 'nearest'}
+                onClick={() => setSort('nearest')}
+              >
+                nearest me
+              </button>
+            )}
+            {canPrice && (
+              <button
+                type="button"
+                className="whats-left__sort"
+                aria-pressed={sort === 'shortest'}
+                onClick={() => setSort('shortest')}
+              >
+                shortest first
+              </button>
+            )}
           </div>
         )}
 
@@ -108,15 +150,18 @@ export function DayHikeList({
                 onClick={() => onOpen(hike.id)}
               >
                 <span className="plan-home__row-name">{hike.name}</span>
-                {/* Cached figures on purpose - see the header. Miles and legs
-                  only: no walking time exists for network trails, and this
-                  row must not invent one (the builder bar's own rule). */}
+                {/* Cached figures on purpose - see the header. The ≈time is
+                  cached too and is absent rather than approximated when the
+                  record holds no climb: this row still may not load the
+                  routing graph, and may not invent a walking time either. */}
                 <span className="plan-home__meta">
                   {formatDistance(hike.figures.miles, units)}
                   {hike.figures.legs.length > 0 &&
                     ` · ${hike.figures.legs.length} ${
                       hike.figures.legs.length === 1 ? 'leg' : 'legs'
                     }`}
+                  {cachedEstimate(hike, pace) !== null &&
+                    ` · ${cachedEstimate(hike, pace)?.text} walking`}
                   {' · '}
                   {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
                 </span>

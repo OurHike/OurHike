@@ -108,6 +108,8 @@ import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { waypointDistance } from '../lib/waypointDistance'
+import type { HikeDirection } from './Header'
 import { formatShortDistance, type UnitSystem } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
@@ -267,6 +269,27 @@ export interface PoiCardProps {
    * field above states.
    */
   noteContext?: FieldNoteContext
+  /**
+   * The hiker's own mile, for the "how far ahead" line (#953).
+   *
+   * Undefined wherever `positionLine` would not print a mile either - location
+   * off, denied, no signal, still looking, no trail data, a fix that will not
+   * place on the centerline - and the line is simply absent for all of them.
+   * The header is where a hiker learns WHICH of those it is, in words chosen
+   * per state; a card repeating that in six variants would be six more places
+   * for the two to disagree.
+   */
+  hikerMile?: number
+  /**
+   * The settled walking direction, or undefined while the tracker has not
+   * committed.
+   *
+   * The word this decides is a safety claim, not a decoration:
+   * lib/waypointDistance.ts carries why it is the OBSERVED direction rather
+   * than a declared hike's, and why "away" is what an uncommitted tracker
+   * gets rather than a guess.
+   */
+  direction?: HikeDirection
   onClose: () => void
 }
 
@@ -566,6 +589,8 @@ export function PoiCard({
   map,
   units = 'imperial',
   noteContext,
+  hikerMile,
+  direction,
   onClose,
 }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -944,6 +969,25 @@ export function PoiCard({
      second line of the peek and the second line of the opened card's header -
      and two copies of a four-fact line is two places for a fifth fact to be
      added to only one of. */
+  /* How far along the trail this place is from the hiker, and which way (#953).
+     The second line the design pass behind #941 drew and #942 shipped without,
+     on the grounds that the number "would have to be invented" - half true, and
+     the half that was not is that the distance is a subtraction of two miles the
+     app already holds. lib/waypointDistance.ts owns the part that DID have to be
+     earned, which is the word: "ahead" said to a southbounder walking away from
+     a spring is the opposite of the truth, on the subject this app can least
+     afford to be wrong about.
+
+     Null for every state where it cannot be said - no fix, no mile for the
+     place, or a distance that rounds to zero - and then this row is exactly what
+     it was before. */
+  const distanceLine = waypointDistance({
+    ...(shown.mile === undefined ? {} : { waypointMile: shown.mile }),
+    ...(hikerMile === undefined ? {} : { hikerMile }),
+    ...(direction === undefined ? {} : { direction }),
+    units,
+  })
+
   const metaLine = (
     <p className="poi-card__meta">
       <span>{typeLabel(shown.type)}</span>
@@ -951,6 +995,23 @@ export function PoiCard({
         <>
           <span aria-hidden="true">·</span>
           <span className="poi-card__mile">{`mi ${mile(shown.mile)}`}</span>
+        </>
+      )}
+      {/* Directly after the mile it is derived from, and before the facts about
+          the PLACE - its capacity, the part being read. "mi 1,407.2 · 0.3 mi
+          ahead" is one thought read left to right: where it is, and where that
+          is from here.
+
+          Mono with the mile beside it, which is chrome.css's standing rule for
+          this line and not a new choice: the parts' distances are already in
+          that list because "it is the same kind of claim, read the same way",
+          and this is the same claim again. Fixed width also keeps the row from
+          twitching as the figure counts down, which is the reason the header's
+          mile is mono and pads to one decimal. */}
+      {distanceLine !== null && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className="poi-card__distance">{distanceLine}</span>
         </>
       )}
       {shown.capacity !== undefined && (

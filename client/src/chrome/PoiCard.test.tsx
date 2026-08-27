@@ -1600,3 +1600,91 @@ describe('the peek and the pull', () => {
     expect(card.style.transform).toBe('')
   })
 })
+
+describe('how far ahead the place is (#953)', () => {
+  // The card is opened from a pin, so the question it was tapped to answer is
+  // "should I walk to this". The mile alone cannot answer it - a hiker would
+  // have to subtract it from the one in the header - and the WORD is the part
+  // that had to be earned: lib/waypointDistance.ts holds why, and these are the
+  // assertions that the card actually asks it and puts the answer on the peek.
+
+  it('says how far ahead, on the peek rather than behind the pull', () => {
+    // On the peek deliberately. A hiker deciding whether to walk half a mile to
+    // water should not have to open the record to find out that it is half a
+    // mile - the type-and-mile line is the second line of BOTH heights and this
+    // rides with it.
+    render(
+      <PoiCard
+        poi={SHELTER}
+        map={null}
+        hikerMile={2078.1}
+        direction="NOBO"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('0.3 mi ahead')).toBeInTheDocument()
+  })
+
+  it('says behind, to a hiker who has walked past it', () => {
+    render(
+      <PoiCard
+        poi={SHELTER}
+        map={null}
+        hikerMile={2078.7}
+        direction="NOBO"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('0.3 mi behind')).toBeInTheDocument()
+  })
+
+  it('claims no direction while the tracker has not committed', () => {
+    render(<PoiCard poi={SHELTER} map={null} hikerMile={2078.1} onClose={vi.fn()} />)
+
+    expect(screen.getByText('0.3 mi away')).toBeInTheDocument()
+  })
+
+  it('says nothing at all without a fix, and the rest of the line is unchanged', () => {
+    // The shape every optional field on this card promises: a shell that has
+    // not wired the new prop renders exactly what it rendered before. That is
+    // also the honest production case - location off, no signal, no trail data
+    // - and the header is where a hiker learns which of those it is.
+    renderPeek(SHELTER)
+
+    expect(screen.queryByText(/mi (ahead|behind|away)/)).not.toBeInTheDocument()
+    expect(screen.getByText('mi 2,078.4')).toBeInTheDocument()
+  })
+
+  it('says nothing about a place the centerline index has no mile for', () => {
+    const { mile: _mile, ...noMile } = SHELTER
+
+    render(
+      <PoiCard
+        poi={noMile}
+        map={null}
+        hikerMile={2078.1}
+        direction="NOBO"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/mi (ahead|behind|away)/)).not.toBeInTheDocument()
+  })
+
+  it('reads it in the hiker’s own units', () => {
+    render(
+      <PoiCard
+        poi={SHELTER}
+        map={null}
+        hikerMile={2078.1}
+        direction="NOBO"
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('480 m ahead')).toBeInTheDocument()
+  })
+})

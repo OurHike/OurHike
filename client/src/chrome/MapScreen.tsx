@@ -480,6 +480,18 @@ export interface MapScreenProps {
    * as text; the rail needs it as data.
    */
   direction?: HikeDirection
+  /**
+   * The hiker's own mile on the centerline, or undefined where there is not
+   * one (#953).
+   *
+   * The waypoint card is the only thing that reads it, and it is a number here
+   * rather than a string for the reason #953 names: what crossed this boundary
+   * before was `positionLine`'s finished sentence, so by the time a card
+   * existed the figure had already been spent. Undefined covers every state
+   * that module has its own wording for - and the card's answer to all of them
+   * is the same silence, so they arrive here as one absence rather than six.
+   */
+  hikerMile?: number
 
   showZoomButtons?: boolean
   /**
@@ -722,6 +734,7 @@ export function MapScreen({
   chart,
   waypoints,
   direction,
+  hikerMile,
   position,
   locationEnabled = false,
   showZoomButtons = false,
@@ -1193,6 +1206,8 @@ export function MapScreen({
                 map={liveMap}
                 units={units}
                 noteContext={noteContext}
+                {...(hikerMile === undefined ? {} : { hikerMile })}
+                {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
               />
             )}

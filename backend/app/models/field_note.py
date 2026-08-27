@@ -47,19 +47,36 @@ class Observation(str, enum.Enum):
     """The one-tap tags, all POI types' values in one enum.
 
     FIELD_NOTES.md scopes them by poi_type - water gets flowing/trickling/
-    dry, shelters and campsites fine/damaged/full, resupply open/limited/
-    closed, and `not_found` is the dispute value every type shares. They
-    live in ONE enum because this backend cannot police the pairing: a POI's
-    type is a fact of the published artifact, not of any table here, so a
-    per-type check would need data the server does not hold. The client's
-    picker only offers the right values; a hand-built request that files
-    "dry" on a shelter produces a nonsense note the next hiker's note
-    supersedes, which is the same self-correction the whole surface leans on.
+    dry, shelters and campsites fine/damaged/trash, resupply open/limited/
+    closed, parking open/full/trash, and `not_found` is the dispute value
+    every type shares. They live in ONE enum because this backend cannot
+    police the pairing: a POI's type is a fact of the published artifact, not
+    of any table here, so a per-type check would need data the server does
+    not hold. The client's picker only offers the right values; a hand-built
+    request that files "dry" on a shelter produces a nonsense note the next
+    hiker's note supersedes, which is the same self-correction the whole
+    surface leans on.
 
     `not_found` is deliberately accepted at the wire even though tonight's
     client never sends it: it is FIELD_NOTES.md §4's dispute value, one
     observation among the others rather than a second model, and refusing it
     here would force a schema change the moment the dispute rendering lands.
+
+    `full` IS STILL ACCEPTED AND IS NO LONGER OFFERED ON A SHELTER (#1122).
+    The client stopped asking shelters and campsites about capacity - it is
+    the number the project already declines to publish - and moved `full` to
+    parking, where a hiker can actually see it. Removing it here would be a
+    different and worse thing: an old client in the field still sends it, and
+    a narrowed request enum is the one enum change scripts/check_openapi_compat.py
+    calls a break rather than an addition. Notes already holding it stay
+    readable for the same reason.
+
+    NO MIGRATION FOR `trash`. The column is `native_enum=False`, so Postgres
+    holds a plain VARCHAR(20) with no CHECK constraint behind it (SQLAlchemy
+    creates one only under `create_constraint=True`, which defaults off) -
+    there is no database object naming these members, and `alembic check`
+    finds no diff. tests/test_migrations.py is what proves that rather than
+    this comment.
     """
 
     # Water
@@ -69,8 +86,13 @@ class Observation(str, enum.Enum):
     # Shelters and campsites
     fine = "fine"
     damaged = "damaged"
+    # Shelters, campsites and parking - litter somebody left (#1122). Shares
+    # its name with the report type it escalates into, because they are the
+    # same complaint at two weights.
+    trash = "trash"
+    # Parking, and shelters before #1122
     full = "full"
-    # Resupply
+    # Resupply, and parking's good end
     open = "open"
     limited = "limited"
     closed = "closed"

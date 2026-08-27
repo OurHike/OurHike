@@ -2956,6 +2956,53 @@ a.poi-card__credit::after {
   color: var(--fg-1);
 }
 
+/* THE TWO ENDS OF THE SCALE, TINTED (#1122).
+
+   The ask is a thumbs up / thumbs down with words on it, and until now the
+   four answers were four identical pills - so which one was the good one was
+   readable only by reading, at 13px, in whatever light a hiker is standing
+   in. These are the app's own semantic status tokens rather than new ink, so
+   they re-point with the theme like everything else.
+
+   THE WORDS STILL CARRY THE MEANING. WIREFRAMES.md §11's rule is that the
+   visual channel never carries it alone, and nothing here is the only signal
+   for anything: the label says "Damaged", the tint says it a second time.
+   That is also what makes this safe for a hiker who cannot tell the two hues
+   apart.
+
+   8%, AND THE NUMBER IS MEASURED RATHER THAN EYEBALLED. A wash of a hue under
+   text of the same hue eats the contrast that hue was picked for. Measured
+   2026-08-27 against tokens/colors.css's own values, the tinted label holds
+   AA at 8% in every combination - the binding case is `--success` on its own
+   wash under the DARK theme at 4.52:1, which falls to 4.41 at 10% and stops
+   clearing AA. Raising it needs a different colour, not a different opacity.
+
+   Only the ends. The middle answers stay neutral, because a scale with three
+   coloured rungs is a scale that has to be learned. */
+.poi-card__observation--good {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
+}
+
+.poi-card__observation--good:hover {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border-color: var(--success);
+}
+
+.poi-card__observation--problem {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
+.poi-card__observation--problem:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border-color: var(--danger);
+}
+
 .poi-card__noted {
   margin-top: var(--space-2, 8px);
   font-size: 12px;
@@ -2966,8 +3013,11 @@ a.poi-card__credit::after {
   margin: 0;
 }
 
-.poi-card__escalate,
-.poi-card__report-here {
+/* The escalation keeps the quiet pill it has always had. It appears only
+   after a problem-shaped tap, in a card that has just acknowledged one, so it
+   is already the thing a hiker is looking at - it does not have to compete
+   for the eye the way the entry below does. */
+.poi-card__escalate {
   display: block;
   margin-top: var(--space-2, 8px);
   min-height: var(--min-touch-target, 44px);
@@ -2978,6 +3028,71 @@ a.poi-card__credit::after {
   border: 1px solid var(--bg-sunken);
   border-radius: var(--radius-pill, 999px);
   cursor: pointer;
+}
+
+/* THE REPORT ENTRY, AT A CONTROL'S WEIGHT (#1122).
+
+   It was the same 12px hairline pill as the escalation above, which is how a
+   card ends up with an escape hatch nobody uses: the four answers beside it
+   are 13px semibold pills with real borders, so the one control for
+   everything the four answers cannot say was also the quietest thing in the
+   section.
+
+   Full width and two lines, because it is doing two jobs - asking a question
+   a hiker can answer standing there, and naming the feature it lands on so
+   the screen behind it ("Report a problem") is not a surprise. The flag is
+   `aria-hidden` and decorative; both lines are real text.
+
+   Danger-tinted, at the same measured 8% as the problem answer above and for
+   the same reason - it is the same kind of thing. */
+.poi-card__report-here {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  /* Stated rather than left to the two lines of text to reach on their own -
+     they land at about 46px here, which happens to clear it and would stop
+     doing so the moment the hint got shorter or the type scale moved. */
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  text-align: left;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.poi-card__report-here:hover {
+  border-color: var(--danger);
+}
+
+.poi-card__report-flag {
+  flex: 0 0 auto;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--danger);
+}
+
+/* `min-width: 0` so the hint wraps inside the column rather than pushing the
+   button wider than the 264px card. */
+.poi-card__report-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.poi-card__report-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.poi-card__report-hint {
+  font-size: 11px;
+  color: var(--fg-2);
 }
 
 /* Now a span on the coordinates' own line rather than a paragraph under it

@@ -87,8 +87,27 @@ describe('stalenessPresentation', () => {
     // A viewpoint has no condition to be stale about (DATA_NUDGES.md) - no
     // ring, no words, no exception for water's day-one invite either.
     expect(stalenessPresentation('viewpoint', 'never')).toBeNull()
-    expect(stalenessPresentation('parking', 'stale')).toBeNull()
     expect(stalenessPresentation('privy', 'fresh')).toBeNull()
+    expect(stalenessPresentation('crossing', 'ageing')).toBeNull()
+  })
+
+  it('gives parking the tier now that the app asks parking a question (#1122)', () => {
+    // Parking moved INSIDE the scope, and this assertion used to be its
+    // opposite. It has to move with it rather than being an independent
+    // choice: a card that prints "Gone quiet" over a lot whose pin looks
+    // exactly like a fresh one is the two channels disagreeing about the same
+    // place. The words and the ring come from one function for that reason.
+    expect(stalenessPresentation('parking', 'stale')).toEqual({
+      treatment: stalenessTreatment('stale'),
+      words: 'Gone quiet',
+    })
+
+    // But not water's day-one invite, which stays water's alone (#256). An
+    // unconfirmed lot is neutral, exactly as an unconfirmed shelter is.
+    expect(stalenessPresentation('parking', 'never')).toEqual({
+      treatment: stalenessTreatment('never'),
+      words: 'Never confirmed',
+    })
   })
 })
 

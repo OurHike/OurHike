@@ -120,7 +120,87 @@ fall out of it:
   questions about an identification they did not make. This is argued at length under
   "Triage, not identification" because it is the point most likely to be optimised away later.
 
+## Two different people, and only one of them is a role
+
+The design needs to describe two people who are easy to conflate and must not be:
+
+| | **The surveyor** | **The coordinator** |
+|---|---|---|
+| What they do | Produce observations | Review them and submit them |
+| How many | Dozens per club | One or two per club |
+| Qualified by | Workshop training, per species | The club's trust, and a named iNaturalist account |
+| Modelled as | `InvasiveCredential` — many per person, species-scoped, dated | `Role.invasives` — one, on the profile |
+
+**These are not the same grant and must not share a mechanism.** Collapsing them fails in
+both directions: give every trained surveyor the power to submit on the organisation's behalf
+and you have dissolved the accountability iNaturalist's rule is asking for, since "willing to
+field questions" stops meaning anything when a hundred people share it; require the
+coordinator to hold a credential for every species and you have a role that lapses the season
+the target list changes.
+
+**`Role.invasives` is a new fourth role** (maintainer's call, 2026-08-28), and the rest of
+this section is about why it cannot simply join the existing moderator set.
+
+### It must not join `MODERATOR_ROLES`
+
+`MODERATOR_ROLES` is `(maintainer, club_admin)` and its definition in
+`backend/app/models/profile.py` says exactly what it is for:
+
+> The roles the moderation queue is gated to, **and** the roles that see a report's
+> `reporter_id`. ONE constant, because those two rules must not drift apart: a moderator who
+> can act on a report but cannot see who filed it, or worse the reverse, is a permission
+> model that only looks like one.
+
+Measured on 2026-08-28, that constant gates **thirteen endpoints in `routers/moderation.py`**,
+one in `routers/field_notes.py`, and is the `privileged` flag in both `schemas/report.py` and
+`schemas/field_note.py`. Adding `invasives` to it would hand an invasives coordinator the
+closure queue, the photo queue, the volunteer-hours queue, every report type, and
+`reporter_id` on all of them — including `bad_hikers`, which is `internal_only` precisely
+because it reports on *people* and which REPORT_A_PROBLEM.md routes to safety moderators.
+**An invasives coordinator has no business reading an account of somebody being followed on
+the trail.**
+
+So the role gets its own gate. Worth stating plainly that this makes it **the first scoped
+moderation role in the codebase**: `require_role` already accepts any roles, but every call
+site in the tree passes `*MODERATOR_ROLES`, so there is no narrower precedent to copy. That is
+an architectural addition, not an enum value.
+
+### `Role` is single-valued, and that is the trap
+
+`profile.role` is one column holding one value. A person is `hiker` **or** `maintainer` **or**
+`club_admin` **or** `invasives` — never two. So a club admin who also coordinates invasives
+has to pick one, and the failure path from there is easy to predict: whoever administers it
+picks `club_admin` because it is the more powerful of the two, nobody ends up holding
+`invasives`, and the next person to hit the wall adds `club_admin` to the invasives gate to
+unblock themselves. At that point the scoping exists only in the enum.
+
+**Recommendation: define the invasives gate as `(Role.invasives, Role.club_admin)`
+deliberately, and write down why** — a club admin can already grant themselves any role, so
+excluding them buys a workaround rather than a restriction. The containment is then
+one-directional and stated: `club_admin` ⊃ `invasives`, and `invasives` ⊅ `maintainer`. That
+is a real boundary; the version arrived at by accident six months later is not.
+
+The alternative — making roles multi-valued — is coherent and larger, and would touch the
+profile model, every `require_role` call site and the client's role handling. It should be a
+decision somebody takes on its own merits, not a side effect of this feature. Open question
+below.
+
+### `reporter_id` needs a narrower answer than the constant gives
+
+The coordinator genuinely needs to know who filed an observation — iNaturalist's rule requires
+the observer's permission and an attribution naming them, so an anonymous sighting cannot be
+submitted at all. But `privileged` is today a single boolean derived from
+`viewer.role in MODERATOR_ROLES`, applied uniformly across every report type.
+
+What this feature needs is narrower on two axes at once: identity **for `invasive_species`
+reports only**, and **only where export consent was given**. That makes the serialiser's
+`privileged` flag type-aware rather than role-aware alone, which is a real change to
+`schemas/report.py` and is called out here so it is costed rather than discovered.
+
 ## The credential: granted, species-scoped, and dated
+
+Now the other half — the surveyor, and what makes their observations worth more than a
+passer-by's.
 
 `ReporterType` is `thru | section | day | maintainer` and **it is self-declared** — the client
 reads it from `preferences.reporter_type`. `Role` on the profile is `hiker | maintainer |
@@ -187,13 +267,16 @@ which is the default rather than the escalation for somebody who opted into this
 
 ## The review queue
 
-A fifth resource on `Moderation.tsx`, and **its own queue rather than a filter on the
-existing one**, because the reviewer is a different person doing a different job.
+A fifth resource on `Moderation.tsx`, gated to `Role.invasives` per the section above, and
+**its own queue rather than a filter on the existing one** — because the reviewer is a
+different person doing a different job.
 
-The existing moderator is a trail moderator: `MODERATOR_ROLES` is `(maintainer, club_admin)`,
-and the question they answer is whether a report is a real trail condition worth showing
-hikers. Telling beech leaf disease from ordinary leaf scorch is a different skill, and the
-club that has it is not necessarily the club that maintains the mile.
+The existing moderator is a trail moderator, and the question they answer is whether a report
+is a real trail condition worth showing hikers. Telling beech leaf disease from ordinary leaf
+scorch is a different skill, and the club that has it is not necessarily the club that
+maintains the mile. The separate role is what makes that separation real rather than a
+convention: a trail moderator does not see this queue, and the coordinator does not see
+theirs.
 
 **Two verdicts, deliberately independent:**
 
@@ -322,6 +405,14 @@ exposure here is the **reporter**, not the organism.
 ## Data model sketch
 
 ```
+Role                               (EXISTING enum on Profile - gains a fourth value)
+  hiker | maintainer | club_admin
+  + invasives                      (the coordinator: reviews and submits. NOT added to
+                                    MODERATOR_ROLES - see "It must not join" above. Its own
+                                    gate, (Role.invasives, Role.club_admin), because Role is
+                                    single-valued and excluding an admin who can grant
+                                    themselves the role anyway buys only a workaround.)
+
 InvasiveCredential                 (new - the grant, versioned like MaintainerAssignment)
   id, profile_id
   club_id                          (who granted it - a club, never self)
@@ -374,10 +465,13 @@ submission path yet.
 
 ## Build order — five phases, each useful alone
 
-- **A — Reporter tiers and the credential.** `InvasiveCredential`, the as-of lookup, and the
-  smallest club-admin surface that can grant one. Also the `ReporterType` / `Role` cleanup, or
-  at minimum a comment in both places saying which one is a claim. **Useful alone:** it
-  removes a live ambiguity in the codebase regardless of whether anything below is built.
+- **A — The role and the credential.** `Role.invasives` with its own gate — deliberately not
+  `MODERATOR_ROLES`, and the first scoped moderation role in the codebase — plus
+  `InvasiveCredential`, the as-of lookup, and the smallest club-admin surface that can grant
+  one. The type-aware `privileged` change in `schemas/report.py` belongs here too, since the
+  role is worthless if it cannot see who filed what it reviews. **Useful alone:** it gives a
+  club a way to say who its invasives coordinator is, which nothing in the app can express
+  today.
 - **B — The survey.** `SurveySegment`, `SurveyPass`, offline-first, absence expressible,
   abandonment honest. **Useful alone:** it replaces paper field sheets and produces better
   data than the current process even if nothing is ever exported from it, because an Excel
@@ -434,11 +528,21 @@ credential another hiker may take instructions from.
    Recommendation is no — it is shown to the club and a human decides — but the alternative
    (a credential that lapses on repeated disagreement) is coherent and should be argued rather
    than dismissed.
-5. **Should `ReporterType.maintainer` be reconciled with `Role.maintainer` or deliberately kept
-   separate?** They answer different questions and the collision is only in the word. Renaming
-   one is a small change that touches a lot of files, so it wants a decision rather than a
-   drive-by.
-6. **Is the App ID gate real?** A single forum thread on 2026-08-28 indicated that applying for
+5. **Should `Role` become multi-valued?** `Role.invasives` is specified above against a
+   single-valued `profile.role`, with `(Role.invasives, Role.club_admin)` as the gate so an
+   admin who also coordinates invasives is not forced to choose. That works and is honest, but
+   it is a workaround for a model that cannot express "this person does two jobs" — which more
+   than one club will have. The refactor touches the profile model, every `require_role` call
+   site and the client's role handling, so it deserves a decision on its own merits rather
+   than being smuggled in here.
+6. **Should `ReporterType.maintainer` be reconciled with `Role.maintainer` or deliberately kept
+   separate?** **De-risked but not resolved by the 2026-08-28 decision above:** the credential
+   is `Role.invasives` plus `InvasiveCredential`, so nothing in this feature reads
+   `reporter_type` as a qualification and the trap this question was filed about is no longer
+   one this feature can fall into. The two words still mean different things in one codebase,
+   which is worth a decision — just no longer an urgent one, and renaming either touches a lot
+   of files.
+7. **Is the App ID gate real?** A single forum thread on 2026-08-28 indicated that applying for
    an iNaturalist API application requires the applicant's account to have ten improving
    identifications in the last month. **Unconfirmed, one source, possibly stale.** It does not
    block anything in this design — the CSV path needs no application — but it decides whether a

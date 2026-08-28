@@ -54,7 +54,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [POI_IDENTITY.md](features/POI_IDENTITY.md) | **v2, sixth feature — platform, not a screen.** A POI's published id is minted at first sight and owned for life: upstream keys become matching evidence rather than identity, a checked-in ledger reconciles the ATC's annual refresh — by key where keys survive, by evidence where they don't, by retiring into a tombstone where the place is gone — and a human reviews the ledger's diff on the release PR, never every point. What keeps photos, comments and saved plans anchored across the years. |
 | [POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) | **v2, seventh feature — platform, not a screen.** What happens when two sources describe one place: proximity proposes and evidence decides, precedence runs per field rather than per record so a merge combines instead of discarding, the decision is written as a `superseded_by` edge in POI_IDENTITY.md's ledger rather than a second one, and the duplicate check runs at submission time where the hiker who is standing there can answer it. Measured: 48 same-type pairs sit within 25 m of each other on the corridor and 35 of them are two real places, so the radius proposes and the name decides. |
 | [ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md) | **v2, ninth feature — designed, not started.** A hiker's own content follows their account between the web and their phone: what syncs and at what grain, why the device holds the truth while it is offline, why a conflict keeps both plans rather than picking one, and why sharing a photo and syncing one must never become the same act. Measured: 23 device storage keys sorted into the hiker's and the device's, and two finished endpoints nothing has ever called. |
-| [INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md) | **v3, first feature — designed, not started.** What happens to an invasive species sighting after it is filed: a trained surveyor's structured walk over an assigned segment (which can record *absence*, the thing an opportunistic sighting never can), a club-granted credential that is species-scoped and dated rather than a boolean, a second moderation queue for the different question a species ID asks, and an export to the scientific record NYNJTC already keeps. The first feature that sends a hiker's contribution out of OurHike to a third party. |
+| [INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md) | **v3, first feature — designed, not started.** What happens to an invasive species sighting after it is filed: a trained surveyor's structured walk over an assigned segment (which can record *absence*, the thing an opportunistic sighting never can), a club-granted credential that is species-scoped and dated rather than a boolean, a fourth `Role.invasives` gating a second moderation queue for the different question a species ID asks, and an export to the scientific record NYNJTC already keeps. The first feature that sends a hiker's contribution out of OurHike to a third party. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
@@ -317,11 +317,15 @@ Four things the design settled that reach beyond it:
   silence establishes nothing. That single asymmetry is why the design keeps structured
   surveys and opportunistic sightings apart all the way through rather than pouring both into
   one bucket — which would make an unsurveyed mile indistinguishable from a clean one.
-- **This repository already has two things called "maintainer" and only one of them is a
-  fact.** `ReporterType.maintainer` is self-declared from the client's preferences;
-  `Role.maintainer` is granted server-side and gates `MODERATOR_ROLES`. Harmless while
-  `reporter_type` is only ever attribution, and a trap the moment anything treats it as a
-  qualification — which is exactly what a training credential would have done.
+- **The moderation permission model is one constant, and it does not subdivide.**
+  `MODERATOR_ROLES` deliberately couples "can act on the queue" with "can see who filed it" —
+  its own comment says a model that separates them "only looks like one" — and it gates
+  thirteen endpoints plus the `privileged` flag on reports and field notes. A fourth role
+  (`Role.invasives`, the maintainer's call on 2026-08-28) therefore cannot join it: an
+  invasives coordinator would inherit the closure queue, the photo queue, and `reporter_id` on
+  `bad_hikers` reports about people being followed. It gets its own gate, which makes it the
+  first *scoped* moderation role in the codebase — and surfaces that `profile.role` is
+  single-valued, so a club admin who also coordinates invasives currently has to pick one.
 - **A third party's rules can be load-bearing on our design.** iNaturalist permits posting
   somebody else's observation only with their permission, a description saying so, and a
   submitter willing to field questions about it. That last clause is what rules out an

@@ -63,8 +63,16 @@ export interface SheetDownload {
   title: string
   summary: string
   status: DownloadStatus
-  /** What the whole sheet will take, at the chosen detail. */
-  sizeBytes: number
+  /**
+   * What the whole sheet will take, at the chosen detail - or null where
+   * nothing has measured it yet (#1167).
+   *
+   * Null is a real state rather than a gap: the hiking sheet's sizes come
+   * from `latest.json` alone now, so a phone that has never reached it does
+   * not know. Everything below that would otherwise print or compare against
+   * this figure withholds instead of guessing.
+   */
+  sizeBytes: number | null
   /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
   /** Whether this sheet's bytes are on the phone and the map could not draw
@@ -277,10 +285,19 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
     // round it against fingerprinting), and a hiker at a trailhead deciding
     // to try anyway is making an informed call, which is the whole point.
     // Against this sheet's whole size, since that is what its one tap brings.
+    // An unmeasured sheet raises no warning, which is the conservative
+    // direction here rather than the reckless one: the alternative is warning
+    // against a number this app does not have. A hiker who taps anyway meets
+    // the same storage failure they would have met with a wrong figure, and
+    // was not told something false on the way (#1167).
+    // Bound to a const so the warning below can read it narrowed - TypeScript
+    // cannot carry a narrowing through the separate `spaceTight` boolean.
+    const sheetSize = sheet.sizeBytes
     const spaceTight =
       facingFullDownload(sheet.status) &&
       availableBytes !== null &&
-      availableBytes < sheet.sizeBytes
+      sheetSize !== null &&
+      availableBytes < sheetSize
 
     return (
       <>
@@ -293,14 +310,16 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           <p className="downloads__warning" role="status">
             {sheet.status.state === 'evicted'
               ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
-                  sheet.sizeBytes,
+                  sheetSize ?? 0,
                 )} download. Freeing up space first makes another removal less likely.`
               : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
-                  sheet.sizeBytes,
+                  sheetSize ?? 0,
                 )} download may not fit. ${
                   sheet.detail.options.some(
                     (option) =>
-                      option.sizeBytes !== null && option.sizeBytes < sheet.sizeBytes,
+                      option.sizeBytes !== null &&
+                      sheetSize !== null &&
+                      option.sizeBytes < sheetSize,
                   )
                     ? 'A lighter detail level might, or free up some space first.'
                     : 'Freeing up some space first would make room for it.'

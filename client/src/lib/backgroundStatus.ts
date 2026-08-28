@@ -62,8 +62,15 @@ export function facingFullDownload(status: DownloadStatus): boolean {
 /** One archive's contribution to the whole. */
 export interface ArchiveState {
   status: DownloadStatus
-  /** Its measured published size. Never absent - see OfferedPackage. */
-  sizeBytes: number
+  /**
+   * Its measured published size, or null where nothing has measured it.
+   *
+   * Null only when `latest.json` has never been read on this phone (#1167
+   * took the hand-copied constants out, so the manifest is the only source).
+   * `bytesOf` says what that costs and why it is not the understatement it
+   * looks like.
+   */
+  sizeBytes: number | null
 }
 
 const NOT_DOWNLOADED: DownloadStatus = { state: 'not-downloaded' }
@@ -96,7 +103,22 @@ function bytesOf({ status, sizeBytes }: ArchiveState): {
     // published size is the honest expectation until the transfer resumes and
     // starts reporting real figures.
     case 'checking':
-      return { received: 0, total: sizeBytes }
+      // AN UNPRICED ARCHIVE EXPECTS NOTHING, which understates - the one
+      // direction this file otherwise refuses, so here is exactly when it can
+      // happen and why it does not reach a hiker.
+      //
+      // `sizeBytes` is null only on a phone that has never read latest.json.
+      // Every state that renders a total - `downloading` and `failed` - needs
+      // a transfer to have started, and a transfer needs the network that
+      // would have delivered the manifest. `checking` and the resting states
+      // total only from their own status, and a sheet where nothing has begun
+      // combines to `not-downloaded`, which carries no total at all.
+      //
+      // So this zero is unreachable rather than merely unlikely. If a caller
+      // ever reaches a live transfer beside an unpriced sibling, it becomes a
+      // real understatement and the null has to propagate into the combined
+      // total instead of being flattened here.
+      return { received: 0, total: sizeBytes ?? 0 }
   }
 }
 

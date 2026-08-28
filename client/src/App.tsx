@@ -1338,10 +1338,16 @@ function App() {
       combineBackgroundStatus(
         offeredPackages(sheet).map((pkg) => ({
           status: archiveStatusFor(pkg.idbKey),
-          sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel),
+          // WITH the manifest, which this call omitted until #1167. The sheet's
+          // headline figure below has passed `publishedSizes` since #505, so
+          // the two were resolving the same archives from different sources -
+          // the clump from the bucket and this arithmetic from a constant -
+          // and the comment at the breakdown claiming they "cannot disagree"
+          // was true only while the constant happened to match.
+          sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel, publishedSizes),
         })),
       ),
-    [archiveStatusFor, detailLevel, hikingLevel],
+    [archiveStatusFor, detailLevel, hikingLevel, publishedSizes],
   )
 
   /** The first of this sheet's archives with something to report. One card
@@ -5208,7 +5214,7 @@ function App() {
           assets: offeredPackages(sheet).map((pkg) => ({
             title: pkg.title,
             summary: pkg.summary,
-            sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel),
+            sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel, publishedSizes),
             status: archiveStatusFor(pkg.idbKey),
           })),
           // Each sheet's picker carries its own level set and writes its own

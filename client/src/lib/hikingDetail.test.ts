@@ -31,19 +31,19 @@ describe('the hiking sheet’s levels', () => {
     expect(offered).toEqual(['light', 'standard', 'fine'])
   })
 
-  it('never states a size for an artifact nobody has published', () => {
-    // The grade rule from CLAUDE.md at its sharpest: a size shown before a
-    // download is what a hiker weighs against their remaining storage, so a
-    // projection may not appear there wearing a measurement's clothes.
+  it('states no size at all, so none can go stale', () => {
+    // The grade rule from CLAUDE.md at its sharpest, and #1167's whole point.
+    // A size shown before a download is what a hiker weighs against their
+    // remaining storage, so it may not be a hand-copied literal wearing a
+    // measurement's clothes - and these had drifted up to 34.7% before they
+    // were removed. The manifest prices this sheet now; this table names it.
+    //
+    // Matched on the SHAPE of the key rather than on the two names that used
+    // to be here, so a re-added `basemapSizeBytes` fails without anybody
+    // having remembered to assert on it - and so would a differently spelled
+    // one.
     for (const detail of HIKING_DETAIL_LEVELS) {
-      if (detail.published) {
-        expect(detail.basemapSizeBytes).toBeGreaterThan(0)
-        expect(detail.demSizeBytes).toBeGreaterThan(0)
-      } else {
-        expect(detail.demSizeBytes === null || detail.basemapSizeBytes === null).toBe(
-          true,
-        )
-      }
+      expect(Object.keys(detail).filter((key) => /SizeBytes$/.test(key))).toEqual([])
     }
   })
 

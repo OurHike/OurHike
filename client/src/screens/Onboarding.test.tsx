@@ -5,6 +5,15 @@ import { Onboarding } from './Onboarding'
 import { ONBOARDING_STEPS } from '../lib/onboardingSteps'
 import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
 import { HERO_PHOTOS } from '../lib/heroPhotos'
+import { usePublishedSizes } from '../lib/usePublishedSizes'
+
+// The manifest is the only source of a size since #1167, so first run's
+// figures are now entirely a function of what this hook returns - which makes
+// mocking it the way to drive both states the size step can be in.
+vi.mock('../lib/usePublishedSizes', () => ({
+  usePublishedSizes: vi.fn(() => ({})),
+  NO_PUBLISHED_SIZES: {},
+}))
 
 // WIREFRAMES.md §5, plus TESTING.md item 11 (first run).
 //
@@ -25,12 +34,21 @@ import { HERO_PHOTOS } from '../lib/heroPhotos'
 
 const PROPS = { onComplete: vi.fn() }
 
-/** Light's whole-sheet size as first run renders it: the z12 basemap cut plus
- *  the harder-tapered DEM, both measured in UA's bucket (#1107). Written out
- *  rather than computed from hikingDetail.ts, for the same reason the other two
- *  rungs' figures are - a test that derives the expected string from the same
- *  table the screen reads cannot notice the two disagreeing. */
-const LIGHT_MB = '257.7 MB'
+/** The manifest, as the bucket would answer it - keyed the way the client
+ *  builds its keys, so these are the figures the screen must render.
+ *
+ *  Since #1167 this is the ONLY source of a size: hikingDetail.ts carries no
+ *  constants, so a first run with no manifest has nothing to print. Supplying
+ *  it here is what makes "with the real figures" a meaningful assertion again
+ *  - previously the numbers came from the table the screen also read, which
+ *  is a test that cannot notice the two disagreeing. */
+const MANIFEST: Record<string, number> = {
+  'at_basemap_package_z12.pmtiles': 75_451_755,
+  'at_basemap_package_z13.pmtiles': 182_774_166,
+  'at_basemap_package.pmtiles': 533_926_586,
+  'dem.pmtiles': 275_601_483,
+  'dem_light.pmtiles': 182_205_873,
+}
 
 afterEach(() => {
   cleanup()
@@ -103,17 +121,17 @@ describe('Onboarding', () => {
     )
   })
 
-  it('offers the hiking sheet\u2019s three levels on the map-size step, with the real figures', async () => {
+  it('offers the hiking sheet\u2019s three levels on the map-size step, with the manifest\u2019s figures', async () => {
     // The download decision shown is the one a hiker will actually meet in
     // the Downloads window (#277): the hiking sheet's own cuts at their
     // whole-sheet sizes, not the optional USGS raster's tiers.
     //
-    // The figures are the published artifacts' bytes summed per level, and
-    // they moved twice: the tapered DEM took Standard from 789.6 MB to
-    // 458.4 MB and Fine from 1.14 GB to 809.5 MB (#1088), and Light arrived
-    // at 257.7 MB with a DEM and a basemap cut of its own (#1107). Asserted as rendered
-    // strings on purpose - this is the number a hiker weighs against their
+    // Every figure comes from the manifest since #1167 - the table the screen
+    // reads carries none, so these strings can only be right if the bucket's
+    // own numbers made it all the way to the rung. Asserted as rendered
+    // strings on purpose: this is the number a hiker weighs against their
     // remaining storage, so a formatter change is a change to that.
+    vi.mocked(usePublishedSizes).mockReturnValue(MANIFEST)
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
@@ -121,9 +139,31 @@ describe('Onboarding', () => {
     for (const level of [/light/i, /standard/i, /fine/i]) {
       expect(screen.getByRole('radio', { name: level })).toBeEnabled()
     }
-    expect(screen.getByText(LIGHT_MB)).toBeInTheDocument()
+    expect(screen.getByText('257.7 MB')).toBeInTheDocument()
     expect(screen.getByText('458.4 MB')).toBeInTheDocument()
     expect(screen.getByText('809.5 MB')).toBeInTheDocument()
+  })
+
+  it('offers the same three levels with no figure at all when the manifest has not landed (#1167)', async () => {
+    // The state first run is MOST likely to be in: the app has just been
+    // installed and may be on a bad connection, which is exactly when
+    // somebody is deciding whether they have room.
+    //
+    // Three things have to hold at once, and the old constants got the third
+    // wrong by up to 34.7%: every rung is still offered, none is disabled,
+    // and none states a size. A guessed figure here is the one that strands
+    // a hiker who freed exactly enough.
+    vi.mocked(usePublishedSizes).mockReturnValue({})
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    for (const level of [/light/i, /standard/i, /fine/i]) {
+      expect(screen.getByRole('radio', { name: level })).toBeEnabled()
+    }
+    expect(screen.getAllByText(/unknown offline/i)).toHaveLength(3)
+    expect(screen.queryByText(/\d+(\.\d+)? [MG]B/)).toBeNull()
+    expect(screen.queryByText(/not offered/i)).toBeNull()
   })
 
   it('asks the map-size question in the download window\u2019s shape (#298, #855)', async () => {

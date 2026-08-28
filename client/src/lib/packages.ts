@@ -357,23 +357,30 @@ export function offlineBackgroundAvailable(rasterArchiveDownloaded: boolean): bo
 export function hikingSheetSizeBytes(
   level: HikingDetailLevel,
   published: PublishedSizes = NO_PUBLISHED_SIZES,
-): number {
+): number | null {
   return sheetSizeBytes(HIKING_SHEET, 'standard', level, published)
 }
 
-/** What one sheet will cost in total: every archive of it that is actually
- *  offered, at the chosen levels. Every one of them has a measured size, so
- *  this is a sum of measurements and never carries an estimate. */
+/**
+ * What one sheet will cost in total: every archive of it that is actually
+ * offered, at the chosen levels - or null if any one of them is unpriced.
+ *
+ * ALL OR NOTHING, deliberately. A sheet is one decision to a hiker, and a
+ * total that quietly omitted the archive nobody had measured would understate
+ * it - the direction that strands somebody who freed exactly enough. Summing
+ * what is known would be arithmetic on a number this app does not have.
+ */
 export function sheetSizeBytes(
   sheet: BackgroundSheet,
   detail: DetailLevel,
   hikingLevel: HikingDetailLevel,
   published: PublishedSizes = NO_PUBLISHED_SIZES,
-): number {
-  return offeredPackages(sheet).reduce(
-    (total, pkg) => total + packageSizeBytes(pkg, detail, hikingLevel, published),
-    0,
-  )
+): number | null {
+  return offeredPackages(sheet).reduce<number | null>((total, pkg) => {
+    if (total === null) return null
+    const size = packageSizeBytes(pkg, detail, hikingLevel, published)
+    return size === null ? null : total + size
+  }, 0)
 }
 
 /**
@@ -416,19 +423,26 @@ export function packageArtifactKey(
 }
 
 /**
- * What this package will cost in bytes.
+ * What this package will cost in bytes, or null where nothing has measured it.
  *
- * Always a real number, and always a measured one: the sizes shown before a
- * download are held to ±0.6% against measured artifacts (pipeline/README.md),
- * and `OfferedPackage` exists so that a package with no measurement behind it
- * cannot reach this function at all.
+ * ALWAYS MEASURED WHEN IT IS A NUMBER, which is the property worth keeping and
+ * the reason null exists at all: every figure this returns came off the bucket,
+ * either from `latest.json` (#505) or from a table whose artifacts nothing
+ * rebuilds. It never returns an estimate, and since #1167 it never returns a
+ * hand-copied constant for the hiking sheet - those had drifted up to 34.7%.
+ *
+ * A null is a real state rather than an error: the manifest has not landed
+ * (first run, no signal) and this level's size is genuinely not known yet. It
+ * reaches a hiker as withheld rather than guessed - an honest unknown outranks
+ * a confident answer, and a figure somebody frees exactly enough room for is
+ * the confidently wrong one.
  */
 export function packageSizeBytes(
   pkg: OfferedPackage,
   detail: DetailLevel,
   hikingLevel: HikingDetailLevel,
   published: PublishedSizes = NO_PUBLISHED_SIZES,
-): number {
+): number | null {
   // The bucket's own measurement wins wherever it exists (#505). The constants
   // below stop being the source of truth and become the answer for a phone
   // that has not been able to ask - which is a real state, not a degenerate
@@ -443,20 +457,17 @@ export function packageSizeBytes(
   if (measured !== undefined) return measured
 
   if (pkg.source.kind === 'tiered') return getDownloadDetail(detail).sizeBytes
-  if (pkg.source.kind === 'leveled') {
-    const detail = getHikingDetail(hikingLevel)
-    const size = pkg.source.of === 'dem' ? detail.demSizeBytes : detail.basemapSizeBytes
-    if (size === null) {
-      // Unreachable through the UI - offeredHikingDetails() keeps an
-      // unpublished level off every screen that offers one - so reaching it
-      // means a caller resolved a size for a level nobody may choose. Throwing
-      // names that at the seam rather than letting a NaN reach a hiker's
-      // remaining-storage sum, which is the number they decide on.
-      throw new Error(
-        `Hiking level '${hikingLevel}' has no published ${pkg.source.of} size`,
-      )
-    }
-    return size
-  }
+  // NULL RATHER THAN A CONSTANT, for the hiking sheet only (#1167). Its two
+  // artifacts are rebuilt often enough that a hand-copied figure had already
+  // drifted 34.7% from one environment; hikingDetail.ts's header carries the
+  // measurements. So a level the manifest has not priced has no price here,
+  // and the picker says so instead of showing a number nobody stands behind.
+  //
+  // This is the one branch that can answer null, which is why the return type
+  // widened rather than every caller gaining a guard for cases that cannot
+  // happen: `tiered` still falls back to downloadDetail.ts's table (its build
+  // is withdrawn under #855, so nothing is rebuilding those archives for a
+  // constant to drift away from), and a fixed package carries its own size.
+  if (pkg.source.kind === 'leveled') return null
   return pkg.source.sizeBytes
 }

@@ -221,24 +221,20 @@ def archive_keys(config_ts: str | None = None) -> dict[str, str]:
 # Each level of the hiking sheet, as hikingDetail.ts declares it. The fields
 # are read in the order that file writes them; a level missing any of them
 # fails the count guard below rather than matching into its neighbour.
+#: No size groups since #1167 - hikingDetail.ts no longer carries any. The
+#: table names artifacts and says whether a level is offered; what those
+#: artifacts weigh is `latest.json`'s to say, and the app reads it from there.
 _HIKING_LEVEL = re.compile(
     r"level:\s*'(?P<level>\w+)'.*?"
     r"\bartifact:\s*'(?P<basemap>[^']+)'.*?"
-    r"basemapSizeBytes:\s*(?P<basemap_bytes>[\d_]+|null).*?"
     r"demArtifact:\s*'(?P<dem>[^']+)'.*?"
-    r"demSizeBytes:\s*(?P<dem_bytes>[\d_]+|null).*?"
     r"published:\s*(?P<published>true|false)",
     re.DOTALL,
 )
 
 
-def _optional_bytes(value: str) -> int | None:
-    return None if value == "null" else int(value.replace("_", ""))
-
-
 def hiking_sheet_levels(hiking_detail_ts: str | None = None) -> list[dict]:
-    """Every hiking-sheet level: its two artifacts, their advertised sizes, and
-    whether the app offers it.
+    """Every hiking-sheet level: its two artifacts and whether the app offers it.
 
     THE SHEET HIKERS ACTUALLY DOWNLOAD, and until #1144 nothing here read it.
     Checks 2 and 18 knew only `downloadDetail.ts`'s tiers - the USGS raster,
@@ -246,6 +242,14 @@ def hiking_sheet_levels(hiking_detail_ts: str | None = None) -> list[dict]:
     verified green, and the advertised figures that moved this cycle (a DEM
     from 607 MB to 276) had no drift gate at all. Two comments claimed
     otherwise; both are corrected.
+
+    NO SIZES ANY MORE (#1167). This used to return each artifact's advertised
+    bytes so check 18 could weigh them, and that check was the reason the
+    constants had to be hand-edited in lockstep with a promotion. The client
+    stopped advertising, so there is nothing left to weigh - see check 18.
+    What remains is the half that matters for the four ways this app can hurt
+    somebody: check 2 asks whether every key the app can request is actually
+    in the release, and a missing one is a 404 on a mountain.
 
     Read out of the client's own table for the reason `expected_client_keys`
     reads config.ts, and holds the same line: a level whose entry this cannot
@@ -265,10 +269,9 @@ def hiking_sheet_levels(hiking_detail_ts: str | None = None) -> list[dict]:
         {
             "level": level["level"],
             "published": level["published"] == "true",
-            "artifacts": {
-                level["basemap"]: _optional_bytes(level["basemap_bytes"]),
-                level["dem"]: _optional_bytes(level["dem_bytes"]),
-            },
+            # A tuple rather than a mapping now that there is no size to map
+            # to. Both readers iterate keys, so this is the same iteration.
+            "artifacts": (level["basemap"], level["dem"]),
         }
         for level in levels
     ]
@@ -1392,24 +1395,19 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
         if tier in sizes:
             reports.append(check_advertised_size(base, key, tier, sizes[tier], session))
 
-    # The hiking sheet's own advertised figures (#1144). Once per artifact,
-    # for the reason check 2 dedupes: Standard and Fine share a DEM.
-    weighed: set[str] = set()
-    for level in hiking_sheet_levels():
-        for key, advertised in level["artifacts"].items():
-            if key in weighed:
-                continue
-            weighed.add(key)
-            label = f"{level['level']} hiking sheet"
-            if advertised is None:
-                # A null size is hikingDetail.ts saying this artifact has not
-                # been weighed in the bucket yet, which is a state it carries
-                # deliberately rather than a figure to check.
-                reports.append(_report(18, key, SKIPPED, f"the {label} advertises no size for this artifact yet"))
-            elif key not in artifacts:
-                reports.append(_report(18, key, SKIPPED, "this artifact is not in the release, so there is nothing to weigh"))
-            else:
-                reports.append(check_advertised_size(base, key, label, advertised, session))
+    # THE HIKING SHEET IS NOT WEIGHED HERE, and its absence is the point (#1167).
+    #
+    # #1144 added exactly that loop, because the client advertised each of these
+    # artifacts to the byte and nothing held the two together. It worked, and it
+    # made a hand-copied constant into a release gate: promoting the basemap and
+    # editing three literals became one indivisible change, or the release
+    # failed. The constants are gone now - the app reads `latest.json` and shows
+    # nothing where the manifest is silent - so there is no advertised figure to
+    # drift and nothing for this check to compare.
+    #
+    # Check 2 above still asks the question that protects a hiker: is every key
+    # the app can request actually in this release. A missing artifact is a 404
+    # on a mountain; a size the app never claimed is not a risk at all.
 
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
     reports += check_poi_identity(base, manifest, session)

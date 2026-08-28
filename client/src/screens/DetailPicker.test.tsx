@@ -21,9 +21,24 @@ afterEach(cleanup)
 
 const group = () => within(screen.getByRole('group', { name: /map detail/i }))
 
-/** One rung, priced. Enough to drive the picker without a real sheet. */
+/** One rung, priced. Enough to drive the picker without a real sheet.
+ *
+ *  `offered` defaults to "this rung exists", which since #1167 is a separate
+ *  question from whether anything has priced it - see `unpriced` below. */
 function option(id: string, sizeBytes: number | null, recommended = false): DetailOption {
-  return { id, label: id[0].toUpperCase() + id.slice(1), sizeBytes, recommended }
+  return {
+    id,
+    label: id[0].toUpperCase() + id.slice(1),
+    sizeBytes,
+    offered: sizeBytes !== null,
+    recommended,
+  }
+}
+
+/** A rung the sheet really offers whose size nothing has measured - what a
+ *  phone that has never reached `latest.json` sees (#1167). */
+function unpriced(id: string, recommended = false): DetailOption {
+  return { ...option(id, null, recommended), offered: true }
 }
 
 const LADDER = [
@@ -240,6 +255,54 @@ describe('the three greyed cases stay distinguishable', () => {
     expect(rung(/light/i)).toBeDisabled()
     expect(group().getAllByText(/not offered/i)).toHaveLength(3)
     expect(group().queryByText(/no room on this phone/i)).toBeNull()
+  })
+
+  it('says the size is unknown offline, and still lets the rung be chosen (#1167)', () => {
+    // The third state, and the reason `offered` is a field rather than
+    // `sizeBytes !== null`. A hiker with no signal knows which levels exist -
+    // hikingDetail.ts still names them - and does not know what they weigh,
+    // because the manifest that prices them has not landed.
+    //
+    // Saying "Not offered" there would hide a map they can actually take, and
+    // printing a number would be inventing one. Neither is acceptable on the
+    // screen where somebody decides whether they have room.
+    render(
+      <DetailPicker
+        options={[
+          option('light', 65_000_000),
+          unpriced('standard', true),
+          option('fine', 1_184_700_000),
+        ]}
+        value="standard"
+        onChange={() => {}}
+        availableBytes={1_000_000_000}
+      />,
+    )
+
+    expect(group().getByText(/unknown offline/i)).toBeInTheDocument()
+    expect(group().queryByText(/not offered/i)).toBeNull()
+    // Choosable, and still the chosen one: withholding a size is not
+    // withholding the map, and it must not silently re-point the hiker's
+    // preference at a rung they did not ask for.
+    expect(rung(/standard/i)).toBeEnabled()
+    expect(rung(/standard/i)).toBeChecked()
+  })
+
+  it('never calls an unpriced rung short of room, because it cannot know', () => {
+    // "No room on this phone" is a comparison, and there is nothing to
+    // compare against. Warning anyway would be a confident answer built on a
+    // number this app does not have.
+    render(
+      <DetailPicker
+        options={[unpriced('standard', true)]}
+        value="standard"
+        onChange={() => {}}
+        availableBytes={1}
+      />,
+    )
+
+    expect(group().queryByText(/no room on this phone/i)).toBeNull()
+    expect(rung(/standard/i)).toBeEnabled()
   })
 
   it('offers every rung of the hiking sheet on a phone with room (#1107)', () => {

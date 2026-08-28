@@ -409,6 +409,15 @@ def test_main_re_grades_a_stale_file_it_resumes_from(tmp_path, monkeypatch):
     is the half that would fail silently by producing the old verdicts."""
     out = tmp_path / "reach.json"
     monkeypatch.setattr(reach, "OUT_PATH", out)
+    # NETWORK_LINES_PATH for the same reason `_measure` redirects it, and this
+    # is the one test that reaches main() without going through that helper
+    # (#1139). Resuming is the whole subject here, and `wants_remeasure` asks
+    # whether the artifact exists: on a tree that has run export_nearby_trails.py
+    # the real file is there, the stale payload carries no
+    # `measured_against_network` key, and main() re-measures instead - reaching
+    # for a data/raw/centerline.geojson no test ever staged. Absent is the
+    # resume case stated rather than left to whatever the machine has on disk.
+    monkeypatch.setattr(reach, "NETWORK_LINES_PATH", tmp_path / "nearby_trails.geojson")
     monkeypatch.setattr(reach.fetch_receipts, "record", lambda *a, **k: {})
     _stub_elevations(monkeypatch, 1000.0, 1000.4)  # 0.4 ft drop
     stale = [_graded(osm_id=str(i), nearest_m=0.26) for i in range(reach.MIN_REACHABLE + 5)]

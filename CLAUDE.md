@@ -22,11 +22,20 @@ prints. `trailPosition.ts` explains why `MAX_OFF_TRAIL_MILES` is 3 and not a rou
 number — it has to fit inside the bucket search — and then says what the alternative
 would be: "a worse thing to be than merely conservative."
 
-Against that, `staleness.ts` declares `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60`
-and says nothing at all about where either came from. WIREFRAMES.md §11 writes them as
-"≤ ~14 days" and "~14–60 days"; the tildes are the only hint that they are a mock-up's
-round numbers rather than anybody's finding, and the tildes did not survive into the
-code. Those two constants decide whether a hiker reads a water report as trustworthy.
+`staleness.ts` is the counter-example, and it is more useful now as a repair than it was
+as an offender. It declared `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60` and said
+nothing at all about where either came from — while WIREFRAMES.md §11 writes them as
+"≤ ~14 days" and "~14–60 days", the tildes being the only hint that they are a mock-up's
+round numbers rather than anybody's finding, and the tildes had not survived into the
+code. Two constants deciding whether a hiker reads a water report as trustworthy, resting
+on nothing a reader could see.
+
+What it looks like fixed is worth reading, because the numbers did not move: #972 left
+both at 14 and 60 and added the eight lines saying they are `@unvalidated`, that the
+tildes are the whole provenance, and what would settle them — field-note data, "how fast
+a confirmation actually stops predicting what a hiker finds, which plausibly differs by
+POI type (a shelter does not dry up in August; a spring does)." The repair was never
+about finding better numbers. It was about a reader being able to tell that nobody had.
 
 Three grades. The words are not interchangeable and a claim that picks the wrong one is
 worse than a claim with no adjective at all:

@@ -2,9 +2,9 @@
 
 Companion to [../WIREFRAMES.md](../WIREFRAMES.md) §1.3 and §1.4, [../FEATURES.md](../FEATURES.md)'s elevation line, and [PERSONALIZED_PACE.md](PERSONALIZED_PACE.md).
 
-Covers the phone's elevation ribbon and the three waypoint lanes beneath it. **Not** the desktop's full interactive chart, which is a separate component with its own selection model.
+Covers the phone's elevation ribbon and the waypoint strip beneath it — the three waypoint lanes as this was written, the next-up rail since [#1054](https://github.com/OurHike/OurHike/issues/1054). **Not** the desktop's full interactive chart, which is a separate component with its own selection model.
 
-**Scope note up front: almost all of this already exists.** `chrome/ElevationRibbon.tsx` and `chrome/WaypointLanes.tsx` are built and tested. `MapScreen` accepts both as optional props. `lib/elevationGain.ts` counts confirmed ascent, `lib/waypointLanes.ts` clusters pins, `lib/naismith.ts` gives the time estimate, and `pipeline/export_elevation.py` publishes the profile. What was missing is the wire between the last two, plus the two decisions below — neither of which is plumbing, which is why they are written down before the code rather than settled by whoever typed it.
+**Scope note up front: almost all of this already exists.** `chrome/ElevationRibbon.tsx` and `chrome/NextUpRail.tsx` are built and tested, and `MapScreen` renders both. `lib/elevationGain.ts` counts confirmed ascent, `lib/ribbonView.ts` shapes the waypoints the rail walks, `lib/naismith.ts` gives the time estimate, and `pipeline/export_elevation.py` publishes the profile. *(This section was written against `chrome/WaypointLanes.tsx` and `lib/waypointLanes.ts`, the three lanes [#1054](https://github.com/OurHike/OurHike/issues/1054) replaced with the rail; the two successors named above are where that work now lives.)* What was missing is the wire between the last two, plus the two decisions below — neither of which is plumbing, which is why they are written down before the code rather than settled by whoever typed it.
 
 ---
 
@@ -30,7 +30,7 @@ The resident figure is the one worth acting on, and it is why the client stores 
 
 ## Decision 1 — the window is 10 miles: one behind, nine ahead
 
-Nothing in WIREFRAMES.md or FEATURES.md fixed this, and it has to be fixed because it is what the lanes cluster against: `lib/waypointLanes.ts` collapses pins closer than 1.5% *of the window*, deliberately, since overlap is a rendering problem rather than a distance one.
+Nothing in WIREFRAMES.md or FEATURES.md fixed this, and it has to be fixed because it is what the pins cluster against: pins closer than 1.5% *of the window* collapse, deliberately, since overlap is a rendering problem rather than a distance one. That threshold was `lib/waypointLanes.ts`'s `COLLAPSE_THRESHOLD_PCT`; [#1054](https://github.com/OurHike/OurHike/issues/1054) deleted it with the lanes, and `lib/ribbonView.ts` now writes the figure out longhand — "because there is no longer anywhere to import it from" — with the arithmetic that still rests on it.
 
 **Nine miles ahead**, for three reasons that agree:
 
@@ -112,7 +112,7 @@ The line above was right about the question and wrong about the *device*. "Witho
 Three more things no domain but `ahead` gets:
 
 - **No "you are here" rule unless the fix is genuinely inside the domain.** Clamped to an edge by the SVG viewport, the rule would read as *you are at the start of this*. That is a claim about somebody's position, which is the one thing this surface must never guess at.
-- **No waypoint lanes.** `lib/waypointLanes.ts` collapses pins closer than 1.5% *of the window*, a threshold Decision 1 sized against ten miles precisely so springs stay individually tappable. On a 60-mile plan it is 0.9 mi and the water lane degenerates into the row of count pills that decision names as the reason the window is not longer. The lanes ride with the fix window — they share it by construction, computed once in the shell — or they are not drawn. **Reversed by #913 — see "The lanes go where the ribbon goes" below.** The arithmetic is still right; what it was weighed against was not the alternative.
+- **No waypoint lanes.** The lanes collapsed pins closer than 1.5% *of the window* (`lib/waypointLanes.ts`, since replaced — see the scope note above), a threshold Decision 1 sized against ten miles precisely so springs stay individually tappable. On a 60-mile plan it is 0.9 mi and the water lane degenerates into the row of count pills that decision names as the reason the window is not longer. The lanes ride with the fix window — they share it by construction, computed once in the shell — or they are not drawn. **Reversed by #913 — see "The lanes go where the ribbon goes" below.** The arithmetic is still right; what it was weighed against was not the alternative.
 - **No figures.** Distance, climb and ≈time belong to `RouteStopsPanel` and `RouteEntranceSheet`, which price the walk at the hiker's own pace through `lib/route.ts`'s `legFigures`. A second time derived a second way is exactly the disagreement one source of truth exists to prevent. The ribbon contributes the shape, which is the thing that was missing.
 
 ### Taking the map, and getting back
@@ -148,4 +148,4 @@ So `ribbonLanes` (`lib/ribbonView.ts`) builds the lanes from the same decision t
 
 **Staleness rides along**, through the same `stalenessPresentation` lookup the field lanes use (#759) — one callback whichever domain wins, because a spring that is stale in the field is stale on a plan and two lookups would be two chances to disagree about it.
 
-**Unchanged, and worth naming because it is wider here:** a count pill opens its first member. `chrome/WaypointLanes.tsx` documents that limit; on a 60-mile domain the members it stands for can be most of a mile apart rather than metres. Closing it means a pill that opens a list, which is a change to the lanes themselves rather than to which ground they cover.
+**Unchanged, and worth naming because it is wider here:** a count pill opens its first member. `lib/ribbonView.ts` documents that limit, inheriting it from `chrome/WaypointLanes.tsx` (replaced — see the scope note above); on a 60-mile domain the members it stands for can be most of a mile apart rather than metres. Closing it means a pill that opens a list, which is a change to the lanes themselves rather than to which ground they cover.

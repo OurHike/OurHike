@@ -22,7 +22,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 ## Feature design docs
 
-Thirty-five docs in [features/](features/) — thirty-three features and two consolidated references. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. The table below is six rows short of the directory: CONDITIONS_DELIVERY.md, CORRIDOR_VIEW.md, MAP_STYLE_SPEC.md, POI_PHOTOS.md, POI_SITES.md and POI_VISIBILITY.md are written and unlisted — a count this paragraph had let drift to "three" while three more docs landed unindexed, corrected 2026-08-13 in the change that added a row. ATC_TRAIL_UPDATES.md was the fourth until 2026-08-12, and it is worth naming what that cost: the feature carried `v1-mvp` labels on three issues while neither of the two documents a person reads to learn what v1 *is* mentioned it at all. ELEVATION_PROFILE.md below records the same gap ending the same way, which is twice.
+Forty-four docs in [features/](features/). Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. **The table below is eleven rows short of the directory, and this paragraph has now been wrong about that twice** — it read "thirty-five docs… six rows short" until 2026-08-28, having drifted from "three" before that. Measured on 2026-08-28, the docs this file does not mention anywhere are APP_FAILURE_REPORTS.md, CONDITIONS_DELIVERY.md, CORRIDOR_VIEW.md, DATA_REFRESH.md, MAP_CHROME.md, MAP_STYLE_SPEC.md, MORE_TAB.md, ORG_NOTICES.md, POI_SITES.md, POI_VISIBILITY.md and ROUTE_OWNERSHIP.md. Adding those rows is not this change's to do, but the drift is worth naming rather than re-lowering: a count corrected only when somebody happens to add a row is a count that is wrong most of the time. ATC_TRAIL_UPDATES.md was the fourth until 2026-08-12, and it is worth naming what that cost: the feature carried `v1-mvp` labels on three issues while neither of the two documents a person reads to learn what v1 *is* mentioned it at all. ELEVATION_PROFILE.md below records the same gap ending the same way, which is twice.
 
 A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Report a Problem**, Map Options' **closures**, and Hiker Safety's **warnings and wrong-way alert** into the v1 MVP — see TECHNICAL_ARCHITECTURE.md's revised Backend section. The scope column reflects that revision, not the scope each doc originally launched with.
 
@@ -54,6 +54,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [POI_IDENTITY.md](features/POI_IDENTITY.md) | **v2, sixth feature — platform, not a screen.** A POI's published id is minted at first sight and owned for life: upstream keys become matching evidence rather than identity, a checked-in ledger reconciles the ATC's annual refresh — by key where keys survive, by evidence where they don't, by retiring into a tombstone where the place is gone — and a human reviews the ledger's diff on the release PR, never every point. What keeps photos, comments and saved plans anchored across the years. |
 | [POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) | **v2, seventh feature — platform, not a screen.** What happens when two sources describe one place: proximity proposes and evidence decides, precedence runs per field rather than per record so a merge combines instead of discarding, the decision is written as a `superseded_by` edge in POI_IDENTITY.md's ledger rather than a second one, and the duplicate check runs at submission time where the hiker who is standing there can answer it. Measured: 48 same-type pairs sit within 25 m of each other on the corridor and 35 of them are two real places, so the radius proposes and the name decides. |
 | [ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md) | **v2, ninth feature — designed, not started.** A hiker's own content follows their account between the web and their phone: what syncs and at what grain, why the device holds the truth while it is offline, why a conflict keeps both plans rather than picking one, and why sharing a photo and syncing one must never become the same act. Measured: 23 device storage keys sorted into the hiker's and the device's, and two finished endpoints nothing has ever called. |
+| [INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md) | **v3, first feature — designed, not started.** What happens to an invasive species sighting after it is filed: a trained surveyor's structured walk over an assigned segment (which can record *absence*, the thing an opportunistic sighting never can), a club-granted credential that is species-scoped and dated rather than a boolean, a second moderation queue for the different question a species ID asks, and an export to the scientific record NYNJTC already keeps. The first feature that sends a hiker's contribution out of OurHike to a third party. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
@@ -287,3 +288,51 @@ Three things it settled that reach beyond it:
 - **A/B tests at club scale can find big effects and cannot find small ones** — ~260 devices per arm to detect 20%→30%, ~25,600 to detect a 5% relative lift. So staged rollout watched against guardrails is the default and experiments are for genuine disagreements, and the aggregate shape that follows leaves GrowthBook's *analysis* half unused while its flagging half stands.
 
 It also states the thing this project has to keep saying to itself: an app committed to being used *less* cannot treat engagement as a goal, so every engagement number is read next to a task-success number or not at all.
+
+---
+
+## v3 — the sighting that leaves the app
+
+**Named here for the first time, 2026-08-28.** The `v3` label already existed and carried one
+issue — [#838](https://github.com/OurHike/OurHike/issues/838) — *v3: shipping anything takes
+thirty workflows and a maintainer who remembers all of them* — which is a scoping issue about
+the project's own machinery rather than about hikers. This is the first v3 entry that is a
+feature.
+
+**Scoped 2026-08-28 as v3's first feature: [features/INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md).**
+v1 answers *where am I*; v2 answers *where am I going* and *what can I give back*. This
+answers a question none of them do: **what happens to a hiker's observation after the app has
+finished with it.** Every contribution OurHike currently accepts ends at a pin on OurHike's
+own map. This is the first feature that sends one out of the building.
+
+The occasion is that NYNJTC already runs the programme. Trained volunteers walk assigned
+two-mile trail sections recording a short list of target invasives, and the findings reach
+iNaturalist and iMapInvasives. `invasive_species` has been a real report type here since
+2026-07-30 — tile, outbox, backend model, moderation queue — and has never had anywhere to go.
+
+Four things the design settled that reach beyond it:
+
+- **Absence is data, and only one kind of reporter can produce it.** A trained surveyor who
+  walks a segment and finds no tree of heaven has established a negative; a passer-by's
+  silence establishes nothing. That single asymmetry is why the design keeps structured
+  surveys and opportunistic sightings apart all the way through rather than pouring both into
+  one bucket — which would make an unsurveyed mile indistinguishable from a clean one.
+- **This repository already has two things called "maintainer" and only one of them is a
+  fact.** `ReporterType.maintainer` is self-declared from the client's preferences;
+  `Role.maintainer` is granted server-side and gates `MODERATOR_ROLES`. Harmless while
+  `reporter_type` is only ever attribution, and a trap the moment anything treats it as a
+  qualification — which is exactly what a training credential would have done.
+- **A third party's rules can be load-bearing on our design.** iNaturalist permits posting
+  somebody else's observation only with their permission, a description saying so, and a
+  submitter willing to field questions about it. That last clause is what rules out an
+  automated identification reaching a submitted field, and it is a stronger constraint than
+  anything OurHike would have imposed on itself.
+- **The most valuable half needs no write access at all.** iNaturalist's API is public for
+  reads, so once the community identifies an observation the app can tell the person who
+  reported it what they actually found — the only reward this repository's anti-gamification
+  guardrails permit, because it is a fact about a plant rather than a point.
+
+Like planning a hike and trails within reach of NYC, it starts with a question that cannot be
+answered from inside a session: whether NYNJTC's bottleneck is submitting to iNaturalist or
+transcribing paper field sheets. The two answers make different halves of the feature the one
+worth building first, and the doc says so rather than picking.

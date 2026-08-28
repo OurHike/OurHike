@@ -59,6 +59,11 @@
 // browser and no account, so the other three are kept the same way.
 export const caption =
   'Trail notices, scrolled to the foot of the list — the “Show N more” control, which had no styles at all until now'
+
+/** Short, and the drive says why: the default 3500 leaves the shutter open
+ *  through a re-render that scrolls this list back to the top. Every step of
+ *  the drive auto-waits, so the settle this replaces was already redundant. */
+export const wait = 700
 export const alt =
   'The foot of the trail-notices sheet, scrolled down: the last of the notices, each credited to the organization that posted it — the Appalachian Trail Conservancy or the New York-New Jersey Trail Conference — with the NYNJTC rows carrying a locality such as Harriman-Bear Mountain, no category line, and a note that they are not drawn on the map. Beneath the last row, a plain text control in the link colour offers to show the remaining notices elsewhere on the trail, where it previously drew as the browser’s default grey push button.'
 
@@ -127,4 +132,23 @@ export default async function drive(page) {
     name: /Show \d+ more, elsewhere on the trail/,
   })
   await showAll.scrollIntoViewIfNeeded()
+
+  // AND HOLD IT THERE, because one scroll was not enough either - the second
+  // frame proved that too. `scripts/screenshot.mjs` runs `drive(page)`, then
+  // `waitForTimeout(wait)`, THEN shoots, so there is a settle between the
+  // scroll and the shutter; the shell's `now` ticks during it, `scopedNotices`
+  // recomputes, the list re-renders and the scroller goes back to the top. The
+  // second frame landed deep in the list - NYNJTC's June 2025 alerts, which
+  // sort near the bottom - and still had no control in it, which is what a
+  // scroll that happened and was then undone looks like.
+  //
+  // Re-scrolling for two seconds outlasts a tick, and `wait` below is dropped
+  // to just enough for the paint so the shutter is not sitting open through
+  // another one. The drive's own steps do the settling that the long default
+  // wait used to: every locator here auto-waits, and the dialog `waitFor`
+  // above is a real assertion rather than a timer.
+  for (let i = 0; i < 8; i += 1) {
+    await page.waitForTimeout(250)
+    await showAll.scrollIntoViewIfNeeded()
+  }
 }

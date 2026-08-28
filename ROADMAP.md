@@ -324,8 +324,12 @@ Four things the design settled that reach beyond it:
   (`Role.invasives`, the maintainer's call on 2026-08-28) therefore cannot join it: an
   invasives coordinator would inherit the closure queue, the photo queue, and `reporter_id` on
   `bad_hikers` reports about people being followed. It gets its own gate, which makes it the
-  first *scoped* moderation role in the codebase — and surfaces that `profile.role` is
-  single-valued, so a club admin who also coordinates invasives currently has to pick one.
+  first *scoped* moderation role in the codebase — and surfaced that `profile.role` is
+  single-valued, so a club admin who also coordinates invasives would have had to pick one.
+  **`Role` becomes multi-valued as a result** (maintainer, 2026-08-28), chosen over the
+  two-role gate the doc proposed: a permission model that cannot express a true thing about
+  the organisation using it gets worked around, and the workaround is what stops being
+  visible.
 - **A third party's rules can be load-bearing on our design.** iNaturalist permits posting
   somebody else's observation only with their permission, a description saying so, and a
   submitter willing to field questions about it. That last clause is what rules out an
@@ -340,3 +344,21 @@ Like planning a hike and trails within reach of NYC, it starts with a question t
 answered from inside a session: whether NYNJTC's bottleneck is submitting to iNaturalist or
 transcribing paper field sheets. The two answers make different halves of the feature the one
 worth building first, and the doc says so rather than picking.
+
+**Its first phase turned out not to belong to it, which is worth knowing before anyone picks
+it up (2026-08-28).** Four decisions the design took — multi-valued roles, a role-granting
+mechanism, `RoleInvite`, and renaming the self-declared `ReporterType.maintainer` — are
+identity and permissions platform work with nothing invasive about them, and they are the four
+carrying migrations. The doc recommends splitting them out as **A0**, with invasive species as
+their first consumer rather than their owner, on the same argument that made
+[POI_IDENTITY.md](features/POI_IDENTITY.md) and
+[POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) *"platform, not a screen"*. It also
+unblocks differently: everything else in the feature waits on the NYNJTC question, and A0
+waits on nothing.
+
+*Two of the doc's eight open questions closed on research the same day. **iMapInvasives is not
+a second export target** — it runs a New York project on iNaturalist and ingests from there
+after its own QC, so the state database is reached through iNat rather than alongside it. And
+the **iNaturalist App ID gate is real**: registering an OAuth application needs an account two
+months old with ten improving identifications in the last month, which gates a person rather
+than the project, and which the CSV path avoids entirely.*

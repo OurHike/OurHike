@@ -41,7 +41,7 @@ import {
   type MileExtent,
   type TrailNotice,
 } from '../lib/notices'
-import type { Stewards } from '../lib/stewards'
+import { possessive, type Stewards } from '../lib/stewards'
 
 export interface NoticeListProps {
   /** Every notice the app holds, from every publisher, in whatever order it
@@ -92,15 +92,6 @@ export interface NoticeListProps {
   /** The shell's clock, so "posted today" moves with it. */
   now: Date
   onClose: () => void
-}
-
-/** `the ATC` -> `the ATC's`. Kept here rather than in a util because it is one
- *  rule with one caller, and because the rule is about ENGLISH and not about
- *  notices: an organization whose name already ends in s takes the bare
- *  apostrophe. None of the registered organizations does today; the branch is
- *  there so the first one that registers does not read wrong. */
-function possessive(name: string): string {
-  return name.endsWith('s') ? `${name}’` : `${name}’s`
 }
 
 /** The extent of a notice that has one, or null. Only `at_miles` carries a

@@ -28,7 +28,7 @@
       "release": "pre-1.0.0",
       "document": "pre-1.0.0.json",
       "published": "2026-08-08",
-      "superseded": null,
+      "superseded": "2026-08-27",
       "pinned": false,
       "note": "Not a release. No tag exists yet - `git tag -l` is empty and releases/ holds only a README. This records the API shape as of the date above so the check has something to be true about, and the first real release replaces it rather than joining it.",
       "refreshed": [
@@ -36,6 +36,18 @@
         "This entry is a same-day snapshot, not a compatibility promise, and refreshing it is what its own note above describes. Once a real tag exists this stops being available: a removal then is a major-version break under RELEASING.md 8c, and the baselines move with the release rather than with the change.",
         "2026-08-13, for #641: `MaintainerAssignmentOut.maintainer_id` was removed - the same shape as #430's removal above, on the read path #430's own body said to check. The justification is #430's, still true on this date: `git tag -l` is still empty, releases/ still holds only a README, GitHub has zero releases even as drafts, and the backend has still never been deployed. The baseline was edited surgically (the one schema block) rather than regenerated, because a regeneration reflows the whole document and buries the five lines that changed.",
         "2026-08-20, for #247: `POST /wrong-way-events` was deleted whole (the path and both WrongWayEvent schemas), and the premise the two entries above leaned on has changed, so the justification cannot simply be theirs: v1.0.0 and v1.0.1 ARE tagged now. The claim this edit rests on is narrower and checked: no released client contains a call to this path - `git grep 'wrong-way-events' v1.0.1 -- client/` returns nothing, because the monitor's relay is an injected seam that no release ever wired to a fetch (#308) - and the backend has still never been deployed (#600), so no client of any vintage has ever reached ANY endpoint. 'Clients calling it get a 404' has no instance to break. Two things worth saying out loud rather than leaving to be inferred: this entry is NOT precedent for removing anything a released client does name - that is the major-version break the note above promises - and the release process cut v1.0.0/v1.0.1 without adding baselines here, so this check is still diffing against a pre-release snapshot; that gap is #860-adjacent and flagged on the PR rather than quietly patched in this edit."
+      ]
+    },
+    {
+      "release": "v1.1.1",
+      "document": "v1.1.1.json",
+      "published": "2026-08-27",
+      "superseded": null,
+      "pinned": false,
+      "note": "The first real release in this file, closing the gap pre-1.0.0's last entry flagged and #1146 filed: the process cut v1.0.0, v1.0.1, v1.1.0 and v1.1.1 without adding a baseline here, so this check spent that whole time diffing HEAD against a snapshot taken before any of them. Everything the API gained since 2026-08-08 could have been removed with nothing going red.",
+      "refreshed": [
+        "2026-08-28, added by #1146. GENERATED FROM THE TAG, NOT FROM HEAD, which is the only thing that makes it a compatibility claim rather than a restatement of the present: `check_openapi_compat.py --write` serializes whatever the working tree builds, so it was run inside `git worktree add /tmp/v111 v1.1.1` and the result copied here. Verified different from HEAD's document in exactly the four schemas that moved after the tag - `HikingDetailLevel` (the Light rung, #1088), `Observation` (the `trash` member, #1122) and `PreferencesIn`/`PreferencesOut` (`impact_panel_shown`) - with no path added or removed either way. A baseline written from HEAD would have claimed v1.1.1's clients read fields that did not exist when they shipped, which is a stricter check built on a false premise: it would block a legitimate removal of something no released client ever saw.",
+        "v1.0.0, v1.0.1 and v1.1.0 are deliberately NOT backfilled. v1.1.1 supersedes all three - v1.1.0 was tagged but its GitHub release stayed a draft, and v1.0.1's tag name was spent by an immutable release and reused for nothing - so their clients are a subset of v1.1.1's rather than a separate claim, and three more snapshots of a backend that has never been deployed would be three more things to keep true for no reader. If that stops being true, the tags still exist and the worktree recipe above still works."
       ]
     }
   ]

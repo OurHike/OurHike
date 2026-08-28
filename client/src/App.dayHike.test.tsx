@@ -750,7 +750,21 @@ describe('the day-hike builder, end to end', () => {
     await user.click(await screen.findByRole('button', { name: /Day hikes/ }))
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
     const map = await liveMap()
-    await tap(map, -74.095, 41.25)
+    // `tapWhenRoutable` for the FIRST tap, not plain `tap`. This door is
+    // reached through the day room rather than through the trail tab's own
+    // "A day hike" button, so nothing above waits on a rendered consequence
+    // of `trail_graph_geometry.json` landing the way the end-to-end test at
+    // the top of this file does - and `liveMap()` settles the click listener,
+    // which attaches earlier. That is the race this helper's docstring
+    // describes, and it is not hypothetical: on a loaded machine the two
+    // plain taps here were both refused with NETWORK_STILL_ARRIVING, no point
+    // was added, and the `/1 leg ·/` below timed out at 5s. Measured
+    // 2026-08-28 - green on 338/338 files run alone, red once in a full-suite
+    // run where every core was busy.
+    //
+    // The second tap stays plain: by then a routable tap has been observed,
+    // so the fetch has landed and there is nothing left to wait for.
+    await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
     expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
 

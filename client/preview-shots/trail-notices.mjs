@@ -25,6 +25,20 @@
 //  3. One flat list, newest first, whoever published it.
 //  4. "Not drawn on the map — read it here" under the unplaced rows, which is
 //     the honest state rather than a gap.
+//  5. "Show N more, elsewhere on the trail" at the foot of the list, drawn as
+//     a text control rather than the platform's default grey button. It had
+//     no CSS rule at all until now - `.atc-notices__show-all` was written in
+//     the component and never in the stylesheet - so this sheet shipped with
+//     one element in it that looked like it belonged to another app. That is
+//     the thing this recipe was re-pointed to photograph.
+//
+// THE CAMERA IS PARKED SO THAT CONTROL EXISTS. The button only renders when
+// the viewport scopes something out (`scopedNotices`'s `hidden`), so a shot
+// taken wherever the app happened to open would contain it on some days and
+// not others - and a picture that intermittently shows the thing under review
+// is not evidence. Parking at Harriman puts most of the trail's notices off
+// the stretch on screen and leaves NYNJTC's unplaced rows in the list, which
+// is both halves of what this sheet has to get right.
 //
 // THE DATA IS REAL AND THE CAMERA RUNS IN CI, which is the whole reason this
 // file exists rather than a hand-run screenshot: the sandbox has neither the
@@ -34,14 +48,38 @@
 // or a real location fix - the four things a shot must never contain
 // (.claude/skills/pr-screenshot/SKILL.md). Every row is an organization's own
 // public notice.
+//
+// The parked camera is worth checking against that list rather than waving
+// at, because pins draw from z9 and this sits at z12. The campsite rule is
+// kept BY CONSTRUCTION: the 2,333 user-created sites live in ATC's
+// Campsite_Sustainability_Index, which is not a registered source and ships
+// in no artifact (SOURCE_SURVEY.md §3b). What can draw here is ATC's
+// club/agency campsites and DEC's designated primitive tent sites - places
+// the agencies publish as places to camp. There is no location fix in a CI
+// browser and no account, so the other three are kept the same way.
 export const caption =
-  'Trail notices — NYNJTC’s alerts on a hiker’s screen for the first time (#1083)'
+  'Trail notices — two organizations in one list, and the “show more” control that had no styles'
 export const alt =
-  'The trail-notices sheet over the map: one flat list newest first, mixing rows credited to the Appalachian Trail Conservancy with rows credited to the New York-New Jersey Trail Conference. The NYNJTC rows carry a locality such as Harriman-Bear Mountain and no category line, and each says it is not drawn on the map. The heading counts every notice rather than naming one organization.'
+  'The trail-notices sheet over the map at Harriman: one flat list newest first, mixing rows credited to the Appalachian Trail Conservancy with rows credited to the New York-New Jersey Trail Conference. The NYNJTC rows carry a locality such as Harriman-Bear Mountain and no category line, and each says it is not drawn on the map. Beneath the list, a plain text control offers to show the notices elsewhere on the trail. The heading counts every notice rather than naming one organization.'
 
 export default async function drive(page) {
+  // Park the camera before anything else, so the list is scoped to a stretch
+  // rather than to wherever the app opened. lib/cameraMemory.ts's contract:
+  // { center: [lon, lat], zoom }, every field validated on read, null on
+  // anything that does not convince - basemap-ground-network.mjs does the
+  // same and says why a restore beats clicking zoom eight times.
+  await page.evaluate(() => {
+    sessionStorage.setItem(
+      'ourhike:camera',
+      JSON.stringify({ center: [-74.0207, 41.2725], zoom: 12 }),
+    )
+  })
+  await page.reload({ waitUntil: 'load' })
+
   // The map first: the app opens on Today since #1054, and the legend's
-  // button floats over the map screen.
+  // button floats over the map screen. First run stays skipped across the
+  // reload - the runner installs that on the CONTEXT, so it re-runs for every
+  // document rather than only the first.
   await page.getByRole('tab', { name: 'Map' }).click()
 
   // The header's icon button. Its accessible name is the visually-hidden span

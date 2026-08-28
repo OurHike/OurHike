@@ -71,6 +71,18 @@ For each stale dispatchable path (`publish-vector-data.yml`,
   reached elevation, and so on - each input's description says what reusing
   the previous run's output means). Hand the maintainer the run URL for
   approval - button 1, with the within-the-hour warning.
+- **`build-dem.yml` is TWO dispatches, one per `variant`** (#1147). Since
+  #1088 the DEM is per-level - `canonical` builds `dem.pmtiles`, `light`
+  builds `dem_light.pmtiles` at a harder taper - so one run refreshes one
+  artifact and leaves the other at its last build. `scripts/pipelines.sh`
+  says so in its rerun note now; it did not when this file was written, and
+  neither did this phase.
+
+  The failure that shape sets up is quiet, which is why it is spelled out
+  rather than left to the input's description: an aged `dem_light.pmtiles`
+  is not missing, so nothing 404s - a hiker on the Light rung just gets
+  terrain built against an older corridor. `verify_release.py` checks that
+  artifact since #1144 and did not before.
 
 `publish-conditions.yml` needs nothing (hourly, both environments);
 `build-raster.yml` is withdrawn for v2 (#855) and stays that way unless the
@@ -136,6 +148,22 @@ pull request; take its branch over and finish it:
   it is the version gate's single source (§4), and the v1.1.1 precedent is
   the two landing together, because a tag that disagrees with that file
   refuses to deploy.
+- **Add the API baseline, in the same pull request** (#1146):
+  `cd backend && python scripts/check_openapi_compat.py --write v<version>`,
+  then add its entry to `openapi_baselines/retained.json` and set
+  `superseded` on the release it takes over from - the retention clock
+  starts there, not at publication.
+
+  This step is here because it was nowhere, and the gap ran for four
+  releases: v1.0.0, v1.0.1, v1.1.0 and v1.1.1 were all cut without one, so
+  `check_openapi_compat.py` spent that time diffing against a `pre-1.0.0`
+  snapshot and would have passed the removal of anything the API gained
+  after 2026-08-08. The check's own docstring says a baseline is added when
+  a release is cut; until now nothing carried out that sentence.
+
+  **Here, not Phase 6** - `--write` serializes the working tree, so it must
+  run on the branch that IS the release, before the merge. Run after the tag
+  and it captures whatever `main` has become.
 - `scripts/test.sh`, mark the pull request ready, hand it over - button 3.
 
 ## Phase 6 - draft, check the target, hand over

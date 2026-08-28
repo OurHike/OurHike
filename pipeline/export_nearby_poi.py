@@ -167,6 +167,47 @@ TYPED_LAYERS = {
     "oprhp_facilities": ("Sub_Asset", OPRHP_SUB_ASSET_TYPES),
 }
 
+
+def _folded(mapping: dict) -> dict:
+    """One org's value map, keyed for a case-insensitive lookup.
+
+    THE MAPS ABOVE STAY IN EACH ORG'S OWN CASING because that is evidence
+    about the source - DEC shouts and OPRHP does not - and a reader comparing
+    a key against the live service should see what the service holds. The
+    matching is a separate question, and it is case-insensitive for the reason
+    sources.json's `dec_backcountry_features` note already gives: `ASSET` is
+    free text carrying its own misspellings ('PRIMATIVE CAMPSITE') and
+    whitespace variants, so its casing is not a thing to rely on either.
+
+    That note has said the match is "case-insensitive and stripped" since the
+    layer was registered, and until this function existed only the stripping
+    was true. Nothing went wrong, because DEC writes uppercase today and
+    OPRHP title case - the failure this closes is the silent one: an upstream
+    edit to 'Pit Privy' would have dropped all 356 DEC privies, and the run's
+    own dropped-reason line would have called them "not a published POI type"
+    rather than saying anything about case.
+
+    Collision-checked rather than assumed: folding must not merge two values
+    that mean different things, so it raises here instead of resolving one
+    arbitrarily at export time.
+    """
+    folded: dict = {}
+    for value, mapped in mapping.items():
+        key = value.casefold()
+        if key in folded and folded[key] != mapped:
+            raise ValueError(f"case-folding {value!r} collides with another value meaning {folded[key]!r}")
+        folded[key] = mapped
+    return folded
+
+
+DEC_ASSET_TYPES_FOLDED = _folded(DEC_ASSET_TYPES)
+OPRHP_SUB_ASSET_TYPES_FOLDED = _folded(OPRHP_SUB_ASSET_TYPES)
+
+TYPED_LAYERS_FOLDED = {
+    "dec_backcountry_features": ("ASSET", DEC_ASSET_TYPES_FOLDED),
+    "oprhp_facilities": ("Sub_Asset", OPRHP_SUB_ASSET_TYPES_FOLDED),
+}
+
 # Values excluded on purpose, counted and printed so the run says how much it
 # dropped and why rather than silently emitting less. Not a filter - the
 # allowlists above already exclude everything not in them - but a named reason
@@ -183,6 +224,12 @@ NAMED_EXCLUSIONS = {
     "Store": "unjudged as resupply (#806's precedent)",
     "Trailhead": "POI_TYPES has no trailhead category",
 }
+
+#: Matched on the same terms as the allowlists - a value excluded on purpose
+#: keeps its named reason whatever case it arrives in, or a casing change
+#: would demote it to the generic "not a published POI type" line and lose
+#: exactly the sentence that stops somebody re-litigating it.
+NAMED_EXCLUSIONS_FOLDED = _folded(NAMED_EXCLUSIONS)
 
 
 def poi_sources(registry: dict) -> list[dict]:
@@ -218,8 +265,8 @@ def classify(source: dict, properties: dict) -> str | None:
     declared = source.get("poi_type")
     if declared is not None:
         return declared
-    field, value_map = TYPED_LAYERS[source["key"]]
-    return value_map.get(str(properties.get(field) or "").strip())
+    field, value_map = TYPED_LAYERS_FOLDED[source["key"]]
+    return value_map.get(str(properties.get(field) or "").strip().casefold())
 
 
 # The values DEC writes where a real value is missing. '-99' is DEC's own null
@@ -316,7 +363,10 @@ def build_records(source: dict, features: list[dict]) -> tuple[list[dict], dict]
         raw_value = str(properties.get(type_field) or "").strip() if type_field else ""
         poi_type = classify(source, properties)
         if poi_type is None:
-            reason = NAMED_EXCLUSIONS.get(raw_value)
+            # The label keeps the org's own casing (`raw_value`) while the
+            # lookup is folded - so the run's dropped line quotes what DEC
+            # actually wrote, and still finds the reason if they reshape it.
+            reason = NAMED_EXCLUSIONS_FOLDED.get(raw_value.casefold())
             label = f"excluded: {raw_value} - {reason}" if reason else "not a published POI type"
             dropped[label] = dropped.get(label, 0) + 1
             continue

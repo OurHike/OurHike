@@ -591,6 +591,33 @@ export function ElevationChart({
     [mileForClientX, settleSelection, selectionFromPlan, settleBoundary],
   )
 
+  /**
+   * The gesture the OS took away: a call arriving, a system edge swipe, the
+   * browser deciding the touch was a scroll after all.
+   *
+   * `pointercancel` fires INSTEAD of `pointerup`, so without this handler the
+   * up path never runs and both refs stay held. What that leaves behind is
+   * not cosmetic: `boundaryDragRef` keeps a day boundary in `liveBoundary`,
+   * so the chart draws it wherever the interrupted finger left it and the
+   * plan underneath still says something else; and `handlePointerLeave` reads
+   * both refs, so it goes on refusing to clear the hover for a drag nobody is
+   * performing. A later press recovers the selection drag by overwriting the
+   * ref, and recovers the boundary only if it happens to grab the same one.
+   *
+   * DISCARDED, NEVER SETTLED, which is the whole of the handler. A cancelled
+   * gesture is not an edit - the same rule `handlePointerUp` already applies
+   * to a press that never travelled - and the wrong reading is worse here
+   * than a lost drag: settling would move a day boundary to wherever a finger
+   * happened to be when the phone rang, and then offer an undo for something
+   * the hiker never asked for.
+   */
+  const handlePointerCancel = useCallback(() => {
+    boundaryDragRef.current = null
+    dragRef.current = null
+    setLiveBoundary(null)
+    reportHover(null)
+  }, [reportHover])
+
   const handlePointerLeave = useCallback(() => {
     if (dragRef.current === null && boundaryDragRef.current === null) reportHover(null)
   }, [reportHover])
@@ -858,6 +885,7 @@ export function ElevationChart({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerLeave}
         onKeyDown={handleKeyDown}
       >

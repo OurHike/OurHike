@@ -115,6 +115,23 @@ def test_the_self_healing_and_withdrawn_paths_say_so():
     assert "data_environment=ua" in _note_after(verdict, "publish-vector-data.yml")
 
 
+def test_a_variant_taking_path_says_it_is_one_dispatch_per_variant():
+    """#1147. Since #1088 `build-dem.yml` builds one artifact per `variant`,
+    so a single dispatch refreshes `dem.pmtiles` and leaves `dem_light.pmtiles`
+    at its last build - quietly, because an aged artifact is not a missing one
+    and nothing 404s. Read from the workflow's own input rather than keyed on
+    the file's name, so a second variant-taking path answers correctly with no
+    edit here."""
+    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    dem = _note_after(verdict, "build-dem.yml")
+
+    assert "ONCE PER VARIANT" in dem
+    assert "canonical" in dem and "light" in dem
+    # And a path with no variant input says nothing about variants, so the
+    # sentence stays a signal rather than boilerplate on every line.
+    assert "ONCE PER VARIANT" not in _note_after(verdict, "build-basemap.yml")
+
+
 def test_a_migration_gets_its_own_line():
     verdict = _verdict(["backend/alembic/versions/0042_widen_reports.py"])
     assert "migrations" in verdict

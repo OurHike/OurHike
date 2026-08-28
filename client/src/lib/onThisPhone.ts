@@ -2,7 +2,7 @@
 // itself (#1103).
 //
 // The sheets have a catalog with published byte counts; the trail data has
-// nothing of the kind - four artifacts of unannounced size that arrive on
+// nothing of the kind - artifacts of unannounced size that arrive on
 // their own with signal, and until now their whole account was the word
 // "Getting trail data". This module is the detailed half of the answer: it
 // reads what lib/trailData.ts and lib/nearbyTrailData.ts actually stored and
@@ -17,11 +17,17 @@
 
 import { get } from 'idb-keyval'
 import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './trailData'
-import { NEARBY_TRAILS_STORE_KEY } from './nearbyTrailData'
+import { NEARBY_TRAILS_STORE_KEY, NETWORK_OVERVIEW_STORE_KEY } from './nearbyTrailData'
 import { storedGraphBytes } from './trailGraphStore'
 
 export interface TrailDataAsset {
-  id: 'trail-line' | 'waypoints' | 'elevation' | 'nearby-trails' | 'day-hike-routing'
+  id:
+    | 'trail-line'
+    | 'waypoints'
+    | 'elevation'
+    | 'nearby-trails'
+    | 'network-overview'
+    | 'day-hike-routing'
   /** Measured bytes of what is stored, or null where the stored shape has
    *  no byte size to measure (a parsed record is not its wire bytes, and
    *  inventing one would be a figure nobody stands behind). */
@@ -48,11 +54,12 @@ async function read(key: string): Promise<unknown> {
  * moment the answer is worth having.
  */
 export async function storedTrailData(): Promise<TrailDataAsset[]> {
-  const [trails, pois, elevation, nearby, graph] = await Promise.all([
+  const [trails, pois, elevation, nearby, overview, graph] = await Promise.all([
     read(TRAILS_BLOB_KEY),
     read(POIS_KEY),
     read(ELEVATION_STORE_KEY),
     read(NEARBY_TRAILS_STORE_KEY),
+    read(NETWORK_OVERVIEW_STORE_KEY),
     storedGraphBytes(),
   ])
 
@@ -63,12 +70,18 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
   // what it is costing them.
   const graphBytes = Object.values(graph).reduce((sum, bytes) => sum + bytes, 0)
 
-  const nearbyBytes =
-    nearby !== undefined &&
-    nearby !== null &&
-    (nearby as { bytes?: unknown }).bytes instanceof Blob
-      ? (nearby as { bytes: Blob }).bytes.size
+  // Both nearby-network artifacts are kept under one shape by
+  // lib/nearbyTrailData.ts (`{ bytes: Blob, hash: string }`), so one reader
+  // serves both rather than two that have to be kept agreeing.
+  const storedBytes = (record: unknown): number | null =>
+    record !== undefined &&
+    record !== null &&
+    (record as { bytes?: unknown }).bytes instanceof Blob
+      ? (record as { bytes: Blob }).bytes.size
       : null
+
+  const nearbyBytes = storedBytes(nearby)
+  const overviewBytes = storedBytes(overview)
 
   const elevationSamples =
     elevation !== undefined &&
@@ -107,6 +120,25 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
       bytes: nearbyBytes,
       count: null,
       present: nearbyBytes !== null,
+    },
+    // The corridor-view sketch of that same network (#1135). A SEPARATE ROW
+    // rather than folded into the one above, which is the opposite call from
+    // the four graph files and made on the same test: is this one capability
+    // to a hiker, or two? The graph files are one - day hikes work offline or
+    // they do not. These two are not. They draw at different zooms, and losing
+    // only the sketch means an offline launch opens on an A.T.-only map that
+    // the last online launch did not show, with the detailed network arriving
+    // as you zoom in. That is a distinguishable thing to be missing, so it
+    // gets a line that can say so.
+    //
+    // It was in no row at all until now, which is the defect: this window
+    // claims to be what is on the phone, and an artifact holding bytes while
+    // appearing nowhere is the one answer it must not give.
+    {
+      id: 'network-overview',
+      bytes: overviewBytes,
+      count: null,
+      present: overviewBytes !== null,
     },
   ]
 }

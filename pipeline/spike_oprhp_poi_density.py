@@ -203,7 +203,7 @@ def load() -> list[Point]:
     return points
 
 
-# What a fresh install draws, from client/src/lib/waypointVisibility.py's
+# What a fresh install draws, from client/src/lib/waypointVisibility.ts's
 # DEFAULT_SHOWN_TYPES (#865). The other four - resupply, crossing, viewpoint,
 # parking - start hidden and are reachable through Settings or the legend, so
 # a density figure over all eight describes a screen nobody has by default and

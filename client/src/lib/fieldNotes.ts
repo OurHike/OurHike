@@ -115,9 +115,10 @@ const NOT_FOUND: ObservationOption = {
 }
 
 /** Litter, at a place somebody sleeps at or parks in (#1122). Shares its
- *  name with the report type it escalates into (screens/ReportTypePicker.tsx)
- *  because they are the same complaint at two weights - one tap that dates
- *  the observation, and a form that puts it in front of a maintainer. */
+ *  name with the report type it escalates into (the `trash` tile in
+ *  `REPORT_CATEGORIES`, reporting/categories.ts) because they are the same
+ *  complaint at two weights - one tap that dates the observation, and a form
+ *  that puts it in front of a maintainer. */
 const TRASH: ObservationOption = { id: 'trash', label: 'Trash' }
 
 export const OBSERVATION_OPTIONS: Record<NoteScopedType, ObservationOption[]> = {

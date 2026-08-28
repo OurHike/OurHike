@@ -3419,9 +3419,30 @@ function App() {
     // ribbon's identity, and with it the ~640-sample rebuild in ribbonView,
     // the lanes keyed on `ribbon` below, and ElevationRibbon's path memo.
     //
-    // `todaysWalk` is memoized one block up and holds its identity across a
-    // GPS callback that moves nobody, so it belongs here on the same terms
-    // (#1045).
+    // `todaysWalk` is memoized one block up, and holds its identity across a
+    // GPS callback ON THE PLAN BRANCH ONLY - which is the half of #1045's
+    // claim that survives reading. Both branches are worth stating, because
+    // the difference is not a defect to fix but a property of what each one
+    // is made of:
+    //
+    //  - No hike being followed: `followResolution` is null, so the effect
+    //    above holds `followState` at null, nothing in this memo's dep list
+    //    moves on a fix, and the plan-derived `{ kind: 'trail' }` object
+    //    survives every callback. That is the case #1045 measured.
+    //  - Following a hike: `followState` is a FRESH object per fix
+    //    (`followDayHike` builds one), so `todaysWalk` is rebuilt on every
+    //    callback including one that moves nobody, and the ~640-sample
+    //    ribbonView pass below runs with it.
+    //
+    // Keying on the scalar the way `fixMile` does would not save the second
+    // case, and that is the thing worth knowing before anybody tries:
+    // `fixMile` is stable under jitter because `locateOnTrail` answers with a
+    // VERTEX's mile, which is already quantised. `alongMi` here is a
+    // continuous projection - `alongFraction * step.metres` - so it takes a
+    // new value on essentially every fix from a phone standing still. Making
+    // this branch hold would mean quantising `walkedMi`, which would make the
+    // ribbon's own position marker step rather than glide. Nobody has decided
+    // that trade; it is not made here by accident.
     [
       elevation,
       todaysWalk,
@@ -5686,8 +5707,30 @@ function App() {
   // Not rendered at all until the session first needs a map (`mapMounted`),
   // so a launch that stays on Today still builds nothing.
   // What is over the map right now: a full-screen flow outranks the active
-  // tab's screen, per the flow comment above. Must agree with `mapShownNow`
-  // up top, which is the same fact computed from state for the hooks.
+  // tab's screen, per the flow comment above.
+  //
+  // THIS IS NOT `mapShownNow` INVERTED, and this comment used to say it was
+  // ("must agree with `mapShownNow` up top") - false since #1134, which is
+  // #1148's entry for it. The two ask different questions and one case
+  // separates them: the report WINDOW. `flowOpen` counts `reporting !== null`
+  // for both steps, while `step: 'window'` deliberately assigns no
+  // `flowScreen` - it renders as an overlay at the foot of this return
+  // precisely so the screen underneath stays mounted and visible. So with
+  // the window open over the map tab, `mapShownNow` is false and
+  // `screenOver` is null.
+  //
+  // Which is right for each, because they are used for different things:
+  // `screenOver` decides whether the map subtree is taken out of flow and
+  // out of the accessibility tree, and a window that deliberately leaves the
+  // map visible must not do that. `mapShownNow` feeds `mapArrivals`, the
+  // ErrorBoundary's retry key, where the cost of the divergence is one
+  // spurious bump when the window closes - which clears error state on a map
+  // that has none, and does nothing to a healthy one.
+  //
+  // WHAT THE NEXT OVERLAY AUTHOR NEEDS FROM THIS: adding a full-screen flow
+  // means touching BOTH lists; adding an overlay that leaves the map visible
+  // means touching neither, and adding one to `flowOpen` alone is how a
+  // deliberately-visible map ends up counted as hidden.
   const screenOver = flowScreen ?? overlayScreen
 
   return (

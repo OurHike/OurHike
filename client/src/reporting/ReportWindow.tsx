@@ -1,11 +1,15 @@
 // Reporting a problem, as a window over wherever you already were (#1133).
 //
 // WHAT THIS REPLACES, AND WHY IT IS A DIALOG. `screens/ReportTypePicker.tsx`
-// and `screens/ReportForm.tsx` are full-screen routes: App.tsx swaps the whole
-// shell for them, tab bar included, which is the reason they need a `Cancel`
-// at all - without one, somebody who opened the picker by accident is stuck on
-// it. So a hiker standing in front of a blow-down gives up the map to say so,
-// and gets it back only by completing or abandoning a form.
+// was a full-screen route, and `screens/ReportForm.tsx` still is: App.tsx
+// swaps the whole shell for one, tab bar included, which is the reason it
+// needs a `Cancel` at all - without one, somebody who opened it by accident is
+// stuck on it. So a hiker standing in front of a blow-down gave up the map to
+// say so, and got it back only by completing or abandoning a form.
+//
+// The picker is gone (deleted in b74714af, the commit that wired this in);
+// the form stays, because `bad_hikers` and `thanks` are long forms with
+// things to type and neither files on a tap.
 //
 // A window costs none of that. The screen behind stays mounted and dimmed, so
 // closing is free and `Cancel` stops being load-bearing.

@@ -31,11 +31,22 @@
 // here would be two names for one shape, and the day they drift is the day a
 // renderer reads one and the pipeline writes the other.
 //
-// ATC's artifact is the older one and does NOT carry `source_key` or `place`:
-// `pipeline/export_atc_updates.py` still writes `atc_id` and two mile columns.
-// So `atcUpdateAsNotice` below adapts it, and that adapter is the whole of the
-// asymmetry. When ATC's exporter grows the two fields, the adapter becomes the
-// identity function and this comment is how the next person knows to delete it.
+// ATC's artifact is the older one and half of the asymmetry has since closed.
+// It DOES carry `source_key` now - `pipeline/lib/atc_updates.py` writes it on
+// every row, and the production bake of 2026-08-27T22:36Z carries
+// `atc_trail_updates` on all 35. What it still does not carry is `notice_id`
+// or `place`: the identity is `atc_id`, and the location is two mile columns.
+//
+// So `atcUpdateAsNotice` below is still an adapter, and the two fields it
+// invents are the whole of what is left. Its `source_key` is spelled
+// `ATC_SOURCE_KEY` rather than read off the row on purpose: the constant and
+// the published column are the same string by construction, and a phone
+// holding an artifact baked before #1083 has a row with no such field at all.
+// Reading it would make a deployed client's attribution depend on how old its
+// cached artifact is, to buy nothing.
+//
+// When ATC's exporter grows the other two, this adapter becomes the identity
+// function and this comment is how the next person knows to delete it.
 
 import type { AtcUpdate } from './atcUpdates'
 import type { OrgNotice } from './publishedConditions'

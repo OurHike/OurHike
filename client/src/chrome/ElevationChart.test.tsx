@@ -428,6 +428,39 @@ describe('day boundaries on the chart', () => {
     expect(screen.getByTestId('chart-boundary-1')).toHaveAttribute('x1', '200')
   })
 
+  it('discards a boundary drag the OS cancels, rather than settling it where the finger was', () => {
+    // `pointercancel` fires INSTEAD of `pointerup` - a call arriving, a system
+    // edge swipe, the browser deciding the touch was a scroll. Without a
+    // handler the up path never runs, so the drag stays held: the chart goes
+    // on drawing the boundary wherever the interrupted finger left it while
+    // the plan says something else, and the hover never clears.
+    //
+    // Discarded rather than settled, because a cancelled gesture is not an
+    // edit. Settling would move somebody's day boundary to wherever their
+    // thumb happened to be when the phone rang.
+    const onMoveBoundary = vi.fn()
+    render(
+      <ElevationChart
+        profile={rampProfile()}
+        boundaries={boundaries()}
+        onMoveBoundary={onMoveBoundary}
+      />,
+    )
+
+    fireEvent.pointerDown(plot(), { clientX: 200, pointerId: 1 })
+    fireEvent.pointerMove(plot(), { clientX: 350, pointerId: 1 })
+    fireEvent.pointerCancel(plot(), { clientX: 350, pointerId: 1 })
+
+    expect(onMoveBoundary).not.toHaveBeenCalled()
+    expect(screen.getByTestId('chart-boundary-1')).toHaveAttribute('x1', '200')
+
+    // And the drag is genuinely released, not merely unsettled: the next
+    // press starts a fresh one rather than continuing the abandoned grab.
+    dragBoundary(200, 350)
+    expect(onMoveBoundary).toHaveBeenCalledTimes(1)
+    expect(onMoveBoundary).toHaveBeenLastCalledWith(1, 35)
+  })
+
   it('clamps a drag to the travel the plan allows', () => {
     const onMoveBoundary = vi.fn()
     render(

@@ -377,7 +377,7 @@ Meaning, not decoration — keep these regardless of restyling:
 
 The wireframes were drawn iteratively across 16 turns while the feature docs kept evolving; two spots fell out of sync. Neither is a formatting nitpick — both change what actually gets built.
 
-### 1. Downloads: whole-corridor, not per-section (resolved — follow ROADMAP.md)
+### 1. Downloads: whole-corridor, not per-section (resolved 2026-07-28 — **partly reopened 2026-08-25, see the amendment at the end of this entry**)
 
 [ROADMAP.md](ROADMAP.md) Phase 2 already decided this on 2026-07-28: **"chunking decided: whole corridor, one package"** — a hiker downloads the entire trail's data at once. That decision is settled and this file defers to it.
 
@@ -388,6 +388,21 @@ The wireframe (turns `6d`, `7a`, `7c`, `9c`, `10a`, `10b`) shows a **per-section
 - Drop: section list, per-section override sheet, roll-up "bytes remaining" math, mixed-detail-seam messaging.
 - Fix the onboarding "Map size" screen (`13a`/`13c`) copy to remove "...or take single sections later, in Downloads" — there's no section granularity anywhere in the app.
 - `7a`'s in-progress/failed states likely still apply structurally (a single download can still be mid-transfer or fail partway) — just against one package, not per-section rows.
+
+**Amended 2026-08-25 — partial coverage is back, and it is not the section list.** The maintainer's decision on [#552](https://github.com/OurHike/OurHike/issues/552) makes the unit of offline coverage a **1°×1° cell**, gathered into a named **piece** (scoped by org, and by state for something as long as the A.T.). [features/OFFLINE_COVERAGE.md](features/OFFLINE_COVERAGE.md) is the argument; this entry is amended rather than deleted because everything it retired stayed retired, and telling the two apart is the whole point.
+
+**What this entry got right and what still stands, unchanged:**
+
+- **One tap still means the trail.** The whole A.T. — now expressible as the union of its 51 cells — remains the default a first-run hiker gets by pressing the obvious button. Partial coverage is an option, never something anyone must understand before leaving.
+- **The mile-by-mile row list stays dead**, along with the per-section roll-up "bytes remaining" math and the per-section detail-override *sheet*. The objection that killed them is still correct and is quoted in the amended §4 above: "sections were a choice somebody had to get right mile by mile, and a wrong answer cost them map where they were walking." A named region is not that choice — Virginia is a place, not a mile range to compute.
+- **The onboarding copy fix stands**, but for a new reason. "...or take single sections later, in Downloads" was dropped because there was no granularity at all; there is granularity now, and the wording still does not return, because *sections* is not what a hiker picks.
+
+**What comes back, and why it could not have been kept in 2026-07-28's answer:**
+
+- **Mixed-detail seam messaging**, listed above under "Drop". It is needed again — not because sections returned, but because two things this file could not have known arrived since: a second trail system on the same map ([#768](https://github.com/OurHike/OurHike/issues/768)), and a maintainer decision (2026-08-28, in session, reviewing the coverage mock-ups) that the Light/Standard/Fine level is **global by default with a per-piece override**. An override means two pieces can meet at different sharpness, and OFFLINE_COVERAGE.md §7 governs how that is said.
+- **A coverage seam a hiker can see.** With a lat/lon grid the boundary is a meridian, so it draws as a dead-straight line and reads as a rendering fault unless it is named. Decided in the same session: a dashed "edge of what you downloaded" boundary plus a banner on crossing, which is `9b`'s dashed boundary honoured rather than invented, and which finally gives [features/MAP_OPTIONS.md](features/MAP_OPTIONS.md) §1's half-built "outside downloaded area" banner its footprint.
+
+**The screens are drawn** — the picker (list-driven with a map preview), the per-piece override, the seam, first run and the plan-derived prompt — as mock-ups against the shipped design system, and they are the reference for [#557](https://github.com/OurHike/OurHike/issues/557) and [#558](https://github.com/OurHike/OurHike/issues/558) rather than turns `6d`/`7a`/`10a`/`10b`, which remain superseded.
 
 ### 2. Reporting: the "unsafe behaviour" / "say thanks" split isn't in the data model yet (resolved 2026-07-29 — see the block quote at the end)
 

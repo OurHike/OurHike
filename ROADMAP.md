@@ -22,7 +22,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 ## Feature design docs
 
-Forty-four docs in [features/](features/). Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. **The table below is eleven rows short of the directory, and this paragraph has now been wrong about that twice** — it read "thirty-five docs… six rows short" until 2026-08-28, having drifted from "three" before that. Measured on 2026-08-28, the docs this file does not mention anywhere are APP_FAILURE_REPORTS.md, CONDITIONS_DELIVERY.md, CORRIDOR_VIEW.md, DATA_REFRESH.md, MAP_CHROME.md, MAP_STYLE_SPEC.md, MORE_TAB.md, ORG_NOTICES.md, POI_SITES.md, POI_VISIBILITY.md and ROUTE_OWNERSHIP.md. Adding those rows is not this change's to do, but the drift is worth naming rather than re-lowering: a count corrected only when somebody happens to add a row is a count that is wrong most of the time. ATC_TRAIL_UPDATES.md was the fourth until 2026-08-12, and it is worth naming what that cost: the feature carried `v1-mvp` labels on three issues while neither of the two documents a person reads to learn what v1 *is* mentioned it at all. ELEVATION_PROFILE.md below records the same gap ending the same way, which is twice.
+Forty-five docs in [features/](features/). Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. **The table below is thirteen rows short of the directory, and this paragraph has now been wrong about that twice** — it read "thirty-five docs… six rows short" until 2026-08-28, having drifted from "three" before that. (The "rows short" figure and the eleven-name list below are answering two different questions and always have: two docs are mentioned elsewhere in this file without earning a table row.) Measured on 2026-08-28, the docs this file does not mention anywhere are APP_FAILURE_REPORTS.md, CONDITIONS_DELIVERY.md, CORRIDOR_VIEW.md, DATA_REFRESH.md, MAP_CHROME.md, MAP_STYLE_SPEC.md, MORE_TAB.md, ORG_NOTICES.md, POI_SITES.md, POI_VISIBILITY.md and ROUTE_OWNERSHIP.md. Adding those rows is not this change's to do, but the drift is worth naming rather than re-lowering: a count corrected only when somebody happens to add a row is a count that is wrong most of the time. ATC_TRAIL_UPDATES.md was the fourth until 2026-08-12, and it is worth naming what that cost: the feature carried `v1-mvp` labels on three issues while neither of the two documents a person reads to learn what v1 *is* mentioned it at all. ELEVATION_PROFILE.md below records the same gap ending the same way, which is twice.
 
 A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Report a Problem**, Map Options' **closures**, and Hiker Safety's **warnings and wrong-way alert** into the v1 MVP — see TECHNICAL_ARCHITECTURE.md's revised Backend section. The scope column reflects that revision, not the scope each doc originally launched with.
 
@@ -54,6 +54,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [POI_IDENTITY.md](features/POI_IDENTITY.md) | **v2, sixth feature — platform, not a screen.** A POI's published id is minted at first sight and owned for life: upstream keys become matching evidence rather than identity, a checked-in ledger reconciles the ATC's annual refresh — by key where keys survive, by evidence where they don't, by retiring into a tombstone where the place is gone — and a human reviews the ledger's diff on the release PR, never every point. What keeps photos, comments and saved plans anchored across the years. |
 | [POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) | **v2, seventh feature — platform, not a screen.** What happens when two sources describe one place: proximity proposes and evidence decides, precedence runs per field rather than per record so a merge combines instead of discarding, the decision is written as a `superseded_by` edge in POI_IDENTITY.md's ledger rather than a second one, and the duplicate check runs at submission time where the hiker who is standing there can answer it. Measured: 48 same-type pairs sit within 25 m of each other on the corridor and 35 of them are two real places, so the radius proposes and the name decides. |
 | [ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md) | **v2, ninth feature — designed, not started.** A hiker's own content follows their account between the web and their phone: what syncs and at what grain, why the device holds the truth while it is offline, why a conflict keeps both plans rather than picking one, and why sharing a photo and syncing one must never become the same act. Measured: 23 device storage keys sorted into the hiker's and the device's, and two finished endpoints nothing has ever called. |
+| [OFFLINE_COVERAGE.md](features/OFFLINE_COVERAGE.md) | **v2, tenth feature — decided, not built.** What a hiker can have offline that is less than the whole trail: a 1°×1° cell as the unit that is built, versioned and resumed, gathered into a named piece scoped by org and by state, with the whole trail still one tap. Argues trail-derived stretches down (they cannot describe two orgs in one scheme) and on-demand caching down (what you never looked at in town is missing on the ridge). Measured: 88 stretch archives built to the superseded unit are live on production at 942.9 MB, and no client code reads any of them. |
 | [INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md) | **v3, first feature — designed, not started.** What happens to an invasive species sighting after it is filed: a trained surveyor's structured walk over an assigned segment (which can record *absence*, the thing an opportunistic sighting never can), a club-granted credential that is species-scoped and dated rather than a boolean, a fourth `Role.invasives` gating a second moderation queue for the different question a species ID asks, and an export to the scientific record NYNJTC already keeps. The first feature that sends a hiker's contribution out of OurHike to a third party. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
@@ -274,6 +275,45 @@ as the hiker's own delete, and two devices that disagree about a plan keep both 
 letting the later write silently eat a fortnight of planning. Private photo sync is opt-in
 and never touches the store shared photos live in — sharing grants a licence that cannot be
 taken back, and syncing grants nothing.
+
+## v2 — offline coverage in pieces
+
+**Scoped 2026-08-25 as v2's tenth feature, by a maintainer decision on the tracker rather
+than a doc: [features/OFFLINE_COVERAGE.md](features/OFFLINE_COVERAGE.md), tracked as
+[#551](https://github.com/OurHike/OurHike/issues/551) — *v2: offline coverage in pieces —
+stop asking for a gigabyte at once*.** Every feature above puts something new on a hiker's
+phone. This is the one about what the phone can hold.
+
+The hiking sheet is offered whole or not at all: measured on the published bucket
+2026-08-28, **Light 257.7 MB, Standard 458.4 MB, Fine 809.5 MB**, each of them one
+basemap object plus one DEM covering Georgia to Maine. A hiker walking a week in Virginia
+takes Maine with them or takes nothing, and
+[#547](https://github.com/OurHike/OurHike/issues/547) made a phone that cannot hold the
+biggest rung say so honestly rather than making the rung obtainable. What has never
+existed is the other half: **taking less than the whole trail.**
+
+**The unit is a 1°×1° cell, gathered into a named piece** — scoped by org, and by state for
+something as long as the A.T. A hiker taps *Virginia* or *Harriman*; the app fetches the
+cells underneath. Two layers, and keeping them apart is the whole of it: the cell is what
+gets built, versioned, downloaded and resumed, and nobody ever sees one. Trail-derived
+stretches lost because they cannot describe two orgs' trails in one scheme, and
+[#768](https://github.com/OurHike/OurHike/issues/768) has already put two on the same map.
+
+Three things it turned up that are worth knowing even if the build slips:
+
+- **The grid already exists and is already shared.** `pipeline/lib/corridor_grid.py`'s
+  `CELL_DEGREES = 1.0` grids the corridor into the same 51 cells the raster build fans out
+  over, factored out precisely so two callers can never disagree about a boundary.
+- **Context zooms are where this could defeat itself.** Every package ships its source tiles
+  through z9 as orientation, 6.3 MB duplicated by construction — which at 51 cells would be
+  ~321 MB of the same bytes, spent on duplication, to solve a problem about size. Context is
+  one shared artifact, and `cut_stretches.py` already built it.
+- **A seam takes away the ground, never the hazard.** Water, closures and warnings ship with
+  the trail wherever the hiker is; only the basemap and terrain are piece-scoped. Two docs
+  disagreed about this and neither had noticed.
+
+**One tap still means the trail**, and that is the sentence protecting everything
+WIREFRAMES.md Known Deviations #1 was right about when it retired the per-section list.
 
 ## v2 — knowing whether any of it works
 

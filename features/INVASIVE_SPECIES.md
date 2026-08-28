@@ -197,6 +197,103 @@ reports only**, and **only where export consent was given**. That makes the seri
 `privileged` flag type-aware rather than role-aware alone, which is a real change to
 `schemas/report.py` and is called out here so it is costed rather than discovered.
 
+## Getting the coordinator an account, and the role onto it
+
+**OurHike cannot create a user, and that is a deliberate security posture rather than a
+missing feature.** `core/auth.py`'s `_get_or_create_profile` provisions a `profiles` row on
+the first authenticated request, from the JWT's `sub` — so Supabase mints the identity and
+this database follows. Creating (or deleting) a Supabase Auth user needs a service-role key,
+which `app/config.py` holds deliberately not: AUTHENTICATION.md calls it "a credential that
+can act as any user", and it is the same constraint that stops account deletion removing the
+auth user. **So the pattern is invite, not create.** A coordinator signs themselves in with
+the provider the deployment has enabled, and the club grants them the role afterwards.
+
+**There is no way to grant any role at all today**, which is a larger gap than this feature's
+own. Measured 2026-08-28: no router in `backend/app/routers/` assigns `role`, so it is set
+once to `Role.hiker` at auto-provision and nothing changes it afterwards. `Role.invasives` is
+therefore not a new enum value on an existing mechanism — **Phase A has to build the first
+role-granting mechanism this backend has ever had.**
+
+### For NYNJTC to start, a reviewed file — and the precedent is already here
+
+`backend/load_assignments.py` solved this exact problem for maintainer assignments, and its
+reasoning transfers without modification:
+
+> An assignment says a named volunteer is at a known place on a predictable schedule … and it
+> comes from a club's own records, in a spreadsheet, updated a few times a season. An endpoint
+> would need its own authentication, its own audit trail and its own admin surface to be used
+> safely, and would be used four times a year. A file in a pull request already has review,
+> history, and a person who pressed merge.
+>
+> VOLUNTEERING.md's larger module is where a real admin surface belongs when clubs are
+> managing themselves. This is the deliberate answer for one club getting started, not a
+> substitute for it.
+
+One club, one or two coordinators, a target list revised annually. That is the same shape.
+**This refines rather than reverses the 2026-08-28 decision that a club admin grants the
+credential in-app:** the admin screen is the destination, and it is the right one for value
+#7, because a reviewed file is shaped like whoever holds the repository. The file is how the
+first club starts without blocking on VOLUNTEERING.md's phase E.
+
+### An invite is a pending grant, resolved at first sign-in
+
+The real awkwardness the file does not fix: a club cannot say *"make Jane our coordinator"*
+until Jane has signed in and somebody has found her profile id. That is a bad first
+experience for the one person whose participation the whole feature depends on.
+
+**Recommendation, and it needs no service-role key:** store a pending `(email, role, club)`
+grant, and have the provisioning path apply any matching invite at the moment it first creates
+the row. Jane is invited before she has an account, signs in with Google, and is a coordinator
+on her first request.
+
+Two things to check before building it, neither of them blocking:
+
+- **Nothing reads an email claim today.** `get_current_user` reads only `sub`, and `claims` is
+  in scope where the invite lookup would go — but that the claim is present should be
+  confirmed against a real Supabase token rather than assumed from this paragraph.
+- **Matching on email is only sound because the provider verifies it.** AUTHENTICATION.md
+  already takes that position — "Google/Apple sign-in already verify the email on their end,
+  so that is a Provider fact to trust" — which is what makes an emailed invite a safe join and
+  would *not* hold for a self-hosted provider that skips verification.
+
+### Whose name goes on the submission
+
+`Profile.display_name` is the **trail name** and deliberately not a legal one
+([IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)), so it cannot be what iNaturalist sees.
+The coordinator's iNaturalist handle is a new field on the grant rather than on `Profile`,
+because the overwhelming majority of accounts will never have one.
+
+**And it is snapshotted onto each `SubmissionBatch`, not only looked up.** Same reasoning
+`MaintainerAssignment` versions its rows: the batch has to record who submitted it *at the
+time*, which survives the coordinator changing their handle, leaving the club, or deleting
+their OurHike account. A submission whose accountable person can only be resolved through a
+live foreign key is a submission that becomes anonymous the first time somebody moves on —
+and "willing to field questions about it" is exactly the property that must not evaporate.
+
+### Who this lets in, and who it does not
+
+The worry that an open sign-up admits people who do not know what they are looking at is
+right, and the answer is that **the three tiers have three different gates, deliberately**:
+
+| | Gate | Inexperience costs |
+|---|---|---|
+| **Reporter** (opportunistic) | None — anyone with the app | Nothing. A coordinator reads it before it goes anywhere, which is what the review step is *for* |
+| **Surveyor** (structured) | `InvasiveCredential`, granted after training | Would corrupt the survey's negatives — hence the credential |
+| **Coordinator** | `Role.invasives`, granted by the club | Real, and the reason this one is never self-serve |
+
+So the answer to "do we want inexperienced users" is **yes as reporters and no as
+coordinators**, and the role/credential split is precisely what lets both be true at once.
+Turning an inexperienced reporter away costs the coverage that is the opportunistic tier's
+whole contribution; letting one submit on the organisation's behalf costs the organisation's
+standing on a platform it does not own.
+
+**The coordinator's two powers are worth naming, because they are asymmetric.** Submitting
+under their own iNaturalist account is largely self-limiting — it is their reputation, in a
+community that will correct them. Seeing reporter identities on invasive reports is not
+self-limiting at all: it is a privacy exposure that the person exposed never learns about.
+The second is the one that makes a careless grant expensive, and the reason the gate is a
+deliberate act by a club rather than anything a person can ask for.
+
 ## The credential: granted, species-scoped, and dated
 
 Now the other half — the surveyor, and what makes their observations worth more than a
@@ -413,6 +510,24 @@ Role                               (EXISTING enum on Profile - gains a fourth va
                                     single-valued and excluding an admin who can grant
                                     themselves the role anyway buys only a workaround.)
 
+InvasiveCoordinator                (new - the role grant, and where "their info" lives)
+  id, profile_id, club_id
+  inaturalist_handle               (NOT Profile.display_name, which is the trail name and
+                                    deliberately not a legal one per IDENTITY_AND_PRIVACY.md.
+                                    Most accounts will never have one of these.)
+  granted_by, granted_at
+  effective_from, effective_to     (a coordinator hands over; the record says when)
+
+RoleInvite                         (new - a pending grant, so a club can name somebody
+                                    BEFORE they have an account. Needs no service-role key:
+                                    core/auth.py's provisioning path applies a matching
+                                    invite at the moment it first creates the profile row.)
+  id, email, role, club_id
+  invited_by, invited_at
+  consumed_at, consumed_by_profile_id
+  -> email-matching is sound only because Google/Apple verify the address, which
+     AUTHENTICATION.md already treats as "a Provider fact to trust".
+
 InvasiveCredential                 (new - the grant, versioned like MaintainerAssignment)
   id, profile_id
   club_id                          (who granted it - a club, never self)
@@ -446,7 +561,10 @@ InvasiveSighting                   (hangs off a pass, or stands alone)
 SubmissionBatch                    (what a reviewer builds and a named person sends)
   id, reviewer_profile_id
   destination: inaturalist | imapinvasives
-  submitter_identity               (the staffer's OWN account handle - see the rule above)
+  submitter_identity               (the staffer's own iNaturalist handle, SNAPSHOTTED here
+                                    rather than resolved through InvasiveCoordinator: the
+                                    accountable person must survive a handle change, a
+                                    hand-over, or that account being deleted)
   state: draft | submitted | failed
   submitted_at
   external_ids[]                   (what came back, so determinations can be read later)
@@ -465,13 +583,16 @@ submission path yet.
 
 ## Build order — five phases, each useful alone
 
-- **A — The role and the credential.** `Role.invasives` with its own gate — deliberately not
-  `MODERATOR_ROLES`, and the first scoped moderation role in the codebase — plus
-  `InvasiveCredential`, the as-of lookup, and the smallest club-admin surface that can grant
-  one. The type-aware `privileged` change in `schemas/report.py` belongs here too, since the
-  role is worthless if it cannot see who filed what it reviews. **Useful alone:** it gives a
-  club a way to say who its invasives coordinator is, which nothing in the app can express
-  today.
+- **A — The role and the credential. Bigger than it looks, and it is the phase to cost
+  carefully.** `Role.invasives` with its own gate — deliberately not `MODERATOR_ROLES`, and
+  the first scoped moderation role in the codebase — plus `InvasiveCoordinator`,
+  `InvasiveCredential` and its as-of lookup. Two things make this more than an enum change:
+  **no router in this backend assigns `role` at all today**, so this builds the first
+  role-granting mechanism the project has ever had; and the type-aware `privileged` change in
+  `schemas/report.py` belongs here too, since the role is worthless if it cannot see who filed
+  what it reviews. Start with a `load_assignments.py`-shaped reviewed file per the argument
+  above, not a screen. **Useful alone:** it gives a club a way to say who its invasives
+  coordinator is, which nothing in the app can express today.
 - **B — The survey.** `SurveySegment`, `SurveyPass`, offline-first, absence expressible,
   abandonment honest. **Useful alone:** it replaces paper field sheets and produces better
   data than the current process even if nothing is ever exported from it, because an Excel
@@ -535,14 +656,20 @@ credential another hiker may take instructions from.
    than one club will have. The refactor touches the profile model, every `require_role` call
    site and the client's role handling, so it deserves a decision on its own merits rather
    than being smuggled in here.
-6. **Should `ReporterType.maintainer` be reconciled with `Role.maintainer` or deliberately kept
+6. **Does `RoleInvite` belong to this feature at all?** It is specified above because this
+   feature is the first thing that needs it — a club has to be able to name its coordinator
+   before that person has an account — but nothing about it is invasives-specific, and every
+   later club-admin surface wants the same object. It may belong in
+   [VOLUNTEERING.md](VOLUNTEERING.md)'s phase E with this feature as its first consumer.
+   Building it here and moving it later is cheap; building it twice is not.
+7. **Should `ReporterType.maintainer` be reconciled with `Role.maintainer` or deliberately kept
    separate?** **De-risked but not resolved by the 2026-08-28 decision above:** the credential
    is `Role.invasives` plus `InvasiveCredential`, so nothing in this feature reads
    `reporter_type` as a qualification and the trap this question was filed about is no longer
    one this feature can fall into. The two words still mean different things in one codebase,
    which is worth a decision — just no longer an urgent one, and renaming either touches a lot
    of files.
-7. **Is the App ID gate real?** A single forum thread on 2026-08-28 indicated that applying for
+8. **Is the App ID gate real?** A single forum thread on 2026-08-28 indicated that applying for
    an iNaturalist API application requires the applicant's account to have ten improving
    identifications in the last month. **Unconfirmed, one source, possibly stale.** It does not
    block anything in this design — the CSV path needs no application — but it decides whether a

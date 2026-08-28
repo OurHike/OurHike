@@ -165,24 +165,29 @@ moderation role in the codebase**: `require_role` already accepts any roles, but
 site in the tree passes `*MODERATOR_ROLES`, so there is no narrower precedent to copy. That is
 an architectural addition, not an enum value.
 
-### `Role` is single-valued, and that is the trap
+### `Role` becomes multi-valued, decided 2026-08-28
 
-`profile.role` is one column holding one value. A person is `hiker` **or** `maintainer` **or**
-`club_admin` **or** `invasives` — never two. So a club admin who also coordinates invasives
-has to pick one, and the failure path from there is easy to predict: whoever administers it
-picks `club_admin` because it is the more powerful of the two, nobody ends up holding
-`invasives`, and the next person to hit the wall adds `club_admin` to the invasives gate to
-unblock themselves. At that point the scoping exists only in the enum.
+`profile.role` is one column holding one value today. A person is `hiker` **or** `maintainer`
+**or** `club_admin` — never two. Adding `invasives` to that makes the problem concrete: a club
+admin who also coordinates invasives has to pick one, and the failure path is easy to predict.
+Whoever administers it picks `club_admin` because it is the more powerful of the two, nobody
+ends up holding `invasives`, and the next person to hit the wall adds `club_admin` to the
+invasives gate to unblock themselves. At that point the scoping exists only in the enum.
 
-**Recommendation: define the invasives gate as `(Role.invasives, Role.club_admin)`
-deliberately, and write down why** — a club admin can already grant themselves any role, so
-excluding them buys a workaround rather than a restriction. The containment is then
-one-directional and stated: `club_admin` ⊃ `invasives`, and `invasives` ⊅ `maintainer`. That
-is a real boundary; the version arrived at by accident six months later is not.
+This document originally proposed working around that with a two-role gate,
+`(Role.invasives, Role.club_admin)`, on the reasoning that a club admin can grant themselves
+any role so excluding them buys a workaround rather than a restriction. **The maintainer chose
+the model fix instead** (2026-08-28), and the argument for it is the stronger one: a workaround
+documented today is a workaround somebody re-derives wrongly in a year, and *"this person does
+two jobs"* is a fact more than one club will have about somebody. A permission model that
+cannot express a true thing about the organisation using it will be worked around, and the
+workaround is what stops being visible.
 
-The alternative — making roles multi-valued — is coherent and larger, and would touch the
-profile model, every `require_role` call site and the client's role handling. It should be a
-decision somebody takes on its own merits, not a side effect of this feature. Open question
+So roles become a set rather than a value. What that touches, named so it is costed rather
+than discovered: the profile model and a migration, every `require_role` call site (all of
+which pass `*MODERATOR_ROLES` today), `MODERATOR_ROLES` itself, the `privileged` derivation in
+two schema modules, and the client's role handling. **This is the single largest item in Phase
+A and the reason that phase is worth splitting** — see "Phase A is not really this feature's"
 below.
 
 ### `reporter_id` needs a narrower answer than the constant gives
@@ -229,11 +234,19 @@ reasoning transfers without modification:
 > managing themselves. This is the deliberate answer for one club getting started, not a
 > substitute for it.
 
-One club, one or two coordinators, a target list revised annually. That is the same shape.
-**This refines rather than reverses the 2026-08-28 decision that a club admin grants the
-credential in-app:** the admin screen is the destination, and it is the right one for value
-#7, because a reviewed file is shaped like whoever holds the repository. The file is how the
-first club starts without blocking on VOLUNTEERING.md's phase E.
+One club, one or two coordinators, a target list revised annually. That is the same shape, and
+this section argued the file was therefore the right bootstrap.
+
+**The maintainer decided otherwise on 2026-08-28: build `RoleInvite` instead.** The section is
+kept rather than deleted because the argument it makes is still the right one to have had, and
+because the *reason* it loses is specific and worth carrying: `load_assignments.py`'s case
+rests on "would be used four times a year", and that premise expires at the second club. A
+bootstrap whose justification has a known expiry date is one somebody has to come back and
+replace, having meanwhile written the migration off it.
+
+What survives from it unchanged is the destination — a real admin surface, in
+VOLUNTEERING.md's phase E, which is the right home for value #7 because a reviewed file is
+shaped like whoever holds the repository rather than like a club.
 
 ### An invite is a pending grant, resolved at first sign-in
 
@@ -241,10 +254,18 @@ The real awkwardness the file does not fix: a club cannot say *"make Jane our co
 until Jane has signed in and somebody has found her profile id. That is a bad first
 experience for the one person whose participation the whole feature depends on.
 
-**Recommendation, and it needs no service-role key:** store a pending `(email, role, club)`
-grant, and have the provisioning path apply any matching invite at the moment it first creates
-the row. Jane is invited before she has an account, signs in with Google, and is a coordinator
-on her first request.
+**Decided 2026-08-28: build it, and it needs no service-role key.** Store a pending
+`(email, role, club)` grant, and have the provisioning path apply any matching invite at the
+moment it first creates the row. Jane is invited before she has an account, signs in with
+Google, and is a coordinator on her first request.
+
+The alternative this document recommended — a `load_assignments.py`-shaped reviewed file, on
+the grounds that one club with two coordinators can have a profile id looked up by hand — was
+declined in favour of building the real thing. Worth recording why that is defensible rather
+than gold-plating: the reviewed file is not *less* work so much as work that gets thrown away,
+because every club-admin surface after this one wants the same object, and the file's whole
+argument ("used four times a year") stops holding at the second club. The cost is that a
+feature branch carries generic infrastructure, which is the next section's problem.
 
 Two things to check before building it, neither of them blocking:
 
@@ -490,9 +511,21 @@ from the public report list for exactly this reason — "a stable account UUID n
 position and a time is the linkability IDENTITY_AND_PRIVACY.md names: group by it and a
 hiker's route down the corridor falls out, with curl and no account." An export of one
 person's observations, timestamped and geotagged, reconstructs the same thing on somebody
-else's platform. iNaturalist's CSV format carries a `geoprivacy` column, which is the lever;
-what the default should be is an open question below rather than a decision taken quietly
-here.
+else's platform. iNaturalist's CSV format carries a `geoprivacy` column, which is the lever.
+
+**Decided 2026-08-28: exported observations carry open coordinates.** The reasoning is that
+obscuring them defeats the record's purpose — an invasive sighting exists so somebody can be
+sent to that exact spot, and iNaturalist's obscuring box is wide enough to make that
+impossible. A record too vague to act on is not a safer record, it is a useless one that still
+names its reporter.
+
+**So the reporter's protection lives entirely in the consent gate, and that raises what the
+gate has to say.** If precision is not negotiable, then "may we publish this?" has to be asked
+in terms somebody can actually weigh: that the observation goes out with its exact location,
+its date, and their name attached, on a platform OurHike does not control and cannot later
+withdraw it from. A consent screen that says less than that is not consent to what actually
+happens. This is the one place in the design where the honest answer made the copy harder
+rather than easier.
 
 Worth recording that the usual counter-argument does not apply: iNaturalist automatically
 obscures coordinates for taxa of conservation concern, and invasive species are the opposite
@@ -502,13 +535,24 @@ exposure here is the **reporter**, not the organism.
 ## Data model sketch
 
 ```
-Role                               (EXISTING enum on Profile - gains a fourth value)
+Role                               (EXISTING enum - BECOMES MULTI-VALUED, decided 2026-08-28)
   hiker | maintainer | club_admin
   + invasives                      (the coordinator: reviews and submits. NOT added to
-                                    MODERATOR_ROLES - see "It must not join" above. Its own
-                                    gate, (Role.invasives, Role.club_admin), because Role is
-                                    single-valued and excluding an admin who can grant
-                                    themselves the role anyway buys only a workaround.)
+                                    MODERATOR_ROLES - see "It must not join" above; it gets
+                                    its own scoped gate, the first in this codebase.)
+  -> profile.role stops being one column holding one value. A person holds a SET, so
+     "club admin who also coordinates invasives" is expressible instead of being a
+     workaround. Touches: the profile model + migration, every require_role call site,
+     MODERATOR_ROLES itself, the privileged derivation in schemas/report.py and
+     schemas/field_note.py, and the client's role handling.
+
+ReporterType                       (EXISTING enum - `maintainer` IS RENAMED, decided
+                                    2026-08-28, so one word stops meaning both a self-
+                                    declared claim and a granted fact. Stored on existing
+                                    report and field_note rows, so this is a data migration,
+                                    not a rename. New value TBD - `trail_crew` is the
+                                    working suggestion, not a decision.)
+  thru | section | day | maintainer -> thru | section | day | <renamed>
 
 InvasiveCoordinator                (new - the role grant, and where "their info" lives)
   id, profile_id, club_id
@@ -577,21 +621,63 @@ UserPreferences                    (IDENTITY_AND_PRIVACY.md's existing canonical
 concrete target — its columns are taxon name, date observed, description, latitude, longitude,
 tags and geoprivacy, read on 2026-08-28 — and **v1 needs no OAuth application at all**, which
 removes the App ID gate, the token store and the 24-hour JWT expiry that a direct API
-integration would have required. A reviewer downloads a file and uploads it. iMapInvasives is
-named as the second target and not specified here, because nobody on this project has read its
-submission path yet.
+integration would have required. A reviewer downloads a file and uploads it.
 
-## Build order — five phases, each useful alone
+**iMapInvasives is not a second target, which this document had assumed it would be.**
+Researched 2026-08-28: iMapInvasives runs a dedicated New York project *on iNaturalist*, and
+observations submitted there are loaded into iMapInvasives after its own quality-control pass.
+So the state database is reached **through** iNaturalist rather than alongside it, and the
+`destination` field below has one real value for New York rather than two. The source-neutral
+record stays worth keeping anyway — a club outside this integration's five states would need a
+second target — but it is now insurance rather than a known requirement, which is a smaller
+claim than the one this paragraph used to make.
 
-- **A — The role and the credential. Bigger than it looks, and it is the phase to cost
-  carefully.** `Role.invasives` with its own gate — deliberately not `MODERATOR_ROLES`, and
-  the first scoped moderation role in the codebase — plus `InvasiveCoordinator`,
-  `InvasiveCredential` and its as-of lookup. Two things make this more than an enum change:
-  **no router in this backend assigns `role` at all today**, so this builds the first
-  role-granting mechanism the project has ever had; and the type-aware `privileged` change in
-  `schemas/report.py` belongs here too, since the role is worthless if it cannot see who filed
-  what it reviews. Start with a `load_assignments.py`-shaped reviewed file per the argument
-  above, not a screen. **Useful alone:** it gives a club a way to say who its invasives
+## Phase A is not really this feature's, and should be split out
+
+Three of the four decisions taken on 2026-08-28 — multi-valued roles, `RoleInvite`, and
+renaming `ReporterType.maintainer` — **have nothing to do with invasive species.** They are
+identity and permissions platform work that this feature happens to be the first thing to
+need. Counting what Phase A now contains makes the point better than an argument does:
+
+| Item | Invasives-specific? |
+|---|---|
+| `Role` becomes multi-valued, with the migration and every call site | **No** |
+| `RoleInvite`, and reading an email claim at provisioning | **No** |
+| `ReporterType.maintainer` renamed, with a data migration | **No** |
+| The first role-granting mechanism this backend has ever had | **No** |
+| `Role.invasives` and its scoped gate | Partly — the *pattern* is general |
+| Type-aware `privileged` in `schemas/report.py` | Partly — the *mechanism* is general |
+| `InvasiveCoordinator`, `InvasiveCredential`, the as-of lookup | **Yes** |
+
+**Four of seven rows are platform, and they are the four that carry migrations.** Building
+them inside a branch named for invasive species hides them from everyone who later goes
+looking for how roles work — which is the same failure ROADMAP.md records about feature docs
+that shipped without ever being indexed.
+
+**Recommendation: split Phase A into a permissions-and-identity piece of its own**, with
+invasive species as its first consumer rather than its owner. This repository already has the
+shape for that: [POI_IDENTITY.md](POI_IDENTITY.md) and
+[POI_DEDUPLICATION.md](POI_DEDUPLICATION.md) are both scoped in ROADMAP.md as *"platform, not
+a screen"*, and both were pulled out of the features that needed them for exactly this reason.
+
+It also unblocks differently. Everything below Phase A waits on the NYNJTC question; the
+platform work waits on nothing, and is useful to the club-admin module, to
+[VOLUNTEERING.md](VOLUNTEERING.md)'s phase E and to any second club regardless of what NYNJTC
+answers. **It is the one part of this feature that can start today.**
+
+## Build order — six phases, each useful alone
+
+- **A0 — Permissions and identity. Platform, not this feature.** Multi-valued roles and their
+  migration, the first role-granting mechanism this backend has ever had, `RoleInvite` and the
+  email claim it reads at provisioning, and the `ReporterType.maintainer` rename. **Useful
+  alone and to more than this:** VOLUNTEERING.md's phase E, the club-admin module and any
+  second club all want it, and none of it waits on the NYNJTC question. See the section above
+  for why it should be split out rather than built here.
+- **A — The role and the credential.** `Role.invasives` with its own scoped gate — deliberately
+  not `MODERATOR_ROLES`, and the first scoped moderation role in the codebase — plus
+  `InvasiveCoordinator`, `InvasiveCredential` and its as-of lookup, and the type-aware
+  `privileged` change in `schemas/report.py`, since the role is worthless if it cannot see who
+  filed what it reviews. **Useful alone:** it gives a club a way to say who its invasives
   coordinator is, which nothing in the app can express today.
 - **B — The survey.** `SurveySegment`, `SurveyPass`, offline-first, absence expressible,
   abandonment honest. **Useful alone:** it replaces paper field sheets and produces better
@@ -636,42 +722,53 @@ credential another hiker may take instructions from.
 
 ## Open questions
 
-1. **Is NYNJTC's bottleneck submission or transcription?** This is the one that decides
-   whether Phase B or Phase C is worth more, and it cannot be answered from outside. If their
-   surveyors are already on iNaturalist and the pain is coordination, C is the feature. If
-   they are on paper and the pain is the Excel return, B is. **Ask before building either.**
-2. **Which system is NYNJTC's record — iNaturalist or iMapInvasives?** The export is designed
-   source-neutral precisely so this can be answered late, but it should still be answered.
-3. **What is the default `geoprivacy` on an exported observation?** Obscured protects the
-   reporter's track and degrades the scientific value; open does the reverse. The organism
-   needs no protection, the person might. Not decided here.
-4. **Does a determination that contradicts a credentialed surveyor do anything automatically?**
+Six of the eight this document opened were closed on 2026-08-28 — four by the maintainer, two
+by research. They are kept below the live ones, because a question's *answer* is worth less
+than the record that it was asked.
+
+1. **Is NYNJTC's bottleneck submission or transcription?** ⚠️ **The one that blocks, and the
+   only one that cannot be answered from inside this repository.** If their surveyors are
+   already on iNaturalist and the pain is coordination, Phase C is the feature. If they are on
+   paper and the pain is the Excel return, Phase B is. Their own two pages disagree, so this
+   is a question for a person at NYNJTC. **Ask before building either.** Note that Phase A0
+   waits on none of it.
+2. **Does a determination that contradicts a credentialed surveyor do anything automatically?**
    Recommendation is no — it is shown to the club and a human decides — but the alternative
    (a credential that lapses on repeated disagreement) is coherent and should be argued rather
-   than dismissed.
-5. **Should `Role` become multi-valued?** `Role.invasives` is specified above against a
-   single-valued `profile.role`, with `(Role.invasives, Role.club_admin)` as the gate so an
-   admin who also coordinates invasives is not forced to choose. That works and is honest, but
-   it is a workaround for a model that cannot express "this person does two jobs" — which more
-   than one club will have. The refactor touches the profile model, every `require_role` call
-   site and the client's role handling, so it deserves a decision on its own merits rather
-   than being smuggled in here.
-6. **Does `RoleInvite` belong to this feature at all?** It is specified above because this
-   feature is the first thing that needs it — a club has to be able to name its coordinator
-   before that person has an account — but nothing about it is invasives-specific, and every
-   later club-admin surface wants the same object. It may belong in
-   [VOLUNTEERING.md](VOLUNTEERING.md)'s phase E with this feature as its first consumer.
-   Building it here and moving it later is cheap; building it twice is not.
-7. **Should `ReporterType.maintainer` be reconciled with `Role.maintainer` or deliberately kept
-   separate?** **De-risked but not resolved by the 2026-08-28 decision above:** the credential
-   is `Role.invasives` plus `InvasiveCredential`, so nothing in this feature reads
-   `reporter_type` as a qualification and the trap this question was filed about is no longer
-   one this feature can fall into. The two words still mean different things in one codebase,
-   which is worth a decision — just no longer an urgent one, and renaming either touches a lot
-   of files.
-8. **Is the App ID gate real?** A single forum thread on 2026-08-28 indicated that applying for
-   an iNaturalist API application requires the applicant's account to have ten improving
-   identifications in the last month. **Unconfirmed, one source, possibly stale.** It does not
-   block anything in this design — the CSV path needs no application — but it decides whether a
-   future direct-API phase is even available, and it should be checked with iNaturalist rather
-   than inherited from this paragraph.
+   than dismissed. Phase E, so there is time.
+3. **What does the renamed `ReporterType.maintainer` become?** The rename is decided; the new
+   value is not. `trail_crew` is a working suggestion and nothing more — it wants whichever
+   word a club actually uses, which is a question for NYNJTC alongside #1.
+
+### Closed
+
+- ~~**Which system is NYNJTC's record — iNaturalist or iMapInvasives?**~~ **Answered by
+  research, 2026-08-28: the question was malformed.** iMapInvasives runs a dedicated New York
+  project *on iNaturalist*, and observations submitted there "will be uploaded into
+  iMapInvasives after quality control checks are completed" — reviewed, not automatic. So iNat
+  is the submission surface and iMapInvasives is a downstream consumer of it; nothing has to
+  choose. This also retroactively strengthens the decision to group observations by an
+  iNaturalist *project* rather than a shared organisational login: the project is not just
+  tidy, it is the routing. **One caveat worth carrying:** NY iMapInvasives' own "report an
+  invasive" page does not mention iNaturalist at all while the network's tools page documents
+  the integration, so the project's exact name and current status should be confirmed with
+  `imapinvasives@dec.ny.gov` before anything is submitted into it.
+- ~~**What is the default `geoprivacy` on an exported observation?**~~ **Decided by the
+  maintainer, 2026-08-28: open coordinates.** An invasive record exists so a crew can be sent
+  to that spot, and obscuring defeats it. The consequence is carried in "Consent is a new
+  audience": the consent copy has to say the location goes out exactly.
+- ~~**Should `Role` become multi-valued?**~~ **Decided by the maintainer, 2026-08-28: yes**,
+  rather than the two-role gate this document proposed. See "`Role` becomes multi-valued".
+- ~~**Does `RoleInvite` belong to this feature at all?**~~ **Decided by the maintainer,
+  2026-08-28: build it**, rather than the reviewed-file bootstrap this document proposed. It
+  is platform work, which is what "Phase A is not really this feature's" is about.
+- ~~**Reconcile `ReporterType.maintainer` with `Role.maintainer`?**~~ **Decided by the
+  maintainer, 2026-08-28: rename the self-declared one**, so one word stops meaning both a
+  claim and a grant. It is a stored enum value on existing report and field-note rows, so it
+  is a data migration rather than a rename. What it becomes is question 3 above.
+- ~~**Is the App ID gate real?**~~ **Confirmed, 2026-08-28**, by two independent forum threads
+  rather than the single one this document originally cited: registering an iNaturalist OAuth
+  application requires an account **at least two months old with at least ten improving
+  identifications in the last month**. It gates a *person*, it is satisfiable by any real
+  coordinator, and the CSV path needs none of it — so it constrains who could hold a future
+  direct-API registration rather than whether one is possible.

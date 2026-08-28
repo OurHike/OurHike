@@ -42,7 +42,7 @@ is the drop-ratio gate below, the same shape fetch_opentrail.py uses.
 
 Licence: OSM data is ODbL - attribution plus share-alike, the terms the
 self-built basemap already complies with, and the client's credits line
-already names OpenStreetMap (client/src/lib/credits.ts). sources.json's
+already names OpenStreetMap (client/src/map/credits.ts, `OSM_CREDIT`). sources.json's
 `osm_water` entry records this; nothing here rides the atc_licence block.
 """
 

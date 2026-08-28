@@ -58,9 +58,9 @@
 // the agencies publish as places to camp. There is no location fix in a CI
 // browser and no account, so the other three are kept the same way.
 export const caption =
-  'Trail notices — two organizations in one list, and the “show more” control that had no styles'
+  'Trail notices, scrolled to the foot of the list — the “Show N more” control, which had no styles at all until now'
 export const alt =
-  'The trail-notices sheet over the map at Harriman: one flat list newest first, mixing rows credited to the Appalachian Trail Conservancy with rows credited to the New York-New Jersey Trail Conference. The NYNJTC rows carry a locality such as Harriman-Bear Mountain and no category line, and each says it is not drawn on the map. Beneath the list, a plain text control offers to show the notices elsewhere on the trail. The heading counts every notice rather than naming one organization.'
+  'The foot of the trail-notices sheet, scrolled down: the last of the notices, each credited to the organization that posted it — the Appalachian Trail Conservancy or the New York-New Jersey Trail Conference — with the NYNJTC rows carrying a locality such as Harriman-Bear Mountain, no category line, and a note that they are not drawn on the map. Beneath the last row, a plain text control in the link colour offers to show the remaining notices elsewhere on the trail, where it previously drew as the browser’s default grey push button.'
 
 export default async function drive(page) {
   // Park the camera before anything else, so the list is scoped to a stretch
@@ -99,4 +99,32 @@ export default async function drive(page) {
   // legend because the tap missed would produce a picture that looks fine and
   // shows nothing this pull request changed.
   await page.getByRole('dialog', { name: 'Every trail notice OurHike holds' }).waitFor()
+
+  // THEN SCROLL TO THE CONTROL, because waiting for the dialog is not enough
+  // and the first run of this recipe proved both halves of that.
+  //
+  // The frame it produced (pr-1159, 2026-08-28) was wrong twice over: the
+  // sheet was caught mid-transition with the legend's own rows showing
+  // through beneath it, and the thing this recipe exists to photograph was
+  // nowhere in it. "Show N more, elsewhere on the trail" sits at the FOOT of
+  // the list, and the list that day was 49 notices long - the scoping hid 4
+  // of 53, which is enough for the control to exist and nowhere near enough
+  // to bring it on screen. A shot of the top of a long list is a shot of the
+  // list, not of the change.
+  //
+  // `scrollIntoViewIfNeeded` fixes both: it puts the control in frame, and
+  // getting there requires the dialog to have finished laying out, which is
+  // the settle the `waitFor` above only looked like.
+  //
+  // IT THROWS WHEN THE CONTROL IS ABSENT, and that is the right failure. The
+  // button renders only when the viewport scopes something out; if a future
+  // change to the scoping means nothing is ever hidden here, this recipe
+  // should say "the camera could not take trail-notices" in the comment
+  // rather than quietly photograph a list with no control at the bottom and
+  // let a caption claim otherwise. That is exactly the mistake this paragraph
+  // is a correction of.
+  const showAll = page.getByRole('button', {
+    name: /Show \d+ more, elsewhere on the trail/,
+  })
+  await showAll.scrollIntoViewIfNeeded()
 }

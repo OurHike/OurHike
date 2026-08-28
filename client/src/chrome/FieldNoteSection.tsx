@@ -70,7 +70,17 @@ import { REPORT_ICONS } from '../reporting/icons'
 /** Where a report started from this card lands (FIELD_NOTES.md step 1: the
  *  plumbing for `poi_id` runs end to end and nothing populated it). */
 export interface ReportAnchor {
-  poiId: string
+  /**
+   * OPTIONAL SINCE #1137, and the exception is the whole reason that feature
+   * exists: a press and hold on bare map anchors on a point with no waypoint
+   * under it. Every anchor built from a card still carries one - this file's
+   * own is a few hundred lines down - so nothing that had an id has lost it.
+   *
+   * Its readers already coped: `reportAnchorWords` tests `poiId !== undefined`
+   * and `ReportForm` takes `poiId?: string`. The type was stricter than the
+   * shape, because until now every anchor happened to come from a card.
+   */
+  poiId?: string
   lat: number
   lon: number
   mile?: number

@@ -21,11 +21,19 @@ from the map — and:
    replacing it. It is a dialog, not a route: the screen behind it stays, so
    nobody loses their place to file a blow-down.
 2. **Where the report is going is stated, not asked.** Every entry point
-   supplies an anchor and the hiker is standing at it — the place's card knows
-   the place, the map's long-press knows the point, Today knows the fix. A
-   `Change` control re-anchors to a place today's walked miles covered, for the
-   one case the stated anchor gets wrong: something noticed and remembered a
-   mile later.
+   supplies an anchor — the place's card knows the place, the map's long-press
+   knows the point, Today knows the fix. A `Change` control re-anchors to a
+   place today's walked miles covered, for the one case the stated anchor gets
+   wrong: something noticed and remembered a mile later.
+
+   **The hiker is standing at it, except when they are not.** Press and hold
+   (#1137) is the entry point that broke that assumption: it anchors wherever
+   the finger landed, which may be fifteen miles up the trail. So an anchor
+   that carries no mile no longer borrows the hiker's — a report filed at a
+   pressed point with the fix's mile printed over it is a position claim that
+   resolves to somewhere real and wrong, which is worse than no mile at all.
+   Off the corridor the report keeps its coordinates and drops the mile, which
+   is what the data model below has always allowed ("Null off-trail").
 3. **One tap on a type files the report**, into the outbox, at once. There is
    no submit button and nothing to abandon.
 4. **An 8-second `Undo` stands where the Cancel used to.** The report is held

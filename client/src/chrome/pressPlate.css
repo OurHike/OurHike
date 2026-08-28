@@ -1,0 +1,69 @@
+/* The press-and-hold plate (#1137).
+
+   Positioned by the component in canvas pixels, so `left`/`top` are inline and
+   everything else lives here. Absolute against the map's own region rather
+   than fixed against the viewport: the plate belongs to the map, and a fixed
+   panel would sit over the tab bar and the header too. */
+.press-plate {
+  position: absolute;
+  z-index: 4;
+  /* LOAD-BEARING, not tidiness, for the reason screens/plan.css records: this
+     app sets no universal box-sizing. Without it the declared 208px width
+     renders as 234 - width plus 12px of padding each side plus the border -
+     and the component's clamp, which is written against the declared number,
+     lets the plate hang 26px off the right edge. The preview recipe caught
+     exactly that; the unit test could not, because it asserted against the
+     same 208 the component used, so the two agreed with each other and both
+     disagreed with the browser. */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  width: 208px;
+  padding: var(--space-3, 12px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  /* Placed by its own bottom edge when it sits above the press, so the
+     component never has to know how tall it is - see PressPlate.tsx. */
+  transform: translateY(var(--press-plate-lift, 0));
+  /* The same lift the waypoint card uses - this reads as the same kind of
+     thing, something the map handed you rather than a screen you went to. */
+  box-shadow: var(--shadow-card);
+}
+
+/* Mono for the mile, body for the two sentences that are not one. The figure
+   is a position and is read as one; "More than 3 mi off the trail" is prose
+   and setting it in the figures' face would invite it to be read as data. */
+.press-plate__where {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.press-plate__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* "Not here" rather than an ×, and at text weight rather than as a third
+   button. A press that landed a hundred metres off is the common miss, and the
+   words say what to do about it - press again where you meant - in a way a
+   close glyph does not. */
+.press-plate__close {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 12px;
+  color: var(--fg-3);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.press-plate__close:hover {
+  color: var(--fg-2);
+}

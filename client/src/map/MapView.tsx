@@ -73,6 +73,7 @@ import {
   attachRouteTaps,
   type RouteDrawing,
 } from './routeLayers'
+import { attachLongPress } from './longPress'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type {
   BackgroundSource,
@@ -251,6 +252,32 @@ export interface MapViewProps {
    * for both is the same race one level up.
    */
   onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void
+  /**
+   * Press and hold a spot on bare map (#1137) - the third way into a report,
+   * and the only one that can name a place the app has no name for.
+   *
+   * Suppressed in route and draw mode with every other tap handler, for the
+   * one-interpreter rule: while a route is being built, holding a finger down
+   * means "I am about to drag a point", not "open a plate here".
+   */
+  onLongPress?: (
+    at: { lon: number; lat: number },
+    point: { x: number; y: number },
+  ) => void
+  /**
+   * True while the press plate is open over the map.
+   *
+   * WHAT THIS PROP IS FOR is the click that arrives when the finger lifts.
+   * The press fires on a timer while the finger is still down, so the release
+   * still produces a `click` - which `attachPoiTaps` would read as "select
+   * whatever is here" and `attachLineTaps` as "open this trail's facts",
+   * putting a card under the plate the hiker just opened. A module cannot
+   * honestly swallow another module's listener, so the suppression lives here
+   * instead, exactly as route mode's does: while the plate is up, those
+   * handlers are not attached at all. A finger held for half a second lifts
+   * long after this render.
+   */
+  pressPlateOpen?: boolean
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -421,6 +448,8 @@ export function MapView({
   dayHikeDrawing = null,
   onRouteTap,
   onRouteStroke,
+  onLongPress,
+  pressPlateOpen = false,
   onSelectPoi,
   onSelectLine,
   center,
@@ -936,8 +965,10 @@ export function MapView({
   // taps have exactly one interpreter.
   useEffect(() => {
     if (map === null || onSelectPoi === undefined || onRouteTap !== undefined) return
+    // The press plate's own release-click - see `pressPlateOpen`.
+    if (pressPlateOpen) return
     return attachPoiTaps(map, onSelectPoi)
-  }, [map, onSelectPoi, onRouteTap])
+  }, [map, onSelectPoi, onRouteTap, pressPlateOpen])
 
   useEffect(() => {
     if (map === null || onRouteTap === undefined || onRouteStroke !== undefined) return
@@ -949,6 +980,18 @@ export function MapView({
     return attachRouteStroke(map, onRouteStroke)
   }, [map, onRouteStroke])
 
+  // Press and hold (#1137), suppressed in route and draw mode like every
+  // other handler here. Not suppressed while its own plate is open: pressing
+  // a second spot with the first plate up is a hiker correcting their aim,
+  // and re-anchoring is exactly what they mean by it.
+  useEffect(() => {
+    if (map === null || onLongPress === undefined) return
+    if (onRouteTap !== undefined || onRouteStroke !== undefined) return
+    return attachLongPress(map, (at, point) =>
+      onLongPress({ lon: at.lon, lat: at.lat }, point),
+    )
+  }, [map, onLongPress, onRouteTap, onRouteStroke])
+
   // The line taps (#134), suppressed in route mode like every other tap
   // handler. Attached separately from the POI taps because their yields
   // differ - lineTaps.ts asks the POI and ATC layers itself and reports
@@ -956,8 +999,9 @@ export function MapView({
   // two effects knowing about each other.
   useEffect(() => {
     if (map === null || onSelectLine === undefined || onRouteTap !== undefined) return
+    if (pressPlateOpen) return
     return attachLineTaps(map, onSelectLine)
-  }, [map, onSelectLine, onRouteTap])
+  }, [map, onSelectLine, onRouteTap, pressPlateOpen])
 
   // Suppressed in route mode for the same one-interpreter rule as the POI
   // taps above: a point dropped near an ATC notice must not also open its
@@ -965,8 +1009,9 @@ export function MapView({
   useEffect(() => {
     if (map === null || onSelectAtcUpdate === undefined || onRouteTap !== undefined)
       return
+    if (pressPlateOpen) return
     return attachAtcUpdateTaps(map, onSelectAtcUpdate)
-  }, [map, onSelectAtcUpdate, onRouteTap])
+  }, [map, onSelectAtcUpdate, onRouteTap, pressPlateOpen])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

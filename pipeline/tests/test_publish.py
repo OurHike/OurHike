@@ -1059,21 +1059,21 @@ def test_every_conditions_manifest_an_export_writes_is_one_publish_collects():
     )
 
 
-def test_collect_gathers_the_stretch_units_from_their_manifests(tmp_path, monkeypatch):
-    """#556: each sheet's cut leaves <family>_stretches_manifest.json in
-    PROCESSED_DIR and every artifact it names - stretches, context, the
-    coverage index - publishes like any other."""
+def test_collect_gathers_the_coverage_cells_from_their_manifests(tmp_path, monkeypatch):
+    """#1175: each sheet's cut leaves <family>_cells_manifest.json in
+    PROCESSED_DIR and every artifact it names - cells, context, the coverage
+    index - publishes like any other."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
-    stretch = tmp_path / "at_basemap_stretch_00.pmtiles"
-    stretch.write_bytes(b"stretch-bytes")
-    index = tmp_path / "at_basemap_stretches.json"
+    cell = tmp_path / "at_basemap_cell_n40w075.pmtiles"
+    cell.write_bytes(b"cell-bytes")
+    index = tmp_path / "at_basemap_cells.json"
     index.write_text("{}")
-    (tmp_path / "at_basemap_stretches_manifest.json").write_text(
+    (tmp_path / "at_basemap_cells_manifest.json").write_text(
         json.dumps(
             {
                 "artifacts": {
-                    "at_basemap_stretch_00.pmtiles": {"path": str(stretch), "sha256": "a" * 64, "size_bytes": 13},
-                    "at_basemap_stretches.json": {"path": str(index), "sha256": "b" * 64, "size_bytes": 2},
+                    "at_basemap_cell_n40w075.pmtiles": {"path": str(cell), "sha256": "a" * 64, "size_bytes": 13},
+                    "at_basemap_cells.json": {"path": str(index), "sha256": "b" * 64, "size_bytes": 2},
                 },
                 "stats": {"seam_duplication_pct": 1.0},
             }
@@ -1082,12 +1082,12 @@ def test_collect_gathers_the_stretch_units_from_their_manifests(tmp_path, monkey
 
     artifacts = publish.collect_artifacts()
 
-    assert artifacts["at_basemap_stretch_00.pmtiles"]["sha256"] == "a" * 64
-    assert artifacts["at_basemap_stretches.json"]["sha256"] == "b" * 64
+    assert artifacts["at_basemap_cell_n40w075.pmtiles"]["sha256"] == "a" * 64
+    assert artifacts["at_basemap_cells.json"]["sha256"] == "b" * 64
 
 
 def test_collect_publishes_every_artifacts_measured_size(tmp_path, monkeypatch):
-    """#505's third ask, needed for real at stretch scale (#556): size_bytes
+    """#505's third ask, needed for real at cell scale (#1175): size_bytes
     is measured from the built file, never hand-kept."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
     path = tmp_path / "background.pmtiles"
@@ -1101,7 +1101,7 @@ def test_collect_publishes_every_artifacts_measured_size(tmp_path, monkeypatch):
 def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
     """The size rides beside the hash in latest.json, so drift between the
     advertised figure and the served bytes is visible in a manifest diff -
-    and per-stretch download prompts have an honest number to print."""
+    and per-cell download prompts have an honest number to print."""
     artifact = tmp_path / "background.pmtiles"
     artifact.write_bytes(b"0123456789")
 

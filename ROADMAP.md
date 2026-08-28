@@ -307,7 +307,7 @@ Three things it turned up that are worth knowing even if the build slips:
 - **Context zooms are where this could defeat itself.** Every package ships its source tiles
   through z9 as orientation, 6.3 MB duplicated by construction — which at 51 cells would be
   ~321 MB of the same bytes, spent on duplication, to solve a problem about size. Context is
-  one shared artifact, and `cut_stretches.py` already built it.
+  one shared artifact, and the cut #556 built already solved it.
 - **A seam takes away the ground, never the hazard.** Water, closures and warnings ship with
   the trail wherever the hiker is; only the basemap and terrain are piece-scoped. Two docs
   disagreed about this and neither had noticed.

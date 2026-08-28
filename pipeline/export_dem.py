@@ -187,7 +187,7 @@ VARIANTS = {
 # terrain instead of a 60-mile ribbon floating in blank paper.
 #
 # THE SAME BOUNDARY extract_package.DEFAULT_CONTEXT_ZOOM and
-# cut_stretches.STRETCH_CONTEXT_ZOOM already draw, and it was a real gap that
+# cut_cells.CELL_CONTEXT_ZOOM already draw, and it was a real gap that
 # the DEM did not draw it too: the vector sheet has kept its whole footprint
 # through z9 since #189 ("panning out offline shows the ground around the trail
 # instead of blank paper"), while the hillshade under it stopped at the

@@ -508,25 +508,25 @@ def spurs_verdict(manifest_path: Path | None = None) -> dict:
 
 def manifests_verdict(
     club_manifest_path: Path | None = None,
-    stretches_dir: Path | None = None,
+    cells_dir: Path | None = None,
     retired_manifest_path: Path | None = None,
 ) -> dict:
     """Re-verify the manifest-backed artifacts publish.py collects that no
     dedicated verdict covers (#659): club_sections_manifest.json and each
-    stretch family's <family>_stretches_manifest.json. Same thesis as every
+    cell family's <family>_cells_manifest.json. Same thesis as every
     other check here - the exporter's manifest is a claim, and the claim is
     only evidence once the file on disk re-hashes to it.
 
     Asymmetric on absence, deliberately: a missing club_sections manifest
     is a PROBLEM (reason MANIFEST_MISSING, so --optional manifests can
     excuse it) because publish-vector-data.yml now always runs that
-    exporter - while a missing stretch-family manifest is only noted, since
-    stretches exist only after a basemap/dem build and most vector runs
+    exporter - while a missing cell-family manifest is only noted, since
+    cells exist only after a basemap/dem build and most vector runs
     rightly have none."""
     if club_manifest_path is None:
         club_manifest_path = CLUB_SECTIONS_MANIFEST
-    if stretches_dir is None:
-        stretches_dir = PROCESSED_DIR
+    if cells_dir is None:
+        cells_dir = PROCESSED_DIR
     if retired_manifest_path is None:
         retired_manifest_path = RETIRED_POI_MANIFEST
 
@@ -543,7 +543,7 @@ def manifests_verdict(
         details.append("club_sections.json verified")
 
     # The tombstones (#673, export_retired_poi.py). Noted rather than
-    # required when absent, the stretch-family posture rather than
+    # required when absent, the cell-family posture rather than
     # club_sections': the exporter writes no manifest at all where there is
     # no identity ledger to read, which is the pre-#671 state of any
     # checkout that has never run a reconciliation. What it must not do is
@@ -563,21 +563,21 @@ def manifests_verdict(
         problems += artifact_problems("retired_poi.geojson", retired_manifest)
         details.append(f"retired_poi.geojson verified ({retired_manifest.get('retired_count', 0)} tombstones)")
 
-    # publish.py's STRETCH_FAMILIES, imported rather than restated, so a
-    # third family lands here the day it lands there. Imported lazily: this
-    # module runs in contexts that never publish, and should not need
-    # publish.py's boto3 import to answer a local quality question.
-    from publish import STRETCH_FAMILIES
+    # publish.py's CELL_FAMILIES, imported rather than restated, so a third
+    # family lands here the day it lands there. Imported lazily: this module
+    # runs in contexts that never publish, and should not need publish.py's
+    # boto3 import to answer a local quality question.
+    from publish import CELL_FAMILIES
 
-    for family in STRETCH_FAMILIES:
-        manifest = read_manifest(stretches_dir / f"{family}_stretches_manifest.json")
+    for family in CELL_FAMILIES:
+        manifest = read_manifest(cells_dir / f"{family}_cells_manifest.json")
         if manifest is None:
-            details.append(f"{family} stretches: not built this run")
+            details.append(f"{family} cells: not built this run")
             continue
         entries = manifest.get("artifacts", {})
         for name, entry in entries.items():
             problems += artifact_problems(name, entry)
-        details.append(f"{family} stretches: {len(entries)} artifacts verified")
+        details.append(f"{family} cells: {len(entries)} artifacts verified")
 
     verdict = Verdict.PROBLEM if problems else Verdict.OK
     report = {

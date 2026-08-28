@@ -148,11 +148,25 @@ OFFLINE_SHEET_ARCHIVES = {
     "dem_light": "dem_light.pmtiles",
 }
 
-# The sheets that get 50-mile stretch cuts (#556, cut_stretches.py). Each
-# family's cut leaves `<family>_stretches_manifest.json` in PROCESSED_DIR
+# The sheets that get 1-degree coverage-cell cuts (#1175, cut_cells.py).
+# Each family's cut leaves `<family>_cells_manifest.json` in PROCESSED_DIR
 # and collect_artifacts() below reads it; a family added to the cutting
-# workflows and not here would build stretches nothing ever publishes.
-STRETCH_FAMILIES = ("at_basemap", "dem")
+# workflows and not here would build cells nothing ever publishes.
+#
+# SUPERSEDES STRETCH_FAMILIES, removed here 2026-08-28. The stretch cut
+# (#556) built trail-derived 50-mile units; the maintainer replaced that
+# unit with the graticule cell on 2026-08-25 and the pipeline went on
+# cutting stretches for three days. Measured before removal: 88 stretch
+# archives live on production at 942.9 MB, read by zero client code - which
+# is why dropping the cut regresses nothing a hiker can see.
+#
+# Their 90 keys stay in the bucket rather than being reclaimed: this
+# module's manifest merge is additive-only, so an abandoned name can only be
+# joined by a sibling, never renamed or removed from here. Deleting them is
+# a deliberate act against R2, and it belongs AFTER a cell cut has published
+# and verified, not before - an abandoned artifact costs storage, a
+# prematurely deleted one costs a rollback.
+CELL_FAMILIES = ("at_basemap", "dem")
 
 
 # Build metadata that travels with a release but is not part of it.
@@ -807,16 +821,15 @@ def collect_artifacts() -> dict[str, dict]:
             for kind, entry in manifest["artifacts"].items():
                 artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
 
-    # The stretch units (#556): each sheet's cut writes one manifest naming
-    # its context, its per-stretch archives, and the coverage index
-    # (cut_stretches.py). Collected per family because the two sheets are
-    # cut by different workflows on different runners - whichever ran
-    # publishes what it has, the same partial-checkout posture as everything
-    # above.
-    for family in STRETCH_FAMILIES:
-        stretches_manifest = PROCESSED_DIR / f"{family}_stretches_manifest.json"
-        if stretches_manifest.exists():
-            manifest = json.loads(stretches_manifest.read_text())
+    # The coverage cells (#1175): each sheet's cut writes one manifest naming
+    # its context, its per-cell archives, and the coverage index
+    # (cut_cells.py). Collected per family because the two sheets are cut by
+    # different workflows on different runners - whichever ran publishes what
+    # it has, the same partial-checkout posture as everything above.
+    for family in CELL_FAMILIES:
+        cells_manifest = PROCESSED_DIR / f"{family}_cells_manifest.json"
+        if cells_manifest.exists():
+            manifest = json.loads(cells_manifest.read_text())
             for name, entry in manifest["artifacts"].items():
                 artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
 

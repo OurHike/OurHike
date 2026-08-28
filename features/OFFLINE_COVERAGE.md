@@ -12,10 +12,11 @@ Answers [#552 — Decide the unit of offline coverage, and write it
 down](https://github.com/OurHike/OurHike/issues/552), inside
 [#551](https://github.com/OurHike/OurHike/issues/551)'s offline-coverage program.
 
-**Status, 2026-08-28: decided, not built.** The unit is the maintainer's call of
-2026-08-25, recorded on #552. This doc is the argument around it and the constraints any
-build must hold. Nothing hiker-facing exists: `#557` (drawing from several units) and
-`#558` (choosing a piece) are both open.
+**Status, 2026-08-28: decided, and the pipeline half built.** The unit is the maintainer's
+call of 2026-08-25, recorded on #552. `pipeline/cut_cells.py` cuts it (#1175, landed with
+this doc), and `publish.py` publishes what it cuts. **Nothing hiker-facing exists yet**:
+#557 (drawing from several units, and saying where they end) and #558 (choosing a piece)
+are both open, and until they land no cell reaches a phone.
 
 Measurements below are dated. Everything read off the published bucket was fetched
 2026-08-28 against release `2026-08-28`, whose manifest carries a `size_bytes` per
@@ -117,18 +118,20 @@ class of bug — two modules disagreeing about where a cell ends — is closed b
 
 `pipeline/cut_stretches.py` closed
 [#556](https://github.com/OurHike/OurHike/issues/556) on 2026-08-18, implementing the
-decision taken that morning. The decision moved on 2026-08-25; the pipeline was not told,
-and `publish.py`'s `STRETCH_FAMILIES` still names both sheets.
+decision taken that morning. The decision moved on 2026-08-25 and the pipeline was not
+told, so it went on cutting stretches for three days. **#1175 replaced it with
+`cut_cells.py` and removed the module**; `publish.py` now names `CELL_FAMILIES`.
 
-**Most of that module survives the change of unit, and this is the reason re-cutting is
-cheaper than it looks.** What ports:
+**Most of that module survived the change of unit, and this is the reason re-cutting was
+cheaper than it looked.** What ported:
 
-- **The shared context artifact.** `STRETCH_CONTEXT_ZOOM = 9`: everything through z9 goes
+- **The shared context artifact.** The context zoom stays 9: everything through z9 goes
   to *one* sibling download per sheet instead of riding in every unit. This is §6's answer,
   already written and already measured.
-- **Five-point tile routing.** Each tile's corners and centre decide which units it belongs
-  to, so a tile straddling a boundary lands in both. Against a lat/lon grid this gets
-  simpler, not harder — the mile-axis projection goes away entirely.
+- **Tile routing that handles a straddling tile.** Against a lat/lon grid this got
+  *simpler* rather than merely surviving: five-point sampling existed because "which miles
+  does this tile serve" is a question about a curve, and cell membership is an exact
+  rectangle overlap. No sampling, so no false negatives at all.
 - **The seam margin.** Widening a unit's bounds before routing, so a unit's map does not end
   at the exact perpendicular of its boundary. §4 is what it is for.
 
@@ -142,9 +145,12 @@ This is #552's non-negotiable and the sentence that retired the per-section list
 mechanisms hold it, and none of them is "choose carefully":
 
 1. **The margin.** A unit carries beyond its own boundary, so the edge of the data is never
-   the edge of the choice. `cut_stretches.py` set this at 2 miles. `@unvalidated` — 2 was
-   picked, not found. What would settle it: how far past a boundary a hiker actually pans,
-   once #558 ships and there is behaviour to measure.
+   the edge of the choice. The stretch cut set this at 2 miles; `cut_cells.py` states it
+   as 3 km instead, because a degree of longitude is 111 km at the equator and about 77 km
+   in Maine, so a degree margin promises different amounts of ground at each end of one
+   trail. `@unvalidated` either way — both numbers were picked, not found. What would
+   settle it: how far past a boundary a hiker actually pans, once #558 ships and there is
+   behaviour to measure.
 2. **The choosing is derived, not enumerated.** `lib/plannedHike.ts` already stores start
    and end, and `plannedDirection()` falls out of the pair — so "the ground I am walking" is
    answerable today, without a route builder and without anyone picking rows off a list.
@@ -301,8 +307,10 @@ and abandoned."*
 So the stretch keys are **abandoned, not reclaimed**. Concretely, and none of it is
 automatic:
 
-- `STRETCH_FAMILIES` comes out of `publish.py`, and the cut comes out of `build-basemap.yml`
-  and `build-dem.yml`, or every future build re-publishes 942.9 MB nothing reads.
+- `STRETCH_FAMILIES` came out of `publish.py` and the cut came out of `build-basemap.yml`
+  and `build-dem.yml` in #1175 — otherwise every future build re-publishes 942.9 MB nothing
+  reads. Done, and safe to do first precisely because no client reads either unit: there is
+  no hiker-facing state to regress between the last stretch cut and the first cell one.
 - The 90 existing keys (88 archives + 2 stretch manifests) stay in the bucket until somebody
   deletes them deliberately. That is a maintainer action against R2, not a pipeline change,
   and it should follow rather than precede the cell cut — an abandoned artifact costs

@@ -174,12 +174,24 @@ function assetStateLine(asset: SheetAsset): string {
   }
 }
 
-/** The trail-data rows' names, hiker words for pipeline artifacts. */
-const TRAIL_DATA_LABEL: Record<TrailDataAsset['id'], string> = {
+/** The trail-data rows' names, hiker words for pipeline artifacts.
+ *
+ *  Exported for onThisPhone.test.ts, which asserts the two ends cover each
+ *  other: a row with no name here renders `undefined` in the window, and a
+ *  name with no row is a line nobody will ever see. TypeScript's `Record`
+ *  catches the first at compile time and neither at runtime, and the second
+ *  not at all - `network-overview` existed as a stored artifact with no row
+ *  for a whole release, and nothing anywhere went red. */
+export const TRAIL_DATA_LABEL: Record<TrailDataAsset['id'], string> = {
   'trail-line': 'Trail line',
   waypoints: 'Waypoints',
   elevation: 'Elevation profile',
   'nearby-trails': 'Nearby trails network',
+  // The same network as the row above, drawn for the opening view. Named for
+  // WHEN a hiker sees it rather than for what it is - "corridor-view sketch"
+  // is the pipeline's phrase and answers nothing somebody is asking while
+  // looking at a storage list.
+  'network-overview': 'Nearby trails, zoomed out',
   // Named for what it DOES rather than for what it is. "Junction graph" is the
   // pipeline's word and answers no question a hiker has; this row exists so
   // somebody can tell whether the day-hike builder will work at a trailhead

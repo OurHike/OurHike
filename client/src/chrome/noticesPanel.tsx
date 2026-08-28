@@ -288,6 +288,31 @@ export function useNoticesPanel({
     setNoticesOpen(true)
     // Opening the full list is a hiker having looked, exactly as much as
     // tapping the bottom banner's own dismiss is - see silenceNotices above.
+    //
+    // THAT PREMISE STOPPED HOLDING WHEN THE LIST BECAME SCOPED, and this is
+    // written down rather than fixed here because the fix is a product call
+    // nobody has made. `silenceNotices` writes a watermark over `allNotices`,
+    // while `NoticeList` renders `scopedNotices(...)` - so a notice edited 30
+    // hours ago, outside the stretch on screen, not drawn and not inside the
+    // 24-hour always-shown window is counted by the banner, HIDDEN behind
+    // "Show N more", and silenced by this call. The hiker is told there is
+    // news, opens the list, is not shown that notice, and is never told again.
+    //
+    // Two things make it worse rather than better than it sounds. The
+    // watermark is per organization and per newest edit, so silencing one
+    // unseen notice silences every older one from that org. And `extent` is
+    // deliberately null until `noticesOpen` is true, so even computing the
+    // shown set here would see "nothing scoped" and silence everything
+    // anyway - the honest fix has to silence on what the list ACTUALLY
+    // rendered, which means the list reporting it, which is a change to a
+    // safety surface and not a cleanup.
+    //
+    // Filed as #1155 — Opening the notices list silences notices it did not
+    // show, which carries the reproduction and the two questions that have to
+    // be answered first. Until one is, this errs toward
+    // silencing too much, which is the wrong direction for a surface that
+    // carries closures: "NEVER silently dropped" is lib/notices.ts's own rule
+    // for the list and this call is the hole in it.
     silenceNotices()
   }, [silenceNotices])
 

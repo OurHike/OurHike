@@ -512,10 +512,22 @@ def write_fixtures(raw_dir: Path) -> list[str]:
             "UNPAVED PARKING LOT", ["Fixture Trailhead Parking", "Fixture Hunter Parking"]
         ),
         # The one DEC layer that is NOT a POI layer: an asset inventory whose
-        # largest value is CULVERT and whose PUBLICUSE flag splits it 7,645 Y
-        # / 13,823 N on the live 21,468 rows. Both sides appear, and the
-        # trailing-space ASSET value is the real hygiene wart sources.json
-        # records ('FORD ' beside 'FORD'), not a typo here.
+        # largest value is CULVERT at 4,290 features and whose PUBLICUSE flag
+        # splits it 7,645 Y / 13,823 N on the live 21,468 rows (sources.json
+        # carries all three figures). Both sides of the flag appear here,
+        # which is the property the models are exercised against.
+        #
+        # WHAT THIS FIXTURE DOES NOT REPRODUCE, said plainly because a reader
+        # who has just read sources.json will look for it: the whitespace
+        # wart. `ASSET` upstream is free text with 234 values as stored and
+        # 223 after trimming - 'FORD ' beside 'FORD', and a bare ' ' on 86
+        # rows - and every row this script writes carries a clean value. A
+        # fixture that trips the trimming would have to be built on purpose,
+        # and nothing here does.
+        #
+        # `Fixture Culvert` is a NAME, not a type: both rows below are typed
+        # PRIVY. The name is there to read as an inventory, and a model that
+        # keyed on it rather than on `ASSET` would pass this fixture wrongly.
         "external/dec_backcountry_features.geojson": _dec_asset_layer(
             "PRIVY", ["Fixture Privy", "Fixture Culvert"], publicuse=("Y", "N")
         ),

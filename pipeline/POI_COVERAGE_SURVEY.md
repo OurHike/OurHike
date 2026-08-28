@@ -398,15 +398,30 @@ ask.
 
 **NEEDS REVIEW, gathered:**
 
-- **(a) OPRHP's 37 lean-tos, none of which OPRHP shows in its own app.** The one cell
-  where our reading and the org's own curation disagree completely. Ask before publishing.
+- ~~**(a) OPRHP's 37 lean-tos, none of which OPRHP shows in its own app.** The one cell
+  where our reading and the org's own curation disagree completely. Ask before
+  publishing.~~ **Answered 2026-08-27 (#1097): they ship, at low confidence.** OPRHP's
+  `ParksApp` flag SETS CONFIDENCE rather than filtering, which is the whole reason those
+  37 survive — dropping its N side would have discarded every one of them. The map draws
+  a low-confidence pin with a broken rim and the legend's "Verified?" filter removes it,
+  so a hiker sees both our reading and the fact that OPRHP does not share it.
 - **(b) Whether a park concession stand is `resupply`** (§5). #806 is the precedent for
-  getting this wrong quietly.
+  getting this wrong quietly. **Still open** — `Concession` and `Store` are both in
+  `export_nearby_poi.py`'s `NAMED_EXCLUSIONS`, dropped with that reason printed per run.
 - **(c) A ninth POI type for trailheads** (§7c) — a schema decision, not a data one.
+  **Still open**, and it is what keeps DEC's 10,524 trailheads unregistered.
 - **(d) OPRHP water's seasonal shutoff** (§3) — unrecorded on the layer, and the
-  difference between a useful pin and a dry one in April.
-- **(e) DEC's `FORD` rows** (§4) — 36 unbridged crossings that are a hazard rather than an
-  amenity. Whether HIKER_SAFETY.md wants them at all is a safety call.
+  difference between a useful pin and a dry one in April. **Still open, and now a
+  recorded holdback rather than a pending question**: `sources.json`'s
+  `oprhp_water_holdback` carries both blockers (no shutoff field, and OPRHP's own app
+  showing 15 of the 151), so the 136 spigots and 15 fountains are excluded by name until
+  one of them is answered.
+- ~~**(e) DEC's `FORD` rows** (§4) — 36 unbridged crossings that are a hazard rather than
+  an amenity. Whether HIKER_SAFETY.md wants them at all is a safety call.~~ **Answered
+  2026-08-27: excluded.** `FORD` is a named exclusion, not merely absent from the
+  allowlist, so the run prints why. The underlying safety call — whether an unbridged
+  crossing should be a hazard the app draws at all — is untouched by that and is
+  HIKER_SAFETY.md's to make.
 - **(f) NJDEP** — the next org in line for trails, still Incapsula-walled from this
   sandbox, so its POI layers (`Land/62`, State Park Service Points of Interest) are
   unprobed here as they were in NYC_SOURCE_SURVEY.md §5. Needs a human with a browser.

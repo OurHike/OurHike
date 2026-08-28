@@ -11,11 +11,14 @@
 // as written would quietly undo decisions this repository already made.
 //
 // `closure` IS NOT A REPORT TYPE. The handoff's state sketch puts it in the
-// `ReportType` union. screens/ReportTypePicker.tsx has said the opposite since
-// #832, in as many words: "deliberately not a `ReportTypeId` ... a stretch
-// with two ends and its own table, not an eighth report type". It has its own
-// row here, its own callback, its own sheet and its own backend table, and
-// `CLOSURE_ROW.id` is deliberately not assignable to `ReportTypeId`.
+// `ReportType` union. The picker route said the opposite from #832 until it
+// retired, in as many words: "deliberately not a `ReportTypeId` ... a stretch
+// with two ends and its own table, not an eighth report type". That file is
+// gone - `screens/ReportTypePicker.tsx`, deleted in b74714af - so this row is
+// where the decision lives now rather than a second copy of it: `closure` has
+// its own row below, its own callback, its own sheet and its own backend
+// table, and `CLOSURE_ROW.id` is deliberately not assignable to
+// `ReportTypeId`.
 //
 // `unsafe_encounter` IS `bad_hikers`, and `invasive` IS `invasive_species`.
 // The handoff names neither correctly. The constants are what the outbox, the
@@ -157,7 +160,12 @@ export const UNSAFE_ROW: HeavyRow & { id: ReportTypeId } = {
 }
 
 /**
- * Verbatim from screens/ReportTypePicker.tsx, and it stays verbatim.
+ * Carried over unchanged from the retired picker route, and it stays verbatim.
+ *
+ * The source is `screens/ReportTypePicker.tsx` as of b74714af^, which is the
+ * last commit that had one - this constant is the only copy now, so "verbatim"
+ * is a fact about the change that moved it rather than a comparison a reader
+ * can still run against a live file.
  *
  * The handoff asks for that explicitly ("do not reword") and it is right to:
  * this sentence has been read by whoever has used the app so far, it is the

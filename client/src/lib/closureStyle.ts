@@ -213,9 +213,16 @@ export interface ClosureLayerOptions {
  *
  * Still an array, and still built by one function for every source that needs
  * it: ONE TREATMENT, NOT TWO THAT CURRENTLY AGREE. map/style.ts calls this
- * three times - the closures feed, the A.T.'s long-term-closed lines, and the
- * nearby network's - and the only things that may differ between them are the
- * id, the source and the filter.
+ * once per source that can carry a closed line - four today: the closures
+ * feed, the A.T.'s long-term-closed lines, the nearby network's, and the
+ * corridor-view sketch's below the seam (#869) - and the only things that may
+ * differ between them are the id, the source and the filter.
+ *
+ * The count is the part of this sentence that rots; the fourth call arrived
+ * and it still read "three times". Nothing here needs the number, so a fifth
+ * source is a call site and not an edit to this comment - what holds the
+ * guarantee is the byte-identical construction below, which the tests assert
+ * as a property rather than by counting layers.
  */
 export function buildClosureLayers(
   sourceId: string,

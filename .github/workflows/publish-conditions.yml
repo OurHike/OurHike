@@ -238,7 +238,7 @@ jobs:
       # above because they answer the same question for a different steward:
       # 160 miles of the A.T. and the trails in most of the parks this build
       # now draws. What ships is tightly bounded and is sources.json's
-      # `nynjtc_alerts_licence` block rather than this file's decision - the
+      # `nynjtc_notices_licence` block rather than this file's decision - the
       # headline, the locality their own region and state tags give, their
       # `modified` date and the URL of their page, and NOT their body text.
       # export_nynjtc_alerts.py applies that split; nothing here widens it.

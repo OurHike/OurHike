@@ -96,8 +96,11 @@ describe('the two that must never file on a tap', () => {
   it('says how to get real help before the tap, in the words that shipped', () => {
     // Before, not after: somebody in trouble right now needs to know this is
     // the wrong tool while they can still act on that, rather than once they
-    // are already in a form. The copy is verbatim from ReportTypePicker and
-    // this is what holds it there.
+    // are already in a form. The copy came over unchanged from the retired
+    // picker route (categories.ts's EMERGENCY_NOTICE says where from), and
+    // the literal below is what holds it there - spelled out rather than
+    // compared to the constant alone, so an edit to the constant fails here
+    // instead of quietly agreeing with itself.
     setup()
 
     const notice = screen.getByRole('note')

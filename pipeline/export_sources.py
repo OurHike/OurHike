@@ -315,7 +315,22 @@ def build_registry(registry: dict | None = None) -> dict:
     for source in sources:
         provider = source.get(PROVIDER_FIELD, "")
         org = orgs.get(provider, {})
-        block = _block(registry, [source], "_support")
+        # The steward this row REPORTS, which is the name the support block
+        # has to be joined against - not `source['steward']` alone.
+        #
+        # THE BUG THAT MAKES THE DIFFERENCE WORTH A LINE, measured 2026-08-28
+        # against the real registry: joining on the raw field made all twelve
+        # ATC entries read `supports_donation: false`, because none of them
+        # declares its own `steward` - they inherit the organization's name,
+        # which is exactly what `atc_support`'s `author` matches. Every other
+        # steward declares one per source, so the twelve that were wrong were
+        # the ATC's, whose donate link is the one this project has actually
+        # been asked to carry. The org-level record two hundred lines down
+        # already answered `true` for the same steward, from the same block,
+        # because it joins over all of a provider's entries at once - so the
+        # console disagreed with itself and neither half looked odd alone.
+        steward = source.get(STEWARD_FIELD) or org.get("name")
+        block = _block(registry, [{**source, STEWARD_FIELD: steward}], "_support")
         rows.append(
             {
                 "key": source["key"],
@@ -326,7 +341,7 @@ def build_registry(registry: dict | None = None) -> dict:
                 # refuses, so a null here on the real file is a bug rather than
                 # a state.
                 "steward_id": org.get("steward_id"),
-                "steward": source.get(STEWARD_FIELD) or org.get("name"),
+                "steward": steward,
                 # Null is the honest answer for the twelve ATC entries that
                 # declare none: lib/source_registry.py reads an absent `kind`
                 # as an ArcGIS feature layer, and that DEFAULT is a fact about

@@ -180,6 +180,44 @@ def test_the_allowlist_matches_whole_values_not_prefixes():
     assert kept_types(DEC_BIG, [feature(ASSET="PIT PRIVY", PUBLICUSE="Y", OBJECTID=2)]) == ["privy"]
 
 
+def test_the_allowlist_matches_whatever_case_the_agency_writes():
+    """Whole values, stripped AND case-folded - what sources.json has claimed
+    all along and what only became true with `_folded`.
+
+    The failure this closes is silent in the worst way: DEC writes uppercase
+    today, so a reshaping of their column to 'Pit Privy' would drop all 356
+    privies while the run's own log called them "not a published POI type" -
+    a sentence about the allowlist rather than about the case, so nobody
+    reading it would look here.
+
+    Both directions, because the two agencies write opposite cases and a fold
+    that only handled DEC's would be half a fix.
+    """
+    assert kept_types(DEC_BIG, [feature(ASSET="Pit Privy", PUBLICUSE="Y", OBJECTID=1)]) == ["privy"]
+    assert kept_types(OPRHP, [feature(Sub_Asset="LEAN-TO", ParksApp="Y", OBJECTID=2)]) == ["shelter"]
+
+
+def test_a_refusal_survives_a_casing_change_too():
+    """The direction that matters more, and it is not symmetric with the one
+    above: an allowlist miss loses a pin, and an EXCLUSION miss ships a hazard.
+
+    'Ford' would fall through to the allowlist rather than to its named
+    exclusion, and the allowlist has no 'ford' - so the row still drops. This
+    asserts the whole of that: no crossing pin, and the run still says WHY,
+    because a drop labelled "not a published POI type" is how a deliberate
+    refusal quietly becomes an oversight nobody can find later.
+    """
+    features = [
+        feature(ASSET="Ford", PUBLICUSE="Y", OBJECTID=1),
+        feature(ASSET="Water Supply System", PUBLICUSE="Y", OBJECTID=2),
+    ]
+    records, stats = export_nearby_poi.build_records(DEC_BIG, features)
+    assert records == []
+    dropped = stats["dropped"]
+    assert any(label.startswith("excluded: Ford - unbridged crossing") for label in dropped), dropped
+    assert any(label.startswith("excluded: Water Supply System - DEC water refused") for label in dropped), dropped
+
+
 # ---------------------------------------------------------------------------
 # 2. The two public flags, read the two different ways.
 

@@ -24,8 +24,8 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | source | trails | POIs | closures | structured | last known change | verdict |
 |---|:-:|:-:|:-:|:-:|---|---|
 | NYS OPRHP AGOL org (4 layers) | ✓ 16,641 | ✓ 8,823 | ✓ live | ✓ | **2026-08-17** | **registered** (#769/#776); §2 |
-| NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | trails **registered, ship** (#1019, maintainer authorisation 2026-08-25); the POI layers still unregistered, and now surveyed type by type in [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md) — §3 |
-| NYNJTC public extracts (LP, HT, SRT) | ✓ 43 + 12 | | ✓ one live detour | ✓ | **2026-08-04** | register now — §4 |
+| NYS DEC `dil` services | ✓ 5,277 hiking (+4 uses) | ✓ 21,466 + 10,524 + 314 | | ✓ | **2026-08-11** | trails **registered, ship** (#1019, maintainer authorisation 2026-08-25); POIs **registered, ship** as of 2026-08-27 (#1097) — seven layers, surveyed type by type in [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md). Trailheads (10,524) are the one that stayed out, and DEC's water is a measured refusal rather than an omission (`dec_water_holdback`) — §3 |
+| NYNJTC public extracts (LP, HT, SRT) | ✓ 43 + 12 | | ✓ one live detour | ✓ | **2026-08-04** | **registered, ship** — the two trail extracts on the maintainer's authorisation of 2026-08-24 (`nynjtc_licence`), their trail alerts separately on 2026-08-27 (#1078, `nynjtc_notices_licence`) — §4 |
 | NYNJTC full network | ✓ | ✓ | | org-internal | GIS program alive | **agreement, not a scrape** — §4 |
 | Mohonk Preserve trails/carriage roads | ✓ 304 | | | ✓ (own AGOL org) | **2026-08-24** | **registered, ships** (#992, maintainer authorisation 2026-08-25); §11 |
 | NJDEP State Park Service Trails | ✓ 3,305 | ✓ (Land/62, uncounted) | | ✓ | undated (on-prem) | register after terms read — §5 |
@@ -173,10 +173,17 @@ The `UNIT` hygiene is exactly as warned — AFP 2,293, CFP 312, hundreds of per-
 state-forest codes, blanks and misspellings — and it stopped mattering, because nothing
 filters on where a trail is (§1). Two of DEC's rows are somebody else's route and are
 suppressed by the route-owner rule rather than by anything DEC-specific: 61 named
-`Long Path` (NYNJTC's) and 1 named `Appalachian Trail` (ATC's). **What is still
-unregistered:** Back Country Features (21,466 points), Trailheads (10,524) and the 314
-lean-tos. Those are POIs, they carry §10(g)'s open water question, and this change did not
-touch them.
+`Long Path` (NYNJTC's) and 1 named `Appalachian Trail` (ATC's). **What was still
+unregistered when this section was written:** Back Country Features (21,466 points),
+Trailheads (10,524) and the 314 lean-tos.
+
+**Since 2026-08-27 (#1097), two of those three ship.** The lean-tos are registered as
+`dec_lean_tos`, and Back Country Features as `dec_backcountry_features` — the latter
+through a value allowlist for exactly two types (privy and crossing) rather than as a POI
+layer, because 68% of it is assets no hiker wants a pin for. **Trailheads are the one that
+stayed out.** §10(g)'s water question was answered rather than inherited: no water ships
+from any DEC layer, and `sources.json`'s `dec_water_holdback` carries the measurement that
+made it a refusal rather than a gap.
 
 **Surveyed properly 2026-08-27** ([POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md), #1092),
 and the three lines above understate what is there in one way and overstate it in another.

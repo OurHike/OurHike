@@ -201,3 +201,22 @@ export function orgProviderFrom(stewards: Stewards): (source: string | null) => 
     return byKey.get(source) ?? source
   }
 }
+
+/**
+ * An organization's name, made possessive: `the ATC` -> `the ATC’s`.
+ *
+ * Here rather than in the component that first needed it, because there are
+ * two callers and were two implementations - NoticeList.tsx declared this
+ * with a comment saying it was "one rule with one caller", while
+ * AtcUpdateSheet.tsx inlined the same expression a few lines into its body.
+ * Two copies of one rule is the state where they can disagree, and this one
+ * is a rule about ENGLISH rather than about notices or sheets, so neither
+ * component was ever its home.
+ *
+ * An organization whose name already ends in s takes the bare apostrophe.
+ * None of the registered organizations does today; the branch is there so the
+ * first one that registers does not read wrong.
+ */
+export function possessive(name: string): string {
+  return name.endsWith('s') ? `${name}’` : `${name}’s`
+}

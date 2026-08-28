@@ -33,7 +33,7 @@
 import { atcUpdatedAt, isSafeLink, longDate, mileRange } from '../lib/atcNoticeText'
 import type { AtcUpdate } from '../lib/atcUpdates'
 import { ATC_SOURCE_KEY } from '../lib/notices'
-import { orgLabelFrom, type Stewards } from '../lib/stewards'
+import { orgLabelFrom, possessive, type Stewards } from '../lib/stewards'
 
 export interface AtcUpdateSheetProps {
   update: AtcUpdate
@@ -67,7 +67,7 @@ export function AtcUpdateSheet({
   const updatedAt = atcUpdatedAt(update)
   const range = mileRange(update)
   const org = orgLabelFrom(stewards)(ATC_SOURCE_KEY)
-  const orgs = org.endsWith('s') ? `${org}’` : `${org}’s`
+  const orgs = possessive(org)
 
   return (
     <div className="closure-sheet" role="dialog" aria-label={`${org} trail update`}>

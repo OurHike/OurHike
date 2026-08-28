@@ -580,6 +580,29 @@ class TestTheRegistryTheConsoleReads:
         assert rows["nynjtc_trail_alerts"]["supports_donation"] is True
         assert rows["dec_hiking_trails"]["supports_donation"] is False
 
+    def test_a_source_inheriting_its_stewards_name_still_finds_the_support_block(self):
+        """The twelve ATC entries, which is where this got it wrong.
+
+        None of them declares its own `steward` - they inherit the
+        organization's name, and `atc_support`'s `author` is that name. Joining
+        the block on the raw field therefore matched nothing and every ATC row
+        read `supports_donation: false`, while the organization record below
+        read true from the same block, because it joins over all of a
+        provider's entries at once. Two halves of one console disagreeing, and
+        neither looked wrong on its own.
+
+        Asserted as agreement rather than as a literal true, so the day ATC
+        withdraw their support block this fails on the row that stops matching
+        rather than on a hard-coded expectation of what they want.
+        """
+        registry = json.loads((ROOT / "sources.json").read_text())
+        rows = [row for row in export_sources.build_registry(registry)["sources"] if row["provider"] == "ATC"]
+        atc = next(steward for steward in export_sources.build_output(registry)["stewards"] if steward["provider"] == "ATC")
+
+        assert len(rows) >= 12
+        assert all(row["steward"] == "Appalachian Trail Conservancy" for row in rows)
+        assert {row["supports_donation"] for row in rows} == {atc["support"] is not None}
+
     def test_says_no_organization_has_licensed_a_mark(self):
         states = {row["mark_state"] for row in self.real()["sources"]}
 

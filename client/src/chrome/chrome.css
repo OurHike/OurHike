@@ -2136,25 +2136,49 @@
   color: var(--fg-2);
 }
 
-/* The heading over each half of the list (#1083). Two sections, split on
-   whether a notice has a mile at all rather than on who published it - so the
-   heading is a claim about the DATA, and the rows carry the organization.
+/* "Show N more, elsewhere on the trail" - the one control that reveals what
+   the extent scoped out (#1083). It shipped with no rule at all, so it drew
+   as the platform's default grey button in the middle of a sheet with no
+   other chrome in it - the one element on the screen that looked like it
+   belonged to a different app.
 
-   Uppercased in CSS rather than in the string, like the category above, so a
-   screen reader announces "On the A.T." and not the letters. */
-.atc-notices__section {
-  margin: var(--space-3, 12px) 0 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-2);
+   A text control rather than a filled one, on the same argument the list
+   itself makes: the notices are the thing to read, and a button competing
+   with them for weight is a button that gets pressed by accident. Full-width
+   with the touch-target floor for .stop-picker__result-button's reason - what
+   is DRAWN can be quiet, what can be HIT cannot be smaller than 44px. */
+.atc-notices__show-all {
+  display: block;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-3, 12px);
+  padding: var(--space-2, 8px) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--link);
+  text-align: left;
+  cursor: pointer;
 }
 
-/* Weight and not hue, for the same reason .atc-notices__offmap gives: this
-   line carries the honesty the eighteen rows below it would otherwise repeat
+/* The `.atc-notices__section` heading that used to sit here is gone. It was
+   written for a list split in two on whether a notice had a mile, and #1083
+   shipped one ordered list instead - a notice with no mile says so on its own
+   row (.atc-notices__offmap) rather than being filed under a heading. Nothing
+   has referenced the class since that commit (3e1dcd62), so the rule was
+   dead the day it landed.
+
+   Weight and not hue below, for the same reason .atc-notices__offmap gives:
+   this line carries an honesty the rows it sits with would otherwise repeat
    one by one, and a caveat dimmed to look like an aside is a caveat nobody
-   reads at arm's length in direct sun. */
+   reads at arm's length in direct sun.
+
+   It is a footer rather than a heading, which is why the name reads oddly:
+   NoticeList renders it under the widened list, after the "show everything"
+   button has been pressed, to say the list is no longer scoped to the stretch
+   on screen. */
 .atc-notices__section-note {
   margin: 2px 0 var(--space-2, 8px);
   font-size: 13px;

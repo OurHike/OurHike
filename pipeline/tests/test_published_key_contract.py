@@ -116,6 +116,44 @@ def client_poi_key_format() -> str:
     return match.group(1) + "{type}" + match.group(2)
 
 
+def client_conditions_keys() -> dict[str, str]:
+    """Every `conditions/` key publishedConditions.ts declares.
+
+    FOUND RATHER THAN LISTED, and that is the whole of #1145. This census
+    named three of the eight - closures, reports and atc_updates - so drought,
+    notes, disputes, work_projects and (newest, #1108) nynjtc_alerts were
+    spelled at both ends with nothing holding the two spellings together.
+
+    A hand-kept list here is the third copy this module's docstring says is
+    the thing being guarded against, and it had already rotted twice by the
+    time anybody looked: the list was written when there were three keys and
+    never grew with the feed. Matching the declaration is what makes a ninth
+    key covered on the day it is declared instead of on the day somebody
+    remembers this file.
+
+    THE CONDITIONS FAMILY IS THE WORST PLACE TO LOSE A NAME, which is why it
+    is worth a function rather than five more lines. A 404 under this prefix
+    is rendered as "this organization has no layer" by design - the right
+    answer for a hiker, and the reason a respelling here is a permanently
+    silent loss of a safety surface rather than an error anybody sees. This
+    exact artifact 404'd on production between being registered (d0c169de,
+    2026-08-27 02:14Z) and having a runner (#1108, c373e52c, 11:32Z the same
+    day) - nine hours, not the three weeks an earlier version of this
+    paragraph claimed. The duration is not the point and never was: nothing
+    in the gap was going to end it except somebody noticing, and what ended
+    it was a test rather than a person.
+    """
+    source = _read(PUBLISHED_CONDITIONS)
+    found = re.findall(r"export const (PUBLISHED_\w+_KEY) = '(conditions/[^']+)'", source)
+    assert found, (
+        "Could not find any `export const PUBLISHED_..._KEY = 'conditions/...'` in "
+        "publishedConditions.ts. If the declarations were restructured, fix the "
+        "pattern here rather than leaving this matching nothing - an empty census "
+        "passes silently, which is the failure this file exists to prevent."
+    )
+    return {key: f"publishedConditions.ts {name}" for name, key in found}
+
+
 def client_background_archives() -> dict[str, str]:
     """config.ts's tier -> filename map. Not exported, so matched by name."""
     body = re.search(r"BACKGROUND_ARCHIVES[^=]*= \{(.*?)\n\}", _read(CONFIG), re.DOTALL)
@@ -127,7 +165,6 @@ def client_keys() -> dict[str, str]:
     """Every published key this build of the app can request, and what asks
     for it - the label is what turns a failure into a place to go."""
     config = _read(CONFIG)
-    conditions = _read(PUBLISHED_CONDITIONS)
     poi_format = client_poi_key_format()
 
     keys = {
@@ -165,10 +202,11 @@ def client_keys() -> dict[str, str]:
         # unnoticed here until somebody opened a day hike.
         _string_const(config, "TRAIL_GRAPH_ELEVATION_KEY"): "config.ts TRAIL_GRAPH_ELEVATION_KEY",
         _string_const(config, "TRAIL_GRAPH_PROFILE_KEY"): "config.ts TRAIL_GRAPH_PROFILE_KEY",
-        _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
-        _string_const(conditions, "PUBLISHED_REPORTS_KEY"): "publishedConditions.ts",
-        _string_const(conditions, "PUBLISHED_ATC_UPDATES_KEY"): "publishedConditions.ts",
     }
+
+    # Every `conditions/` key the client declares, found rather than listed
+    # (#1145). See client_conditions_keys.
+    keys.update(client_conditions_keys())
 
     for poi_type in client_poi_types():
         keys[poi_format.format(type=poi_type)] = f"config.ts poiKey('{poi_type}')"
@@ -281,15 +319,30 @@ def published(tmp_path, monkeypatch) -> set[str]:
 
     conditions_dir = tmp_path / "conditions"
     conditions_dir.mkdir()
+    # export_conditions.py's four documents, all from one read of one database
+    # (see its `written` list). Only closures and reports were here until
+    # #1145, so `notes` and `disputes` looked unpublished the moment the
+    # census stopped naming three keys by hand.
     (tmp_path / "conditions_manifest.json").write_text(
-        json.dumps({"artifacts": {kind: manifest_entry(f"conditions/{kind}.json") for kind in ("closures", "reports")}})
+        json.dumps(
+            {
+                "artifacts": {
+                    kind: manifest_entry(f"conditions/{kind}.json") for kind in ("closures", "reports", "notes", "disputes")
+                }
+            }
+        )
     )
-    # Its own manifest, from export_atc_updates.py rather than
-    # export_conditions.py - the two legs run under different conditions and
-    # each rewrites its manifest whole (see publish.py's conditions block).
-    (tmp_path / "atc_updates_manifest.json").write_text(
-        json.dumps({"artifacts": {"atc_updates": manifest_entry("conditions/atc_updates.json")}})
-    )
+    # The four that carry their own manifest, from their own exporter, rather
+    # than riding export_conditions.py's - the legs run under different
+    # conditions and each rewrites its manifest whole (see publish.py's
+    # conditions block, and CONDITIONS_MANIFESTS for what forgetting one
+    # costs). Built from that tuple rather than listed, so a fifth leg is
+    # covered by this fixture the day publish.py learns to collect it.
+    for manifest_name in publish.CONDITIONS_MANIFESTS:
+        if manifest_name == "conditions_manifest.json":
+            continue
+        payload = manifest_name.removesuffix("_manifest.json")
+        (tmp_path / manifest_name).write_text(json.dumps({"artifacts": {payload: manifest_entry(f"conditions/{payload}.json")}}))
 
     for name in (*publish.BACKGROUND_ARCHIVES.values(), *publish.OFFLINE_SHEET_ARCHIVES.values()):
         (tmp_path / name).write_bytes(b"fake pmtiles bytes for " + name.encode())

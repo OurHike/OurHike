@@ -118,7 +118,18 @@ def scope_for(workflow: Path) -> set[str]:
 def rerun_note(workflow: Path) -> str:
     """How a stale answer gets acted on, read from the workflow itself: a
     schedule means it reruns from main on its own; a run_despite_withdrawal
-    input is build-raster's #855 switch-off; everything else is a dispatch."""
+    input is build-raster's #855 switch-off; everything else is a dispatch.
+
+    A `variant` input makes that dispatch ONE PER VARIANT (#1147), and saying
+    so is the whole of that issue: since #1088 `build-dem.yml` builds
+    `dem.pmtiles` or `dem_light.pmtiles` depending on the input, so one run
+    refreshes one artifact and the other quietly ages. Nothing said so - not
+    this note, not the release train - and nothing would have caught it
+    either, because until #1144 verify_release did not check the hiking
+    sheet's artifacts at all. Read from the workflow rather than keyed on
+    build-dem's name, for the reason everything else here is: a second
+    variant-taking workflow gets the right answer without editing this file.
+    """
     parsed = yaml.safe_load(workflow.read_text())
     # YAML 1.1 reads a bare `on:` key as boolean True.
     triggers = parsed.get("on", parsed.get(True, {}))
@@ -127,7 +138,11 @@ def rerun_note(workflow: Path) -> str:
     inputs = (triggers.get("workflow_dispatch") or {}).get("inputs", {})
     if "run_despite_withdrawal" in inputs:
         return "withdrawn (#855) - a rerun is a deliberate revival, not a routine dispatch"
-    return "after the merge: dispatch it with publish=true, data_environment=ua - production is the release train's promotion"
+    note = "after the merge: dispatch it with publish=true, data_environment=ua - production is the release train's promotion"
+    variants = (inputs.get("variant") or {}).get("options") or []
+    if len(variants) > 1:
+        note += f" - ONCE PER VARIANT ({', '.join(variants)}), because one run builds one artifact"
+    return note
 
 
 def print_scopes() -> None:

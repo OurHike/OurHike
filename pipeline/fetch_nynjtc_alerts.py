@@ -21,7 +21,7 @@ covers NYNJTC's two trail extracts "and nothing else", and that the
 term-to-feature join table features/ORG_NOTICES.md specifies does not exist.
 
 The first was answered. The maintainer gave a separate authorisation for the
-NOTICES, recorded as `nynjtc_alerts_licence` in sources.json, and what it
+NOTICES, recorded as `nynjtc_notices_licence` in sources.json, and what it
 authorises publishing is narrower than what this fetches: the headline, the
 locality their own tags give, the `modified` date and the URL - never their
 body text, which is their writing. `export_nynjtc_alerts.py` applies that
@@ -33,9 +33,20 @@ rather than a gap: the map draws none of them and the client surfaces them as
 a list a hiker reads. The join table is still what would put one on the map.
 
 So `reaches_hikers` is `true`, an export does read this file, and
-publish-conditions.yml runs both - which it did not until #940, three weeks
-after the authorisation, with `conditions/nynjtc_alerts.json` 404 on
-production the whole time.
+publish-conditions.yml runs both - which it did not when the registration
+landed. Both happened on 2026-08-27, nine hours apart: d0c169de at 02:14Z
+shipped the fetcher, the exporter, the tests and the registry flag, and
+#1108's c373e52c at 11:32Z added the workflow steps that run them. In
+between, `conditions/nynjtc_alerts.json` was 404 on production while the ATC
+file beside it was 200.
+
+That gap is #940's pattern for the fourth time, and
+`.github/tests/test_exporters_are_published.py` is what found it and what
+stops the fifth. An earlier version of this paragraph put it at "three weeks
+after the authorisation", which is wrong twice over and worth correcting
+rather than deleting: the gap was one morning, and nothing about its length
+was going to end it - what ended it was a test, not somebody noticing in
+week three.
 
 BEING POLITE TO SOMEBODY ELSE'S SERVER. One request for the alerts plus one
 per place taxonomy - five in the steady state, against ATC's ten-plus-one-per

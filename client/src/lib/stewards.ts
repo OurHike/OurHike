@@ -143,6 +143,29 @@ export function layerCountLine(steward: Steward): string | null {
  *   claim about who maintains it but a statement that nothing does the
  *   claiming.
  */
+/**
+ * The published attributions, keyed the way lib/lineDetail.ts's
+ * TrailSourceTable wants them: one entry per registry key, carrying the
+ * steward's verbatim attribution (#1142).
+ *
+ * Derived from the same stewards artifact every credit surface reads, so the
+ * tapped-line sheet and the sources screen cannot disagree about whose words
+ * a layer ships under. No `edited` date rides along - stewards.json does not
+ * carry per-layer edit dates, and the sheet's date clause simply stays silent
+ * rather than this table inventing one.
+ */
+export function trailSourceTableFrom(
+  stewards: Stewards,
+): Readonly<Record<string, { attribution: string | null }>> {
+  const table: Record<string, { attribution: string | null }> = {}
+  for (const steward of stewards) {
+    for (const key of steward.keys) {
+      table[key] = { attribution: steward.attribution }
+    }
+  }
+  return table
+}
+
 export function orgLabelFrom(stewards: Stewards): (source: string | null) => string {
   const byKey = new Map<string, string>()
   for (const steward of stewards) {

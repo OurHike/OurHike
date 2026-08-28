@@ -62,6 +62,15 @@ export interface TappedLine {
   lengthMiles: number | null
   park: string | null
   trailStatus: string | null
+  /** Which kind of closed, the closing org's reason, and the closure layer's
+   *  own registry key (#1142) - the three facts that let the sheet speak a
+   *  temporary area closure in the closing organization's voice instead of
+   *  the trail line's. Null wherever the record is not closed, or the
+   *  artifact predates the fields; lib/lineDetail.ts owns what each absence
+   *  means. */
+  closureKind: string | null
+  closureReason: string | null
+  closureSource: string | null
   /**
    * A point ON the tapped line, nearest the touch - not the touch itself.
    *
@@ -172,6 +181,9 @@ function asTappedLine(
     lengthMiles: numberProp(feature.properties, 'length_miles'),
     park: stringProp(feature.properties, 'park'),
     trailStatus: stringProp(feature.properties, 'trail_status'),
+    closureKind: stringProp(feature.properties, 'closure_kind'),
+    closureReason: stringProp(feature.properties, 'closure_reason'),
+    closureSource: stringProp(feature.properties, 'closure_source'),
     at: nearestVertex(feature.geometry, near),
   }
 }

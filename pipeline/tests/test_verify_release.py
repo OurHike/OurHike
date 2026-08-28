@@ -76,6 +76,40 @@ DETAIL_TS = """
   { level: 'standard', zoom: 12, sizeBytes: 300_300_000, recommended: true },
 """
 
+# The hiking sheet as hikingDetail.ts declares it: two artifacts per level,
+# a DEM shared between two of them, and one level not yet in the bucket.
+HIKING_TS = """
+export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
+  {
+    level: 'light',
+    artifact: 'at_basemap_package_z12.pmtiles',
+    basemapSizeBytes: null,
+    demArtifact: 'dem_light.pmtiles',
+    demSizeBytes: null,
+    recommended: false,
+    published: false,
+  },
+  {
+    level: 'standard',
+    artifact: 'at_basemap_package_z13.pmtiles',
+    basemapSizeBytes: 182_774_166,
+    demArtifact: 'dem.pmtiles',
+    demSizeBytes: 275_601_483,
+    recommended: true,
+    published: true,
+  },
+  {
+    level: 'fine',
+    artifact: 'at_basemap_package.pmtiles',
+    basemapSizeBytes: 533_926_586,
+    demArtifact: 'dem.pmtiles',
+    demSizeBytes: 275_601_483,
+    recommended: false,
+    published: true,
+  },
+]
+"""
+
 
 def _headers(length="100", etag='"abc"', ranges="bytes", expose=None):
     headers = {"Content-Length": length}
@@ -163,7 +197,7 @@ class TestAWithdrawnSheetIsASkipNotAFailure:
     def test_a_missing_withdrawn_key_skips_and_names_the_declaration(self):
         manifest = {"artifacts": {key: {"sha256": "x"} for key in ["trails.geojson", "poi_shelter.geojson", "poi_water.geojson"]}}
 
-        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS)}
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
 
         assert reports["background_z13.pmtiles"]["state"] == SKIPPED
         assert "packages.ts" in reports["background_z13.pmtiles"]["detail"]
@@ -172,7 +206,7 @@ class TestAWithdrawnSheetIsASkipNotAFailure:
     def test_a_missing_key_nobody_withdrew_still_fails_loudly(self):
         manifest = {"artifacts": {"trails.geojson": {"sha256": "x"}}}
 
-        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS)}
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
 
         assert reports["poi_shelter.geojson"]["state"] == FAILED
 
@@ -181,9 +215,196 @@ class TestAWithdrawnSheetIsASkipNotAFailure:
         withdrawal changes what absence means, not what presence means."""
         manifest = {"artifacts": {key: {"sha256": "x"} for key in expected_client_keys(CONFIG_TS)}}
 
-        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS)}
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
 
         assert reports["background_z13.pmtiles"]["state"] == OK
+
+
+ACKNOWLEDGEMENTS = [
+    {
+        "artifact": "poi_water.geojson",
+        "from_release": "2026-08-18",
+        "max_drop": 0.75,
+        "authority": "#749",
+        "reason": "The reachability gate reaching production.",
+    },
+    {
+        "artifact": "at_basemap_stretch_*.pmtiles",
+        "from_release": "2026-08-18",
+        "max_drop": 0.65,
+        "authority": "#1118",
+        "reason": "The layer strip, on every per-stretch cut.",
+    },
+]
+
+
+class TestADeliberateCullCanBeSignedFor:
+    """#1143. Check 17's only exemption was an upstream that changed, which a
+    pipeline cull is not - so every one of the five failures in the 2026-08-26
+    run against production was a shrinkage somebody had decided on purpose,
+    the gate stayed red, and the verdict lived nowhere. What keeps this from
+    becoming a place checks go to die is that an entry covers exactly one pair
+    of releases and carries a ceiling."""
+
+    def _sized(self, requests_mock, previous_bytes, current_bytes):
+        requests_mock.head(f"{BASE}/releases/2026-08-18/poi_water.geojson", headers=_headers(length=str(previous_bytes)))
+        requests_mock.head(f"{BASE}/releases/2026-08-26/poi_water.geojson", headers=_headers(length=str(current_bytes)))
+
+    def _run(self, previous_id="2026-08-18"):
+        manifest = {"artifacts": {"poi_water.geojson": {"sha256": "x"}}}
+        return check_release_regression(BASE, previous_id, "2026-08-26", manifest, manifest, acknowledgements=ACKNOWLEDGEMENTS)
+
+    def test_a_signed_cull_passes_and_names_who_signed_for_it(self, requests_mock):
+        self._sized(requests_mock, 1_000_000, 350_000)
+
+        (report,) = self._run()
+
+        assert report["state"] == OK
+        # Never a silent pass: a reader of the verdict has to be able to find
+        # the decision, which is the whole difference between this and raising
+        # DROP_THRESHOLD.
+        assert "acknowledged_drops.json" in report["detail"]
+        assert "#749" in report["detail"]
+
+    def test_a_drop_past_the_ceiling_still_fails_and_says_the_row_exists(self, requests_mock):
+        """Acknowledging "water will shrink by about two thirds" must not also
+        acknowledge water vanishing."""
+        self._sized(requests_mock, 1_000_000, 50_000)
+
+        (report,) = self._run()
+
+        assert report["state"] == FAILED
+        assert "does not cover this much" in report["detail"]
+        assert "75%" in report["detail"]
+
+    def test_an_acknowledgement_expires_when_a_newer_release_takes_that_place(self, requests_mock):
+        """THE SAFETY PROPERTY. An entry names the predecessor its drop was
+        measured against, so it cannot silence a second comparison - and
+        nobody has to remember to delete it."""
+        requests_mock.head(f"{BASE}/releases/2026-08-25/poi_water.geojson", headers=_headers(length="1000000"))
+        requests_mock.head(f"{BASE}/releases/2026-08-26/poi_water.geojson", headers=_headers(length="350000"))
+
+        (report,) = self._run(previous_id="2026-08-25")
+
+        assert report["state"] == FAILED
+
+    def test_an_unsigned_artifact_fails_exactly_as_before(self, requests_mock):
+        manifest = {"artifacts": {"poi_shelter.geojson": {"sha256": "x"}}}
+        requests_mock.head(re.compile(".*"), headers=_headers(length="100000"))
+        requests_mock.head(f"{BASE}/releases/2026-08-18/poi_shelter.geojson", headers=_headers(length="1000000"))
+
+        (report,) = check_release_regression(
+            BASE, "2026-08-18", "2026-08-26", manifest, manifest, acknowledgements=ACKNOWLEDGEMENTS
+        )
+
+        assert report["state"] == FAILED
+        assert "acknowledged_drops.json" not in report["detail"]
+
+    def test_a_pattern_covers_one_family_cut_by_one_extract(self):
+        assert (
+            verify_release.acknowledgement_for("at_basemap_stretch_28.pmtiles", "2026-08-18", ACKNOWLEDGEMENTS)["authority"]
+            == "#1118"
+        )
+        # And does not reach past its own family.
+        assert verify_release.acknowledgement_for("at_basemap_package.pmtiles", "2026-08-18", ACKNOWLEDGEMENTS) is None
+
+    def test_a_missing_or_malformed_file_acknowledges_nothing(self, tmp_path):
+        """Failing open would turn the gate off by deleting a file."""
+        assert verify_release.acknowledged_drops(tmp_path / "absent.json") == []
+        broken = tmp_path / "broken.json"
+        broken.write_text("{ not json")
+        assert verify_release.acknowledged_drops(broken) == []
+
+    def test_the_committed_file_parses_and_every_row_carries_its_evidence(self):
+        """The reviewed file itself, held to what its README promises a row
+        owes a reader: a row without evidence turns a safety gate off on
+        somebody's say-so."""
+        rows = verify_release.acknowledged_drops()
+
+        assert rows, "reference/acknowledged_drops.json should hold the live acknowledgements"
+        for row in rows:
+            assert row["from_release"], row
+            assert 0 < row["max_drop"] <= 1, row
+            assert row["authority"].startswith("#"), row
+            assert row["reason"], row
+            assert row["measured"], row
+
+
+class TestTheSheetHikersActuallyDownload:
+    """#1144. Checks 2 and 18 knew only downloadDetail.ts's raster tiers - the
+    sheet #855 WITHDREW - so nothing held the hiking sheet's five artifacts or
+    their advertised sizes to the bucket, while two comments claimed
+    otherwise. These are the app's real downloads."""
+
+    def test_every_level_is_read_out_of_the_clients_own_table(self):
+        levels = verify_release.hiking_sheet_levels(HIKING_TS)
+
+        assert [level["level"] for level in levels] == ["light", "standard", "fine"]
+        assert levels[1]["artifacts"] == {
+            "at_basemap_package_z13.pmtiles": 182_774_166,
+            "dem.pmtiles": 275_601_483,
+        }
+        # An unpublished level carries nulls rather than a projection, which is
+        # what hikingDetail.ts's `published` gate means.
+        assert levels[0]["published"] is False
+        assert levels[0]["artifacts"] == {
+            "at_basemap_package_z12.pmtiles": None,
+            "dem_light.pmtiles": None,
+        }
+
+    def test_a_restructured_table_raises_rather_than_checking_fewer_artifacts(self):
+        """The same failure `expected_client_keys` guards: a regex that stopped
+        matching would check fewer downloads than the app offers and report a
+        clean release."""
+        with pytest.raises(ValueError, match="HIKING_DETAIL_LEVELS"):
+            verify_release.hiking_sheet_levels("const LEVELS = []")
+
+    def test_a_level_that_lost_a_field_raises_rather_than_reading_its_neighbour(self):
+        """Non-greedy matching across a missing field would silently pair one
+        level's artifact with the next level's size."""
+        broken = HIKING_TS.replace("    demArtifact: 'dem_light.pmtiles',\n", "")
+        with pytest.raises(ValueError, match="3 level\\(s\\) declared, 2 fully parsed"):
+            verify_release.hiking_sheet_levels(broken)
+
+    def test_an_offered_levels_missing_artifact_is_the_404_on_a_mountain(self):
+        manifest = {"artifacts": {key: {"sha256": "x"} for key in expected_client_keys(CONFIG_TS)}}
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
+
+        assert reports["dem.pmtiles"]["state"] == FAILED
+        assert "404 on a mountain" in reports["dem.pmtiles"]["detail"]
+
+    def test_an_unpublished_levels_absence_is_a_named_skip(self):
+        """`offeredHikingDetails()` keeps that level off the picker, so nothing
+        requests it - the same weaker claim a withdrawn sheet carries."""
+        manifest = {"artifacts": {key: {"sha256": "x"} for key in expected_client_keys(CONFIG_TS)}}
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
+
+        assert reports["dem_light.pmtiles"]["state"] == SKIPPED
+        assert "published: false" in reports["dem_light.pmtiles"]["detail"]
+
+    def test_a_shared_dem_is_asked_after_once(self):
+        """Standard and Fine name the same DEM; asking twice would say one fact
+        twice and double-count it in the verdict."""
+        manifest = {"artifacts": {key: {"sha256": "x"} for key in expected_client_keys(CONFIG_TS)}}
+
+        reports = check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)
+
+        assert [r["key"] for r in reports].count("dem.pmtiles") == 1
+
+    def test_a_present_artifact_reports_ok_and_names_the_level(self):
+        manifest = {
+            "artifacts": {
+                **{key: {"sha256": "x"} for key in expected_client_keys(CONFIG_TS)},
+                "dem.pmtiles": {"sha256": "x"},
+            }
+        }
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
+
+        assert reports["dem.pmtiles"]["state"] == OK
+        assert "standard" in reports["dem.pmtiles"]["detail"]
 
 
 class TestTheManifest:
@@ -388,12 +609,20 @@ class TestTheWholeRun:
         reports = check_all(BASE, hash_artifacts=False)
 
         background = {"background_z11.pmtiles", "background.pmtiles", "background_z13.pmtiles"}
-        tier_reports = [r for r in reports if r["check"] in (9, 12, 18)]
+        tier_reports = [r for r in reports if r["check"] in (9, 12, 18) and r["key"] in background]
         assert {r["key"] for r in tier_reports} == background
         assert {r["state"] for r in tier_reports} == {SKIPPED}
         # Three tiers x checks 9 and 12, plus 18 for every tier the client
         # advertises a size for - nine on the real contract.
         assert len(tier_reports) == 9
+
+        # And the same rule for the sheet hikers actually download (#1144):
+        # absent from this release, so every one of its artifacts is a NAMED
+        # skip on check 18 rather than a report that never existed.
+        hiking = {key for level in verify_release.hiking_sheet_levels() for key in level["artifacts"]}
+        hiking_reports = [r for r in reports if r["check"] == 18 and r["key"] in hiking]
+        assert {r["key"] for r in hiking_reports} == hiking
+        assert {r["state"] for r in hiking_reports} == {SKIPPED}
 
 
 # ---------------------------------------------------------------------------

@@ -80,6 +80,16 @@ After each publish completes, dispatch `verify-release.yml` against the
 environment just written (gate 6) - its `base` input for UA, its default for
 production - and read the battery's summary rather than assuming green.
 
+**The backend needs no step here, and that is a fact worth knowing rather than
+an omission.** Render tracks `main`, so it redeploys on every merge and is
+always ahead of the app the tag ships
+([../../../backend/HOSTING.md](../../../backend/HOSTING.md)). The skew that
+would hurt - a new client against an old backend, which 422s the whole
+preferences document and can strand a field note in the outbox for the life of
+the build - cannot happen in that direction. If that tracking setting ever
+changes, this phase gains a step: deploy, confirm `/openapi.json` carries the
+new fields, then continue.
+
 ## Phase 2 - migrations
 
 New revisions under `backend/alembic/versions/` since the last tag mean a

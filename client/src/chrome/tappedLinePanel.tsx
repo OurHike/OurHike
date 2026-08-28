@@ -53,6 +53,11 @@ export interface TappedLineInput {
   units: UnitSystem
   trailName: string
   pace: PaceProfile
+  /** Per-source attribution from the published stewards artifact (§6,
+   *  #1142), so a closure's sentence can name the org that closed it in
+   *  their own words. Empty until stewards load, which reads exactly as the
+   *  sheet always read: sentences without a by-clause, never a made-up one. */
+  trailSources: Readonly<Record<string, { attribution: string | null }>>
   walked: readonly MileRange[]
   /** The centerline, or null before it has loaded. */
   trailIndex: TrailIndex | null
@@ -84,6 +89,7 @@ export function useTappedLinePanel({
   units,
   trailName,
   pace,
+  trailSources,
   walked,
   trailIndex,
   belowSeam,
@@ -107,8 +113,16 @@ export function useTappedLinePanel({
    */
   const lineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
-    return buildLineDetail(selectedLine, spurs, pois, units, trailName, pace)
-  }, [selectedLine, spurs, pois, units, trailName, pace])
+    return buildLineDetail(
+      selectedLine,
+      spurs,
+      pois,
+      units,
+      trailName,
+      pace,
+      trailSources,
+    )
+  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources])
 
   const clubDetail: ClubDetail | null = useMemo(() => {
     if (!belowSeam || selectedLine === null || trailIndex === null) return null

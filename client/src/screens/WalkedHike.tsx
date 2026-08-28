@@ -43,7 +43,7 @@
 import { useState } from 'react'
 
 import type { ResolvedDayHike } from '../lib/dayHikeCard'
-import { MAX_NOTE_CHARS, type DayHike } from '../lib/dayHikes'
+import { distinctLegSources, MAX_NOTE_CHARS, type DayHike } from '../lib/dayHikes'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
@@ -79,7 +79,10 @@ export function WalkedHike({
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
   const climb = resolved?.climb ?? hike.figures.climb ?? null
 
-  const orgs = [...new Set(legs.map((leg) => leg.source).filter((s) => s !== null))]
+  // Concurrent orgs included (#1115): a merged leg wears one trail's name,
+  // and the organization whose designation was folded in still keeps that
+  // ground walkable.
+  const orgs = distinctLegSources(legs)
 
   return (
     <div className="walked-hike" role="dialog" aria-label={hike.name}>

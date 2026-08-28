@@ -66,6 +66,9 @@ describe('tapping a line', () => {
       lengthMiles: null,
       park: null,
       trailStatus: null,
+      closureKind: null,
+      closureReason: null,
+      closureSource: null,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
       at: [120, 240],
@@ -102,6 +105,41 @@ describe('tapping a line', () => {
         lengthMiles: 24,
         park: 'Harriman State Park',
         trailStatus: 'Closed',
+      }),
+    )
+  })
+
+  it('carries an area closure’s kind, reason and closing layer to the sheet (#1142)', () => {
+    // The exporter's three closure properties, on a line another org drew -
+    // the sheet needs all three to speak in the closing organization's voice
+    // instead of the line's.
+    const map = buildMap()
+    const onSelect = vi.fn()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: {
+          id: 'nynjtc_long_path:44:closed',
+          source: 'nynjtc_long_path',
+          name: 'Long Path',
+          blaze_color: 'Aqua',
+          trail_status: 'closed',
+          closure_kind: 'area',
+          closure_reason: 'Closed Until 2027',
+          closure_source: 'oprhp_trail_closures',
+        },
+        geometry: { type: 'LineString', coordinates: [] },
+      },
+    ])
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(10, 10))
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'nynjtc_long_path',
+        trailStatus: 'closed',
+        closureKind: 'area',
+        closureReason: 'Closed Until 2027',
+        closureSource: 'oprhp_trail_closures',
       }),
     )
   })
@@ -204,11 +242,15 @@ describe('tapping a line', () => {
       source: 'centerline',
       name: null,
       blazeColor: 'White',
-      // An A.T. line publishes none of the nearby-trail facts (#783), and
-      // reads them as absent rather than as zero or "Unknown".
+      // An A.T. line publishes none of the nearby-trail facts (#783) nor the
+      // closure facts (#1142), and reads them as absent rather than as zero
+      // or "Unknown".
       lengthMiles: null,
       park: null,
       trailStatus: null,
+      closureKind: null,
+      closureReason: null,
+      closureSource: null,
       at: [10, 10],
     })
   })

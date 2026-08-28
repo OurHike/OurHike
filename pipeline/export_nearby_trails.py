@@ -51,6 +51,12 @@ by the SAME expressions the A.T. is drawn by:
   `trail_status`  lib/closureStyle.ts's LONG_TERM_CLOSED_FILTER compares this,
                   downcased, against "closed" and draws the barred band.
   `id`            the feature identity map/lineTaps.ts hands the sheet.
+  `closure_kind` / `closure_reason` / `closure_source`
+                  on closed records only: which kind of closed, the closing
+                  org's own words, and the closure LAYER's registry key -
+                  what lets lib/lineDetail.ts speak a temporary area closure
+                  in the closing organization's voice rather than the
+                  line-drawing organization's (#1142).
 
 THE THREE FILTERS, AND THE EVIDENCE UNDER EACH
 
@@ -699,11 +705,19 @@ def records_to_geojson(records: list[dict]) -> dict:
                     "trail_status": record["trail_status"],
                     # Only on a closed record, and only when the steward said
                     # something. Omitted rather than null everywhere else -
-                    # 3,663 features do not need two empty keys each, and an
+                    # 3,663 features do not need three empty keys each, and an
                     # absent key reads as "no reason given" the same way an
                     # absent capacity does on a shelter.
+                    #
+                    # `closure_source` is the CLOSURE layer's registry key,
+                    # not the line's `source`: an area closure can land on
+                    # another organization's trail, and the sheet must not
+                    # read OPRHP's closure in NYNJTC's name (#1142). It was
+                    # set on every area record since #964 and never shipped -
+                    # the client-side half of that finding.
                     **({"closure_kind": record["closure_kind"]} if record.get("closure_kind") else {}),
                     **({"closure_reason": record["closure_reason"]} if record.get("closure_reason") else {}),
+                    **({"closure_source": record["closure_source"]} if record.get("closure_source") else {}),
                 },
                 "geometry": _rounded_geometry(geometry),
             }

@@ -59,7 +59,7 @@
 import { useState } from 'react'
 
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
-import type { DayHike } from '../lib/dayHikes'
+import { distinctLegSources, type DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
 import { blazeLabel, blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
@@ -208,9 +208,10 @@ export function DayHikeCard({
   // The orgs sentence counts organizations somebody actually named - legs the
   // export left unattributed are real trail but no org to credit, and "One
   // organization" over an unattributed walk would be an invented steward.
-  const orgCount = new Set(
-    legs.map((leg) => leg.source).filter((source) => source !== null),
-  ).size
+  // Concurrent orgs count too (#1115): a leg wearing one trail's name over
+  // tread a second organization also designates still stands on that
+  // organization's ground.
+  const orgCount = distinctLegSources(legs).length
   const ground = hike.looped ? 'loop' : 'route'
 
   return (

@@ -90,6 +90,31 @@ nobody can see in a pull request is a setting that drifts. `render.yaml` is the 
 that becomes a problem; it is deliberately not being added pre-emptively, because a config
 file nobody needs yet is the thing this change is removing.
 
+## Which build is serving, and why the release order depends on it
+
+**Render tracks `main`, so the backend redeploys on every merge** — the maintainer's
+answer, 2026-08-28. Nothing in this repository can show that (it is the dashboard setting
+above), which is exactly why it is written here: it is load-bearing for release ordering
+and invisible to everyone who has not seen the dashboard.
+
+What it buys is that **the backend is always ahead of the app**. The web build deploys to
+production on the *tag* ([../RELEASING.md](../RELEASING.md) §12) and app-store builds are
+slower still, while the backend is already carrying whatever merged. So a client never
+meets a backend older than itself, and the skew that would actually hurt cannot happen in
+that direction.
+
+That the direction matters is not hypothetical. A v1.2.0 client against a v1.1.1 backend
+would have its whole preferences document rejected — `PreferencesIn` is `extra="forbid"`,
+so one unknown field 422s the PUT, and `preferencesSync.ts` logs and carries on, leaving
+sync silently dead rather than degraded. A field note carrying a new `observation` member
+would 422 too, and the outbox marks such a note unsendable *for the life of the build*
+(`outbox.ts` — "a 422 here would drop those notes into the outbox forever"). Both are
+quiet, and neither would show up in a smoke test.
+
+**If the tracking setting ever changes, the release train gains a step**: deploy the
+backend, confirm `/openapi.json` carries the new fields, and only then publish the draft.
+Until then the ordering holds by construction and the train stays four buttons.
+
 ## What was removed
 
 `backend/fly.toml` is deleted. Nothing was ever deployed to Fly — no account was created,

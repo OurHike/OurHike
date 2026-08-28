@@ -4,6 +4,7 @@ import {
   layerCountLine,
   parseStewards,
   storedStewards,
+  trailSourceTableFrom,
   type Steward,
   orgLabelFrom,
 } from './stewards'
@@ -152,5 +153,51 @@ describe('orgLabelFrom, which frame 1j tallies with', () => {
   it('has nothing to join on when the phone holds no steward list', () => {
     const bare = orgLabelFrom(EMPTY_STEWARDS)
     expect(bare('nynjtc_long_path')).toBe('nynjtc_long_path')
+  })
+})
+
+describe('the tapped-line sheet’s attribution table (#1142)', () => {
+  it('keys every steward’s attribution by each of their registry keys', () => {
+    const table = trailSourceTableFrom([
+      {
+        provider: 'NYS OPRHP',
+        name: 'New York State Office of Parks, Recreation and Historic Preservation',
+        trust: null,
+        licence: null,
+        attribution:
+          'New York State Office of Parks, Recreation and Historic Preservation',
+        layers: [],
+        keys: ['oprhp_trails', 'oprhp_trail_closures'],
+      },
+    ])
+
+    // The closures layer's key resolves to the same attribution as the trails
+    // layer's - one steward, two layers - which is what lets the sheet name
+    // the org that closed the ground rather than the org that drew the line.
+    expect(table['oprhp_trail_closures']?.attribution).toBe(
+      'New York State Office of Parks, Recreation and Historic Preservation',
+    )
+    expect(table['oprhp_trails']?.attribution).toBe(
+      table['oprhp_trail_closures']?.attribution,
+    )
+  })
+
+  it('carries a null attribution as null rather than inventing one', () => {
+    const table = trailSourceTableFrom([
+      {
+        provider: 'ATC',
+        name: 'Appalachian Trail Conservancy',
+        trust: null,
+        licence: null,
+        attribution: null,
+        layers: [],
+        keys: ['centerline'],
+      },
+    ])
+    expect(table['centerline']).toEqual({ attribution: null })
+  })
+
+  it('is empty for an empty steward list', () => {
+    expect(trailSourceTableFrom(EMPTY_STEWARDS)).toEqual({})
   })
 })

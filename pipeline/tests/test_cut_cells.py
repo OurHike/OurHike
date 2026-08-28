@@ -156,8 +156,9 @@ def test_without_a_margin_the_same_tile_rides_in_one(tmp_path):
 
 
 def test_context_tiles_publish_once_and_not_into_every_cell(tmp_path):
-    """#193 measured context at 6.3 MB duplicated per package by
-    construction. At 51 cells that is the saving the whole split exists for."""
+    """Measured on the real z12 A.T. package: 5.71 MB published once, or
+    354.3 MB carried across its 62 cells. That saving is the whole reason
+    the split is worth making."""
     context = [(5, 9, 12), (9, 150, 192)]
     tiles = [*_both_cells_tiles(), *context]
     out_dir, manifest = _cut(tmp_path, tiles, context_zoom=9)
@@ -169,12 +170,34 @@ def test_context_tiles_publish_once_and_not_into_every_cell(tmp_path):
     assert manifest["stats"]["context_tiles"] == len(context)
 
 
-def test_a_cell_with_no_tiles_is_refused(tmp_path):
-    """An empty cell means the archive's declared bounds and its actual
-    tiles disagree. Publishing it would 404 nothing and cover nothing."""
+def test_a_cell_with_no_tiles_is_simply_not_built(tmp_path):
+    """The bounding box proposes; the tiles decide.
+
+    An earlier version REFUSED the cut when any cell of the box held no
+    tiles, and the fixtures could not catch how wrong that is because their
+    bounds hug their tiles. Run against the real z12 A.T. package it failed
+    outright: that archive's bounds span 221 graticule cells and only 62
+    contain a tile, because a trail is a thin winding band inside a large
+    rectangle. An empty cell is ordinary - it is ground the corridor does
+    not cross - and building it would publish an archive covering nothing.
+    """
     only_west = [_tile_at(-74.5, 40.5)]
-    with pytest.raises(SystemExit, match="n40w074"):
-        _cut(tmp_path, only_west, margin_km=0.0)
+    out_dir, manifest = _cut(tmp_path, only_west, margin_km=0.0)
+
+    assert (out_dir / "at_basemap_cell_n40w075.pmtiles").exists()
+    assert not (out_dir / "at_basemap_cell_n40w074.pmtiles").exists()
+    assert manifest["stats"] == {**manifest["stats"], "cells": 1, "candidate_cells": 2}
+
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+    assert [c["name"] for c in index["cells"]] == ["n40w075"]
+
+
+def test_an_archive_whose_tiles_miss_its_own_bounds_is_refused(tmp_path):
+    """The real disagreement worth failing on, and all that is left of it:
+    a header describing ground none of the tiles are on."""
+    far_away = [_tile_at(2.5, 48.5)]
+    with pytest.raises(SystemExit, match="no tile in this archive"):
+        _cut(tmp_path, far_away, margin_km=0.0)
 
 
 def test_tile_bytes_are_copied_verbatim(tmp_path):

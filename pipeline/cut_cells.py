@@ -33,10 +33,11 @@ the stretch cut because the reasoning survives the change of unit:
   are walking; the margin is the data-side share of that (the client-side
   share - offering the neighbouring piece - is #558's).
 - Everything through CELL_CONTEXT_ZOOM goes to ONE shared context artifact
-  per sheet instead of riding in every cell. #193 measured the context tiles
-  at 6.3 MB duplicated per package BY CONSTRUCTION; at the A.T.'s 51 cells
-  that would be ~321 MB of the same bytes, which would defeat the entire
-  point of splitting.
+  per sheet instead of riding in every cell. Measured against the real z12
+  A.T. package (2026-08-28): 5.71 MB of context, published once. Carried
+  per cell across that sheet's 62 cells it would be 354.3 MB - five times
+  the 67.9 MB sheet it came from, spent entirely on duplication, to solve a
+  problem about size.
 
 @unvalidated SEAM_MARGIN_KM = 3.0 is picked, not found. What would settle it:
 how far past a cell boundary a hiker actually pans and walks once #558 ships
@@ -194,33 +195,41 @@ def cut_cells(
         # without one is an archive a style cannot draw from.
         source_metadata = Reader(get_bytes).metadata()
 
-        cells = graticule_cells(archive_bounds(source_header))
-        if not cells:
+        # CANDIDATES, not the answer. A sheet's bounding box is a rectangle
+        # and its trail is a thin winding band, so most cells the box covers
+        # hold no trail at all - measured against the real z12 A.T. package
+        # (2026-08-28): its bounds span 221 graticule cells and only 61 of
+        # them contain a tile. Which cells get BUILT is decided by the tiles
+        # below, never by the box.
+        candidates = graticule_cells(archive_bounds(source_header))
+        if not candidates:
             raise SystemExit(
                 f"{source_path} declares bounds that cover no whole-degree cell. "
                 "Either the header is wrong or this is not a sheet worth cutting."
             )
 
         # Pass 1: route every above-context tile by the cells it overlaps.
-        routing: dict[tuple[int, int, int], list[int]] = {}
+        candidate_routing: dict[tuple[int, int, int], list[int]] = {}
         context_tile_count = 0
         for (z, x, y), _data in all_tiles(get_bytes):
             if z > context_zoom:
-                routing[(z, x, y)] = cells_for_tile(tile_bounds_lonlat(z, x, y), cells, margin_km)
+                candidate_routing[(z, x, y)] = cells_for_tile(tile_bounds_lonlat(z, x, y), candidates, margin_km)
             else:
                 context_tile_count += 1
 
-        # Every published cell must be someone's map. An empty one means the
-        # grid and the archive disagree about where this sheet's ground is -
-        # a cut that quietly shipped it would 404 nothing and cover nothing.
-        populated = {index for indices in routing.values() for index in indices}
-        missing = sorted(set(range(len(cells))) - populated)
-        if missing:
-            names = ", ".join(cell_name(cells[i][0], cells[i][1]) for i in missing)
+        # Keep only the cells that are somebody's map. An empty candidate is
+        # ordinary - it is ground the corridor does not cross - and building
+        # it would publish an archive that 404s nothing and covers nothing.
+        populated = sorted({index for indices in candidate_routing.values() for index in indices})
+        if not populated:
             raise SystemExit(
-                f"Cells {names} would contain no tiles. The archive's declared bounds and "
-                "its actual tiles disagree - a wrong source, or a header that outran the cut."
+                f"{source_path}: no tile in this archive falls in any whole-degree cell of its own "
+                "declared bounds. The header and the tiles disagree - a wrong source, or an empty cut."
             )
+
+        cells = [candidates[i] for i in populated]
+        renumber = {old: new for new, old in enumerate(populated)}
+        routing = {address: [renumber[i] for i in indices] for address, indices in candidate_routing.items()}
 
         # Pass 2: stream bytes into one writer per artifact. No context
         # artifact when the source holds nothing at or under the context zoom
@@ -270,7 +279,8 @@ def cut_cells(
     duplication_pct = (routed - distinct) / distinct * 100 if distinct else 0.0
     print(
         f"{family}: {distinct} cell tiles -> {routed} placements across {len(cells)} cells "
-        f"({duplication_pct:.1f}% seam duplication at {margin_km} km), "
+        f"(of {len(candidates)} the bounding box covers; the rest are ground the trail does not cross), "
+        f"{duplication_pct:.1f}% seam duplication at {margin_km} km, "
         f"{counts.get(context_name, 0)} context tiles through z{context_zoom} published once."
     )
 
@@ -317,6 +327,7 @@ def cut_cells(
             "seam_duplication_pct": round(duplication_pct, 2),
             "context_tiles": context_tile_count,
             "cells": len(cells),
+            "candidate_cells": len(candidates),
         },
     }
     manifest_path = out_dir / f"{family}_cells_manifest.json"

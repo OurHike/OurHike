@@ -33,20 +33,34 @@
 // can't place this walk, so these are the figures from the day it was
 // saved."
 //
-// The fixture's ends are INVENTED grid coordinates, and `resolveDayHike`
-// needs each of them within `MAX_OFF_NETWORK_FEET` (150 ft) of a published
-// line. Against a fixture bucket, where the network is the same invented
-// grid, they land on it; against the real one they land in the woods between
-// real trails. So the two halves of this recipe's seed pull against each
-// other: the coordinates were chosen to be nobody's data, and being nobody's
-// data is exactly what stops the live network claiming them.
+// THE SEED IS THE REASON, AND IT IS NOW MEASURED RATHER THAN INFERRED. Two
+// paragraphs here previously guessed at this and one of them guessed wrong,
+// so both are replaced by figures taken off the published artifacts
+// (`trail_graph.json` + `trail_graph_geometry.json`, fetched 2026-08-27):
 //
-// What would settle it is a fixture on the PUBLISHED Pine Meadow line -
-// which is public trail geometry and nobody's personal data, so it costs the
-// never-photograph list nothing. It is not done here because it cannot be
-// checked from an agent sandbox: Chromium here reaches no external host, so
-// picking coordinates off the live artifact and confirming they resolve is
-// work for a session that can see the bucket.
+//   - `resolveDayHike` needs each end within `MAX_OFF_NETWORK_FEET` = 150 ft
+//     of a published line. This fixture's first end, [-74.095, 41.25], is
+//     **446.8 ft** from the nearest tread - three times the tolerance, so it
+//     can never resolve. Its second end happens to be 38.1 ft out and would
+//     have passed; one end failing is enough. The location fix at
+//     [-74.09, 41.25] is 171.2 ft out, so even a resolving hike would report
+//     the hiker off-route.
+//   - The nearest real trail to all three points is the **Red Cross Trail**.
+//     There is no "Pine Meadow Trail" anywhere in the published Harriman
+//     data - the 12 trails with the most edges in that box are the A.T.,
+//     Ramapo-Dunderberg, the Long Path, 1777 East, Arden Surebridge and so
+//     on. So the fixture's NAME is invented too, not only its coordinates.
+//
+// The two halves of the seed pull against each other: the coordinates were
+// chosen to be nobody's data, and being nobody's data is exactly what stops
+// the live network claiming them. What settles it is a fixture on published
+// tread - public trail geometry, nobody's personal data, so it costs the
+// never-photograph list nothing. A verified candidate exists and is written
+// up on #1150 rather than swapped in here, because changing what this recipe
+// photographs wants its own before-and-after: two real vertices on
+// Ramapo-Dunderberg 1.82 mi apart, which the graph routes between over 2.43
+// mi of tread, with a fix taken from a vertex of the middle edge so it lands
+// on the walk rather than near it.
 //
 // #1045 ADDED AN ELEVATION RIBBON TO THAT FRAME, AND IT NEEDS ONE MORE
 // ARTIFACT THAN THE BUCKET HAS. A followed walk now draws its own profile -

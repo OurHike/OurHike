@@ -18,6 +18,7 @@ import {
   HOURS_ACTIVITIES,
   hoursCsv,
   hoursTotals,
+  NYNJTC_HOURS_FORM_URL,
   stateLabel,
   type HoursActivity,
   type VolunteerHoursDraft,
@@ -75,6 +76,22 @@ export function VolunteerHours({ records, onLog, now }: VolunteerHoursProps) {
         Clubs report volunteer hours to ATC and the land agencies, where they carry real
         weight in funding. A day you log here is claimed in your name until a club
         confirms it — and it stays yours either way.
+      </p>
+      <p className="volunteer__note">
+        {/* A link out, never a data connection (#1154) - this logbook stays
+            OurHike's own. NYNJTC's own form is where a hiker signs into their
+            NYNJTC account, on NYNJTC's own page; OurHike never sees it. */}
+        Volunteering with NYNJTC? This logbook is OurHike’s own — report the same day on{' '}
+        <a
+          className="volunteer__workday-contact"
+          data-testid="hours-nynjtc-link"
+          href={NYNJTC_HOURS_FORM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          NYNJTC’s own volunteer hours form
+        </a>{' '}
+        too, where you’ll sign into your NYNJTC account.
       </p>
 
       {logged && (

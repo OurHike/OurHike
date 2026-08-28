@@ -98,6 +98,17 @@ describe('VolunteerHours', () => {
     expect(link.getAttribute('href')).toContain('data:text/csv')
   })
 
+  it('links out to NYNJTC’s own form rather than submitting on the hiker’s behalf', () => {
+    renderHours()
+
+    const link = screen.getByTestId('hours-nynjtc-link')
+    expect(link.getAttribute('href')).toBe(
+      'https://secure.nynjtc.org/webform/individual-trail-volunteer-report-form',
+    )
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toContain('noopener')
+  })
+
   it('renders no lack-state: an empty logbook is just the form, not an accusation', () => {
     const { container } = render(
       <VolunteerHours records={null} onLog={vi.fn()} now={NOW} />,

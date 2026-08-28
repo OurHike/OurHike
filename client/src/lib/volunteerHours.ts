@@ -31,6 +31,22 @@ export const ACTIVITY_LABELS: Record<HoursActivity, string> = {
   other: 'Other',
 }
 
+/**
+ * NYNJTC's own volunteer-hours form — a link out, never a data connection
+ * (#1154). This logbook stays OurHike's own, exactly as designed above; a
+ * hiker who also needs the day on NYNJTC's books follows this link and signs
+ * into NYNJTC's own account on NYNJTC's own page. OurHike never sees that
+ * password.
+ *
+ * No query-string prefill: fetched anonymously 2026-08-28, the form sits
+ * behind NYNJTC's own login ("You must login or register to view this
+ * form"), so whether their Drupal Webform even accepts prepopulation, and
+ * under what field names, cannot be confirmed without an NYNJTC account.
+ * Left unimplemented rather than guessed at.
+ */
+export const NYNJTC_HOURS_FORM_URL =
+  'https://secure.nynjtc.org/webform/individual-trail-volunteer-report-form'
+
 export type HoursState = 'claimed' | 'confirmed' | 'disputed'
 
 /** What the outbox queues - field names match POST /volunteer-hours

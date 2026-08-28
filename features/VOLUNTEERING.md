@@ -89,6 +89,19 @@ That is also the reason hours are **claimed, not computed**. The app could infer
 
 Hours attach to a `WorkProject` where one exists (a confirmed attendance pre-fills the claim, so the common case is a confirmation rather than a form), and stand alone where none does — most maintenance is somebody going out on a Tuesday because a blowdown needs clearing, and a design that only counts organised workdays would miss the majority of the work it is trying to honour.
 
+**A link out to NYNJTC's own form, and nothing more (#1154).** NYNJTC runs its own
+volunteer-hours reporting, separately, behind its own login
+(`secure.nynjtc.org`, an ordinary Drupal webform with no public API) — this
+app's logbook above stays entirely self-contained, and the Hours screen's
+only connection to NYNJTC's system is a plain link a hiker can follow to also
+report the same day on NYNJTC's own books, signing into their own NYNJTC
+account there. The alternative — OurHike holding or relaying that password to
+submit on the hiker's behalf — was considered and rejected:
+[SOURCE_REGISTRY.md](SOURCE_REGISTRY.md)'s *"we should not take their
+credentials"* and [AUTHENTICATION.md](AUTHENTICATION.md)'s *"don't hand-roll
+this"* both argue against it, and there is no public API to integrate with
+regardless.
+
 ### 5. The impact dashboard — and the guardrail it has to get past
 
 **This is the request that contradicts something this repository has written down four separate times**, and pretending otherwise would be the wrong way to build it. [DATA_NUDGES.md](DATA_NUDGES.md) says it most flatly: *"no per-hiker contribution counts shown anywhere."* [SEGMENTS.md](SEGMENTS.md), the v1 of this doc, and [PRICING_MODEL.md](PRICING_MODEL.md) each say a version of the same. A dashboard of everything you have contributed is, on its face, exactly that.

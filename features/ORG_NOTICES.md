@@ -107,7 +107,10 @@ field for it, so those notices are carried today by *omission* from the reviewed
 Measured on NYNJTC: **one of the 18 alerts names no trail and no park**, and eight more
 name only a park. Giving the state a name is what lets a notice be shown honestly instead
 of dropped, and the client already has the surface for it —
-`AtcNoticeList.tsx` renders a "not drawn on the map — read it here" branch today.
+`chrome/NoticeList.tsx` renders a "not drawn on the map — read it here" branch today.
+(It was `AtcNoticeList.tsx` when this was written;
+[#1083](https://github.com/OurHike/OurHike/issues/1083) renamed it for the reason §6
+gives, and that component's header points back here for the rule.)
 
 **Nothing is ever promoted between arms by inference.** A park-only notice does not become
 a trail notice because a park contains one trail we happen to draw. That is the

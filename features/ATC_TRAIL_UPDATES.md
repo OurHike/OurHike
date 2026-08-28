@@ -467,7 +467,9 @@ decoration.
   advisory, and an update that does not actually stop a hiker walking through — and both are
   covered below, along with a third set nobody had named.
 
-  "List entry" now has a surface — `client/src/chrome/AtcNoticeList.tsx`. **Amended
+  "List entry" now has a surface — `client/src/chrome/NoticeList.tsx` (built as
+  `AtcNoticeList.tsx`; [#1083](https://github.com/OurHike/OurHike/issues/1083) renamed it
+  when the list stopped being one organization's). **Amended
   2026-08-13 ([#687](https://github.com/OurHike/OurHike/issues/687)) — opened from the
   legend, not a permanent bar over the map.** It used to open from a row under the alert
   strip that rendered whenever the app held any notice at all — which given ATC almost

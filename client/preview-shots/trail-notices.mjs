@@ -58,14 +58,10 @@
 // the agencies publish as places to camp. There is no location fix in a CI
 // browser and no account, so the other three are kept the same way.
 export const caption =
-  'Trail notices, scrolled to the foot of the list — the “Show N more” control, which had no styles at all until now'
+  'Trail notices — two organizations in one list. The sheet clips before the “Show N more” control this change restyled; see the pull request'
 
-/** Short, and the drive says why: the default 3500 leaves the shutter open
- *  through a re-render that scrolls this list back to the top. Every step of
- *  the drive auto-waits, so the settle this replaces was already redundant. */
-export const wait = 700
 export const alt =
-  'The foot of the trail-notices sheet, scrolled down: the last of the notices, each credited to the organization that posted it — the Appalachian Trail Conservancy or the New York-New Jersey Trail Conference — with the NYNJTC rows carrying a locality such as Harriman-Bear Mountain, no category line, and a note that they are not drawn on the map. Beneath the last row, a plain text control in the link colour offers to show the remaining notices elsewhere on the trail, where it previously drew as the browser’s default grey push button.'
+  'The trail-notices sheet over the map at Harriman, scrolled into the older half of the list: NYNJTC alerts credited to the New York-New Jersey Trail Conference, each carrying a locality such as Minnewaska State Park Preserve, no category line, a note that OurHike has not checked it, and a note that it is not drawn on the map. The sheet clips before the foot of the list, so the “Show N more” control this change restyled is not in the frame.'
 
 export default async function drive(page) {
   // Park the camera before anything else, so the list is scoped to a stretch
@@ -105,50 +101,53 @@ export default async function drive(page) {
   // shows nothing this pull request changed.
   await page.getByRole('dialog', { name: 'Every trail notice OurHike holds' }).waitFor()
 
-  // THEN SCROLL TO THE CONTROL, because waiting for the dialog is not enough
-  // and the first run of this recipe proved both halves of that.
+  // THEN TRY TO FRAME THE CONTROL - AND KNOW THAT IT DOES NOT WORK YET.
   //
-  // The frame it produced (pr-1159, 2026-08-28) was wrong twice over: the
-  // sheet was caught mid-transition with the legend's own rows showing
-  // through beneath it, and the thing this recipe exists to photograph was
-  // nowhere in it. "Show N more, elsewhere on the trail" sits at the FOOT of
-  // the list, and the list that day was 49 notices long - the scoping hid 4
-  // of 53, which is enough for the control to exist and nowhere near enough
-  // to bring it on screen. A shot of the top of a long list is a shot of the
-  // list, not of the change.
+  // "Show N more, elsewhere on the trail" sits at the FOOT of the list, and
+  // the list is long: the scoping hid 4 of 53 notices on the day this was
+  // written, which is enough for the control to exist and nowhere near enough
+  // to bring it on screen. NYNJTC's alerts are all `unplaced` and never scoped
+  // out, so this list has a floor of roughly eighteen rows however tightly the
+  // camera is parked. Scrolling is the only way to reach the foot of it.
   //
-  // `scrollIntoViewIfNeeded` fixes both: it puts the control in frame, and
-  // getting there requires the dialog to have finished laying out, which is
-  // the settle the `waitFor` above only looked like.
+  // THREE FRAMES, NONE OF THEM CONTAINING THE CONTROL, and the honest state of
+  // this is that nobody knows why. What is known, measured on pr-1159:
   //
-  // IT THROWS WHEN THE CONTROL IS ABSENT, and that is the right failure. The
-  // button renders only when the viewport scopes something out; if a future
-  // change to the scoping means nothing is ever hidden here, this recipe
-  // should say "the camera could not take trail-notices" in the comment
-  // rather than quietly photograph a list with no control at the bottom and
-  // let a caption claim otherwise. That is exactly the mistake this paragraph
-  // is a correction of.
+  //  - the scroll RUNS and lands deep in the list: the frames show NYNJTC's
+  //    June 2025 alerts, which sort near the bottom;
+  //  - `scrollIntoViewIfNeeded` does not throw, so the control is present and
+  //    Playwright believes it scrolled to it;
+  //  - the sheet clips at the same place every time, with the legend's own
+  //    rows visible beneath it;
+  //  - re-scrolling for two seconds and dropping `wait` from 3500 to 700
+  //    changed the frame by 22 bytes, which killed the "a re-render resets the
+  //    scroll during the settle" theory the second attempt was built on;
+  //  - `.atc-notices` is a single `overflow-y: auto` box with `max-height:
+  //    85%` that CONTAINS the button, so "the footer is clipped out of a
+  //    non-scrollable sheet" does not explain it either.
+  //
+  // The scroll is kept because it is closer than not scrolling and costs
+  // nothing. The pull request says plainly that the shot does not show the
+  // control and points a reviewer at the preview to scroll it themselves,
+  // which is what .claude/skills/pr-screenshot/SKILL.md asks for when no
+  // recipe can photograph the thing. A fourth guess would be spending CI on a
+  // button's CSS.
+  //
+  // NOT REPRODUCIBLE HERE, which is why it is three guesses and not three
+  // measurements: this drive cannot run in an agent sandbox at all. The step
+  // above it needs `Read all N trail notices`, which needs conditions
+  // artifacts, and `--url` at the live preview fails the same way because
+  // Chromium here cannot use the egress proxy (the skill's own measurement).
+  // Whoever picks this up with a browser will learn more in five minutes than
+  // three CI rounds taught.
+  //
+  // IT THROWS WHEN THE CONTROL IS ABSENT, and that stays deliberate. The
+  // button renders only when the viewport scopes something out; if that stops
+  // being true the comment should read "the camera could not take
+  // trail-notices" rather than photograph a list with no control under a
+  // caption asserting one.
   const showAll = page.getByRole('button', {
     name: /Show \d+ more, elsewhere on the trail/,
   })
   await showAll.scrollIntoViewIfNeeded()
-
-  // AND HOLD IT THERE, because one scroll was not enough either - the second
-  // frame proved that too. `scripts/screenshot.mjs` runs `drive(page)`, then
-  // `waitForTimeout(wait)`, THEN shoots, so there is a settle between the
-  // scroll and the shutter; the shell's `now` ticks during it, `scopedNotices`
-  // recomputes, the list re-renders and the scroller goes back to the top. The
-  // second frame landed deep in the list - NYNJTC's June 2025 alerts, which
-  // sort near the bottom - and still had no control in it, which is what a
-  // scroll that happened and was then undone looks like.
-  //
-  // Re-scrolling for two seconds outlasts a tick, and `wait` below is dropped
-  // to just enough for the paint so the shutter is not sitting open through
-  // another one. The drive's own steps do the settling that the long default
-  // wait used to: every locator here auto-waits, and the dialog `waitFor`
-  // above is a real assertion rather than a timer.
-  for (let i = 0; i < 8; i += 1) {
-    await page.waitForTimeout(250)
-    await showAll.scrollIntoViewIfNeeded()
-  }
 }

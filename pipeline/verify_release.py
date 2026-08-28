@@ -79,6 +79,7 @@ import json
 import re
 import sys
 from datetime import date
+from fnmatch import fnmatch
 from pathlib import Path
 
 import requests
@@ -133,6 +134,7 @@ CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 # Check 21's reviewed side (#672): the identity ledger in THIS checkout,
 # against which every published POI id is verified.
 IDENTITY_LEDGER_PATH = Path(__file__).parent / "reference" / "poi_identity.json"
+ACKNOWLEDGED_DROPS_PATH = Path(__file__).parent / "reference" / "acknowledged_drops.json"
 
 # How close a tier has to stay to the size the app advertises (check 18).
 # README.md already says a tier drifting far from its advertised size "is a
@@ -216,6 +218,62 @@ def archive_keys(config_ts: str | None = None) -> dict[str, str]:
     return dict(re.findall(r"^\s*(light|standard|fine):\s*'([^']+)'", source, re.MULTILINE))
 
 
+# Each level of the hiking sheet, as hikingDetail.ts declares it. The fields
+# are read in the order that file writes them; a level missing any of them
+# fails the count guard below rather than matching into its neighbour.
+_HIKING_LEVEL = re.compile(
+    r"level:\s*'(?P<level>\w+)'.*?"
+    r"\bartifact:\s*'(?P<basemap>[^']+)'.*?"
+    r"basemapSizeBytes:\s*(?P<basemap_bytes>[\d_]+|null).*?"
+    r"demArtifact:\s*'(?P<dem>[^']+)'.*?"
+    r"demSizeBytes:\s*(?P<dem_bytes>[\d_]+|null).*?"
+    r"published:\s*(?P<published>true|false)",
+    re.DOTALL,
+)
+
+
+def _optional_bytes(value: str) -> int | None:
+    return None if value == "null" else int(value.replace("_", ""))
+
+
+def hiking_sheet_levels(hiking_detail_ts: str | None = None) -> list[dict]:
+    """Every hiking-sheet level: its two artifacts, their advertised sizes, and
+    whether the app offers it.
+
+    THE SHEET HIKERS ACTUALLY DOWNLOAD, and until #1144 nothing here read it.
+    Checks 2 and 18 knew only `downloadDetail.ts`'s tiers - the USGS raster,
+    withdrawn under #855 - so a production bucket missing `dem_light.pmtiles`
+    verified green, and the advertised figures that moved this cycle (a DEM
+    from 607 MB to 276) had no drift gate at all. Two comments claimed
+    otherwise; both are corrected.
+
+    Read out of the client's own table for the reason `expected_client_keys`
+    reads config.ts, and holds the same line: a level whose entry this cannot
+    parse raises, rather than being silently checked one artifact fewer.
+    """
+    source = hiking_detail_ts if hiking_detail_ts is not None else _read("hikingDetail.ts")
+    levels = [match.groupdict() for match in _HIKING_LEVEL.finditer(source)]
+    declared = len(re.findall(r"^\s*level:\s*'\w+',\s*$", source, re.MULTILINE))
+    if not levels or len(levels) != declared:
+        raise ValueError(
+            f"could not read HIKING_DETAIL_LEVELS out of client/src/lib/hikingDetail.ts - "
+            f"{declared} level(s) declared, {len(levels)} fully parsed. It has been "
+            "restructured, and this check must be updated rather than left checking "
+            "fewer artifacts than the app offers."
+        )
+    return [
+        {
+            "level": level["level"],
+            "published": level["published"] == "true",
+            "artifacts": {
+                level["basemap"]: _optional_bytes(level["basemap_bytes"]),
+                level["dem"]: _optional_bytes(level["dem_bytes"]),
+            },
+        }
+        for level in levels
+    ]
+
+
 # ---------------------------------------------------------------------------
 # A. Presence and contract
 # ---------------------------------------------------------------------------
@@ -270,7 +328,12 @@ def withdrawn_tier_keys(packages_ts: str | None = None, config_ts: str | None = 
     return keys
 
 
-def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts: str | None = None) -> list[dict]:
+def check_client_keys(
+    manifest: dict,
+    config_ts: str | None = None,
+    packages_ts: str | None = None,
+    hiking_detail_ts: str | None = None,
+) -> list[dict]:
     """2. Every key the CLIENT will request exists in the release.
 
     A key whose sheet is withdrawn (#855) is held to a weaker claim: no new
@@ -279,6 +342,14 @@ def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts:
     FAILED, which is what made every UA run un-passable (#854). Its
     *presence* still reports OK: publishing bytes a phone may be carrying is
     exactly right.
+
+    The hiking sheet's artifacts are held to the same rule with `published`
+    as the gate rather than `withdrawn` (#1144): an unpublished level is one
+    `offeredHikingDetails()` filters off the picker, so nothing requests it
+    and its absence is a SKIPPED. An OFFERED level's artifacts are the
+    strongest form of this check there is - the app will hand a hiker that
+    download - so their absence is the plain failure the raster tiers used to
+    be the only claimants of.
     """
     published = set((manifest.get("artifacts") or {}).keys())
     withdrawn = withdrawn_tier_keys(packages_ts, config_ts)
@@ -307,6 +378,40 @@ def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts:
                     "the app would fail on a key nothing else in the build would notice",
                 )
             )
+
+    # One report per artifact, not per level: `dem.pmtiles` is Standard's and
+    # Fine's alike, and asking after it twice would say one fact twice.
+    seen: set[str] = set()
+    for level in hiking_sheet_levels(hiking_detail_ts):
+        for key in level["artifacts"]:
+            if key in seen:
+                continue
+            seen.add(key)
+            if key in published:
+                reports.append(
+                    _report(2, key, OK, f"the hiking sheet's {level['level']} level asks for this and the release has it")
+                )
+            elif not level["published"]:
+                reports.append(
+                    _report(
+                        2,
+                        key,
+                        SKIPPED,
+                        f"absent, and the {level['level']} level carries `published: false` in "
+                        "client/src/lib/hikingDetail.ts - offeredHikingDetails() keeps it off the "
+                        "picker, so nothing requests it",
+                    )
+                )
+            else:
+                reports.append(
+                    _report(
+                        2,
+                        key,
+                        FAILED,
+                        f"the hiking sheet offers its {level['level']} level and the release does not "
+                        "contain this artifact - a hiker who picks that level gets a 404 on a mountain",
+                    )
+                )
     return reports
 
 
@@ -583,10 +688,16 @@ def _positions(coordinates):
 
 
 def check_advertised_size(base: str, key: str, tier: str, advertised: int, session=None) -> dict:
-    """18. Each tier within 2% of the size the app tells a hiker to expect.
+    """18. Each advertised download within 2% of the size the app tells a
+    hiker to expect - the raster tiers, and since #1144 the hiking sheet's
+    per-level basemap cuts and DEMs, which are the downloads this app
+    actually offers.
 
     Weighed against remaining phone storage at a trailhead, which is why
     README.md calls a drift here "a real problem, not a rounding detail".
+
+    `tier` is whatever names this download in the sentence a failure prints -
+    a raster tier, or a hiking level and which half of it.
     """
     try:
         response = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
@@ -709,6 +820,44 @@ def _content_length(base: str, key: str, session=None) -> tuple[int, str] | None
         return None
 
 
+def acknowledged_drops(path: Path | None = None) -> list[dict]:
+    """The deliberate shrinkages somebody has signed for (#1143).
+
+    reference/acknowledged_drops.json is the file and its `_README` is the
+    reasoning; this only reads it. Absent or unreadable is EMPTY rather than an
+    error: a bucket with no acknowledgements is the ordinary state, and a
+    malformed file must not be able to turn the gate off by failing open in the
+    other direction either - it simply acknowledges nothing.
+    """
+    source = path or ACKNOWLEDGED_DROPS_PATH
+    if not source.exists():
+        return []
+    try:
+        rows = json.loads(source.read_text(encoding="utf-8")).get("drops") or []
+    except (json.JSONDecodeError, OSError):
+        return []
+    return [row for row in rows if isinstance(row, dict) and row.get("artifact")]
+
+
+def acknowledgement_for(artifact: str, previous_id: str, rows: list[dict]) -> dict | None:
+    """The row covering this artifact against this predecessor, or None.
+
+    ONE PAIR OF RELEASES, which is the whole safety property: an entry names
+    the predecessor its drop was measured against, so the moment a newer
+    release takes that place the entry stops applying. An acknowledgement
+    cannot outlive the comparison it was written for, and nobody has to
+    remember to delete it.
+    """
+    for row in rows:
+        if row.get("from_release") != previous_id:
+            continue
+        pattern = row["artifact"]
+        matched = fnmatch(artifact, pattern) if "*" in pattern else artifact == pattern
+        if matched:
+            return row
+    return None
+
+
 def check_release_regression(
     base: str,
     previous_id: str,
@@ -716,6 +865,7 @@ def check_release_regression(
     previous_manifest: dict,
     current_manifest: dict,
     session=None,
+    acknowledgements: list[dict] | None = None,
 ) -> list[dict]:
     """17. No artifact shrank more than DROP_THRESHOLD against the last release.
 
@@ -738,12 +888,23 @@ def check_release_regression(
     4,142,846 while carrying exactly the same features. Reporting that as data
     loss would be a red gate on a change that lost nothing, and worse, it would
     teach whoever saw it that this check cries wolf.
+
+    A DELIBERATE CULL IS THE OTHER WAY TO CRY WOLF, and until #1143 there was
+    no way to say one had happened: this check's only exemption was an upstream
+    that changed, which a gate culling unreachable water is not. Every one of
+    the five failures in the 2026-08-26 run against production was a cull
+    somebody had decided on purpose. `reference/acknowledged_drops.json` is
+    where that decision is now written down, with its evidence and a ceiling,
+    and `acknowledgement_for` is what makes an entry apply to exactly one pair
+    of releases so a signed drop cannot silence this check twice.
     """
     shared = sorted(
         set((previous_manifest.get("artifacts") or {}).keys()) & set((current_manifest.get("artifacts") or {}).keys())
     )
     if not shared:
         return [_report(17, f"(vs {previous_id})", SKIPPED, "no artifact appears in both releases")]
+
+    rows = acknowledged_drops() if acknowledgements is None else acknowledgements
 
     reports = []
     for name in shared:
@@ -768,14 +929,35 @@ def check_release_regression(
             reports.append(_report(17, name, OK, f"{previous_id} published it empty, so there is no drop to measure"))
             continue
         drop = (before - now) / before
-        if drop > DROP_THRESHOLD:
+        signed = acknowledgement_for(name, previous_id, rows)
+        if drop > DROP_THRESHOLD and signed is not None and drop <= signed.get("max_drop", 0):
+            reports.append(
+                _report(
+                    17,
+                    name,
+                    OK,
+                    f"{now} bytes against {before} in {previous_id} - down {drop:.0%}, and signed for in "
+                    f"reference/acknowledged_drops.json: {signed.get('authority', 'no authority named')}. "
+                    f"{signed.get('reason', '')}".strip(),
+                )
+            )
+        elif drop > DROP_THRESHOLD:
+            covered = (
+                ""
+                if signed is None
+                else (
+                    f" reference/acknowledged_drops.json signs for a drop of up to "
+                    f"{signed.get('max_drop', 0):.0%} here ({signed.get('authority', 'no authority named')}) "
+                    "and does not cover this much."
+                )
+            )
             reports.append(
                 _report(
                     17,
                     name,
                     FAILED,
                     f"{now} bytes against {before} in {previous_id} - down {drop:.0%}, past the "
-                    f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data.",
+                    f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data." + covered,
                 )
             )
         else:
@@ -1209,6 +1391,25 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
         reports.append(check_tile_decodes(base, key, session))
         if tier in sizes:
             reports.append(check_advertised_size(base, key, tier, sizes[tier], session))
+
+    # The hiking sheet's own advertised figures (#1144). Once per artifact,
+    # for the reason check 2 dedupes: Standard and Fine share a DEM.
+    weighed: set[str] = set()
+    for level in hiking_sheet_levels():
+        for key, advertised in level["artifacts"].items():
+            if key in weighed:
+                continue
+            weighed.add(key)
+            label = f"{level['level']} hiking sheet"
+            if advertised is None:
+                # A null size is hikingDetail.ts saying this artifact has not
+                # been weighed in the bucket yet, which is a state it carries
+                # deliberately rather than a figure to check.
+                reports.append(_report(18, key, SKIPPED, f"the {label} advertises no size for this artifact yet"))
+            elif key not in artifacts:
+                reports.append(_report(18, key, SKIPPED, "this artifact is not in the release, so there is nothing to weigh"))
+            else:
+                reports.append(check_advertised_size(base, key, label, advertised, session))
 
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
     reports += check_poi_identity(base, manifest, session)

@@ -80,6 +80,9 @@ const TAP: TappedLine = {
   lengthMiles: null,
   park: null,
   trailStatus: null,
+  closureKind: null,
+  closureReason: null,
+  closureSource: null,
   at: [-77, 39 + 2 * MILE_LAT],
 }
 
@@ -93,6 +96,7 @@ function panel(overrides: Partial<TappedLineInput> = {}) {
         units: 'imperial',
         trailName: 'Appalachian Trail',
         pace: STANDARD_PACE,
+        trailSources: {},
         walked: [],
         trailIndex: TRAIL_INDEX,
         belowSeam: false,

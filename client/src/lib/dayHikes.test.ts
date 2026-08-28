@@ -26,6 +26,7 @@ vi.mock('idb-keyval', () => {
 import * as idb from 'idb-keyval'
 import {
   DAY_HIKES_KEY,
+  distinctLegSources,
   EMPTY_DAY_HIKES,
   adoptDayHikes,
   clearDayHikes,
@@ -385,6 +386,43 @@ describe('validateDayHikeStore', () => {
     })
 
     expect(validated?.hikes[0].figures).toEqual({ miles: 3.4, legs: [] })
+  })
+
+  it('keeps a leg’s concurrent organizations, dropping only the junk entries (#1115)', () => {
+    const validated = validateDayHikeStore({
+      hikes: [
+        {
+          ...hike('concurrent'),
+          figures: {
+            miles: 3,
+            legs: [
+              {
+                name: 'Long Path',
+                source: 'nynjtc_long_path',
+                blaze_color: 'aqua',
+                miles: 3,
+                concurrent_sources: ['oprhp_trails', 42, null],
+              },
+              // Absent stays absent - a record from before the field existed
+              // round-trips as the object it went in as, like `climb`.
+              {
+                name: 'Kakiat Trail',
+                source: 'oprhp_trails',
+                blaze_color: null,
+                miles: 1,
+              },
+            ],
+          },
+        },
+      ],
+      openId: null,
+    })
+    const legs = validated?.hikes[0].figures.legs
+
+    expect(legs?.[0].concurrent_sources).toEqual(['oprhp_trails'])
+    expect(legs?.[1]).not.toHaveProperty('concurrent_sources')
+    // And the credit helper reads them: one walk, both organizations.
+    expect(distinctLegSources(legs ?? [])).toEqual(['nynjtc_long_path', 'oprhp_trails'])
   })
 
   it('repairs an openId pointing at a vanished hike to null, not to another hike', () => {

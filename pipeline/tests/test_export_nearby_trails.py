@@ -796,6 +796,11 @@ def test_a_trail_wholly_inside_a_closed_area_ships_closed(tmp_path, monkeypatch)
     assert feature["properties"]["trail_status"] == "closed"
     assert feature["properties"]["closure_kind"] == "area"
     assert "extreme rainfall" in feature["properties"]["closure_reason"]
+    # The closure LAYER's own key, shipped so the sheet can attribute the
+    # closure to the org that made it rather than to whoever drew the line it
+    # landed on (#1142). Set on every area record since #964; shipping it is
+    # the fix.
+    assert feature["properties"]["closure_source"] == "oprhp_trail_closures"
 
 
 def test_a_trail_only_partly_inside_is_split_rather_than_closed_whole(tmp_path, monkeypatch):
@@ -905,6 +910,10 @@ def test_the_stewards_own_long_term_status_is_a_different_kind_of_closed(tmp_pat
     # No reason: OPRHP's status column gives none, and inventing one would be
     # the display outrunning its source.
     assert "closure_reason" not in feature["properties"]
+    # And no closure_source: a long-term status is the line steward's own
+    # claim on their own line, so the line's `source` already names the org
+    # and a second key would be the same fact twice (#1142).
+    assert "closure_source" not in feature["properties"]
 
 
 def test_a_closed_section_never_shares_an_id_with_its_open_half(tmp_path, monkeypatch):

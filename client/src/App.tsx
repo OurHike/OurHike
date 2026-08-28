@@ -225,7 +225,7 @@ import {
   fetchTrailGraphGeometry,
   fetchTrailGraphProfile,
 } from './lib/trailGraphData'
-import { orgLabelFrom, orgProviderFrom } from './lib/stewards'
+import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
@@ -1555,6 +1555,11 @@ function App() {
    *  memo so it is built once per stewards change and not once per fix. */
   const noticeOrg = useMemo(() => orgProviderFrom(stewards), [stewards])
 
+  /** Per-source attributions for the tapped-line sheet (#1142), from the
+   *  same stewards artifact the credit surfaces read - one memo per stewards
+   *  change, same shape as `noticeOrg` above. */
+  const trailSources = useMemo(() => trailSourceTableFrom(stewards), [stewards])
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
     if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
@@ -1971,6 +1976,7 @@ function App() {
     units,
     trailName: TRAIL_NAME,
     pace,
+    trailSources,
     walked,
     trailIndex,
     belowSeam,
@@ -2669,6 +2675,11 @@ function App() {
           source: leg.source,
           blaze_color: leg.blaze_color,
           miles: leg.miles,
+          // The concurrent orgs ride into the cache (#1115): the credit
+          // surfaces that may only read this record still owe them the count.
+          ...(leg.concurrent_sources !== undefined && leg.concurrent_sources.length > 0
+            ? { concurrent_sources: [...leg.concurrent_sources] }
+            : {}),
         })),
         // The climb as this phone's graph priced it, cached so that the two
         // surfaces which may only read the cache - the day-hike list and the

@@ -30,6 +30,28 @@
 // somebody is deciding whether they have room, so they are kept exact and
 // refreshed in the same change as any republish that moves them.
 //
+// EVERY FIGURE BELOW IS PRODUCTION'S, AND UA HAS ALREADY MOVED PAST THREE OF
+// THEM. Measured 2026-08-28 against both manifests, which is the first thing
+// #1144's new coverage of this table asked and the reason it was worth adding:
+//
+//                                    production        UA     drift
+//   at_basemap_package_z12.pmtiles   75,451,755   67,921,100   -10.0%
+//   at_basemap_package_z13.pmtiles  182,774,166  159,913,857   -12.5%
+//   at_basemap_package.pmtiles      533,926,586  348,761,067   -34.7%
+//   dem_light.pmtiles               182,205,873  182,205,873     same
+//   dem.pmtiles                     275,601,483  275,601,483     same
+//
+// UA's three basemap cuts are #1118's layer-stripped rebuild ("Stop downloading
+// what nothing draws"); production has not taken it yet. So these constants are
+// correct for the bucket a shipped build reads and WRONG for UA by up to
+// 34.7% - overstating, which is the safe direction (a hiker is told to free
+// more room than the download needs), and still wrong.
+//
+// WHAT THAT MEANS FOR THE NEXT RELEASE, stated here rather than left to be
+// rediscovered when the gate goes red: promoting the basemap family to
+// production and updating these three constants are ONE change, not two. Land
+// them apart and check 18 fails the release - which is now the point of it.
+//
 // Standard is recommended for the same reason it is the preference default
 // (userPreferences.ts): it is the level that fits the storage envelope, and z14
 // is individual-building detail MapLibre renders acceptably by overzooming z13.
@@ -105,16 +127,23 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
   },
   {
     // THE TAPERED DEM, measured in the bucket rather than projected: 275,601,483
-    // bytes, published to UA 2026-08-27 by build-dem.yml run 33065561782 at the
+    // bytes, published 2026-08-27 by build-dem.yml run 33065561782 at the
     // shipped 30/15/6 schedule (#1088). It replaces the untapered 607,265,661,
-    // and the two had to move together - verify_release.py check 18 fails a
-    // release where an advertised size drifts more than 2% from the bucket, and
-    // 607 against 276 is not close.
+    // and the two had to move together.
     //
-    // The basemap figure is UA's measured 182,610,914, replacing a 182,286,799
-    // copied from an older build log. Nothing rebuilt the basemap; the constant
-    // was simply 324,115 bytes out, in the direction downloadDetail.ts warns
-    // about - understating, so a hiker who freed exactly enough is stranded.
+    // That last sentence used to credit verify_release.py check 18 with
+    // enforcing it - "fails a release where an advertised size drifts more than
+    // 2% from the bucket, and 607 against 276 is not close". FALSE WHEN
+    // WRITTEN: check 18 read only downloadDetail.ts's withdrawn raster tiers,
+    // so nothing mechanical held THIS table to the bucket at all. #1144 pointed
+    // checks 2 and 18 at these five artifacts, which is what makes the sentence
+    // true now.
+    //
+    // The basemap figure is production's measured 182,774,166, replacing a
+    // 182,286,799 copied from an older build log. Nothing rebuilt the basemap
+    // then; the constant was simply out, in the direction downloadDetail.ts
+    // warns about - understating, so a hiker who freed exactly enough is
+    // stranded.
     level: 'standard',
     artifact: 'at_basemap_package_z13.pmtiles',
     basemapSizeBytes: 182_774_166,

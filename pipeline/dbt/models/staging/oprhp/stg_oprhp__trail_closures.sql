@@ -16,6 +16,21 @@
 -- here asserts a row count floor. An empty closures table means nothing is
 -- closed; it does not mean the fetch broke, and a test that could not tell
 -- those apart would be red every good week.
+--
+-- WHAT "FRESHNESS MATTERS MOST" DOES NOT YET MEAN, said here because the first
+-- line of this file claims the importance and nothing discloses the cadence.
+-- These closures reach a phone baked into `nearby_trails.geojson`, which
+-- `publish-vector-data.yml` publishes on MANUAL DISPATCH ONLY - so a new
+-- closure arrives whenever somebody next runs a vector publish, not on a clock.
+-- ATC's and NYNJTC's notices ride the hourly conditions bake; this does not.
+-- Nothing watches the gap either: the entry carries no `freshness` block (every
+-- DEC layer got one) and `check_freshness.py` does not know this source.
+--
+-- #1152 is the fix and its scoping - the closed stretches published as their
+-- own `conditions/` document, on the hourly clock, drawn with the tape the map
+-- already has. Until then this comment is the disclosure, because a safety
+-- layer whose staleness nobody can state is worse than one nobody claimed
+-- anything about.
 with source as (
     select * from {{ source('oprhp', 'raw_oprhp__oprhp_trail_closures') }}
 )

@@ -39,8 +39,24 @@
 // none of it - correctly. Say so rather than reading the shot as a missing
 // feature: DayHikeCard.test.tsx is where that sentence is actually pinned,
 // and the camera is here for the states it can reach.
+// Touched again by #1115, whose whole subject is this card's leg list. Where
+// two organizations designate one piece of tread - the Long Path riding the
+// High Point Trail, 130 of that trail's 133 edges - the router used to hop
+// between the two published copies every few metres, so the list read a dozen
+// alternating rows all priced "0.0 mi". It now holds the designation it
+// entered on and merges, and the organization whose name was folded away
+// keeps its credit through `concurrent_sources`.
+//
+// The fixture's one leg carries that field, so the CREDIT LINE is what moves
+// in this frame: "Two organizations keep this loop walkable" over a single
+// merged leg, where before the same fixture read "One organization". The
+// fragmented list itself needs a real concurrency to photograph, which means
+// the live resolution over a published graph rather than a hand-written
+// fixture - so this shot shows the credit half and DayHikeCard.test.tsx and
+// trailGraph.test.ts pin the merge itself.
 export const caption = 'The finished day hike’s card'
-export const alt = 'A saved day hike’s card, opened from the Plan tab'
+export const alt =
+  'A saved day hike’s card, opened from the Plan tab, crediting both organizations whose designations share its tread'
 
 const DAY_HIKES = {
   hikes: [
@@ -62,6 +78,10 @@ const DAY_HIKES = {
             source: 'oprhp_trails',
             blaze_color: 'Blue',
             miles: 6.4,
+            // Both organizations designate this tread; the leg wears one
+            // name and credits the other (#1115). Invented, like every
+            // other figure in this fixture - nobody's data.
+            concurrent_sources: ['nynjtc_long_path'],
           },
         ],
       },

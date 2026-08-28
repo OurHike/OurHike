@@ -76,6 +76,31 @@ export interface DayHikeLeg {
   source: string | null
   blaze_color: string | null
   miles: number
+  /**
+   * RouteLeg's `concurrent_sources`, cached for the same reason the rest of
+   * the leg is: the credit surfaces may only have this record to read, and a
+   * leg that folded a second organization's designation into one row (#1115)
+   * still owes that organization its place in the count. Omitted when empty,
+   * like `climb` below, so older records round-trip unchanged.
+   */
+  concurrent_sources?: string[]
+}
+
+/**
+ * Every organization a set of legs stands on, for the credit surfaces: each
+ * leg's own source plus the concurrent ones a merged designation folded in
+ * (#1115). Works on live RouteLegs and cached DayHikeLegs alike - the two
+ * spell these fields the same way.
+ */
+export function distinctLegSources(
+  legs: Array<{ source: string | null; concurrent_sources?: string[] }>,
+): string[] {
+  const sources = new Set<string>()
+  for (const leg of legs) {
+    if (leg.source !== null) sources.add(leg.source)
+    for (const source of leg.concurrent_sources ?? []) sources.add(source)
+  }
+  return [...sources]
 }
 
 /**
@@ -252,11 +277,19 @@ function validFigures(candidate: unknown): DayHikeFigures | null {
       if (typeof legMiles !== 'number' || !Number.isFinite(legMiles) || legMiles < 0) {
         continue
       }
+      const concurrent = Array.isArray(leg.concurrent_sources)
+        ? leg.concurrent_sources.filter(
+            (source): source is string => typeof source === 'string',
+          )
+        : []
       legs.push({
         name: typeof leg.name === 'string' ? leg.name : null,
         source: typeof leg.source === 'string' ? leg.source : null,
         blaze_color: typeof leg.blaze_color === 'string' ? leg.blaze_color : null,
         miles: legMiles,
+        // Omitted when empty, like `climb` below and for the same round-trip
+        // reason.
+        ...(concurrent.length > 0 ? { concurrent_sources: concurrent } : {}),
       })
     }
   }

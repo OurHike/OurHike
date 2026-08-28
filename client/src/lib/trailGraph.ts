@@ -123,6 +123,20 @@ export interface RouteLeg {
   blaze_color: string | null
   trail_id: string | null
   miles: number
+  /**
+   * Other organizations whose designation shares this leg's tread (#1115),
+   * distinct and never containing `source` itself. Omitted - not `[]` - when
+   * there are none, so a leg predating the field round-trips unchanged.
+   *
+   * Exists for the credit surfaces. Where the Long Path runs along the High
+   * Point Trail, {@link holdDesignation} keeps the leg under one name, and
+   * without this the org whose name was folded away would vanish from "N
+   * organizations keep this loop walkable" - the silently-dropped steward
+   * #1115 warns the merge must not produce. Which of the two names the leg
+   * WEARS is arbitrary (whichever the walk entered on); who gets credit is
+   * not.
+   */
+  concurrent_sources?: string[]
 }
 
 /**
@@ -253,6 +267,181 @@ export interface TrailIdentity {
  */
 export function sameTrail(a: TrailIdentity, b: TrailIdentity): boolean {
   return a.trail_id === b.trail_id && a.name === b.name
+}
+
+/**
+ * How much two same-tread edges' lengths may differ beyond
+ * {@link SAME_TREAD_METRES}' absolute allowance: 5% of the longer.
+ *
+ * The relative half of {@link sameTread}'s length probe, and the only number
+ * that gate adds - both of its distances reuse `SAME_TREAD_METRES`, which is
+ * already the module's one derived answer to "the same place". Measured on
+ * the 2026-08-27 population `sameTread` documents: within the 8 m separation
+ * gate, absolute length differences run median 0.1 m / p99 6.7 m, so the 8 m
+ * floor covers the tracing noise; this ceiling is what keeps that floor from
+ * swallowing long edges, where 5% of a mile is ~80 m of extra ground - a
+ * different path, not a different tracing of one.
+ */
+export const SAME_TREAD_MAX_LENGTH_DELTA_RATIO = 0.05
+
+/** The point this far along an edge's own polyline, by arc length. */
+function pointAtFraction(vertices: Array<[number, number]>, fraction: number): LonLat {
+  const points: LonLat[] = vertices.map(([lon, lat]) => ({ lon, lat }))
+  const segments: number[] = []
+  let total = 0
+  for (let step = 0; step + 1 < points.length; step += 1) {
+    const span = localMetres(points[step], points[step + 1])
+    const length = Math.hypot(span.x, span.y)
+    segments.push(length)
+    total += length
+  }
+  let remaining = total * fraction
+  for (let step = 0; step < segments.length; step += 1) {
+    if (remaining <= segments[step] || step === segments.length - 1) {
+      const t = segments[step] === 0 ? 0 : remaining / segments[step]
+      const a = points[step]
+      const b = points[step + 1]
+      return { lon: a.lon + (b.lon - a.lon) * t, lat: a.lat + (b.lat - a.lat) * t }
+    }
+    remaining -= segments[step]
+  }
+  return points[points.length - 1]
+}
+
+/**
+ * Whether two edges between the same pair of nodes are the same physical
+ * ground - two organizations' digitisations of one tread - rather than two
+ * different paths that happen to share both junctions.
+ *
+ * The distinction is what makes swapping between them safe. A concurrency
+ * (the Long Path riding the High Point Trail) is one tread wearing two names,
+ * and either edge honestly stands for the walk; a fork that rejoins is two
+ * treads, and swapping onto the unrouted one would draw a hiker a line they
+ * are not on. False negatives here cost a fragmented leg list - today's
+ * behaviour; false positives put the route on the wrong ground. So every
+ * probe rounds toward refusal, including the geometry requirement: an edge
+ * without vertices offers no evidence it is the same ground, and no evidence
+ * reads as "no".
+ *
+ * Both distances are {@link SAME_TREAD_METRES} - the module's one derived
+ * answer to "the same place", now read a third time - and both probes are
+ * MEASURED to carry their weight, 2026-08-27, against every
+ * different-identity edge pair sharing a node pair in the published
+ * trail_graph.json + geometry (data.ourhike.org UA, 42,103 edges; 7,407 such
+ * pairs, of which this gate passes 6,637):
+ *
+ * - Geometry, probed at 1/4, 1/2 and 3/4 of each polyline: the passing
+ *   population sits at median 0.0 m separation; past the gate the pairs are
+ *   different ground between the same junctions ("Ice Caves Trail", 912 m,
+ *   beside its 27 m access road; "Lenape Ridge Trail" beside "Minisink",
+ *   276 m apart at the probes with lengths 1.9% alike - the pair proving
+ *   length alone cannot answer this).
+ * - Length, within `SAME_TREAD_METRES` absolute or 5% relative: the absolute
+ *   floor is what makes short edges judgeable at all. On the Long Path /
+ *   High Point Trail concurrency #1115 reports, two digitisations of one
+ *   ~20 m piece differ by up to 20% RELATIVE while sitting 1-6 m apart, so a
+ *   purely relative gate refused half the exact case this exists for (64 of
+ *   its 132 pairs; this gate passes all 132). Within the separation gate,
+ *   absolute differences run median 0.1 m / p99 6.7 m - under the floor.
+ *
+ * The eventual honest home for this fact is the artifact - one edge carrying
+ * both designations, #1115's third option - at which point this measured
+ * bridge retires.
+ */
+export function sameTread(graph: TrailGraph, aIndex: number, bIndex: number): boolean {
+  const a = graph.edges[aIndex]
+  const b = graph.edges[bIndex]
+  const samePair =
+    (a.from === b.from && a.to === b.to) || (a.from === b.to && a.to === b.from)
+  if (!samePair || a.from === a.to) return false
+
+  const longer = Math.max(a.length_m, b.length_m)
+  const allowed = Math.max(SAME_TREAD_METRES, SAME_TREAD_MAX_LENGTH_DELTA_RATIO * longer)
+  if (Math.abs(a.length_m - b.length_m) > allowed) return false
+
+  if (!hasVertices(a) || !hasVertices(b)) return false
+  for (const fraction of [0.25, 0.5, 0.75]) {
+    const here = pointAtFraction(a.geometry, fraction)
+    // The two digitisations may store their vertices in opposite orders, so
+    // the matching point on b is at `fraction` from one end or the other.
+    const separation = Math.min(
+      metresBetween(here, pointAtFraction(b.geometry, fraction)),
+      metresBetween(here, pointAtFraction(b.geometry, 1 - fraction)),
+    )
+    if (separation > SAME_TREAD_METRES) return false
+  }
+  return true
+}
+
+function metresBetween(a: LonLat, b: LonLat): number {
+  const span = localMetres(a, b)
+  return Math.hypot(span.x, span.y)
+}
+
+/** Every other edge between the same pair of nodes, via the adjacency lists. */
+function parallelsOf(index: TrailGraphIndex, edgeIndex: number): number[] {
+  const edge = index.graph.edges[edgeIndex]
+  if (edge.from === edge.to) return []
+  const out: number[] = []
+  for (const step of index.adjacency[edge.from] ?? []) {
+    if (step.to === edge.to && step.edgeIndex !== edgeIndex) out.push(step.edgeIndex)
+  }
+  return out
+}
+
+/**
+ * The routed edges, re-picked to stay on the designation the walk is already
+ * on wherever the same tread carries it (#1115).
+ *
+ * Where two organizations' trails run together, the artifact holds the shared
+ * tread twice - 7,407 different-identity edge pairs share a node pair in the
+ * published graph - and the shortest-path search picks between the near-equal
+ * twins arbitrarily, hopping designation every few metres. Every reader of
+ * the result inherits the hops: the leg list fragments into "0.0 mi" rows,
+ * and {@link sameTrail}'s other callers (the turn list, the follow matcher)
+ * see a trail change on every one.
+ *
+ * This is #1115's router option, done as a pass over the found path rather
+ * than inside Dijkstra: for each interior edge that changes designation,
+ * swap in a {@link sameTread} twin that keeps it, if one exists. The first
+ * and last edges are never touched - a tap's `fraction` is a fraction of that
+ * specific edge's geometry. Swapping trades one digitisation of the ground
+ * for another, so lengths shift by tracing noise (median 0.1 m per edge on
+ * the same-tread population); the caller re-prices the walk from the swapped
+ * list rather than keeping the search's total.
+ */
+export function holdDesignation(index: TrailGraphIndex, edgeIndices: number[]): number[] {
+  if (edgeIndices.length < 3) return edgeIndices
+  const out = edgeIndices.slice()
+  for (let at = 1; at + 1 < out.length; at += 1) {
+    const previous = index.graph.edges[out[at - 1]]
+    if (sameTrail(previous, index.graph.edges[out[at]])) continue
+    for (const candidate of parallelsOf(index, out[at])) {
+      if (!sameTrail(previous, index.graph.edges[candidate])) continue
+      if (!sameTread(index.graph, out[at], candidate)) continue
+      out[at] = candidate
+      break
+    }
+  }
+  return out
+}
+
+/**
+ * The other organizations sharing this edge's tread, for the leg's
+ * `concurrent_sources` - see that field's comment for why credit must survive
+ * the designation being folded away.
+ */
+function concurrentSourcesOf(index: TrailGraphIndex, edgeIndex: number): string[] {
+  const edge = index.graph.edges[edgeIndex]
+  const sources = new Set<string>()
+  for (const candidate of parallelsOf(index, edgeIndex)) {
+    const other = index.graph.edges[candidate]
+    if (other.source === null || other.source === edge.source) continue
+    if (sameTrail(edge, other)) continue
+    if (!sameTread(index.graph, edgeIndex, candidate)) continue
+    sources.add(other.source)
+  }
+  return [...sources]
 }
 
 /**
@@ -462,14 +651,15 @@ function localMetres(from: LonLat, to: LonLat): { x: number; y: number } {
 /**
  * Whether this edge carries its own vertices.
  *
- * The one predicate four things read, on `sameTrail`'s reasoning a few
+ * The one predicate five things read, on `sameTrail`'s reasoning a few
  * hundred lines up: "has the phone got the lines, or only the topology" is
- * asked at four different altitudes and has to be answered the same way each
+ * asked at five different altitudes and has to be answered the same way each
  * time. {@link nearestPointOnGraph} asks it to decide whether an edge may be
  * snapped to at all, {@link routeGeometry} to decide whether a leg may be
  * drawn, lib/dayHikeWalk.ts's `stepPolyline` to decide whether a walked
- * stretch has a shape, and lib/dayHikeTurns.ts to decide whether a turn may
- * be given a side.
+ * stretch has a shape, lib/dayHikeTurns.ts to decide whether a turn may be
+ * given a side, and {@link sameTread} to decide whether two twins of one
+ * tread can be told apart from a fork at all.
  */
 export function hasVertices(
   edge: GraphEdge,
@@ -751,7 +941,8 @@ export function trailsNear(
  * together than this are the same place." This is that sentence read from the
  * other end - if the pipeline would weld two line-ends this far apart into one
  * node, the app has no business asking a hiker which of two lines this far
- * apart they meant. One home for "the same place", used twice.
+ * apart they meant. One home for "the same place", used three times:
+ * {@link trailChoice}'s ask filter, and both of {@link sameTread}'s probes.
  *
  * WHY IT MATTERS, MEASURED. Against the published network on 2026-08-27,
  * 4,000 points sampled on real trail vertices inside Harriman-Bear Mountain:
@@ -1035,6 +1226,11 @@ function walkBack(reached: Map<number, Reached>, node: number): number[] {
  * A leg is what frame `1l` prints and what frame `1j` counts, and it is a run
  * of the same TRAIL rather than of the same organization: walking the A.T. and
  * then the Long Path is two legs even where one steward maintains both.
+ *
+ * The plain merge, with no concurrency handling: it neither re-picks edges
+ * ({@link holdDesignation}) nor carries `concurrent_sources` - the routed
+ * paths get both via {@link routeBetween}. Callers handing this a raw edge
+ * list get exactly the runs that list already has.
  */
 export function legsFromEdges(graph: TrailGraph, edgeIndices: number[]): RouteLeg[] {
   const legs: RouteLeg[] = []
@@ -1058,8 +1254,30 @@ export function legsFromEdges(graph: TrailGraph, edgeIndices: number[]): RouteLe
 
 function tallyBySource(legs: RouteLeg[]): Array<{ source: string | null; legs: number }> {
   const counts = new Map<string | null, number>()
-  for (const leg of legs) counts.set(leg.source, (counts.get(leg.source) ?? 0) + 1)
+  const bump = (source: string | null) =>
+    counts.set(source, (counts.get(source) ?? 0) + 1)
+  for (const leg of legs) {
+    bump(leg.source)
+    // A concurrent org's ground is in this leg even though the leg wears the
+    // other name (#1115) - see RouteLeg.concurrent_sources. Counted once per
+    // org per leg, same as the org whose name it wears.
+    for (const source of leg.concurrent_sources ?? []) {
+      if (source !== leg.source) bump(source)
+    }
+  }
   return [...counts].map(([source, count]) => ({ source, legs: count }))
+}
+
+/**
+ * Fold one position's concurrent organizations into the leg being built,
+ * keeping the field absent - not `[]` - while there is nothing to say.
+ */
+function addConcurrents(leg: RouteLeg, sources: string[]): void {
+  for (const source of sources) {
+    if (source === leg.source) continue
+    if (leg.concurrent_sources === undefined) leg.concurrent_sources = []
+    if (!leg.concurrent_sources.includes(source)) leg.concurrent_sources.push(source)
+  }
 }
 
 /**
@@ -1072,6 +1290,7 @@ function legsFromWalk(
   graph: TrailGraph,
   edgeIndices: number[],
   walkedMetres: number[],
+  concurrents: string[][],
 ): RouteLeg[] {
   const legs: RouteLeg[] = []
   edgeIndices.forEach((edgeIndex, at) => {
@@ -1079,15 +1298,18 @@ function legsFromWalk(
     const last = legs[legs.length - 1]
     if (last !== undefined && sameTrail(last, edge)) {
       last.miles += metresToMiles(walkedMetres[at])
+      addConcurrents(last, concurrents[at] ?? [])
       return
     }
-    legs.push({
+    const leg: RouteLeg = {
       name: edge.name,
       source: edge.source,
       blaze_color: edge.blaze_color,
       trail_id: edge.trail_id,
       miles: metresToMiles(walkedMetres[at]),
-    })
+    }
+    addConcurrents(leg, concurrents[at] ?? [])
+    legs.push(leg)
   })
   return legs
 }
@@ -1099,8 +1321,9 @@ function assemble(
   walkedMetres: number[],
   entered: number[],
   section: RouteSection,
+  concurrents: string[][],
 ): GraphRoute {
-  const legs = legsFromWalk(graph, edgeIndices, walkedMetres)
+  const legs = legsFromWalk(graph, edgeIndices, walkedMetres, concurrents)
   return {
     legs,
     miles: metresToMiles(metres),
@@ -1146,6 +1369,7 @@ export function routeBetween(
       [metres],
       enteredNodes(graph, [from.edgeIndex], from, to),
       { edgeIndices: [from.edgeIndex], from, to },
+      [concurrentSourcesOf(index, from.edgeIndex)],
     )
   }
 
@@ -1166,14 +1390,21 @@ export function routeBetween(
 
   // The partial first and last edges bookend the whole edges between them.
   const middle = walkBack(found.reached, found.node)
-  const edgeIndices = [from.edgeIndex, ...middle, to.edgeIndex]
+  const edgeIndices = holdDesignation(index, [from.edgeIndex, ...middle, to.edgeIndex])
+  // Re-priced from the swapped list rather than carrying `found.total`:
+  // holdDesignation may have traded an edge for its same-tread twin, whose
+  // digitisation differs by tracing noise, and the walk's total must be the
+  // sum of the edges the walk now actually names. Pre-swap the two are the
+  // same number - the seeds and targets are these ends' own partials.
+  const walkedMetres = walkedMetresPerEdge(graph, edgeIndices, from, to)
   return assemble(
     graph,
     edgeIndices,
-    found.total,
-    walkedMetresPerEdge(graph, edgeIndices, from, to),
+    walkedMetres.reduce((total, part) => total + part, 0),
+    walkedMetres,
     enteredNodes(graph, edgeIndices, from, to),
     { edgeIndices, from, to },
+    edgeIndices.map((edgeIndex) => concurrentSourcesOf(index, edgeIndex)),
   )
 }
 
@@ -1218,9 +1449,16 @@ export function routeThrough(
       const last = legs[legs.length - 1]
       if (last !== undefined && sameTrail(last, leg)) {
         last.miles += leg.miles
+        addConcurrents(last, leg.concurrent_sources ?? [])
         continue
       }
-      legs.push({ ...leg })
+      const copied: RouteLeg = { ...leg }
+      // A copy of the array too: addConcurrents mutates it when a later
+      // section merges in, and the section's own leg must not change under it.
+      if (leg.concurrent_sources !== undefined) {
+        copied.concurrent_sources = [...leg.concurrent_sources]
+      }
+      legs.push(copied)
     }
   }
   return {

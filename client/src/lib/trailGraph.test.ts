@@ -21,6 +21,7 @@ import {
   DRAWN_SNAP_METRES,
   canSnapToGraph,
   closeTheLoop,
+  holdDesignation,
   legsFromEdges,
   MAX_OFF_NETWORK_FEET,
   metresToMiles,
@@ -30,6 +31,8 @@ import {
   routeLines,
   routeThrough,
   SAME_TREAD_METRES,
+  sameTrail,
+  sameTread,
   trailChoice,
   trailsNear,
   type TrailGraph,
@@ -928,5 +931,148 @@ describe('which trail a drawn line meant (#935)', () => {
 
     expect(SAME_TREAD_METRES).toBe(8)
     expect(choice.kind).toBe('one')
+  })
+})
+
+describe('holding a designation across shared tread (#1115)', () => {
+  // A corridor where the Long Path rides Pine Meadow's tread, published the
+  // way the real artifact publishes it: the shared piece appears TWICE, once
+  // per organization, between the same node pairs. The lengths differ by
+  // tracing noise, arranged so the shortest-path search provably alternates -
+  // it takes whichever twin is shorter, and a different twin is shorter on
+  // each piece. That alternation is the defect: without holdDesignation the
+  // legs read Pine Meadow / Long Path / Pine Meadow over one straight walk.
+  //
+  //   0 -- e0 (836, PM) -- 1 == e1/e2 == 2 == e3/e4 == 3 -- e5 (836, PM) -- 4
+  //                            (PM 830)      (PM 836)
+  //                            (LP 836)      (LP 830)
+  const PM = {
+    trail_id: 'oprhp_trails:pm',
+    source: 'oprhp_trails',
+    name: 'Pine Meadow Trail',
+    blaze_color: 'blue',
+  }
+  const LP = {
+    trail_id: 'nynjtc_long_path:lp',
+    source: 'nynjtc_long_path',
+    name: 'Long Path',
+    blaze_color: 'aqua',
+  }
+  const CORRIDOR: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      [-74.08, 41.25],
+      [-74.07, 41.25],
+      [-74.06, 41.25],
+    ],
+    edges: [
+      { from: 0, to: 1, length_m: 836, ...PM },
+      { from: 1, to: 2, length_m: 830, ...PM },
+      { from: 1, to: 2, length_m: 836, ...LP },
+      { from: 2, to: 3, length_m: 836, ...PM },
+      { from: 2, to: 3, length_m: 830, ...LP },
+      { from: 3, to: 4, length_m: 836, ...PM },
+    ],
+  }
+  const corridor = buildGraphIndex(published(CORRIDOR))
+
+  function on(edgeIndex: number, fraction: number) {
+    const edge = CORRIDOR.edges[edgeIndex]
+    const [fromLon, fromLat] = CORRIDOR.nodes[edge.from]
+    const [toLon, toLat] = CORRIDOR.nodes[edge.to]
+    return {
+      edgeIndex,
+      fraction,
+      at: {
+        lon: fromLon + (toLon - fromLon) * fraction,
+        lat: fromLat + (toLat - fromLat) * fraction,
+      },
+      offNetworkFeet: 0,
+    }
+  }
+
+  it('re-picks interior twins so the walk keeps the designation it entered on', () => {
+    const raw = [0, 1, 4, 5]
+    // The precondition the fixture exists to set up: the raw pick alternates.
+    expect(sameTrail(CORRIDOR.edges[1], CORRIDOR.edges[4])).toBe(false)
+
+    const held = holdDesignation(corridor, raw)
+    expect(held).toEqual([0, 1, 3, 5])
+  })
+
+  it('lists one leg over the concurrency, crediting both organizations', () => {
+    const route = routeBetween(corridor, on(0, 0.5), on(5, 0.5))
+    expect(route).not.toBeNull()
+    if (route === null) return
+
+    expect(route.legs).toHaveLength(1)
+    expect(route.legs[0].name).toBe('Pine Meadow Trail')
+    // Post-swap pricing: 418 + 830 + 836 + 418, from the edges the walk now
+    // actually names rather than from the search's pre-swap total.
+    expect(route.miles).toBeCloseTo(metresToMiles(418 + 830 + 836 + 418), 6)
+
+    // The folded-away designation's organization keeps its credit - #1115's
+    // "silently drops the other steward's name" is the failure this pins.
+    expect(route.legs[0].concurrent_sources).toEqual(['nynjtc_long_path'])
+    expect(route.legsBySource).toContainEqual({ source: 'oprhp_trails', legs: 1 })
+    expect(route.legsBySource).toContainEqual({ source: 'nynjtc_long_path', legs: 1 })
+  })
+
+  it('keeps the merged leg through a multi-tap walk', () => {
+    const route = routeThrough(corridor, [on(0, 0.5), on(3, 0.5), on(5, 0.5)])
+    expect(route).not.toBeNull()
+    if (route === null) return
+
+    expect(route.legs).toHaveLength(1)
+    expect(route.legs[0].concurrent_sources).toEqual(['nynjtc_long_path'])
+  })
+
+  it('never swaps onto a fork, however alike its length', () => {
+    // Same node pair, near-equal lengths, genuinely different ground: the
+    // south side bows ~500 m away at its midpoint. This is the published
+    // graph's "Lenape Ridge beside Minisink" shape - the pair that proves
+    // length alone cannot answer same-tread - and swapping onto it would
+    // draw a hiker a line they are not on.
+    const forked: TrailGraph = {
+      nodes: CORRIDOR.nodes,
+      edges: [
+        { from: 0, to: 1, length_m: 836, ...PM },
+        { from: 1, to: 2, length_m: 830, ...PM },
+        { from: 1, to: 2, length_m: 836, ...LP },
+        { from: 3, to: 4, length_m: 836, ...PM },
+      ],
+    }
+    const graph = published(forked)
+    // Bow the LP copy away mid-piece; its endpoints still weld to 1 and 2.
+    graph.edges[2].geometry = [CORRIDOR.nodes[1], [-74.085, 41.2545], CORRIDOR.nodes[2]]
+    const index = buildGraphIndex(graph)
+
+    expect(sameTread(graph, 1, 2)).toBe(false)
+    expect(holdDesignation(index, [0, 2, 3])).toEqual([0, 2, 3])
+  })
+
+  it('refuses twins whose lengths disagree by more than tracing noise', () => {
+    // Identical straight geometry cannot rescue a 5%+ length disagreement on
+    // a long edge: 80 m of extra ground over a mile is a different path.
+    const graph = published({
+      nodes: CORRIDOR.nodes,
+      edges: [
+        { from: 1, to: 2, length_m: 1609, ...PM },
+        { from: 1, to: 2, length_m: 1700, ...LP },
+      ],
+    })
+    expect(sameTread(graph, 0, 1)).toBe(false)
+  })
+
+  it('reads no evidence as "not the same ground"', () => {
+    // Twins without vertices offer nothing to check the tread against, and
+    // an unverifiable swap is refused rather than taken on faith.
+    const bare = buildGraphIndex({
+      nodes: CORRIDOR.nodes,
+      edges: CORRIDOR.edges,
+    })
+    expect(sameTread(bare.graph, 1, 4)).toBe(false)
+    expect(holdDesignation(bare, [0, 1, 4, 5])).toEqual([0, 1, 4, 5])
   })
 })

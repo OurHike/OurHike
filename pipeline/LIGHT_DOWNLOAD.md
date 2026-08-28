@@ -524,10 +524,18 @@ per-zoom bytes to settle.
 **Standard and Fine both moved too, and not because of anything here.** This
 run rebuilt the basemap from current OSM, so all three cuts were re-measured:
 z13 went 182,610,914 → 182,774,166 and z14 533,455,195 → 533,926,586, drifts of
-+0.09% each. `verify_release.py` check 18 tolerates 2% and would not have
-flagged either, but `hikingDetail.ts` carries them exactly anyway — the
-constants are what a phone that has not reached `latest.json` shows a hiker, and
-understating is the direction that strands somebody who freed exactly enough.
++0.09% each. `hikingDetail.ts` carries them exactly anyway — the constants are
+what a phone that has not reached `latest.json` shows a hiker, and understating
+is the direction that strands somebody who freed exactly enough.
+
+*(This paragraph said check 18 "tolerates 2% and would not have flagged either",
+which read as though the check was watching these artifacts. It was not:
+`verify_release.py` read only `downloadDetail.ts`'s withdrawn raster tiers, so
+nothing held the hiking sheet's advertised figures to the bucket at all. Corrected
+and made true by [#1144 — verify_release gates the withdrawn raster tiers, not the
+hiking sheet hikers download](https://github.com/OurHike/OurHike/issues/1144),
+which points checks 2 and 18 at this table. The 2% tolerance is real and these
+drifts are inside it.)*
 
 **Against the 40–80% the request asked for**: Light is 67.4% off the 789.6 MB
 Standard used to cost, inside the band; Standard's own 42.0% is at its floor.

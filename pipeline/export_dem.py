@@ -129,6 +129,26 @@ QUANTIZE_STEP_M = 0.5
 # declines to say where a hiker is, though note that constant is itself derived
 # from bucket-search geometry rather than from how far hikers actually wander. What would settle it: what a hiker pans to when they are
 # lost and off-trail, which nothing in this project measures yet.
+#
+# WHAT THIS DOES TO THE BUILDS ALREADY IN THE FIELD, weighed and accepted by the
+# maintainer 2026-08-28 rather than left for somebody to find. `dem.pmtiles` is
+# a flat root key, so tapering it REPLACED the bytes behind a name every
+# deployed build asks for - v1.0.0, v1.1.0 and v1.1.1 alike - and those builds
+# have no ancestor-tile fallback: `demTiles.ts` at each of those tags THROWS on
+# an archive miss, where the current client upscales the nearest ancestor it
+# holds. So a hiker on a shipped build who RE-DOWNLOADS terrain gets blank
+# hillshade offline past 6 miles from the trail at z13 (15 at z12), where their
+# previous download drew relief.
+#
+# Accepted because the exposure is narrow and the failure is quiet rather than
+# dangerous: an archive already on a phone is untouched (no bucket policy
+# reaches it), a mid-flight download detects the republish by its published hash
+# and restarts clean rather than splicing, the affected ground is past
+# MAX_OFF_TRAIL_MILES where the app already declines to say where somebody is,
+# and blank terrain is a missing texture rather than a wrong one - the trail,
+# the waypoints and the position all still draw. What it costs is a hiker who
+# deletes and re-downloads at a resupply stop, which is a real thing people do.
+# The window closes when the current client ships.
 CORRIDOR_TAPER_MILES = {0: 30.0, 12: 15.0, 13: 6.0}
 
 # The hiking sheet's LIGHT level: the same archive shape at a harder taper

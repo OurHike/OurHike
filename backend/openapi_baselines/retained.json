@@ -42,12 +42,24 @@
       "release": "v1.1.1",
       "document": "v1.1.1.json",
       "published": "2026-08-27",
-      "superseded": null,
+      "superseded": "2026-08-28",
       "pinned": false,
       "note": "The first real release in this file, closing the gap pre-1.0.0's last entry flagged and #1146 filed: the process cut v1.0.0, v1.0.1, v1.1.0 and v1.1.1 without adding a baseline here, so this check spent that whole time diffing HEAD against a snapshot taken before any of them. Everything the API gained since 2026-08-08 could have been removed with nothing going red.",
       "refreshed": [
         "2026-08-28, added by #1146. GENERATED FROM THE TAG, NOT FROM HEAD, which is the only thing that makes it a compatibility claim rather than a restatement of the present: `check_openapi_compat.py --write` serializes whatever the working tree builds, so it was run inside `git worktree add /tmp/v111 v1.1.1` and the result copied here. Verified different from HEAD's document in exactly the four schemas that moved after the tag - `HikingDetailLevel` (the Light rung, #1088), `Observation` (the `trash` member, #1122) and `PreferencesIn`/`PreferencesOut` (`impact_panel_shown`) - with no path added or removed either way. A baseline written from HEAD would have claimed v1.1.1's clients read fields that did not exist when they shipped, which is a stricter check built on a false premise: it would block a legitimate removal of something no released client ever saw.",
         "v1.0.0, v1.0.1 and v1.1.0 are deliberately NOT backfilled. v1.1.1 supersedes all three - v1.1.0 was tagged but its GitHub release stayed a draft, and v1.0.1's tag name was spent by an immutable release and reused for nothing - so their clients are a subset of v1.1.1's rather than a separate claim, and three more snapshots of a backend that has never been deployed would be three more things to keep true for no reader. If that stops being true, the tags still exist and the worktree recipe above still works."
+      ]
+    },
+    {
+      "release": "v1.2.0",
+      "document": "v1.2.0.json",
+      "published": "2026-08-28",
+      "superseded": null,
+      "pinned": false,
+      "note": "Fontana Dam. Added on the release branch before the merge, which is where this step has to happen: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains. This branch IS v1.2.0 - the only files it adds are the notes, the version bump and this entry, none of which the OpenAPI document reads.",
+      "refreshed": [
+        "2026-08-28, added by the v1.2.0 release train, and the first time this file gained an entry as part of cutting a release rather than as a repair afterwards. v1.1.1's `superseded` is set to the same date by this change: the retention clock starts when a newer release takes over, not when that release was published, so the 90-day window for v1.1.1's clients runs from here.",
+        "This release adds no Alembic revision - `git diff --name-status v1.1.1..HEAD -- backend/alembic/versions/` is empty - so the document moved only where a response or request model did, and there is no schema step behind it."
       ]
     }
   ]

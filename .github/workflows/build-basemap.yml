@@ -173,15 +173,18 @@ jobs:
             --out data/processed/at_basemap_package_z12.pmtiles \
             --name "OurHike AT corridor basemap (z12)"
 
-      # The 50-mile stretch units (#556): the corridor package partitioned
-      # by calibrated trail-mile, plus one shared context archive and the
-      # coverage index. Cut from the package rather than the build because
-      # the package is already corridor-clipped - every tile in it belongs
-      # to some stretch. fetch_all.py above supplies the centerline AND the
-      # half-mile markers the axis calibration reads (#652).
-      - name: Cut the stretch units from the package
+      # The 1-degree coverage cells (#1175): the corridor package partitioned
+      # by graticule cell, plus one shared context archive and the coverage
+      # index. Cut from the package rather than the build because the package
+      # is already corridor-clipped - every tile in it belongs to some cell.
+      #
+      # This replaces the 50-mile stretch cut (#556), which built the unit the
+      # maintainer's #552 decision superseded on 2026-08-25. Needs no
+      # centerline and no half-mile markers: cell membership is a rectangle
+      # overlap, not a projection onto a calibrated mile axis.
+      - name: Cut the coverage cells from the package
         run: |
-          python cut_stretches.py data/processed/at_basemap_package.pmtiles \
+          python cut_cells.py data/processed/at_basemap_package.pmtiles \
             --family at_basemap
 
       # The whole point of the spike: real numbers where estimates were. To
@@ -219,9 +222,9 @@ jobs:
           if-no-files-found: error
 
       # The packages ride separately so the publish job downloads the ~0.7 GB
-      # it ships and not the source build beside it. The stretch units and
+      # it ships and not the source build beside it. The coverage cells and
       # their manifest ride here too - publish.py's collect_artifacts reads
-      # at_basemap_stretches_manifest.json out of PROCESSED_DIR (#556).
+      # at_basemap_cells_manifest.json out of PROCESSED_DIR (#1175).
       - uses: actions/upload-artifact@v4
         with:
           name: basemap-package
@@ -229,10 +232,10 @@ jobs:
             pipeline/data/processed/at_basemap_package.pmtiles
             pipeline/data/processed/at_basemap_package_z13.pmtiles
             pipeline/data/processed/at_basemap_package_z12.pmtiles
-            pipeline/data/processed/at_basemap_stretch_*.pmtiles
+            pipeline/data/processed/at_basemap_cell_*.pmtiles
             pipeline/data/processed/at_basemap_context.pmtiles
-            pipeline/data/processed/at_basemap_stretches.json
-            pipeline/data/processed/at_basemap_stretches_manifest.json
+            pipeline/data/processed/at_basemap_cells.json
+            pipeline/data/processed/at_basemap_cells_manifest.json
           retention-days: 7
           if-no-files-found: error
 

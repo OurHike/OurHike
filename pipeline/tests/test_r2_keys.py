@@ -51,19 +51,19 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
             for poi_type in ("shelter", "water", "campsite", "resupply", "crossing")
             for kind in ("geojson", "fgb")
         ],
-        # The stretch units (#556, cut_stretches.py): the coverage index,
-        # the shared context, and the per-stretch archives - spelled here
-        # exactly as that module builds them, first and last id of the
-        # widest plausible range so the zero-padded shape stays a legal key
-        # at both ends.
+        # The coverage cells (#1175, cut_cells.py): the coverage index, the
+        # shared context, and the per-cell archives - spelled here exactly as
+        # that module builds them. Both hemispheres and a three-digit
+        # longitude, because a cell name is permanent once published and the
+        # key rules have to admit every corner of the grid, not just the A.T.
         *[
             name
-            for family in publish.STRETCH_FAMILIES
+            for family in publish.CELL_FAMILIES
             for name in (
-                f"{family}_stretches.json",
+                f"{family}_cells.json",
                 f"{family}_context.pmtiles",
-                f"{family}_stretch_00.pmtiles",
-                f"{family}_stretch_43.pmtiles",
+                f"{family}_cell_n34w084.pmtiles",
+                f"{family}_cell_s34e007.pmtiles",
             )
         ],
     ]

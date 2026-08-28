@@ -133,22 +133,23 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /
 
-      # The DEM's 50-mile stretch units (#556) - and, via the shared context
-      # archive, the context-zoom mechanism #552 notes the DEM never had.
-      # fetch_all.py above supplies the centerline and half-mile markers the
-      # axis calibration reads (#652).
+      # The DEM's 1-degree coverage cells (#1175) - and, via the shared
+      # context archive, the context-zoom mechanism #552 notes the DEM never
+      # had. Replaces the 50-mile stretch cut (#556), whose unit the
+      # maintainer's #552 decision superseded on 2026-08-25; it needs neither
+      # the centerline nor the half-mile markers the axis calibration read.
       #
       # CANONICAL ONLY, and this condition is load-bearing rather than a
-      # saving: cut_stretches writes `dem_stretch_NN.pmtiles` from the family
-      # name, so a light build running it would overwrite the canonical
-      # stretches with light ones under the canonical keys - a quieter version
-      # of the wrong-bytes-behind-the-right-name failure the publish gate
-      # below exists to prevent. A light stretch set needs its own family
-      # before it can be cut at all.
-      - name: Cut the stretch units from the archive
+      # saving: cut_cells writes `dem_cell_<name>.pmtiles` from the family
+      # name, so a light build running it would overwrite the canonical cells
+      # with light ones under the canonical keys - a quieter version of the
+      # wrong-bytes-behind-the-right-name failure the publish gate below
+      # exists to prevent. A light cell set needs its own family before it
+      # can be cut at all.
+      - name: Cut the coverage cells from the archive
         if: inputs.variant == 'canonical'
         run: |
-          python cut_stretches.py data/processed/dem.pmtiles \
+          python cut_cells.py data/processed/dem.pmtiles \
             --family dem
 
       - uses: actions/upload-artifact@v4
@@ -157,10 +158,10 @@ jobs:
           path: |
             pipeline/data/processed/dem.pmtiles
             pipeline/data/processed/dem_light.pmtiles
-            pipeline/data/processed/dem_stretch_*.pmtiles
+            pipeline/data/processed/dem_cell_*.pmtiles
             pipeline/data/processed/dem_context.pmtiles
-            pipeline/data/processed/dem_stretches.json
-            pipeline/data/processed/dem_stretches_manifest.json
+            pipeline/data/processed/dem_cells.json
+            pipeline/data/processed/dem_cells_manifest.json
           retention-days: 7
           if-no-files-found: error
 

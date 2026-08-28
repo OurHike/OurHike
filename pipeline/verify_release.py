@@ -1051,23 +1051,37 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
     ]
 
 
-def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict]:
-    """20. The published stretches tile the whole trail, and every one the
-    index names is really in the release (#556).
+def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
+    """20. Every coverage cell the index names is really in the release, and
+    every cell it names is a whole graticule square (#1175).
 
-    A stretch the index promises and the manifest lacks is blank map on a
-    ridge - the same trap check 2 guards for client keys, at the unit
-    level. And a gap between two stretches' mile intervals is a slice of
-    trail no unit covers, which no amount of per-artifact hashing would
-    notice. Reported per sheet family; a family with no published index is
-    a SKIP, not a pass - stretches simply have not shipped for it yet.
+    A cell the index promises and the manifest lacks is blank map on a
+    ridge - the same trap check 2 guards for client keys, at the unit level.
+    Reported per sheet family; a family with no published index is a SKIP,
+    not a pass - cells simply have not shipped for it yet.
+
+    WHAT DID NOT CARRY OVER FROM THE STRETCH CHECK, and why, because a check
+    quietly losing half its job is worth writing down. Against 50-mile
+    stretches this also proved the units tiled the trail with no gap: a
+    stretch is an interval on a line, consecutive intervals either abut or
+    they do not, and a gap was a slice of trail no unit covered.
+
+    Cells are not intervals on a line. They are a 2-D set over a thin
+    winding band, so the published set is deliberately NOT a filled
+    rectangle - most of the bounding box the corridor passes through holds
+    no trail at all - and there is no arithmetic here that can tell a cell
+    the corridor never touched from a cell that went missing. The invariant
+    that replaced it lives in the cutter instead, where the tiles are:
+    cut_cells refuses to publish at all if any cell in its grid would
+    receive no tiles. This check is the other half, the half only a released
+    manifest can answer.
     """
     artifacts = manifest.get("artifacts") or {}
     reports = []
     for family in ("at_basemap", "dem"):
-        index_key = f"{family}_stretches.json"
+        index_key = f"{family}_cells.json"
         if index_key not in artifacts:
-            reports.append(_report(20, index_key, SKIPPED, "no stretch index published for this sheet yet"))
+            reports.append(_report(20, index_key, SKIPPED, "no cell index published for this sheet yet"))
             continue
         try:
             response = (session or requests).get(f"{base}/{index_key}", timeout=HTTP_TIMEOUT)
@@ -1078,24 +1092,32 @@ def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict
             continue
 
         problems = []
-        stretches = index.get("stretches") or []
-        if not stretches:
-            problems.append("index lists no stretches")
-        missing = [entry["key"] for entry in stretches if entry["key"] not in artifacts]
+        cells = index.get("cells") or []
+        degrees = index.get("cell_degrees")
+        if not cells:
+            problems.append("index lists no cells")
+        missing = [entry["key"] for entry in cells if entry["key"] not in artifacts]
         if missing:
-            problems.append(f"{len(missing)} stretch(es) named but not published: {', '.join(missing[:4])}")
+            problems.append(f"{len(missing)} cell(s) named but not published: {', '.join(missing[:4])}")
         if index.get("context") and index["context"] not in artifacts:
             problems.append(f"context archive {index['context']} named but not published")
-        expected_lo = 0.0
-        for entry in stretches:
-            lo, hi = entry["miles"]
-            if abs(lo - expected_lo) > 1e-6:
-                problems.append(f"gap or overlap at mile {expected_lo}: stretch {entry['id']} starts at {lo}")
-                break
-            expected_lo = hi
-        else:
-            if stretches and abs(expected_lo - index.get("axis_top_mile", expected_lo)) > 1e-6:
-                problems.append(f"coverage ends at mile {expected_lo}, short of the axis top {index['axis_top_mile']}")
+
+        # A cell that is not a whole square means the grid was anchored to a
+        # bounding box rather than the graticule - the failure that would
+        # silently reintroduce cross-org duplication (lib/corridor_grid).
+        if degrees:
+            ragged = [
+                entry["name"]
+                for entry in cells
+                if abs((entry["bounds"][2] - entry["bounds"][0]) - degrees) > 1e-6
+                or abs((entry["bounds"][3] - entry["bounds"][1]) - degrees) > 1e-6
+            ]
+            if ragged:
+                problems.append(f"{len(ragged)} cell(s) are not whole {degrees} deg squares: {', '.join(ragged[:4])}")
+
+        duplicates = len(cells) - len({entry["name"] for entry in cells})
+        if duplicates:
+            problems.append(f"{duplicates} duplicate cell name(s) in the index")
 
         if problems:
             reports.append(_report(20, index_key, FAILED, "; ".join(problems)))
@@ -1105,7 +1127,7 @@ def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict
                     20,
                     index_key,
                     OK,
-                    f"{len(stretches)} stretches tile miles 0-{index['axis_top_mile']} with no gap, all published",
+                    f"{len(cells)} cells published, every one a whole {degrees} deg square named in the release",
                 )
             )
     return reports
@@ -1411,7 +1433,7 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
 
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
     reports += check_poi_identity(base, manifest, session)
-    reports += check_stretch_coverage(base, manifest, session)
+    reports += check_cell_coverage(base, manifest, session)
     # Last, because it is the only group that reads a DIFFERENT release than
     # the one every check above is about, and because check 19 is the
     # expensive one when hashing is on.

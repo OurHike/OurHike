@@ -263,7 +263,7 @@ range, and the source date it came from. Thirty features. The backend already ho
 map's copy for drawing and for working offline, and where the two disagree the backend is right.
 
 **Stretches — renamed `Highlight`, 2026-08-19 (#598).** The word `stretch` belongs to the ~50-mile
-offline download unit `pipeline/cut_stretches.py` cuts (#552, decided 2026-08-18, after this doc was
+offline download unit `pipeline/cut_cells.py` cuts (#552, decided 2026-08-25, after this doc was
 written), and the maintainer's call is that nothing else reuses it. Two further decisions taken with
 it: a **Highlight is its own entity**, not a property of a trail, and it **may cross trails** — so
 the mile range moves down a level into an ordered list of legs, since a mile only means something

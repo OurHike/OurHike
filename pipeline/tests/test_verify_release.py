@@ -837,103 +837,99 @@ class TestABucketMidMigration:
         assert by_check[19]["state"] == OK
 
 
-class TestStretchCoverage:
-    """Check 20 (#556): the stretch units tile the trail, and everything the
-    index names is really published."""
+class TestCellCoverage:
+    """Check 20 (#1175): every coverage cell the index names is really
+    published, and every one is a whole graticule square."""
 
     def _manifest(self, extra=None):
         artifacts = {
-            "at_basemap_stretches.json": {"sha256": "a" * 64},
+            "at_basemap_cells.json": {"sha256": "a" * 64},
             "at_basemap_context.pmtiles": {"sha256": "b" * 64},
-            "at_basemap_stretch_00.pmtiles": {"sha256": "c" * 64},
-            "at_basemap_stretch_01.pmtiles": {"sha256": "d" * 64},
+            "at_basemap_cell_n40w075.pmtiles": {"sha256": "c" * 64},
+            "at_basemap_cell_n40w074.pmtiles": {"sha256": "d" * 64},
             **(extra or {}),
         }
         return {"artifacts": artifacts}
 
-    def _index(self, stretches, context="at_basemap_context.pmtiles", top=100.0):
-        return {
-            "stretch_miles": 50.0,
-            "axis_top_mile": top,
-            "context": context,
-            "stretches": stretches,
-        }
+    def _cell(self, name, key, bounds):
+        return {"name": name, "key": key, "bounds": bounds}
 
-    def test_a_complete_tiling_passes(self, requests_mock):
-        from verify_release import check_stretch_coverage
+    def _index(self, cells, context="at_basemap_context.pmtiles", degrees=1.0):
+        return {"cell_degrees": degrees, "seam_margin_km": 3.0, "context": context, "cells": cells}
 
-        requests_mock.get(
-            f"{BASE}/at_basemap_stretches.json",
-            json=self._index(
-                [
-                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
-                    {"id": 1, "key": "at_basemap_stretch_01.pmtiles", "miles": [50.0, 100.0]},
-                ]
-            ),
-        )
+    def _published(self):
+        return [
+            self._cell("n40w075", "at_basemap_cell_n40w075.pmtiles", [-75.0, 40.0, -74.0, 41.0]),
+            self._cell("n40w074", "at_basemap_cell_n40w074.pmtiles", [-74.0, 40.0, -73.0, 41.0]),
+        ]
 
-        reports = check_stretch_coverage(BASE, self._manifest())
+    def test_a_complete_release_passes(self, requests_mock):
+        from verify_release import check_cell_coverage
+
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(self._published()))
+
+        reports = check_cell_coverage(BASE, self._manifest())
         by_key = {report["key"]: report for report in reports}
 
-        assert by_key["at_basemap_stretches.json"]["state"] == "ok"
-        assert by_key["dem_stretches.json"]["state"] == "skipped", "no dem index published is a skip, not a pass"
+        assert by_key["at_basemap_cells.json"]["state"] == "ok"
+        assert by_key["dem_cells.json"]["state"] == "skipped", "no dem index published is a skip, not a pass"
 
-    def test_a_mile_gap_between_stretches_fails(self, requests_mock):
-        """A gap is a slice of trail no unit covers - blank map on a ridge
-        that every per-artifact check would wave through."""
-        from verify_release import check_stretch_coverage
+    def test_a_cell_named_but_not_published_fails(self, requests_mock):
+        """Blank map on a ridge - the trap check 2 guards for client keys,
+        at the unit level."""
+        from verify_release import check_cell_coverage
 
-        requests_mock.get(
-            f"{BASE}/at_basemap_stretches.json",
-            json=self._index(
-                [
-                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
-                    {"id": 1, "key": "at_basemap_stretch_01.pmtiles", "miles": [60.0, 100.0]},
-                ]
-            ),
-        )
+        cells = [*self._published(), self._cell("n41w074", "at_basemap_cell_n41w074.pmtiles", [-74.0, 41.0, -73.0, 42.0])]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
 
-        reports = check_stretch_coverage(BASE, self._manifest())
-        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
-
-        assert report["state"] == "failed"
-        assert "gap" in report["detail"]
-
-    def test_a_stretch_named_but_not_published_fails(self, requests_mock):
-        from verify_release import check_stretch_coverage
-
-        requests_mock.get(
-            f"{BASE}/at_basemap_stretches.json",
-            json=self._index(
-                [
-                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
-                    {"id": 1, "key": "at_basemap_stretch_99.pmtiles", "miles": [50.0, 100.0]},
-                ]
-            ),
-        )
-
-        reports = check_stretch_coverage(BASE, self._manifest())
-        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+        reports = check_cell_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_cells.json")
 
         assert report["state"] == "failed"
         assert "not published" in report["detail"]
 
-    def test_coverage_stopping_short_of_the_axis_top_fails(self, requests_mock):
-        from verify_release import check_stretch_coverage
+    def test_a_context_archive_named_but_not_published_fails(self, requests_mock):
+        from verify_release import check_cell_coverage
 
         requests_mock.get(
-            f"{BASE}/at_basemap_stretches.json",
-            json=self._index(
-                [{"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]}],
-                top=100.0,
-            ),
+            f"{BASE}/at_basemap_cells.json", json=self._index(self._published(), context="at_basemap_absent.pmtiles")
         )
 
-        reports = check_stretch_coverage(BASE, self._manifest())
-        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+        reports = check_cell_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_cells.json")
 
         assert report["state"] == "failed"
-        assert "short of the axis top" in report["detail"]
+        assert "context archive" in report["detail"]
+
+    def test_a_ragged_cell_fails(self, requests_mock):
+        """A cell that is not a whole square means the grid was anchored to a
+        bounding box rather than the graticule - which is what would silently
+        put two organizations on two different grids and store shared ground
+        twice (lib/corridor_grid.graticule_cells)."""
+        from verify_release import check_cell_coverage
+
+        cells = [
+            self._published()[0],
+            self._cell("n40w074", "at_basemap_cell_n40w074.pmtiles", [-74.0, 40.0, -73.72, 40.78]),
+        ]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        reports = check_cell_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "whole" in report["detail"]
+
+    def test_an_empty_index_fails(self, requests_mock):
+        from verify_release import check_cell_coverage
+
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index([]))
+
+        reports = check_cell_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "no cells" in report["detail"]
 
 
 class TestManifestSizes:

@@ -393,7 +393,7 @@ What this document contributes to that decision rather than beside it:
 
 ### Two provenance defects found on the way
 
-- `cut_stretches.py:1-10` and `pipeline/README.md`'s "The 50-mile stretch units
+- `cut_cells.py:1-10` and `pipeline/README.md`'s "The 1-degree coverage cells
   (#556)" both assert *"the maintainer's #552 decision (2026-08-18)"* as
   current. It was reversed 2026-08-25. **#556 — Cut and publish coverage units
   from the build that already exists** is closed as completed against a unit
@@ -462,7 +462,7 @@ app can locate them has no hillshade where they are.
 
 Two things the workflow does that are not conveniences:
 
-- **A light build does not cut stretches.** `cut_stretches.py` names its output
+- **A light build does not cut cells.** `cut_cells.py` names its output
   from the family, so a light run would overwrite `dem_stretch_NN.pmtiles` with
   light bytes under the canonical keys — a quieter version of the
   wrong-bytes-behind-the-right-name failure the publish gate exists to prevent.

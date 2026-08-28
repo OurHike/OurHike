@@ -25,11 +25,11 @@ Both attribution fields are optional and both can be empty: "someone cleared for
 
 **Why a report type and not a new model.** It shares every field, the same offline outbox, the same location anchoring, and the same photo path. A parallel model would duplicate all of it to express one different word. The places it genuinely diverges are handled explicitly below rather than by forking the whole thing.
 
-## Where a hiker reaches it (added 2026-08-27, #1133)
+## Where a hiker reaches it (added 2026-08-27, #1133; completed #1137)
 
 Three entry points, and each is there because it answers a different question.
-The first two shipped in #1133; the third is the map's long-press plate, still
-to come.
+The first two shipped in #1133 and the third in #1137, so this list is now
+what the app actually offers rather than what it was heading for.
 
 - **The foot of Today**, beside "Report a problem" at the same width and the
   same weight. The pair is the point: reporting a problem and thanking a crew
@@ -45,7 +45,19 @@ to come.
   they remember to send it.
 - **The map's long-press plate**, for a stretch of trail with no waypoint on
   it — the "someone cleared forty blowdowns out of this mile" case this doc
-  opens with. Not built yet: [#1137](https://github.com/OurHike/OurHike/issues/1137).
+  opens with. Shipped in [#1137](https://github.com/OurHike/OurHike/issues/1137):
+  press and hold anywhere on the map and a small plate opens at the point with
+  both actions on it. It is the only entry point whose anchor may be nowhere
+  near the hiker, which is why it carries the pressed coordinates and never
+  the hiker's own mile.
+
+**Off the corridor is accepted, not refused**, and that is a deliberate
+difference from the route builder, which refuses the same tap. A route *stop*
+is a position on the trail and is meaningless without a mile; a thanks is a
+message about a place, and a lat/lon locates it perfectly well. The plate says
+which case it is in — a mile when there is one, "More than 3 mi off the trail"
+when `lib/trailPosition.ts` looked and refused, and "This spot" when the trail
+index is not on the phone and nobody has looked at all.
 
 **A thanks never files on a tap**, unlike the six condition types that do
 (REPORT_A_PROBLEM.md's core flow). It always opens the form. The reason is not

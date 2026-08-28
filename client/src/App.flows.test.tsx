@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
@@ -14,6 +14,7 @@ import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { BASEMAP_PACKAGE } from './lib/packages'
 import { readArchive, segmentKeyFor } from './lib/archiveStore'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
+import { LONG_PRESS_MS } from './map/longPress'
 import { archiveUrl } from './lib/config'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { liveMap } from './test/liveMap'
@@ -813,6 +814,142 @@ describe('reporting, with a fix to attach', () => {
     // already saved, and it has to be true when it says it.
     expect(await screen.findByText(/already saved/i)).toBeInTheDocument()
     expect(store.get('ourhike:outbox')).toBeDefined()
+  })
+})
+
+// Press and hold a spot on the map (#1137).
+//
+// The third way into a report, and the only one whose point may be nowhere
+// near the hiker - which is what makes the anchoring worth a shell test rather
+// than a component one. The plate and the gesture have their own suites
+// (chrome/PressPlate.test.tsx, map/longPress.test.tsx); what only this layer
+// can prove is which mile ends up on the report.
+describe('pressing and holding a spot on the map', () => {
+  /** Hold a finger on the canvas until the press fires. */
+  async function pressAt(lat: number, lon = -77) {
+    await waitFor(() => {
+      expect(MockMap.live).toHaveLength(1)
+      expect(MockMap.live[0].listenerCount('touchstart')).toBeGreaterThan(0)
+    })
+    const map = MockMap.live[0]
+    await act(async () => {
+      map.emit('touchstart', { lngLat: { lat, lng: lon }, point: { x: 160, y: 300 } })
+      vi.advanceTimersByTime(LONG_PRESS_MS)
+    })
+  }
+
+  beforeEach(() => {
+    // `shouldAdvanceTime` so `findBy*` and `waitFor` still resolve - a frozen
+    // clock deadlocks them, which CLAUDE.md's ordering rule is about.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('names the mile under the press, not the one under the hiker', async () => {
+    // THE TEST THIS WHOLE FEATURE NEEDED. The hiker is standing at mile 5 and
+    // pressing mile 20 - fifteen miles up the trail - and every other entry
+    // point in the app anchors on the fix. A plate that read "mi 5.0" here
+    // would be the app quietly relabelling somebody's report.
+    hikerOnTrail()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await reportFix(5)
+
+    await pressAt(latOfMile(20))
+
+    expect(await screen.findByTestId('press-plate-where')).toHaveTextContent('mi 20.0')
+  })
+
+  it('refuses to borrow the hiker’s mile for a press with none', async () => {
+    // The same claim where it is most dangerous, and the reason
+    // `reportAnchorWords` stopped falling back to `fix.mile` for an anchor
+    // that HAS no mile. A press two degrees of latitude off the corridor is
+    // past MAX_OFF_TRAIL_MILES, so lib/trailPosition.ts returns null - and the
+    // window used to print the hiker's own mile over it, which is a position
+    // claim that resolves to somewhere real and wrong.
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    hikerOnTrail()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await reportFix(5)
+
+    await pressAt(41)
+
+    expect(await screen.findByTestId('press-plate-where')).toHaveTextContent(
+      /off the trail/i,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+
+    const anchor = await screen.findByTestId('report-anchor')
+    expect(anchor).toHaveTextContent('here')
+    expect(anchor).not.toHaveTextContent('mi 5.0')
+  })
+
+  it('files the report at the pressed point, not at the fix', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    hikerOnTrail()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await reportFix(5)
+
+    await pressAt(latOfMile(20))
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(screen.getByTestId('report-done'))
+
+    await waitFor(() => {
+      const queued = store.get('ourhike:outbox') as Array<{
+        payload: { lat?: number; mile?: number }
+      }>
+      expect(queued).toHaveLength(1)
+      expect(queued[0].payload.lat).toBeCloseTo(latOfMile(20), 4)
+      expect(queued[0].payload.lat).not.toBeCloseTo(latOfMile(5), 4)
+    })
+  })
+
+  it('stops a pin tap landing under the plate when the finger lifts', async () => {
+    // The release-click. The press fires on a timer while the finger is still
+    // down, so lifting still produces a `click` that attachPoiTaps would read
+    // as "select whatever is here" - opening a waypoint card underneath the
+    // plate the hiker just opened. MapView drops those handlers while the
+    // plate is up, and this is what proves it rather than the comment saying
+    // so.
+    hikerOnTrail()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+
+    const map = MockMap.live[0]
+    const before = map.listenerCount('click')
+    expect(before).toBeGreaterThan(0)
+
+    await pressAt(latOfMile(20))
+    await screen.findByTestId('press-plate')
+
+    expect(MockMap.live[0].listenerCount('click')).toBeLessThan(before)
+  })
+
+  it('goes when the map starts moving under it', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await pressAt(latOfMile(20))
+    await screen.findByTestId('press-plate')
+
+    await act(async () => {
+      MockMap.live[0].emit('movestart')
+    })
+
+    expect(screen.queryByTestId('press-plate')).toBeNull()
   })
 })
 

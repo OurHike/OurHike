@@ -225,7 +225,20 @@ export interface MapScreenProps {
   /** A drawn line, in the day-hike builder's draw mode (#983). Replaces the
    *  tap handler while set - see MapViewProps.onRouteStroke. */
   onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void
+  /** Press and hold on bare map (#1137) - see MapViewProps.onLongPress. */
+  onLongPress?: (
+    at: { lon: number; lat: number },
+    point: { x: number; y: number },
+  ) => void
+  /** True while the press plate is up - see MapViewProps.pressPlateOpen
+   *  for what it suppresses and why. */
+  pressPlateOpen?: boolean
   routeSheet?: ReactNode
+  /** The press-and-hold plate (#1137). A slot for the same reason as the
+   *  sheets above - but unlike them it DOES anchor to a point on the
+   *  canvas, so it positions itself and this screen only gives it the
+   *  layer to sit in. */
+  pressPlate?: ReactNode
   /**
    * The band a followed day hike puts directly UNDER the header (#1041,
    * frame `D11`) - today only "you are not on your route".
@@ -710,7 +723,10 @@ export function MapScreen({
   dayHikeDrawing = null,
   onRouteTap,
   onRouteStroke,
+  onLongPress,
+  pressPlateOpen,
   routeSheet,
+  pressPlate,
   followBand,
   followAnnouncement = null,
   noticeCount = 0,
@@ -1245,6 +1261,8 @@ export function MapScreen({
               dayHikeDrawing={dayHikeDrawing}
               onRouteTap={onRouteTap}
               onRouteStroke={onRouteStroke}
+              onLongPress={onLongPress}
+              pressPlateOpen={pressPlateOpen}
               onSelectPoi={onSelectPoi}
               onSelectLine={onSelectLine}
               showZoomButtons={showZoomButtons}
@@ -1344,6 +1362,11 @@ export function MapScreen({
             {/* The route builder's card, in the same slot family: it is about
                 a route, which anchors to nothing on the canvas either. */}
             {routeSheet}
+
+            {/* Last of the overlays, so a plate opened over an open sheet
+                lands on top - the hiker pressed the map after the sheet
+                was already there, and the newer intent wins. */}
+            {pressPlate}
 
             <Search
               open={searchOpen}

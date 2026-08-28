@@ -137,7 +137,8 @@ export class MockMap {
    *  not some other point" is observable. */
   readonly projectCalls: Array<[number, number]> = []
   private readonly listeners = new Map<string, Listener[]>()
-  private canvas: HTMLCanvasElement | undefined = undefined
+  private canvas: HTMLCanvasElement | undefined
+  private container: HTMLElement | undefined = undefined
 
   constructor(options: Record<string, unknown>) {
     MockMap.constructionAttempts += 1
@@ -459,6 +460,34 @@ export class MockMap {
   getCanvas(): HTMLCanvasElement {
     this.canvas ??= document.createElement('canvas')
     return this.canvas
+  }
+
+  /**
+   * The element the map is mounted in, with a SIZE on it.
+   *
+   * Real MapLibre has always had this; the mock did not until #1137 needed it,
+   * and the missing size is the half worth explaining. A bare
+   * `document.createElement('div')` in jsdom reports `clientWidth: 0`, because
+   * jsdom does no layout - so a caller asking "how big is the map" would be
+   * told zero, which is a state a real phone is never in and which quietly
+   * turns any clamped-to-the-viewport arithmetic into a clamp against nothing.
+   *
+   * Defaults to the 390x844 phone every screenshot in this repo is taken at.
+   * Settable, so a test about a small screen can say so.
+   */
+  containerSize = { width: 390, height: 844 }
+
+  getContainer(): HTMLElement {
+    this.container ??= document.createElement('div')
+    Object.defineProperty(this.container, 'clientWidth', {
+      configurable: true,
+      get: () => this.containerSize.width,
+    })
+    Object.defineProperty(this.container, 'clientHeight', {
+      configurable: true,
+      get: () => this.containerSize.height,
+    })
+    return this.container
   }
 
   /**

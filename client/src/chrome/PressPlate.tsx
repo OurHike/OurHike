@@ -48,12 +48,32 @@ export interface PressPlateProps {
   onClose: () => void
 }
 
-/** Roughly the plate's own size, for keeping it on screen. Measured from the
- *  stylesheet rather than the DOM: reading it back would mean a layout pass
- *  and a second render, for a panel whose size is fixed by its own CSS. */
+/**
+ * The plate's own width, and the ONE number this file may know about itself.
+ *
+ * It is exact rather than approximate because pressPlate.css sets
+ * `box-sizing: border-box` - this app has no universal one (screens/plan.css
+ * records why), so without that line the declared 208 renders as 234 and this
+ * clamp lets the plate hang off the right edge. The preview recipe found that;
+ * the unit test could not, because it asserted against this same constant.
+ */
 const PLATE_WIDTH = 208
-const PLATE_HEIGHT = 132
+
+/** Clear of the screen edge, and of the finger. */
 const PLATE_MARGIN = 8
+
+/**
+ * How near the top a press has to be before the plate goes BELOW it instead.
+ *
+ * There is no height constant here on purpose. The plate's height is whatever
+ * its text needs - "More than 3 mi off the trail" wraps and "mi 628.4" does
+ * not - so a number would be a guess that goes stale on the next copy change,
+ * which is exactly what the width one nearly was. Above the press is done in
+ * CSS with `translateY(-100%)`, which needs no height at all; this threshold
+ * only has to answer "is there plausibly room up there", and being wrong about
+ * it costs a plate below the finger rather than one off the screen.
+ */
+const ROOM_ABOVE_PX = 180
 
 export function PressPlate({
   point,
@@ -65,18 +85,26 @@ export function PressPlate({
   onThanks,
   onClose,
 }: PressPlateProps) {
-  // Clamped rather than flipped. A plate that jumps to the other side of the
-  // finger when it nears an edge is a plate that moved for reasons the hiker
-  // cannot see; sliding it back onto the screen keeps it where they pressed,
-  // as nearly as the screen allows.
+  // HORIZONTALLY CLAMPED, NOT FLIPPED. A plate that jumps to the other side of
+  // the finger when it nears an edge is a plate that moved for reasons the
+  // hiker cannot see; sliding it back onto the screen keeps it where they
+  // pressed, as nearly as the screen allows. The outer `Math.max` is for a map
+  // region narrower than the plate itself, where the two bounds cross and a
+  // bare min/max pair produces a negative offset.
   const left = Math.min(
     Math.max(point.x - PLATE_WIDTH / 2, PLATE_MARGIN),
     Math.max(within.width - PLATE_WIDTH - PLATE_MARGIN, PLATE_MARGIN),
   )
-  const top = Math.min(
-    Math.max(point.y - PLATE_HEIGHT - PLATE_MARGIN, PLATE_MARGIN),
-    Math.max(within.height - PLATE_HEIGHT - PLATE_MARGIN, PLATE_MARGIN),
-  )
+
+  // VERTICALLY FLIPPED, WHICH IS THE ONE PLACE A FLIP IS RIGHT. Above the
+  // press is where the plate belongs - a finger covers what is under it - and
+  // when there is no room above, below is the only alternative to off-screen.
+  // Done by translating its own bottom edge onto the point rather than by
+  // subtracting a height, so nothing here has to know how tall it is.
+  const above = point.y > ROOM_ABOVE_PX
+  const top = above
+    ? Math.max(point.y - PLATE_MARGIN, PLATE_MARGIN)
+    : Math.min(point.y + PLATE_MARGIN, Math.max(within.height - PLATE_MARGIN, 0))
 
   return (
     <div
@@ -84,7 +112,12 @@ export function PressPlate({
       role="dialog"
       aria-label="Report or thank at this spot"
       data-testid="press-plate"
-      style={{ left, top }}
+      data-above={above ? 'true' : 'false'}
+      style={{
+        left,
+        top,
+        ['--press-plate-lift' as string]: above ? '-100%' : '0',
+      }}
     >
       <p className="press-plate__where" data-testid="press-plate-where">
         {whereWords(mile, knowsTrail, units)}
@@ -134,11 +167,7 @@ export function PressPlate({
  * two into one sentence would tell a hiker with no download that they were
  * standing in the woods.
  */
-export function whereWords(
-  mile: number | null,
-  knowsTrail: boolean,
-  units: UnitSystem,
-): string {
+function whereWords(mile: number | null, knowsTrail: boolean, units: UnitSystem): string {
   if (mile !== null) {
     // A MARKER, NOT A DISTANCE - so it is written the way every other mile
     // marker in this app is, and never through `formatDistance`. #986 is the

@@ -152,6 +152,7 @@ import { positionLine } from './lib/positionLine'
 import {
   locateOnTrail,
   mileOnTrail,
+  type TrailIndex,
   trailPointAtMile,
   trailSlice,
 } from './lib/trailPosition'
@@ -304,6 +305,7 @@ import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
+import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
@@ -446,6 +448,35 @@ function dayHikeName(route: {
   return longest?.name !== null && longest?.name !== undefined
     ? `${longest.name} day hike`
     : 'Day hike'
+}
+
+/**
+ * The anchor a press hands to the report flow (#1137).
+ *
+ * ALWAYS CARRIES THE COORDINATES, and carries a mile only when the index has
+ * one. A press is the one entry point whose point may be nowhere near the
+ * hiker, so an anchor without a mile must NOT fall back to theirs - see
+ * `reportAnchorWords` for the sentence that would otherwise be printed over a
+ * report filed somewhere else.
+ *
+ * `mile` is optional on a report by design (features/REPORT_A_PROBLEM.md:
+ * "Null off-trail, and for a phone with no trail index yet"), which is why an
+ * off-corridor press is accepted rather than refused. That is the difference
+ * from the route builder, which refuses the same tap: a route STOP is a
+ * position on the trail and is meaningless without a mile, while a report is
+ * an observation at a place and a lat/lon locates it perfectly well.
+ */
+function pressAnchor(
+  at: { lat: number; lon: number },
+  trailIndex: TrailIndex | null,
+): ReportAnchor {
+  const mile = trailIndex === null ? null : mileOnTrail(trailIndex, at)
+  return {
+    // No `poiId`: the whole point of a press is that there is no waypoint here.
+    lat: at.lat,
+    lon: at.lon,
+    ...(mile === null ? {} : { mile }),
+  }
 }
 
 function App() {
@@ -4026,6 +4057,60 @@ function App() {
   // Null is a tap on bare map - the card's tap-elsewhere-to-dismiss, which
   // every map card teaches. It only clears the selection: closing the LEGEND
   // from a stray tap on the map above it would punish a miss twice.
+  /**
+   * The press-and-hold plate (#1137): where it is, and what it says.
+   *
+   * Held as the PRESS rather than as a resolved anchor, so the mile is worked
+   * out at render from whatever `trailIndex` the phone has by then - a press
+   * held while the corridor is still downloading would otherwise be stuck
+   * saying "This spot" after the index arrives.
+   */
+  const [pressPlate, setPressPlate] = useState<{
+    at: { lat: number; lon: number }
+    point: { x: number; y: number }
+    within: { width: number; height: number }
+  } | null>(null)
+
+  const handleLongPress = useCallback(
+    (at: { lon: number; lat: number }, point: { x: number; y: number }) => {
+      if (map === null) return
+      // A press with a card open replaces the card. Two panels over one map,
+      // one of them describing a place the hiker is no longer pointing at, is
+      // the screen arguing with itself.
+      setSelectedPoiId(null)
+      // The map's own box, read once here rather than on every render of the
+      // plate. `point` is in the canvas's CSS pixels, so the container's CSS
+      // size is what it has to be clamped against - and both are settled at
+      // the moment of the press, since the plate closes on the first movement
+      // afterwards.
+      const box = map.getContainer()
+      setPressPlate({
+        at: { lat: at.lat, lon: at.lon },
+        point,
+        within: { width: box.clientWidth, height: box.clientHeight },
+      })
+    },
+    [map],
+  )
+
+  /**
+   * The plate goes on the first sign the map is moving under it.
+   *
+   * `movestart` rather than `moveend`, and rather than repositioning: the
+   * plate names a point, and a panel that rides along while its point slides
+   * out from under it is worse than one that leaves. Nothing here fights the
+   * gesture - by the time this fires MapLibre has already decided the touch
+   * was a pan, which is the same signal map/longPress.ts defers to.
+   */
+  useEffect(() => {
+    if (map === null || pressPlate === null) return
+    const close = () => setPressPlate(null)
+    map.on('movestart', close)
+    return () => {
+      map.off('movestart', close)
+    }
+  }, [map, pressPlate])
+
   const handleSelectPoi = useCallback((id: string | null) => {
     setSelectedPoiId(id)
     if (id !== null) setLegendOpen(false)
@@ -5796,6 +5881,47 @@ function App() {
               // taps and the same race one level up for a drag.
               onRouteStroke={
                 dayHike !== null && dayHikeDrawMode ? handleDayHikeStroke : undefined
+              }
+              // Press and hold (#1137). MapView suppresses it in route and
+              // draw mode itself, so nothing is conditioned here.
+              onLongPress={handleLongPress}
+              pressPlateOpen={pressPlate !== null}
+              pressPlate={
+                pressPlate === null ? undefined : (
+                  <PressPlate
+                    point={pressPlate.point}
+                    within={pressPlate.within}
+                    // Resolved at RENDER rather than at press time, so a plate
+                    // opened while the corridor was still downloading starts
+                    // saying the mile the moment the index lands.
+                    mile={
+                      trailIndex === null
+                        ? null
+                        : mileOnTrail(trailIndex, {
+                            lon: pressPlate.at.lon,
+                            lat: pressPlate.at.lat,
+                          })
+                    }
+                    knowsTrail={trailIndex !== null}
+                    units={units}
+                    onReport={() => {
+                      setPressPlate(null)
+                      setReporting({
+                        step: 'window',
+                        anchor: pressAnchor(pressPlate.at, trailIndex),
+                      })
+                    }}
+                    onThanks={() => {
+                      setPressPlate(null)
+                      setReporting({
+                        step: 'form',
+                        type: 'thanks',
+                        anchor: pressAnchor(pressPlate.at, trailIndex),
+                      })
+                    }}
+                    onClose={() => setPressPlate(null)}
+                  />
+                )
               }
               routeSheet={
                 targetRequest !== null ? (

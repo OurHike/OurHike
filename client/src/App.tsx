@@ -148,6 +148,7 @@ import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
+import { useGpsTrace } from './lib/useGpsTrace'
 import { positionLine } from './lib/positionLine'
 import {
   locateOnTrail,
@@ -1237,7 +1238,17 @@ function App() {
   )
 
   const locationAllowed = preferences.location_permission_requested
-  const gps = useGeolocation(locationAllowed)
+  // The recorder for #106's field walk (#1180). Inert unless somebody turns
+  // it on in Settings, and it reads the same watch rather than opening a
+  // second one - a second high-accuracy watch is the mistake map/mapChrome.ts
+  // and this file have each already made once.
+  const gpsTrace = useGpsTrace(trailIndex)
+  const gps = useGeolocation(locationAllowed, {
+    onFix: gpsTrace.onFix,
+    // Recording holds the watch through a pocket, suspending #313's pause.
+    // Nothing else in the app asks for that.
+    keepAwake: gpsTrace.status.recording,
+  })
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
   // The hiking sheet's own level (#276) - a separate dial from the USGS
@@ -5439,6 +5450,10 @@ function App() {
                 <More
                   page={morePage}
                   onNavigate={setMorePage}
+                  // #1180's recorder. `now` comes from the shell's clock so
+                  // the elapsed reading advances without the section holding
+                  // a timer of its own on the one screen that costs battery.
+                  gpsTrace={{ ...gpsTrace, now }}
                   stewards={stewards}
                   account={account}
                   mode={hikerMode}

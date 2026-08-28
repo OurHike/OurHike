@@ -603,3 +603,66 @@ describe('taking your data, or leaving (#895)', () => {
     expect(screen.queryByRole('heading', { name: /taking your data/i })).toBe(null)
   })
 })
+
+// --- The GPS trace recorder's door (#1180) ---------------------------------
+
+describe('the GPS trace section on Safety & privacy', () => {
+  const TRACE = {
+    status: { recording: false, startedAt: null, marker: null, samples: 0 },
+    onStart: vi.fn(),
+    onStop: vi.fn(),
+    onMark: vi.fn(),
+    onExport: vi.fn(),
+    onDelete: vi.fn(),
+  }
+
+  const withLocation = {
+    ...PROPS.preferences,
+    location_permission_requested: true,
+  }
+
+  it('is absent from a build that does not wire it', () => {
+    // An instrument, not a feature. A caller that passes nothing gets the
+    // page every test written before now expects.
+    render(<More {...PROPS} page="safety" preferences={withLocation} />)
+
+    expect(
+      screen.queryByRole('heading', { name: 'Record a GPS trace' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('appears under Use my location once it is wired and location is on', () => {
+    render(<More {...PROPS} page="safety" preferences={withLocation} gpsTrace={TRACE} />)
+
+    expect(
+      screen.getByRole('heading', { name: 'Record a GPS trace' }),
+    ).toBeInTheDocument()
+  })
+
+  it('stays hidden while location is off, rather than offering a button that records nothing', () => {
+    // With the switch off there is no watch to tap - useGeolocation returns
+    // `idle` and registers nothing - so a Start button would look exactly
+    // like one that worked and produce an empty file. A tester finding that
+    // out afterwards has lost the walk.
+    render(
+      <More
+        {...PROPS}
+        page="safety"
+        preferences={{ ...PROPS.preferences, location_permission_requested: false }}
+        gpsTrace={TRACE}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('heading', { name: 'Record a GPS trace' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not put it on any other page', () => {
+    render(<More {...PROPS} page="you" preferences={withLocation} gpsTrace={TRACE} />)
+
+    expect(
+      screen.queryByRole('heading', { name: 'Record a GPS trace' }),
+    ).not.toBeInTheDocument()
+  })
+})

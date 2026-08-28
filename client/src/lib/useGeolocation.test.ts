@@ -338,3 +338,118 @@ describe('a fix that says the phone has not moved (#1090)', () => {
     })
   })
 })
+
+describe('the seam the trace recorder taps (#1180)', () => {
+  // #106's walk has to bring back a measurement, and the thing being measured
+  // includes how often the platform actually answers. So the seam sees the
+  // watch, not the state - a recorder fed from the deduplicated state would
+  // be measuring #1090's optimisation instead of the GPS.
+
+  /** Hide or show the tab, the way a browser reports it. */
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, 'hidden', { value: hidden, configurable: true })
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+  })
+
+  it('hands every fix to onFix', () => {
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix }))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(onFix).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands over a repeat the render bail-out drops', () => {
+    // THE WHOLE REASON THE SEAM IS WHERE IT IS. `maximumAge` lets the platform
+    // re-deliver an unchanged fix and #1090 stops that re-rendering the shell.
+    // A recorder that inherited that silence would report a gap in the fix
+    // cadence that the platform never had.
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true, { onFix }))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    const first = result.current
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(result.current).toBe(first)
+    expect(onFix).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports the fix exactly once per callback', () => {
+    // Called outside the setState updater on purpose: an updater may run more
+    // than once for a single update, and a recorder inside it would write the
+    // same fix twice - inventing a fix rate nobody observed.
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix }))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    reportFix({ longitude: -78, latitude: 40, accuracy: 5 })
+
+    expect(onFix).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not re-register the watch when the callback identity changes', () => {
+    // A caller passing an inline function would otherwise tear the watch down
+    // on every render, which on some platforms restarts acquisition entirely.
+    const gps = stubGeolocation()
+    const { rerender } = renderHook(({ fn }) => useGeolocation(true, { onFix: fn }), {
+      initialProps: { fn: () => {} },
+    })
+
+    rerender({ fn: () => {} })
+    rerender({ fn: () => {} })
+
+    expect(gps.watchPosition).toHaveBeenCalledTimes(1)
+  })
+
+  it('still releases the watch in the pocket when nothing asked to stay awake', () => {
+    const { clearWatch } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix: vi.fn() }))
+
+    setHidden(true)
+
+    expect(clearWatch).toHaveBeenCalled()
+  })
+
+  it('keeps the watch through a pocket while keepAwake is set', () => {
+    // A trace that stops when the phone pockets is missing the case #93 most
+    // needs. This is not a promise of fixes in a pocket - a hidden tab's JS is
+    // throttled regardless - only that this hook is not what ends them.
+    const { clearWatch } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix: vi.fn(), keepAwake: true }))
+
+    setHidden(true)
+
+    expect(clearWatch).not.toHaveBeenCalled()
+  })
+
+  it('goes on recording fixes while hidden and kept awake', () => {
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix, keepAwake: true }))
+
+    setHidden(true)
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(onFix).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the ordinary path alone when nothing passes options', () => {
+    const gps = stubGeolocation()
+    renderHook(() => useGeolocation(true))
+
+    setHidden(true)
+
+    expect(gps.clearWatch).toHaveBeenCalled()
+  })
+})

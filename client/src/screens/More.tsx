@@ -35,6 +35,7 @@ import {
   type SettingsProps,
 } from './Settings'
 import { PaceSettings } from './PaceSettings'
+import { GpsTraceSettings, type GpsTraceSettingsProps } from './GpsTrace'
 import { AboutBuild } from './AboutBuild'
 import { SourcesSection } from '../chrome/SourcesSection'
 import type { Stewards } from '../lib/stewards'
@@ -69,6 +70,14 @@ export interface StuckReport {
 export type MorePage = 'home' | 'you' | 'map' | 'safety' | 'volunteer' | 'sources'
 
 export interface MoreProps extends SettingsProps {
+  /**
+   * The GPS trace recorder's controls, when this build wires them (#1180).
+   *
+   * Optional because it is an instrument rather than a feature: a caller that
+   * does not pass it gets a Safety & privacy page with nothing extra on it,
+   * which is what every test of this screen written before now expects.
+   */
+  gpsTrace?: GpsTraceSettingsProps
   page: MorePage
   onNavigate: (page: MorePage) => void
   onStartReport: () => void
@@ -300,6 +309,7 @@ export function More({
   onReportFailure,
   build,
   stewards = [],
+  gpsTrace,
   ...settings
 }: MoreProps) {
   // Deleting a stuck report asks twice. "Try again" and "Delete" sit side by
@@ -489,10 +499,25 @@ export function More({
       )
     } else if (page === 'safety') {
       panel = (
-        <SafetyPrivacySettings
-          preferences={settings.preferences}
-          onChange={settings.onChange}
-        />
+        <>
+          <SafetyPrivacySettings
+            preferences={settings.preferences}
+            onChange={settings.onChange}
+          />
+          {/* Below "Use my location" rather than on its own page: it is the
+              same subject read one level down - whether the app may know
+              where you are, then whether it may write that down.
+
+              Gated on that switch rather than merely sitting under it. With
+              location off there is no watch to tap (lib/useGeolocation.ts
+              returns `idle` and registers nothing), so a Start button would
+              record nothing at all while looking exactly like one that
+              worked - a tester finding that out is a walk nobody gets back. */}
+          {gpsTrace !== undefined &&
+            settings.preferences.location_permission_requested && (
+              <GpsTraceSettings {...gpsTrace} />
+            )}
+        </>
       )
     } else if (page === 'volunteer') {
       panel = (

@@ -12,9 +12,10 @@ Answers [#552 — Decide the unit of offline coverage, and write it
 down](https://github.com/OurHike/OurHike/issues/552), inside
 [#551](https://github.com/OurHike/OurHike/issues/551)'s offline-coverage program.
 
-**Status, 2026-08-28: decided, and the pipeline half built.** The unit is the maintainer's
-call of 2026-08-25, recorded on #552. `pipeline/cut_cells.py` cuts it (#1175, landed with
-this doc), and `publish.py` publishes what it cuts. **Nothing hiker-facing exists yet**:
+**Status, 2026-08-28: decided, and the pipeline half built and run against real data.**
+The unit is the maintainer's call of 2026-08-25, recorded on #552. `pipeline/cut_cells.py`
+cuts it (#1175, landed with this doc), and `publish.py` publishes what it cuts. The cut has
+been run against the published z12 A.T. basemap — see §6 for what it measured. **Nothing hiker-facing exists yet**:
 #557 (drawing from several units, and saying where they end) and #558 (choosing a piece)
 are both open, and until they land no cell reaches a phone.
 
@@ -96,9 +97,18 @@ different cell boundaries or quad-to-cell assignments, which would otherwise be 
 to introduce a coverage gap that only surfaces downstream."
 
 It exists for the reason offline coverage wants cells: the corridor is a thin winding band
-inside a huge bounding rectangle. **The A.T. corridor is 51 cells**, and that number is
-already load-bearing — `build_cells_manifest.py` hard-fails a cell with zero quads,
-validated against the real 51-cell manifest.
+inside a huge bounding rectangle. **The A.T. corridor is 51 cells** on that grid, and that
+number is already load-bearing — `build_cells_manifest.py` hard-fails a cell with zero
+quads, validated against the real 51-cell manifest.
+
+**That hard-fail is right there and wrong here**, which is worth stating because #1175 shipped
+it before a real run caught it. The raster build grids a corridor it has already clipped, so
+every cell of its grid holds quads. A coverage cut grids an archive's *bounding box*, and a
+trail is a thin band inside a large rectangle: measured on the published z12 A.T. basemap,
+221 cells cover its bounds and only 62 hold a tile. An empty cell there is ordinary ground
+the trail does not cross, not a disagreement. So the box proposes and the tiles decide — the
+index lists what was built, and the only refusal left is an archive whose tiles miss its own
+declared bounds entirely.
 
 So the seam logic will be written against boundaries CI already fans out over, and one
 class of bug — two modules disagreeing about where a cell ends — is closed before it opens.
@@ -182,13 +192,27 @@ with a name rather than a mile range to compute.
 package. [#193](https://github.com/OurHike/OurHike/issues/193) measured those at 6.3 MB per
 package at corridor scale, **duplicated by construction**.
 
-**At 51 cells, context carried per cell would be ~321 MB of the same bytes** — reasoned from
-that 6.3 MB figure — which is 40% of the whole sheet, spent on duplication, to solve a
-problem about size. That would defeat the entire point of splitting.
+**Measured, by running the cut against the published z12 A.T. basemap (2026-08-28):**
 
-So context is **one shared artifact per sheet, fetched once**, and it is not optional: it is
-what a hiker holding one piece sees when they zoom out past it. Measured on the current cut,
-that costs 35.6 MB for both sheets together — 6.3 MB of basemap and 29.4 MB of DEM.
+| | |
+| --- | --- |
+| Source sheet | 67.9 MB (`at_basemap_package_z12`, the Light basemap) |
+| Cells the bounding box covers | **221** |
+| Cells that actually hold trail, and so get built | **62** |
+| Their total weight | 87.1 MB — **128%** of the source, the 28% being the 3 km seam margin |
+| Shared context, published once | **5.71 MB** |
+| The same context carried per cell instead | **354.3 MB** |
+
+That last row is the whole argument, and it is worse than the estimate that motivated it:
+five times the sheet it came from, spent entirely on duplication, to solve a problem about
+size. So context is **one shared artifact per sheet, fetched once**, and it is not optional —
+it is what a hiker holding one piece sees when they zoom out past it.
+
+Two riders on the other figures. The 128% is a z12 number and is the *worst* rung: a 3 km
+margin is a large fraction of a 7.4 km z12 tile and a small one of a 1.85 km z14 tile, so
+Standard and Fine will duplicate proportionally less. And 62 is not 51 — `compute_cells`
+gives the corridor 51 bbox-anchored cells, `graticule_cells` gives it 62 whole ones. Two
+grids, two counts, and the difference is exactly the anchoring this doc argues for.
 
 This also hands the DEM the context mechanism #552 correctly notes it never had
 (`export_dem.py` walks the region at every zoom). The two sheets stop needing different

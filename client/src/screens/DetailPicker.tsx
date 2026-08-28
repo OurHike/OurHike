@@ -70,9 +70,26 @@ import { formatBytes } from '../lib/formatBytes'
 export interface DetailOption {
   id: string
   label: string
-  /** What this download costs at this level, or null where it is not
-   *  published at it - a row that renders greyed rather than not at all. */
+  /**
+   * What this download costs at this level, or null where nothing has
+   * measured it.
+   *
+   * Null no longer means one thing, which is why `offered` exists beside it
+   * (#1167). A rung can be unpriced because this sheet has no such level, or
+   * because it has one and `latest.json` has not landed to say what it
+   * weighs. Those read very differently to somebody choosing, so the row says
+   * which - "Not offered" against "Unknown offline".
+   */
   sizeBytes: number | null
+  /**
+   * Whether this level exists for this sheet and its artifacts are in the
+   * bucket - hikingDetail.ts's `published` gate, the 404-on-a-mountain rule.
+   *
+   * Separate from having a size, because since #1167 an offered rung can be
+   * unpriced. A rung that is not offered may never be chosen; a rung that is
+   * offered but unpriced may.
+   */
+  offered: boolean
   recommended: boolean
 }
 
@@ -108,6 +125,11 @@ export function rasterDetailOptions(
         detail === undefined
           ? null
           : packageSizeBytes(CORRIDOR_BACKGROUND_PACKAGE, id, 'standard', published),
+      // The raster's tiers are still priced from downloadDetail.ts, whose
+      // build is withdrawn (#855), so `offered` and "has a size" still agree
+      // here. Set from the level's existence rather than from the size so it
+      // keeps meaning the same thing as the hiking ladder's below.
+      offered: detail !== undefined,
       recommended: detail?.recommended ?? false,
     }
   })
@@ -118,14 +140,19 @@ export function rasterDetailOptions(
  * that level - the basemap cut plus the DEM - because that is the number a
  * hiker weighs against their storage, not one archive's share of it.
  *
- * A level comes back with a null size when it is not OFFERED - either the
- * ladder has a rung this sheet has no level for at all, or the level exists in
- * the catalog but its artifacts are not in the bucket yet (hikingDetail.ts's
- * `published`, the same 404-on-a-mountain rule packages.ts's `source: null`
- * enforces one level up). Light was the second case between #1088, which named
- * its artifacts, and #1107, which built them; all three rungs are priced today.
- * Either way an unoffered rung is still drawn, greyed, rather than left out -
- * see the header.
+ * A level comes back UNOFFERED when the ladder has a rung this sheet has no
+ * level for, or when the level exists in the catalog but its artifacts are not
+ * in the bucket yet (hikingDetail.ts's `published`, the same 404-on-a-mountain
+ * rule packages.ts's `source: null` enforces one level up). Light was the
+ * second case between #1088, which named its artifacts, and #1107, which built
+ * them. An unoffered rung is still drawn, greyed, rather than left out - see
+ * the header.
+ *
+ * It comes back OFFERED WITH A NULL SIZE when `latest.json` has not landed:
+ * since #1167 the manifest is the only thing that prices this sheet, so a
+ * phone that has never reached it knows which levels exist and not what they
+ * cost. That rung stays choosable - withholding the size is not withholding
+ * the map.
  */
 export function hikingDetailOptions(
   published: PublishedSizes = NO_PUBLISHED_SIZES,
@@ -138,6 +165,11 @@ export function hikingDetailOptions(
       label,
       sizeBytes:
         detail === undefined ? null : hikingSheetSizeBytes(detail.level, published),
+      // Offered because `offeredHikingDetails()` returned it - its artifacts
+      // are in the bucket. Whether the manifest has told this phone what they
+      // weigh is a separate question since #1167, and the two answers are no
+      // longer the same boolean.
+      offered: detail !== undefined,
       recommended: detail?.recommended ?? false,
     }
   })
@@ -157,6 +189,7 @@ export function noDetailOptions(): DetailOption[] {
     id,
     label,
     sizeBytes: null,
+    offered: false,
     recommended: false,
   }))
 }
@@ -198,7 +231,7 @@ export function DetailPicker({
       <legend className="detail-picker__legend">Map detail</legend>
 
       {options.map((option) => {
-        const offered = option.sizeBytes !== null
+        const offered = option.offered
         // Published, and larger than the phone says it can hold. Deliberately
         // not folded into `offered`: the two read differently to a hiker and the
         // rung says which.
@@ -230,7 +263,16 @@ export function DetailPicker({
             />
             <span className="detail-picker__name">{option.label}</span>
             <span className="detail-picker__size">
-              {option.sizeBytes === null ? 'Not offered' : formatBytes(option.sizeBytes)}
+              {/* Three answers, never two. An offered rung with no size is
+                  not "Not offered" - it is a level a hiker may take whose
+                  cost this phone has not been told yet, and saying the wrong
+                  one of those would either hide a real choice or invent a
+                  size (#1167). */}
+              {option.sizeBytes !== null
+                ? formatBytes(option.sizeBytes)
+                : offered
+                  ? 'Unknown offline'
+                  : 'Not offered'}
             </span>
             {noRoom && (
               // Names the phone, not the map, and stays beside the size rather

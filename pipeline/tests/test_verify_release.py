@@ -83,27 +83,21 @@ export const HIKING_DETAIL_LEVELS: HikingDetail[] = [
   {
     level: 'light',
     artifact: 'at_basemap_package_z12.pmtiles',
-    basemapSizeBytes: null,
     demArtifact: 'dem_light.pmtiles',
-    demSizeBytes: null,
     recommended: false,
     published: false,
   },
   {
     level: 'standard',
     artifact: 'at_basemap_package_z13.pmtiles',
-    basemapSizeBytes: 182_774_166,
     demArtifact: 'dem.pmtiles',
-    demSizeBytes: 275_601_483,
     recommended: true,
     published: true,
   },
   {
     level: 'fine',
     artifact: 'at_basemap_package.pmtiles',
-    basemapSizeBytes: 533_926_586,
     demArtifact: 'dem.pmtiles',
-    demSizeBytes: 275_601_483,
     recommended: false,
     published: true,
   },
@@ -340,17 +334,19 @@ class TestTheSheetHikersActuallyDownload:
         levels = verify_release.hiking_sheet_levels(HIKING_TS)
 
         assert [level["level"] for level in levels] == ["light", "standard", "fine"]
-        assert levels[1]["artifacts"] == {
-            "at_basemap_package_z13.pmtiles": 182_774_166,
-            "dem.pmtiles": 275_601_483,
-        }
-        # An unpublished level carries nulls rather than a projection, which is
-        # what hikingDetail.ts's `published` gate means.
+        # Artifacts and nothing else since #1167: the client stopped carrying
+        # sizes, so this reads the two keys per level and whether it is
+        # offered. What they weigh is latest.json's answer, and the app asks
+        # it there rather than being told here.
+        assert levels[1]["artifacts"] == (
+            "at_basemap_package_z13.pmtiles",
+            "dem.pmtiles",
+        )
         assert levels[0]["published"] is False
-        assert levels[0]["artifacts"] == {
-            "at_basemap_package_z12.pmtiles": None,
-            "dem_light.pmtiles": None,
-        }
+        assert levels[0]["artifacts"] == (
+            "at_basemap_package_z12.pmtiles",
+            "dem_light.pmtiles",
+        )
 
     def test_a_restructured_table_raises_rather_than_checking_fewer_artifacts(self):
         """The same failure `expected_client_keys` guards: a regex that stopped
@@ -616,13 +612,21 @@ class TestTheWholeRun:
         # advertises a size for - nine on the real contract.
         assert len(tier_reports) == 9
 
-        # And the same rule for the sheet hikers actually download (#1144):
-        # absent from this release, so every one of its artifacts is a NAMED
-        # skip on check 18 rather than a report that never existed.
+        # THE HIKING SHEET GETS NO CHECK-18 REPORT AT ALL, and that is #1167
+        # rather than a regression. #1144 added those five reports because the
+        # client advertised each artifact to the byte; it advertises nothing
+        # now, so there is no figure to weigh and a skip would be a report
+        # about a check that no longer applies to this sheet.
+        #
+        # Asserted as an absence, because the alternative to a real check here
+        # is silence and silence is what a stale expectation looks like.
         hiking = {key for level in verify_release.hiking_sheet_levels() for key in level["artifacts"]}
-        hiking_reports = [r for r in reports if r["check"] == 18 and r["key"] in hiking]
-        assert {r["key"] for r in hiking_reports} == hiking
-        assert {r["state"] for r in hiking_reports} == {SKIPPED}
+        assert [r for r in reports if r["check"] == 18 and r["key"] in hiking] == []
+
+        # What still protects a hiker is check 2, which asks whether the keys
+        # the app can request are in the release - a missing one is a 404 on a
+        # mountain, where a missing size is no risk at all.
+        assert {r["key"] for r in reports if r["check"] == 2} >= hiking
 
 
 # ---------------------------------------------------------------------------

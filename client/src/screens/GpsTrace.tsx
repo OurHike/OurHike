@@ -118,6 +118,37 @@ export function elapsedLabel(startedAt: number | null, now: Date): string {
   return `${minutes} minutes`
 }
 
+/**
+ * How long since the last reading, once that is long enough to be wrong.
+ *
+ * Null under the threshold, because at a 5.7 s cadence "12 seconds ago" is
+ * every glance at the screen and says nothing. THE REASON THIS EXISTS: on the
+ * third field walk the fixes stopped dead and the tester stood still for
+ * several more minutes beside a recording that had already ended. The count
+ * was on screen the whole time. A count that has stopped climbing and one that
+ * is climbing slowly look identical unless you were watching the digits.
+ *
+ * @unvalidated - 60 s is picked, not derived. It is about ten missed fixes at
+ * the one cadence anybody has measured (5.71 s median, one phone, 2026-08-29),
+ * which is long enough that a stall is real and short enough to catch inside a
+ * stationary block. What would settle it is a few more traces: the longest gap
+ * that turns out to be ordinary is the floor this should sit above.
+ */
+export const STALL_SECONDS = 60
+
+export function stalledLabel(
+  lastSampleAt: number | null,
+  now: Date,
+  recording: boolean,
+): string | null {
+  if (!recording || lastSampleAt === null) return null
+  const seconds = Math.floor((now.getTime() - lastSampleAt) / 1000)
+  if (seconds < STALL_SECONDS) return null
+  const minutes = Math.floor(seconds / 60)
+  const ago = minutes < 2 ? 'over a minute' : `${minutes} minutes`
+  return `Nothing has been recorded for ${ago}. The screen probably went dark — wake the phone and it starts again on its own. Nothing already recorded is lost.`
+}
+
 /** Grouped with a separator so a four-figure count stays readable at a
  *  glance on a phone held at arm's length. */
 const countLabel = (samples: number): string =>
@@ -249,6 +280,15 @@ export function GpsTraceSettings({
           {/* The reason there is nothing to show, when there is nothing to
               show. First among the notes because a tester reading "0 readings"
               needs this before anything about battery. */}
+          {/* Before the GPS trouble note: a stalled recording is a stronger
+              claim than "no signal right now", and on the third walk it was
+              the true one. */}
+          {stalledLabel(status.lastSampleAt, now, status.recording) !== null && (
+            <p className="settings__note settings__note--trouble">
+              {stalledLabel(status.lastSampleAt, now, status.recording)}
+            </p>
+          )}
+
           {recordingTrouble(gpsStatus, status.samples) !== null && (
             <p className="settings__note settings__note--trouble">
               {recordingTrouble(gpsStatus, status.samples)}
@@ -261,7 +301,7 @@ export function GpsTraceSettings({
           <p className="settings__note">
             {wakeLock === 'held'
               ? 'The screen is being kept awake, so the recording keeps running. Locking the phone yourself still pauses it until you unlock.'
-              : 'This phone will not let the screen stay awake, so the recording pauses every time the screen goes dark. Keep the screen on, or set the screen timeout as long as it will go.'}
+              : 'The screen is not being kept awake, so the recording pauses every time it goes dark — including while you stand still without touching it. Set the screen timeout as long as it will go, and tap the screen now and then.'}
           </p>
 
           <button type="button" className="settings__action" onClick={onStop}>

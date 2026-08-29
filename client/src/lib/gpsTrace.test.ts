@@ -54,6 +54,8 @@ function sampleAt(timestampMs: number): TraceSample {
     offTrailFt: 22,
     offTreadFt: 22,
     marker: null,
+    wakeLock: null,
+    visible: null,
   }
 }
 
@@ -315,7 +317,8 @@ describe('traceToCsv', () => {
   it('writes a header DuckDB can read without being told the schema', () => {
     expect(traceToCsv([]).trim()).toBe(
       'timestamp_ms,iso_time,lat,lon,accuracy_m,altitude_m,altitude_accuracy_m,' +
-        'speed_mps,heading_deg,mile,off_trail_ft,off_tread_ft,marker',
+        'speed_mps,heading_deg,mile,off_trail_ft,off_tread_ft,marker,' +
+        'wake_lock,page_visible',
     )
   })
 
@@ -332,7 +335,32 @@ describe('traceToCsv', () => {
 
   it('carries the marker into its own column', () => {
     const csv = traceToCsv([{ ...sampleAt(1_000), marker: 'stationary' }])
-    expect(csv.trim().split('\n')[1].endsWith(',stationary')).toBe(true)
+    expect(csv.trim().split('\n')[1].split(',')[12]).toBe('stationary')
+  })
+
+  it('records what the app knew about itself, so a silence is readable', () => {
+    // THE THIRD WALK'S UNANSWERED QUESTION. 272 seconds with no fix, in the
+    // middle of the stationary block the walk existed to collect, and three
+    // explanations the file could not tell apart. The fix either side of a
+    // gap now says whether the screen was being held and whether the page was
+    // even visible.
+    const csv = traceToCsv([{ ...sampleAt(1_000), wakeLock: 'released', visible: false }])
+    const cells = csv.trim().split('\n')[1].split(',')
+
+    expect(cells[13]).toBe('released')
+    expect(cells[14]).toBe('no')
+  })
+
+  it('writes an unknown condition as empty, never as a confident "no"', () => {
+    // Absent means unknown here as everywhere else: a sample recorded by a
+    // caller that could not answer must not read as a page that was hidden.
+    const cells = traceToCsv([sampleAt(1_000)])
+      .trim()
+      .split('\n')[1]
+      .split(',')
+
+    expect(cells[13]).toBe('')
+    expect(cells[14]).toBe('')
   })
 
   it('pairs the epoch with a readable time rather than replacing it', () => {

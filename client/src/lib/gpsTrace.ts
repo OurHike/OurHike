@@ -25,6 +25,18 @@
 // slow walk look alike in the very data whose ambiguity is the finding. So
 // the hiker says which, and every sample carries what they last said.
 //
+// A SILENCE IS A MEASUREMENT, AND IT USED TO BE UNREADABLE.
+//
+// The third field walk stopped dead for 272 seconds in the middle of the
+// stationary block it existed to collect - fixes arriving at a metronomic
+// 5.7 s, then nothing, then one. Three things produce that shape and the CSV
+// could tell none of them apart: the screen went dark, the hiker pocketed the
+// phone, or the platform stopped answering. So every sample now carries what
+// the app knew about itself when the fix arrived - whether the screen was
+// actually being held awake, and whether the page was visible at all. Neither
+// is about where anybody is; both are the difference between a gap that is
+// evidence and a gap that is a shrug.
+//
 // NOTHING HERE LEAVES THE PHONE. On-device storage, manual export, and no
 // caller anywhere may attach a trace to an app-failure report. A location
 // trace is the most sensitive thing this app could hold and
@@ -90,7 +102,28 @@ export interface TraceSample {
   offTrailFt: number | null
   offTreadFt: number | null
   marker: TraceMarker | null
+  /**
+   * Whether the screen was actually being held awake (lib/useWakeLock.ts).
+   *
+   * Recorded per sample rather than once per recording because it CHANGES
+   * mid-walk - a battery-saver threshold crossed at 20% withdraws the lock
+   * hours in - and the fix either side of a gap is the only place that shows.
+   */
+  wakeLock: WakeLockLabel | null
+  /**
+   * Whether the page was visible when the fix arrived.
+   *
+   * `watchPosition` keeps firing on a merely hidden page and stops on a
+   * suspended one, so a run of hidden-but-arriving fixes and a silence are
+   * different findings about #313's pocket behaviour, and this is what
+   * separates them.
+   */
+  visible: boolean | null
 }
+
+/** `WakeLockState` from lib/useWakeLock.ts, restated as a string so this
+ *  module stays free of the hook - it is written to a CSV, not switched on. */
+export type WakeLockLabel = string
 
 /** What the app made of a fix, or null when it could not place it at all.
  *  Structurally `TrailFix`, named separately so this module does not import
@@ -108,6 +141,15 @@ export interface TraceStatus {
   marker: TraceMarker | null
   /** Everything recorded so far, buffered and flushed together. */
   samples: number
+  /**
+   * The platform timestamp of the most recent fix, or null before the first.
+   *
+   * Here so the SCREEN can say how long it has been. A count that has stopped
+   * climbing is indistinguishable from one climbing slowly unless you watched
+   * it, and the third walk's tester stood still for several minutes next to a
+   * recording that had already stopped.
+   */
+  lastSampleAt: number | null
 }
 
 /** The IndexedDB surface this needs, injected so the suite can exercise the
@@ -161,6 +203,7 @@ interface PersistedState {
    *  onwards has not been. */
   chunks: number
   samples: number
+  lastSampleAt: number | null
 }
 
 const EMPTY: PersistedState = {
@@ -169,6 +212,7 @@ const EMPTY: PersistedState = {
   marker: null,
   chunks: 0,
   samples: 0,
+  lastSampleAt: null,
 }
 
 export interface GpsTrace {
@@ -196,6 +240,7 @@ function statusOf(state: PersistedState): TraceStatus {
     startedAt: state.startedAt,
     marker: state.marker,
     samples: state.samples,
+    lastSampleAt: state.lastSampleAt,
   }
 }
 
@@ -273,7 +318,11 @@ export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
       if (!state.recording) return statusOf(state)
 
       buffer.push({ ...sample, marker: state.marker })
-      state = { ...state, samples: state.samples + 1 }
+      state = {
+        ...state,
+        samples: state.samples + 1,
+        lastSampleAt: sample.timestampMs,
+      }
 
       if (buffer.length >= CHUNK_SAMPLES) {
         await flush()
@@ -319,9 +368,18 @@ export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
  * field dropped silently there would not show up until somebody opened the
  * CSV, by which time the walk is over.
  */
+/** What the app knew about itself when a fix arrived, as distinct from what
+ *  the fix said about the world. Optional so a caller with nothing to say
+ *  writes null rather than guessing. */
+export interface TraceConditions {
+  wakeLock?: WakeLockLabel | null
+  visible?: boolean | null
+}
+
 export function sampleFromPosition(
   position: GeolocationPosition,
   reading: TraceReading | null,
+  conditions: TraceConditions = {},
 ): TraceSample {
   const { coords } = position
   return {
@@ -340,6 +398,8 @@ export function sampleFromPosition(
     // owner for that value, so a caller cannot disagree with the recorder
     // about which minute a marker started.
     marker: null,
+    wakeLock: conditions.wakeLock ?? null,
+    visible: conditions.visible ?? null,
   }
 }
 
@@ -357,6 +417,11 @@ const CSV_COLUMNS = [
   'off_trail_ft',
   'off_tread_ft',
   'marker',
+  // What the app knew about ITSELF, so a gap in the rows above is readable.
+  // See the header: a 272-second silence with no answer for why cost the one
+  // stationary block the third walk was taken to collect.
+  'wake_lock',
+  'page_visible',
 ] as const
 
 /** Empty rather than a zero or the string "null": absent means unknown here
@@ -395,6 +460,8 @@ export function traceToCsv(samples: TraceSample[]): string {
       cell(sample.offTrailFt),
       cell(sample.offTreadFt),
       cell(sample.marker),
+      cell(sample.wakeLock),
+      cell(sample.visible === null ? null : sample.visible ? 'yes' : 'no'),
     ].join(','),
   )
 

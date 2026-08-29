@@ -52,6 +52,7 @@ const IDLE: TraceStatus = {
   startedAt: null,
   marker: null,
   samples: 0,
+  lastSampleAt: null,
 }
 
 /**
@@ -104,6 +105,11 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     void trace.resume().then(setStatus)
   }, [trace])
 
+  // Above `onFix` rather than below it, because every sample now carries this:
+  // a gap in the trace is only readable if the fixes either side of it say
+  // whether the screen was being held. See lib/gpsTrace.ts's header.
+  const wakeLock = useWakeLock(status.recording)
+
   const onFix = useCallback(
     (position: GeolocationPosition) => {
       // Not gated on `status.recording`: this closure is held in a ref by
@@ -121,15 +127,19 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
             ? 'off-corridor'
             : 'recorded',
       )
-      void trace.record(sampleFromPosition(position, reading)).then(setStatus)
+      void trace
+        .record(
+          sampleFromPosition(position, reading, {
+            wakeLock,
+            // Read at the moment the fix lands, not from a listener: this is
+            // the state that actually applied to THIS sample.
+            visible: typeof document === 'undefined' ? null : !document.hidden,
+          }),
+        )
+        .then(setStatus)
     },
-    [trace, trailIndex],
+    [trace, trailIndex, wakeLock],
   )
-
-  // Only while recording. See lib/useWakeLock.ts for what this does and does
-  // not buy - it stops the screen sleeping on its own, and does not survive
-  // the power button.
-  const wakeLock = useWakeLock(status.recording)
 
   const onExport = useCallback(() => {
     void trace

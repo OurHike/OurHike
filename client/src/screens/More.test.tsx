@@ -608,7 +608,13 @@ describe('taking your data, or leaving (#895)', () => {
 
 describe('the GPS trace section on Safety & privacy', () => {
   const TRACE = {
-    status: { recording: false, startedAt: null, marker: null, samples: 0 },
+    status: {
+      recording: false,
+      startedAt: null,
+      marker: null,
+      samples: 0,
+      lastSampleAt: null,
+    },
     onStart: vi.fn(),
     onStop: vi.fn(),
     onMark: vi.fn(),

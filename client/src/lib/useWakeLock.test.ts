@@ -10,15 +10,29 @@ import { useWakeLock } from './useWakeLock'
 function stubWakeLock(behaviour: 'grants' | 'refuses' | 'missing' = 'grants') {
   const release = vi.fn(() => Promise.resolve())
 
+  // An EventTarget, because a real sentinel is one and the platform taking
+  // the lock back is an event on it - the case the third field walk could
+  // not rule out and this double previously could not express.
+  const sentinel = Object.assign(new EventTarget(), { release })
+
   const request = vi.fn(() =>
     behaviour === 'refuses'
       ? Promise.reject(new Error('policy'))
-      : Promise.resolve({ release } as unknown as WakeLockSentinel),
+      : Promise.resolve(sentinel as unknown as WakeLockSentinel),
   )
 
   vi.stubGlobal('navigator', behaviour === 'missing' ? {} : { wakeLock: { request } })
 
-  return { request, release }
+  return {
+    request,
+    release,
+    /** The platform withdrawing the lock, as it does on a battery-saver
+     *  threshold crossed mid-walk. */
+    withdraw: () =>
+      act(() => {
+        sentinel.dispatchEvent(new Event('release'))
+      }),
+  }
 }
 
 /** Hide or show the tab, the way a browser reports it. */
@@ -53,6 +67,22 @@ describe('useWakeLock', () => {
 
     await waitFor(() => expect(result.current).toBe('held'))
     expect(request).toHaveBeenCalledWith('screen')
+  })
+
+  it('stops saying held once the platform takes the lock back', async () => {
+    // THE THIRD WALK'S UNANSWERED QUESTION. Fixes stopped dead 45 seconds
+    // after the last screen tap while the hiker stood still on purpose. The
+    // hook set 'held' once and never took it back, so the screen could have
+    // been promising a lock that was already gone - and the trace recorded
+    // nothing either way. Both halves are fixed; this is the first.
+    const { withdraw } = stubWakeLock()
+
+    const { result } = renderHook(() => useWakeLock(true))
+    await waitFor(() => expect(result.current).toBe('held'))
+
+    withdraw()
+
+    await waitFor(() => expect(result.current).toBe('released'))
   })
 
   it('says so when the browser has no wake lock at all', () => {

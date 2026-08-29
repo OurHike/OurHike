@@ -5,6 +5,7 @@ import {
   GpsTraceSettings,
   elapsedLabel,
   recordingTrouble,
+  stalledLabel,
   trailFixNote,
 } from './GpsTrace'
 import type { TraceStatus } from '../lib/gpsTrace'
@@ -19,6 +20,7 @@ const IDLE: TraceStatus = {
   startedAt: null,
   marker: null,
   samples: 0,
+  lastSampleAt: null,
 }
 
 afterEach(() => {
@@ -152,13 +154,41 @@ describe('GpsTraceSettings', () => {
       { wakeLock: 'unsupported' },
     )
 
-    expect(screen.getByText(/will not let the screen stay awake/i)).toBeInTheDocument()
+    expect(screen.getByText(/the screen is not being kept awake/i)).toHaveTextContent(
+      /while you stand still without touching it/i,
+    )
   })
 
   it('says the same when the browser refuses on low battery', async () => {
     renderSection({ recording: true, startedAt: 0, samples: 12 }, { wakeLock: 'refused' })
 
-    expect(screen.getByText(/will not let the screen stay awake/i)).toBeInTheDocument()
+    expect(screen.getByText(/the screen is not being kept awake/i)).toBeInTheDocument()
+  })
+
+  it('says the same when the platform takes the lock back mid-walk', async () => {
+    // A lock granted at the trailhead and withdrawn at 20% battery leaves the
+    // screen sleeping just as surely as one never granted. Anything that is
+    // not 'held' has to read the same, or a new state added later quietly
+    // starts promising again.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { wakeLock: 'released' },
+    )
+
+    expect(screen.getByText(/the screen is not being kept awake/i)).toBeInTheDocument()
+  })
+
+  it('names standing still, because that is when a dark screen is missed', async () => {
+    // REPORTED FROM THE THIRD WALK. The old sentence said the recording
+    // "pauses every time the screen goes dark", which reads as being about
+    // pocketing the phone. The case that actually cost the walk was standing
+    // still holding it - not touching it for 45 seconds was enough.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { wakeLock: 'unsupported' },
+    )
+
+    expect(screen.getByText(/stand still without touching it/i)).toBeInTheDocument()
   })
 
   it('says why a recording is empty rather than showing a bare zero', async () => {
@@ -219,6 +249,56 @@ describe('GpsTraceSettings', () => {
     // A boolean here would be the empty column all over again: same blank, and
     // one is fixed by a download and the other only by walking somewhere else.
     expect(trailFixNote('no-trail-data')).not.toBe(trailFixNote('off-corridor'))
+  })
+
+  it('says a recording has stalled, which no count could', async () => {
+    // THE THIRD WALK'S DEFECT. Fixes stopped and the tester stood still for
+    // several more minutes beside a recording that had already ended - the
+    // count was on screen the whole time, and a count that has stopped
+    // climbing looks exactly like one climbing slowly.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 136, lastSampleAt: 0 },
+      { now: new Date(272_000) },
+    )
+
+    expect(
+      screen.getByText(/nothing has been recorded for 4 minutes/i),
+    ).toBeInTheDocument()
+  })
+
+  it('tells the tester what to do about a stall, not just that there is one', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 136, lastSampleAt: 0 },
+      { now: new Date(272_000) },
+    )
+
+    expect(screen.getByText(/wake the phone/i)).toHaveTextContent(
+      /nothing already recorded is lost/i,
+    )
+  })
+
+  it('stays quiet about a stall at the ordinary fix cadence', async () => {
+    // Measured median interval is 5.71 s. A warning that fires between fixes
+    // is a warning nobody reads by the second hour.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 136, lastSampleAt: 0 },
+      { now: new Date(12_000) },
+    )
+
+    expect(screen.queryByText(/nothing has been recorded for/i)).not.toBeInTheDocument()
+  })
+
+  it('says nothing about a stall once the recording is stopped', async () => {
+    // A finished trace is not stalled, and every saved trace would trip a
+    // naive age check the moment it was stopped.
+    renderSection(
+      { recording: false, samples: 136, startedAt: 0, lastSampleAt: 0 },
+      {
+        now: new Date(600_000),
+      },
+    )
+
+    expect(screen.queryByText(/nothing has been recorded for/i)).not.toBeInTheDocument()
   })
 
   it('stops when asked', async () => {
@@ -315,6 +395,32 @@ describe('recordingTrouble', () => {
     // collecting nothing NOW, which is what the tester needs to know.
     expect(recordingTrouble('denied', 400)).not.toBeNull()
     expect(recordingTrouble('unavailable', 400)).not.toBeNull()
+  })
+})
+
+describe('stalledLabel', () => {
+  const NOW = new Date(1_000_000)
+  const secondsAgo = (s: number) => NOW.getTime() - s * 1000
+
+  it('says nothing before the first reading', () => {
+    expect(stalledLabel(null, NOW, true)).toBeNull()
+  })
+
+  it('says nothing at the ordinary cadence', () => {
+    expect(stalledLabel(secondsAgo(6), NOW, true)).toBeNull()
+    expect(stalledLabel(secondsAgo(59), NOW, true)).toBeNull()
+  })
+
+  it('speaks up once a stall is real', () => {
+    expect(stalledLabel(secondsAgo(60), NOW, true)).toMatch(/over a minute/i)
+  })
+
+  it('counts whole minutes past that', () => {
+    expect(stalledLabel(secondsAgo(272), NOW, true)).toMatch(/4 minutes/)
+  })
+
+  it('says nothing when nothing is recording', () => {
+    expect(stalledLabel(secondsAgo(600), NOW, false)).toBeNull()
   })
 })
 

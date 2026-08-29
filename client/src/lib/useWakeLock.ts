@@ -22,6 +22,25 @@
 // to sleep anyway needs to know that before the walk rather than after it.
 // Reporting 'held' when nothing was held would be the same lie in a smaller
 // font.
+//
+// AND IT IS WITHDRAWN WHEN THE PLATFORM WITHDRAWS IT.
+//
+// A `WakeLockSentinel` is not a permanent grant. The platform fires `release`
+// on it and drops the lock - on a battery-saver threshold crossed mid-walk, on
+// the page hiding, on its own policy - and the first version of this hook
+// listened for none of that. It set 'held' once and never took it back, so the
+// screen could go on saying "the screen is being kept awake" for the rest of a
+// walk during which nothing was held.
+//
+// That is the same failure as the pocket sentence this hook was written to
+// repair, one layer down, and the third field walk is why it is being fixed
+// now: 136 fixes arrived at a metronomic 5.7 s and then stopped dead for 272
+// seconds, 45 seconds after the last screen tap, while the hiker stood still
+// on purpose to collect exactly that stretch. A clean cliff at a steady
+// cadence is a page that stopped being run, not a GPS that stopped answering.
+// Whether the lock was refused, released, or never asked for is the question
+// the trace could not answer, and this state - recorded per sample by
+// lib/gpsTrace.ts - is half of the answer.
 
 import { useEffect, useState } from 'react'
 
@@ -34,6 +53,15 @@ export type WakeLockState =
   | 'unsupported'
   /** Asked for and refused - a battery-saver policy, usually. */
   | 'refused'
+  /**
+   * Held, and then taken back by the platform.
+   *
+   * A separate state from 'refused' because it says something different
+   * happened, and from 'held' because the screen must stop promising. Every
+   * consumer treats anything that is not 'held' as "this screen will sleep",
+   * so a new member needs no branch anywhere to be handled safely.
+   */
+  | 'released'
 
 export function useWakeLock(active: boolean): WakeLockState {
   const [state, setState] = useState<WakeLockState>('off')
@@ -64,6 +92,21 @@ export function useWakeLock(active: boolean): WakeLockState {
         }
         sentinel = held
         setState('held')
+        // The platform can take it back at any time. Without this the state
+        // stays 'held' forever and the screen keeps promising a lock that is
+        // gone - see the header. `once` because a fresh sentinel arrives with
+        // its own listener from the next `acquire`.
+        // Guarded: a real WakeLockSentinel is an EventTarget, but a sentinel
+        // that is not must not cost the lock we actually hold - falling into
+        // the catch below would report 'refused' for a granted request, which
+        // is a worse lie than missing the release.
+        held.addEventListener?.(
+          'release',
+          () => {
+            if (!cancelled && sentinel === held) setState('released')
+          },
+          { once: true },
+        )
       } catch {
         // Refusal is a normal answer, not an error to surface as a crash: a
         // phone under 20% battery declines this on several platforms.

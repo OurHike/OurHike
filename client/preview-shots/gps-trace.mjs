@@ -37,8 +37,9 @@
 // preview IS a browser, and it is where every field test so far has happened.
 export const caption =
   'Record a GPS trace, before anything is running — the battery cost, what a locked phone does to it, the on-device promise, and the screen-off switch with its warning that the two watches measure differently, all said before the button (#1180, #1182)'
+
 export const alt =
-  'The Safety & privacy settings page: a "Use my location" switch turned on, and below it a "Record a GPS trace" section with a Start recording button, a note saying it keeps the screen from going dark and will use a lot more battery because the screen is most of that, a note saying that locking the phone yourself pauses recording until you unlock it and nothing already recorded is lost, a note saying the recording stays on this phone and is never uploaded or attached to a problem report, and a "Keep recording with the screen off" checkbox with a note saying it uses far less battery, that the phone shows a notice the whole time, and that the readings it takes are measured slightly differently from the browser\u2019s so the saved file records which is which — followed, in a browser, by a line saying this only works in the installed app'
+  'The Safety & privacy settings page, scrolled down to the "Record a GPS trace" section below its location and closures rows: a Start recording button, a note saying it writes down where your phone thinks you are several times a minute and keeps the screen from going dark so it can, and that it will use a lot more battery than usual because the screen is most of that, a note saying that locking the phone yourself pauses recording until you unlock it and nothing already recorded is lost, a note saying the recording stays on this phone and is never uploaded or attached to a problem report, and an unchecked "Keep recording with the screen off" switch with a note saying it uses far less battery, that the phone shows a notice the whole time it runs, and that the readings it takes are measured slightly differently from the browser\u2019s so the saved file records which is which'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'More' }).click()
@@ -52,10 +53,33 @@ export default async function drive(page) {
   if (!(await useMyLocation.isChecked())) await useMyLocation.check()
 
   await page.getByRole('heading', { name: 'Record a GPS trace' }).waitFor()
+
   // Waited on rather than assumed: if the switch stops rendering, this recipe
-  // should fail loudly rather than publish a photograph of its absence with a
-  // caption describing it.
+  // should fail loudly rather than publish a photograph of its absence under a
+  // caption describing it. `scrollIntoViewIfNeeded` waits as well as scrolls,
+  // so this is the settle and the framing at once (downloads-window.mjs and
+  // legend.mjs use it the same way).
+  const screenOff = page.getByRole('checkbox', {
+    name: /keep recording with the screen off/i,
+  })
+  await screenOff.waitFor()
+
+  // SCROLLED SO THE NOTE UNDER THE SWITCH FINISHES ITS SENTENCE, which is a
+  // correction rather than a preference. The published frame at 43a14fc4 cut
+  // it mid-word at the fold - "the saved file records which is" - while the
+  // alt text described a further line that was not in the picture at all. An
+  // alt text that outruns its image is the same failure as a display
+  // outrunning its source, committed in the one text a reader who cannot see
+  // the image depends on entirely.
+  //
+  // Verified by running this recipe locally (`node scripts/screenshot.mjs`,
+  // 2026-08-29) rather than guessed at a second time: the page is short
+  // enough that this scrolls only about 76px, and that is exactly enough to
+  // finish the note. The section does NOT fill the frame and the alt text
+  // does not claim it does - the location and closures rows are still above
+  // it, which is honest and is how a tester meets the page anyway.
   await page
-    .getByRole('checkbox', { name: /keep recording with the screen off/i })
-    .waitFor()
+    .getByRole('heading', { name: 'Record a GPS trace' })
+    .evaluate((node) => node.scrollIntoView({ block: 'start' }))
+  await screenOff.scrollIntoViewIfNeeded()
 }

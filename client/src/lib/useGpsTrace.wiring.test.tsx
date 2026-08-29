@@ -72,6 +72,18 @@ function useRecorderAndWatch(
   return { gpsTrace, gps }
 }
 
+// The native watch is never available in jsdom, which is the correct answer
+// and the one every field test on the PR preview also gets. What is asserted
+// here is that the recorder does not fall over reaching for it, and that a
+// browser reports `not-native` rather than a failure.
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => false },
+  registerPlugin: () => ({
+    addWatcher: () => Promise.reject(new Error('web')),
+    removeWatcher: () => Promise.resolve(),
+  }),
+}))
+
 afterEach(async () => {
   cleanup()
   vi.unstubAllGlobals()
@@ -200,6 +212,44 @@ describe('the recorder wired to the watch, as App.tsx joins them', () => {
     // Far west of it, which is where the first real trace was taken.
     reportFix(-74.187, 41.735, 23, 2_000)
     await waitFor(() => expect(result.current.gpsTrace.trailFix).toBe('off-corridor'))
+  })
+
+  it('calls a browser not-native rather than failed, once asked for', async () => {
+    // The PR preview is a browser. `failed` there would read as a defect in
+    // the app rather than as the platform saying no.
+    stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      result.current.gpsTrace.onBackgroundChange(true)
+    })
+
+    await waitFor(() => expect(result.current.gpsTrace.background).toBe('not-native'))
+  })
+
+  it('leaves the background watch off until it is asked for', async () => {
+    stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    expect(result.current.gpsTrace.background).toBe('off')
+    expect(result.current.gpsTrace.backgroundWanted).toBe(false)
+  })
+
+  it('keeps recording from the web watch while the native one is unavailable', async () => {
+    // The failure worth guarding: asking for background recording on a phone
+    // that cannot do it must not cost the fixes that WERE arriving.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+      result.current.gpsTrace.onBackgroundChange(true)
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+
+    reportFix(-74.187, 41.735, 23, 1_000)
+
+    await waitFor(() => expect(result.current.gpsTrace.status.samples).toBe(1))
   })
 
   it('does not re-register the watch when a recording starts', async () => {

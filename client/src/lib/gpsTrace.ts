@@ -37,6 +37,20 @@
 // is about where anybody is; both are the difference between a gap that is
 // evidence and a gap that is a shrug.
 //
+// TWO SOURCES CAN FEED THIS, AND THEY DO NOT MEAN THE SAME THING (#1182).
+//
+// The web watch (`navigator.geolocation`) cannot record through a dark screen,
+// so the native shells got a background-geolocation plugin
+// (lib/backgroundGeolocation.ts). Its `accuracy` is a **68%** radius; the web
+// API's is **95%**. Same units, same name, and about a 1.62x factor between
+// them - so an identical phone in an identical spot reports a number roughly
+// 40% smaller through the plugin.
+//
+// Nothing here converts, and every sample says which convention it was
+// measured under. A single `accuracy_m` column holding both would make every
+// threshold derived from a mixed trace wrong in the OPTIMISTIC direction,
+// which is the one direction this app is not allowed to be wrong in.
+//
 // NOTHING HERE LEAVES THE PHONE. On-device storage, manual export, and no
 // caller anywhere may attach a trace to an app-failure report. A location
 // trace is the most sensitive thing this app could hold and
@@ -44,6 +58,7 @@
 // nothing produced one. See #1180 for the boundary as agreed.
 
 import { get, set, del } from 'idb-keyval'
+import type { NativeFix } from './backgroundGeolocation'
 
 /**
  * What the hiker says they are doing, stamped onto every sample until they
@@ -109,6 +124,23 @@ export interface TraceSample {
    * mid-walk - a battery-saver threshold crossed at 20% withdraws the lock
    * hours in - and the fix either side of a gap is the only place that shows.
    */
+  fixSource: FixSource
+  /**
+   * The confidence the accuracy radius is stated at, as a percentage.
+   *
+   * 95 from `navigator.geolocation` (the W3C definition), 68 from the
+   * background plugin (its own definition). Carried because the two are not
+   * comparable and nothing downstream could otherwise tell.
+   */
+  accuracyConfidence: 68 | 95
+  /**
+   * The platform says this was mock-location software rather than GNSS.
+   *
+   * Null where the source cannot answer - the web API has no such field, so a
+   * web fix says "unknown", never "real". Absent means unknown here as
+   * everywhere else in this file.
+   */
+  simulated: boolean | null
   wakeLock: WakeLockLabel | null
   /**
    * Whether the page was visible when the fix arrived.
@@ -124,6 +156,10 @@ export interface TraceSample {
 /** `WakeLockState` from lib/useWakeLock.ts, restated as a string so this
  *  module stays free of the hook - it is written to a CSV, not switched on. */
 export type WakeLockLabel = string
+
+/** Which watch a sample came from. `web` is `navigator.geolocation`; `native`
+ *  is the background plugin in a Capacitor shell (#1182). */
+export type FixSource = 'web' | 'native'
 
 /** What the app made of a fix, or null when it could not place it at all.
  *  Structurally `TrailFix`, named separately so this module does not import
@@ -400,6 +436,47 @@ export function sampleFromPosition(
     marker: null,
     wakeLock: conditions.wakeLock ?? null,
     visible: conditions.visible ?? null,
+    fixSource: 'web',
+    // The W3C definition, and written down rather than assumed: the other
+    // source states 68 and nothing but this column separates them.
+    accuracyConfidence: 95,
+    // The web API has no mock-location field. Unknown, never "real".
+    simulated: null,
+  }
+}
+
+/**
+ * The same sample, from the native background watch (#1182).
+ *
+ * A separate constructor rather than a flag on the one above, because the two
+ * differ in the field that matters most: the accuracy radius means a different
+ * thing. A caller cannot reach for the wrong one by forgetting an argument.
+ */
+export function sampleFromNativeFix(
+  fix: NativeFix,
+  reading: TraceReading | null,
+  conditions: TraceConditions = {},
+): TraceSample {
+  return {
+    timestampMs: fix.timestampMs,
+    lat: fix.lat,
+    lon: fix.lon,
+    accuracyM: fix.accuracyM,
+    altitudeM: fix.altitudeM,
+    altitudeAccuracyM: fix.altitudeAccuracyM,
+    speedMps: fix.speedMps,
+    headingDeg: fix.headingDeg,
+    mile: reading === null ? null : reading.mile,
+    offTrailFt: reading === null ? null : reading.offTrailFeet,
+    offTreadFt: reading === null ? null : reading.offTreadFeet,
+    marker: null,
+    wakeLock: conditions.wakeLock ?? null,
+    visible: conditions.visible ?? null,
+    fixSource: 'native',
+    // The plugin's own definitions file: "radius of horizontal uncertainty in
+    // metres, with 68% confidence". Not converted - see the header.
+    accuracyConfidence: 68,
+    simulated: fix.simulated,
   }
 }
 
@@ -422,6 +499,13 @@ const CSV_COLUMNS = [
   // stationary block the third walk was taken to collect.
   'wake_lock',
   'page_visible',
+  // WHICH WATCH, AND WHAT ITS RADIUS MEANS. `accuracy_m` is not comparable
+  // across these two - 95% from the web API, 68% from the background plugin,
+  // about 1.62x apart - so any analysis that groups rows must group by these
+  // first. `simulated` is empty for a web fix, which has no such field.
+  'fix_source',
+  'accuracy_confidence',
+  'simulated',
 ] as const
 
 /** Empty rather than a zero or the string "null": absent means unknown here
@@ -462,6 +546,9 @@ export function traceToCsv(samples: TraceSample[]): string {
       cell(sample.marker),
       cell(sample.wakeLock),
       cell(sample.visible === null ? null : sample.visible ? 'yes' : 'no'),
+      cell(sample.fixSource),
+      cell(sample.accuracyConfidence),
+      cell(sample.simulated === null ? null : sample.simulated ? 'yes' : 'no'),
     ].join(','),
   )
 

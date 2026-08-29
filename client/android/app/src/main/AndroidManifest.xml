@@ -44,8 +44,43 @@
          location"). No background-location permission: nothing in the app
          asks for fixes while it is hidden - the app-level watch
          (useGeolocation.ts) pauses itself, and a backgrounded WebView gets
-         no JS time for MapLibre's own watch either - and the shell does not
-         change that. -->
+         no JS time for MapLibre's own watch either. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- BACKGROUND RECORDING, AND ONLY FOR THE GPS TRACE RECORDER (#1182).
+
+         The paragraph above used to end "No background-location permission:
+         nothing in the app asks for fixes while it is hidden ... and the
+         shell does not change that." That is no longer true and the sentence
+         has been removed rather than left to rot beside its contradiction.
+
+         What changed: the trace recorder that #106's field walk depends on
+         stopped mid-walk because a web app cannot record through a dark
+         screen - navigator.geolocation is exposed on Window only, so no
+         service worker can hold a watch, and a locked screen freezes the
+         page. TECHNICAL_ARCHITECTURE.md's "Known trade-off" anticipated
+         exactly this and named the remedy.
+
+         WHAT IS STILL TRUE: the app itself asks for nothing while hidden.
+         useGeolocation.ts still pauses on hidden, MapLibre's own watch still
+         gets no JS time, and the blue dot and the mile readout are still the
+         web API. These permissions are reached by ONE feature, which a tester
+         turns on deliberately, which ships off, and which shows a permanent
+         notification the whole time it runs.
+
+         ACCESS_BACKGROUND_LOCATION cannot be granted by an in-app prompt on
+         Android 10+ - the person has to open settings and choose "Allow all
+         the time" - so the recorder reports the refusal rather than looping
+         on a request that can never succeed.
+
+         FOREGROUND_SERVICE_LOCATION is required from Android 14 (API 34), and
+         POST_NOTIFICATIONS from Android 13 (API 33) for the service's own
+         notice to appear at all. Without the latter the service still runs
+         and the person is told nothing, which is the wrong way round for a
+         thing recording where they are. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   GpsTraceSettings,
+  backgroundNote,
   elapsedLabel,
   recordingTrouble,
   stalledLabel,
@@ -301,6 +302,74 @@ describe('GpsTraceSettings', () => {
     expect(screen.queryByText(/nothing has been recorded for/i)).not.toBeInTheDocument()
   })
 
+  it('offers the screen-off switch before the walk, not during it', async () => {
+    // A decision about the walk: flipped mid-recording it would leave half
+    // the trace measuring one watch and half the other.
+    const onBackgroundChange = vi.fn()
+    renderSection({}, { onBackgroundChange })
+
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /keep recording with the screen off/i }),
+    )
+
+    expect(onBackgroundChange).toHaveBeenCalledWith(true)
+  })
+
+  it('warns that the two watches measure differently, before anything is on', async () => {
+    // The 68% vs 95% trap, in words a volunteer can act on. Said before the
+    // switch is flipped, because afterwards it is a caveat on a file.
+    renderSection({}, { onBackgroundChange: vi.fn() })
+
+    expect(screen.getByText(/measured slightly differently/i)).toHaveTextContent(
+      /records which is which/i,
+    )
+  })
+
+  it('does not offer the switch at all when the shell cannot do it', async () => {
+    renderSection()
+
+    expect(
+      screen.queryByRole('checkbox', { name: /keep recording with the screen off/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('says a browser cannot do this without calling it broken', async () => {
+    // The PR preview IS a browser, and it is where every field test so far
+    // has happened. Telling a tester the app is broken when they are simply
+    // on the preview link is how a tester stops reading this screen.
+    renderSection(
+      {},
+      { onBackgroundChange: vi.fn(), backgroundWanted: true, background: 'not-native' },
+    )
+
+    expect(screen.getByText(/only works in the installed app/i)).toBeInTheDocument()
+  })
+
+  it('shows whether a screen-off recording actually took', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { backgroundWanted: true, background: 'on' },
+    )
+
+    expect(screen.getByText('Screen off')).toBeInTheDocument()
+    expect(screen.getByText('still recording')).toBeInTheDocument()
+  })
+
+  it('says the recording will pause when the switch is on but the watch is not', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { backgroundWanted: true, background: 'not-authorized' },
+    )
+
+    expect(screen.getByText('recording pauses')).toBeInTheDocument()
+  })
+
+  it('says nothing about screen-off recording when it was never asked for', async () => {
+    renderSection({ recording: true, startedAt: 0, samples: 12 })
+
+    expect(screen.queryByText('Screen off')).not.toBeInTheDocument()
+  })
+
   it('stops when asked', async () => {
     const props = renderSection({ recording: true, startedAt: 0, samples: 12 })
 
@@ -395,6 +464,38 @@ describe('recordingTrouble', () => {
     // collecting nothing NOW, which is what the tester needs to know.
     expect(recordingTrouble('denied', 400)).not.toBeNull()
     expect(recordingTrouble('unavailable', 400)).not.toBeNull()
+  })
+})
+
+describe('backgroundNote', () => {
+  it('says nothing while it is off or working', () => {
+    expect(backgroundNote('off')).toBeNull()
+    expect(backgroundNote('on')).toBeNull()
+  })
+
+  it('calls a browser a browser rather than a failure', () => {
+    expect(backgroundNote('not-native')).toMatch(/only works in the installed app/i)
+    expect(backgroundNote('not-native')).not.toMatch(/error|failed|broken/i)
+  })
+
+  it('names the settings screen, because the app genuinely cannot ask', () => {
+    // ACCESS_BACKGROUND_LOCATION cannot be granted from an in-app prompt on
+    // Android 10+. A note saying "grant permission" would send a tester
+    // looking for a dialog that will never appear.
+    expect(backgroundNote('not-authorized')).toMatch(/allow all the time/i)
+    expect(backgroundNote('not-authorized')).toMatch(/own settings/i)
+  })
+
+  it('admits it does not know, rather than inventing a cause', () => {
+    expect(backgroundNote('failed')).toMatch(/did not say why/i)
+  })
+
+  it('says what still works in every failing case', () => {
+    // None of these stop the recording. A note that read as total failure
+    // would send a tester home mid-walk.
+    for (const state of ['not-native', 'not-authorized', 'failed'] as const) {
+      expect(backgroundNote(state)).toMatch(/still runs while the screen is on/i)
+    }
   })
 })
 

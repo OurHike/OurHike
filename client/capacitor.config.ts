@@ -46,6 +46,36 @@ const config: CapacitorConfig = {
   // its own ink, which is the cheaper half of a static value; white would
   // be wrong in both.
   backgroundColor: '#f7f3e9',
+  android: {
+    /**
+     * REQUIRED BY THE BACKGROUND-GEOLOCATION PLUGIN, and a real trade.
+     *
+     * Without it, `@capacitor-community/background-geolocation` stops
+     * delivering location about five minutes after the app goes to the
+     * background - its README says so, pointing at its own issue #89. Five
+     * minutes is shorter than every walk #1182 exists to record, so the
+     * plugin without this flag would fail in exactly the way that looks like
+     * success on a short test.
+     *
+     * What it costs: the legacy bridge serves the WebView from
+     * `http://localhost` rather than `https://localhost`. That is a
+     * NON-SECURE origin, and the header above notes that Android is the shell
+     * where service workers exist. `'serviceWorker' in navigator` is false on
+     * a non-secure origin, so the Android shell now behaves like the iOS one -
+     * the vite-plugin-pwa registration is a no-op and lib/useAppUpdate.ts with
+     * it. Both were already guarded for iOS and both are already redundant in
+     * a shell that ships its assets in the binary, which is why this is
+     * acceptable rather than merely survivable.
+     *
+     * @unvalidated - no device build has been run since this was set. The
+     * scheme change is read off Capacitor's documented behaviour for
+     * `useLegacyBridge`, not observed here, and IndexedDB being keyed by
+     * origin means an existing install's downloaded archive may not be
+     * visible under the new scheme. What would settle it: install over a
+     * previous build and see whether the trail data is still there.
+     */
+    useLegacyBridge: true,
+  },
 }
 
 export default config

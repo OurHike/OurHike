@@ -42,7 +42,7 @@
 import { useState } from 'react'
 import type { TraceMarker, TraceStatus } from '../lib/gpsTrace'
 import type { WakeLockState } from '../lib/useWakeLock'
-import type { TrailFix } from '../lib/useGpsTrace'
+import type { BackgroundState, TrailFix } from '../lib/useGpsTrace'
 import type { GeolocationState } from '../lib/useGeolocation'
 
 export interface GpsTraceSettingsProps {
@@ -83,6 +83,12 @@ export interface GpsTraceSettingsProps {
    * they are still outside, which is why this is here and not in the export.
    */
   trailFix?: TrailFix
+  /** Whether fixes survive a dark screen, and if not why (#1182). */
+  background?: BackgroundState
+  /** Whether the tester has asked for it. Separate from `background` because
+   *  a switch that is on and not working must still read as on. */
+  backgroundWanted?: boolean
+  onBackgroundChange?: (wanted: boolean) => void
   /** Injected so the elapsed reading can be asserted against a fixed clock -
    *  the real one would make every assertion about when the test ran. */
   now?: Date
@@ -194,6 +200,31 @@ export function trailFixNote(trailFix: TrailFix): string | null {
   return null
 }
 
+/**
+ * What the background switch is actually doing (#1182).
+ *
+ * Null while it is off and while it is working - the switch itself says the
+ * first and the reading count says the second, and a caveat on every state
+ * reads like a caveat on none.
+ *
+ * `not-native` is deliberately not phrased as a failure. It is the ordinary
+ * answer in a browser, which is where every field test so far has happened,
+ * and telling a tester the app is broken when they are simply on the preview
+ * link is how a tester stops reading this screen.
+ */
+export function backgroundNote(background: BackgroundState): string | null {
+  if (background === 'not-native') {
+    return 'This only works in the installed app, not in a web browser. The recording still runs while the screen is on.'
+  }
+  if (background === 'not-authorized') {
+    return 'Android needs location set to "Allow all the time" for this, and that can only be changed in the phone\u2019s own settings — the app cannot ask for it. The recording still runs while the screen is on.'
+  }
+  if (background === 'failed') {
+    return 'Recording with the screen off did not start, and the phone did not say why. The recording still runs while the screen is on.'
+  }
+  return null
+}
+
 export function recordingTrouble(
   gpsStatus: GeolocationState['status'],
   samples: number,
@@ -223,6 +254,9 @@ export function GpsTraceSettings({
   wakeLock = 'off',
   gpsStatus = 'located',
   trailFix = 'waiting',
+  background = 'off',
+  backgroundWanted = false,
+  onBackgroundChange,
   now = new Date(),
 }: GpsTraceSettingsProps) {
   // Two presses to delete, like AccountDataSettings' own destructive path.
@@ -251,6 +285,19 @@ export function GpsTraceSettings({
             <span className="settings__label">Trail position</span>
             <span className="settings__value">{TRAIL_FIX_VALUE[trailFix]}</span>
           </p>
+          {backgroundWanted && (
+            <p className="settings__row">
+              <span className="settings__label">Screen off</span>
+              <span className="settings__value">
+                {background === 'on' ? 'still recording' : 'recording pauses'}
+              </span>
+            </p>
+          )}
+          {backgroundWanted && backgroundNote(background) !== null && (
+            <p className="settings__note settings__note--trouble">
+              {backgroundNote(background)}
+            </p>
+          )}
           {trailFixNote(trailFix) !== null && (
             <p className="settings__note">{trailFixNote(trailFix)}</p>
           )}
@@ -328,6 +375,34 @@ export function GpsTraceSettings({
             problem report, and nobody else can see it unless you send them the file
             yourself.
           </p>
+
+          {/* Offered before the walk rather than during it, because it is a
+              decision about the walk: turning it on mid-recording would leave
+              the first half of the trace measuring one watch and the second
+              half the other. The CSV says which either way. */}
+          {onBackgroundChange !== undefined && (
+            <>
+              <label className="settings__row">
+                <span className="settings__label">
+                  Keep recording with the screen off
+                </span>
+                <input
+                  type="checkbox"
+                  checked={backgroundWanted}
+                  onChange={(event) => onBackgroundChange(event.target.checked)}
+                />
+              </label>
+              <p className="settings__note">
+                Uses far less battery than keeping the screen on, and the phone shows a
+                notice the whole time it is running. The readings it takes are measured
+                slightly differently from the ones the browser takes — the saved file
+                records which is which, so nothing gets mixed up.
+              </p>
+              {backgroundNote(background) !== null && (
+                <p className="settings__note">{backgroundNote(background)}</p>
+              )}
+            </>
+          )}
         </>
       )}
 

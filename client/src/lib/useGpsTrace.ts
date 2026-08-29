@@ -33,17 +33,25 @@
 // either. So the answer is computed per fix and reported to the screen while
 // there is still a walk left to salvage.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   createGpsTrace,
   downloadTrace,
+  sampleFromNativeFix,
   sampleFromPosition,
   traceFilename,
   traceToCsv,
+  type TraceConditions,
   type TraceMarker,
+  type TraceReading,
   type TraceStatus,
 } from './gpsTrace'
+import {
+  backgroundWatchAvailable,
+  startBackgroundWatch,
+  type BackgroundWatchProblem,
+} from './backgroundGeolocation'
 import { locateOnTrail, type TrailIndex } from './trailPosition'
 import { useWakeLock, type WakeLockState } from './useWakeLock'
 
@@ -65,6 +73,26 @@ const IDLE: TraceStatus = {
  */
 export type TrailFix = 'waiting' | 'recorded' | 'no-trail-data' | 'off-corridor'
 
+/**
+ * Whether fixes keep arriving with the screen off, and if not, why (#1182).
+ *
+ * Four answers because the tester's next move differs for each, and the one
+ * that reads like a failure - `not-native` - is the ordinary case on the PR
+ * preview every field test has used.
+ */
+export type BackgroundState =
+  /** Not asked for: the switch is off, or nothing is recording. */
+  | 'off'
+  /** Running. Fixes should survive a dark screen and a pocket. */
+  | 'on'
+  /** A browser, so there is no such thing here. Not an error. */
+  | 'not-native'
+  /** The permission is missing. On Android 10+ "Allow all the time" is a
+   *  settings screen, not a prompt the app can raise. */
+  | 'not-authorized'
+  /** The plugin failed for some other reason. */
+  | 'failed'
+
 export interface GpsTraceControls {
   status: TraceStatus
   /**
@@ -83,6 +111,12 @@ export interface GpsTraceControls {
    * out there.
    */
   trailFix: TrailFix
+  /** Whether the recording survives a dark screen, and if not, why. */
+  background: BackgroundState
+  /** Whether the tester has asked for background recording. Kept here so the
+   *  switch is a control rather than a report. */
+  backgroundWanted: boolean
+  onBackgroundChange: (wanted: boolean) => void
   /** Hand this to `useGeolocation` - it wants every fix, unfiltered. */
   onFix: (position: GeolocationPosition) => void
   onStart: () => void
@@ -98,6 +132,9 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   const trace = useMemo(() => createGpsTrace(), [])
   const [status, setStatus] = useState<TraceStatus>(IDLE)
   const [trailFix, setTrailFix] = useState<TrailFix>('waiting')
+  const [backgroundWanted, setBackgroundWanted] = useState(false)
+  const [backgroundProblem, setBackgroundProblem] =
+    useState<BackgroundWatchProblem | null>(null)
 
   useEffect(() => {
     // A recording that survived a reload resumes without being asked - see
@@ -110,12 +147,17 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   // whether the screen was being held. See lib/gpsTrace.ts's header.
   const wakeLock = useWakeLock(status.recording)
 
-  const onFix = useCallback(
-    (position: GeolocationPosition) => {
-      // Not gated on `status.recording`: this closure is held in a ref by
-      // useGeolocation and would be reading a stale flag. The recorder owns
-      // that decision and drops the sample itself.
-      const at = { lon: position.coords.longitude, lat: position.coords.latitude }
+  /**
+   * Everything both watches share: place the fix, report whether the trail
+   * columns are filling, and stamp the conditions.
+   *
+   * One function because the two sources must not drift apart in anything
+   * except the fields that genuinely differ. What they build the sample WITH
+   * differs (`sampleFromPosition` vs `sampleFromNativeFix`, because the
+   * accuracy radii mean different things); everything around it must not.
+   */
+  const placeAndStamp = useCallback(
+    (at: { lon: number; lat: number }): [TraceReading | null, TraceConditions] => {
       const reading = trailIndex === null ? null : locateOnTrail(trailIndex, at)
       // Set from the fix rather than from `trailIndex` alone: a downloaded
       // trail and a fix 27 miles from it produce the same empty columns, and
@@ -127,19 +169,65 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
             ? 'off-corridor'
             : 'recorded',
       )
-      void trace
-        .record(
-          sampleFromPosition(position, reading, {
-            wakeLock,
-            // Read at the moment the fix lands, not from a listener: this is
-            // the state that actually applied to THIS sample.
-            visible: typeof document === 'undefined' ? null : !document.hidden,
-          }),
-        )
-        .then(setStatus)
+      return [
+        reading,
+        {
+          wakeLock,
+          // Read at the moment the fix lands, not from a listener: this is
+          // the state that actually applied to THIS sample. On a native
+          // background fix this is routinely false, which is the point.
+          visible: typeof document === 'undefined' ? null : !document.hidden,
+        },
+      ]
     },
-    [trace, trailIndex, wakeLock],
+    [trailIndex, wakeLock],
   )
+
+  const onFix = useCallback(
+    (position: GeolocationPosition) => {
+      // Not gated on `status.recording`: this closure is held in a ref by
+      // useGeolocation and would be reading a stale flag. The recorder owns
+      // that decision and drops the sample itself.
+      const [reading, conditions] = placeAndStamp({
+        lon: position.coords.longitude,
+        lat: position.coords.latitude,
+      })
+      void trace.record(sampleFromPosition(position, reading, conditions)).then(setStatus)
+    },
+    [trace, placeAndStamp],
+  )
+
+  /**
+   * The native watch, which is the whole point of #1182.
+   *
+   * Only while recording AND only when asked: a foreground service and its
+   * undismissable notification are not something to start on the tester's
+   * behalf. Torn down by the effect's cleanup, so stopping the recording
+   * stops the service - the notification outliving the recording that asked
+   * for it would be the most visible possible version of a leak.
+   *
+   * `placeAndStamp` is deliberately NOT a dependency. It changes whenever the
+   * wake-lock state changes, and re-running this effect would remove and
+   * re-add the platform watcher mid-walk - restarting GNSS acquisition and
+   * flickering the notification, the same defect `useGeolocation`'s derived
+   * `awake` flag exists to avoid. A ref holds the current one instead.
+   */
+  const placeRef = useRef(placeAndStamp)
+  placeRef.current = placeAndStamp
+
+  const backgroundOn = status.recording && backgroundWanted && backgroundWatchAvailable()
+
+  useEffect(() => {
+    if (!backgroundOn) return
+    setBackgroundProblem(null)
+    return startBackgroundWatch({
+      onFix: (fix) => {
+        const [reading, conditions] = placeRef.current({ lon: fix.lon, lat: fix.lat })
+        void trace.record(sampleFromNativeFix(fix, reading, conditions)).then(setStatus)
+      },
+      onProblem: setBackgroundProblem,
+    })
+  }, [backgroundOn, trace])
 
   const onExport = useCallback(() => {
     void trace
@@ -149,9 +237,24 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
       )
   }, [trace])
 
+  const background: BackgroundState = !backgroundWanted
+    ? 'off'
+    : !backgroundWatchAvailable()
+      ? 'not-native'
+      : backgroundProblem === 'not-authorized'
+        ? 'not-authorized'
+        : backgroundProblem !== null
+          ? 'failed'
+          : status.recording
+            ? 'on'
+            : 'off'
+
   return {
     status,
     trailFix,
+    background,
+    backgroundWanted,
+    onBackgroundChange: setBackgroundWanted,
     // Tied to recording rather than offered as its own switch: holding a
     // screen awake for anything else in this app would be a battery cost
     // nobody asked for.

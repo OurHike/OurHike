@@ -6,6 +6,7 @@ import {
   traceToCsv,
   type TraceSample,
   type TraceStore,
+  sampleFromNativeFix,
 } from './gpsTrace'
 
 // This module exists to produce evidence for #93, #106 and #1100, so the
@@ -56,6 +57,9 @@ function sampleAt(timestampMs: number): TraceSample {
     marker: null,
     wakeLock: null,
     visible: null,
+    fixSource: 'web',
+    accuracyConfidence: 95,
+    simulated: null,
   }
 }
 
@@ -318,7 +322,7 @@ describe('traceToCsv', () => {
     expect(traceToCsv([]).trim()).toBe(
       'timestamp_ms,iso_time,lat,lon,accuracy_m,altitude_m,altitude_accuracy_m,' +
         'speed_mps,heading_deg,mile,off_trail_ft,off_tread_ft,marker,' +
-        'wake_lock,page_visible',
+        'wake_lock,page_visible,fix_source,accuracy_confidence,simulated',
     )
   })
 
@@ -388,5 +392,90 @@ describe('traceFilename', () => {
     expect(traceFilename(null, new Date(1_724_800_000_000))).toBe(
       'ourhike-gps-trace-2024-08-27T23-06-40-000Z.csv',
     )
+  })
+})
+
+describe('sampleFromNativeFix', () => {
+  // THE TRAP THIS SUITE EXISTS FOR. `navigator.geolocation` states its
+  // accuracy radius at 95% confidence; the background plugin states its own
+  // at 68%. Same units, same field name, about 1.62x apart - so an identical
+  // phone reports a number roughly 40% SMALLER through the plugin. A trace
+  // that mixed them would make every threshold derived from it wrong in the
+  // optimistic direction, which is the one direction this app may not be
+  // wrong in.
+
+  const nativeFix = {
+    timestampMs: 1_000,
+    lat: 41.7348,
+    lon: -74.1873,
+    accuracyM: 11,
+    altitudeM: 180.4,
+    altitudeAccuracyM: 4,
+    speedMps: 0.55,
+    headingDeg: 268,
+    simulated: false,
+  }
+
+  it('states the plugin’s 68% convention, and never the web API’s 95%', () => {
+    expect(sampleFromNativeFix(nativeFix, null).accuracyConfidence).toBe(68)
+  })
+
+  it('leaves a web fix stating 95%', () => {
+    expect(sampleAt(1_000).accuracyConfidence).toBe(95)
+  })
+
+  it('does not convert the radius into the other convention', () => {
+    // Converting would bury a 1.62x factor inside a column nobody would think
+    // to question later. The platform's number goes in untouched and the
+    // convention travels beside it.
+    expect(sampleFromNativeFix(nativeFix, null).accuracyM).toBe(11)
+  })
+
+  it('says which watch produced it', () => {
+    expect(sampleFromNativeFix(nativeFix, null).fixSource).toBe('native')
+    expect(sampleAt(1_000).fixSource).toBe('web')
+  })
+
+  it('carries the mock-location flag, and leaves it unknown for a web fix', () => {
+    // The web API has no such field, so a web row must say "unknown" rather
+    // than "real" - absent means unknown here as everywhere else.
+    expect(sampleFromNativeFix({ ...nativeFix, simulated: true }, null).simulated).toBe(
+      true,
+    )
+    expect(sampleAt(1_000).simulated).toBeNull()
+  })
+
+  it('takes the trail reading the same way a web fix does', () => {
+    const sample = sampleFromNativeFix(nativeFix, {
+      mile: 1807.4,
+      offTrailFeet: 22,
+      offTreadFeet: 8,
+    })
+    expect(sample.mile).toBe(1807.4)
+    expect(sample.offTrailFt).toBe(22)
+  })
+
+  it('leaves the marker to `record`, exactly as the web constructor does', () => {
+    expect(sampleFromNativeFix(nativeFix, null).marker).toBeNull()
+  })
+
+  it('writes both conventions into the CSV so an analysis can group by them', () => {
+    // Columns are located by NAME rather than by index. A hardcoded offset
+    // silently starts asserting about its neighbour the next time a column
+    // is added in the middle, which is how a test stops testing.
+    const csv = traceToCsv([sampleAt(1_000), sampleFromNativeFix(nativeFix, null)])
+    const [header, web, native] = csv
+      .trim()
+      .split('\n')
+      .map((line) => line.split(','))
+    const at = (row: string[], column: string) => row[header.indexOf(column)]
+
+    expect(at(web, 'fix_source')).toBe('web')
+    expect(at(web, 'accuracy_confidence')).toBe('95')
+    expect(at(web, 'simulated')).toBe('')
+
+    expect(at(native, 'fix_source')).toBe('native')
+    expect(at(native, 'accuracy_confidence')).toBe('68')
+    expect(at(native, 'simulated')).toBe('no')
   })
 })

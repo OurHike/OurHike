@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { GpsTraceSettings, elapsedLabel, recordingTrouble } from './GpsTrace'
+import {
+  GpsTraceSettings,
+  elapsedLabel,
+  recordingTrouble,
+  trailFixNote,
+} from './GpsTrace'
 import type { TraceStatus } from '../lib/gpsTrace'
 
 // The switch a volunteer taps in the rain. Two things are being tested: that
@@ -177,6 +182,45 @@ describe('GpsTraceSettings', () => {
     expect(screen.queryByText(/no gps signal right now/i)).not.toBeInTheDocument()
   })
 
+  it('says whether the trail columns are being filled', async () => {
+    // REPORTED BY THE FIRST FIELD TRACE: `mile`, `off_trail_ft` and
+    // `off_tread_ft` came back empty on all 136 rows and this screen had said
+    // nothing. Those three columns are the whole reason #93 wants a trace.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { trailFix: 'recorded' },
+    )
+
+    expect(screen.getByText('Trail position')).toBeInTheDocument()
+    expect(screen.getByText('recording')).toBeInTheDocument()
+  })
+
+  it('names the download when the trail is not on the phone', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { trailFix: 'no-trail-data' },
+    )
+
+    expect(screen.getByText('trail not downloaded')).toBeInTheDocument()
+    expect(screen.getByText(/download it from the map/i)).toBeInTheDocument()
+  })
+
+  it('names the distance when the walk is nowhere near the trail', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { trailFix: 'off-corridor' },
+    )
+
+    expect(screen.getByText('not near the trail')).toBeInTheDocument()
+    expect(screen.getByText(/more than three miles/i)).toBeInTheDocument()
+  })
+
+  it('tells the two blanks apart, because they need different things done', async () => {
+    // A boolean here would be the empty column all over again: same blank, and
+    // one is fixed by a download and the other only by walking somewhere else.
+    expect(trailFixNote('no-trail-data')).not.toBe(trailFixNote('off-corridor'))
+  })
+
   it('stops when asked', async () => {
     const props = renderSection({ recording: true, startedAt: 0, samples: 12 })
 
@@ -271,6 +315,32 @@ describe('recordingTrouble', () => {
     // collecting nothing NOW, which is what the tester needs to know.
     expect(recordingTrouble('denied', 400)).not.toBeNull()
     expect(recordingTrouble('unavailable', 400)).not.toBeNull()
+  })
+})
+
+describe('trailFixNote', () => {
+  it('says nothing while the trail columns are filling', () => {
+    // The status row already says "recording"; a note agreeing with it is the
+    // caveat on every screen that reads like a caveat on none.
+    expect(trailFixNote('recorded')).toBeNull()
+  })
+
+  it('says nothing before the first fix has arrived', () => {
+    expect(trailFixNote('waiting')).toBeNull()
+  })
+
+  it('calls a walk off the corridor useful rather than broken', () => {
+    // Walking a mile from the house to shake the recorder out is a reasonable
+    // thing to do with this, and it still collects every accuracy reading the
+    // readout change needs. Telling a tester they have wasted the afternoon
+    // when they have not is how a tester stops reading this screen.
+    expect(trailFixNote('off-corridor')).toMatch(/still a useful recording/i)
+  })
+
+  it('says what is still being recorded in both failing cases', () => {
+    for (const state of ['no-trail-data', 'off-corridor'] as const) {
+      expect(trailFixNote(state)).toMatch(/everything else is/i)
+    }
   })
 })
 

@@ -42,6 +42,7 @@
 import { useState } from 'react'
 import type { TraceMarker, TraceStatus } from '../lib/gpsTrace'
 import type { WakeLockState } from '../lib/useWakeLock'
+import type { TrailFix } from '../lib/useGpsTrace'
 import type { GeolocationState } from '../lib/useGeolocation'
 
 export interface GpsTraceSettingsProps {
@@ -70,6 +71,18 @@ export interface GpsTraceSettingsProps {
    * that could not say why it had none.
    */
   gpsStatus?: GeolocationState['status']
+  /**
+   * Whether the trail columns are being filled (lib/useGpsTrace.ts).
+   *
+   * Reported from the first real trace: `mile`, `off_trail_ft` and
+   * `off_tread_ft` came back empty on all 136 rows, and nothing on this screen
+   * had said so. Those three columns are the entire reason #93 wants a trace -
+   * drift measured against the trail rather than against a reconstruction of
+   * it - so a walk that collects the other ten columns has collected the easy
+   * half. Both reasons for the blank are the tester's to fix and only while
+   * they are still outside, which is why this is here and not in the export.
+   */
+  trailFix?: TrailFix
   /** Injected so the elapsed reading can be asserted against a fixed clock -
    *  the real one would make every assertion about when the test ran. */
   now?: Date
@@ -118,6 +131,38 @@ const countLabel = (samples: number): string =>
  * Every other branch names something the tester can act on, because a walk
  * that comes back empty has already cost the afternoon.
  */
+/** The status-row value, in the fewest words that still distinguish the two
+ *  failures - "not recorded" alone is the empty column all over again. */
+const TRAIL_FIX_VALUE: Record<TrailFix, string> = {
+  waiting: 'waiting for a fix',
+  recorded: 'recording',
+  'no-trail-data': 'trail not downloaded',
+  'off-corridor': 'not near the trail',
+}
+
+/**
+ * What to do about it, when there is something to do about it.
+ *
+ * Null while it is working, like `recordingTrouble` - the status row above
+ * already says "recording" and a second line agreeing with it is the caveat
+ * on every screen that CLAUDE.md warns reads like a caveat on none.
+ *
+ * Neither failing case is an error. Walking a mile from the house to shake the
+ * recorder out is a completely reasonable thing to do with this, and it still
+ * produces every accuracy reading the change to the readout needs. What it
+ * does not produce is drift against the trail, and a tester who thinks they
+ * are collecting that has spent the afternoon on the easy half.
+ */
+export function trailFixNote(trailFix: TrailFix): string | null {
+  if (trailFix === 'no-trail-data') {
+    return 'Where you are on the trail is not being recorded, because this phone has not downloaded the trail yet. Everything else is. Download it from the map, then start a new recording.'
+  }
+  if (trailFix === 'off-corridor') {
+    return 'Where you are on the trail is not being recorded, because you are more than three miles from the Appalachian Trail. Everything else is — this is still a useful recording, just not one that can measure drift against the trail.'
+  }
+  return null
+}
+
 export function recordingTrouble(
   gpsStatus: GeolocationState['status'],
   samples: number,
@@ -146,6 +191,7 @@ export function GpsTraceSettings({
   onDelete,
   wakeLock = 'off',
   gpsStatus = 'located',
+  trailFix = 'waiting',
   now = new Date(),
 }: GpsTraceSettingsProps) {
   // Two presses to delete, like AccountDataSettings' own destructive path.
@@ -166,6 +212,17 @@ export function GpsTraceSettings({
               {countLabel(status.samples)} · {elapsedLabel(status.startedAt, now)}
             </span>
           </p>
+
+          {/* A row rather than another note: this is the same kind of fact as
+              the count above it, and the note pile below is already three
+              deep. */}
+          <p className="settings__row">
+            <span className="settings__label">Trail position</span>
+            <span className="settings__value">{TRAIL_FIX_VALUE[trailFix]}</span>
+          </p>
+          {trailFixNote(trailFix) !== null && (
+            <p className="settings__note">{trailFixNote(trailFix)}</p>
+          )}
 
           {/* The question, asked in the second person, because the answer is
               something only the person holding the phone knows. */}

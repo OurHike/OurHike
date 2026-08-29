@@ -20,6 +20,7 @@ import { clear as clearIdb } from 'idb-keyval'
 
 import { useGpsTrace } from './useGpsTrace'
 import { useGeolocation } from './useGeolocation'
+import { buildTrailIndex, type TrailIndex } from './trailPosition'
 
 type WatchSuccess = (position: GeolocationPosition) => void
 
@@ -59,8 +60,11 @@ function stubGeolocation() {
 /** App.tsx's two lines, and nothing else: the recorder, then the watch it
  *  taps. If these stop matching App.tsx this test is worth less, so the
  *  shape is kept deliberately literal. */
-function useRecorderAndWatch(locationAllowed: boolean) {
-  const gpsTrace = useGpsTrace(null)
+function useRecorderAndWatch(
+  locationAllowed: boolean,
+  trailIndex: TrailIndex | null = null,
+) {
+  const gpsTrace = useGpsTrace(trailIndex)
   const gps = useGeolocation(locationAllowed, {
     onFix: gpsTrace.onFix,
     keepAwake: gpsTrace.status.recording,
@@ -144,6 +148,58 @@ describe('the recorder wired to the watch, as App.tsx joins them', () => {
 
     await waitFor(() => expect(result.current.gpsTrace.status.samples).toBe(1))
     expect(result.current.gpsTrace.status.marker).toBe('walking')
+  })
+
+  it('reports that the trail columns are empty because nothing is downloaded', async () => {
+    // THE FIRST FIELD TRACE'S FINDING. 136 rows came back with `mile`,
+    // `off_trail_ft` and `off_tread_ft` blank, and the screen had no way to
+    // say so - the recorder wrote exactly what it was handed, which was null.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    reportFix(-74.187, 41.735, 23, 1_000)
+
+    await waitFor(() => expect(result.current.gpsTrace.trailFix).toBe('no-trail-data'))
+  })
+
+  it('tells a downloaded-but-distant trail apart from no trail at all', async () => {
+    // The other half of the same blank, and the one a download does not fix.
+    // The walk that produced the first trace was about 27 miles from the
+    // corridor, so `locateOnTrail` declined to guess - correctly, and
+    // indistinguishably from the case above until now.
+    const { reportFix } = stubGeolocation()
+    const index = buildTrailIndex({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { source: 'centerline' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-73.58, 41.56],
+              [-73.58, 41.58],
+            ],
+          },
+        },
+      ],
+    })
+    const { result } = renderHook(() => useRecorderAndWatch(true, index))
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+
+    // On the centerline.
+    reportFix(-73.58, 41.57, 12, 1_000)
+    await waitFor(() => expect(result.current.gpsTrace.trailFix).toBe('recorded'))
+
+    // Far west of it, which is where the first real trace was taken.
+    reportFix(-74.187, 41.735, 23, 2_000)
+    await waitFor(() => expect(result.current.gpsTrace.trailFix).toBe('off-corridor'))
   })
 
   it('does not re-register the watch when a recording starts', async () => {

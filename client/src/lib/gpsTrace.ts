@@ -126,12 +126,30 @@ const chunkKey = (index: number) => `ourhike:gps-trace:c${index}`
 /**
  * How many samples ride in memory before a chunk is written.
  *
- * Derived rather than picked: `watchPosition` under `enableHighAccuracy`
- * delivers at most about one fix a second, so 60 samples is about a minute of
- * walking - the most a tab the OS kills mid-walk may cost. archiveStore.ts
- * measured why the alternative is not on the table: rewriting one accumulated
- * record per sample is quadratic in bytes written, and it made that mistake
- * at gigabyte scale so this does not have to make it at megabyte scale.
+ * WHAT THIS NUMBER WAS DERIVED FROM, AND WHY THAT DERIVATION IS NOW WRONG.
+ *
+ * It was picked on the assumption that `watchPosition` under
+ * `enableHighAccuracy` delivers about one fix a second, which made 60 samples
+ * "about a minute of walking" - the most a tab the OS kills mid-walk may cost.
+ * The first field trace says otherwise. Measured over the 135 intervals of an
+ * 18-minute walk (2026-08-29, one Android phone, one browser): a median of
+ * 5.71 s between fixes, p90 5.88 s, so about 10.5 fixes a minute rather than
+ * 60. At that rate this buys a loss window of roughly 5.7 minutes, not one.
+ *
+ * The number is left at 60 anyway, and that is now a choice rather than a
+ * derivation. @unvalidated - nobody has measured how often a browser tab is
+ * actually killed mid-walk, so the cost of a 5.7-minute window is unknown, and
+ * cutting it to a minute would mean ~316 IndexedDB writes over a six-hour walk
+ * instead of ~63 to buy back something nobody has shown is being lost. What
+ * would settle it is the next few traces: a recording that comes back short of
+ * the walk, with a gap at the end, is the evidence that this window is too
+ * wide. One phone is also not a fix rate - a different chipset, browser or
+ * battery-saver setting may deliver at a different cadence entirely.
+ *
+ * What has not changed is why samples are chunked at all. archiveStore.ts
+ * measured that: rewriting one accumulated record per sample is quadratic in
+ * bytes written, and it made that mistake at gigabyte scale so this does not
+ * have to make it at megabyte scale.
  */
 const CHUNK_SAMPLES = 60
 

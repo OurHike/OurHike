@@ -18,6 +18,20 @@
 // reduce. That is accepted here and nowhere else: this runs only while a
 // recording is on, which is a mode somebody turned on deliberately and is
 // already paying for in battery.
+//
+// AND WHETHER THAT ENRICHMENT IS HAPPENING IS ITSELF REPORTED.
+//
+// The first field trace came back with `mile`, `off_trail_ft` and
+// `off_tread_ft` empty on all 136 rows - the three columns #93 is waiting on,
+// and the reason the enrichment above exists at all. Nothing was broken: the
+// walk was about 27 miles from the AT corridor, `locateOnTrail` correctly
+// declined to guess, and the recorder wrote what it was handed. The defect is
+// that a tester could not learn any of that until the file was open, hours
+// later, and that an empty column cannot afterwards say WHICH of the two
+// reasons produced it - no trail downloaded on this phone, or nowhere near the
+// trail. Same blank, different fix, and the tester is the only one who can do
+// either. So the answer is computed per fix and reported to the screen while
+// there is still a walk left to salvage.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -40,6 +54,16 @@ const IDLE: TraceStatus = {
   samples: 0,
 }
 
+/**
+ * Whether the trail columns of the export are being filled, and if not, why.
+ *
+ * Three answers rather than a boolean because the two failing ones need
+ * different things from the tester: `no-trail-data` is fixed by downloading
+ * the trail on this phone, `off-corridor` only by walking somewhere else. A
+ * boolean would collapse them into the blank column that caused the problem.
+ */
+export type TrailFix = 'waiting' | 'recorded' | 'no-trail-data' | 'off-corridor'
+
 export interface GpsTraceControls {
   status: TraceStatus
   /**
@@ -50,6 +74,14 @@ export interface GpsTraceControls {
    * only one who can do anything about that.
    */
   wakeLock: WakeLockState
+  /**
+   * Whether `mile`, `off_trail_ft` and `off_tread_ft` are being written.
+   *
+   * Reported for the same reason `wakeLock` is: it is a thing about this
+   * recording that only the tester can change, and only while they are still
+   * out there.
+   */
+  trailFix: TrailFix
   /** Hand this to `useGeolocation` - it wants every fix, unfiltered. */
   onFix: (position: GeolocationPosition) => void
   onStart: () => void
@@ -64,6 +96,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   // IndexedDB keys and the two would overwrite each other's chunks.
   const trace = useMemo(() => createGpsTrace(), [])
   const [status, setStatus] = useState<TraceStatus>(IDLE)
+  const [trailFix, setTrailFix] = useState<TrailFix>('waiting')
 
   useEffect(() => {
     // A recording that survived a reload resumes without being asked - see
@@ -78,6 +111,16 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
       // that decision and drops the sample itself.
       const at = { lon: position.coords.longitude, lat: position.coords.latitude }
       const reading = trailIndex === null ? null : locateOnTrail(trailIndex, at)
+      // Set from the fix rather than from `trailIndex` alone: a downloaded
+      // trail and a fix 27 miles from it produce the same empty columns, and
+      // the index by itself cannot tell them apart.
+      setTrailFix(
+        trailIndex === null
+          ? 'no-trail-data'
+          : reading === null
+            ? 'off-corridor'
+            : 'recorded',
+      )
       void trace.record(sampleFromPosition(position, reading)).then(setStatus)
     },
     [trace, trailIndex],
@@ -98,6 +141,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
 
   return {
     status,
+    trailFix,
     // Tied to recording rather than offered as its own switch: holding a
     // screen awake for anything else in this app would be a battery cost
     // nobody asked for.

@@ -31,6 +31,7 @@ import {
   type TraceStatus,
 } from './gpsTrace'
 import { locateOnTrail, type TrailIndex } from './trailPosition'
+import { useWakeLock, type WakeLockState } from './useWakeLock'
 
 const IDLE: TraceStatus = {
   recording: false,
@@ -41,6 +42,14 @@ const IDLE: TraceStatus = {
 
 export interface GpsTraceControls {
   status: TraceStatus
+  /**
+   * Whether the screen is actually being held awake while recording.
+   *
+   * Passed to the screen rather than kept here: a refused lock means the
+   * recording will pause every time the screen darkens, and the tester is the
+   * only one who can do anything about that.
+   */
+  wakeLock: WakeLockState
   /** Hand this to `useGeolocation` - it wants every fix, unfiltered. */
   onFix: (position: GeolocationPosition) => void
   onStart: () => void
@@ -74,6 +83,11 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     [trace, trailIndex],
   )
 
+  // Only while recording. See lib/useWakeLock.ts for what this does and does
+  // not buy - it stops the screen sleeping on its own, and does not survive
+  // the power button.
+  const wakeLock = useWakeLock(status.recording)
+
   const onExport = useCallback(() => {
     void trace
       .readAll()
@@ -84,6 +98,10 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
 
   return {
     status,
+    // Tied to recording rather than offered as its own switch: holding a
+    // screen awake for anything else in this app would be a battery cost
+    // nobody asked for.
+    wakeLock,
     onFix,
     onStart: useCallback(() => void trace.start().then(setStatus), [trace]),
     onStop: useCallback(() => void trace.stop().then(setStatus), [trace]),

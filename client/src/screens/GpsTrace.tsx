@@ -23,14 +23,25 @@
 // alike in exactly the data whose ambiguity is the finding. The hiker is the
 // only instrument that knows.
 //
-// THE COPY SAYS BATTERY BEFORE IT SAYS ANYTHING ELSE. Recording holds the
-// GPS on through a pocket (useGeolocation's `keepAwake`), which is the whole
-// point and is also somebody's phone on a mountain. Burying that under a
-// paragraph about CSV would be the "quiet inaccuracy" map/credits.ts objects
-// to, applied to somebody's way home.
+// THE COPY SAYS BATTERY BEFORE IT SAYS ANYTHING ELSE, and it says what this
+// CANNOT do before a tester finds out on the trail.
+//
+// The first version of this screen promised recording "including while the
+// phone is in your pocket". That was false, and a real walk found it: a phone
+// that locks suspends the page, `watchPosition` stops, and no application code
+// changes that in a web app. `useGeolocation`'s `keepAwake` only stops THIS
+// APP ending the recording; it cannot stop the platform. What a web app can do
+// is hold the screen awake (lib/useWakeLock.ts) so the screen never sleeps on
+// its own - and say plainly that locking the phone by hand still pauses it.
+//
+// That correction is the whole point rather than a caveat bolted on. A tester
+// who believes the old sentence walks ninety minutes and comes back with
+// twenty, which is exactly the "never let a display outrun its source" failure
+// CLAUDE.md names, committed by the feature built to gather evidence.
 
 import { useState } from 'react'
 import type { TraceMarker, TraceStatus } from '../lib/gpsTrace'
+import type { WakeLockState } from '../lib/useWakeLock'
 
 export interface GpsTraceSettingsProps {
   status: TraceStatus
@@ -39,6 +50,14 @@ export interface GpsTraceSettingsProps {
   onMark: (marker: TraceMarker) => void
   onExport: () => void
   onDelete: () => void
+  /**
+   * Whether the screen is actually being held awake (lib/useWakeLock.ts).
+   *
+   * Reported rather than assumed: a browser with no Screen Wake Lock API, or
+   * one refusing it on low battery, leaves the screen sleeping - and a tester
+   * needs that before the walk, not after.
+   */
+  wakeLock?: WakeLockState
   /** Injected so the elapsed reading can be asserted against a fixed clock -
    *  the real one would make every assertion about when the test ran. */
   now?: Date
@@ -86,6 +105,7 @@ export function GpsTraceSettings({
   onMark,
   onExport,
   onDelete,
+  wakeLock = 'off',
   now = new Date(),
 }: GpsTraceSettingsProps) {
   // Two presses to delete, like AccountDataSettings' own destructive path.
@@ -129,6 +149,15 @@ export function GpsTraceSettings({
             are trying to measure.
           </p>
 
+          {/* Said while it matters rather than in the idle blurb: a lock that
+              was granted and then refused on a low battery changes what the
+              tester should do with the phone, and only this state can say so. */}
+          <p className="settings__note">
+            {wakeLock === 'held'
+              ? 'The screen is being kept awake, so the recording keeps running. Locking the phone yourself still pauses it until you unlock.'
+              : 'This phone will not let the screen stay awake, so the recording pauses every time the screen goes dark. Keep the screen on, or set the screen timeout as long as it will go.'}
+          </p>
+
           <button type="button" className="settings__action" onClick={onStop}>
             Stop recording
           </button>
@@ -139,10 +168,14 @@ export function GpsTraceSettings({
             Start recording
           </button>
           <p className="settings__note">
-            Keeps your GPS on — including while the phone is in your pocket — and writes
-            down where it thinks you are, several times a minute. It will use noticeably
-            more battery than usual. Start it at the trailhead and stop it when you
-            finish.
+            Writes down where your phone thinks you are, several times a minute, and keeps
+            the screen from going dark on its own so it can. It will use a lot more
+            battery than usual — the screen is most of that. Start it at the trailhead and
+            stop it when you finish.
+          </p>
+          <p className="settings__note">
+            If you lock the phone yourself, recording pauses until you unlock it. Nothing
+            already recorded is lost, and it picks up again on its own.
           </p>
           <p className="settings__note">
             The recording stays on this phone. It is never uploaded, never attached to a

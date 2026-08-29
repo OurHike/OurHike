@@ -39,13 +39,31 @@ function renderSection(status: Partial<TraceStatus> = {}, overrides = {}) {
 
 describe('GpsTraceSettings', () => {
   it('says what it costs before anything is recording', async () => {
-    // Recording holds the GPS on through a pocket. That is somebody's phone
-    // on a mountain, and it is said on the face of the control rather than
-    // discovered afterwards.
+    // That is somebody's phone on a mountain, and it is said on the face of
+    // the control rather than discovered afterwards.
     renderSection()
 
-    expect(screen.getByText(/more battery than usual/i)).toBeInTheDocument()
-    expect(screen.getByText(/in your pocket/i)).toBeInTheDocument()
+    expect(screen.getByText(/a lot more battery than usual/i)).toBeInTheDocument()
+    expect(screen.getByText(/the screen is most of that/i)).toBeInTheDocument()
+  })
+
+  it('does not promise recording through a locked phone', async () => {
+    // THE REGRESSION THIS FILE EXISTS TO STOP COMING BACK. The first version
+    // said "including while the phone is in your pocket", a real walk found it
+    // false, and a tester who believes it walks ninety minutes and comes back
+    // with twenty. A web app cannot record through a locked screen.
+    renderSection()
+
+    expect(screen.queryByText(/in your pocket/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/if you lock the phone yourself/i)).toHaveTextContent(
+      /pauses until you unlock it/i,
+    )
+  })
+
+  it('promises nothing is lost across that pause', async () => {
+    renderSection()
+
+    expect(screen.getByText(/nothing already recorded is lost/i)).toBeInTheDocument()
   })
 
   it('says where the recording goes, which is nowhere', async () => {
@@ -113,6 +131,29 @@ describe('GpsTraceSettings', () => {
     renderSection({ recording: true, startedAt: 0, samples: 1284 })
 
     expect(screen.getByText(/1,284 readings/)).toBeInTheDocument()
+  })
+
+  it('says the screen is being held while the lock is held', async () => {
+    renderSection({ recording: true, startedAt: 0, samples: 12 }, { wakeLock: 'held' })
+
+    expect(screen.getByText(/screen is being kept awake/i)).toBeInTheDocument()
+  })
+
+  it('says the screen will sleep when the browser has no wake lock', async () => {
+    // A tester whose screen is going to sleep anyway needs that DURING the
+    // walk, when lengthening the screen timeout is still an option.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 12 },
+      { wakeLock: 'unsupported' },
+    )
+
+    expect(screen.getByText(/will not let the screen stay awake/i)).toBeInTheDocument()
+  })
+
+  it('says the same when the browser refuses on low battery', async () => {
+    renderSection({ recording: true, startedAt: 0, samples: 12 }, { wakeLock: 'refused' })
+
+    expect(screen.getByText(/will not let the screen stay awake/i)).toBeInTheDocument()
   })
 
   it('stops when asked', async () => {

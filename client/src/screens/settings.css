@@ -98,6 +98,24 @@
 .settings__exports {
   display: flex;
   gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+/* Pressed. `aria-pressed` carries the state to a screen reader; this carries
+   it to everyone else (plan.css says the same thing over its own toggles).
+   Reported from a real walk on #1180's marker row: the taps were registering
+   and the buttons looked identical either way, so the only confirmation a
+   tester had that the marker had changed was in the exported file.
+
+   `--brand-primary` with `--fg-on-brand`, and NOT the `--bg-inverse` /
+   `--fg-on-dark` pair some older toggles here use: `--bg-inverse` flips to
+   bone under the dark theme while `--fg-on-dark` deliberately does not, so
+   that pair is light-on-light after dark. These two are re-pointed together
+   and contrast-checked as a pair in the tokens. */
+.settings__action[aria-pressed='true'] {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
 }
 
 /* ---------- Report a bug (ReportBug.tsx) ---------- */

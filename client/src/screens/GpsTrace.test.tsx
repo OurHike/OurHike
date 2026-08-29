@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { GpsTraceSettings, elapsedLabel } from './GpsTrace'
+import { GpsTraceSettings, elapsedLabel, recordingTrouble } from './GpsTrace'
 import type { TraceStatus } from '../lib/gpsTrace'
 
 // The switch a volunteer taps in the rain. Two things are being tested: that
@@ -156,6 +156,27 @@ describe('GpsTraceSettings', () => {
     expect(screen.getByText(/will not let the screen stay awake/i)).toBeInTheDocument()
   })
 
+  it('says why a recording is empty rather than showing a bare zero', async () => {
+    // REPORTED FROM A REAL WALK: recording ran, stored zero points, and this
+    // screen said "Recording · 0 readings" and nothing else. The watch had
+    // known all along; this section never looked.
+    renderSection({ recording: true, startedAt: 0, samples: 0 }, { gpsStatus: 'denied' })
+
+    expect(screen.getByText(/blocking location for this site/i)).toBeInTheDocument()
+  })
+
+  it('stays quiet about trouble once readings are arriving', async () => {
+    // A caveat on every screen reads exactly like a caveat on none. A count
+    // that is climbing says it better.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 412 },
+      { gpsStatus: 'located' },
+    )
+
+    expect(screen.queryByText(/waiting for the first reading/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no gps signal right now/i)).not.toBeInTheDocument()
+  })
+
   it('stops when asked', async () => {
     const props = renderSection({ recording: true, startedAt: 0, samples: 12 })
 
@@ -216,6 +237,40 @@ describe('GpsTraceSettings', () => {
     expect(
       screen.getByRole('button', { name: /^delete the recording$/i }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('recordingTrouble', () => {
+  // Every branch names something the tester can act on, because a walk that
+  // comes back empty has already cost the afternoon.
+
+  it('names the permission when the browser is blocking it', () => {
+    expect(recordingTrouble('denied', 0)).toMatch(/allow it in the site settings/i)
+  })
+
+  it('says a browser without GPS cannot record at all', () => {
+    expect(recordingTrouble('unsupported', 0)).toMatch(/cannot do gps at all/i)
+  })
+
+  it('calls a lost signal normal rather than an error', () => {
+    // Losing signal under cover is an ordinary condition on trail. Saying it
+    // is broken would send a tester home mid-walk.
+    expect(recordingTrouble('unavailable', 120)).toMatch(/that is normal indoors/i)
+  })
+
+  it('tells a tester what to do while the count is still zero', () => {
+    expect(recordingTrouble('located', 0)).toMatch(/step into the open/i)
+  })
+
+  it('says nothing once readings are arriving', () => {
+    expect(recordingTrouble('located', 1)).toBeNull()
+  })
+
+  it('reports trouble even with readings already banked', () => {
+    // A recording that collected 400 points and then lost the signal is still
+    // collecting nothing NOW, which is what the tester needs to know.
+    expect(recordingTrouble('denied', 400)).not.toBeNull()
+    expect(recordingTrouble('unavailable', 400)).not.toBeNull()
   })
 })
 

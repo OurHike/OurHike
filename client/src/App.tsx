@@ -5453,7 +5453,12 @@ function App() {
                   // #1180's recorder. `now` comes from the shell's clock so
                   // the elapsed reading advances without the section holding
                   // a timer of its own on the one screen that costs battery.
-                  gpsTrace={{ ...gpsTrace, now }}
+                  // `gps.status` too: the recorder hook runs BEFORE the
+                  // watch (the watch takes its onFix), so the trace section
+                  // can only learn what the watch is doing here. Without it a
+                  // recording with a denied permission reads as "0 readings"
+                  // and nothing else (#1180).
+                  gpsTrace={{ ...gpsTrace, gpsStatus: gps.status, now }}
                   stewards={stewards}
                   account={account}
                   mode={hikerMode}

@@ -42,6 +42,7 @@
 import { useState } from 'react'
 import type { TraceMarker, TraceStatus } from '../lib/gpsTrace'
 import type { WakeLockState } from '../lib/useWakeLock'
+import type { GeolocationState } from '../lib/useGeolocation'
 
 export interface GpsTraceSettingsProps {
   status: TraceStatus
@@ -58,6 +59,17 @@ export interface GpsTraceSettingsProps {
    * needs that before the walk, not after.
    */
   wakeLock?: WakeLockState
+  /**
+   * What the watch is actually doing (lib/useGeolocation.ts).
+   *
+   * Reported from a real walk: a recording ran and stored zero points, and
+   * this screen said "Recording · 0 readings" and nothing else. The hook has
+   * modelled `denied`, `unsupported` and `unavailable` from the beginning and
+   * the header has printed them since #312 - this section simply never looked,
+   * so the one screen whose entire job is collecting fixes was the one screen
+   * that could not say why it had none.
+   */
+  gpsStatus?: GeolocationState['status']
   /** Injected so the elapsed reading can be asserted against a fixed clock -
    *  the real one would make every assertion about when the test ran. */
   now?: Date
@@ -98,6 +110,33 @@ export function elapsedLabel(startedAt: number | null, now: Date): string {
 const countLabel = (samples: number): string =>
   `${samples.toLocaleString('en-US')} ${samples === 1 ? 'reading' : 'readings'}`
 
+/**
+ * Why a recording has nothing in it, when it has nothing in it.
+ *
+ * Null once fixes are arriving - a count that is climbing says the same thing
+ * better, and a caveat on every screen reads exactly like a caveat on none.
+ * Every other branch names something the tester can act on, because a walk
+ * that comes back empty has already cost the afternoon.
+ */
+export function recordingTrouble(
+  gpsStatus: GeolocationState['status'],
+  samples: number,
+): string | null {
+  if (gpsStatus === 'denied') {
+    return 'Your browser is blocking location for this site, so nothing is being recorded. Allow it in the site settings, then start again.'
+  }
+  if (gpsStatus === 'unsupported') {
+    return 'This browser cannot do GPS at all, so nothing can be recorded here.'
+  }
+  if (gpsStatus === 'unavailable') {
+    return 'No GPS signal right now, so nothing is being added. That is normal indoors and under heavy tree cover — it picks up again on its own.'
+  }
+  if (samples === 0) {
+    return 'Waiting for the first reading. If this does not move within a minute or two, step into the open — nothing is being recorded until it does.'
+  }
+  return null
+}
+
 export function GpsTraceSettings({
   status,
   onStart,
@@ -106,6 +145,7 @@ export function GpsTraceSettings({
   onExport,
   onDelete,
   wakeLock = 'off',
+  gpsStatus = 'located',
   now = new Date(),
 }: GpsTraceSettingsProps) {
   // Two presses to delete, like AccountDataSettings' own destructive path.
@@ -148,6 +188,15 @@ export function GpsTraceSettings({
             and a slow walk look the same in the recording, and that is the difference we
             are trying to measure.
           </p>
+
+          {/* The reason there is nothing to show, when there is nothing to
+              show. First among the notes because a tester reading "0 readings"
+              needs this before anything about battery. */}
+          {recordingTrouble(gpsStatus, status.samples) !== null && (
+            <p className="settings__note settings__note--trouble">
+              {recordingTrouble(gpsStatus, status.samples)}
+            </p>
+          )}
 
           {/* Said while it matters rather than in the idle blurb: a lock that
               was granted and then refused on a low battery changes what the

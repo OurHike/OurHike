@@ -24,20 +24,59 @@ import { buildTrailIndex, type TrailIndex } from './trailPosition'
 
 type WatchSuccess = (position: GeolocationPosition) => void
 
-function stubGeolocation() {
+function stubGeolocation({ pollAnswers = true }: { pollAnswers?: boolean } = {}) {
   let onSuccess: WatchSuccess | undefined
+  let pollSuccess: WatchSuccess | undefined
+  let pollFail: (() => void) | undefined
+  let pollOptions: PositionOptions | undefined
 
   const watchPosition = vi.fn((success: WatchSuccess) => {
     onSuccess = success
     return 7
   })
 
+  // The polled half. Held rather than answered immediately so a test can
+  // decide whether a stationary phone hands one over at all - the open
+  // question this whole mechanism exists to settle.
+  const getCurrentPosition = vi.fn(
+    (success: WatchSuccess, failure: () => void, options?: PositionOptions) => {
+      pollSuccess = success
+      pollFail = failure
+      pollOptions = options
+    },
+  )
+
   vi.stubGlobal('navigator', {
-    geolocation: { watchPosition, clearWatch: vi.fn() },
+    geolocation: { watchPosition, getCurrentPosition, clearWatch: vi.fn() },
   })
 
   return {
     watchPosition,
+    getCurrentPosition,
+    /** The options the poll was asked with. `maximumAge` is the load-bearing
+     *  one, and reading it by tuple index would not survive the signature
+     *  changing under the test. */
+    pollOptions: () => pollOptions,
+    /** The platform answering a poll, or refusing it. */
+    answerPoll: (lon: number, lat: number, accuracy: number, timestamp: number) =>
+      act(() => {
+        if (!pollAnswers) {
+          pollFail?.()
+          return
+        }
+        pollSuccess?.({
+          coords: {
+            longitude: lon,
+            latitude: lat,
+            accuracy,
+            altitude: null,
+            altitudeAccuracy: null,
+            speed: null,
+            heading: null,
+          },
+          timestamp,
+        } as unknown as GeolocationPosition)
+      }),
     /** A fix arriving from the platform, exactly as the watch delivers one. */
     reportFix: (lon: number, lat: number, accuracy: number, timestamp: number) =>
       act(() => {
@@ -85,6 +124,9 @@ vi.mock('@capacitor/core', () => ({
 }))
 
 afterEach(async () => {
+  // Before cleanup: several tests below install fake timers, and the IndexedDB
+  // teardown underneath needs real ones.
+  vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
@@ -248,6 +290,83 @@ describe('the recorder wired to the watch, as App.tsx joins them', () => {
     await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
 
     reportFix(-74.187, 41.735, 23, 1_000)
+
+    await waitFor(() => expect(result.current.gpsTrace.status.samples).toBe(1))
+  })
+
+  it('asks for a fix on a timer, because standing still the platform volunteers few', async () => {
+    // The fourth field trace: 0.87 fixes a minute standing still against 7.58
+    // walking, with the screen awake and the page visible the whole time. The
+    // API has no rate control - watchPosition takes enableHighAccuracy,
+    // timeout and maximumAge, and none of them asks for a frequency - so the
+    // only lever left is asking.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+    expect(gps.getCurrentPosition).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+
+    expect(gps.getCurrentPosition).toHaveBeenCalledOnce()
+    // maximumAge 0, or the answer may be the fix the watch already gave us -
+    // and counting one fix twice shrinks the apparent scatter, making the
+    // phone look better than it is.
+    expect(gps.pollOptions()).toMatchObject({
+      enableHighAccuracy: true,
+      maximumAge: 0,
+    })
+  })
+
+  it('asks for nothing while no recording is running', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const gps = stubGeolocation()
+    renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+
+    expect(gps.getCurrentPosition).not.toHaveBeenCalled()
+  })
+
+  it('does not stack polls while one is still waiting', async () => {
+    // A poll waiting out its timeout must not have four more queued behind
+    // it, each holding the chipset awake on somebody's last 20%.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25_000)
+    })
+
+    expect(gps.getCurrentPosition).toHaveBeenCalledOnce()
+  })
+
+  it('records a polled fix, so a stationary trace is not only what was volunteered', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+    gps.answerPoll(-74.187, 41.735, 21, 2_000)
 
     await waitFor(() => expect(result.current.gpsTrace.status.samples).toBe(1))
   })

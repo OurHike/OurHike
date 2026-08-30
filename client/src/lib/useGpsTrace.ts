@@ -55,6 +55,22 @@ import {
 import { locateOnTrail, type TrailIndex } from './trailPosition'
 import { useWakeLock, type WakeLockState } from './useWakeLock'
 
+/**
+ * How often to ask, and how long to wait.
+ *
+ * 5 s because that is the only cadence anybody has measured - `watchPosition`
+ * delivered a 5.71 s median over the third walk's 135 intervals - so a polled
+ * stationary trace comes out directly comparable to a walked one rather than
+ * on some new footing nothing else shares.
+ *
+ * The timeout is four intervals rather than one. A poll that has not answered
+ * inside 5 s has not necessarily failed, and cancelling it early would throw
+ * away exactly the slow fix a stationary phone is most likely to produce.
+ * `inFlight` stops them stacking up in the meantime.
+ */
+const POLL_INTERVAL_MS = 5_000
+const POLL_TIMEOUT_MS = 20_000
+
 const IDLE: TraceStatus = {
   recording: false,
   startedAt: null,
@@ -196,6 +212,85 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     },
     [trace, placeAndStamp],
   )
+
+  /**
+   * ASKING FOR FIXES, BECAUSE STANDING STILL THE PLATFORM VOLUNTEERS SO FEW.
+   *
+   * The W3C Geolocation API has NO rate control. `watchPosition` takes exactly
+   * three options - `enableHighAccuracy`, `timeout`, `maximumAge` - and not one
+   * of them asks for a frequency. The platform fires when it decides a new
+   * position exists, and the fourth field trace measured what that means: 7.58
+   * fixes a minute while walking, **0.87 while standing still**, with
+   * `wake_lock` reading `held` and `page_visible` reading `yes` on every row.
+   * Nothing was broken. There was simply nothing to hand over.
+   *
+   * That is a problem for the one measurement this instrument exists to take.
+   * #1100 wants a phone "stationary under canopy for several minutes", and 34
+   * samples in 39 minutes is a thin basis for anything.
+   *
+   * So this asks. `getCurrentPosition` with `maximumAge: 0` refuses a cached
+   * answer, which is the only way to get an INDEPENDENT sample rather than the
+   * same fix counted twice - and counting one twice would shrink the apparent
+   * scatter, making the phone look better than it is.
+   *
+   * @unvalidated, AND IT MAY SIMPLY NOT WORK. There is no GPS in the sandbox
+   * this was written in, so whether a stationary Android actually produces a
+   * fresh fix on demand is unknown. Two ways it could fail: the platform may
+   * make `getCurrentPosition` wait for the same update the watch is waiting
+   * for, and time out; or it may answer instantly with the fix the watch
+   * already delivered, which the identical `timestamp_ms` would expose.
+   *
+   * THE TRACE ANSWERS IT EITHER WAY, which is why this is safe to try: polled
+   * samples are stamped `web-poll` and watch samples stay `web`, so one walk
+   * says whether the poll produced anything the watch did not. Merging them
+   * into one column would have deleted that answer while looking like better
+   * data.
+   */
+  useEffect(() => {
+    if (!status.recording) return
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return
+
+    // One request at a time. A poll that is waiting out its timeout must not
+    // have three more stacked behind it, each holding the chipset awake.
+    let inFlight = false
+    let stopped = false
+
+    const id = setInterval(() => {
+      if (inFlight || stopped) return
+      inFlight = true
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          inFlight = false
+          if (stopped) return
+          const [reading, conditions] = placeRef.current({
+            lon: position.coords.longitude,
+            lat: position.coords.latitude,
+          })
+          void trace
+            .record(
+              sampleFromPosition(position, reading, {
+                ...conditions,
+                source: 'web-poll',
+              }),
+            )
+            .then(setStatus)
+        },
+        // A refused or timed-out poll is not an error worth surfacing: the
+        // watch is still running and the screen already reports what it is
+        // doing. Silence here shows up in the trace as an absence of
+        // `web-poll` rows, which is the finding.
+        () => {
+          inFlight = false
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: POLL_TIMEOUT_MS },
+      )
+    }, POLL_INTERVAL_MS)
+
+    return () => {
+      stopped = true
+      clearInterval(id)
+    }
+  }, [status.recording, trace])
 
   /**
    * The native watch, which is the whole point of #1182.

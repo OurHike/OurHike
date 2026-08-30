@@ -157,9 +157,18 @@ export interface TraceSample {
  *  module stays free of the hook - it is written to a CSV, not switched on. */
 export type WakeLockLabel = string
 
-/** Which watch a sample came from. `web` is `navigator.geolocation`; `native`
- *  is the background plugin in a Capacitor shell (#1182). */
-export type FixSource = 'web' | 'native'
+/**
+ * Which mechanism produced a sample.
+ *
+ * `web` is a `watchPosition` callback — the platform volunteering a fix.
+ * `native` is the background plugin in a Capacitor shell (#1182).
+ * `web-poll` is a `getCurrentPosition` this app ASKED for, on a timer, because
+ * the platform volunteers so few while a phone stands still. Kept separate
+ * from `web` rather than merged into it, because the natural cadence of the
+ * watch is itself one of the measurements — merging them would delete the
+ * finding while appearing to improve the data.
+ */
+export type FixSource = 'web' | 'native' | 'web-poll'
 
 /** What the app made of a fix, or null when it could not place it at all.
  *  Structurally `TrailFix`, named separately so this module does not import
@@ -410,6 +419,9 @@ export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
 export interface TraceConditions {
   wakeLock?: WakeLockLabel | null
   visible?: boolean | null
+  /** Which mechanism produced this fix. Defaults to `web` — a watch callback,
+   *  which is what every caller but the poller is. */
+  source?: FixSource
 }
 
 export function sampleFromPosition(
@@ -436,9 +448,10 @@ export function sampleFromPosition(
     marker: null,
     wakeLock: conditions.wakeLock ?? null,
     visible: conditions.visible ?? null,
-    fixSource: 'web',
+    fixSource: conditions.source ?? 'web',
     // The W3C definition, and written down rather than assumed: the other
-    // source states 68 and nothing but this column separates them.
+    // source states 68 and nothing but this column separates them. A polled
+    // fix comes through the same API and states the same convention.
     accuracyConfidence: 95,
     // The web API has no mock-location field. Unknown, never "real".
     simulated: null,

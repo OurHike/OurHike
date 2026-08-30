@@ -436,6 +436,48 @@ describe('sampleFromNativeFix', () => {
     expect(sampleAt(1_000).fixSource).toBe('web')
   })
 
+  it('tells a fix the app ASKED for apart from one the platform volunteered', () => {
+    // The watch's natural cadence is itself a measurement - 7.58 fixes a
+    // minute walking, 0.87 standing still. Merging polled rows into `web`
+    // would delete that finding while looking like better data.
+    const position = {
+      coords: {
+        latitude: 41.7348,
+        longitude: -74.1873,
+        accuracy: 21,
+        altitude: null,
+        altitudeAccuracy: null,
+        speed: null,
+        heading: null,
+      },
+      timestamp: 2_000,
+    } as unknown as GeolocationPosition
+
+    expect(sampleFromPosition(position, null, { source: 'web-poll' }).fixSource).toBe(
+      'web-poll',
+    )
+    expect(sampleFromPosition(position, null).fixSource).toBe('web')
+  })
+
+  it('states 95% for a polled fix too, because it is the same API', () => {
+    const position = {
+      coords: {
+        latitude: 41.7348,
+        longitude: -74.1873,
+        accuracy: 21,
+        altitude: null,
+        altitudeAccuracy: null,
+        speed: null,
+        heading: null,
+      },
+      timestamp: 2_000,
+    } as unknown as GeolocationPosition
+
+    expect(
+      sampleFromPosition(position, null, { source: 'web-poll' }).accuracyConfidence,
+    ).toBe(95)
+  })
+
   it('carries the mock-location flag, and leaves it unknown for a web fix', () => {
     // The web API has no such field, so a web row must say "unknown" rather
     // than "real" - absent means unknown here as everywhere else.

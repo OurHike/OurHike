@@ -22,6 +22,7 @@ const IDLE: TraceStatus = {
   marker: null,
   samples: 0,
   lastSampleAt: null,
+  lastAccuracyM: null,
 }
 
 afterEach(() => {
@@ -368,6 +369,63 @@ describe('GpsTraceSettings', () => {
     renderSection({ recording: true, startedAt: 0, samples: 12 })
 
     expect(screen.queryByText('Screen off')).not.toBeInTheDocument()
+  })
+
+  it('prints what the last reading actually claimed', async () => {
+    // THE FIFTH FIELD TRACE. One reading in 74 minutes, stating exactly 100 m
+    // with no speed and no heading - a network fix, not GNSS. Nothing on this
+    // screen said so, so the tester stood there waiting for a satellite lock
+    // that had never happened.
+    renderSection({ recording: true, startedAt: 0, samples: 1, lastAccuracyM: 100 })
+
+    expect(screen.getByText('Last reading')).toBeInTheDocument()
+    // Through lib/units.ts like every other distance a hiker reads, so it
+    // comes out in the system they chose. 100 m is about 328 ft.
+    expect(screen.getByText(/give or take 328 ft/i)).toBeInTheDocument()
+  })
+
+  it('reads that figure in the system the hiker chose', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 1, lastAccuracyM: 100 },
+      { units: 'metric' },
+    )
+
+    expect(screen.getByText(/give or take 100 m/i)).toBeInTheDocument()
+  })
+
+  it('asserts no threshold on that number, because none has been validated', async () => {
+    // A figure, not a verdict. Calling 100 m "poor" would be inventing the
+    // boundary this whole branch exists to go and measure.
+    renderSection({ recording: true, startedAt: 0, samples: 1, lastAccuracyM: 100 })
+
+    expect(screen.queryByText(/poor|bad|weak|inaccurate/i)).not.toBeInTheDocument()
+  })
+
+  it('says nothing about accuracy before the first reading', async () => {
+    renderSection({ recording: true, startedAt: 0, samples: 0 })
+
+    expect(screen.queryByText('Last reading')).not.toBeInTheDocument()
+  })
+
+  it('shows how many readings were asked for and how many arrived', async () => {
+    // A poll that times out writes no row, so without this "the poll is not
+    // working" and "the poll never ran" look identical in the exported file.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 1 },
+      { polls: { asked: 888, answered: 0 } },
+    )
+
+    expect(screen.getByText('Readings asked for')).toBeInTheDocument()
+    expect(screen.getByText(/0 of 888 answered/)).toBeInTheDocument()
+  })
+
+  it('says nothing about polling before anything has been asked', async () => {
+    renderSection(
+      { recording: true, startedAt: 0, samples: 1 },
+      { polls: { asked: 0, answered: 0 } },
+    )
+
+    expect(screen.queryByText('Readings asked for')).not.toBeInTheDocument()
   })
 
   it('stops when asked', async () => {

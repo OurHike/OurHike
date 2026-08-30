@@ -44,6 +44,7 @@ import type { TraceMarker, TraceStatus } from '../lib/gpsTrace'
 import type { WakeLockState } from '../lib/useWakeLock'
 import type { BackgroundState, TrailFix } from '../lib/useGpsTrace'
 import type { GeolocationState } from '../lib/useGeolocation'
+import { feetFromMetres, formatShortDistance, type UnitSystem } from '../lib/units'
 
 export interface GpsTraceSettingsProps {
   status: TraceStatus
@@ -85,6 +86,13 @@ export interface GpsTraceSettingsProps {
   trailFix?: TrailFix
   /** Whether fixes survive a dark screen, and if not why (#1182). */
   background?: BackgroundState
+  /** How often the recorder asked for a fix, and how often it was answered
+   *  (lib/useGpsTrace.ts). A large gap between them IS the finding. */
+  polls?: { asked: number; answered: number }
+  /** The hiker's chosen system, because the accuracy radius is a distance
+   *  somebody reads — src/test/unitDisplay.test.ts holds this standard, and
+   *  caught the first version of this row writing "m" into a string. */
+  units?: UnitSystem
   /** Whether the tester has asked for it. Separate from `background` because
    *  a switch that is on and not working must still read as on. */
   backgroundWanted?: boolean
@@ -274,6 +282,8 @@ export function GpsTraceSettings({
   gpsStatus = 'located',
   trailFix = 'waiting',
   background = 'off',
+  polls,
+  units = 'imperial',
   backgroundWanted = false,
   onBackgroundChange,
   now = new Date(),
@@ -304,6 +314,35 @@ export function GpsTraceSettings({
             <span className="settings__label">Trail position</span>
             <span className="settings__value">{TRAIL_FIX_VALUE[trailFix]}</span>
           </p>
+          {/* WHAT THE LAST FIX ACTUALLY CLAIMED. The fifth field trace's one
+              reading stated exactly 100 m with no speed and no heading - a
+              network fix, not GNSS - and nothing on this screen said so, so a
+              tester stood for 74 minutes waiting for a satellite lock that
+              had never happened. A number, not a judgement: no threshold is
+              being asserted here, because none has been validated. */}
+          {status.lastAccuracyM !== null && (
+            <p className="settings__row">
+              <span className="settings__label">Last reading</span>
+              <span className="settings__value">
+                give or take{' '}
+                {formatShortDistance(feetFromMetres(status.lastAccuracyM), units)}
+              </span>
+            </p>
+          )}
+
+          {/* Asked vs answered. A poll that times out writes no row, so
+              without this "the poll is not working" and "the poll never ran"
+              look identical in the exported file. */}
+          {polls !== undefined && polls.asked > 0 && (
+            <p className="settings__row">
+              <span className="settings__label">Readings asked for</span>
+              <span className="settings__value">
+                {polls.answered.toLocaleString('en-US')} of{' '}
+                {polls.asked.toLocaleString('en-US')} answered
+              </span>
+            </p>
+          )}
+
           {backgroundWanted && (
             <p className="settings__row">
               <span className="settings__label">Screen off</span>

@@ -195,6 +195,16 @@ export interface TraceStatus {
    * recording that had already stopped.
    */
   lastSampleAt: number | null
+  /**
+   * The accuracy radius of the most recent fix, in metres.
+   *
+   * On the screen because the fifth field trace's single reading stated
+   * exactly 100 m, with an altitude accuracy of 99.5 m and no speed or
+   * heading - the fingerprint of a network fix, not GNSS. A tester who could
+   * see "±100 m" would have known in thirty seconds that the phone had no
+   * satellite lock. Instead it took 74 minutes and a CSV.
+   */
+  lastAccuracyM: number | null
 }
 
 /** The IndexedDB surface this needs, injected so the suite can exercise the
@@ -240,6 +250,30 @@ const chunkKey = (index: number) => `ourhike:gps-trace:c${index}`
  */
 const CHUNK_SAMPLES = 60
 
+/**
+ * And a chunk is written after this long regardless, which is the half that
+ * was missing.
+ *
+ * COUNTING SAMPLES BOUNDS THE WRONG THING. `CHUNK_SAMPLES` decides the loss
+ * window in samples, and the app does not control how fast samples arrive -
+ * the platform does, and it varies by a factor of nine. Measured: 7.58 fixes
+ * a minute walking, 0.87 standing still. So 60 samples is about 8 minutes of
+ * exposure on a walk and **69 minutes** standing still, which is longer than
+ * any stationary recording anybody has taken.
+ *
+ * The fifth field trace is what made that concrete: 74 minutes of recording,
+ * one sample in the exported file. Every sample since the last chunk lives in
+ * a JavaScript array and nowhere else, so a reload, a tab eviction or an
+ * Android low-memory kill takes all of it - and the module header promises
+ * that "recording deliberately survives a reload", which was only ever true
+ * of the part already written down.
+ *
+ * A minute of wall clock bounds the loss the way a hiker would describe it,
+ * and costs at most one small write a minute - linear, not the quadratic
+ * rewrite archiveStore.ts measured, because each chunk is still its own key.
+ */
+const CHUNK_SECONDS = 60
+
 interface PersistedState {
   recording: boolean
   startedAt: number | null
@@ -249,6 +283,7 @@ interface PersistedState {
   chunks: number
   samples: number
   lastSampleAt: number | null
+  lastAccuracyM: number | null
 }
 
 const EMPTY: PersistedState = {
@@ -258,6 +293,7 @@ const EMPTY: PersistedState = {
   chunks: 0,
   samples: 0,
   lastSampleAt: null,
+  lastAccuracyM: null,
 }
 
 export interface GpsTrace {
@@ -286,12 +322,19 @@ function statusOf(state: PersistedState): TraceStatus {
     marker: state.marker,
     samples: state.samples,
     lastSampleAt: state.lastSampleAt,
+    lastAccuracyM: state.lastAccuracyM,
   }
 }
 
-export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
+export function createGpsTrace(
+  store: TraceStore = idbStore,
+  clock: () => number = Date.now,
+): GpsTrace {
   let state: PersistedState = { ...EMPTY }
   let buffer: TraceSample[] = []
+  /** When the buffer last reached storage, so the time budget above has
+   *  something to measure against. */
+  let lastFlushAt = clock()
 
   const persist = async () => {
     await store.set(STATE_KEY, state)
@@ -316,6 +359,7 @@ export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
     const chunk = buffer
     const index = state.chunks
     buffer = []
+    lastFlushAt = clock()
     state = { ...state, chunks: index + 1 }
     await store.set(chunkKey(index), chunk)
   }
@@ -338,6 +382,10 @@ export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
       // safely split later.
       await this.clear()
       state = { ...EMPTY, recording: true, startedAt: now }
+      // The time budget measures from here, not from whenever this module was
+      // constructed - otherwise a recording started an hour after app launch
+      // flushes on its very first sample and every one after it.
+      lastFlushAt = clock()
       await persist()
       return statusOf(state)
     },
@@ -367,9 +415,16 @@ export function createGpsTrace(store: TraceStore = idbStore): GpsTrace {
         ...state,
         samples: state.samples + 1,
         lastSampleAt: sample.timestampMs,
+        lastAccuracyM: sample.accuracyM,
       }
 
-      if (buffer.length >= CHUNK_SAMPLES) {
+      // Either bound, whichever comes first. The count keeps a fast walk from
+      // buffering thousands; the clock keeps a stationary recording from
+      // holding an hour of readings in memory alone. See CHUNK_SECONDS.
+      if (
+        buffer.length >= CHUNK_SAMPLES ||
+        clock() - lastFlushAt >= CHUNK_SECONDS * 1000
+      ) {
         await flush()
         await persist()
       }

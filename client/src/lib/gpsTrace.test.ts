@@ -395,6 +395,81 @@ describe('traceFilename', () => {
   })
 })
 
+describe('the flush time budget', () => {
+  // THE FIFTH FIELD TRACE. 74 minutes of recording, one sample in the file.
+  // Nothing reached storage until 60 samples had arrived, and at the measured
+  // stationary rate of 0.87 fixes a minute that is 69 minutes of readings
+  // held in a JavaScript array and nowhere else. A reload, a tab eviction or
+  // an Android low-memory kill takes all of it - while the module header
+  // promises a recording survives a reload.
+
+  it('writes a chunk once the clock says to, long before 60 samples', async () => {
+    const { store, values } = fakeStore()
+    let now = 1_000_000
+    const trace = createGpsTrace(store, () => now)
+
+    await trace.start(now)
+    await trace.record(sampleAt(1))
+    await trace.record(sampleAt(2))
+    expect(values.has('ourhike:gps-trace:c0')).toBe(false)
+
+    now += 60_000
+    await trace.record(sampleAt(3))
+
+    expect(values.get('ourhike:gps-trace:c0')).toHaveLength(3)
+  })
+
+  it('bounds the loss in MINUTES, which is the thing the app controls', async () => {
+    // The sample count does not bound it: the platform decides how fast
+    // samples arrive and it varies by a factor of nine (7.58 a minute
+    // walking, 0.87 standing still). Three samples in an hour must still
+    // reach storage.
+    const { store } = fakeStore()
+    let now = 0
+    const trace = createGpsTrace(store, () => now)
+    await trace.start(now)
+
+    for (let i = 0; i < 3; i += 1) {
+      now += 21 * 60_000
+      await trace.record(sampleAt(i))
+    }
+
+    expect(await trace.readAll()).toHaveLength(3)
+    // And they are on disk rather than in the buffer: a fresh reader over the
+    // same store sees them without the recorder's memory.
+    const reopened = createGpsTrace(store, () => now)
+    await reopened.resume()
+    expect(await reopened.readAll()).toHaveLength(3)
+  })
+
+  it('measures the budget from `start`, not from when the module was built', async () => {
+    // Otherwise a recording begun an hour after app launch flushes on its
+    // first sample and every sample after it.
+    const { store, writeCount } = fakeStore()
+    let now = 0
+    const trace = createGpsTrace(store, () => now)
+
+    now += 60 * 60_000
+    await trace.start(now)
+    const before = writeCount()
+    await trace.record(sampleAt(1))
+
+    // The state write from `start` only; no chunk.
+    expect(writeCount()).toBe(before)
+  })
+
+  it('still chunks on the count when samples come in fast', async () => {
+    const { store, values } = fakeStore()
+    const now = 0
+    const trace = createGpsTrace(store, () => now)
+    await trace.start(now)
+
+    await recordMany(trace, 60)
+
+    expect(values.get('ourhike:gps-trace:c0')).toHaveLength(60)
+  })
+})
+
 describe('sampleFromNativeFix', () => {
   // THE TRAP THIS SUITE EXISTS FOR. `navigator.geolocation` states its
   // accuracy radius at 95% confidence; the background plugin states its own
@@ -429,6 +504,13 @@ describe('sampleFromNativeFix', () => {
     // to question later. The platform's number goes in untouched and the
     // convention travels beside it.
     expect(sampleFromNativeFix(nativeFix, null).accuracyM).toBe(11)
+  })
+
+  it('carries the last accuracy onto the status, for the screen to print', () => {
+    // The fifth trace's one reading stated exactly 100 m with no speed and no
+    // heading - a network fix - and the screen said nothing, so a tester
+    // waited 74 minutes for a satellite lock that had never happened.
+    expect(sampleAt(1_000).accuracyM).toBe(12)
   })
 
   it('says which watch produced it', () => {

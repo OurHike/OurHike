@@ -515,7 +515,7 @@ export function More({
               worked - a tester finding that out is a walk nobody gets back. */}
           {gpsTrace !== undefined &&
             settings.preferences.location_permission_requested && (
-              <GpsTraceSettings {...gpsTrace} />
+              <GpsTraceSettings {...gpsTrace} units={settings.preferences.unit_system} />
             )}
         </>
       )

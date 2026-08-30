@@ -614,6 +614,7 @@ describe('the GPS trace section on Safety & privacy', () => {
       marker: null,
       samples: 0,
       lastSampleAt: null,
+      lastAccuracyM: null,
     },
     onStart: vi.fn(),
     onStop: vi.fn(),

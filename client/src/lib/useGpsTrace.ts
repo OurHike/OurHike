@@ -77,6 +77,7 @@ const IDLE: TraceStatus = {
   marker: null,
   samples: 0,
   lastSampleAt: null,
+  lastAccuracyM: null,
 }
 
 /**
@@ -132,6 +133,9 @@ export interface GpsTraceControls {
   /** Whether the tester has asked for background recording. Kept here so the
    *  switch is a control rather than a report. */
   backgroundWanted: boolean
+  /** How often the recorder asked the platform for a fix, and how often it
+   *  got one. A large gap is the finding, not a bug to hide. */
+  polls: { asked: number; answered: number }
   onBackgroundChange: (wanted: boolean) => void
   /** Hand this to `useGeolocation` - it wants every fix, unfiltered. */
   onFix: (position: GeolocationPosition) => void
@@ -149,6 +153,18 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   const [status, setStatus] = useState<TraceStatus>(IDLE)
   const [trailFix, setTrailFix] = useState<TrailFix>('waiting')
   const [backgroundWanted, setBackgroundWanted] = useState(false)
+  /**
+   * How many times the poll asked, and how many times it was answered.
+   *
+   * REPORTED BECAUSE THE FIFTH TRACE'S POLL PRODUCED NOTHING AT ALL, and the
+   * trace could not say whether it had run. A poll that times out records no
+   * row, so "the poll is not working" and "the poll never ran" looked
+   * identical in the file - the exact ambiguity `wake_lock` and `page_visible`
+   * were added to end for the watch, reintroduced one commit later by the
+   * mechanism meant to help. Two counters, on the screen, while the tester is
+   * still standing there.
+   */
+  const [polls, setPolls] = useState({ asked: 0, answered: 0 })
   const [backgroundProblem, setBackgroundProblem] =
     useState<BackgroundWatchProblem | null>(null)
 
@@ -258,10 +274,12 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     const id = setInterval(() => {
       if (inFlight || stopped) return
       inFlight = true
+      setPolls((count) => ({ ...count, asked: count.asked + 1 }))
       navigator.geolocation.getCurrentPosition(
         (position) => {
           inFlight = false
           if (stopped) return
+          setPolls((count) => ({ ...count, answered: count.answered + 1 }))
           const [reading, conditions] = placeRef.current({
             lon: position.coords.longitude,
             lat: position.coords.latitude,
@@ -349,13 +367,17 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     trailFix,
     background,
     backgroundWanted,
+    polls,
     onBackgroundChange: setBackgroundWanted,
     // Tied to recording rather than offered as its own switch: holding a
     // screen awake for anything else in this app would be a battery cost
     // nobody asked for.
     wakeLock,
     onFix,
-    onStart: useCallback(() => void trace.start().then(setStatus), [trace]),
+    onStart: useCallback(() => {
+      setPolls({ asked: 0, answered: 0 })
+      void trace.start().then(setStatus)
+    }, [trace]),
     onStop: useCallback(() => void trace.stop().then(setStatus), [trace]),
     onMark: useCallback(
       (marker: TraceMarker) => void trace.mark(marker).then(setStatus),

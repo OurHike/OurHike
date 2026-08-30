@@ -410,6 +410,28 @@ export function createGpsTrace(
     async record(sample: TraceSample): Promise<TraceStatus> {
       if (!state.recording) return statusOf(state)
 
+      // THE SAME FIX, ARRIVING TWICE. `getCurrentPosition` (the poll in
+      // useGpsTrace.ts) forces the platform to acquire a position, and the
+      // platform hands that ONE position to the poll's callback AND to the
+      // running `watchPosition` watcher. Both call `record`. Measured on the
+      // sixth field trace, a four-hour hike: 8 of its 32 rows - 25% of the
+      // file - were a fix already recorded, byte-identical coordinates under
+      // one platform timestamp, one row saying `web-poll` and one `web`.
+      //
+      // `position.timestamp` is the platform's own acquisition time, so two
+      // samples carrying the same one are the same acquisition, whatever
+      // route they arrived by. Dropping the second is not discarding an
+      // observation; keeping it would silently inflate every count and shrink
+      // every scatter statistic derived from the file - which is the
+      // optimistic direction, and the one this app may not be wrong in.
+      //
+      // Deliberately NOT deduplicating on position. A fix ten milliseconds
+      // later with identical coordinates is a different acquisition the
+      // platform genuinely made, and `useGeolocation`'s own note explains why
+      // a noise gate here is the field measurement nobody has taken rather
+      // than something to infer.
+      if (sample.timestampMs === state.lastSampleAt) return statusOf(state)
+
       buffer.push({ ...sample, marker: state.marker })
       state = {
         ...state,

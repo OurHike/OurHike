@@ -395,6 +395,65 @@ describe('traceFilename', () => {
   })
 })
 
+describe('one fix arriving twice', () => {
+  // THE SIXTH FIELD TRACE, a four-hour hike. `getCurrentPosition` forces the
+  // platform to acquire a position; the platform hands that ONE position to
+  // the poll's callback AND to the running watch, and both called `record`.
+  // 8 of that file's 32 rows - 25% - were a fix already recorded, under one
+  // platform timestamp, one row saying `web-poll` and one `web`.
+
+  it('records a fix once, however many callbacks it arrives through', async () => {
+    const { store } = fakeStore()
+    const trace = createGpsTrace(store)
+    await trace.start(0)
+
+    await trace.record({ ...sampleAt(1_000), fixSource: 'web-poll' })
+    await trace.record({ ...sampleAt(1_000), fixSource: 'web' })
+
+    expect(await trace.readAll()).toHaveLength(1)
+  })
+
+  it('keeps the source that actually asked for it', async () => {
+    // The poll's callback fires first because the poll is what caused the
+    // acquisition, so `web-poll` is the honest label for that row.
+    const { store } = fakeStore()
+    const trace = createGpsTrace(store)
+    await trace.start(0)
+
+    await trace.record({ ...sampleAt(1_000), fixSource: 'web-poll' })
+    await trace.record({ ...sampleAt(1_000), fixSource: 'web' })
+
+    expect((await trace.readAll())[0].fixSource).toBe('web-poll')
+  })
+
+  it('does not count a dropped duplicate as a reading', async () => {
+    // Counting it would inflate the screen's tally and every statistic
+    // derived from the file, in the optimistic direction.
+    const { store } = fakeStore()
+    const trace = createGpsTrace(store)
+    await trace.start(0)
+
+    await trace.record(sampleAt(1_000))
+    const after = await trace.record(sampleAt(1_000))
+
+    expect(after.samples).toBe(1)
+  })
+
+  it('keeps a genuinely later fix even at the same position', async () => {
+    // Ten milliseconds later with identical coordinates is a different
+    // acquisition the platform really made. A noise gate here is the field
+    // measurement nobody has taken, not something to infer.
+    const { store } = fakeStore()
+    const trace = createGpsTrace(store)
+    await trace.start(0)
+
+    await trace.record(sampleAt(1_000))
+    await trace.record(sampleAt(1_010))
+
+    expect(await trace.readAll()).toHaveLength(2)
+  })
+})
+
 describe('the flush time budget', () => {
   // THE FIFTH FIELD TRACE. 74 minutes of recording, one sample in the file.
   // Nothing reached storage until 60 samples had arrived, and at the measured

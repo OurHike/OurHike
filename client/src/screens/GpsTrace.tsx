@@ -125,22 +125,37 @@ export function elapsedLabel(startedAt: number | null, now: Date): string {
 }
 
 /**
- * How long since the last reading, once that is long enough to be wrong.
+ * How long since the last reading, once that is long enough to be worth saying.
  *
- * Null under the threshold, because at a 5.7 s cadence "12 seconds ago" is
- * every glance at the screen and says nothing. THE REASON THIS EXISTS: on the
- * third field walk the fixes stopped dead and the tester stood still for
- * several more minutes beside a recording that had already ended. The count
- * was on screen the whole time. A count that has stopped climbing and one that
- * is climbing slowly look identical unless you were watching the digits.
+ * THE REASON THIS EXISTS: on the third field walk the fixes stopped dead and
+ * the tester stood still for several more minutes beside a recording that had
+ * already ended. The count was on screen the whole time, and a count that has
+ * stopped climbing looks identical to one climbing slowly unless you were
+ * watching the digits.
  *
- * @unvalidated - 60 s is picked, not derived. It is about ten missed fixes at
- * the one cadence anybody has measured (5.71 s median, one phone, 2026-08-29),
- * which is long enough that a stall is real and short enough to catch inside a
- * stationary block. What would settle it is a few more traces: the longest gap
- * that turns out to be ordinary is the floor this should sit above.
+ * 180 s, RAISED FROM 60 s BY THE FOURTH FIELD TRACE, which is the measurement
+ * this number should have waited for. That trace is 39 minutes of a phone
+ * standing still with `wake_lock` reading `held` and `page_visible` reading
+ * `yes` on every one of its 34 rows - so the screen was awake, the page was
+ * running, and the platform simply delivered fewer fixes to a device that was
+ * not moving. Its intervals: 5.6, 11.3, 17.0, 25.0, 28.2, 49.5, 59.7, 63.0,
+ * 68.7, 93.8, 98.7, 150.2 seconds. SIX of them exceed 60 s, and five of those
+ * six were a healthy recording doing exactly what it was asked to do.
+ *
+ * A warning that fires five times wrongly during the one activity this
+ * instrument exists to measure is the cry-wolf failure `wrongWay.test.ts`
+ * states outright - "false positives are the failure this whole module exists
+ * to prevent" - committed on the screen a tester reads to decide whether their
+ * afternoon is working.
+ *
+ * 180 s clears the largest healthy gap seen (150.2 s) with room, and still
+ * catches the failure it was built for: the third walk's silence ran 272 s.
+ * @unvalidated as a threshold - two recordings on one phone is not a
+ * distribution, and the honest floor is "larger than the biggest ordinary gap
+ * anybody has measured", which is what this is. More stationary traces move
+ * it; a device that thins further under canopy would move it up.
  */
-export const STALL_SECONDS = 60
+export const STALL_SECONDS = 180
 
 export function stalledLabel(
   lastSampleAt: number | null,
@@ -151,8 +166,12 @@ export function stalledLabel(
   const seconds = Math.floor((now.getTime() - lastSampleAt) / 1000)
   if (seconds < STALL_SECONDS) return null
   const minutes = Math.floor(seconds / 60)
-  const ago = minutes < 2 ? 'over a minute' : `${minutes} minutes`
-  return `Nothing has been recorded for ${ago}. The screen probably went dark — wake the phone and it starts again on its own. Nothing already recorded is lost.`
+  // States the fact and offers both readings of it, rather than diagnosing.
+  // The old sentence said "the screen probably went dark", which the fourth
+  // trace showed is frequently WRONG: fixes thin out on a stationary phone
+  // with the screen fully awake. Telling a standing tester their screen died
+  // sends them to fix something that is not broken.
+  return `No reading for ${minutes} minutes. If you are standing still that can be normal — the phone sends fewer readings when it is not moving. If you are walking, the screen has probably gone dark; wake the phone and it picks up on its own. Nothing already recorded is lost.`
 }
 
 /** Grouped with a separator so a four-figure count stays readable at a

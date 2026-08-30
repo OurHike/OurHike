@@ -262,9 +262,7 @@ describe('GpsTraceSettings', () => {
       { now: new Date(272_000) },
     )
 
-    expect(
-      screen.getByText(/nothing has been recorded for 4 minutes/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/no reading for 4 minutes/i)).toBeInTheDocument()
   })
 
   it('tells the tester what to do about a stall, not just that there is one', async () => {
@@ -278,15 +276,17 @@ describe('GpsTraceSettings', () => {
     )
   })
 
-  it('stays quiet about a stall at the ordinary fix cadence', async () => {
-    // Measured median interval is 5.71 s. A warning that fires between fixes
-    // is a warning nobody reads by the second hour.
+  it('stays quiet through the gaps a stationary phone actually produces', async () => {
+    // 150.2 s was the largest gap in 39 minutes of a HEALTHY stationary
+    // recording (the fourth field trace, wake_lock 'held' and page_visible
+    // 'yes' on every row). A warning there is a warning nobody reads by the
+    // second hour.
     renderSection(
       { recording: true, startedAt: 0, samples: 136, lastSampleAt: 0 },
-      { now: new Date(12_000) },
+      { now: new Date(150_200) },
     )
 
-    expect(screen.queryByText(/nothing has been recorded for/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no reading for/i)).not.toBeInTheDocument()
   })
 
   it('says nothing about a stall once the recording is stopped', async () => {
@@ -299,7 +299,7 @@ describe('GpsTraceSettings', () => {
       },
     )
 
-    expect(screen.queryByText(/nothing has been recorded for/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no reading for/i)).not.toBeInTheDocument()
   })
 
   it('offers the screen-off switch before the walk, not during it', async () => {
@@ -500,24 +500,43 @@ describe('backgroundNote', () => {
 })
 
 describe('stalledLabel', () => {
-  const NOW = new Date(1_000_000)
+  const NOW = new Date(10_000_000)
   const secondsAgo = (s: number) => NOW.getTime() - s * 1000
 
   it('says nothing before the first reading', () => {
     expect(stalledLabel(null, NOW, true)).toBeNull()
   })
 
-  it('says nothing at the ordinary cadence', () => {
+  it('says nothing at the ordinary walking cadence', () => {
     expect(stalledLabel(secondsAgo(6), NOW, true)).toBeNull()
-    expect(stalledLabel(secondsAgo(59), NOW, true)).toBeNull()
   })
 
-  it('speaks up once a stall is real', () => {
-    expect(stalledLabel(secondsAgo(60), NOW, true)).toMatch(/over a minute/i)
+  it('stays quiet through every gap a healthy stationary phone produced', () => {
+    // THE FOURTH FIELD TRACE, and the reason this threshold moved from 60 s.
+    // 39 minutes of standing still with wake_lock 'held' and page_visible
+    // 'yes' on all 34 rows - screen awake, page running, and the platform
+    // simply sending fewer fixes to a phone that was not moving. At 60 s this
+    // warning fired six times, five of them at a recording working perfectly.
+    for (const gap of [
+      5.6, 11.3, 17, 25, 28.2, 49.5, 59.7, 63, 68.7, 93.8, 98.7, 150.2,
+    ]) {
+      expect(stalledLabel(secondsAgo(gap), NOW, true)).toBeNull()
+    }
   })
 
-  it('counts whole minutes past that', () => {
+  it('still catches the silence that cost the third walk', () => {
+    // 272 s, which is the whole point of the control existing.
     expect(stalledLabel(secondsAgo(272), NOW, true)).toMatch(/4 minutes/)
+  })
+
+  it('does not diagnose a dark screen, because that is often wrong', () => {
+    // The old sentence said "the screen probably went dark". The fourth trace
+    // shows fixes thinning on a stationary phone with the screen fully awake,
+    // so telling a standing tester their screen died sends them to fix
+    // something that is not broken.
+    const label = stalledLabel(secondsAgo(600), NOW, true)
+    expect(label).toMatch(/if you are standing still that can be normal/i)
+    expect(label).toMatch(/if you are walking/i)
   })
 
   it('says nothing when nothing is recording', () => {

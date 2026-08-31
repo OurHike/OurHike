@@ -164,7 +164,7 @@ jobs:
       # the ATC layer wait on Supabase account work it has nothing to do with.
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 

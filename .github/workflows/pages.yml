@@ -469,7 +469,7 @@ jobs:
           name: app-dist
           path: app-dist
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
 

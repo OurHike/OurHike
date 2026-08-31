@@ -228,7 +228,7 @@ jobs:
       - name: List what this pull request touches
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           LIST: ${{ runner.temp }}/pr-files.txt
         with:

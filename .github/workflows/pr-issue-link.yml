@@ -137,7 +137,7 @@ jobs:
       # so every exemption below is decided inside the script, where it can
       # still finish green.
       - id: check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ESCAPE_LABEL: no-issue
         with:

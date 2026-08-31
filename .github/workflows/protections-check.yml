@@ -131,7 +131,7 @@ jobs:
       # misconfigured in some other way.
       - name: Read how GitHub is configured
         id: read
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           BRANCH: ${{ steps.manifest.outputs.branch }}
           HAS_ADMIN_TOKEN: ${{ secrets.PROTECTIONS_READ_TOKEN != '' }}

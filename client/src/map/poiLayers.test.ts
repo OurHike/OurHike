@@ -31,6 +31,7 @@ import {
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
+  POI_NAME_PROPERTY,
   POI_LAYER_ID,
   POI_PIN_MIN_ZOOM,
   POI_SORT_KEY_EXPRESSION,
@@ -314,6 +315,11 @@ describe('poiFeatureCollection', () => {
       // the property arrived - a `toMatchObject` here would have let a fourth
       // property appear unnoticed.
       [SITE_MEMBERS_PROPERTY]: '',
+      // The name map/poiLabels.ts draws (#1194), and empty here because this
+      // fixture's MapPoint carries none. Always a string for the same reason
+      // the site key above always is: the label layer's filter is then one
+      // comparison rather than a `coalesce`.
+      [POI_NAME_PROPERTY]: '',
       // The day-one defaults with no note roll-up supplied: no ring, no fade
       // (#256's maintainer decision, lib/stalenessDisplay.ts).
       staleness_ring: 'none',

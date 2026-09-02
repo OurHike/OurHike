@@ -1120,6 +1120,54 @@ describe('the desktop chart (#135)', () => {
     }
   }
 
+  it('stands the chart and the persistent legend down for the day-hike builder', () => {
+    // #1194. BOTH of the legend's props have to be gated, and that is the
+    // half this got wrong first: Legend.tsx renders unless
+    // `!open && !persistent`, so gating `open` alone left a desktop legend
+    // exactly where it was. The preview photographed the result - the map
+    // still 380px wide between two panels of map controls, which is the
+    // complaint the rail was added to fix.
+    const restore = stubDesktop()
+    try {
+      render(
+        <MapScreen
+          {...PROPS}
+          chart={chartProps()}
+          legendOpen
+          builderPanel={<div>the rail</div>}
+        />,
+      )
+
+      expect(screen.queryByTestId('elevation-chart')).toBeNull()
+      expect(screen.queryByRole('region', { name: /legend/i })).toBeNull()
+      expect(screen.getByText('the rail')).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('gives the chart and the legend back the moment the builder closes', () => {
+    const restore = stubDesktop()
+    try {
+      const { rerender } = render(
+        <MapScreen
+          {...PROPS}
+          chart={chartProps()}
+          legendOpen
+          builderPanel={<div>the rail</div>}
+        />,
+      )
+      expect(screen.queryByTestId('elevation-chart')).toBeNull()
+
+      rerender(<MapScreen {...PROPS} chart={chartProps()} legendOpen />)
+
+      expect(screen.getByTestId('elevation-chart')).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /legend/i })).not.toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
   it('swaps the ribbon and the lanes for the chart above the breakpoint', () => {
     const restore = stubDesktop()
     try {
@@ -1391,5 +1439,50 @@ describe('the download note (#1103)', () => {
     render(<MapScreen {...PROPS} downloadActivity={null} />)
 
     expect(screen.queryByRole('button', { name: /map still arriving/i })).toBe(null)
+  })
+})
+
+describe('while the day-hike builder owns the screen (#1194)', () => {
+  // THE MEASUREMENT BEHIND THIS. The builder's redesign added a 348px rail to
+  // buy the map room, and on a wide screen it did the opposite: at 1280x800
+  // the tab sidebar (208), the rail (348) and the persistent legend (290)
+  // left the map 434px, with the elevation chart taking 200px of height under
+  // it. Photographed on this pull request's own preview, which is what caught
+  // it. So the two surfaces that are not about the walk being built stand
+  // down while it is.
+
+  it('stands the A.T. elevation ribbon down, because it profiles a different trail', () => {
+    // The ribbon draws the corridor a hiker is standing in. Somebody laying
+    // out a loop in Harriman is not walking it, and the walk they ARE
+    // building has no profile to put there (chrome/DayHikePanel.tsx).
+    const { rerender } = render(<MapScreen {...PROPS} />)
+    expect(document.querySelector('.next-up__ribbon-card')).not.toBeNull()
+
+    rerender(<MapScreen {...PROPS} builderPanel={<div>the rail</div>} />)
+
+    expect(document.querySelector('.next-up__ribbon-card')).toBeNull()
+    expect(screen.getByText('the rail')).toBeInTheDocument()
+  })
+
+  it('keeps the attribution line, which is a licence condition rather than chrome', () => {
+    // MapAttribution's own rule: the credit may not depend on whether a
+    // profile happened to download, so it may not depend on this either.
+    render(<MapScreen {...PROPS} builderPanel={<div>the rail</div>} />)
+
+    expect(document.querySelector('.next-up-band')).not.toBeNull()
+    expect(screen.getByText(/OpenStreetMap/)).toBeInTheDocument()
+  })
+
+  it('gives the map its room back when the builder closes', () => {
+    // The stand-down is a mode, not a deletion - a hiker who cancels finds
+    // the ribbon where they left it.
+    const { rerender } = render(
+      <MapScreen {...PROPS} builderPanel={<div>the rail</div>} />,
+    )
+    expect(document.querySelector('.next-up__ribbon-card')).toBeNull()
+
+    rerender(<MapScreen {...PROPS} />)
+
+    expect(document.querySelector('.next-up__ribbon-card')).not.toBeNull()
   })
 })

@@ -1,5 +1,5 @@
-// Frame `1j`'s bar - the day-hike builder, waiting for its first tap (#1093,
-// #978, features/HIKE_PLANNING.md "The day hike on a network").
+// The day-hike builder on a phone (#1093, #978, #1194,
+// features/HIKE_PLANNING.md "The day hike on a network").
 //
 // This is the screen #1093 changes, and until now nothing pointed a camera at
 // it. The other four day-hike recipes photograph the Plan home, the finished
@@ -48,9 +48,24 @@
 // Nobody's data is in the frame by construction: no account, no saved hikes
 // seeded, no location fix, and the map is wherever the app opens itself.
 
-export const caption = 'The day-hike builder in draw mode, or the door it opens from'
+// #1194 REPOINTED THIS RECIPE at the panel rather than at draw mode.
+//
+// The three complaints that change answered are all about the surface this
+// photographs: the map was too small, nothing was labelled, and the route was
+// hard to pick out. The first is the one a still frame proves - the panel is
+// a band at the TOP with the map below it and the buttons still at the foot,
+// where before the bar alone could cover 60% of the canvas.
+//
+// Draw mode is no longer what this drives into. It was #983's frame and it is
+// still pinned by chrome/DayHikePickBar.test.tsx; what it cannot show is the
+// layout, because entering it replaces the bar's prompt and leaves the panel
+// exactly as it was. The details toggle does the opposite - it is the control
+// the redesign added, and opening it puts the route order, the climb figures
+// and the label toggles in frame at once.
+export const caption =
+  'The day-hike builder: panel at the top, map in the middle, buttons at the bottom (#1194)'
 export const alt =
-  'Either the day-hike builder bar over the map in draw mode - "Drag to draw. We\'ll put it on the trails and tell you what moved." with Cancel, a "Tap instead" way back, and the row saying roads are drawn and never routed on - or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
+  'Either the redesigned day-hike builder - a panel across the top of the screen headed "Your route" with Distance, Climb and Walking figures, an expanded body listing the route order and a scrolling row of map-label toggles, the map filling the middle, and the builder bar with Cancel, Undo and Draw instead along the bottom - or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
 
 // The routing artifact is 7.5 MB and is hashed before it is trusted, so the
 // door can take a moment to appear on a cold preview. The drive waits on the
@@ -75,17 +90,14 @@ export default async function drive(page) {
   await door.click()
   await page.getByRole('region', { name: 'Build a day hike' }).waitFor()
 
-  // ON INTO DRAW MODE, because that is what changed. Three of this branch's
-  // decisions land on this bar and only one of them survives a canvas the
-  // drive cannot aim at: frame `1k`'s freehand door (#983), the way back from
-  // it, and the row that used to promise roads as a LATER feature and now
-  // says what is true about them (#931). The resting "Tap a trail to walk it"
-  // frame is the one this recipe already published; this is the frame with
-  // the change in it.
+  // #1194's panel, opened. It renders collapsed by default - which IS the
+  // redesign, the state where the map is biggest - but a collapsed panel and
+  // the old bar-only screen look alike in a still, and the point of the shot
+  // is what the panel now holds. So the camera opens it.
   //
-  // The prompt line is what proves the mode flipped - the button's own label
-  // changes too, but waiting on the sentence waits on the thing being
-  // photographed rather than on the thing that was clicked.
-  await page.getByRole('button', { name: 'Draw instead' }).click()
-  await page.getByText(/Drag to draw/).waitFor()
+  // Waited on by its own heading rather than by the button that was clicked:
+  // that waits on the thing being photographed instead of on the click.
+  await page.getByRole('region', { name: 'Your route' }).waitFor()
+  await page.getByRole('button', { name: 'Details' }).click()
+  await page.getByText('Route order · tap the map to add').waitFor()
 }

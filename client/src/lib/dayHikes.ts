@@ -144,6 +144,15 @@ export interface DayHikeFigures {
   climb?: RouteClimb | null
 }
 
+/** A stop as it is stored - see {@link DayHike.stops} for why so little. */
+export interface DayHikeStopRef {
+  poiId: string
+  /** `shelter` or `campsite` - lib/dayHikeStops.ts's STOPPABLE_TYPES. */
+  type: string
+  /** The name as it read when the hike was saved. */
+  name: string
+}
+
 export interface DayHike {
   /** Client-minted uuid (crypto.randomUUID), like a trip's - the id the sync
    *  exchange keys on. */
@@ -153,6 +162,25 @@ export interface DayHike {
   date: string | null
   segments: DayHikeSegment[]
   figures: DayHikeFigures
+  /**
+   * The shelters and campsites the hiker picked as stops (#1194).
+   *
+   * OPTIONAL, AND ABSENT MEANS NONE WERE PICKED - not that the record
+   * predates stops, and the difference does not matter to anything that
+   * reads it: both come out as a walk with no stop rows. A hike stored
+   * before this field existed round-trips unchanged, which is the same
+   * degradation `concurrent_sources` on a leg already relies on.
+   *
+   * WHAT IS STORED IS THE STOP, NOT ITS POSITION. `mile` and
+   * `offCourseFeet` are derived from the walk (lib/dayHikeStops.ts) and are
+   * deliberately NOT cached here: they are facts about a route, and a route
+   * that is re-resolved against a newer data release should re-derive them
+   * rather than print last release's answer. The `poiId` is the record; the
+   * name rides along so a hike whose waypoint has since been retired can
+   * still say what the hiker planned around, the same reason a leg caches
+   * its trail name.
+   */
+  stops?: DayHikeStopRef[]
   /** Whether the hiker asked to walk back to the first tap. */
   looped: boolean
   /** Planned ahead, or recorded from a walk - provenance that changes what a
@@ -328,6 +356,39 @@ function validClimb(candidate: unknown): RouteClimb | null | undefined {
 }
 
 /**
+ * The stops, sanitised (#1194).
+ *
+ * Sanitising rather than refusing, per this file's rule: a stop carries no
+ * invariant the record's arithmetic depends on - it annotates a walk that
+ * was already decided (lib/dayHikeStops.ts) - so a broken entry costs that
+ * row and never the hike. `undefined` for a record with none, so a hike
+ * saved before stops existed round-trips byte for byte.
+ *
+ * A stop with no id is dropped rather than repaired: the id is what re-finds
+ * the waypoint, and a stop nothing can point at is a row that can never say
+ * where it is. Duplicates go the same way - the model is a SET, and two rows
+ * for one shelter would be two stops' worth of stopping time for one stop.
+ */
+function validStops(candidate: unknown): DayHikeStopRef[] | undefined {
+  if (!Array.isArray(candidate)) return undefined
+  const seen = new Set<string>()
+  const stops: DayHikeStopRef[] = []
+  for (const entry of candidate) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const stop = entry as Partial<DayHikeStopRef>
+    if (typeof stop.poiId !== 'string' || stop.poiId.length === 0) continue
+    if (seen.has(stop.poiId)) continue
+    seen.add(stop.poiId)
+    stops.push({
+      poiId: stop.poiId,
+      type: typeof stop.type === 'string' ? stop.type : '',
+      name: typeof stop.name === 'string' ? stop.name : '',
+    })
+  }
+  return stops.length > 0 ? stops : undefined
+}
+
+/**
  * A day hike, or null when what is junk is the hike itself.
  *
  * Only two things can cost the hike: an id that is not a non-empty string
@@ -354,6 +415,11 @@ function validDayHike(candidate: unknown): DayHike | null {
     date: typeof hike.date === 'string' && DATE_SHAPE.test(hike.date) ? hike.date : null,
     segments,
     figures,
+    // Spread so the key is ABSENT rather than `undefined` for a walk with no
+    // stops - the same omit-don't-write rule StoredPoi's optional fields
+    // follow, and what keeps a pre-#1194 record identical through a
+    // load-and-save round trip.
+    ...(validStops(hike.stops) !== undefined ? { stops: validStops(hike.stops) } : {}),
     looped: hike.looped === true,
     recorded: hike.recorded === 'walked' ? 'walked' : 'planned',
     // Trimmed and capped, because this rides the sync exchange and a record

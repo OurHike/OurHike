@@ -747,6 +747,21 @@ export const LIVE_TOPO_LAYER_IDS = {
   boundary: 'topo-boundary',
   peak: 'topo-peak',
   waterLabel: 'topo-water-label',
+  /**
+   * Road names (#1194).
+   *
+   * Tier 1 of map/labelLadder.ts, and the handoff's argument for putting it
+   * there is worth keeping next to the layer: "Roads exist specifically so a
+   * user can find a start point." Every other label on this sheet describes
+   * ground a hiker walks; this one describes how they got there, which is the
+   * question the day-hike builder is answering.
+   *
+   * `transportation_name` rather than `transportation` - the OpenMapTiles
+   * schema keeps road geometry and road names in separate source layers, and
+   * the line layers above read the geometry one, which carries no `name` at
+   * all.
+   */
+  roadLabel: 'topo-road-label',
   place: 'topo-place',
 } as const
 
@@ -795,6 +810,8 @@ export const SHEET_COLOURS: ReadonlyArray<
   [LIVE_TOPO_LAYER_IDS.waterLabel, 'text-halo-color', 'labelHalo'],
   [LIVE_TOPO_LAYER_IDS.place, 'text-color', 'label'],
   [LIVE_TOPO_LAYER_IDS.place, 'text-halo-color', 'labelHalo'],
+  [LIVE_TOPO_LAYER_IDS.roadLabel, 'text-color', 'label'],
+  [LIVE_TOPO_LAYER_IDS.roadLabel, 'text-halo-color', 'labelHalo'],
 ]
 
 /** One layer's colour paint properties, resolved against a palette. Spread
@@ -1446,6 +1463,52 @@ export function liveTopoLayers({
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.peak, palette),
         'text-halo-width': type.peakHalo,
+      },
+    },
+    {
+      // Named roads, along the line, so a hiker can find the lot they parked
+      // in and the road it opens onto (#1194).
+      //
+      // MOTORWAYS AND TRUNK ROADS ARE EXCLUDED, which is the opposite of what
+      // a road atlas would do and right for this map: an interstate is not a
+      // trailhead approach, its shield is the biggest label on the sheet, and
+      // it is already unmistakable as a line. What a hiker needs named is the
+      // county road with the pull-off on it - `class` `primary` through
+      // `unclassified`, which is what is left after this filter.
+      id: LIVE_TOPO_LAYER_IDS.roadLabel,
+      type: 'symbol',
+      source: OSM_SOURCE_ID,
+      'source-layer': 'transportation_name',
+      minzoom: 11,
+      filter: [
+        'all',
+        ['!=', ['to-string', ['get', 'name']], ''],
+        ['!', isClass('motorway', 'trunk')],
+      ] as never,
+      layout: {
+        // OFF UNTIL THE DAY-HIKE BUILDER ASKS (#1194). This layer was added
+        // for the planning screen, where the handoff's argument is that
+        // "roads exist specifically so a user can find a start point". That
+        // argument does not carry to the walking map, whose density #1135
+        // settled without road names in it - so turning them on everywhere
+        // would be a decision taken as a side effect of fixing the builder.
+        // lib/mapLabelLayers.ts names this as builder-only and switches it.
+        visibility: 'none',
+        'text-field': ['get', 'name'] as never,
+        'text-font': FONT,
+        'symbol-placement': 'line',
+        'symbol-spacing': 300,
+        'text-size': 11,
+        // Tier 1 of map/labelLadder.ts. Restated as a literal rather than
+        // imported: this module is the sheet's, and labelLadder.ts imports
+        // nothing from here, so a dependency the other way would be the only
+        // edge between them. labelLadder.test.ts pins the two together.
+        'symbol-sort-key': 10,
+        'text-max-angle': 30,
+      },
+      paint: {
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.roadLabel, palette),
+        'text-halo-width': 1.4,
       },
     },
     {

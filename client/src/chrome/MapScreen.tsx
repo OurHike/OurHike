@@ -14,7 +14,15 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -222,6 +230,9 @@ export interface MapScreenProps {
    */
   routeDrawing?: RouteDrawing | null
   dayHikeDrawing?: DayHikeDrawing | null
+  /** Passed straight through to the map - see MapViewProps for both. */
+  dayHikeTicks?: ComponentProps<typeof MapView>['dayHikeTicks']
+  mapLabels?: ComponentProps<typeof MapView>['mapLabels']
   onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
   /** A drawn line, in the day-hike builder's draw mode (#983). Replaces the
    *  tap handler while set - see MapViewProps.onRouteStroke. */
@@ -235,6 +246,22 @@ export interface MapScreenProps {
    *  for what it suppresses and why. */
   pressPlateOpen?: boolean
   routeSheet?: ReactNode
+  /**
+   * The day-hike builder's panel (#1194) - the left rail on a desktop, the
+   * collapsible top panel on a phone.
+   *
+   * IN THE FLOW, NOT OVER THE MAP, which is the whole of the fix it carries.
+   * Every other slot on this screen is an overlay, and that is what made the
+   * builder's map too small: `.day-hike-bar` covers up to 60% of the canvas.
+   * This one is a SIBLING of `.map-screen__canvas`, so it takes its room
+   * rather than borrowing the map's - a row on a desktop (desktop.css already
+   * turns `.map-screen__body` into one) and a band above the map on a phone.
+   *
+   * A slot for the same reason `routeSheet` is: what a day hike knows is the
+   * shell's, and a map screen that learned about them would be the fourth
+   * feature to move into it (#937).
+   */
+  builderPanel?: ReactNode
   /** The press-and-hold plate (#1137). A slot for the same reason as the
    *  sheets above - but unlike them it DOES anchor to a point on the
    *  canvas, so it positions itself and this screen only gives it the
@@ -732,11 +759,14 @@ export function MapScreen({
   lineSheet,
   routeDrawing = null,
   dayHikeDrawing = null,
+  dayHikeTicks,
+  mapLabels,
   onRouteTap,
   onRouteStroke,
   onLongPress,
   pressPlateOpen,
   routeSheet,
+  builderPanel,
   pressPlate,
   followBand,
   followAnnouncement = null,
@@ -827,6 +857,38 @@ export function MapScreen({
   // permanent panel it is neither. No media query can change what a component
   // tells a screen reader it is.
   const isDesktop = useDesktop()
+
+  /**
+   * Whether the day-hike builder owns this screen (#1194).
+   *
+   * WHAT IT SUPPRESSES, AND WHY EACH ONE. The complaint behind the builder's
+   * redesign was that its map was too small, and adding the rail alone made
+   * that WORSE on a wide screen rather than better: measured on this pull
+   * request's own preview at 1280x800, the tab sidebar (208px), the rail
+   * (348px) and the persistent legend (290px) left the map 434px, with the
+   * elevation chart taking another 200px of height under it. A rail that
+   * buys the map room by taking it from the map is not the fix anybody asked
+   * for.
+   *
+   * So while a walk is being built, two surfaces stand down:
+   *
+   *  - THE ELEVATION PROFILE, on both breakpoints. It draws the A.T.'s
+   *    whole-corridor silhouette (mi 0.0-2,197.9), and a hiker laying out a
+   *    loop in Harriman is not walking the A.T. It is not merely in the way,
+   *    it is about a different trail - see chrome/DayHikePanel.tsx for why
+   *    the walk being built has no profile of its own to put there.
+   *  - THE PERSISTENT LEGEND, on a desktop. Its filters decide which PINS
+   *    the map draws, and the builder has its own row deciding which LABELS
+   *    it draws; two panels of map controls flanking a 434px map is the
+   *    thing being fixed. The legend is one tap away the moment the builder
+   *    closes, and Cancel is always on screen.
+   *
+   * THE ATTRIBUTION LINE STAYS. ODbL is a licence condition rather than
+   * chrome, and MapAttribution's own note says the credit may not depend on
+   * whether a profile happened to download - so it may not depend on this
+   * either.
+   */
+  const buildingDayHike = builderPanel !== undefined && builderPanel !== null
 
   // The live map, kept here as well as reported upward, because the waypoint
   // card anchors to a pin by projecting its coordinates through the map - and
@@ -1131,6 +1193,10 @@ export function MapScreen({
             viewport, and reparenting it under a positioned ancestor would move
             it - the one thing WEBSITE.md §8 rules out. */}
         <div className="map-screen__body">
+          {/* Before the canvas so it is the rail on the left of a desktop and
+              the band above the map on a phone, and so a keyboard reaches the
+              route being built before the map it is being built on. */}
+          {builderPanel}
           <div className="map-screen__canvas">
             {/* The floating chrome (#1054): the identity plate and whatever
                 stacks under it, in one column so a taller plate pushes the
@@ -1274,6 +1340,8 @@ export function MapScreen({
               warnings={drawnWarnings}
               routeDrawing={routeDrawing}
               dayHikeDrawing={dayHikeDrawing}
+              dayHikeTicks={dayHikeTicks}
+              mapLabels={mapLabels}
               onRouteTap={onRouteTap}
               onRouteStroke={onRouteStroke}
               onLongPress={onLongPress}
@@ -1392,8 +1460,18 @@ export function MapScreen({
           </div>
 
           <Legend
-            open={legendOpen}
-            persistent={isDesktop}
+            // Stood down while the builder owns the screen - see
+            // `buildingDayHike`.
+            //
+            // BOTH PROPS, and the second is the one that does the work here.
+            // Legend.tsx renders unless `!open && !persistent`, so a
+            // persistent legend ignores `open` entirely - gating `open` alone
+            // left the panel on screen and the map at 380px, which the
+            // preview photographed. Neither prop is state, so this is a mode
+            // rather than a dismissal: cancel the builder and the panel is
+            // back, still holding whatever the hiker had set in it.
+            open={legendOpen && !buildingDayHike}
+            persistent={isDesktop && !buildingDayHike}
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
@@ -1452,7 +1530,7 @@ export function MapScreen({
           // the band is the attribution line alone, because the credit may
           // not depend on whether a profile happened to download.
           <div className="next-up-band">
-            {waypoints !== undefined && elevation !== undefined && (
+            {!buildingDayHike && waypoints !== undefined && elevation !== undefined && (
               <NextUpRail
                 points={waypoints.points}
                 subject={elevation.source}
@@ -1463,7 +1541,7 @@ export function MapScreen({
                 stalenessFor={waypoints.stalenessFor}
               />
             )}
-            {elevation !== undefined && (
+            {!buildingDayHike && elevation !== undefined && (
               <div className="next-up__ribbon-card">
                 <ElevationRibbon
                   {...elevation}
@@ -1484,7 +1562,7 @@ export function MapScreen({
             answer to the ribbon, needing no fix. Rendered below the body so
             the map and the legend keep their whole height until the profile
             exists to draw. `units` last, exactly as on the ribbon above. */}
-        {isDesktop && chart !== undefined && (
+        {isDesktop && !buildingDayHike && chart !== undefined && (
           <ElevationChart
             profile={chart.profile}
             currentMile={chart.currentMile}

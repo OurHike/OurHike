@@ -81,6 +81,19 @@ export const POI_LAYER_ID = 'poi-pins'
 export const POI_ID_PROPERTY = 'poi_id'
 
 /**
+ * The waypoint's name, carried on the feature so a label layer can draw it
+ * (#1194).
+ *
+ * It was deliberately absent until now, and {@link buildPoiLayer}'s own note
+ * said why: "Names are not here because nothing draws them." That stopped
+ * being true when the day-hike builder needed to answer "which shelter is
+ * that" without a tap. What has NOT changed is that the pin layer still draws
+ * no text - see map/poiLabels.ts for the separate layer that does, and for
+ * why it is separate.
+ */
+export const POI_NAME_PROPERTY = 'poi_name'
+
+/**
  * The seam. Below this the map is the corridor view and carries no waypoints
  * at all; above it every waypoint draws, as a pin or as a dot.
  *
@@ -514,6 +527,8 @@ export interface PoiFeatureCollection {
     properties: {
       poi_type: string
       confidence: string
+      /** The waypoint's name, for map/poiLabels.ts. See {@link POI_NAME_PROPERTY}. */
+      [POI_NAME_PROPERTY]: string
       [POI_ID_PROPERTY]: string
       [SITE_MEMBERS_PROPERTY]: string
       staleness_ring: string
@@ -574,6 +589,10 @@ export function poiFeatureCollection(
         properties: {
           poi_type: poi.type,
           confidence: poi.confidence,
+          // Always a string, empty where the caller had none, so the label
+          // layer's filter is one comparison rather than a `coalesce` - the
+          // same always-present rule SITE_MEMBERS_PROPERTY follows below.
+          [POI_NAME_PROPERTY]: poi.name ?? '',
           [POI_ID_PROPERTY]: poi.id,
           // Always present, empty where the pin carries nothing, so the style's
           // `match` needs no `coalesce` and a pin with no site is not a separate

@@ -231,10 +231,28 @@ import {
   OFF_NETWORK_REFUSAL,
   startStretch,
   tapAt,
+  removeTap,
   undoTap,
   type DayHikeDraft,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
+import { buildCourse, mileTicks } from './lib/dayHikeCourse'
+import { isStoppable, orderStops, toggleStop } from './lib/dayHikeStops'
+import { poiIdAt } from './map/poiTaps'
+
+/** No stops picked. A module constant rather than a fresh `new Set()` at each
+ *  of the three places that need it: the value is immutable, and a new
+ *  identity per call is a new render for nothing. */
+const EMPTY_STOP_IDS: ReadonlySet<string> = new Set<string>()
+import {
+  ALL_LABELS_SHOWN,
+  hiddenPoiLabelTypes,
+  labelVisibilityPlan,
+  toggleLabelLayer,
+  type HiddenLabelLayers,
+  type LabelLayerKey,
+} from './lib/mapLabelLayers'
+import { DayHikePanel } from './chrome/DayHikePanel'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
@@ -2237,6 +2255,11 @@ function App() {
         lat: poi.lat,
         lon: poi.lon,
         confidence: poi.confidence,
+        // The name, for map/poiLabels.ts (#1194). Unconditional, unlike the
+        // site keys below: lib/trailData.ts fills a missing one with the
+        // literal 'Unnamed', so a POI always has SOME string here and the
+        // label layer's filter is what refuses to draw that word.
+        name: poi.name,
         // Carried through so the map can draw one pin per site (#524). Spread
         // conditionally rather than assigned as possibly-undefined, so a POI
         // from a pre-#523 download has no site keys at all rather than keys
@@ -2585,6 +2608,33 @@ function App() {
     closeRouteBuilder,
   } = routeBuilder
   /**
+   * Toggle a shelter or campsite as a stop, and say whether the tap was
+   * consumed.
+   *
+   * WHILE THE BUILDER IS OPEN, a tap on one of these pins means "stop here"
+   * rather than "tell me about this" - the handoff's interaction, and the
+   * reading that matches what a hiker is doing on this screen. Every other
+   * pin, and every pin at every other time, still opens its card.
+   *
+   * What this costs, said rather than hidden: the waypoint card is where a
+   * shelter's capacity and its distance to water live, which is exactly what
+   * somebody choosing a stop wants to know, and while building they cannot
+   * reach it. #979 already built the other direction - starting a walk from a
+   * sheet a hiker has open - and adding a stop from one is its natural pair.
+   * Recorded on #1194 rather than half-built here.
+   */
+  const toggleDayHikeStop = useCallback(
+    (poiId: string): boolean => {
+      if (dayHike === null) return false
+      const poi = pois.find((candidate) => candidate.id === poiId)
+      if (poi === undefined || !isStoppable(poi)) return false
+      setDayHikeStopIds((chosen) => toggleStop(chosen, poiId))
+      return true
+    },
+    [dayHike, pois],
+  )
+
+  /**
    * A tap on the map, while either builder is open.
    *
    * THE DAY HIKE'S TAP, first and before anything the route builder does: a
@@ -2604,6 +2654,26 @@ function App() {
         // picture, not a control: a tap that edited the draft would desync
         // the card from the ground it is describing.
         if (dayHikeReview !== null) return
+
+        // A SHELTER OR CAMPSITE PIN UNDER THE FINGER MEANS "STOP HERE" (#1194).
+        //
+        // Asked HERE rather than by a second tap handler, and that is the
+        // one-interpreter rule rather than a preference. map/MapView.tsx does
+        // not attach `attachPoiTaps` at all while a builder owns the tap -
+        // "two live handlers would race to interpret one touch" - so a pin
+        // tapped during a build never reaches `handleSelectPoi`, and a stop
+        // added that way would have needed exactly the race that comment
+        // forbids. map/lineTaps.ts already solves this shape the same way: it
+        // asks the POI layer itself and reports null where the pin wins.
+        //
+        // The canvas point is what makes it possible, and it is here for this
+        // reason already: #931 added it so a refused tap could ask what the
+        // app had DRAWN under the finger, which a coordinate alone cannot.
+        if (map !== null) {
+          const tappedPoi = poiIdAt(map, point)
+          if (tappedPoi !== null && toggleDayHikeStop(tappedPoi)) return
+        }
+
         const graphForTaps = dayHikeIndex ?? graphIndex
         if (graphForTaps === null) return
         setDayHike((draft) => {
@@ -2626,7 +2696,15 @@ function App() {
       }
       routeBuilder.mapScreen.onRouteTap?.(at, point)
     },
-    [dayHike, dayHikeReview, dayHikeIndex, graphIndex, routeBuilder, map],
+    [
+      dayHike,
+      dayHikeReview,
+      dayHikeIndex,
+      graphIndex,
+      routeBuilder,
+      map,
+      toggleDayHikeStop,
+    ],
   )
   // Opening the day-hike builder repeats the route builder's sweep rather
   // than sharing one. That was argued when this door was written - "the
@@ -2690,6 +2768,40 @@ function App() {
    */
   const [dayHikeKind, setDayHikeKind] = useState<'planned' | 'walked'>('planned')
 
+  /**
+   * Shelters and campsites the hiker has picked as stops (#1194).
+   *
+   * A SET OF IDS, not resolved stops: where each one falls in the route is
+   * derived from the walk on every change (lib/dayHikeStops.ts), so a stop
+   * cannot end up listed between two legs it does not sit between. Ephemeral
+   * like the draft itself - it is emptied by Cancel and by Save, because a
+   * stop belongs to the walk it was picked for.
+   */
+  const [dayHikeStopIds, setDayHikeStopIds] =
+    useState<ReadonlySet<string>>(EMPTY_STOP_IDS)
+
+  /**
+   * Which classes of map label the hiker has switched off, while building.
+   *
+   * `useState` rather than a stored preference, and that is #530's problem
+   * rather than this one's: `verifiedOnly` in the legend is ephemeral for the
+   * same reason and the same issue covers both. What decided it here is that
+   * these toggles answer "what am I looking for right now" - a hiker hunting
+   * for a lot wants roads up and everything else down, and wanting that on
+   * Tuesday is not evidence they want it in October.
+   */
+  const [dayHikeLabels, setDayHikeLabels] = useState<HiddenLabelLayers>(ALL_LABELS_SHOWN)
+
+  /**
+   * Whether the panel's detail body is open. Phone only - the desktop rail
+   * has the room and shows everything (src/desktop.css).
+   *
+   * DEFAULT CLOSED, which is the handoff's default and the whole point of the
+   * redesign: the complaint was that the map was too small, so the state a
+   * hiker lands in is the one where the map is biggest.
+   */
+  const [dayHikeDetailsOpen, setDayHikeDetailsOpen] = useState(false)
+
   /** The hikes Today may show - see the prop's own note for the rule. */
   const plannedDayHikes = useMemo(
     () => dayHikeStore.hikes.filter((hike) => hike.recorded === 'planned'),
@@ -2738,7 +2850,16 @@ function App() {
     setDayHikeDraftDate(null)
     setDayHikeDrawMode(false)
     setDayHikeKind('planned')
-  }, [])
+    // The stops go with the walk they were picked for. Leaving them would
+    // put yesterday's shelters into tomorrow's route the moment the builder
+    // reopened, which is the same staleness `openId` is kept in the store to
+    // avoid (lib/dayHikes.ts).
+    setDayHikeStopIds(EMPTY_STOP_IDS)
+    setDayHikeDetailsOpen(false)
+    // The setter is named although it is stable: the React Compiler infers it
+    // as a dependency here and warns when the list disagrees, and a warning
+    // nobody can act on is worse than a redundant entry.
+  }, [setDayHikeStopIds])
 
   // Derived once per state change, not per render - draftStatus runs the
   // router and App re-renders on the GPS clock.
@@ -2787,6 +2908,69 @@ function App() {
       pace,
     )
   }, [dayHikeStatus, pace])
+
+  /**
+   * The walk with a mile on every vertex (#1194) - what the stops, the mile
+   * marks and the route list all measure against.
+   *
+   * Built once here rather than three times where it is needed, for
+   * lib/dayHikeCourse.ts's reason: three copies of "walk the vertices adding
+   * haversine" is three chances to disagree about how long the walk is, on a
+   * screen whose figures a hiker reads before deciding whether they beat the
+   * dark.
+   */
+  const dayHikeCourse = useMemo(() => {
+    if (
+      dayHikeIndex === null ||
+      dayHikeStatus === null ||
+      dayHikeStatus.kind !== 'routed'
+    ) {
+      return null
+    }
+    return buildCourse(dayHikeIndex.graph, dayHikeStatus.stretches)
+  }, [dayHikeIndex, dayHikeStatus])
+
+  /** The chosen stops, in the order the walk reaches them. */
+  const dayHikeStops = useMemo(() => {
+    if (dayHikeCourse === null) return []
+    return orderStops(dayHikeCourse, dayHikeStopIds, pois)
+  }, [dayHikeCourse, dayHikeStopIds, pois])
+
+  /**
+   * What the map does about labels, as one object.
+   *
+   * ONE MEMO because MapView takes it as one prop, and that is deliberate
+   * there: the five fields change together - every one of them is a
+   * consequence of the builder's own panel - and separate props would
+   * re-push the label layer once per field for a single toggle.
+   *
+   * `undefined` when no walk is being built, which is what turns the whole
+   * thing off: waypoint names are this screen's answer to complaint #2 and
+   * the walking map has a density budget that was set without them (#1135).
+   */
+  const mapLabelState = useMemo(() => {
+    const building = dayHike !== null
+    // ALWAYS AN INSTRUCTION, never `undefined` when no walk is being built.
+    // Returning nothing here was a bug: the effect had nothing to do, so
+    // every label the builder switched on stayed on over the walking map for
+    // the rest of the session. `labelVisibilityPlan` answers both halves -
+    // what to show and what to hide - so closing the builder puts the sheet
+    // back rather than merely stopping changing it.
+    const plan = labelVisibilityPlan(dayHikeLabels, building)
+    return {
+      poiLabelsShown: building,
+      hiddenPoiLabelTypes: hiddenPoiLabelTypes(dayHikeLabels),
+      chosenStopIds: [...dayHikeStopIds],
+      shownLabelLayerIds: plan.shown,
+      hiddenLabelLayerIds: plan.hidden,
+    }
+  }, [dayHike, dayHikeLabels, dayHikeStopIds])
+
+  /** A mark at every whole mile - empty while nothing is routed. */
+  const dayHikeTicks = useMemo(
+    () => (dayHikeCourse === null ? [] : mileTicks(dayHikeCourse)),
+    [dayHikeCourse],
+  )
 
   const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (dayHike === null) return null
@@ -2905,6 +3089,21 @@ function App() {
         // inherits that rule rather than restating it.
         climb: status.climb,
       },
+      // The stops, in the order the walk reaches them, and only the three
+      // fields that are facts about the STOP - mile and off-course distance
+      // are facts about the ROUTE and are re-derived when it is (see
+      // DayHike.stops). Absent rather than `[]` for a walk with none, so a
+      // record made before stops existed and one made without them are the
+      // same record.
+      ...(dayHikeStops.length > 0
+        ? {
+            stops: dayHikeStops.map((stop) => ({
+              poiId: stop.poiId,
+              type: stop.type,
+              name: stop.name,
+            })),
+          }
+        : {}),
       looped: dayHike.looped,
       // The builder makes a PLAN. A walk already done enters through the
       // third door and is marked there (#982) - the flag is set once, by the
@@ -2917,7 +3116,7 @@ function App() {
     // "Save this day hike" there is the commit (#980). The draft stays live
     // underneath so closing the card returns to the builder mid-thought.
     setDayHikeReview(hike)
-  }, [dayHike, dayHikeStatus, dayHikeDraftDate])
+  }, [dayHike, dayHikeStatus, dayHikeDraftDate, dayHikeKind, dayHikeStops])
 
   const handleDayHikeSave = useCallback(() => {
     if (dayHikeReview === null) return
@@ -2936,7 +3135,13 @@ function App() {
     setDayHikeReview(null)
     setDayHike(null)
     setDayHikeDraftDate(null)
-  }, [dayHikeReview])
+    // The stops belong to the walk that just saved. Clearing them here as
+    // well as on Cancel is what keeps the two exits symmetrical - a builder
+    // reopened after a save must not arrive holding the last walk's shelters.
+    setDayHikeStopIds(EMPTY_STOP_IDS)
+    setDayHikeDetailsOpen(false)
+    // See handleDayHikeCancel for why the stable setter is named.
+  }, [dayHikeReview, setDayHikeStopIds])
 
   /** Open a saved hike's card from the Plan tab. Written through the store
    *  because that is where `openId` lives - held in the one document so the
@@ -4369,10 +4574,18 @@ function App() {
     }
   }, [map, pressPlate])
 
-  const handleSelectPoi = useCallback((id: string | null) => {
-    setSelectedPoiId(id)
-    if (id !== null) setLegendOpen(false)
-  }, [])
+  const handleSelectPoi = useCallback(
+    (id: string | null) => {
+      // A shelter or campsite tapped WHILE BUILDING is a stop, not a card -
+      // see `toggleDayHikeStop`, which refuses (and returns false) for every
+      // other pin and whenever no builder is open, so this falls through to
+      // the card in every case it does not own.
+      if (id !== null && toggleDayHikeStop(id)) return
+      setSelectedPoiId(id)
+      if (id !== null) setLegendOpen(false)
+    },
+    [toggleDayHikeStop],
+  )
 
   const handleOpenLegend = useCallback(() => {
     setLegendOpen(true)
@@ -6176,6 +6389,36 @@ function App() {
               // The route builder's three, from the same kind of hook (#991).
               {...routeBuilder.mapScreen}
               dayHikeDrawing={dayHikeDrawing ?? followDrawing}
+              dayHikeTicks={dayHikeTicks}
+              mapLabels={mapLabelState}
+              builderPanel={
+                // Only while a walk is being built, and never over the review
+                // card: `dayHikeReview` means the walk is finished and the
+                // panel's controls no longer apply to anything.
+                dayHike !== null && dayHikeReview === null ? (
+                  <DayHikePanel
+                    draft={dayHike}
+                    status={dayHikeStatus ?? { kind: 'empty' }}
+                    stops={dayHikeStops}
+                    units={units}
+                    walking={dayHikeWalking}
+                    hiddenLabels={dayHikeLabels}
+                    onToggleLabel={(key: LabelLayerKey) =>
+                      setDayHikeLabels((hidden) => toggleLabelLayer(hidden, key))
+                    }
+                    onRemoveStop={(poiId) =>
+                      setDayHikeStopIds((chosen) => toggleStop(chosen, poiId))
+                    }
+                    onRemoveTurn={(ordinal) =>
+                      setDayHike((draft) =>
+                        draft === null ? draft : removeTap(draft, ordinal),
+                      )
+                    }
+                    detailsOpen={dayHikeDetailsOpen}
+                    onToggleDetails={() => setDayHikeDetailsOpen((open) => !open)}
+                  />
+                ) : undefined
+              }
               followBand={
                 followState !== null && followState.kind === 'off-route' ? (
                   <OffRouteBand follow={followState} units={units} />

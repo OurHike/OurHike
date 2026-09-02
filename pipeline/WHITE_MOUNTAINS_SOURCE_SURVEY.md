@@ -40,11 +40,13 @@ licensed beats good, stewarded beats scraped.** Sources needing a human decision
 | OpenStreetMap | ✓ | ✓ | ✓ | continuous | already registered for water; the gap-filler question here is unasked |
 
 **The headline, stated plainly because it decides everything below: neither USFS nor NH
-GRANIT states any reuse terms at all.** Both were registered `licence_basis: unresolved` on
-the morning of 2026-09-02; **the maintainer authorised publication the same day** ("yes do
-publish these. Its publically available info."), so all three now carry
-`maintainer_authorisation` — the footing ATC, NYNJTC, Mohonk and DEC already ship on, and
-*not* a grant from either organization. §6(a) records what that does and does not settle.
+GRANIT states any reuse terms at all** — and the two sources ended up on very different
+footings anyway. Both registered `licence_basis: unresolved` on the morning of 2026-09-02.
+The **USFS** layers are now `stated_by_org`: the maintainer adopted 17 U.S.C. §105, so they
+are **public domain** works of the U.S. Government and there is nothing for the Forest Service
+to grant or withhold. **NH GRANIT** ships on `maintainer_authorisation` — the footing ATC,
+NYNJTC, Mohonk and DEC already use, and *not* a grant from GRANIT. §6(a) has both arguments
+and the limits on each.
 
 All three now carry `reaches_hikers: true`, and that is a statement about wiring rather than
 about intent: `export_nearby_trails.py` reads the two trail layers and `export_nearby_poi.py`
@@ -329,33 +331,41 @@ recording the value and re-reading it across a known USFS publish cycle. Nothing
 
 ## 6. Everything needing a human decision, in one place
 
-**(a) The licence — ANSWERED 2026-09-02, and what the answer is worth.**
+**(a) The licence — ANSWERED 2026-09-02, and the two answers are not the same kind.**
+
 Neither organization states terms. Read live: `copyrightText` empty at the service level on
 both; the USFS *layer* carries the bare string `USDA Forest Service`, which is an attribution,
 not a grant; `EDW_RecreationOpportunities_01` carries a no-warranty disclaimer, which is a
 disclaimer, not a grant. Neither is an AGOL item, so there is no `licenseInfo` to read.
 
-The maintainer authorised publication on the grounds that the data is publicly available. That
-is recorded as **`maintainer_authorisation`** rather than as `stated_by_org`, and the
-distinction is not pedantry — it is what a sources screen prints. "Publicly available" is not
-itself a reuse grant; SOURCE_SURVEY.md's rule is that public and queryable is not one, and it
-is the same rule under which DEC, NYNJTC and Mohonk — all equally public — ship on
-authorisation rather than on terms. The maintainer's decision is a legitimate basis and it is
-*theirs*, not the agencies'.
+**USFS: public domain.** The maintainer adopted 17 U.S.C. §105 — a work prepared by a U.S.
+Government employee as part of their official duties is not subject to domestic copyright — so
+`usfs_trails` and `usfs_rec_sites` carry `licence_basis: stated_by_org`, which
+`licence_basis_comment` defines to include "a federal public-domain work". **There is no
+copyright for the Forest Service to grant or withhold, so their silence is what the statute
+predicts rather than evidence against it**, and this is the only source family in the registry
+with no licence ask outstanding.
 
-**A stronger basis is available for USFS and has deliberately not been claimed.** A work of
-the U.S. Government is not subject to domestic copyright (17 U.S.C. §105), and
-`licence_basis_comment`'s own vocabulary lists "a federal public-domain work" as an instance
-of `stated_by_org`. Adopting that reading explicitly would put these two entries on the
-strongest footing anything in the registry has — stronger than ATC's. It is not done here
-because the authorisation was given on public-availability grounds rather than on that
-statute, and upgrading it unasked would be this survey asserting a legal position nobody
-took. One sentence from the maintainer settles it whenever they want to.
+Its limits are real and are not licence questions: §105 is **domestic**; it covers works of
+government **employees**, not contractor-held copyright, and nothing has audited these layers
+for contributed third-party content; it is not a warranty of accuracy, and the Forest
+Service's own disclaimer stands; and public domain is not a trademark licence — the Forest
+Service shield is protected separately and `org_marks` still reads `not_asked`. Attribution is
+kept anyway, and is not owed.
 
-**NH GRANIT is the thinner of the two authorisations**, and worth revisiting first if terms
-ever matter: no public-domain-by-statute argument exists for it, and as a clearinghouse
-aggregating town, land-trust and agency layers, the body that could actually answer for a
-given segment may not be GRANIT.
+**NH GRANIT: the maintainer's authorisation**, on the grounds that the data is publicly
+available. Recorded as `maintainer_authorisation` rather than `stated_by_org` because
+"publicly available" is not itself a reuse grant — SOURCE_SURVEY.md's rule, and the same one
+under which DEC, NYNJTC and Mohonk, all equally public, sit in that column. **No
+public-domain-by-statute argument reaches GRANIT**: it is a university-run state clearinghouse
+that *aggregates* contributed town, land-trust and agency layers, with its own `ACCURACY`
+column saying so, and the body that could answer for a given segment may not be GRANIT at all.
+That makes it the thinner of the two and the one to revisit first if terms ever matter.
+
+**Worth noticing about the pair**, because a licence column that only ever improves is one
+nobody re-reads: `stated_by_org` now covers two unlike things. OPRHP published terms somebody
+read and weighed; USFS published nothing and did not have to. Both are sound, and only the
+first is an act of consent.
 
 **(b) AMC. NEEDS REVIEW.** The highest-value ask in this document and the one with no data
 behind it. Their campsites page is the best free NH shelter data and their trail network is

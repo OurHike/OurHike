@@ -53,6 +53,7 @@ import {
   type BackgroundWatchProblem,
 } from './backgroundGeolocation'
 import { createStallMeter } from './mainThreadStall'
+import { traceDeviceOs, traceShell } from './tracePlatform'
 import { locateOnTrail, type TrailIndex } from './trailPosition'
 import { useWakeLock, type WakeLockState } from './useWakeLock'
 
@@ -193,6 +194,17 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
    */
   const stallMeter = useMemo(() => createStallMeter(), [])
   const [worstStallMs, setWorstStallMs] = useState<number | null>(null)
+  /**
+   * Which runtime and which phone, read once (lib/tracePlatform.ts).
+   *
+   * Neither can change while the app is running, so this is a `useMemo` rather
+   * than a per-fix call - but it is stamped on EVERY row, because a CSV is
+   * filtered and joined rather than read next to a note about which phone it
+   * came off. #1193's CI builds mean the same maintainer now field-tests an
+   * Android and an iPhone, and through the PR preview both report a shell of
+   * `web`.
+   */
+  const device = useMemo(() => ({ shell: traceShell(), deviceOs: traceDeviceOs() }), [])
 
   useEffect(() => {
     // A recording that survived a reload resumes without being asked - see
@@ -252,6 +264,8 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
         {
           wakeLock,
           stall,
+          shell: device.shell,
+          deviceOs: device.deviceOs,
           // Read at the moment the fix lands, not from a listener: this is
           // the state that actually applied to THIS sample. On a native
           // background fix this is routinely false, which is the point.
@@ -259,7 +273,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
         },
       ]
     },
-    [trailIndex, wakeLock, stallMeter],
+    [trailIndex, wakeLock, stallMeter, device],
   )
 
   const onFix = useCallback(

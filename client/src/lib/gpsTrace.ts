@@ -58,6 +58,8 @@
 // nothing produced one. See #1180 for the boundary as agreed.
 
 import { get, set, del } from 'idb-keyval'
+
+import type { TraceDeviceOs, TraceShell } from './tracePlatform'
 import type { NativeFix } from './backgroundGeolocation'
 
 /**
@@ -169,6 +171,22 @@ export interface TraceSample {
    */
   blockedMs: number | null
   worstTaskMs: number | null
+  /**
+   * Which runtime and which phone this row was recorded on
+   * (lib/tracePlatform.ts).
+   *
+   * Constant for a recording, and on every row anyway: a CSV is joined and
+   * filtered, not read alongside a note about where it came from. Two traces
+   * from two devices with no column separating them is not a comparison.
+   *
+   * `shell` is NOT `fix_source`. A native shell still produces `web` rows
+   * whenever the background switch is off, and the difference decides how to
+   * read every gap - a browser tab is suspended by the OS in ways an
+   * installed app is not. `deviceOs` is a user-agent sniff and is null
+   * wherever the string will not say plainly.
+   */
+  shell: TraceShell | null
+  deviceOs: TraceDeviceOs | null
 }
 
 /** `WakeLockState` from lib/useWakeLock.ts, restated as a string so this
@@ -516,6 +534,10 @@ export interface TraceConditions {
   visible?: boolean | null
   /** What the main thread did since the previous fix — see `TraceSample`. */
   stall?: { blockedMs: number | null; worstMs: number | null }
+  /** Which runtime and which phone — see `TraceSample`. Constant for a
+   *  recording, so a caller reads it once and hands it to every sample. */
+  shell?: TraceShell
+  deviceOs?: TraceDeviceOs
   /** Which mechanism produced this fix. Defaults to `web` — a watch callback,
    *  which is what every caller but the poller is. */
   source?: FixSource
@@ -547,6 +569,8 @@ export function sampleFromPosition(
     visible: conditions.visible ?? null,
     blockedMs: conditions.stall?.blockedMs ?? null,
     worstTaskMs: conditions.stall?.worstMs ?? null,
+    shell: conditions.shell ?? null,
+    deviceOs: conditions.deviceOs ?? null,
     fixSource: conditions.source ?? 'web',
     // The W3C definition, and written down rather than assumed: the other
     // source states 68 and nothing but this column separates them. A polled
@@ -586,6 +610,8 @@ export function sampleFromNativeFix(
     visible: conditions.visible ?? null,
     blockedMs: conditions.stall?.blockedMs ?? null,
     worstTaskMs: conditions.stall?.worstMs ?? null,
+    shell: conditions.shell ?? null,
+    deviceOs: conditions.deviceOs ?? null,
     fixSource: 'native',
     // The plugin's own definitions file: "radius of horizontal uncertainty in
     // metres, with 68% confidence". Not converted - see the header.
@@ -625,6 +651,11 @@ const CSV_COLUMNS = [
   'fix_source',
   'accuracy_confidence',
   'simulated',
+  // WHICH PHONE, AND WHICH RUNTIME ON IT. Empty where the recorder could not
+  // answer — `device_os` is a user-agent sniff and says nothing rather than
+  // guessing. Neither may be read as a substitute for `fix_source`.
+  'shell',
+  'device_os',
 ] as const
 
 /** Empty rather than a zero or the string "null": absent means unknown here
@@ -670,6 +701,8 @@ export function traceToCsv(samples: TraceSample[]): string {
       cell(sample.fixSource),
       cell(sample.accuracyConfidence),
       cell(sample.simulated === null ? null : sample.simulated ? 'yes' : 'no'),
+      cell(sample.shell),
+      cell(sample.deviceOs),
     ].join(','),
   )
 

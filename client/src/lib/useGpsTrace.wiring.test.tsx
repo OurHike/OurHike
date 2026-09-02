@@ -117,7 +117,7 @@ function useRecorderAndWatch(
 // here is that the recorder does not fall over reaching for it, and that a
 // browser reports `not-native` rather than a failure.
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' },
   registerPlugin: () => ({
     addWatcher: () => Promise.reject(new Error('web')),
     removeWatcher: () => Promise.resolve(),
@@ -210,6 +210,58 @@ describe('the recorder wired to the watch, as App.tsx joins them', () => {
     const { result } = renderHook(() => useRecorderAndWatch(true))
 
     expect(result.current.gpsTrace.stall).toEqual({ supported: false, worstMs: null })
+  })
+
+  it('stamps which phone and which runtime onto the sample', async () => {
+    // The same seam as the stall meter above, and it fails the same silent
+    // way: a platform reader that works perfectly and never reaches a sample
+    // leaves the column empty, and nobody finds out until two traces from two
+    // phones turn out to be unsortable.
+    vi.stubGlobal('navigator', {
+      geolocation: {
+        watchPosition: vi.fn(() => 7),
+        getCurrentPosition: vi.fn(),
+        clearWatch: vi.fn(),
+      },
+      userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile Safari/537.36',
+    })
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+
+    // Delivered through the watch the stub registered above.
+    const success = (
+      navigator.geolocation.watchPosition as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0][0] as (position: GeolocationPosition) => void
+    act(() => {
+      success({
+        coords: {
+          longitude: -71.3033,
+          latitude: 44.2705,
+          accuracy: 12,
+          altitude: null,
+          altitudeAccuracy: null,
+          speed: null,
+          heading: null,
+        },
+        timestamp: 1_724_800_000_000,
+      } as unknown as GeolocationPosition)
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.samples).toBe(1))
+
+    await act(async () => {
+      result.current.gpsTrace.onStop()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(false))
+    const reader = createGpsTrace()
+    await reader.resume()
+    const [sample] = await reader.readAll()
+
+    expect(sample.shell).toBe('web')
+    expect(sample.deviceOs).toBe('android')
   })
 
   it('stores a fix that arrives while recording', async () => {

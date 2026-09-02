@@ -59,6 +59,8 @@ function sampleAt(timestampMs: number): TraceSample {
     visible: null,
     blockedMs: null,
     worstTaskMs: null,
+    shell: null,
+    deviceOs: null,
     fixSource: 'web',
     accuracyConfidence: 95,
     simulated: null,
@@ -337,7 +339,7 @@ describe('traceToCsv', () => {
       'timestamp_ms,iso_time,lat,lon,accuracy_m,altitude_m,altitude_accuracy_m,' +
         'speed_mps,heading_deg,mile,off_trail_ft,off_tread_ft,marker,' +
         'wake_lock,page_visible,blocked_ms,worst_task_ms,' +
-        'fix_source,accuracy_confidence,simulated',
+        'fix_source,accuracy_confidence,simulated,shell,device_os',
     )
   })
 
@@ -392,6 +394,42 @@ describe('traceToCsv', () => {
 
     expect(cells('blocked_ms')).toBe('')
     expect(cells('worst_task_ms')).toBe('')
+  })
+
+  it('says which phone and which runtime made the row', () => {
+    // Two traces from two devices with no column separating them is a pile
+    // rather than a comparison, and #1193's CI builds mean the same person
+    // now walks an Android and an iPhone.
+    const cells = column(
+      traceToCsv([{ ...sampleAt(1_000), shell: 'android', deviceOs: 'android' }]),
+    )
+
+    expect(cells('shell')).toBe('android')
+    expect(cells('device_os')).toBe('android')
+  })
+
+  it('keeps the shell apart from the fix source, which is a different fact', () => {
+    // A native shell still produces `web` rows whenever the background switch
+    // is off. One column carrying both would make those rows indistinguishable
+    // from a browser's, and a browser tab is suspended by the OS in ways an
+    // installed app is not - which is how every gap in the file gets read.
+    const cells = column(
+      traceToCsv([
+        { ...sampleAt(1_000), shell: 'ios', deviceOs: 'ios', fixSource: 'web' },
+      ]),
+    )
+
+    expect(cells('shell')).toBe('ios')
+    expect(cells('fix_source')).toBe('web')
+  })
+
+  it('leaves the device empty where the user agent would not say', () => {
+    const cells = column(
+      traceToCsv([{ ...sampleAt(1_000), shell: 'web', deviceOs: null }]),
+    )
+
+    expect(cells('shell')).toBe('web')
+    expect(cells('device_os')).toBe('')
   })
 
   it('writes an unknown condition as empty, never as a confident "no"', () => {

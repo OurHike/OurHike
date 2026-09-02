@@ -263,15 +263,25 @@ one feature.
 ### Testing background GPS recording (#1182)
 
 **None of this has run on a device.** It was written in an agent sandbox with
-no Android SDK and no phone, so the mapping, the platform gate and the teardown
-are unit-tested against a stub (`lib/backgroundGeolocation.test.ts`) and
-everything past `registerPlugin` is unverified. The plugin's own compatibility
-table stops at Capacitor v7 and this repository is on 8.5.0 — its peer range
-says `>=3.0.0`, which declares v8 by an open bound rather than by testing
-against it. A device build is the first thing that will find out.
+no phone, so the mapping, the platform gate and the teardown are unit-tested
+against a stub (`lib/backgroundGeolocation.test.ts`) and everything past
+`registerPlugin` is unverified behaviour. The plugin's own compatibility table
+stops at Capacitor v7 and this repository is on 8.5.0 — its peer range says
+`>=3.0.0`, which declares v8 by an open bound rather than by testing against
+it.
 
-CI does not build the shells — nothing runs Gradle or Xcode in
-`.github/workflows/` — so this is by hand:
+Whether it **compiles** is now answered on every push. `build-shells.yml`
+(#1193) builds both shells:
+
+|             | what it does                                      | what you get                                                                                                                                      |
+| ----------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Android** | `cap sync android` then `./gradlew assembleDebug` | the **`ourhike-debug-apk`** artifact on the run — download it, `adb install -r app-debug.apk`, or sideload it with "install unknown apps" allowed |
+| **iOS**     | `cap sync ios` then `xcodebuild` with signing off | a green check and nothing else — a device-installable `.ipa` needs a provisioning profile, which needs an Apple Developer account (#102)          |
+
+`workflow_dispatch` is enabled, so an APK can be had from any branch without
+pushing a commit to ask for one.
+
+By hand, if you would rather:
 
 ```
 cd client
@@ -279,6 +289,11 @@ npm run build && npx cap sync android
 cd android && ./gradlew assembleDebug
 # app/build/outputs/apk/debug/app-debug.apk — install with `adb install -r`
 ```
+
+The `cap sync` is not optional in either route.
+`android/capacitor.settings.gradle` and `ios/App/CapApp-SPM/Package.swift` are
+generated files that currently name no plugins at all, and the sync is what
+wires this one in.
 
 Then, on the phone, in this order:
 
@@ -323,6 +338,13 @@ visible freeze and as four tasks is a slightly sticky screen.
 means _not measured_, never zero. The **App stalls** row on the recorder says
 which of the two an empty column is, while there is still a walk left to
 salvage.
+
+Two more columns say where the file came from, because comparing an Android
+trace against an iPhone one needs them separable: `shell` is the runtime
+(`android`, `ios` or `web` — a browser, installed to the home screen or not),
+and `device_os` is the phone as far as the user agent will say, empty rather
+than guessed. **`shell` is not `fix_source`**: a native build still writes
+`web` rows whenever the background switch is off.
 
 ## What is not wired up yet
 

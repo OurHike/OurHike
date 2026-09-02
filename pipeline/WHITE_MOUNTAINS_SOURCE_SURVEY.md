@@ -81,9 +81,10 @@ the clip is a later decision.
 
 `https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_TrailNFSPublish_01/MapServer/0`
 
-Registered as `usfs_wmnf_trails`. The Forest Service's own published trail inventory, and
-the only source surveyed here that is *authoritative* for the ground it covers rather than
-derived from somebody else's.
+Registered as `usfs_trails` — **nationwide**, per the header; the numbers in this section are
+the White Mountains subset that prompted it. The Forest Service's own published trail
+inventory, and the only source surveyed here that is *authoritative* for the ground it covers
+rather than derived from somebody else's.
 
 Measured live 2026-09-02, on `admin_org LIKE '0922%'`:
 
@@ -145,7 +146,8 @@ looked attractive in the first place.
 
 `https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecInfraRecreationSites_02/MapServer/0`
 
-Registered as `usfs_wmnf_rec_sites`. 335 point features on `managing_org LIKE '0922%'`,
+Registered as `usfs_rec_sites` — **nationwide** (31,405 points; §7b). 335 of them fall in the
+White Mountains, on `managing_org LIKE '0922%'`,
 measured 2026-09-02 — the whole set returned in one page, so this is a census and not a
 sample. By `site_type`:
 

@@ -162,7 +162,12 @@ import { ribbonWindow } from './lib/elevationProfile'
 import { ribbonLanes, ribbonView, type TodaysWalk } from './lib/ribbonView'
 import { walkProfile } from './lib/walkProfile'
 import { viewportMiles } from './lib/viewportMiles'
-import { anchoredClientMile, anchoredMile, type MileAnchor } from './lib/route'
+import {
+  anchoredClientMile,
+  anchoredMile,
+  SAME_AXIS_ANCHORS,
+  type MileAnchor,
+} from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { type RouteStopChoice } from './chrome/RouteStopPicker'
@@ -995,6 +1000,7 @@ function App() {
   // nothing else writes them.
   const {
     trailIndex,
+    poiMiles,
     pois,
     spurs,
     elevation,
@@ -1782,30 +1788,32 @@ function App() {
     })
   }, [reports])
 
-  // Built from the POIs alone. The mile is added where the centerline index
-  // exists and simply omitted where it does not - searching for a shelter by
+  // Built from the POIs alone. The mile is added where the index has answered
+  // for it and simply omitted where it has not - searching for a shelter by
   // name needs no geometry, and gating the whole list on the index meant a
   // missing one silently emptied search while 800-odd POIs sat in memory.
   //
-  // `mileOnTrail` rather than `locateOnTrail` (#717). This memo wants the mile
-  // and reads nothing else, and `locateOnTrail` pays for a second search over
-  // the whole tread to answer a question about GPS fixes that a POI never
-  // asks. Measured 2026-08-15 on x86 over the corridor's 2,837 POIs: 975 ms in
-  // one synchronous memo, about half of it that discarded scan - and this runs
-  // on the launch after the trail index lands, which is the same moment the
-  // map is being built.
+  // THE MILES ARRIVE WITH THE INDEX, NOT FROM IT (#1192). This memo used to
+  // run `mileOnTrail` over every stored waypoint the moment the index landed:
+  // 2,837 of them when it was written, 16,949 after #1095, and on a
+  // 4x-throttled phone profile one task of 13 s on the thread every tab tap
+  // waits for. lib/useTrailData.ts now hands over `poiMiles`, one per
+  // waypoint in this same order, answered where the index is built - off this
+  // thread, and on the pipeline's axis simply each waypoint's published mile.
+  // Null while that is still coming, which renders as every mile unknown and
+  // fills in: the honest state of a waypoint nobody has placed yet.
   const searchablePois: SearchablePoi[] = useMemo(
     () =>
-      pois.map((poi) => ({
-        id: poi.id,
-        name: poi.name,
-        type: poi.type,
-        mile:
-          trailIndex === null
-            ? undefined
-            : (mileOnTrail(trailIndex, { lon: poi.lon, lat: poi.lat }) ?? undefined),
-      })),
-    [pois, trailIndex],
+      pois.map((poi, i) => {
+        const mile = poiMiles?.[i]
+        return {
+          id: poi.id,
+          name: poi.name,
+          type: poi.type,
+          mile: mile === undefined || Number.isNaN(mile) ? undefined : mile,
+        }
+      }),
+    [pois, poiMiles],
   )
 
   // What the tapped pin's card says - see cardDetail for why it is assembled
@@ -2089,13 +2097,15 @@ function App() {
   )
 
   /**
-   * Every POI whose position is known on BOTH mile scales (#755) - the
-   * published pipeline mile (#753) and the client index's own, which
-   * `searchablePois` has already paid `mileOnTrail` for. Zipped by index:
-   * that memo maps over `pois` one to one.
+   * How a client-index mile becomes a pipeline mile (#755), and the reverse.
    *
-   * Empty on a download that predates #753, which is `anchoredMile`'s cue to
-   * refuse - see lib/route.ts for the honest fallback that follows.
+   * On a release that publishes the vertex miles (#1192) the two are one
+   * scale and this is lib/route.ts's identity anchors. Otherwise it is every
+   * POI whose position is known on BOTH scales - the published mile (#753)
+   * and the one the index placed it at, which `searchablePois` carries in the
+   * same order. Empty on a download that predates #753, which is
+   * `anchoredMile`'s cue to refuse - see lib/route.ts for the honest fallback
+   * that follows.
    */
   /**
    * How long the trail is, on the pipeline's own axis - the far end of the
@@ -2112,16 +2122,19 @@ function App() {
     return elevation.distanceMi[elevation.distanceMi.length - 1]
   }, [elevation])
 
-  const mileAnchors: MileAnchor[] = useMemo(
-    () =>
-      pois.flatMap((poi, i) => {
-        const clientMile = searchablePois[i]?.mile
-        return poi.mile !== undefined && clientMile !== undefined
-          ? [{ mile: poi.mile, clientMile }]
-          : []
-      }),
-    [pois, searchablePois],
-  )
+  const mileAnchors: readonly MileAnchor[] = useMemo(() => {
+    // One axis, one anchor (#1192): on a release that publishes the vertex
+    // miles the index IS the pipeline's scale, and lib/route.ts's identity
+    // anchors say so exactly. The pairwise anchors below are for the release
+    // that does not, where the index was measured here.
+    if (trailIndex?.onPipelineAxis) return SAME_AXIS_ANCHORS
+    return pois.flatMap((poi, i) => {
+      const clientMile = searchablePois[i]?.mile
+      return poi.mile !== undefined && clientMile !== undefined
+        ? [{ mile: poi.mile, clientMile }]
+        : []
+    })
+  }, [trailIndex, pois, searchablePois])
 
   // Where the hiker is on the pipeline's own mile axis, for the entrance's
   // "where I am" door and "call it a day where you are". Null without a fix

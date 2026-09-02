@@ -14,6 +14,29 @@ afterEach(() => {
 })
 
 describe('BackgroundPicker', () => {
+  describe('past the edge of the download (#557)', () => {
+    it('says what stays on the map and where the next stretch comes from', () => {
+      render(
+        <BackgroundPicker value="hiking_topo_live" onChange={vi.fn()} outsideDownload />,
+      )
+
+      const note = screen.getByRole('note')
+      // What STAYS comes first: the trail and its safety data ship with the
+      // trail, never with a piece (features/OFFLINE_COVERAGE.md §8), and a
+      // hiker on blank paper needs that sentence before any other.
+      expect(note.textContent).toMatch(/trail line.*water.*warnings/i)
+      expect(note.textContent).toMatch(/download window/i)
+      // And never damage - see StatusStrip.test.tsx.
+      expect(note.textContent).not.toMatch(/damaged|corrupt|incomplete/i)
+    })
+
+    it('says nothing about an edge on a phone that has not crossed one', () => {
+      render(<BackgroundPicker value="hiking_topo_live" onChange={vi.fn()} />)
+
+      expect(screen.queryByRole('note')).toBeNull()
+    })
+  })
+
   describe('when the offline background cannot be had (#855)', () => {
     // The USGS sheet is withdrawn, so on a phone that never took it there is
     // one background and nothing to choose. What this asserts is that the

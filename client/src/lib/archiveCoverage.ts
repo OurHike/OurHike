@@ -11,8 +11,12 @@
 //     before 2026-08-05 starts at z6. A complete 314 MB download therefore
 //     rendered as blank paper on every single launch.
 //   - Panning off the 30-mile strip does the same thing horizontally. That
-//     one is not addressed here: it needs the archive's real footprint read
-//     out of the header, which features/MAP_OPTIONS.md §1 tracks separately.
+//     one is `coverageAt` below (#557): the footprints come from the cells a
+//     phone holds (lib/coverageCells.ts, whose bounds are computable from
+//     each cell's own name) and from a whole-sheet archive's header
+//     (map/archiveZooms.ts's readArchiveFootprint), so the map, the status
+//     strip and the download window all ask this one module and cannot
+//     disagree about where the download ends.
 //
 // The pipeline now exports from z0 (pipeline/assemble_raster.py), so archives
 // built from here on have no floor worth speaking of. This module exists for
@@ -80,4 +84,47 @@ export function openingZoomFloor(
   // The shallowest CAMERA zoom with tiles behind it, not the header's own
   // number - see CAMERA_ZOOM_TILE_OFFSET.
   return zooms.minZoom - CAMERA_ZOOM_TILE_OFFSET
+}
+
+/** A rectangle of ground an archive on this phone was built for: a cell's
+ *  core bounds, or a whole-sheet archive's declared header bounds. */
+export interface Footprint {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
+export type Coverage = 'covered' | 'outside' | 'unknown'
+
+/**
+ * Whether the ground at a point is inside what this phone downloaded - the
+ * horizontal edge, answered the way `archiveCoversZoom` answers the vertical
+ * one.
+ *
+ * `null` is "not established yet" and answers `unknown`, for exactly the
+ * reason that function answers `true`: not-looked-yet must never render as
+ * your-download-does-not-reach-here. An EMPTY set answers `unknown` too - a
+ * phone holding nothing has no edge to be outside of, and that phone's flags
+ * already exist (lib/backgroundHealth.ts's `nothing-to-draw`).
+ *
+ * So `outside` is claimed only when something is held and the point is in
+ * none of it, which makes the claim conservative in the one direction that
+ * matters. Inside a footprint but off the thin band its tiles actually cover,
+ * this says nothing - the same silence the app kept before cells existed. A
+ * false "outside" would send a hiker to town for a download they have, and
+ * #352 already shipped the neighbouring mistake once: a hiker past the edge
+ * of their package, offline, told their download was damaged.
+ */
+export function coverageAt(
+  footprints: readonly Footprint[] | null,
+  lon: number,
+  lat: number,
+): Coverage {
+  if (footprints === null || footprints.length === 0) return 'unknown'
+  const inside = footprints.some(
+    ({ west, south, east, north }) =>
+      lon >= west && lon < east && lat >= south && lat < north,
+  )
+  return inside ? 'covered' : 'outside'
 }

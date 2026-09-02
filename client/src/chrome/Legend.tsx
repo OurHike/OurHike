@@ -229,6 +229,10 @@ export interface LegendProps {
   backgroundOverride?: BackgroundOverride | null
   /** Whether the view is zoomed out past what the download covers (#216). */
   belowArchiveZoom?: boolean
+  /** Whether the view is past the edge of everything downloaded (#557) -
+   *  passed to the picker's note, which is where "take the next stretch"
+   *  gets said. */
+  outsideDownload?: boolean
   /** Whether "downloaded only" is a background this phone can get at all -
    *  false since the USGS sheet was withdrawn (#855), except on a phone that
    *  already holds it. Carried rather than derived here: it is the shell that
@@ -324,6 +328,7 @@ export function Legend({
   onChangeBackground,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  outsideDownload = false,
   offlineBackgroundAvailable = true,
   drawnCounts,
   belowPoiZoom = false,
@@ -865,6 +870,7 @@ export function Legend({
               onChange={onChangeBackground}
               override={backgroundOverride}
               belowArchiveZoom={belowArchiveZoom}
+              outsideDownload={outsideDownload}
               offlineBackgroundAvailable={offlineBackgroundAvailable}
               idPrefix="legend"
             />

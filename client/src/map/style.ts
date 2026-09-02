@@ -91,6 +91,13 @@ import {
 import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
 import {
+  buildCoverageSeamLayers,
+  buildCoverageSeamSource,
+  COVERAGE_SEAM_LABEL_LAYER_ID,
+  COVERAGE_SEAM_LAYER_ID,
+  COVERAGE_SEAM_SOURCE_ID,
+} from './coverageLayers'
+import {
   buildPoiDotLayer,
   buildPoiLayer,
   buildPoiSource,
@@ -441,6 +448,29 @@ export function attachMapAppearance(
         )
         map.setPaintProperty(
           TRAIL_LABEL_LAYER_ID,
+          'text-halo-color',
+          mapBackdrop(appearance) as never,
+        )
+      }
+
+      // The coverage seam's ink and halo (#557), on the same reasoning as the
+      // labels above: it is inked in the casing colour so a theme switch
+      // that leaves it behind draws a dark dashed line across a dark sheet.
+      if (map.getLayer(COVERAGE_SEAM_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          COVERAGE_SEAM_LAYER_ID,
+          'line-color',
+          trailCasingColor(appearance) as never,
+        )
+      }
+      if (map.getLayer(COVERAGE_SEAM_LABEL_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          COVERAGE_SEAM_LABEL_LAYER_ID,
+          'text-color',
+          trailCasingColor(appearance) as never,
+        )
+        map.setPaintProperty(
+          COVERAGE_SEAM_LABEL_LAYER_ID,
           'text-halo-color',
           mapBackdrop(appearance) as never,
         )
@@ -1090,6 +1120,11 @@ export function buildMapStyle({
       // credit somebody asked for in particular wording is worse than putting
       // it where it fits.
       [DROUGHT_SOURCE_ID]: buildDroughtSource(),
+      // Where the downloaded map ends (#557), empty until the shell knows
+      // which cells are on the phone and empty on every phone that holds the
+      // whole sheet or nothing. No attribution: the line is a fact about
+      // this phone, not anybody's data.
+      [COVERAGE_SEAM_SOURCE_ID]: buildCoverageSeamSource(),
       // The ATC's notices, and this one DOES have a third party to credit -
       // which is why it is a separate source rather than more features in the
       // one above. No `attribution` here either, though: a corner credit is
@@ -1165,6 +1200,13 @@ export function buildMapStyle({
       // sit in the style unconditionally - see lib/droughtStyle.ts for why the
       // switch is a visibility flip rather than an add and remove.
       buildDroughtLayer(DROUGHT_SOURCE_ID, sheetIsDark(appearance), showDrought),
+      // The edge of what is downloaded (#557), and its place in the stack is
+      // features/OFFLINE_COVERAGE.md §8 in paint: OVER the ground it is an
+      // edge of, UNDER every trail line, closure and pin. A seam takes away
+      // the sheet and never the hazard, so nothing that carries a decision
+      // may sit under it - and it is dashed and named rather than muting the
+      // ground beyond it, which would read as a rendering fault.
+      ...buildCoverageSeamLayers(trailCasingColor(appearance), mapBackdrop(appearance)),
       {
         // The whole network's corridor-view sketch (#1135), UNDER everything
         // the A.T. draws - the ordering argument the full network's layers

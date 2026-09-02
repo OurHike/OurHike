@@ -26,7 +26,10 @@ vi.mock('idb-keyval', () => ({
   del: vi.fn(),
   update: vi.fn(),
 }))
-vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
+}))
 
 /** Closed from mile 8 to 9 - two and a bit miles north of where the fix below
  *  puts the hiker, and behind a southbound one. */

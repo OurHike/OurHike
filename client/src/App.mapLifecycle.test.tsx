@@ -54,6 +54,7 @@ vi.mock('idb-keyval', () => ({
 }))
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve({ minZoom: 5, maxZoom: 14 }),
+  readArchiveFootprint: () => Promise.resolve(null),
 }))
 
 const app = appHarness()

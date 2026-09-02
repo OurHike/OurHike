@@ -48,6 +48,24 @@ describe('StatusStrip', () => {
     expect(screen.getByText(/no gps/i)).toBeInTheDocument()
   })
 
+  it('says the view is past the edge of the download, in the words of coverage (#557)', () => {
+    render(<StatusStrip {...PROPS} outsideDownload />)
+
+    const flag = screen.getByText(/outside what you downloaded/i)
+    expect(flag).toBeInTheDocument()
+    // Never damage. A hiker past the edge of the stretch they took is
+    // looking at paper because the ground was never taken, and the wording
+    // #352 had to walk back would send them to delete a download that is
+    // fine.
+    expect(flag.textContent).not.toMatch(/damaged|corrupt|incomplete|not drawing/i)
+  })
+
+  it('says nothing about the edge on a phone that has not crossed one', () => {
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/outside what you downloaded/i)).not.toBeInTheDocument()
+  })
+
   it('reports how long ago the data last synced', () => {
     render(<StatusStrip {...PROPS} />)
 

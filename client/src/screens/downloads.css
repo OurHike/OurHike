@@ -191,6 +191,23 @@
   color: var(--fg-2);
   font-size: 13px;
 }
+/* The stretch under the hike (#558): the second decision on the hiking
+   sheet's panel, below the sheet's card and quieter than it - the whole trail
+   stays the button a first-run hiker presses (features/OFFLINE_COVERAGE.md
+   §5). A rule above it rather than a card of its own, so it reads as a
+   refinement of the decision above and not as a second map to work through. */
+.downloads__stretch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-2);
+}
+.downloads__stretch-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
 /* The canary step, before there is a transfer to draw a bar for. Weighted
    like the byte counter it replaces, so the card does not change shape when
    the real figures arrive a moment later - and deliberately not animated:

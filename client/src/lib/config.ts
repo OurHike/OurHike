@@ -41,6 +41,28 @@ export function archiveKey(level: DetailLevel): string {
   return BACKGROUND_ARCHIVES[level]
 }
 
+/**
+ * The hiking sheet's coverage cells - the index `pipeline/cut_cells.py` writes
+ * beside the cell archives it cuts (#1175, features/OFFLINE_COVERAGE.md), read
+ * by lib/coverageCells.ts.
+ *
+ * One 1°×1° cell per entry, named for its south-west corner the way a USGS
+ * quad is (`n34w085`), with the flat key of its archive and its core bounds.
+ * The list is what was BUILT, not what the grid defines: a corridor is a thin
+ * band inside a big rectangle, and 62 of the 221 cells the A.T. package's
+ * bounds cover hold trail (measured 2026-08-28, PR #1176). Which cells exist
+ * is the one thing a phone cannot compute for itself, which is why this is
+ * fetched rather than derived from the grid.
+ *
+ * A 404 is an ordinary answer - a release cut before the cells existed, or a
+ * bucket a publish has not reached (production holds none while the cells
+ * are UA-only) - and reads as "no pieces on offer": the whole sheet stays one
+ * tap, and nothing the app had before is lost. Deliberately NOT in
+ * `expected_client_keys`'s contract (pipeline/verify_release.py), for that
+ * reason: an optional artifact must not fail the release gate by its absence.
+ */
+export const BASEMAP_CELLS_KEY = 'at_basemap_cells.json'
+
 export const TRAILS_KEY = 'trails.geojson'
 
 /**

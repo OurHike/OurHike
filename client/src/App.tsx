@@ -72,7 +72,7 @@ import {
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
-import { DATA_CONFIGURED } from './lib/config'
+import { DATA_CONFIGURED, dataUrl } from './lib/config'
 import {
   forgetPreferencesSync,
   loadPreferences,
@@ -110,8 +110,19 @@ import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
-import { useArchiveZooms } from './lib/useArchiveZooms'
-import { archiveCoversZoom } from './lib/archiveCoverage'
+import { useArchiveFootprint, useArchiveZooms } from './lib/useArchiveZooms'
+import { archiveCoversZoom, coverageAt, type Footprint } from './lib/archiveCoverage'
+import {
+  cellPackageKey,
+  cellsAlong,
+  CONTEXT_PACKAGE_KEY,
+  priceStretch,
+  seamEdges,
+  STRETCH_MARGIN_KM,
+  useCellIndex,
+} from './lib/coverageCells'
+import { setBasemapCells } from './map/basemap'
+import type { StretchOffer } from './screens/StretchCard'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
 import {
   backgroundProblem,
@@ -1278,16 +1289,44 @@ function App() {
   // nothing on its own - `useArchiveDownloads` transfers only when something
   // asks it to.
   const catalogSheets = useMemo(() => [...offeredSheets(), ...withdrawnSheets()], [])
+  // The hiking sheet's cells, as the bucket lists them (#557,
+  // lib/coverageCells.ts): the stored copy at once, the published one with
+  // signal. Null on a phone that has never seen one, which is every phone on
+  // a release without cells - the sheet stays one tap and nothing changes.
+  const cellIndex = useCellIndex()
   const downloadRequests = useMemo(
-    () =>
-      catalogSheets
+    () => [
+      ...catalogSheets
         .flatMap((sheet) => offeredPackages(sheet))
         .map((pkg) => ({
           packageKey: pkg.idbKey,
           url: packageDownloadUrl(pkg, detailLevel, hikingLevel),
           artifactKey: packageArtifactKey(pkg, detailLevel, hikingLevel),
         })),
-    [catalogSheets, detailLevel, hikingLevel],
+      // Every cell and the shared context, registered the moment the index
+      // is known, so their markers are read on mount like every sheet's - a
+      // stretch on the phone is a stretch the map draws from before any
+      // window opens. Registering starts nothing (useArchiveDownloads).
+      ...(cellIndex === null
+        ? []
+        : [
+            ...cellIndex.cells.map((cell) => ({
+              packageKey: cellPackageKey(cell.name),
+              url: dataUrl(cell.key),
+              artifactKey: cell.key,
+            })),
+            ...(cellIndex.context === null
+              ? []
+              : [
+                  {
+                    packageKey: CONTEXT_PACKAGE_KEY,
+                    url: dataUrl(cellIndex.context),
+                    artifactKey: cellIndex.context,
+                  },
+                ]),
+          ]),
+    ],
+    [catalogSheets, detailLevel, hikingLevel, cellIndex],
   )
   const {
     statusFor: archiveStatusFor,
@@ -1426,15 +1465,120 @@ function App() {
    */
   const [preparingSheets, setPreparingSheets] = useState<readonly string[]>([])
 
+  // Which cells are on this phone (#557): the completion markers' answer,
+  // through the same hook as every sheet, never a second record kept beside
+  // them. Held as package keys as well, because that is what map/basemap.ts
+  // is asked in and what a stretch is priced against.
+  const heldCells = useMemo(
+    () =>
+      cellIndex === null
+        ? []
+        : cellIndex.cells.filter(
+            (cell) => archiveStatusFor(cellPackageKey(cell.name)).state === 'downloaded',
+          ),
+    [cellIndex, archiveStatusFor],
+  )
+  const contextHeld = archiveStatusFor(CONTEXT_PACKAGE_KEY).state === 'downloaded'
+  const heldPackageKeys = useMemo(() => {
+    const keys = new Set(heldCells.map((cell) => cellPackageKey(cell.name)))
+    if (contextHeld) keys.add(CONTEXT_PACKAGE_KEY)
+    return keys
+  }, [heldCells, contextHeld])
+
+  // The tile handler is not a component and cannot subscribe, so it is told
+  // - and told again the moment a cell lands or goes, which is what lets the
+  // next tile the map asks for come off the new archive with nothing rebuilt.
+  useEffect(() => {
+    setBasemapCells(cellIndex, heldPackageKeys)
+  }, [cellIndex, heldPackageKeys])
+
+  // Where the download ends, for the canvas: the outer edge of what is held,
+  // which is nothing at all on a phone holding no cells (lib/coverageCells.ts).
+  const coverageSeams = useMemo(
+    () => (cellIndex === null ? [] : seamEdges(heldCells, cellIndex.cellDegrees)),
+    [cellIndex, heldCells],
+  )
+
+  /**
+   * The cells under the hike the hiker says they are on (#558) - derived from
+   * lib/plannedHike.ts's two numbers, walked along the centerline, never
+   * picked off a list. Null while any of the three is missing: no hike, no
+   * trail line to walk it along, no index to place it in.
+   */
+  const stretchCells = useMemo(() => {
+    if (hike === null || trailIndex === null || cellIndex === null) return null
+    return cellsAlong(
+      cellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, cellIndex])
+
+  /** The stretch's packages: its cells, and the context they are legible
+   *  through - fetched with the first piece, never offered as a decision
+   *  (features/OFFLINE_COVERAGE.md §6). */
+  const stretchPackageKeys = useMemo(() => {
+    if (stretchCells === null || cellIndex === null) return []
+    const keys = stretchCells.map((cell) => cellPackageKey(cell.name))
+    if (cellIndex.context !== null) keys.push(CONTEXT_PACKAGE_KEY)
+    return keys
+  }, [stretchCells, cellIndex])
+
+  /** One state for the stretch, out of however many pieces it is - the same
+   *  join the sheets use, so "3 of 21 MB" means the same thing on both. */
+  const stretchStatus = useMemo(
+    () =>
+      combineBackgroundStatus(
+        stretchPackageKeys.map((key) => {
+          const artifact = downloadRequests.find(
+            (request) => request.packageKey === key,
+          )?.artifactKey
+          return {
+            status: archiveStatusFor(key),
+            sizeBytes: artifact === undefined ? null : (publishedSizes[artifact] ?? null),
+          }
+        }),
+      ),
+    [stretchPackageKeys, downloadRequests, archiveStatusFor, publishedSizes],
+  )
+
+  /** The missing pieces, in one tap; held ones are left alone. Resume is the
+   *  same call - the hook resumes a partial it is asked to start. */
+  const handleTakeStretch = useCallback(async () => {
+    const missing = stretchPackageKeys.filter(
+      (key) => archiveStatusFor(key).state !== 'downloaded',
+    )
+    if (missing.length === 0) return
+    // No canary: the trail line is already here, or there would be no
+    // stretch to derive. What the sheet's path clears, this clears too -
+    // the basemap source's verdict on the LAST copy of these bytes says
+    // nothing about the ones now arriving (#352).
+    setNotDrawing((current) => forgetPackages(current, [BASEMAP_PACKAGE.idbKey]))
+    await startPackages(missing)
+  }, [stretchPackageKeys, archiveStatusFor, startPackages])
+
+  /** Every piece of the stretch, and the context with them only when no
+   *  other held cell still needs it - it is shared ground, not the
+   *  stretch's own. */
+  const handleRemoveStretch = useCallback(async () => {
+    if (stretchCells === null) return
+    const cells = stretchCells.map((cell) => cellPackageKey(cell.name))
+    const others = heldCells.filter((cell) => !cells.includes(cellPackageKey(cell.name)))
+    const keys = others.length === 0 ? [...cells, CONTEXT_PACKAGE_KEY] : cells
+    await Promise.all(keys.map((key) => removePackage(key)))
+    refreshAvailableBytes()
+  }, [stretchCells, heldCells, removePackage, refreshAvailableBytes])
+
   // What is arriving right now, across every sheet, for the link that says so
   // (lib/downloadActivity.ts). Decided here rather than on either screen for
   // the reason the transfer itself lives here: the download outlives the
   // window it was started from and has to be reportable from the map and from
   // Settings alike, which are never both mounted. Off the SHEET statuses the
   // cards already render, so the footer's figure and the card's cannot
-  // disagree about the same download.
+  // disagree about the same download. The stretch counts as one more sheet
+  // for the same reason: it is started from the window and left running.
   const downloadActivity = activeDownload(
-    backgroundSheets.map(sheetStatus),
+    [...backgroundSheets.map(sheetStatus), stretchStatus],
     preparingSheets.length > 0,
   )
 
@@ -1453,6 +1597,49 @@ function App() {
     CORRIDOR_BACKGROUND_PACKAGE.idbKey,
     archiveDownloaded,
   )
+
+  // Whether the hiking sheet's tiles are on the phone AT ALL - the whole
+  // package, or any cell of it - which is what turns a failing basemap source
+  // into "your download is not drawing" rather than "you have no download"
+  // (lib/backgroundHealth.ts, #557).
+  const hikingTilesHeld = hikingSheetDownloaded || heldCells.length > 0
+
+  // What each whole-sheet archive declares it covers, off its own header -
+  // null until a finished archive exists to ask, exactly as archiveZooms is.
+  const basemapFootprint = useArchiveFootprint(
+    BASEMAP_PACKAGE.idbKey,
+    hikingSheetDownloaded,
+  )
+  const rasterFootprint = useArchiveFootprint(
+    CORRIDOR_BACKGROUND_PACKAGE.idbKey,
+    archiveDownloaded,
+  )
+
+  /**
+   * Everything downloaded, as ground (#557): every held cell's core bounds
+   * and each whole-sheet archive's header rectangle. Null - which `coverageAt`
+   * reads as unknown - until the store has answered for every package and
+   * every header has been read: a phone that has not finished reading its own
+   * markers must not be told it is outside a download it may well have.
+   */
+  const heldFootprints = useMemo<Footprint[] | null>(() => {
+    if (!archivesRead) return null
+    if (hikingSheetDownloaded && basemapFootprint === null) return null
+    if (archiveDownloaded && rasterFootprint === null) return null
+    const footprints: Footprint[] = heldCells.map(
+      ({ bounds: [west, south, east, north] }) => ({ west, south, east, north }),
+    )
+    if (basemapFootprint !== null) footprints.push(basemapFootprint)
+    if (rasterFootprint !== null) footprints.push(rasterFootprint)
+    return footprints
+  }, [
+    archivesRead,
+    hikingSheetDownloaded,
+    archiveDownloaded,
+    heldCells,
+    basemapFootprint,
+    rasterFootprint,
+  ])
 
   // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
   // else: the mile below, the direction of travel, the elevation ribbon.
@@ -3816,6 +4003,15 @@ function App() {
     camera !== null &&
     !archiveCoversZoom(archiveZooms, camera.zoom)
 
+  // Past the edge of everything downloaded (#557), read off the same settled
+  // camera as the zoom flag above, so the two edges are decided from one
+  // view. Nothing is claimed before the map has reported a camera, and
+  // nothing before the store has answered - `heldFootprints` is null until
+  // then, and null is unknown.
+  const outsideDownload =
+    camera !== null &&
+    coverageAt(heldFootprints, camera.center[0], camera.center[1]) === 'outside'
+
   /**
    * Write preferences to the phone, and do not let the failure be silent (#315).
    *
@@ -5180,6 +5376,33 @@ function App() {
   // and the tab that used to carry them is gone; leaving them on a screen
   // would mean an archive that failed at 4 AM announcing itself over the map
   // for the rest of the walk.
+  /**
+   * The second decision on the hiking sheet's panel (#558): the stretch under
+   * the hike, priced against what is missing. Built whatever the state, so the
+   * card can say why there is nothing to take - no hike set, no index yet, the
+   * whole trail already here - rather than vanishing.
+   */
+  const stretchPrice = priceStretch(
+    stretchCells ?? [],
+    cellIndex?.context ?? null,
+    (key) => heldPackageKeys.has(key),
+    publishedSizes,
+  )
+  const stretchOffer: StretchOffer = {
+    hike: hike === null ? null : hikeSummary(hike),
+    available: cellIndex !== null && trailIndex !== null,
+    pieces: stretchCells?.length ?? 0,
+    missing: stretchPrice.missing,
+    bytes: stretchPrice.bytes,
+    marginKm: cellIndex?.seamMarginKm ?? STRETCH_MARGIN_KM,
+    units,
+    status: stretchStatus,
+    wholeSheetHere: hikingSheetDownloaded,
+    onTake: () => void handleTakeStretch(),
+    onResume: () => void handleTakeStretch(),
+    onRemove: () => void handleRemoveStretch(),
+  }
+
   const downloadsWindow = downloadsOpen && (
     <DownloadsDialog onClose={() => setDownloadsOpen(false)}>
       {!DATA_CONFIGURED && (
@@ -5241,6 +5464,9 @@ function App() {
             sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel, publishedSizes),
             status: archiveStatusFor(pkg.idbKey),
           })),
+          // Only the hiking sheet is cut into cells, so only its panel
+          // carries the stretch (#558).
+          stretch: sheet.id === HIKING_SHEET.id ? stretchOffer : undefined,
           // Each sheet's picker carries its own level set and writes its own
           // preference (#276) - the USGS raster's tiers and the hiking
           // sheet's cuts are separate dials. The `as` casts are safe because
@@ -5316,7 +5542,8 @@ function App() {
         sources: notDrawing,
         online,
         rasterArchiveDownloaded: archiveDownloaded,
-        hikingSheetDownloaded,
+        hikingSheetDownloaded: hikingTilesHeld,
+        outsideDownload,
       })}
       backgroundOverride={backgroundOverride(
         preferences.background_source,
@@ -5884,10 +6111,16 @@ function App() {
                 sources: notDrawing,
                 online,
                 rasterArchiveDownloaded: archiveDownloaded,
-                hikingSheetDownloaded,
+                hikingSheetDownloaded: hikingTilesHeld,
+                outsideDownload,
               })}
               onLiveSourceHealth={recordSourceHealth}
               belowArchiveZoom={belowArchiveZoom}
+              // The horizontal edge (#557), decided beside the vertical one
+              // above from the same camera, and the line the canvas draws
+              // where the held cells end.
+              outsideDownload={outsideDownload}
+              coverageSeams={coverageSeams}
               // Only once something has actually gone wrong, not merely because
               // the lines have not arrived yet. A first launch spends a few
               // seconds with no trail on the map in the ordinary case, and a flag

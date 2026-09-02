@@ -35,10 +35,38 @@
 // between a local tile and the live tile one screen over until the next
 // package release. That is data freshness, not wrongness, and the Downloads
 // screen's release date is the place a hiker reads it.
+//
+// SINCE #557 THE PACKAGE IS NOT THE ONLY LOCAL ANSWER. The hiking sheet also
+// ships in 1° cells plus one shared context archive (lib/coverageCells.ts,
+// features/OFFLINE_COVERAGE.md), and a phone may hold any set of them with or
+// without the whole package. So "local" is a short list rather than one
+// archive, walked in order before the network is touched:
+//
+//   the whole package          -> if held, it holds everything a cell does
+//   the held cells this tile   -> routed by the same rectangle overlap the
+//   may sit in                    cutter used, seam margin included, so a tile
+//                                 the pipeline put in a cell is looked for
+//                                 there - and near a seam more than one may
+//                                 hold it, and any held one answers
+//   the context archive        -> at and under the context zoom only, which
+//                                 is all it holds
+//   the network                -> exactly as before
+//
+// Which cells are held is the shell's knowledge - the completion markers,
+// read through lib/useArchiveDownload.ts - handed to this module through
+// `setBasemapCells`. A protocol handler is not a React component and cannot
+// subscribe to anything, so the shell pokes it the way MapView pokes a live
+// map. Still nothing detected: an unheld cell is simply never asked.
 
 import { addProtocol } from 'maplibre-gl'
 import { PMTiles } from 'pmtiles'
 import { BASEMAP_PACKAGE } from '../lib/packages'
+import {
+  cellPackageKey,
+  cellsForTile,
+  CONTEXT_PACKAGE_KEY,
+  type CellIndex,
+} from '../lib/coverageCells'
 import { IndexedDbArchiveSource } from './pmtilesSource'
 import { BASEMAP_SCHEME, OPENFREEMAP_TILEJSON } from './liveTopo'
 
@@ -60,6 +88,86 @@ let archive: PMTiles | null = null
 function packageArchive(): PMTiles {
   archive ??= new PMTiles(new IndexedDbArchiveSource(BASEMAP_PACKAGE.idbKey))
   return archive
+}
+
+/** The cells the shell says this phone holds, by package key, and the index
+ *  they are in. Null until the shell has an index to hand over, which reads
+ *  as "no cells" - the package and the network are then the whole answer,
+ *  exactly as before cells existed. */
+let cells: { index: CellIndex; held: ReadonlySet<string> } | null = null
+
+/** One reader per held cell and one for the context, by package key -
+ *  created on first use and dropped on failure, on the package's own rule
+ *  above. */
+const readers = new Map<string, PMTiles>()
+
+/**
+ * What the shell knows about cells, for the handler that cannot ask.
+ *
+ * `held` is package keys (lib/coverageCells.ts's `cellPackageKey`, plus
+ * CONTEXT_PACKAGE_KEY), and it is read on every tile rather than copied into
+ * anything: a cell that finishes downloading mid-session is answered from on
+ * the next tile the map asks for. A reader for a cell no longer in the set is
+ * dropped - it would answer from bytes the hiker has removed, or from a
+ * directory cached before a re-download replaced them.
+ */
+export function setBasemapCells(
+  index: CellIndex | null,
+  held: ReadonlySet<string>,
+): void {
+  cells = index === null ? null : { index, held }
+  for (const key of [...readers.keys()]) {
+    if (!held.has(key)) readers.delete(key)
+  }
+}
+
+function reader(packageKey: string): PMTiles {
+  let existing = readers.get(packageKey)
+  if (existing === undefined) {
+    existing = new PMTiles(new IndexedDbArchiveSource(packageKey))
+    readers.set(packageKey, existing)
+  }
+  return existing
+}
+
+/** Which local archives may hold this tile, in the order they are asked. */
+function localCandidates(z: number, x: number, y: number): string[] {
+  if (cells === null) return []
+  const { index, held } = cells
+  const keys: string[] = []
+  for (const cell of cellsForTile(index.cells, z, x, y, index.seamMarginKm)) {
+    const key = cellPackageKey(cell.name)
+    if (held.has(key)) keys.push(key)
+  }
+  if (index.context !== null && z <= index.contextZoom && held.has(CONTEXT_PACKAGE_KEY)) {
+    keys.push(CONTEXT_PACKAGE_KEY)
+  }
+  return keys
+}
+
+/**
+ * A tile out of one held archive, or undefined for a miss.
+ *
+ * An unreadable archive is a miss too, and the reader is dropped so the next
+ * tile asks afresh - the same rule as the package's read below, for the same
+ * reason: pmtiles never evicts a rejected header promise, so keeping the
+ * instance would keep answering from a stale failure after a resume lands.
+ */
+async function readHeld(
+  packageKey: string,
+  z: number,
+  x: number,
+  y: number,
+  signal: AbortSignal,
+): Promise<ArrayBuffer | undefined> {
+  try {
+    const tile = await reader(packageKey).getZxy(z, x, y, signal)
+    return tile?.data
+  } catch (error) {
+    if (isAbort(error)) throw error
+    readers.delete(packageKey)
+    return undefined
+  }
 }
 
 /**
@@ -131,6 +239,13 @@ async function loadTile(
     archive = null
   }
 
+  // The cells, then the context - every held archive that could hold this
+  // tile, before a byte of anybody's data plan is spent (#557).
+  for (const key of localCandidates(z, x, y)) {
+    const held = await readHeld(key, z, x, y, signal)
+    if (held !== undefined) return { data: new Uint8Array(held) }
+  }
+
   const template = await networkTileTemplate()
   const response = await fetch(
     template
@@ -178,4 +293,6 @@ export function resetBasemapForTests(): void {
   registered = false
   archive = null
   networkTemplate = null
+  cells = null
+  readers.clear()
 }

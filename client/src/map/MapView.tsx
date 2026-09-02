@@ -56,6 +56,8 @@ import {
   type CorridorFeatureCollection,
 } from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
+import { attachCoverageSeams } from './coverageLayers'
+import type { SeamEdge } from '../lib/coverageCells'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import {
   attachWorkdayData,
@@ -188,6 +190,17 @@ export interface MapViewProps {
    *  data for the reason droughtLayers.ts gives: the bands arrive once and
    *  the switch moves whenever somebody taps it. */
   showDrought?: boolean
+  /**
+   * The outer edges of the cells this phone holds, already computed by the
+   * shell (lib/coverageCells.ts's `seamEdges`), drawn dashed and named as
+   * the edge of the download (#557, map/coverageLayers.ts).
+   *
+   * Edges rather than cells, for the reason `closures` arrives as coordinates
+   * rather than mile markers: which cells are held is a fact about IndexedDB
+   * the shell holds, and this component draws. Empty is the ordinary state -
+   * nothing held, or the whole sheet held, neither of which has an edge.
+   */
+  coverageSeams?: readonly SeamEdge[]
   /**
    * The ATC's own trail updates, in the same coordinates and drawn at the
    * same weight - a second band source rather than more features in
@@ -412,6 +425,7 @@ const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
 const NO_CLOSURES: readonly ClosureBand[] = []
 const NO_DROUGHT: readonly DroughtBand[] = []
+const NO_SEAMS: readonly SeamEdge[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
@@ -437,6 +451,7 @@ export function MapView({
   onSelectHighlight,
   drought = NO_DROUGHT,
   showDrought = false,
+  coverageSeams = NO_SEAMS,
   atcUpdates = NO_ATC_UPDATES,
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
@@ -895,6 +910,15 @@ export function MapView({
     if (map === null) return
     return setDroughtVisible(map, showDrought)
   }, [map, showDrought])
+
+  // The edge of the download (#557), on the drought bands' pattern: the
+  // shell hands over a few line segments whenever the held cells change,
+  // which is a download landing or a delete, and nothing else on this
+  // screen re-pushes them.
+  useEffect(() => {
+    if (map === null) return
+    return attachCoverageSeams(map, coverageSeams)
+  }, [map, coverageSeams])
 
   useEffect(() => {
     if (map === null) return

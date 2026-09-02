@@ -12,12 +12,23 @@ Answers [#552 — Decide the unit of offline coverage, and write it
 down](https://github.com/OurHike/OurHike/issues/552), inside
 [#551](https://github.com/OurHike/OurHike/issues/551)'s offline-coverage program.
 
-**Status, 2026-08-28: decided, and the pipeline half built and run against real data.**
-The unit is the maintainer's call of 2026-08-25, recorded on #552. `pipeline/cut_cells.py`
-cuts it (#1175, landed with this doc), and `publish.py` publishes what it cuts. The cut has
-been run against the published z12 A.T. basemap — see §6 for what it measured. **Nothing hiker-facing exists yet**:
-#557 (drawing from several units, and saying where they end) and #558 (choosing a piece)
-are both open, and until they land no cell reaches a phone.
+**Status, 2026-09-02: decided, the pipeline half built and published, and the client half
+built.** The unit is the maintainer's call of 2026-08-25, recorded on #552.
+`pipeline/cut_cells.py` cuts it (#1175), `publish.py` publishes what it cuts, and UA release
+`2026-09-02` carries 62 basemap cells — 419.1 MB together, summed off the manifest's own
+`size_bytes` — beside `at_basemap_cells.json` and the shared context. On the phone
+(#557/#558): `lib/coverageCells.ts` reads that index and derives the stretch under the
+planned hike; `map/basemap.ts` answers a tile from the whole package, then any held cell,
+then the context, then the network; `lib/archiveCoverage.ts`'s `coverageAt` answers "is
+here covered" once, for the status strip, the legend's picker and the dashed seam the map
+draws (`map/coverageLayers.ts`); and the download window's stretch card
+(`screens/StretchCard.tsx`) prices what is missing and takes it in one tap.
+
+**What is still not built, stated so nobody rediscovers it.** The DEM has no cells yet —
+only `at_basemap` is cut, so a stretch is the basemap alone and the terrain stays the whole
+archive. The cells are cut from the Fine (z14) package only, so the "one global level with
+a per-piece override" decision below has no pipeline behind it: the client reads whatever
+level the index publishes and promises none. And named pieces wait on open question 2.
 
 Measurements below are dated. Everything read off the published bucket was fetched
 2026-08-28 against release `2026-08-28`, whose manifest carries a `size_bytes` per

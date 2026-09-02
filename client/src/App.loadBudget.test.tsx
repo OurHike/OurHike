@@ -66,7 +66,10 @@ vi.mock('idb-keyval', () => ({
   del: vi.fn(),
   update: vi.fn(),
 }))
-vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
+}))
 
 // The two expensive pure functions, wrapped rather than replaced: the app runs
 // the real ones, and this file gets to ask how often. Counting the call is the

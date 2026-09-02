@@ -95,6 +95,40 @@ export default async function drive(page) {
   // enough for it pushes the Closure row off the top, and that row is still
   // part of what this shot carries.
   //
+  // WAIT FOR THE SHEET TO STOP GROWING BEFORE SCROLLING IT, which is the whole
+  // reason this drive is longer than a tap.
+  //
+  // The runner settles once after load, runs this, then settles AGAIN before
+  // the shutter (screenshot.mjs). In the sandbox the app has no trail data and
+  // the sheet is finished by the time we arrive. In CI it is not: the data is
+  // still landing, lib/legendContents.ts's GHOSTED_TRAILS_NOTE appears once a
+  // dimmed trail is actually drawn, and the counts fill in. All of that
+  // happened during the SECOND settle - after this drive had already scrolled
+  // - so the sheet grew past its `max-height: 60%` with `scrollTop` still 0,
+  // and the shutter caught the top of a sheet whose foot had just gone under
+  // the fold.
+  //
+  // That is what the first attempt at this got wrong, and the obvious
+  // diagnosis was wrong with it: the scroll was not failing. Measured on this
+  // build against a deliberately shortened viewport, which reproduces the
+  // overflow the sandbox otherwise never has - `scrollIntoViewIfNeeded` moved
+  // the sheet 0 -> 292 px and put the control fully inside it. There was
+  // simply nothing to scroll yet.
+  //
+  // So: poll `scrollHeight` until it stops changing, then scroll. A settle on
+  // something observable rather than a longer fixed wait, which is what
+  // CLAUDE.md asks of anything awaiting an effect - and it is the only version
+  // that suits both builds, since the sandbox breaks out on the first
+  // comparison and pays nothing for the loop.
+  const sheet = page.locator('.legend')
+  let previous = -1
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const height = await sheet.evaluate((element) => element.scrollHeight)
+    if (height === previous) break
+    previous = height
+    await page.waitForTimeout(500)
+  }
+
   // By its accessible name, which is spelt out in full on the `select`
   // (chrome/Legend.tsx explains why it is not assembled from the visible
   // "Showing" plus a hidden continuation).

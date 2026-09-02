@@ -53,6 +53,8 @@ import {
   ELEVATION_ATTRIBUTION,
 } from './terrain'
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
+import { POI_LABEL_LAYER_ID } from './poiLabels'
+import { DAY_HIKE_TICK_LABEL_LAYER_ID } from './dayHikeLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
@@ -635,6 +637,10 @@ describe('the offline-only background', () => {
       // for the route layers' reason below - planning tomorrow's loop at a
       // trailhead with no signal is a normal use, not an edge case - and for
       // the sketch's duller one: empty until a hiker starts tapping.
+      // #1194's dark fringe, under the green band and under every trail line
+      // - the contrast that made the selection legible without repainting a
+      // blaze. See map/dayHikeLayers.ts for why "over" was not available.
+      'day-hike-route-outer-casing',
       'day-hike-route-casing',
       // The trails other organizations maintain (#950), and they survive the
       // subtraction for the same duller reason the sketch above does: the
@@ -706,6 +712,12 @@ describe('the offline-only background', () => {
       // All three waypoint ranks (#597, and the staleness rings with #759),
       // dots under rings under pins - a waypoint that wins its collision
       // hides its own dot, and one that loses still leaves it.
+      // Waypoint names and the walk's mile marks (#1194), and note WHERE:
+      // before the pins, for the same reason the trail labels above are early
+      // - placement runs top-down and a label at the end of this list would
+      // suppress a pin to print a name.
+      POI_LABEL_LAYER_ID,
+      DAY_HIKE_TICK_LABEL_LAYER_ID,
       POI_DOT_LAYER_ID,
       POI_STALENESS_LAYER_ID,
       POI_LAYER_ID,
@@ -981,7 +993,17 @@ describe('the ground network stays behind the trail', () => {
     const built = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).map((l) => l.id)
 
     expect(built.filter((id) => id.startsWith('topo-road')).sort()).toEqual(
-      [LIVE_TOPO_LAYER_IDS.roadMajor, LIVE_TOPO_LAYER_IDS.roadMinor].sort(),
+      [
+        LIVE_TOPO_LAYER_IDS.roadMajor,
+        LIVE_TOPO_LAYER_IDS.roadMinor,
+        // A SYMBOL LAYER, not a stroke (#1194) - road names, tier 1 of
+        // map/labelLadder.ts. It shares the `topo-road` prefix this filter
+        // reads and draws no line at all, so it cannot be half of the
+        // casing-plus-fill pair this test exists to forbid. The real guard
+        // against that is the assertion below and the width ceiling above,
+        // both untouched.
+        LIVE_TOPO_LAYER_IDS.roadLabel,
+      ].sort(),
     )
     expect(Object.keys(LIVE_TOPO_LAYER_IDS)).not.toContain('roadMajorCasing')
   })

@@ -3003,3 +3003,365 @@
   border-radius: 3px;
   cursor: pointer;
 }
+
+/* ---------------------------------------------------------------------------
+   The day-hike builder's panel (#1194, the Claude Design handoff for `1j`).
+
+   IN THE FLOW, NOT OVER THE MAP, and that is the whole fix. `.day-hike-bar`
+   below is an overlay capped at 60% of the canvas, which is what made the
+   builder's map too small. This panel is a SIBLING of `.map-screen__canvas`
+   (chrome/MapScreen.tsx's `builderPanel` slot), so it takes its own room:
+   a band above the map here, a 348px left rail on a desktop (src/desktop.css).
+
+   THE BUTTONS ARE NOT IN HERE. They stayed on `.day-hike-bar` at the foot of
+   the canvas - the maintainer's instruction, and what this repository already
+   believed: src/desktop.css says the bar's position at the bottom of a phone
+   is a thumb-reach decision, and a builder used one-handed on a trail is the
+   case that decision was made for. So this panel is what a hiker READS and
+   the bar is what they PRESS.
+
+   Everything below is unguarded by a media query and therefore reaches the
+   phone, unlike src/desktop.css - this IS the phone layout, and the rail is
+   the variant. --------------------------------------------------------- */
+
+.day-hike-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem 0.7rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-1);
+  /* Capped so a long route list can never push the map off the screen: the
+     complaint this whole change answers is that the map was too small, and a
+     panel that grows without limit would reintroduce it through the top of
+     the screen instead of the bottom. */
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+.day-hike-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.day-hike-panel__title-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.day-hike-panel__eyebrow {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__title {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--fg-1);
+  /* One line: the title is generated from the walk's own legs and a walk over
+     six trails would otherwise wrap to three lines of chrome above a map the
+     hiker is trying to make bigger. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.day-hike-panel__summary {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+
+.day-hike-panel__details-toggle {
+  flex: 0 0 auto;
+  min-height: var(--min-touch-target);
+  padding: 0 1rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* Three figures, evenly split, with the climb marked as the emphasised one -
+   the handoff's choice and the right one: climb is what makes a day-hike time
+   honest, and it is the figure a flat mileage hides. */
+.day-hike-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  border: 1px solid var(--border-1);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.day-hike-panel__stat {
+  padding: 0.45rem 0.6rem;
+  border-right: 1px solid var(--border-1);
+}
+
+.day-hike-panel__stat:last-child {
+  border-right: 0;
+}
+
+.day-hike-panel__stat--climb {
+  background: var(--bg-sunken);
+}
+
+.day-hike-panel__stat dt {
+  margin: 0;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__stat dd {
+  margin: 0.15rem 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.day-hike-panel__stat--climb dd {
+  color: var(--accent-blaze-orange);
+}
+
+.day-hike-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.day-hike-panel__section-head {
+  margin: 0 0 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__climb-figures {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.day-hike-panel__climb-up {
+  color: var(--accent-blaze-orange);
+}
+
+.day-hike-panel__climb-down {
+  color: var(--fg-2);
+}
+
+/* The line standing where the handoff drew an elevation silhouette. It is
+   prose rather than a chart because the samples that would draw one are not
+   published for network trails - see chrome/DayHikePanel.tsx. */
+.day-hike-panel__note,
+.day-hike-panel__unknown,
+.day-hike-panel__empty {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__empty {
+  margin: 0;
+}
+
+.day-hike-panel__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.2rem;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.day-hike-panel__row:last-child {
+  border-bottom: 0;
+}
+
+.day-hike-panel__row--stop {
+  background: var(--bg-sunken);
+  border-bottom: 0;
+  border-radius: 9px;
+  margin: 0.2rem 0;
+  padding: 0.5rem 0.4rem;
+}
+
+.day-hike-panel__row--gap {
+  color: var(--fg-3);
+}
+
+.day-hike-panel__row-index {
+  flex: 0 0 1.4rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-3);
+}
+
+/* The blaze chip. A neutral paper fill when a trail publishes no blaze, never
+   a guessed colour: lib/blaze.ts warns rather than inventing one, and a chip
+   that made one up would be the map's own rule broken in a list. */
+.day-hike-panel__blaze {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--bg-sunken);
+  border: 1px solid rgb(20 19 15 / 12%);
+}
+
+.day-hike-panel__row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.day-hike-panel__row-detail {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__row-remove {
+  flex: 0 0 auto;
+  width: var(--min-touch-target);
+  height: var(--min-touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.day-hike-panel__turn-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-panel__turn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: var(--min-touch-target);
+  padding: 0 0.7rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.day-hike-panel__turn-x {
+  color: var(--fg-3);
+}
+
+/* OUTSIDE the collapsible body, so a hiker can change what the map labels
+   while the details are shut and the map is at its tallest - which is the
+   state the redesign puts them in by default. */
+.day-hike-panel__labels {
+  border-top: 1px solid var(--border-1);
+  padding-top: 0.5rem;
+}
+
+.day-hike-panel__label-grid {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  /* A scrolling row on a phone, a 2-column grid in the desktop rail. Both are
+     the handoff's, at its two breakpoints. */
+  padding-bottom: 0.15rem;
+}
+
+.day-hike-panel__label-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--min-touch-target);
+  padding: 0 0.8rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* ON is the filled state, per the handoff's phone chips. `aria-pressed` is
+   what says so to a screen reader; this is the same fact in paint. */
+.day-hike-panel__label-toggle[aria-pressed='true'] {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.day-hike-panel__label-tier {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.day-hike-panel__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

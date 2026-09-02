@@ -50,6 +50,17 @@ export interface MapPoint {
   lon: number
   confidence: 'high' | 'low'
   /**
+   * The waypoint's name, for map/poiLabels.ts (#1194).
+   *
+   * Optional, and nothing in THIS file reads it - the legend counts
+   * categories. It rides here for the same reason `siteId` does: the shell
+   * already maps a `StoredPoi` onto this type once, and a parallel array of
+   * names would be a second thing to keep in step. Absent means the caller
+   * had no name to give, and the label layer draws nothing rather than
+   * "Unnamed" - lib/trailData.ts's own restraint, one layer out.
+   */
+  name?: string
+  /**
    * Which site this point belongs to, and whether it anchors it (#523/#524).
    *
    * Here rather than in a parallel type because the shell already maps a stored

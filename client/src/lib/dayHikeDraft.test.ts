@@ -27,6 +27,7 @@ import {
   startStretch,
   stretchRoute,
   tapAt,
+  removeTap,
   undoTap,
 } from './dayHikeDraft'
 import { buildGraphIndex, type RouteLeg, type TrailGraph } from './trailGraph'
@@ -369,5 +370,114 @@ describe('several stretches, and the gap between them (#935, #983)', () => {
     // re-resolved and falls back to its cache for ever.
     expect(canStartStretch(twoStretches())).toBe(true)
     expect(canCloseLoop(twoStretches())).toBe(false)
+  })
+})
+
+describe('removing one tap', () => {
+  // #1194's per-row delete. `undoTap` takes back the last EDIT - which is why
+  // it un-loops and un-starts-a-stretch before touching a tap at all - and
+  // this takes back a POINT OF THE WALK, wherever it sits. With five taps
+  // down, undo can only reach the fifth.
+
+  it('drops a middle tap and re-routes around it', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, FURTHER)
+    expect(draftPoints(draft)).toHaveLength(3)
+
+    const without = removeTap(draft, 1)
+
+    expect(draftPoints(without)).toHaveLength(2)
+    // The walk still routes - the point of re-routing rather than leaving a
+    // hole where the tap was.
+    expect(draftStatus(index, without).kind).toBe('routed')
+  })
+
+  it('drops the first tap as readily as the last', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, FURTHER)
+
+    expect(draftPoints(removeTap(draft, 0))).toHaveLength(2)
+    expect(draftPoints(removeTap(draft, 2))).toHaveLength(2)
+  })
+
+  it('counts across stretches, because that is the numbering the panel shows', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = startStretch(draft)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, SEVEN_HILLS_END)
+    expect(draftPoints(draft)).toHaveLength(4)
+
+    // Ordinal 2 is the first tap of the SECOND stretch.
+    const without = removeTap(draft, 2)
+
+    expect(draftPoints(without)).toHaveLength(3)
+    expect(without.segments[1]).toHaveLength(1)
+  })
+
+  it('drops an emptied stretch rather than leaving a gap to nothing', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = startStretch(draft)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    expect(draft.segments).toHaveLength(2)
+
+    const without = removeTap(draft, 2)
+
+    expect(without.segments).toHaveLength(1)
+    expect(draftPoints(without)).toHaveLength(2)
+  })
+
+  it('keeps the invariant that there is always a last stretch', () => {
+    // EMPTY_DRAFT is `[[]]`, never `[]` - `tapAt` never has to create one.
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = removeTap(draft, 0)
+
+    expect(draft.segments).toHaveLength(1)
+    expect(draft.segments[0]).toEqual([])
+    // And the draft still takes a tap without throwing.
+    expect(draftPoints(tapAt(index, draft, ON_TRAIL))).toHaveLength(1)
+  })
+
+  it('keeps a closed loop closed when a via-point goes', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, FURTHER)
+    draft = loopDraft(draft)
+    expect(draft.looped).toBe(true)
+
+    expect(removeTap(draft, 1).looped).toBe(true)
+  })
+
+  it('takes the loop with it when the walk stops being a walk', () => {
+    // canCloseLoop's rule one level on: a loop from one point is not a walk,
+    // and leaving the flag set would have the router close a loop onto a
+    // single tap.
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = loopDraft(draft)
+
+    expect(removeTap(draft, 0).looped).toBe(false)
+  })
+
+  it('clears a refusal, like every other edit does', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = tapAt(index, draft, OFF_TRAIL)
+    expect(draft.refusal).not.toBeNull()
+
+    expect(removeTap(draft, 0).refusal).toBeNull()
+  })
+
+  it('returns the draft untouched for an ordinal it does not hold', () => {
+    // The list and the draft render from one state, but a row tapped in the
+    // frame before a re-route lands must not crash the builder.
+    const draft = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+
+    expect(removeTap(draft, 9)).toBe(draft)
+    expect(removeTap(draft, -1)).toBe(draft)
+    expect(removeTap(draft, 1.5)).toBe(draft)
   })
 })

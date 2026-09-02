@@ -66,7 +66,18 @@ import {
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
-import { attachDayHikeData, type DayHikeDrawing } from './dayHikeLayers'
+import {
+  attachDayHikeData,
+  attachDayHikeTicks,
+  type DayHikeDrawing,
+} from './dayHikeLayers'
+import { attachPoiLabels } from './poiLabels'
+import { attachLabelVisibility } from './labelVisibility'
+import type { MileTick } from '../lib/dayHikeCourse'
+
+/** A stable empty default, so an absent prop does not re-run the tick effect
+ *  on every render with a fresh array. */
+const EMPTY_TICKS: readonly MileTick[] = []
 import {
   attachRouteData,
   attachRouteStroke,
@@ -236,6 +247,23 @@ export interface MapViewProps {
   /** The day hike being built (#978), drawn as a casing UNDER the trail
    *  lines - dayHikeLayers.ts owns the argument. Null clears it. */
   dayHikeDrawing?: DayHikeDrawing | null
+  /** A mark at every whole mile of the walk being built (#1194). */
+  dayHikeTicks?: readonly MileTick[]
+  /**
+   * The builder's label controls (#1194): whether waypoint names draw at all,
+   * which classes are switched off, and which stops are the hiker's own.
+   *
+   * ONE PROP RATHER THAN THREE because the three change together - every one
+   * of them is a consequence of the same panel - and three effects reading
+   * three props would re-push the label layer three times for one toggle.
+   */
+  mapLabels?: {
+    poiLabelsShown: boolean
+    hiddenPoiLabelTypes: readonly string[]
+    chosenStopIds: readonly string[]
+    shownLabelLayerIds: readonly string[]
+    hiddenLabelLayerIds: readonly string[]
+  }
   /**
    * When set, the map is in route-building mode: a tap anywhere reports its
    * raw coordinate here, and the POI tap handler is NOT attached - one
@@ -446,6 +474,8 @@ export function MapView({
   onSelectWorkday,
   routeDrawing = null,
   dayHikeDrawing = null,
+  dayHikeTicks = EMPTY_TICKS,
+  mapLabels,
   onRouteTap,
   onRouteStroke,
   onLongPress,
@@ -953,6 +983,36 @@ export function MapView({
     if (map === null) return
     return attachDayHikeData(map, dayHikeDrawing)
   }, [map, dayHikeDrawing])
+
+  // The mile marks, their own effect and their own source: they change when
+  // the ROUTE changes, which the drawing above already knows about, but they
+  // are points on that line rather than the line - one source holding both
+  // would re-serialise every tick whenever the drawing moved.
+  useEffect(() => {
+    if (map === null) return
+    return attachDayHikeTicks(map, dayHikeTicks)
+  }, [map, dayHikeTicks])
+
+  // The label controls, on map/mapDetail.ts's rule: pure layer properties on
+  // a live map, never a style rebuild - a rebuild drops the WebGL context a
+  // hiker is holding.
+  useEffect(() => {
+    if (map === null || mapLabels === undefined) return
+    return attachPoiLabels(map, {
+      shown: mapLabels.poiLabelsShown,
+      hiddenTypes: mapLabels.hiddenPoiLabelTypes,
+      chosenStopIds: mapLabels.chosenStopIds,
+    })
+  }, [map, mapLabels])
+
+  useEffect(() => {
+    if (map === null || mapLabels === undefined) return
+    return attachLabelVisibility(
+      map,
+      mapLabels.shownLabelLayerIds,
+      mapLabels.hiddenLabelLayerIds,
+    )
+  }, [map, mapLabels])
 
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the

@@ -299,6 +299,103 @@ const tapWhenRoutable = async (map: MockMap, lng: number, lat: number) => {
   })
 }
 
+describe('shelters and campsites as stops (#1194)', () => {
+  // THE INTERACTION THIS PINS AND THE TRAP UNDER IT. map/MapView.tsx does not
+  // attach `attachPoiTaps` at all while a builder owns the tap - "two live
+  // handlers would race to interpret one touch" - so a pin tapped during a
+  // build never reaches `handleSelectPoi`, and the first version of this
+  // feature routed the stop through that handler and silently did nothing on
+  // the map. The tap is asked about inside the day-hike handler instead, off
+  // the canvas point #931 already carries there, which is map/lineTaps.ts's
+  // own arrangement.
+
+  async function buildingWithAShelter(user: ReturnType<typeof userEvent.setup>) {
+    app.onboard()
+    app.putTrailData({
+      pois: [
+        {
+          id: 'shelter-1',
+          name: 'Tom Jones Shelter',
+          type: 'shelter',
+          lat: 41.2502,
+          lon: -74.085,
+          confidence: 'high',
+        },
+      ],
+    })
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await screen.findByText(/Tap a trail to walk it/)
+
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    return map
+  }
+
+  it('adds a shelter to the route when its pin is tapped, and lists it', async () => {
+    const user = userEvent.setup()
+    const map = await buildingWithAShelter(user)
+
+    // The mock answers queryRenderedFeatures from what a test says is drawn -
+    // App.flows.test.tsx's idiom for reaching a waypoint.
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'shelter-1' } },
+    ])
+    await act(async () => {
+      map.emit('click', {
+        lngLat: { lng: -74.085, lat: 41.2502 },
+        point: { x: 160, y: 300 },
+      })
+    })
+
+    // The rail's summary counts it, which is the whole point of a stop.
+    expect(await screen.findByText('1 leg · 1 shelter')).toBeInTheDocument()
+  })
+
+  it('does not place a route point where the shelter was', async () => {
+    // The one-interpreter rule, asserted rather than assumed: if the tap fell
+    // through to `tapAt` as well, the walk would gain a leg it was never told
+    // about.
+    const user = userEvent.setup()
+    const map = await buildingWithAShelter(user)
+    // The rail's summary, which carries both counts in one string - so the
+    // before and after states are one assertion each rather than a leg count
+    // read off one surface and a stop count off another.
+    expect(await screen.findByText('1 leg')).toBeInTheDocument()
+
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'shelter-1' } },
+    ])
+    await act(async () => {
+      map.emit('click', {
+        lngLat: { lng: -74.085, lat: 41.2502 },
+        point: { x: 160, y: 300 },
+      })
+    })
+
+    // A stop arrived and the leg count did NOT move. Had the tap also fallen
+    // through to `tapAt`, this would read "2 legs · 1 shelter".
+    expect(await screen.findByText('1 leg · 1 shelter')).toBeInTheDocument()
+  })
+
+  it('leaves a tap on bare trail to the router, pin or no pin', async () => {
+    // The fall-through. `poiIdAt` answers null where nothing is drawn under
+    // the finger, and the walk gains its leg exactly as before.
+    const user = userEvent.setup()
+    const map = await buildingWithAShelter(user)
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+
+    await tap(map, -74.09, 41.255)
+
+    expect(await screen.findByText('2 legs')).toBeInTheDocument()
+    expect(screen.queryByText(/shelter/)).toBeNull()
+  })
+})
+
 describe('the day-hike builder, end to end', () => {
   it('walks door → taps → live tally → close the loop → a saved day hike', async () => {
     const user = userEvent.setup()
@@ -318,7 +415,15 @@ describe('the day-hike builder, end to end', () => {
     const map = await liveMap()
 
     // Two taps along Pine Meadow: mid-first-edge to mid-second-edge.
-    await tap(map, -74.095, 41.25)
+    //
+    // The FIRST goes through `tapWhenRoutable`, which is this file's own
+    // remedy for the race its comment describes - the geometry artifact is
+    // still in flight when the door opens, and until it lands every tap is
+    // refused. A bare tap here passed on an idle machine and failed once
+    // under a loaded one, which is exactly the evidence CLAUDE.md says a
+    // pass on an idle machine is not. A refused tap places no point, so the
+    // retry is idempotent.
+    await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
 
     // One trail so far - one leg, and NYS Parks' name from the steward join,
@@ -329,7 +434,11 @@ describe('the day-hike builder, end to end', () => {
 
     // Up Seven Hills: a second org joins the tally, live.
     await tap(map, -74.09, 41.255)
-    expect(await screen.findByText(/2 legs/)).toBeInTheDocument()
+    // The bar's tally, and the `·` is what says so: since #1194 the rail's
+    // summary also counts legs ("2 legs · 1 shelter"), so a bare /2 legs/
+    // finds two surfaces. The line above already reads /1 leg ·/ for the same
+    // format - this just makes the pair consistent about which one it means.
+    expect(await screen.findByText(/2 legs ·/)).toBeInTheDocument()
     expect(screen.getByText(/NY–NJ Trail Conference · 1 leg/)).toBeInTheDocument()
 
     // Close the loop, then Done - which exists only now that a route does.

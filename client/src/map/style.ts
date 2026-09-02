@@ -86,7 +86,10 @@ import {
   buildDayHikeCasingLayers,
   buildDayHikePointLayers,
   buildDayHikeSource,
+  buildDayHikeTickLayers,
+  buildDayHikeTickSource,
   DAY_HIKE_SOURCE_ID,
+  DAY_HIKE_TICK_SOURCE_ID,
 } from './dayHikeLayers'
 import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
@@ -98,6 +101,7 @@ import {
   POI_PIN_MIN_ZOOM,
   POI_SOURCE_ID,
 } from './poiLayers'
+import { buildPoiLabelLayer } from './poiLabels'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
 import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
@@ -1082,6 +1086,11 @@ export function buildMapStyle({
       // No attribution, for ROUTE_SOURCE_ID's reason: runtime geometry the
       // hiker made, not somebody's data.
       [DAY_HIKE_SOURCE_ID]: buildDayHikeSource(),
+      // The mile marks, a source of their own rather than more features on
+      // the route's: they are points on a line the route already draws, and
+      // one source holding both would make every tick rebuild whenever the
+      // line moved - which is on every tap.
+      [DAY_HIKE_TICK_SOURCE_ID]: buildDayHikeTickSource(),
       // The drought bands (#720). Empty until the shell fills them, like the
       // two above, and carrying no `attribution` for a third reason again:
       // NDMC's permission asks for a specific four-partner credit sentence,
@@ -1397,6 +1406,21 @@ export function buildMapStyle({
       // poiLayers.ts for why the pins are one layer rather than one per
       // category, and why a non-colliding circle layer beside them does not
       // undo that argument.
+      // Waypoint NAMES and the walk's mile marks, BEFORE the pins (#1194).
+      //
+      // BEFORE IS THE LOAD-BEARING WORD. MapLibre ranks symbol layers for
+      // placement by their order in the style, later winning, which is why
+      // liveTopo.test.ts asserts that our own pins are the LAST symbol layers
+      // of all: "so they win collisions against our labels". These two are
+      // labels. Putting them after the pins - which is where they first went
+      // - would have let a shelter's NAME suppress a shelter's PIN, the exact
+      // inversion that test exists to catch, and it caught it.
+      //
+      // Within the pair, the ticks come second and so outrank the names: on
+      // the builder's screen the hiker's own route is tier 2 of
+      // map/labelLadder.ts and a waypoint they did not choose is tier 4.
+      buildPoiLabelLayer(),
+      ...buildDayHikeTickLayers(),
       buildPoiDotLayer(),
       // The staleness rings between the two ranks (#759's nudge surface):
       // over the dots, so a ring is never sliced by its own waypoint's dot,

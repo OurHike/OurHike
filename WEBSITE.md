@@ -366,6 +366,24 @@ deliberate floor rather than the answer: how much chrome this screen should
 carry before the map gets what is left is a real design question, and is tracked
 as its own spike rather than settled here.
 
+**The day-hike builder gets a rail.** The one surface this section's layout
+rule was written for and then not applied to. `chrome/DayHikePickBar.tsx` is a
+sheet anchored to the bottom of the canvas at `max-height: 60%`, and above the
+breakpoint it stayed that way — a letterboxed map with a sheet across the foot
+of it on a 27" display, which is exactly the "sheet that covers the map" the
+paragraph above rules out. Since [#1194](https://github.com/OurHike/OurHike/issues/1194)
+the information moves into a 348px left rail (`chrome/DayHikePanel.tsx`) — the
+route's figures, its ordered legs and stops, and the map-label toggles — and the
+map takes the whole remaining frame.
+
+**The buttons do not move, on either breakpoint**, and that is the one place
+this workstream's own reasoning gets applied against itself. The tab bar becomes
+a sidebar because "the tab bar's placement is a thumb-reach decision that means
+nothing with a mouse"; the builder's actions stay at the foot of the map because
+a hiker building a walk one-handed at a trailhead is precisely the case thumb
+reach was about, and a desktop rail is no reason to teach two different places
+to press Cancel.
+
 **The elevation profile earns the space.** `ElevationRibbon` is a thin strip
 because a phone has no room. On a desktop it can be the full interactive chart
 FEATURES.md describes — scrubbing, gain/loss for a selected stretch, the

@@ -299,6 +299,62 @@ export function undoTap(draft: DayHikeDraft): DayHikeDraft {
   }
 }
 
+/**
+ * Remove one tap, wherever it sits in the walk (#1194).
+ *
+ * WHY THIS IS NOT `undoTap` WITH AN ARGUMENT. Undo takes back the last EDIT,
+ * which is why it un-loops and un-starts-a-stretch before it touches a tap at
+ * all - it is the hiker's keystroke history. This is a different verb: it
+ * takes back a POINT OF THE WALK, and the walk re-routes around the hole.
+ * With five taps down, undo can only reach the fifth; the redesigned route
+ * list needs to drop the second, which was not possible before this existed.
+ *
+ * `ordinal` indexes {@link draftPoints} - the flat walking order across
+ * stretches - because that is the numbering the route list shows a hiker. An
+ * out-of-range ordinal returns the draft unchanged rather than throwing: the
+ * list and the draft are re-rendered from the same state, but a row tapped in
+ * the frame before a re-route lands would otherwise crash the builder.
+ *
+ * THE LOOP SURVIVES A VIA-POINT AND NOT AN END. Dropping a middle tap of a
+ * closed loop leaves a closed loop, so `looped` stays. Dropping enough taps
+ * that the stretch is no longer a walk takes the loop with it, for
+ * {@link canCloseLoop}'s reason - a loop from one point is not a walk, and
+ * leaving the flag set would have the router close a loop onto a single tap.
+ */
+export function removeTap(draft: DayHikeDraft, ordinal: number): DayHikeDraft {
+  if (ordinal < 0 || !Number.isInteger(ordinal)) return draft
+
+  let seen = 0
+  const segments: GraphPoint[][] = []
+  let removed = false
+
+  for (const stretch of draft.segments) {
+    if (!removed && ordinal < seen + stretch.length) {
+      const next = [...stretch]
+      next.splice(ordinal - seen, 1)
+      removed = true
+      // An emptied stretch goes rather than lingering as a gap between
+      // nothing and the next walk. Its own points were the only thing that
+      // made it a stretch.
+      if (next.length > 0) segments.push(next)
+    } else {
+      segments.push(stretch)
+    }
+    seen += stretch.length
+  }
+
+  if (!removed) return draft
+
+  // The invariant dayHikeDraft holds everywhere: there is always a last
+  // stretch, and it is the one being built.
+  if (segments.length === 0) segments.push([])
+
+  const looped =
+    draft.looped && segments.length === 1 && segments[segments.length - 1].length >= 2
+
+  return { ...draft, segments, refusal: null, looped }
+}
+
 /** Frame `1j`'s "Close the loop". */
 export function loopDraft(draft: DayHikeDraft): DayHikeDraft {
   if (!canCloseLoop(draft)) return draft

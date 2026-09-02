@@ -27,6 +27,7 @@
  *                     nothing until it is, so "permanent field in the
  *                     chrome" is not what this is)
  *   input             hover, focus rings, relaxed touch targets   done
+ *   builder           the day-hike builder gets a rail            done (#1194)
  *   elevation         the full interactive chart                  done (#135)
  *   download UX       reframed for a machine with signal          done
  *   routing           deep links, back button                     NOT done
@@ -1089,6 +1090,76 @@
   .map-screen > .tab-bar .tab-bar__tab:hover {
     color: var(--fg-chrome-1);
     background: color-mix(in srgb, var(--fg-chrome-1) 8%, transparent);
+  }
+}
+
+/* ---------- The day-hike builder's rail (#1194) ---------- */
+
+@media (min-width: 900px) {
+  /* WEBSITE.md §6's table gained a row with this change, and it is the row
+     that was conspicuously missing: every other wide surface in this app got
+     its room - the tab bar became a sidebar, the legend became a panel, the
+     elevation chart became interactive - and the day-hike builder still wore
+     the phone's bottom sheet on a 27" display, with the map letterboxed above
+     it. That was the first of the three complaints behind #1194.
+
+     `.map-screen__body` is already `flex-direction: row` above, so the panel
+     is a rail simply by being the first child of it (chrome/MapScreen.tsx).
+     What is left is its width and the fact that, here, it shows everything. */
+  .day-hike-panel {
+    flex: 0 0 21.75rem;
+    max-height: none;
+    gap: 0.7rem;
+    padding: 1rem 1.25rem 1.1rem;
+    border-bottom: 0;
+    border-right: 1px solid var(--border-1);
+  }
+
+  /* No collapse on a desktop: the rail has the height, so a control whose
+     only effect is to hide detail there is a control with nothing to do.
+     The body's `hidden` attribute is overridden rather than the toggle being
+     conditionally rendered, so the phone and the desktop run the same
+     component with the same state - see chrome/DayHikePanel.tsx. */
+  .day-hike-panel__details-toggle {
+    display: none;
+  }
+
+  .day-hike-panel__body[hidden] {
+    display: flex !important;
+  }
+
+  /* The route list is what grows, so it is what scrolls - the header, the
+     figures and the label toggles stay put. A rail whose whole length
+     scrolled would take the label row off the screen exactly when a long
+     route made it most useful. */
+  .day-hike-panel__rows {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* Two columns, per the handoff's desktop rail, rather than the phone's
+     scrolling chip row. */
+  .day-hike-panel__label-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 6px;
+    overflow-x: visible;
+  }
+
+  .day-hike-panel__label-toggle {
+    justify-content: space-between;
+    min-height: 0;
+    padding: 0.5rem 0.6rem;
+    border-radius: 9px;
+  }
+
+  /* The bar keeps the actions and keeps the bottom - the instruction behind
+     this change, and true on both breakpoints. Here it is the foot of the
+     MAP rather than the foot of the phone, which is the same edge: the map
+     is the whole right-hand side. */
+  .day-hike-bar {
+    max-height: 40%;
   }
 }
 

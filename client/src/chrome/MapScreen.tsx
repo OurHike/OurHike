@@ -14,7 +14,15 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -221,6 +229,9 @@ export interface MapScreenProps {
    */
   routeDrawing?: RouteDrawing | null
   dayHikeDrawing?: DayHikeDrawing | null
+  /** Passed straight through to the map - see MapViewProps for both. */
+  dayHikeTicks?: ComponentProps<typeof MapView>['dayHikeTicks']
+  mapLabels?: ComponentProps<typeof MapView>['mapLabels']
   onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
   /** A drawn line, in the day-hike builder's draw mode (#983). Replaces the
    *  tap handler while set - see MapViewProps.onRouteStroke. */
@@ -234,6 +245,22 @@ export interface MapScreenProps {
    *  for what it suppresses and why. */
   pressPlateOpen?: boolean
   routeSheet?: ReactNode
+  /**
+   * The day-hike builder's panel (#1194) - the left rail on a desktop, the
+   * collapsible top panel on a phone.
+   *
+   * IN THE FLOW, NOT OVER THE MAP, which is the whole of the fix it carries.
+   * Every other slot on this screen is an overlay, and that is what made the
+   * builder's map too small: `.day-hike-bar` covers up to 60% of the canvas.
+   * This one is a SIBLING of `.map-screen__canvas`, so it takes its room
+   * rather than borrowing the map's - a row on a desktop (desktop.css already
+   * turns `.map-screen__body` into one) and a band above the map on a phone.
+   *
+   * A slot for the same reason `routeSheet` is: what a day hike knows is the
+   * shell's, and a map screen that learned about them would be the fourth
+   * feature to move into it (#937).
+   */
+  builderPanel?: ReactNode
   /** The press-and-hold plate (#1137). A slot for the same reason as the
    *  sheets above - but unlike them it DOES anchor to a point on the
    *  canvas, so it positions itself and this screen only gives it the
@@ -721,11 +748,14 @@ export function MapScreen({
   lineSheet,
   routeDrawing = null,
   dayHikeDrawing = null,
+  dayHikeTicks,
+  mapLabels,
   onRouteTap,
   onRouteStroke,
   onLongPress,
   pressPlateOpen,
   routeSheet,
+  builderPanel,
   pressPlate,
   followBand,
   followAnnouncement = null,
@@ -1118,6 +1148,10 @@ export function MapScreen({
             viewport, and reparenting it under a positioned ancestor would move
             it - the one thing WEBSITE.md §8 rules out. */}
         <div className="map-screen__body">
+          {/* Before the canvas so it is the rail on the left of a desktop and
+              the band above the map on a phone, and so a keyboard reaches the
+              route being built before the map it is being built on. */}
+          {builderPanel}
           <div className="map-screen__canvas">
             {/* The floating chrome (#1054): the identity plate and whatever
                 stacks under it, in one column so a taller plate pushes the
@@ -1259,6 +1293,8 @@ export function MapScreen({
               warnings={drawnWarnings}
               routeDrawing={routeDrawing}
               dayHikeDrawing={dayHikeDrawing}
+              dayHikeTicks={dayHikeTicks}
+              mapLabels={mapLabels}
               onRouteTap={onRouteTap}
               onRouteStroke={onRouteStroke}
               onLongPress={onLongPress}

@@ -687,6 +687,48 @@ describe('the GPS trace section on Safety & privacy', () => {
     expect(screen.getByRole('button', { name: 'Stop recording' })).toBeInTheDocument()
   })
 
+  it('keeps the finished trace reachable after Stop, with location still off', () => {
+    // The half the first #1201 fix left standing, and the worse half. Adding
+    // `recording` kept Stop on screen; tapping it - which is what the note
+    // beside it advises - set `recording` false and took the section away
+    // again, this time with the Save and Delete buttons. A finished walk of
+    // 412 readings then had no way out of the phone, under a sentence saying
+    // nothing recorded so far is lost.
+    render(
+      <More
+        {...PROPS}
+        page="safety"
+        preferences={{ ...PROPS.preferences, location_permission_requested: false }}
+        gpsTrace={{
+          ...TRACE,
+          status: { ...TRACE.status, recording: false, startedAt: 0, samples: 412 },
+        }}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: /save the recording/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('is still absent with location off and nothing recorded', () => {
+    // The original rule, which is still right: with no trace and no recording
+    // there is nothing to reach, and a Start button that records nothing is
+    // what the gate exists to prevent.
+    render(
+      <More
+        {...PROPS}
+        page="safety"
+        preferences={{ ...PROPS.preferences, location_permission_requested: false }}
+        gpsTrace={{ ...TRACE, status: { ...TRACE.status, recording: false, samples: 0 } }}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('heading', { name: 'Record a GPS trace' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('does not put it on any other page', () => {
     render(<More {...PROPS} page="you" preferences={withLocation} gpsTrace={TRACE} />)
 

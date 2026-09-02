@@ -392,8 +392,27 @@ export function createGpsTrace(
    *  something to measure against. */
   let lastFlushAt = clock()
 
+  /**
+   * Writes the state, with a sample count a fresh reader could actually
+   * produce.
+   *
+   * THE SUBTRACTION IS THE WHOLE OF #1202, and the first fix for that issue
+   * only got half of it. `state.samples` is the LIVE total, buffer included;
+   * the buffer is not on disk. Persisting it promises rows a reload cannot
+   * find - and the case that made this the root cause rather than a quirk of
+   * `mark` is the ordinary chunk boundary, which every recording crosses
+   * every sixty samples with no marker involved: `flush` swaps the buffer and
+   * then awaits the write, and a fix arriving inside that await lands in the
+   * new buffer and increments the count before `persist` runs. Reproduced at
+   * 61 persisted against 60 on disk.
+   *
+   * The LIVE status still reports the live number, and that is not the same
+   * mistake. Those samples do exist, in memory, and will be written; the
+   * bounded loss window is documented above and is inherent. What must never
+   * happen is a count surviving a reload that the rows cannot back up.
+   */
   const persist = async () => {
-    await store.set(STATE_KEY, state)
+    await store.set(STATE_KEY, { ...state, samples: state.samples - buffer.length })
   }
 
   /**
@@ -454,22 +473,24 @@ export function createGpsTrace(
     },
 
     async mark(marker: TraceMarker): Promise<TraceStatus> {
-      // FLUSHED BEFORE PERSISTED, and that order is the whole of #1202.
+      // THE MARKER IS SET SYNCHRONOUSLY, BEFORE THE AWAIT, so that two taps
+      // in quick succession leave the SECOND one standing. Setting it after
+      // the flush let the first call win: it resumed from its await last and
+      // overwrote the marker the hiker had chosen more recently, which
+      // corrupts exactly the stationary-versus-walking split #1100 needs.
       //
-      // `persist` writes `samples`. Flushing after it - or not at all, which
-      // is what this did - writes a count that includes rows still living
-      // only in the buffer, and `resume` drops the buffer. Reproduced: ten
-      // fixes, one mark, then a fresh reader resumes saying ten readings over
-      // a trace holding none. Bounded by one chunk, so a handful of phantom
-      // rows rather than a lost walk, and the count stays wrong for the rest
-      // of the recording.
-      //
-      // It also happens to be the right order for the DATA. `record` stamps
-      // the marker at record time, so everything in the buffer already
-      // carries the previous one; writing it out before the new marker is set
-      // is what keeps that true.
-      await flush()
+      // It is safe to set first because `record` stamps `state.marker` onto
+      // each sample as it is pushed, so everything already in the buffer
+      // carries its own marker and is immune to this line. The ordering does
+      // not touch the data either way - which is what makes last-tap-wins the
+      // free choice rather than a trade.
       state = { ...state, marker }
+      // Flushed here rather than left to the next chunk boundary: the marker
+      // is the hiker's statement about the minute they are standing in, and
+      // getting those rows down at the moment they say so is worth one small
+      // write. It is no longer what keeps the count honest - `persist` does
+      // that for every caller (#1202).
+      await flush()
       // Persisted immediately rather than with the next chunk: the marker is
       // the hiker's own statement about the minute they are standing in, and
       // a reload before the chunk fills would otherwise resume with the

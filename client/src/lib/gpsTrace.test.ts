@@ -333,6 +333,51 @@ function column(csv: string): (name: string) => string {
   return (name) => row[header.indexOf(name)]
 }
 
+/** A store whose writes take a real turn of the event loop, the way IndexedDB
+ *  does, and which can park one write open. The plain `fakeStore` above
+ *  resolves immediately, which is why it could not see #1202's real shape:
+ *  the count and the file only disagree while a write is in flight. */
+function slowStore() {
+  const values = new Map<string, unknown>()
+  let gate: null | { release: () => void } = null
+
+  const store: TraceStore = {
+    get: <T>(key: string) => Promise.resolve(values.get(key) as T | undefined),
+    set: (key: string, value: unknown) => {
+      values.set(key, JSON.parse(JSON.stringify(value)))
+      return new Promise<void>((resolve) => {
+        if (gate === null) queueMicrotask(resolve)
+        else gate.release = resolve
+      })
+    },
+    del: (key: string) => {
+      values.delete(key)
+      return Promise.resolve()
+    },
+  }
+
+  return {
+    store,
+    /** Park the next write open. */
+    hold() {
+      gate = { release: () => {} }
+    },
+    release() {
+      const held = gate
+      gate = null
+      held?.release()
+    },
+  }
+}
+
+/** What a reload would find: the count the state carries, and the rows a
+ *  fresh reader can actually produce. The invariant is that these agree. */
+async function afterReload(store: TraceStore) {
+  const reader = createGpsTrace(store)
+  const status = await reader.resume()
+  return { persisted: status.samples, onDisk: (await reader.readAll()).length }
+}
+
 describe('the count and the file agree', () => {
   it('does not report readings a fresh reader cannot find, after a mark', async () => {
     // #1202, REPRODUCED before it was fixed: ten fixes, one mark, then a
@@ -377,6 +422,79 @@ describe('the count and the file agree', () => {
       null,
       'stationary',
     ])
+  })
+
+  it('holds across a chunk boundary a fix lands inside', async () => {
+    // THE CASE THAT MADE THIS A ROOT CAUSE RATHER THAN A QUIRK OF `mark`, and
+    // the one the first fix for #1202 missed: no marker is involved, and
+    // every recording crosses this boundary every sixty samples. `flush`
+    // swaps the buffer and then awaits the write; a fix arriving inside that
+    // await lands in the new buffer and increments the count before `persist`
+    // runs. Reproduced at 61 persisted against 60 on disk.
+    const slow = slowStore()
+    const trace = createGpsTrace(slow.store)
+    await trace.start()
+    for (let i = 0; i < 59; i += 1) await trace.record(sampleAt(1_000 + i * 1_000))
+
+    slow.hold()
+    const sixtieth = trace.record(sampleAt(60_000))
+    await Promise.resolve()
+    const inFlight = trace.record(sampleAt(61_000))
+    await Promise.resolve()
+    slow.release()
+    await Promise.all([sixtieth, inFlight])
+
+    expect(await afterReload(slow.store)).toEqual({ persisted: 60, onDisk: 60 })
+  })
+
+  it('holds when a fix arrives while a marker is being written', async () => {
+    const slow = slowStore()
+    const trace = createGpsTrace(slow.store)
+    await trace.start()
+    for (let i = 0; i < 10; i += 1) await trace.record(sampleAt(1_000 + i * 1_000))
+
+    slow.hold()
+    const marking = trace.mark('stationary')
+    await Promise.resolve()
+    const arriving = trace.record(sampleAt(99_000))
+    await Promise.resolve()
+    slow.release()
+    await Promise.all([marking, arriving])
+
+    expect(await afterReload(slow.store)).toEqual({ persisted: 10, onDisk: 10 })
+  })
+
+  it('lets the SECOND of two quick marker taps stand', async () => {
+    // The hiker tapping twice before the first write settles. Setting the
+    // marker after the flush let the FIRST call win - it resumed from its
+    // await last and overwrote the more recent choice - which corrupts
+    // exactly the stationary-versus-walking split #1100 exists to get.
+    const slow = slowStore()
+    const trace = createGpsTrace(slow.store)
+    await trace.start()
+    for (let i = 0; i < 3; i += 1) await trace.record(sampleAt(1_000 + i * 1_000))
+
+    await Promise.all([trace.mark('stationary'), trace.mark('walking')])
+
+    const reader = createGpsTrace(slow.store)
+    const status = await reader.resume()
+    expect(status.marker).toBe('walking')
+    // And neither tap reached the three samples recorded before either of
+    // them: `record` stamps the marker at push time, which is what makes
+    // setting it early safe.
+    expect((await reader.readAll()).map((row) => row.marker)).toEqual([null, null, null])
+  })
+
+  it('holds mid-recording below the chunk bound, where nothing is on disk yet', async () => {
+    // The bounded loss window, asserted rather than assumed: nothing has been
+    // flushed, so a reload finds no rows AND claims none. Honest, not lossless
+    // - CHUNK_SAMPLES and CHUNK_SECONDS are what bound it.
+    const slow = slowStore()
+    const trace = createGpsTrace(slow.store)
+    await trace.start()
+    for (let i = 0; i < 10; i += 1) await trace.record(sampleAt(1_000 + i * 1_000))
+
+    expect(await afterReload(slow.store)).toEqual({ persisted: 0, onDisk: 0 })
   })
 })
 

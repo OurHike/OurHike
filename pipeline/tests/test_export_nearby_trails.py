@@ -99,6 +99,54 @@ def _dec_properties(**overrides):
     return properties
 
 
+def _usfs_source(**overrides):
+    """The shape of the real usfs_trails entry, minus the prose.
+
+    The one source whose `foot_field` is not a foot column: USFS splits its
+    trails by MEDIUM (trail_type TERRA/SNOW/WATER) rather than by use, and
+    TERRA is exactly the walkable set. See sources.json's foot_allowed_comment
+    for why hiker_pedestrian_managed - the obvious candidate - cannot be used.
+    """
+    source = {
+        "key": "usfs_trails",
+        "title": "National Forest System Trails",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/usfs",
+        "steward": "USDA Forest Service",
+        "attribution": "USDA Forest Service",
+        "name_field": "trail_name",
+        "blaze_default": "Unknown",
+        "foot_field": "trail_type",
+        "foot_allowed": ["TERRA"],
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
+
+
+def _granit_source(**overrides):
+    """The shape of the real nh_granit_trails entry, minus the prose.
+
+    The only source using `excluded_when`: its PED column cannot be an
+    allowlist (blank means unrecorded, not no), so it filters on GRANIT's
+    positive motorized flags instead.
+    """
+    source = {
+        "key": "nh_granit_trails",
+        "title": "New Hampshire Trails",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/granit",
+        "steward": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
+        "attribution": "NH GRANIT, University of New Hampshire",
+        "blaze_field": "BLAZE",
+        "name_field": "TRAILNAME",
+        "excluded_when": {"SNOWMBL": ["1"], "ATV": ["1"]},
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
+
+
 def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None):
     raw_dir = tmp_path / "external"
     raw_dir.mkdir()
@@ -1051,3 +1099,157 @@ def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkey
     assert overview["feature_count"] == 1
     assert overview["coordinate_count"] >= 2
     assert overview["tolerance_m"] == 100.0
+
+
+# --- The White Mountains sources (#1207) ------------------------------------
+
+
+def test_usfs_snow_and_water_corridors_are_dropped_and_terra_ships(tmp_path, monkeypatch):
+    # Measured nationwide 2026-09-02: trail_type reads TERRA on 78,101 rows,
+    # SNOW on 8,152 and WATER on 76. The non-TERRA rows are snowmobile and
+    # paddle corridors - the WMNF sample is HIX MTN RD SNOMO, BERRY FARM
+    # SNOMO, ROSEBROOK SNOMO - so TERRA is the walkable set.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_usfs_source()],
+        {
+            "usfs_trails": [
+                _feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1),
+                _feature(HARRIMAN, {"trail_name": "ROSEBROOK SNOMO", "trail_type": "SNOW"}, feature_id=2),
+                _feature(HARRIMAN, {"trail_name": "A PADDLE ROUTE", "trail_type": "WATER"}, feature_id=3),
+            ]
+        },
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["JEWELL"]
+    assert manifest["sources"]["usfs_trails"]["dropped"] == {
+        "not a foot trail: trail_type='SNOW'": 1,
+        "not a foot trail: trail_type='WATER'": 1,
+    }
+
+
+def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
+    # The trap this suite exists to pin, and the expensive-failure direction
+    # from the docstring. hiker_pedestrian_managed is NULL on 35,667 of the
+    # 78,101 live TERRA rows - 46% - because it is a season string a forest
+    # populates only where it made an affirmative management decision, not a
+    # prohibition flag. Requiring it would delete nearly half the Forest
+    # Service's terrestrial trail inventory.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_usfs_source()],
+        {
+            "usfs_trails": [
+                _feature(
+                    HARRIMAN,
+                    {"trail_name": "SEASONED", "trail_type": "TERRA", "hiker_pedestrian_managed": "01/01-12/31"},
+                    feature_id=1,
+                ),
+                _feature(HARRIMAN, {"trail_name": "UNRECORDED", "trail_type": "TERRA"}, feature_id=2),
+            ]
+        },
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["SEASONED", "UNRECORDED"]
+
+
+def test_granit_drops_motorized_corridors_on_a_positive_flag(tmp_path, monkeypatch):
+    # Measured in the Whites 2026-09-02: 1,209 blank-PED rows are flagged
+    # SNOWMBL '1' and 124 ATV '1'. Those are positive assertions about what a
+    # corridor is FOR, and acting on one is sound where acting on an absence
+    # is not.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
+                _feature(HARRIMAN, {"TRAILNAME": "Camp 7 Snowmobile", "BLAZE": " ", "PED": " ", "SNOWMBL": "1"}, feature_id=2),
+                _feature(HARRIMAN, {"TRAILNAME": "An OHV run", "BLAZE": " ", "PED": " ", "ATV": "1"}, feature_id=3),
+            ]
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Air Line"]
+    assert manifest["sources"]["nh_granit_trails"]["dropped"] == {
+        "excluded use: SNOWMBL='1'": 1,
+        "excluded use: ATV='1'": 1,
+    }
+
+
+def test_a_granit_trail_with_blank_ped_and_no_other_flag_still_ships(tmp_path, monkeypatch):
+    # The counterpart, and the reason PED is not a foot_field. 2,541 of the
+    # 3,760 blank-PED rows in the Whites carry NO use flag of any kind and are
+    # ordinary hiking trails - one of them literally named "Appalachian Trail
+    # - road link". A PED allowlist would delete them.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail - road link", "BLAZE": " ", "PED": " "}, feature_id=1),
+            ]
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Appalachian Trail - road link"]
+
+
+def test_an_unblazed_whites_trail_draws_as_unblazed_not_unknown(tmp_path, monkeypatch):
+    # The maintainer's correction of 2026-09-02: the Whites largely do not use
+    # paint blazes, so GRANIT's blank BLAZE - 7,574 of 7,643 rows - is the
+    # ground rather than a gap. reference/blaze_mapping.json keys the literal
+    # ' ' to "None", which the client renders as "Unblazed"; "Unknown" would
+    # print a hedge in place of a true fact. The A.T. is the one white line
+    # through the range (61 of the 62 White rows carry TRAILSYS 'Appalachian
+    # Trail').
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
+                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail", "BLAZE": "White", "PED": "1"}, feature_id=2),
+            ]
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
+    )
+
+    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
+    assert blazes == {"Air Line": "None", "Appalachian Trail": "White"}
+
+
+def test_the_two_whites_sources_report_two_different_absences(tmp_path, monkeypatch):
+    """GRANIT's blank is "Unblazed"; USFS's silence is "Blaze not recorded".
+
+    Both cover the same White Mountains ground and neither paints most of it,
+    which makes it tempting to treat the two absences as one. They are not.
+    GRANIT records a blaze where one exists - the A.T.'s white - so its blank
+    is evidence that a trail is unblazed. USFS publishes no blaze column at
+    all, so it has said nothing. Collapsing them would tell a hiker the Forest
+    Service had checked.
+
+    Pinned together in one test because the distinction only exists in the
+    comparison, and a future simplification would erase it by making both
+    sources agree.
+    """
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source(), _usfs_source()],
+        {
+            "nh_granit_trails": [_feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1)],
+            "usfs_trails": [_feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1)],
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
+    )
+
+    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
+    assert blazes == {"Air Line": "None", "JEWELL": "Unknown"}

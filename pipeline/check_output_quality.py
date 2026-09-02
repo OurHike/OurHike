@@ -317,6 +317,14 @@ def trails_verdict(manifest_path: Path | None = None) -> dict:
     if "geojson" in kind_counts and "fgb" in kind_counts and kind_counts["geojson"] != kind_counts["fgb"]:
         problems.append(f"trails: geojson/fgb feature_count disagree ({kind_counts['geojson']} vs {kind_counts['fgb']})")
 
+    # The per-vertex miles (#1192) are optional in a manifest - a checkout
+    # with no half-mile markers writes none - but where the manifest claims
+    # them the file has to be what it says, for the same reason as the line
+    # itself: a truncated sidecar would fail its hash on every phone that
+    # fetched it, and the client's fallback would hide that from everybody.
+    if "miles" in manifest:
+        problems += artifact_problems("trail_miles.json", manifest["miles"])
+
     feature_count = kind_counts.get("geojson", kind_counts.get("fgb", 0))
     # The count tracked against the baseline is the PRE-MERGE segment count
     # where the manifest records one (#161). The published feature count

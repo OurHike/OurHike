@@ -30,6 +30,17 @@
 // before it is on screen, and how many times. A regression that puts the work
 // back fails here loudly, on a machine of any speed, whatever the clock says.
 //
+// THE SECOND BUDGET (#1192) is the returning hiker's, and it is the one this
+// file did not have when it was written. Once the release is read, the shell
+// used to place every stored waypoint on the index in one memo on the launch
+// thread - 16,949 of them after #1095, measured 2026-09-02 at 13,078 ms in one
+// task on the throttled profile, with a tab tap waiting 14,557 ms behind it.
+// That placement now happens where the index is built (lib/trailIndexBuild.ts,
+// off the thread where there is a worker), so the rule here is: after the
+// index has landed, the launch thread runs the nearest-vertex search for
+// NOTHING - not one waypoint. A GPS fix is the only thing that may ask it,
+// and this file delivers none.
+//
 // THE STOPWATCH LIVES SOMEWHERE ELSE, and it is not a gate.
 // `client/scripts/measure-first-run.mjs` drives a real throttled Chromium
 // against a real deployment - a pull request's preview URL, or production -
@@ -45,7 +56,8 @@ import { appHarness, openMapTab } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { buildPoiIcons } from './map/poiIcons'
-import { buildTrailIndex } from './lib/trailPosition'
+import { mileOnTrail } from './lib/trailPosition'
+import { resolveTrailIndex } from './lib/trailIndexBuild'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -64,9 +76,16 @@ vi.mock('./map/poiIcons', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./map/poiIcons')>()
   return { ...actual, buildPoiIcons: vi.fn(actual.buildPoiIcons) }
 })
+// The index build as the shell asks for it - one call per release read, and
+// the only thing that may run the per-waypoint search - and the search itself,
+// counted so the launch thread can be shown to run it for nothing.
+vi.mock('./lib/trailIndexBuild', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/trailIndexBuild')>()
+  return { ...actual, resolveTrailIndex: vi.fn(actual.resolveTrailIndex) }
+})
 vi.mock('./lib/trailPosition', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./lib/trailPosition')>()
-  return { ...actual, buildTrailIndex: vi.fn(actual.buildTrailIndex) }
+  return { ...actual, mileOnTrail: vi.fn(actual.mileOnTrail) }
 })
 
 const app = appHarness()
@@ -91,8 +110,16 @@ function readsOf(key: string): number {
 
 beforeEach(() => {
   vi.mocked(buildPoiIcons).mockClear()
-  vi.mocked(buildTrailIndex).mockClear()
+  vi.mocked(resolveTrailIndex).mockClear()
+  vi.mocked(mileOnTrail).mockClear()
 })
+
+/** The index the launch asked for has been handed back - the moment after
+ *  which any search on this thread is the shell's own doing. */
+async function indexLanded(): Promise<void> {
+  await waitFor(() => expect(resolveTrailIndex).toHaveBeenCalledTimes(1))
+  await vi.mocked(resolveTrailIndex).mock.results[0].value
+}
 
 describe('what first run may do before the steps are done', () => {
   // The expensive launch, and the ordinary one for anyone looking at
@@ -122,15 +149,16 @@ describe('what first run may do before the steps are done', () => {
     expect(buildPoiIcons).not.toHaveBeenCalled()
   })
 
-  it('does not parse the trail lines to index them', async () => {
-    // 12.2 MB of JSON.parse and 219,293 vertices, for a mile axis nothing is
-    // showing: the waypoint cards, the search rows and the ribbon are all
-    // behind the card.
+  it('does not build the index or place a waypoint', async () => {
+    // 12.2 MB of JSON.parse, 219,293 vertices and 16,949 placements, for a
+    // mile axis nothing is showing: the waypoint cards, the search rows and
+    // the ribbon are all behind the card.
     render(<App />)
     await screen.findByText('What OurHike is')
 
     await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
-    expect(buildTrailIndex).not.toHaveBeenCalled()
+    expect(resolveTrailIndex).not.toHaveBeenCalled()
+    expect(mileOnTrail).not.toHaveBeenCalled()
   })
 })
 
@@ -153,7 +181,7 @@ describe('what a launch does once, and must not do twice', () => {
     await renderedMap()
 
     await waitFor(() => expect(readsOf(POIS_KEY)).toBe(1))
-    await waitFor(() => expect(buildTrailIndex).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(resolveTrailIndex).toHaveBeenCalledTimes(1))
   })
 
   it('reads and indexes the release once for a hiker who is past onboarding', async () => {
@@ -168,7 +196,32 @@ describe('what a launch does once, and must not do twice', () => {
     await renderedMap()
 
     await waitFor(() => expect(readsOf(POIS_KEY)).toBe(1))
-    expect(vi.mocked(buildTrailIndex).mock.calls.length).toBe(1)
+    await indexLanded()
+    expect(vi.mocked(resolveTrailIndex).mock.calls.length).toBe(1)
+  })
+
+  it('places no waypoint on the launch thread once the index has landed', async () => {
+    // The #1192 budget. Every placement the launch needs is answered inside
+    // resolveTrailIndex - off this thread on a phone, in slices here, where
+    // jsdom has no Worker - so the count of searches AFTER it returns is the
+    // count the shell ran on its own. It has to be zero: there is no GPS fix
+    // in this test, and nothing else on a launch has a reason to ask.
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    render(<App />)
+    await openMapTab()
+    await renderedMap()
+    await indexLanded()
+    const insideTheBuild = vi.mocked(mileOnTrail).mock.calls.length
+
+    // The search rows are what the placement feeds, so their appearance is
+    // the index having landed in the shell - the moment a memo that placed
+    // waypoints here would have run.
+    await screen.findByRole('tab', { name: 'Map' })
+    await waitFor(() => expect(readsOf(POIS_KEY)).toBe(1))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(vi.mocked(mileOnTrail).mock.calls.length).toBe(insideTheBuild)
   })
 
   it('rasterises the pin artwork at most once, however many maps are built', async () => {

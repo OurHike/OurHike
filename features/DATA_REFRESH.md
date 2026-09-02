@@ -138,8 +138,10 @@ that cannot quietly spend somebody's allowance.
 - **It cannot describe a hop of more than one release.** The phone is told so rather than
   told a number. Cumulative descriptions would need the publisher to keep a chain, which is
   a bigger thing than the failure warrants today.
-- **`spurs.json` and `elevation_profile.json` are always `consequential`.** They are not
-  FeatureCollections, so the differ cannot identify features inside them and refuses to guess.
+- **`spurs.json`, `elevation_profile.json` and `trail_miles.json` are always `consequential`.**
+  They are not FeatureCollections, so the differ cannot identify features inside them and
+  refuses to guess. (`trail_miles.json`, #1192, only ever changes with `trails.geojson`,
+  whose own diff describes the change; the sidecar adds nothing a hiker would read.)
   A structural diff for them is worth adding the day somebody decides what "changed" means for
   an elevation profile.
 - **`LARGE_UPDATE_BYTES` is derived, not measured against hikers.** One megabyte is the gap

@@ -14,8 +14,9 @@
 // reasoning is.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DATA_CONFIGURED } from './config'
-import { buildTrailIndex, type TrailIndex } from './trailPosition'
+import { DATA_CONFIGURED, TRAILS_KEY } from './config'
+import type { TrailIndex } from './trailPosition'
+import { packPois, resolveTrailIndex } from './trailIndexBuild'
 import {
   downloadTrailData,
   haveTrailData,
@@ -68,6 +69,20 @@ import {
  * (#238). Typed at the moment the error still has a type - matching on message
  * text would break the day the sentence was reworded.
  */
+/**
+ * How far a waypoint's published mile may sit from where the index would
+ * place it before the console hears about it (#1192).
+ *
+ * @unvalidated - reasoned from one release, not measured against several.
+ * The largest backward step in the 2026-09-02 release's own vertex miles is
+ * 0.27 mi (pipeline/export_trails.py's manifest records it per release), so a
+ * waypoint beside such a step can honestly read a quarter-mile from its
+ * nearest vertex; anything past that has no explanation inside one release.
+ * What would settle it: the axisDrift the worker reports across the next few
+ * releases, which is exactly what this warning surfaces.
+ */
+export const AXIS_DRIFT_WARN_MILES = 0.3
+
 export interface TrailDataError {
   kind: 'hash-mismatch' | 'error'
   message: string
@@ -117,6 +132,19 @@ export interface TrailData {
    *  null too when the file was there and unreadable, which is best-effort on
    *  purpose (see below). */
   trailIndex: TrailIndex | null
+  /**
+   * Where each of `pois` sits on `trailIndex`, one mile per waypoint in the
+   * same order, NaN where it has none - or null while the index is still
+   * being built, and after a build that failed (#1192).
+   *
+   * Beside the index rather than derived from it in a memo, because deriving
+   * it was the freeze: 16,949 nearest-vertex searches in one render. It is
+   * now answered where the index is built, off this thread, and on the
+   * pipeline's axis it is simply each waypoint's published mile. Null and
+   * NaN both read as "unknown" downstream, which is the honest state of a
+   * waypoint nobody has placed yet.
+   */
+  poiMiles: Float64Array | null
   pois: StoredPoi[]
   /** Spur detail keyed by trail id (pipeline/export_spurs.py). Empty until a
    *  release that publishes it is on the phone - the map draws every spur
@@ -358,6 +386,9 @@ export function useTrailData(
   { centerlineOnly = false }: TrailDataOptions = {},
 ): TrailData {
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
+  const [poiMiles, setPoiMiles] = useState<Float64Array | null>(null)
+  /** Which read of the release is the current one - see readTheRest. */
+  const readToken = useRef(0)
   const [pois, setPois] = useState<StoredPoi[]>([])
   const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
@@ -463,20 +494,52 @@ export function useTrailData(
     setHighlights(data.highlights)
     setRetiredPois(data.retiredPois)
 
+    // The index and the waypoints' miles, built off this thread (#1192,
+    // lib/trailIndexBuild.ts) - a worker where there is one, slices where
+    // there is not, and a per-release cache in front of both. The waypoints
+    // above are already in state, so the screen renders with every mile
+    // unknown and fills in when this answers, rather than freezing until it
+    // can claim to know: on a 4x-throttled phone profile the old synchronous
+    // build and placement held the thread for 13 s.
+    //
     // Best-effort, and separate from the POIs above on purpose. A shelter is
     // findable by name with no geometry at all, so a trails.geojson that
     // arrived truncated or malformed should cost the mile numbers decorating
-    // each row and nothing else.
+    // each row and nothing else. A throw anywhere in the build - JSON.parse
+    // on half a file is the likely one - lands here as "no index, no miles",
+    // never as an unhandled rejection out of the `void readTheRest()` below.
     //
-    // buildTrailIndex() guards the shape it is handed, but JSON.parse runs
-    // first and throws on the more likely symptom of a truncated download -
-    // half a file. Uncaught, that escaped through the `void readTheRest()`
-    // below as an unhandled rejection: no index, no message, and no search
-    // either, which is the failure this whole path was rebuilt to avoid.
+    // The token is for the second read a re-download triggers while the first
+    // is still building: whichever finished last would otherwise win, and the
+    // one that finished last is not reliably the newer release.
+    const token = (readToken.current += 1)
     try {
-      setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
+      const release = await recallRelease()
+      const { index, poiMiles, axisDrift } = await resolveTrailIndex({
+        trails: data.trails,
+        trailMiles: data.trailMiles,
+        pois: packPois(data.pois),
+        trailsHash: release?.hashes[TRAILS_KEY] ?? null,
+      })
+      if (token !== readToken.current) return
+      // The consistency check the anchors used to be (#1192): said, never
+      // acted on. Only a maintainer reading a console will ever see it, and
+      // that is the right audience - a hiker cannot do anything with "the
+      // miles file disagrees with the lines file" except not trust the app.
+      if (axisDrift !== null && axisDrift.maxMiles > AXIS_DRIFT_WARN_MILES) {
+        console.warn(
+          `trail_miles.json and the placed waypoints disagree, over ` +
+            `${axisDrift.sampled} sampled waypoints, by up to ` +
+            `${axisDrift.maxMiles.toFixed(3)} (miles on the pipeline axis); ` +
+            `the two files may not be the pair they claim to be.`,
+        )
+      }
+      setTrailIndex(index)
+      setPoiMiles(poiMiles)
     } catch {
+      if (token !== readToken.current) return
       setTrailIndex(null)
+      setPoiMiles(null)
     }
   }, [])
 
@@ -907,6 +970,7 @@ export function useTrailData(
     applyUpdate,
     declineUpdate,
     trailIndex,
+    poiMiles,
     pois,
     spurs,
     elevation,

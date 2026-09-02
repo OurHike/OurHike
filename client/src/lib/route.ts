@@ -272,6 +272,21 @@ export interface MileAnchor {
 }
 
 /**
+ * The anchors for an index that already speaks the pipeline's axis (#1192,
+ * lib/trailPosition.ts's `onPipelineAxis`).
+ *
+ * One anchor at the origin of both scales is not a shortcut, it is the exact
+ * statement of "same axis": the carry in {@link anchoredMile} is the nearest
+ * anchor's offset, and an offset of zero at one point of a shared axis is an
+ * offset of zero everywhere. So every caller that reconciles the two scales
+ * keeps doing so, unchanged, and gets the identity - which is what the two
+ * scales collapsing into one was always going to look like from here. The
+ * pairwise anchors built from every POI remain the right thing for a release
+ * whose index the phone measured itself.
+ */
+export const SAME_AXIS_ANCHORS: readonly MileAnchor[] = [{ clientMile: 0, mile: 0 }]
+
+/**
  * A tapped point's mile, carried onto the pipeline's axis.
  *
  * A tap has no precomputed answer - locateOnTrail() places it, on the client

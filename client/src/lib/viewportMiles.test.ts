@@ -70,9 +70,10 @@ describe('viewportMiles', () => {
   })
 
   it('excludes trail that is at the right latitude but off to the side', () => {
-    // The buckets are latitude-only (lib/trailPosition.ts), so a box east of
-    // the corridor would match every vertex in the band unless longitude is
-    // tested too. This is that test.
+    // A cell is up to four miles across (lib/trailPosition.ts), so a box
+    // beside the corridor can share cells with it and would match their
+    // vertices unless longitude is tested against the box too. This is that
+    // test.
     expect(
       viewportMiles(index, { west: -70, east: -69, south: 34.2, north: 34.4 }),
     ).toBeNull()

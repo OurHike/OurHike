@@ -1414,3 +1414,24 @@ def test_an_unchanged_artifact_keeps_the_transfer_size_an_earlier_run_measured(s
 
     entry = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"]
     assert entry["transfer_bytes"] == measured
+
+
+def test_collect_publishes_the_vertex_miles_beside_the_trails_they_describe(tmp_path, monkeypatch):
+    """#1192: export_trails.write_trail_miles' manifest entry becomes the flat
+    `trail_miles.json` key the client fetches - and an older manifest without
+    one publishes no such key, which the client reads as "measure the line
+    yourself" rather than as a failure."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    geojson = tmp_path / "trails.geojson"
+    geojson.write_text("lines")
+    miles = tmp_path / "trail_miles.json"
+    miles.write_text("miles")
+    manifest = {"geojson": {"path": str(geojson), "sha256": "lines-hash"}}
+    (tmp_path / "trails_manifest.json").write_text(json.dumps(manifest))
+    assert publish.TRAIL_MILES_KEY not in publish.collect_artifacts()
+
+    manifest["miles"] = {"path": str(miles), "sha256": "miles-hash", "vertex_count": 3}
+    (tmp_path / "trails_manifest.json").write_text(json.dumps(manifest))
+
+    entry = publish.collect_artifacts()[publish.TRAIL_MILES_KEY]
+    assert (entry["path"], entry["sha256"]) == (str(miles), "miles-hash")

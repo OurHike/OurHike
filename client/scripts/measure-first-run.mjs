@@ -1,8 +1,11 @@
-// The stopwatch for first run: what the main thread is doing while the three
-// entry steps are up, and how long each tap on Skip takes to answer.
+// The stopwatch for a launch: what the main thread is doing while the three
+// entry steps are up and how long each tap on Skip takes to answer - or, with
+// --returning, what it is doing after a hiker who finished first run days ago
+// opens the app again, and how long each tab tap waits.
 //
 //   node scripts/measure-first-run.mjs https://pr-862.ourhike-preview.pages.dev/
 //   node scripts/measure-first-run.mjs https://ourhike.org/app/ --warm
+//   node scripts/measure-first-run.mjs https://ourhike.org/app/ --returning
 //
 // WHY THIS IS A SCRIPT AND NOT A TEST
 //
@@ -48,8 +51,8 @@ const flag = (name, fallback) => {
 
 if (url === undefined) {
   console.error(
-    'usage: node scripts/measure-first-run.mjs <url> [--warm] [--cpu=4] ' +
-      '[--pause=800] [--maps=<dir of .js.map files>] [--stub-tiles]',
+    'usage: node scripts/measure-first-run.mjs <url> [--warm | --returning] [--cpu=4] ' +
+      '[--pause=800] [--settle=20000] [--maps=<dir of .js.map files>] [--stub-tiles]',
   )
   process.exit(2)
 }
@@ -58,6 +61,18 @@ if (url === undefined) {
  *  than measuring a cold one. The expensive case, and the one anyone clearing
  *  preferences to look at onboarding again is in. */
 const warm = argv.includes('--warm')
+/**
+ * The launch the bug report behind #1192 describes: onboarding done, the
+ * release on the phone, opening the app again. Takes a release onto the phone
+ * the way --warm does, leaves onboarding completed rather than clearing it,
+ * and then measures a reload - the long tasks, and how long a tap on each tab
+ * waits to be taken. Measured 2026-09-02 before the fix: one task of 13,078 ms
+ * and a Today tap that waited 14,557 ms.
+ */
+const returning = argv.includes('--returning')
+/** How long after the release lands before the measured reload, so the first
+ *  launch's own index build and cache write are not what gets measured. */
+const settleMs = Number(flag('settle', '20000'))
 /** Answer the live sheet's tile requests locally. For a sandbox that cannot
  *  reach tiles.openfreemap.org - the map then draws no basemap, which makes
  *  the numbers a floor rather than a measurement. */
@@ -188,26 +203,72 @@ await cdp.send('Network.emulateNetworkConditions', {
 
 const ENTRY_TITLE = '.onboarding__title'
 
+/** The step's way past itself. Two of the three steps say Skip; the map-size
+ *  step says "Decide this later" (#1054), and clicking Skip three times used
+ *  to stall on it. */
+const SKIP = /^(Skip|Decide this later)$/
+
 async function clickThrough() {
   await page.waitForSelector(ENTRY_TITLE, { timeout: 180_000 })
   for (let step = 0; step < 3; step += 1) {
-    await page.getByRole('button', { name: 'Skip', exact: true }).click({
-      timeout: 180_000,
-    })
+    await page.getByRole('button', { name: SKIP }).first().click({ timeout: 180_000 })
   }
 }
 
-if (warm) {
+/** The release is on the phone: the waypoints are stored and the partial
+ *  marker is down (lib/trailData.ts). Read out of IndexedDB rather than off
+ *  the screen, because the screen a launch lands on is Today now (#1054) and
+ *  says nothing about waypoint counts. */
+async function releaseLanded() {
+  await page.waitForFunction(
+    () =>
+      new Promise((resolve) => {
+        const open = indexedDB.open('keyval-store')
+        open.onsuccess = () => {
+          const db = open.result
+          const store = db.transaction('keyval').objectStore('keyval')
+          const pois = store.get('ourhike:pois')
+          const partial = store.get('ourhike:trail-data-partial')
+          let left = 2
+          let ready = true
+          const done = () => {
+            left -= 1
+            if (left === 0) {
+              db.close()
+              resolve(ready)
+            }
+          }
+          pois.onsuccess = () => {
+            if (pois.result === undefined) ready = false
+            done()
+          }
+          partial.onsuccess = () => {
+            if (partial.result === true) ready = false
+            done()
+          }
+          pois.onerror = partial.onerror = () => {
+            ready = false
+            done()
+          }
+        }
+        open.onerror = () => resolve(false)
+      }),
+    null,
+    { timeout: 600_000, polling: 1000 },
+  )
+}
+
+if (warm || returning) {
   console.log('warming: taking one whole release onto the phone...')
   await page.goto(url, { waitUntil: 'commit' })
   await clickThrough()
-  // The dropped-waypoint count on the canvas is the app saying it has POIs,
-  // which is the last thing a launch fetch commits.
-  await page.waitForFunction(
-    () => /\d+ of \d+ waypoints/.test(document.body.textContent ?? ''),
-    null,
-    { timeout: 600_000, polling: 500 },
-  )
+  await releaseLanded()
+  // The first launch's own index build and cache write, and whatever the
+  // background artifacts are still doing, are not the thing being measured.
+  await page.waitForTimeout(settleMs)
+}
+
+if (warm) {
   // First run again, with everything already downloaded.
   await page.evaluate(
     () =>
@@ -233,24 +294,76 @@ await cdp.send('Profiler.enable')
 await cdp.send('Profiler.setSamplingInterval', { interval: 200 })
 await cdp.send('Profiler.start')
 
+// Out of the old document first, not a reload. A same-origin reload shares
+// the renderer's main thread with whatever the old page is still doing, and
+// that work is reported inside the NEW page's timeline as a task starting at
+// 0 ms - measured 2026-09-02, a 5-20 s "first task" that was the previous
+// launch's unfinished index build, not the launch being timed.
+if (warm || returning) {
+  await page.goto('about:blank')
+  await page.waitForTimeout(3_000)
+}
 const started = Date.now()
-if (warm) await page.reload({ waitUntil: 'commit' })
-else await page.goto(url, { waitUntil: 'commit' })
+await page.goto(url, { waitUntil: 'commit' })
 
-await page.waitForSelector(ENTRY_TITLE, { timeout: 180_000 })
-console.log(`first entry step reachable      ${Date.now() - started} ms`)
+/**
+ * The returning hiker's taps: each tab, on a schedule that reaches into the
+ * seconds the index used to hold the thread, and then a burst once the
+ * launch has settled for comparison. Each is measured two ways: how long
+ * Playwright's click waited to be accepted (the thread was busy), and how
+ * long until the tab reported itself selected.
+ */
+const TAB_TAPS = [
+  [800, 'Plan'],
+  [2000, 'More'],
+  [3500, 'Today'],
+  [5000, 'Plan'],
+  [7000, 'More'],
+  [9000, 'Today'],
+  [11000, 'Plan'],
+  [14000, 'Today'],
+]
+
+const tabTaps = []
+if (returning) {
+  for (const [at, label] of TAB_TAPS) {
+    const wait = at - (Date.now() - started)
+    if (wait > 0) await page.waitForTimeout(wait)
+    const asked = Date.now()
+    let accepted = null
+    let selected = null
+    try {
+      await page.getByRole('tab', { name: label, exact: true }).click({ timeout: 60_000 })
+      accepted = Date.now() - asked
+      await page.waitForFunction(
+        (name) =>
+          document
+            .querySelector('[role=tab][aria-selected=true]')
+            ?.textContent?.trim() === name,
+        label,
+        { timeout: 60_000, polling: 16 },
+      )
+      selected = Date.now() - asked
+    } catch (error) {
+      console.error(`  tap ${label} at ${at} ms: ${error.message.split('\n')[0]}`)
+    }
+    tabTaps.push({ at: asked - started, label, accepted, selected })
+  }
+  await page.waitForTimeout(Math.max(0, 16_000 - (Date.now() - started)))
+} else {
+  await page.waitForSelector(ENTRY_TITLE, { timeout: 180_000 })
+  console.log(`first entry step reachable      ${Date.now() - started} ms`)
+}
 
 const stepChanges = []
-for (let step = 0; step < 3; step += 1) {
+for (let step = 0; step < (returning ? 0 : 3); step += 1) {
   await page.waitForTimeout(pauseMs)
   const before = await page.evaluate(
     (selector) => document.querySelector(selector)?.textContent ?? null,
     ENTRY_TITLE,
   )
   const asked = Date.now()
-  await page.getByRole('button', { name: 'Skip', exact: true }).click({
-    timeout: 180_000,
-  })
+  await page.getByRole('button', { name: SKIP }).first().click({ timeout: 180_000 })
   const clicked = Date.now()
   await page.waitForFunction(
     ([selector, previous]) => {
@@ -268,7 +381,7 @@ for (let step = 0; step < 3; step += 1) {
 
 // Long enough for whatever the last tap started to finish, so the timeline
 // covers the hand-over into the map screen as well as the steps themselves.
-await page.waitForTimeout(8_000)
+if (!returning) await page.waitForTimeout(8_000)
 
 const paint = await page.evaluate(() =>
   performance.getEntriesByType('paint').map((entry) => ({
@@ -280,7 +393,17 @@ for (const entry of paint) console.log(`${entry.name.padEnd(31)} ${entry.at} ms`
 
 const perf = await page.evaluate(() => window.__ourhikePerf)
 
-console.log('\ntaps on Skip')
+if (returning) {
+  console.log('\ntaps on the tab bar (ms after navigation)')
+  for (const tap of tabTaps) {
+    console.log(
+      `  ${String(tap.at).padStart(6)}  ${tap.label.padEnd(6)} accepted after ` +
+        `${tap.accepted ?? 'timeout'} ms, selected after ${tap.selected ?? 'timeout'} ms`,
+    )
+  }
+}
+
+if (!returning) console.log('\ntaps on Skip')
 stepChanges.forEach((change, index) => {
   const tap = perf.taps[index]
   const timing =
@@ -340,7 +463,13 @@ for (const [key, ms] of [...byFunction].sort((a, b) => b[1] - a[1]).slice(0, 15)
 
 console.log(
   `\nmeasured against ${url} at 390x844, ${cpuThrottle}x CPU throttle, ` +
-    `12 Mbps/80 ms, ${warm ? 'warm (release on the phone)' : 'cold (nothing on the phone)'}` +
+    `12 Mbps/80 ms, ${
+      returning
+        ? 'returning (release on the phone, onboarding done)'
+        : warm
+          ? 'warm (release on the phone)'
+          : 'cold (nothing on the phone)'
+    }` +
     `${stubTiles ? ', tiles stubbed' : ''}`,
 )
 

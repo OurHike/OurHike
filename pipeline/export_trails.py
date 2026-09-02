@@ -39,12 +39,16 @@ import json
 from pathlib import Path
 
 import duckdb
+import numpy as np
+import shapely
 from pyproj import Transformer
+from shapely import STRtree
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString
 from shapely.ops import linemerge
 from shapely.ops import transform as shapely_transform
 
+from export_elevation import calibrated_trail_axis
 from lib.arcgis import get_field_coded_domain
 from lib.blaze import load_blaze_mapping, map_source_blaze, normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
@@ -718,6 +722,170 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
+"""Every centerline vertex's mile, on the one axis (#1192).
+
+WHY THE PHONE STOPPED MEASURING THE TRAIL ITSELF
+------------------------------------------------
+The client used to derive its own mile for every vertex of trails.geojson -
+sort the pieces along a Springer->Katahdin line, sum a haversine per vertex -
+and its own mile for every waypoint, by searching that index. Two things
+were wrong with that, one old and one new.
+
+The old one is HIKE_PLANNING.md Finding 1: that mile and the pipeline's
+`distance_mi` were two measurements of one line, close and not identical,
+and `lib/route.ts`'s anchors existed only to carry numbers between them.
+The new one is the cost. #1095 took the waypoint count from 2,837 to 16,949
+and the placement went from a memo nobody noticed to a 13 s freeze on a
+throttled phone profile, measured 2026-09-02 - one long task, on the thread
+every tab tap was waiting for.
+
+So the mile of every centerline vertex is published beside the line, and it
+is the SAME mile every POI already carries: each vertex projected onto
+`export_elevation.calibrated_trail_axis`, exactly as `export_poi.attach_miles`
+projects a shelter. A phone that reads this file builds its index from these
+numbers instead of re-measuring, `StoredPoi.mile` lands directly on the axis
+the index speaks, and nothing on the phone searches 216,759 vertices for
+16,949 waypoints ever again.
+
+WHY A SIDECAR AND NOT A THIRD COORDINATE
+----------------------------------------
+GeoJSON's third position is altitude (RFC 7946 §3.1.1), and MapLibre is
+handed trails.geojson whole. A mile in that slot would be a lie about the
+geometry to every reader that did not know the trick, and a per-feature
+property array would be copied into every tile the feature crosses. A
+separate file, keyed by the feature id trails.geojson already carries, costs
+one optional fetch and is honest about what it is.
+
+WHAT TIES THE TWO FILES TOGETHER
+--------------------------------
+`trails_sha256`. The miles are only meaningful against the exact vertices
+they were computed from, so the file names the trails.geojson it belongs to
+and the client refuses a pair that does not match rather than pairing a
+release's lines with another release's miles - the same all-or-nothing
+posture `downloadTrailData` takes for the rest of the release.
+
+Optional on the phone, like spurs.json: a release exported before this
+existed has no such file, and the client falls back to measuring the line
+itself, anchors and all. What it cannot do is half of one release: the file
+is written in the same run as the line it describes, from the same records.
+"""
+
+# Three decimals, matching elevation_profile.json's distance_mi and every
+# POI's `mile` (export_poi.attach_miles) - the axis this is meant to agree
+# with digit for digit. A thousandth of a mile is 5.3 ft, an order under the
+# 1 m simplification the vertices themselves were survived by.
+TRAIL_MILE_DECIMALS = 3
+
+# The published name. publish.TRAIL_MILES_KEY and the client's
+# config.ts TRAIL_MILES_KEY must agree with it - test_published_key_contract.py
+# holds the three together.
+TRAIL_MILES_NAME = "trail_miles.json"
+
+
+def _monotonic_breaks(miles: np.ndarray) -> int:
+    """How many steps run against the piece's own direction of travel.
+
+    A centerline piece oriented so its miles rise should rise at every
+    vertex. Where the calibrated axis's nearest piece changes underneath a
+    chain - two source pieces overlapping, a switchback the merge folded -
+    a vertex can land a few thousandths behind its predecessor. Counted and
+    reported rather than smoothed away: the client splits a piece at every
+    such step (lib/trailPosition.ts) so a run of coordinates never claims
+    miles it does not have, and the count in the manifest is what says
+    whether that is happening once or a thousand times."""
+    if len(miles) < 2:
+        return 0
+    forwards = miles[-1] >= miles[0]
+    steps = np.diff(miles) if forwards else -np.diff(miles)
+    return int(np.count_nonzero(steps < 0))
+
+
+def vertex_miles(
+    con: duckdb.DuckDBPyConnection, records: list[dict], centerline_path: Path, markers_path: Path
+) -> tuple[dict[str, list], dict]:
+    """The mile of every vertex of every centerline record, keyed by the
+    record's id - a flat list for a LineString, one list per part for a
+    MultiLineString. Returns the mapping and a stats dict for the manifest.
+
+    Projected onto `calibrated_trail_axis` the way `export_poi.attach_miles`
+    projects a POI: nearest calibrated piece by STRtree, then that piece's
+    own `mile_at`. Vectorised per piece rather than one `project()` per
+    vertex - 216,759 vertices is a few seconds this way and minutes the
+    other."""
+    calibrated = calibrated_trail_axis(con, centerline_path, markers_path)
+    tree = STRtree([cal.line for cal in calibrated])
+    to_metric = Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True)
+
+    miles_by_id: dict[str, list] = {}
+    vertex_count = 0
+    breaks = 0
+    features_with_breaks = 0
+
+    def miles_of(line) -> np.ndarray:
+        coords = np.asarray(line.coords)[:, :2]
+        xs, ys = to_metric.transform(coords[:, 0], coords[:, 1])
+        points = shapely.points(xs, ys)
+        nearest = tree.nearest(points)
+        out = np.empty(len(points))
+        for piece in np.unique(nearest):
+            mask = nearest == piece
+            cal = calibrated[int(piece)]
+            out[mask] = cal.mile_at(shapely.line_locate_point(cal.line, points[mask]))
+        return np.round(out, TRAIL_MILE_DECIMALS)
+
+    for record in records:
+        if record["source"] not in CHAIN_MERGED_SOURCES:
+            continue
+        geom = shapely_wkt.loads(record["wkt"])
+        parts = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
+        per_part = []
+        record_breaks = 0
+        for part in parts:
+            miles = miles_of(part)
+            vertex_count += len(miles)
+            record_breaks += _monotonic_breaks(miles)
+            per_part.append([float(m) for m in miles])
+        breaks += record_breaks
+        if record_breaks:
+            features_with_breaks += 1
+        miles_by_id[record["id"]] = per_part[0] if geom.geom_type == "LineString" else per_part
+
+    stats = {
+        "feature_count": len(miles_by_id),
+        "vertex_count": vertex_count,
+        "monotonic_breaks": breaks,
+        "features_with_breaks": features_with_breaks,
+    }
+    return miles_by_id, stats
+
+
+def write_trail_miles(
+    con: duckdb.DuckDBPyConnection,
+    records: list[dict],
+    trails_sha256: str,
+    centerline_path: Path,
+    markers_path: Path,
+) -> dict:
+    """Write trail_miles.json beside trails.geojson and return its manifest
+    entry. `trails_sha256` is the hash of the trails.geojson these records
+    were just written to - see the module block above for why it is inside
+    the file."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    miles_by_id, stats = vertex_miles(con, records, centerline_path, markers_path)
+    body = {
+        "format": 1,
+        "trails_sha256": trails_sha256,
+        "axis": "export_elevation.calibrated_trail_axis",
+        "decimals": TRAIL_MILE_DECIMALS,
+        "feature_count": stats["feature_count"],
+        "vertex_count": stats["vertex_count"],
+        "miles": miles_by_id,
+    }
+    path = OUT_DIR / TRAIL_MILES_NAME
+    path.write_text(json.dumps(body, separators=(",", ":")))
+    return {"path": str(path), "sha256": sha256_file(path), **stats}
+
+
 def _total_coordinates(records: list[dict]) -> int:
     """Vertex count across an export, for the reduction line main() prints."""
     total = 0
@@ -785,6 +953,23 @@ def main() -> dict:
     # same geometry a second time, and Douglas-Peucker on the merged chains
     # would give the same vertices for more work.
     manifest["overview"] = write_overview(simplified)
+    # The mile of every vertex, on the calibrated axis (#1192) - from
+    # `merged`, the records write_trails just published, so the two files
+    # cannot describe different vertices. Needs ATC's half-mile markers, which
+    # export_poi.py needs for the same axis and fetch_all.py fetches; a
+    # checkout without them gets the line and a loud line here rather than an
+    # axis calibrated to nothing (export_elevation.load_half_mile_markers).
+    markers_path = RAW_DIR / "half_mile_points_from_springer.geojson"
+    if markers_path.exists():
+        manifest["miles"] = write_trail_miles(
+            con, merged, manifest["geojson"]["sha256"], RAW_DIR / "centerline.geojson", markers_path
+        )
+    else:
+        print(
+            f"  HELD BACK: {TRAIL_MILES_NAME} not written - {markers_path} is missing, and the mile axis "
+            "is calibrated against ATC's half-mile markers (#652). fetch_all.py fetches the layer; "
+            "phones fall back to measuring the line themselves until a release carries this file."
+        )
     # The published feature count changed meaning with the merge, so the
     # counts a drop-detector should compare across it are recorded too:
     # `constituent_count` is what feature_count used to be (per-segment,
@@ -798,6 +983,13 @@ def main() -> dict:
         f"  overview: {overview['coordinate_count']:,} coordinates in {overview['line_count']} lines "
         f"at {overview['tolerance_m']:g} m -> {overview['path']}"
     )
+    if "miles" in manifest:
+        miles = manifest["miles"]
+        print(
+            f"  miles: {miles['vertex_count']:,} vertices across {miles['feature_count']} centerline features, "
+            f"{miles['monotonic_breaks']} step(s) against the direction of travel in "
+            f"{miles['features_with_breaks']} feature(s) -> {miles['path']}"
+        )
 
     manifest_path = OUT_DIR / "trails_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

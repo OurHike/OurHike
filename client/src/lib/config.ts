@@ -44,6 +44,18 @@ export function archiveKey(level: DetailLevel): string {
 export const TRAILS_KEY = 'trails.geojson'
 
 /**
+ * The mile of every centerline vertex in `trails.geojson`, on the pipeline's
+ * calibrated axis (pipeline/export_trails.py's write_trail_miles, #1192).
+ *
+ * Keyed by the feature ids trails.geojson carries and naming that file's
+ * hash, so a phone can only ever pair a line with the miles measured on it.
+ * Optional the way spurs.json is: a release exported before it existed has
+ * none, and the phone measures the line itself as it always did - with the
+ * two-axis anchors lib/route.ts keeps for exactly that release.
+ */
+export const TRAIL_MILES_KEY = 'trail_miles.json'
+
+/**
  * The corridor-view centerline: the same trail, simplified to 100 m and
  * merged into one feature (pipeline/export_trails.py's write_overview, #869).
  *
@@ -371,6 +383,7 @@ export function poiKey(type: PoiType): string {
  */
 export const REFRESHABLE_KEYS: readonly string[] = [
   TRAILS_KEY,
+  TRAIL_MILES_KEY,
   ...POI_TYPES.map(poiKey),
   NEARBY_POI_KEY,
   SPURS_KEY,

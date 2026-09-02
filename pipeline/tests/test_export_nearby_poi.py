@@ -78,6 +78,16 @@ OPRHP = {
 }
 
 
+USFS = {
+    "key": "usfs_rec_sites",
+    "provider": "USFS",
+    "id_field": "objectid",
+    "name_field": "site_name",
+    "facility_field": "recarea_name",
+    "asset_field": "site_type",
+}
+
+
 def feature(lon: float = -74.0, lat: float = 44.0, **properties) -> dict:
     return {
         "type": "Feature",
@@ -411,3 +421,97 @@ def test_the_registered_water_holdbacks_say_why_in_the_registry_itself():
     registry = json.loads((export_nearby_poi.ROOT / "sources.json").read_text())
     assert "PUBLICUSE" in registry["dec_water_holdback"]
     assert "seasonal" in registry["oprhp_water_holdback"].lower()
+
+
+# --- USFS, and the one type that must never come out (#1207) ----------------
+
+
+def test_usfs_dispersed_camping_never_ships():
+    """The largest site_type in the layer, held back on purpose.
+
+    'CAMPING AREA' is 10,783 of usfs_rec_sites' 31,405 nationwide rows - more
+    than every developed campground in the national forest system combined -
+    and it is dispersed camping: development_scale 0 on 8,135 of them, names
+    that are forest-road references ('RD 614 SITE 13', 'FS1302-03') rather than
+    places.
+
+    This project already decided not to publish that class of location.
+    SOURCE_SURVEY.md section 3b holds back ATC's 2,333 user-created campsites
+    because "publishing locations may be actively harmful" - they are the ones
+    land managers are often trying to close - and the screenshot rules name a
+    dispersed campsite at a readable zoom as one of four things that must never
+    appear even in a picture, because a map is a publication of coordinates.
+    Shipping these would be that publication at 4.6x the scale, arriving as a
+    side effect of a change about the White Mountains.
+
+    So it is a test rather than a comment: USFS_SITE_TYPES is one careless line
+    away from including it, and nothing else would notice.
+    """
+    features = [
+        feature(site_type="CAMPING AREA", development_scale="0", site_name="RD 614 SITE 13", objectid=1),
+        feature(site_type="CAMPING AREA", development_scale="0", site_name="FS1302-03", objectid=2),
+    ]
+    assert kept_types(USFS, features) == []
+
+
+def test_usfs_developed_campgrounds_do_ship():
+    """The other half of the holdback: developed sites are not the concern.
+
+    Without this case the test above is satisfied by USFS shipping no campsites
+    at all, which would be a different bug wearing the same green tick.
+    """
+    features = [
+        feature(site_type="CAMPGROUND", site_name="Fixture Brook Campground", objectid=1),
+        feature(site_type="GROUP CAMPGROUND", site_name="Fixture Group Camp", objectid=2),
+    ]
+    assert kept_types(USFS, features) == ["campsite", "campsite"]
+
+
+def test_a_usfs_lookout_is_not_a_shelter():
+    """815 LOOKOUT/CABIN rows, and a hiker walking into weather must not be
+    told there is a roof ahead they cannot use. sources.json's poi_coverage
+    calls this `unsuitable` - real data, misleading reading - and the allowlist
+    is what enforces it."""
+    assert kept_types(USFS, [feature(site_type="LOOKOUT/CABIN", site_name="Fixture Summit Lookout", objectid=1)]) == []
+
+
+def test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings():
+    features = [
+        feature(site_type="TRAILHEAD", site_name="Fixture Notch Trailhead", objectid=1),
+        feature(site_type="OBSERVATION SITE", site_name="Fixture Ledge Overlook", objectid=2),
+    ]
+    assert kept_types(USFS, features) == ["parking", "viewpoint"]
+
+
+def test_the_two_typed_layer_maps_cannot_drift_apart():
+    """TYPED_LAYERS selects the sources; TYPED_LAYERS_FOLDED types their rows.
+
+    They are two hand-maintained dicts that must hold the same keys, and
+    nothing checked that until this test. IT IS NOT HYPOTHETICAL: adding USFS
+    under #1207 updated the first and not the second, and the result was a
+    KeyError raised only when a usfs_rec_sites row reached the typing step -
+    so the export selected a source it could not then type. A third org is what
+    made a two-entry duplication start costing something.
+
+    Keys and field names both, because a field spelled one way in the selector
+    and another in the lookup fails the same way one step later.
+    """
+    assert set(export_nearby_poi.TYPED_LAYERS) == set(export_nearby_poi.TYPED_LAYERS_FOLDED)
+    for key, (field, _) in export_nearby_poi.TYPED_LAYERS.items():
+        assert field == export_nearby_poi.TYPED_LAYERS_FOLDED[key][0], (
+            f"{key} reads {field!r} when selecting and {export_nearby_poi.TYPED_LAYERS_FOLDED[key][0]!r} when typing"
+        )
+
+
+def test_folding_usfs_site_types_loses_nothing():
+    """The folded map is the one that decides, so it has to carry every row.
+
+    A collision would silently drop a mapping - _folded raises on a true
+    collision, but a quiet size mismatch would mean a type nobody notices is
+    missing.
+    """
+    assert len(export_nearby_poi.USFS_SITE_TYPES_FOLDED) == len(export_nearby_poi.USFS_SITE_TYPES)
+    assert "CAMPING AREA".casefold() not in export_nearby_poi.USFS_SITE_TYPES_FOLDED, (
+        "the dispersed-camping holdback has to survive case folding too - it is the whole point of #1207's "
+        "USFS_SITE_TYPES allowlist"
+    )

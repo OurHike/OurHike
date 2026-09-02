@@ -14,7 +14,7 @@ live services: every column below is a name sources.json records as MEASURED
 against the live layer, with a date - the `notes` field lists for
 nynjtc_long_path and nynjtc_highlands_trail (2026-08-24), mohonk_trails
 (2026-08-25), oprhp_trails (2026-08-18), oprhp_facilities and the DEC layers
-(2026-08-27), usfs_wmnf_trails, usfs_wmnf_rec_sites and nh_granit_trails
+(2026-08-27), usfs_trails, usfs_rec_sites and nh_granit_trails
 (2026-09-02), plus the structured `name_field`/`blaze_field`/`id_field`/
 `public_field`/`asset_field`/`facility_field` keys, which are the same
 measurements in machine-readable form. Nothing here is invented, and where a
@@ -31,11 +31,12 @@ Blaze key at all (7 such rows measured on the live 304); NYNJTC's Long Path
 Blaze is the lowercase 'aqua' all 43 real rows read; and OPRHP's ParksApp
 carries both sides of its 5,822/3,000 split. NH GRANIT's BLAZE is the
 sharpest case of the rule: it is a blank STRING on 7,574 of the live 7,643
-Whites rows, so most of that fixture's rows carry `' '` rather than a colour
-- a populated fixture would misrepresent the one thing that entry exists to
-warn about. USFS's `trail_type` carries SNOW beside TERRA for the same
-reason, and its `national_trail_designation` spreads 1/2/3 across a single
-named trail because that is what CRAWFORD PATH really does.
+Whites rows - because the Whites largely are not blazed, not because the
+column is unpopulated - so most of that fixture's rows carry `' '` rather
+than a colour, and the one that does carry White is the A.T. USFS's
+`trail_type` carries SNOW beside TERRA for the same reason, and its
+`national_trail_designation` spreads 1/2/3 across a single named trail
+because that is what CRAWFORD PATH really does.
 
 Refuses to write into a directory that already has one of its files:
 this exists to fill an empty CI workspace, not to overwrite a real fetch.
@@ -331,8 +332,8 @@ def _white_mountains_point(i):
     return {"type": "Point", "coordinates": [-71.3 + i * 0.01, 44.2 + i * 0.01]}
 
 
-def _usfs_wmnf_trails_layer():
-    """usfs_wmnf_trails' measured field list and value shapes, 2026-09-02.
+def _usfs_trails_layer():
+    """usfs_trails' measured field list and value shapes, 2026-09-02.
 
     Three measured shapes that a happy-case fixture would miss:
 
@@ -408,17 +409,27 @@ def _usfs_wmnf_trails_layer():
     )
 
 
-def _usfs_wmnf_rec_sites_layer():
-    """usfs_wmnf_rec_sites' measured field list and site_type census, 2026-09-02.
+def _usfs_rec_sites_layer():
+    """usfs_rec_sites' measured field list and site_type census, 2026-09-02.
 
     One row per site_type this pipeline has a verdict about, so the fixture
     covers the whole of sources.json's `poi_coverage` answer for USFS rather
-    than its useful half: TRAILHEAD (187 live, the parking verdict),
-    CAMPGROUND (53, the campsite verdict and its car-campground caveat),
-    OBSERVATION SITE (20, viewpoint) and LOOKOUT/CABIN (6, the `unsuitable`
-    shelter verdict). `fee_charged` and `total_capacity` are carried because
-    the live layer has them - they were never profiled, so no value here is a
-    claim about their distribution."""
+    than its useful half: TRAILHEAD (7,358 live nationwide, the parking
+    verdict), CAMPGROUND (4,183, the campsite verdict and its car-campground
+    caveat), OBSERVATION SITE (636, viewpoint) and LOOKOUT/CABIN (815, the
+    `unsuitable` shelter verdict).
+
+    AND ONE ROW THAT EXISTS TO STAY OUT. 'CAMPING AREA' is the layer's largest
+    type at 10,783 nationwide, it is dispersed camping, and it is held back
+    (sources.json's usfs_dispersed_camping_holdback). A fixture without it
+    could not catch the regression that matters most here - somebody widening
+    USFS_SITE_TYPES and publishing 10,783 dispersed campsites - so the row is
+    present with the live development_scale 0 and a road-reference name, and
+    tests/test_export_nearby_poi.py asserts it does not come out the far end.
+
+    `fee_charged` and `total_capacity` are carried because the live layer has
+    them - they were never profiled, so no value here is a claim about their
+    distribution."""
     common = {"managing_org": "092204", "recarea_name": "Fixture Recreation Area"}
     return _features(
         [
@@ -432,6 +443,9 @@ def _usfs_wmnf_rec_sites_layer():
             },
             {**common, "site_name": "Fixture Ledge Overlook", "site_type": "OBSERVATION SITE", "fee_charged": "N"},
             {**common, "site_name": "Fixture Summit Lookout", "site_type": "LOOKOUT/CABIN", "fee_charged": "Y"},
+            # Dispersed camping - held back, and here so a test can prove it.
+            # The name shape and development_scale are the live ones.
+            {**common, "site_name": "RD 614 SITE 13", "site_type": "CAMPING AREA", "development_scale": "0", "fee_charged": "N"},
         ],
         _white_mountains_point,
     )
@@ -440,26 +454,57 @@ def _usfs_wmnf_rec_sites_layer():
 def _nh_granit_trails_layer():
     """nh_granit_trails' measured field list and value shapes, 2026-09-02.
 
-    THE POINT OF THIS FIXTURE IS THE EMPTY BLAZE. Across the live 7,643
-    segments in the Whites, BLAZE reads a literal blank on 7,574 of them -
-    99.1% - against White 62, Yellow 4, Red 2, Blue 1. It is a blank STRING
-    and not a null, which is the distinction a staging model would get wrong
-    first, so the majority of rows here carry `' '` verbatim. A fixture that
-    populated the column would make nh_granit_trails look like the blaze
-    source it is registered as explicitly NOT being.
+    THE POINT OF THIS FIXTURE IS THE BLANK BLAZE, WHICH IS A REAL VALUE AND
+    NOT A HOLE. Across the live 7,643 segments in the Whites, BLAZE reads a
+    literal blank on 7,574 of them - 99.1% - against White 62, Yellow 4, Red 2,
+    Blue 1. That is not an unpopulated column: the White Mountains largely do
+    not use paint blazes, so a Whites trail having none is the normal case, and
+    61 of the 62 White rows carry TRAILSYS 'Appalachian Trail' - the A.T. being
+    the one white-blazed line through the range. reference/blaze_mapping.json
+    maps the blank to "None" ("Unblazed") rather than to "Unknown" ("Blaze not
+    recorded") for exactly that reason.
 
-    `PED` gets the same treatment for the same reason: blank is unrecorded,
-    not "no" (3,883 rows '1' against 3,760 blank), so a `PED == '1'` filter
-    would silently drop half the layer. `MAINTORG` is a coded integer whose
-    domain GRANIT does not publish - the codes here are live values, and what
-    any of them means is unknown."""
+    It is a blank STRING and not a null, which is the distinction a staging
+    model would get wrong first and which the mapping table's key depends on,
+    so the majority of rows here carry `' '` verbatim. A fixture that populated
+    the column would misrepresent the region.
+
+    `PED` is the opposite case and needs its own row shapes: blank is
+    UNRECORDED, not "no" (3,883 rows '1' against 3,760 blank), and 2,541 of
+    those blanks carry no use flag at all while 1,209 are snowmobile corridors.
+    So the fixture carries all three shapes - PED '1', blank-with-no-flags, and
+    blank-with-SNOWMBL - because a `PED == '1'` filter would drop the middle one
+    and that is the mistake nh_granit_trails' foot_comment exists to prevent.
+    `MAINTORG` is a coded integer whose domain GRANIT does not publish - the
+    codes here are live values, and what any of them means is unknown."""
     common = {"TRAIL": "Trail", "ACCURACY": "Unknown", "COMMUNITY": "Fixture Township"}
     return _features(
         [
             {**common, "TRAILNAME": "Fixture Ridge Path", "BLAZE": " ", "MAINTORG": 22000, "PED": "1", "MILES": 2.2},
+            # Blank PED and NO use flag of any kind - the 2,541-row shape, a
+            # hiking trail a PED=='1' filter would silently delete.
             {**common, "TRAILNAME": "Fixture Brook Trail", "BLAZE": " ", "MAINTORG": 50110, "PED": " ", "MILES": 1.4},
-            # The 0.9% that do carry a blaze, and the only one with real volume.
-            {**common, "TRAILNAME": "Fixture White Blazed Trail", "BLAZE": "White", "MAINTORG": 0, "PED": "1", "MILES": 3.1},
+            # Blank PED because it is a snowmobile corridor - the 1,209-row
+            # shape, and the one a motorized filter SHOULD drop.
+            {
+                **common,
+                "TRAILNAME": "Fixture Camp Snowmobile Corridor",
+                "BLAZE": " ",
+                "MAINTORG": 0,
+                "PED": " ",
+                "SNOWMBL": "1",
+                "MILES": 4.0,
+            },
+            # The A.T.: the one white-blazed line through the Whites.
+            {
+                **common,
+                "TRAILNAME": "Appalachian Trail",
+                "TRAILSYS": "Appalachian Trail",
+                "BLAZE": "White",
+                "MAINTORG": 0,
+                "PED": "1",
+                "MILES": 3.1,
+            },
             # Not a trail at all - the live layer holds rows like 'adj to Rt 118'.
             {**common, "TRAILNAME": "adj to Rt 118", "BLAZE": " ", "MAINTORG": 0, "PED": " ", "MILES": 0.2},
         ],
@@ -663,8 +708,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/nynjtc_long_path.geojson": _nynjtc_long_path_layer(),
         "external/nynjtc_highlands_trail.geojson": _nynjtc_highlands_trail_layer(),
         "external/mohonk_trails.geojson": _mohonk_trails_layer(),
-        "external/usfs_wmnf_trails.geojson": _usfs_wmnf_trails_layer(),
-        "external/usfs_wmnf_rec_sites.geojson": _usfs_wmnf_rec_sites_layer(),
+        "external/usfs_trails.geojson": _usfs_trails_layer(),
+        "external/usfs_rec_sites.geojson": _usfs_rec_sites_layer(),
         "external/nh_granit_trails.geojson": _nh_granit_trails_layer(),
         "external/dec_hiking_trails.geojson": _dec_hiking_trails_layer(),
         "external/dec_lean_tos.geojson": _dec_lean_tos_layer(),

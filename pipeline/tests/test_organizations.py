@@ -125,7 +125,7 @@ def test_every_source_records_what_its_licence_rests_on():
 def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     """Re-measured 2026-09-02, and stated as a fact rather than left to be counted.
 
-    26 of the 36 registered sources ship on `maintainer_authorisation` - which
+    29 of the 36 registered sources ship on `maintainer_authorisation` - which
     is NOT a grant from the organization - against 6 where the organization
     stated terms of its own. That includes all thirteen ATC layers, whose
     `atc_licence` basis reads "Maintainer authorisation, on the basis of
@@ -135,15 +135,25 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     of edge registrations. It is not: it is almost everything, including the
     trail this app was built for. #98 is the open question underneath it.
 
-    WHAT MOVED ON 2026-09-02, and it moved in the honest direction: `unresolved`
-    went 1 -> 4 when the White Mountains were registered (#1207) - two USFS
-    layers and NH GRANIT's trails, none of which ships. Neither organization
-    states any reuse terms, and the survey deliberately declined to settle the
-    federal-public-domain reading (17 U.S.C. 105) on the Forest Service's
-    behalf; see `usfs_licence` and pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md
-    section 6(a). So the growth here is three registrations that admit they have
-    no answer rather than three that assumed one, which is the outcome this
-    count exists to keep visible.
+    WHAT MOVED ON 2026-09-02, and WHY IT IS THE UNCOMFORTABLE DIRECTION. The
+    White Mountains arrived (#1207): two USFS layers and NH GRANIT's trails,
+    registered `unresolved` in the morning because neither organization states
+    any reuse terms, then authorised by the maintainer the same day ("yes do
+    publish these. Its publically available info."). So `unresolved` went
+    1 -> 4 -> 1 and this count went 26 -> 29.
+
+    It is recorded as the maintainer's authorisation and NOT as `stated_by_org`
+    on purpose. "Publicly available" is not itself a reuse grant - that is
+    SOURCE_SURVEY.md's rule, and the same rule under which DEC, NYNJTC and
+    Mohonk, all equally public, sit in this column rather than the next one.
+    Three more sources on the maintainer's own word is exactly the exposure the
+    paragraph above says is easy to underestimate, so it grew rather than
+    shrank, and that is the honest entry.
+
+    ONE UPGRADE IS AVAILABLE AND UNCLAIMED: `licence_basis_comment` lists "a
+    federal public-domain work" as an instance of `stated_by_org`, and the USFS
+    layers plausibly are one (17 U.S.C. 105). Claiming it would move 2 from this
+    column to that one. See `usfs_licence` for why nobody has.
 
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
@@ -152,4 +162,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 26, "stated_by_org": 6, "unresolved": 4}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 6, "unresolved": 1}

@@ -48,8 +48,8 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_dec__dec_viewing_areas",
             "raw_dec__dec_parking_areas",
             "raw_dec__dec_backcountry_features",
-            "raw_usfs__usfs_wmnf_trails",
-            "raw_usfs__usfs_wmnf_rec_sites",
+            "raw_usfs__usfs_trails",
+            "raw_usfs__usfs_rec_sites",
             "raw_granit__nh_granit_trails",
         }
         assert skipped == [], (
@@ -62,11 +62,11 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         publicuse = {row[0] for row in con.execute('select "PUBLICUSE" from raw.raw_dec__dec_lean_tos').fetchall()}
         granit_blazes = {row[0] for row in con.execute('select "BLAZE" from raw.raw_granit__nh_granit_trails').fetchall()}
         granit_ped = {row[0] for row in con.execute('select "PED" from raw.raw_granit__nh_granit_trails').fetchall()}
-        usfs_types = {row[0] for row in con.execute("select trail_type from raw.raw_usfs__usfs_wmnf_trails").fetchall()}
+        usfs_types = {row[0] for row in con.execute("select trail_type from raw.raw_usfs__usfs_trails").fetchall()}
         usfs_designations = {
             row[0]
             for row in con.execute(
-                "select national_trail_designation from raw.raw_usfs__usfs_wmnf_trails where trail_name = 'FIXTURE CRAWFORD PATH'"
+                "select national_trail_designation from raw.raw_usfs__usfs_trails where trail_name = 'FIXTURE CRAWFORD PATH'"
             ).fetchall()
         }
         park_polygon_columns = {
@@ -92,11 +92,14 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         "the public flag the staging models carry through has nothing to say unless both sides are present"
     )
     assert " " in granit_blazes, (
-        "GRANIT's BLAZE is a blank STRING on 7,574 of the live 7,643 Whites rows - 99.1% - and the blank is the "
-        "whole reason nh_granit_trails registers without a blaze_field. A fixture that only carried colours would "
-        "let a staging model be written that paints the Whites from a column that is empty"
+        "GRANIT's BLAZE is a blank STRING on 7,574 of the live 7,643 Whites rows - 99.1% - because the Whites "
+        "largely are not blazed. reference/blaze_mapping.json keys that literal ' ' to \"None\" (Unblazed), so a "
+        "fixture that dropped it would stop exercising the row the whole mapping turns on"
     )
-    assert "White" in granit_blazes, "the 0.9% that do carry a blaze still have to be exercised"
+    assert "White" in granit_blazes, (
+        "the A.T. is the one white-blazed line through the Whites - 61 of the live 62 White rows carry TRAILSYS "
+        "'Appalachian Trail' - so the colour that IS present has to be exercised too"
+    )
     assert granit_ped == {"1", " "}, (
         "PED splits 3,883 '1' against 3,760 blank on the live rows, and blank means UNRECORDED rather than no - "
         "a fixture with only '1' would make a PED filter look lossless when it drops half the layer"
@@ -106,8 +109,9 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         "filter this layer needs be forgotten"
     )
     assert usfs_designations == {1, 2, 3}, (
-        "CRAWFORD PATH really does carry all three designation codes across its live segments, which is the "
-        "evidence behind sources.json's @unvalidated warning that code 3 is not an A.T. filter"
+        "CRAWFORD PATH really does carry all three designation codes across its live segments. That split is the "
+        "one thing no 'code 3 = the A.T.' reading explains, and it is why sources.json keeps the field "
+        "@unvalidated even though NH GRANIT's white-blazed set independently names nearly the same trails"
     )
     assert park_polygon_columns.isdisjoint({"Name", "NAME", "OBJECTID"}), (
         "sources.json records no field name for oprhp_park_polygons, so its fixture must invent none - "

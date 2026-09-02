@@ -29,8 +29,26 @@
 // the mile in the header every time the phone came out of a pocket, and the
 // state a paused watch leaves behind is exactly the state a lost signal
 // already leaves behind - which this hook has always kept.
+//
+// AND THERE IS A SEAM FOR MEASURING IT (#1180)
+//
+// `onFix` sees every callback the platform makes, before the bail-out below
+// drops an unchanged one and without the state ever being consulted. That
+// ordering is the point rather than an implementation detail: fix CADENCE is
+// one of the things #106's walk is meant to measure, and a recorder fed from
+// this hook's STATE would report silences the platform never had - it would
+// be measuring #1090's optimisation instead of the GPS.
+//
+// `keepAwake` suspends the visibility pause above, because a trace that stops
+// when the phone goes into a pocket is missing the case #93 most needs. It is
+// NOT a promise of fixes in a pocket, and nothing here should be read as one:
+// a hidden tab's JS is throttled regardless, as the note above already says.
+// All it does is stop this hook being the thing that ends the recording.
+//
+// Both are inert unless something passes them, so the ordinary path through
+// this file is unchanged - one watch, one consumer, the same battery story.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LonLat } from './trailPosition'
 
 export type GeolocationState =
@@ -43,8 +61,30 @@ export type GeolocationState =
 
 const METERS_TO_FEET = 3.28084
 
-export function useGeolocation(enabled: boolean): GeolocationState {
+export interface GeolocationWatchOptions {
+  /**
+   * Called with every fix the platform delivers, unfiltered - see the header.
+   *
+   * Held in a ref rather than listed as an effect dependency: a caller
+   * passing an inline function would otherwise tear down and re-register the
+   * watch on every render of the component holding it, which on some
+   * platforms restarts the whole acquisition and is the opposite of what a
+   * recorder wants.
+   */
+  onFix?: (position: GeolocationPosition) => void
+  /** Keeps the watch running while the tab is hidden. Costs battery, is only
+   *  ever set deliberately, and the screen that sets it says so. */
+  keepAwake?: boolean
+}
+
+export function useGeolocation(
+  enabled: boolean,
+  { onFix, keepAwake = false }: GeolocationWatchOptions = {},
+): GeolocationState {
   const [state, setState] = useState<GeolocationState>({ status: 'idle' })
+
+  const onFixRef = useRef(onFix)
+  onFixRef.current = onFix
   /**
    * Whether the tab is on screen. State rather than a ref because it gates the
    * watch, and the watch lives in an effect that has to re-run when it flips.
@@ -65,6 +105,19 @@ export function useGeolocation(enabled: boolean): GeolocationState {
     return () => document.removeEventListener('visibilitychange', update)
   }, [])
 
+  /**
+   * Whether the watch should be running at all.
+   *
+   * One derived flag rather than two dependencies, and that is a correctness
+   * point rather than tidiness: with `visible` and `keepAwake` both in the
+   * dependency list, pocketing the phone during a recording re-ran the effect
+   * - tearing the watch down and immediately registering another. Every
+   * pocket and unpocket would restart GNSS acquisition, which is the cost
+   * `onFixRef` exists to avoid one line further down. Collapsed here, a
+   * visibility flip that does not change the answer changes nothing.
+   */
+  const awake = visible || keepAwake
+
   useEffect(() => {
     if (!enabled) {
       setState({ status: 'idle' })
@@ -77,7 +130,7 @@ export function useGeolocation(enabled: boolean): GeolocationState {
     // Paused, not stopped: the state stands, so the mile that was on screen
     // when the phone went into the pocket is the mile on screen when it comes
     // back out, until a fresh fix replaces it. See the header note above.
-    if (!visible) return
+    if (!awake) return
 
     // Only from a standing start. Coming back from a pause with a fix already
     // in hand, "Looking for GPS…" would replace a position that is still the
@@ -87,7 +140,12 @@ export function useGeolocation(enabled: boolean): GeolocationState {
     )
 
     const id = navigator.geolocation.watchPosition(
-      (position) =>
+      (position) => {
+        // Before the bail-out, and outside the updater below on purpose: a
+        // setState updater may run more than once for one update, and a
+        // recorder called from inside it would write the same fix twice.
+        onFixRef.current?.(position)
+
         setState((current) => {
           const at = { lon: position.coords.longitude, lat: position.coords.latitude }
           // THE STATE WE ALREADY HAVE, where the fix says the phone is exactly
@@ -133,7 +191,8 @@ export function useGeolocation(enabled: boolean): GeolocationState {
             accuracyFeet: position.coords.accuracy * METERS_TO_FEET,
             fixedAt: new Date(position.timestamp),
           }
-        }),
+        })
+      },
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {
           // "Denied simply stops" - the header's claim, made true here. The
@@ -153,7 +212,7 @@ export function useGeolocation(enabled: boolean): GeolocationState {
     )
 
     return () => navigator.geolocation.clearWatch(id)
-  }, [enabled, visible])
+  }, [enabled, awake])
 
   return state
 }

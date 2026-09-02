@@ -1,0 +1,192 @@
+# Compiles the two native shells, because until now nothing did (#1193).
+#
+# #1182's background recorder - the only reason this app has a Capacitor
+# plugin at all - was written, unit-tested against a stub, and never COMPILED.
+# Not "never run on a phone": never compiled, on either platform. Measured
+# 2026-09-02: `grep -rln 'gradlew\|xcodebuild\|cap sync' .github/workflows/`
+# returned nothing across thirty-six workflow files.
+#
+# That matters more than a missing convenience, because
+# `@capacitor-community/background-geolocation` declares Capacitor 8 by an
+# OPEN PEER BOUND (`>=3.0.0`) and its own compatibility table stops at v7,
+# while this repository is on 8.5.0. Whether it builds was undiscoverable by
+# any means the project had. Now it is a five-minute answer on every push.
+#
+# THE `cap sync` STEP IS LOAD-BEARING, not a formality. The generated files
+# that would name the plugin - android/capacitor.settings.gradle and
+# ios/App/CapApp-SPM/Package.swift - list only Capacitor itself, because
+# `npx cap sync` has not run since the plugin entered package.json. Both carry
+# a "DO NOT EDIT - generated" header, so this is the normal Capacitor
+# arrangement rather than a defect; it just means the sync is what actually
+# wires the plugin in, here and in client/README.md's by-hand loop alike.
+#
+# WHY ONE OF THESE UPLOADS AND THE OTHER DOES NOT.
+#
+# `assembleDebug` produces an APK signed with Gradle's auto-generated debug
+# keystore, which a phone will install once "install unknown apps" is allowed.
+# That is a testable build for free. iOS has no equivalent: a device-
+# installable .ipa needs a provisioning profile, which needs an Apple
+# Developer account ($99/yr) - so this builds iOS with signing off and keeps
+# nothing. Compile-checked on both, installable on one, which is what
+# "aligned" can mean at zero cost. #102 (iOS build and TestFlight beta) and
+# #103 (Android build and internal testing track) are the distribution homes
+# and both are blocked-external on paid accounts; nothing here needs one.
+#
+# What this CANNOT answer: whether either shell BEHAVES. A compile check does
+# not run the app, so #1091 (does the iOS shell have crypto.subtle) stays open
+# and the plugin's actual background behaviour is still a walk with the APK
+# this produces.
+name: Build the native shells
+
+on:
+  # `main` only, matching the three test workflows - pushing to a PR branch
+  # would otherwise fire both this and the pull_request event for the same
+  # commit and build everything twice.
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Unfiltered, and in place before any of this becomes a required check
+  # rather than after: a required check that never reports does not fail a
+  # queue entry, it hangs it until the queue times out and ejects the pull
+  # request. client-tests.yml documents the same trap at length.
+  merge_group:
+  # So an APK can be had from any branch on demand, without pushing a commit
+  # to ask for one. The scope action answers "run" for every non-pull_request
+  # event, so a dispatch always builds.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      # No job-level `if:`, here or below. A workflow skipped by a path filter
+      # reports no status at all, and a required check reporting no status
+      # blocks a pull request forever rather than passing it. The steps carry
+      # the condition instead, so a pull request touching nothing relevant
+      # still finishes green having done nothing.
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # DELIBERATELY WIDER THAN THE iOS JOB BELOW, and the two are not a
+          # copy-paste divergence. This job's output is a build somebody
+          # installs to field-test whatever the branch changed, so it has to
+          # exist whenever the app changes - including for a pure
+          # client/src/lib change like the recorder itself. The iOS job's
+          # output is an answer to "does it still compile", which no React
+          # component can affect.
+          paths: client/ .github/workflows/build-shells.yml .github/actions/changed-paths/
+
+      - uses: actions/setup-node@v7
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      # 21 because AGP 8.13 with compileSdk 36 wants it; the runner's default
+      # JDK has moved before and pinning is cheaper than finding out during a
+      # release.
+      - uses: actions/setup-java@v5
+        if: steps.scope.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: npm ci
+
+      - name: Build the web app
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: npm run build
+
+      - name: Sync the Android project
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: npx cap sync android
+
+      # --no-daemon: a daemon that outlives the step buys nothing on a runner
+      # that is destroyed afterwards, and has cost other projects a hung job.
+      - name: Assemble the debug APK
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      # Fourteen days rather than the default ninety. This is a build to walk
+      # with while a branch is live, not an archive - and a stale APK is worse
+      # than none, because it looks like a current one in the Actions UI.
+      - uses: actions/upload-artifact@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          name: ourhike-debug-apk
+          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS compile check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # Narrower than the Android job on purpose - see its note. What can
+          # break an `xcodebuild` here is the Xcode project, the Capacitor
+          # config that generates into it, or the dependency set `cap sync`
+          # resolves into Package.swift. A change under client/src/ cannot:
+          # it is TypeScript that gets copied in as assets, and a broken one
+          # fails client-tests.yml long before it reaches a compiler.
+          paths: client/ios/ client/capacitor.config.ts client/package.json client/package-lock.json .github/workflows/build-shells.yml .github/actions/changed-paths/
+
+      - uses: actions/setup-node@v7
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: npm ci
+
+      - name: Build the web app
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: npm run build
+
+      - name: Sync the iOS project
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: npx cap sync ios
+
+      # Signing off, and no artifact kept. Everything Xcode can tell us
+      # without an Apple Developer account is told by whether this step
+      # exits zero: that the plugin resolves through Swift Package Manager,
+      # that its Swift compiles against Capacitor 8.5.0, and that the
+      # Info.plist keys #1182 added parse.
+      - name: Build the app without signing it
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client/ios/App
+        run: |
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build

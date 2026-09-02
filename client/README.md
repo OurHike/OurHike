@@ -205,13 +205,32 @@ each tree's own `.gitignore` keeps all of it out of commits. Prettier and
 oxlint skip both trees (`.prettierignore`, `.oxlintrc.json`): their layout is
 owned by the platform tools.
 
-Nothing goes through a Capacitor plugin. Geolocation stays
-`navigator.geolocation` (MapLibre's GeolocateControl runs its own watch
-internally, so a plugin swap could never cover both callers), and the offline
-archive stays IndexedDB (`lib/archiveStore.ts`). The shells only add what the
-web APIs need to function in a WebView: the two location permissions in
-`android/app/src/main/AndroidManifest.xml` and the usage string in
-`ios/App/App/Info.plist` — each carries its reasoning where it sits.
+**One plugin, reached by one feature.** Geolocation stays
+`navigator.geolocation` for everything a hiker sees — the blue dot, the mile
+readout — and MapLibre's GeolocateControl runs its own watch internally, so a
+plugin swap could never cover both callers anyway. The offline archive stays
+IndexedDB (`lib/archiveStore.ts`).
+
+The exception is `@capacitor-community/background-geolocation`, added for
+**#1182 — Record a GPS trace through a dark screen, which the web APIs cannot
+do**. It is reached only by the GPS trace recorder, a diagnostic that ships off
+and that a tester turns on deliberately. `capacitor.config.ts` states the
+no-plugins posture and its reason — a plugin would be "a second implementation
+of a thing that already works" — and that reasoning does not reach this case,
+because recording through a locked screen is a thing that does **not** already
+work: `navigator.geolocation` is exposed on `Window` only, so no service worker
+can hold a watch, and a locked screen freezes the page.
+`TECHNICAL_ARCHITECTURE.md`'s "Known trade-off" named this remedy in advance.
+
+`lib/backgroundGeolocation.ts` is the whole of the native surface, and its
+header carries the trap: **the plugin states its accuracy radius at 68%
+confidence and the web API states its at 95%** — about a 1.62× factor, in a
+field with the same name and the same units. Nothing converts; every trace
+sample records which convention it was measured under.
+
+Beyond that the shells add what the web APIs need in a WebView: the location
+permissions in `android/app/src/main/AndroidManifest.xml` and the usage strings
+in `ios/App/App/Info.plist` — each carries its reasoning where it sits.
 
 The loop, on a machine with Xcode or Android Studio (**#102 — iOS build and
 TestFlight beta** and **#103 — Android build and internal testing track**;
@@ -236,9 +255,104 @@ so archive downloads and OAuth sign-in inside a shell wait on those two
 issues deciding the allowlists. The service worker is inert on iOS (WKWebView
 has none on a custom scheme; the app shell ships in the binary,
 `registerSW.js`'s guard makes it a clean no-op) and untested-but-harmless on
-Android. And the shells add no background location: the app-level watch
-pauses itself when the app is hidden, a backgrounded WebView gets no JS time
-for MapLibre's own watch, and nothing native changes either fact.
+Android. The app-level watch still pauses itself when the app is
+hidden and a backgrounded WebView still gets no JS time for MapLibre's own
+watch; the background plugin below is the one exception, and it is reached by
+one feature.
+
+### Testing background GPS recording (#1182)
+
+**None of this has run on a device.** It was written in an agent sandbox with
+no phone, so the mapping, the platform gate and the teardown are unit-tested
+against a stub (`lib/backgroundGeolocation.test.ts`) and everything past
+`registerPlugin` is unverified behaviour. The plugin's own compatibility table
+stops at Capacitor v7 and this repository is on 8.5.0 — its peer range says
+`>=3.0.0`, which declares v8 by an open bound rather than by testing against
+it.
+
+Whether it **compiles** is now answered on every push, and the first answer
+was **yes on both**, measured against `85965a3d` on 2026-09-02. Android reports
+`Found 1 Capacitor plugin for android: @capacitor-community/background-geolocation@1.2.26`,
+builds its Gradle module and finishes `BUILD SUCCESSFUL in 1m 35s` with a 25.1 MB
+APK; iOS resolves it through Swift Package Manager as a real target
+(`BackgroundGeolocationPlugin`, `arm64`, `Debug-iphoneos`) and finishes
+`** BUILD SUCCEEDED **`. So the open peer bound is not hiding a break —
+against 8.5.0, on both platforms, it compiles.
+
+`build-shells.yml` (#1193) is what runs:
+
+|             | what it does                                      | what you get                                                                                                                                      |
+| ----------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Android** | `cap sync android` then `./gradlew assembleDebug` | the **`ourhike-debug-apk`** artifact on the run — download it, `adb install -r app-debug.apk`, or sideload it with "install unknown apps" allowed |
+| **iOS**     | `cap sync ios` then `xcodebuild` with signing off | a green check and nothing else — a device-installable `.ipa` needs a provisioning profile, which needs an Apple Developer account (#102)          |
+
+`workflow_dispatch` is enabled, so an APK can be had from any branch without
+pushing a commit to ask for one.
+
+By hand, if you would rather:
+
+```
+cd client
+npm run build && npx cap sync android
+cd android && ./gradlew assembleDebug
+# app/build/outputs/apk/debug/app-debug.apk — install with `adb install -r`
+```
+
+The `cap sync` is not optional in either route.
+`android/capacitor.settings.gradle` and `ios/App/CapApp-SPM/Package.swift` are
+generated files that currently name no plugins at all, and the sync is what
+wires this one in.
+
+Then, on the phone, in this order:
+
+1. Open the app once and allow location when asked. That is the _while using_
+   grant, and it is not enough on its own.
+2. **Settings → Apps → OurHike → Permissions → Location → "Allow all the
+   time".** Android 10+ will not let the app raise this as a prompt, so it has
+   to be done here. Skipping it makes the recorder report `not-authorized`,
+   which is correct and looks like a bug if you have not read this.
+3. Allow notifications (Android 13+). Without that the foreground service still
+   runs and says nothing, which is the wrong way round for something recording
+   where you are.
+4. Settings → Record a GPS trace → **Keep recording with the screen off**, then
+   Start.
+
+What proves it worked: the exported CSV has rows with `fix_source` of `native`
+and `page_visible` of `no`. A trace whose rows are all `web` recorded through
+the browser watch and stopped when the screen went dark, which is the failure
+this exists to end.
+
+### Reading a gap in the trace (#1180)
+
+A silence in the rows has four causes, and the columns exist so they can be
+told apart rather than argued about:
+
+| what happened                        | what the file looks like                                          |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| the screen went dark                 | rows resume with `wake_lock` reading something other than `held`  |
+| the phone was pocketed               | rows resume with `page_visible` reading `no`                      |
+| the platform had no fix to hand over | rows either side read `held` and `yes`, and `blocked_ms` is small |
+| **the app was too busy to take one** | the row _after_ the gap carries a large `blocked_ms`              |
+
+`blocked_ms` is milliseconds the main thread spent in tasks of 50 ms or more
+(W3C Long Tasks — the browser decides what counts, so the number is comparable
+across devices without anybody agreeing a threshold first) during the interval
+**ending** at that row. It lands after the jam rather than during it, because a
+blocked thread cannot run the callback that would have written a row.
+`worst_task_ms` is the longest single one, because 200 ms as one task is a
+visible freeze and as four tasks is a slightly sticky screen.
+
+**Both are empty on iOS**, which does not implement Long Tasks — and empty
+means _not measured_, never zero. The **App stalls** row on the recorder says
+which of the two an empty column is, while there is still a walk left to
+salvage.
+
+Two more columns say where the file came from, because comparing an Android
+trace against an iPhone one needs them separable: `shell` is the runtime
+(`android`, `ios` or `web` — a browser, installed to the home screen or not),
+and `device_os` is the phone as far as the user agent will say, empty rather
+than guessed. **`shell` is not `fix_source`**: a native build still writes
+`web` rows whenever the background switch is off.
 
 ## What is not wired up yet
 

@@ -30,12 +30,36 @@
 	     The sentence is the app's own promise, kept in step with the
 	     onboarding location screen (features/ONBOARDING.md; the copy in
 	     src/screens/Onboarding.tsx): if either changes, change both.
-	     When-in-use only: nothing in the app asks for fixes while it is
-	     hidden - the app-level watch pauses itself, and a backgrounded
-	     WebView gets no JS time for MapLibre's own watch either - and the
-	     shell does not change that. -->
+	     The app itself still asks for nothing while hidden: the app-level
+	     watch pauses itself and a backgrounded WebView gets no JS time for
+	     MapLibre's own watch. The Always key below is reached by one
+	     feature and one only - see its comment. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OurHike shows where you are along the trail, even with no signal. Your position never leaves your phone — nothing about where you are is sent anywhere.</string>
+	<!-- BACKGROUND RECORDING, FOR THE GPS TRACE RECORDER ALONE (#1182).
+
+	     This key and UIBackgroundModes below exist because a web app cannot
+	     record a track through a locked screen: navigator.geolocation is
+	     exposed on Window only, and a locked screen suspends the page. The
+	     recorder that #106's field walk depends on stopped mid-walk for
+	     exactly that reason. TECHNICAL_ARCHITECTURE.md's "Known trade-off"
+	     named this remedy in advance.
+
+	     The sentence is the app's own promise and has to stay true of the
+	     ONLY thing that reaches it: a diagnostic a tester turns on
+	     deliberately, that ships off, and whose recording never leaves the
+	     phone. If anything else in this app ever asks for Always, this
+	     string is a lie and both have to change.
+
+	     Apple reviews Always authorization closely. That is a question for
+	     #102 (TestFlight) if this ever ships to hikers rather than staying
+	     a testing tool; it is not a question for an internal build. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Only used if you turn on “Record a GPS trace” in Settings, so the recording keeps running with the screen off. The recording stays on this phone and is never uploaded.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

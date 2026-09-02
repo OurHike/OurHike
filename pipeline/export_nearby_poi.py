@@ -121,6 +121,7 @@ MANIFEST_NAME = "nearby_poi_manifest.json"
 TRAIL_IDS = {
     "NYS DEC": "NYSDEC",
     "NYS OPRHP": "NYSOPRHP",
+    "USFS": "USFS",
 }
 
 # DEC's ASSET values, for the two POI types DEC publishes no per-type service
@@ -172,6 +173,35 @@ OPRHP_SUB_ASSET_TYPES = {
     "Trailhead": "trailhead",
 }
 
+# USFS's site_type values. FOUR MAPPED OUT OF ROUGHLY THIRTY, and the
+# omissions carry more weight than the inclusions here (#1207).
+#
+# THE ONE THAT MATTERS IS 'CAMPING AREA', 10,783 rows - the LARGEST site_type
+# in the layer, bigger than every campground in the national forest system put
+# together, and deliberately absent. It is dispersed camping: development_scale
+# reads 0 (undeveloped) on 8,135 of them against not one CAMPGROUND row below
+# scale 2, and the names are forest-road references rather than places
+# ('FS1302-03', 'RD 614 SITE 13', 'RD 201 MI 8.2'). Publishing it would break an
+# editorial holdback this project already made for ATC's 2,333 user-created
+# campsites - SOURCE_SURVEY.md section 3b, "publishing locations may be actively
+# harmful", the ones land managers are often trying to close - at 4.6x the
+# scale, and as a side effect of a change about the White Mountains rather than
+# as a decision anybody took. sources.json's `usfs_dispersed_camping_holdback`
+# is the full argument and what would reopen it.
+#
+# Also deliberately absent: 'LOOKOUT/CABIN' (815) is not a trail shelter - a
+# rentable cabin a hiker cannot walk into is worse than no pin, and the
+# poi_coverage shelter verdict says so as `unsuitable`; 'HOTEL, LODGE, RESORT'
+# (164) is where AMC's huts would be if they were anywhere public, and is
+# unprobed; and the ski, boating, fishing, target-range and OHV-staging types
+# are not POI_TYPEs at all. Counts are nationwide, measured 2026-09-02.
+USFS_SITE_TYPES = {
+    "TRAILHEAD": "parking",
+    "CAMPGROUND": "campsite",
+    "GROUP CAMPGROUND": "campsite",
+    "OBSERVATION SITE": "viewpoint",
+}
+
 # Which registry key gets which value map, and which field the values live in.
 # Two entries rather than a `kind`, because two is what there is: adding a third
 # org means one line here plus its map above, and a `kind` would be a
@@ -179,6 +209,7 @@ OPRHP_SUB_ASSET_TYPES = {
 TYPED_LAYERS = {
     "dec_backcountry_features": ("ASSET", DEC_ASSET_TYPES),
     "oprhp_facilities": ("Sub_Asset", OPRHP_SUB_ASSET_TYPES),
+    "usfs_rec_sites": ("site_type", USFS_SITE_TYPES),
 }
 
 
@@ -216,10 +247,12 @@ def _folded(mapping: dict) -> dict:
 
 DEC_ASSET_TYPES_FOLDED = _folded(DEC_ASSET_TYPES)
 OPRHP_SUB_ASSET_TYPES_FOLDED = _folded(OPRHP_SUB_ASSET_TYPES)
+USFS_SITE_TYPES_FOLDED = _folded(USFS_SITE_TYPES)
 
 TYPED_LAYERS_FOLDED = {
     "dec_backcountry_features": ("ASSET", DEC_ASSET_TYPES_FOLDED),
     "oprhp_facilities": ("Sub_Asset", OPRHP_SUB_ASSET_TYPES_FOLDED),
+    "usfs_rec_sites": ("site_type", USFS_SITE_TYPES_FOLDED),
 }
 
 # Values excluded on purpose, counted and printed so the run says how much it

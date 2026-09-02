@@ -123,10 +123,10 @@ def test_every_source_records_what_its_licence_rests_on():
 
 
 def test_most_of_this_registry_ships_on_the_maintainers_own_word():
-    """Measured 2026-08-27, and stated as a fact rather than left to be counted.
+    """Re-measured 2026-09-02, and stated as a fact rather than left to be counted.
 
-    26 of the 33 registered sources ship on `maintainer_authorisation` - which
-    is NOT a grant from the organization - against 6 where the organization
+    27 of the 36 registered sources ship on `maintainer_authorisation` - which
+    is NOT a grant from the organization - against 8 where the organization
     stated terms of its own. That includes all thirteen ATC layers, whose
     `atc_licence` basis reads "Maintainer authorisation, on the basis of
     Appalachian Trail Conservancy affiliation".
@@ -135,6 +135,34 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     of edge registrations. It is not: it is almost everything, including the
     trail this app was built for. #98 is the open question underneath it.
 
+    WHAT MOVED ON 2026-09-02, and it moved three times in one day (#1207). The
+    White Mountains arrived as two USFS layers and NH GRANIT's trails, all
+    registered `unresolved` because neither organization states any reuse
+    terms. The maintainer then authorised publication on the grounds that the
+    data is publicly available - recorded as `maintainer_authorisation`,
+    because public availability is not itself a reuse grant and that is the
+    rule under which DEC, NYNJTC and Mohonk, all equally public, sit in this
+    column. The maintainer then made the stronger call: the USFS layers are
+    works of the U.S. Government and 17 U.S.C. 105 puts them in the PUBLIC
+    DOMAIN, so there is no copyright for the Forest Service to grant or
+    withhold.
+
+    So the two USFS entries are `stated_by_org` - `licence_basis_comment`
+    names "a federal public-domain work" as an instance of it - and the count
+    went 26 -> 29 -> 27 on this column, 6 -> 8 on the next. NH GRANIT stays
+    here: it is a university-run state clearinghouse aggregating contributed
+    town, land-trust and agency layers, so no public-domain-by-statute
+    argument reaches it and the body that could answer for a given segment may
+    not be GRANIT at all.
+
+    THE ONE PLACE THIS COUNT FLATTERS THE REGISTRY, said because a number that
+    only ever improves is a number nobody re-reads: `stated_by_org` now covers
+    two things that are not alike. OPRHP published terms somebody read and
+    weighed; USFS published nothing, and the statute means it did not have to.
+    Both are sound and only the first is an act of consent. `usfs_licence`
+    carries that distinction and the limits of section 105 - domestic only,
+    employees not contractors, and no claim on the Forest Service shield.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -142,4 +170,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 26, "stated_by_org": 6, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 27, "stated_by_org": 8, "unresolved": 1}

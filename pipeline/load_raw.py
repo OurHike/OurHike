@@ -93,19 +93,29 @@ EXTRA_LAYERS = [("opentrail", "at", "opentrail_at.geojson")]
 #: collapses BOTH to `nys`: not a name collision (the key disambiguates the
 #: table) but a table named after the state where it claims to be named after
 #: the organization, on the layer that decides whether a hiker sees a lean-to
-#: or a state-park bathroom. Measured against the live registry 2026-08-27:
-#: 33 entries, 9 distinct providers, and exactly one first-word collision -
-#: `NYS`, shared by `NYS OPRHP` and `NYS DEC` across 12 of the 33 entries.
+#: or a state-park bathroom. Re-measured against the live registry
+#: 2026-09-02: 36 entries, 11 distinct providers, and still exactly one
+#: first-word collision - `NYS`, shared by `NYS OPRHP` and `NYS DEC` across
+#: 12 of the 36 entries.
 #:
 #: Spelled out rather than derived, following lib/source_registry.py's
 #: POI_SOURCE_KEYS and the reason it gives for itself: a layer that turns out
 #: to differ should differ in a table, not somewhere clever. `Mohonk
 #: Preserve` is here for readability rather than to fix a collision -
 #: `mohonk` is what sources.json's own keys call it.
+#:
+#: `NH GRANIT` is the White Mountains registration (#1207) and is here
+#: because it MUST be: two words, so `_provider_slug` raises rather than
+#: guessing. `granit` rather than `nh` or `nh_granit` for the same reason
+#: `mohonk` is `mohonk` - GRANIT is what the organization calls itself and
+#: what its own service paths spell, and `nh` would name the state where the
+#: point is to name the clearinghouse. The other new provider, `USFS`, needs
+#: no row: one word, so it slugs to `usfs` on its own.
 PROVIDER_SLUGS = {
     "NYS OPRHP": "oprhp",
     "NYS DEC": "dec",
     "Mohonk Preserve": "mohonk",
+    "NH GRANIT": "granit",
 }
 
 

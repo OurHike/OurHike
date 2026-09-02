@@ -382,8 +382,31 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
         return source.get("blaze_default", NEUTRAL_FALLBACK), "default"
 
     raw = properties.get(field)
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
+    if raw is None:
         return NEUTRAL_FALLBACK, "absent"
+
+    # A BLANK STRING GETS ASKED OF THE REVIEWED TABLE BEFORE IT FALLS THROUGH
+    # (#1207). Until the White Mountains arrived, every blank was the same
+    # thing - a row whose publisher had not filled the column in - so this
+    # returned Unknown ("Blaze not recorded") without looking.
+    #
+    # NH GRANIT breaks that. Its BLAZE is blank on 7,574 of the 7,643 Whites
+    # rows, and the blank is CORRECT rather than missing: the White Mountains
+    # largely do not use paint blazes, and the 62 rows that do read White are
+    # the A.T. (61 carry TRAILSYS "Appalachian Trail"). For that source blank
+    # means UNBLAZED, which the palette spells "None" and the client renders
+    # as "Unblazed" - a true statement about a Whites trail, where Unknown
+    # would print a hedge in place of a fact.
+    #
+    # That is a judgement about one organization's data, so it lives where the
+    # other such judgements live - reference/blaze_mapping.json, a reviewed
+    # file whose diff is the review - rather than as a new registry field.
+    # A source whose table says nothing about blanks still gets Unknown, which
+    # is every source but one.
+    if isinstance(raw, str) and not raw.strip():
+        mapped, disposition = map_source_blaze(raw, mapping)
+        return (mapped, "mapped") if disposition == "mapped" else (NEUTRAL_FALLBACK, "absent")
+
     return map_source_blaze(raw, mapping)
 
 
@@ -403,6 +426,26 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str])
     foot_field = source.get("foot_field")
     if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
         return f"not a foot trail: {foot_field}={properties.get(foot_field)!r}"
+
+    # The other direction, and it exists because one source can only be
+    # filtered that way (#1207). `foot_field` asks "does this row SAY it is
+    # walkable" and drops everything that does not - which is right where the
+    # column is populated, and destructive where it is not. NH GRANIT's PED is
+    # blank on 3,760 of 7,643 Whites rows, and 2,541 of those blanks carry no
+    # use flag of any kind while being ordinary hiking trails - one of them
+    # literally named "Appalachian Trail - road link". A PED allowlist would
+    # delete them.
+    #
+    # What GRANIT does assert positively is what a corridor is FOR: 1,209 of
+    # those blank-PED rows are flagged SNOWMBL and 124 ATV. Acting on a
+    # positive assertion is sound where acting on an absence is not, so this
+    # drops on the motorized flag and keeps everything else - the maintainer's
+    # "It's OurHike, not OurBike" applied with the only evidence the layer
+    # offers. sources.json's `excluded_when_comment` on that entry carries the
+    # measurement and says why MTNBIKE, HORSE and XCSKI are NOT in the set.
+    for field, values in (source.get("excluded_when") or {}).items():
+        if properties.get(field) in values:
+            return f"excluded use: {field}={properties.get(field)!r}"
 
     status_field = source.get("status_field")
     if status_field and properties.get(status_field) not in SHIPPED_STATUSES:

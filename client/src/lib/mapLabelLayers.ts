@@ -32,7 +32,7 @@
 
 import { TRAIL_LABEL_LAYER_ID, NEARBY_TRAIL_LABEL_LAYER_ID } from '../map/trailLabels'
 import { LIVE_TOPO_LAYER_IDS } from '../map/liveTopo'
-import { LABEL_TIER, type LabelTier } from '../map/labelLadder'
+import { TIER_MIN_ZOOM, type LabelTier } from '../map/labelLadder'
 
 export type LabelLayerKey =
   'parking' | 'roads' | 'shelters' | 'campsites' | 'trails' | 'water' | 'contours'
@@ -102,8 +102,14 @@ export const LABEL_LAYERS: readonly LabelLayerSpec[] = [
   },
   {
     key: 'water',
+    // THE FINEST BAND, with the junctions, and not with the shelters. The
+    // handoff's z2 "route" adds named trails, peaks, shelters and campsites;
+    // its z3 "section" adds "junction markers and water". Water names are a
+    // section-level detail on a topo sheet rather than something a hiker
+    // picks a start point by - which is the question this whole ladder
+    // orders labels for.
     label: 'Water',
-    tier: 'landmark',
+    tier: 'junction',
     layerIds: [LIVE_TOPO_LAYER_IDS.waterLabel],
   },
   {
@@ -200,10 +206,32 @@ export function labelVisibilityPlan(
   return { shown: shownIds, hidden: hiddenIds }
 }
 
-/** The badge the toggle wears: `T1`/`T2`/`T3`, from the rung. */
+/**
+ * The badge the toggle wears: `T1`/`T2`/`T3`.
+ *
+ * THE BADGE IS THE ZOOM BAND, NOT THE COLLISION RUNG, and conflating the two
+ * is what this got wrong first: it split at `routeTrail`, so shelters and
+ * campsites wore `T3` on screen while the handoff puts them in z2 with the
+ * trail names. The ladder has seven rungs because collisions need that much
+ * resolution; a hiker reading a toggle needs the three the legend names.
+ *
+ * The split therefore follows map/labelLadder.ts's own `TIER_MIN_ZOOM`:
+ * everything that draws at the gateway zoom is T1, everything that waits for
+ * the landmark zoom is T2, and everything held back to the finest band is T3.
+ * Derived from those numbers rather than restated, so a rung that moves
+ * cannot leave a badge behind saying where it used to be.
+ *
+ * WHERE THIS DISAGREES WITH THE HANDOFF, IT IS BECAUSE THE MAP DOES. It puts
+ * trail names in z2; they badge `T1` here, because map/trailLabels.ts has
+ * drawn them from `POI_PIN_MIN_ZOOM` since #930 and this change does not move
+ * them. A badge saying "z2" over a name already on screen at the park view
+ * would be the display outrunning its source in miniature - and holding the
+ * names back to match would take them off the wide view where a hiker picking
+ * a start point most wants to know which line is which.
+ */
 export function tierBadge(tier: LabelTier): string {
-  const rung = LABEL_TIER[tier]
-  if (rung <= LABEL_TIER.gateway) return 'T1'
-  if (rung <= LABEL_TIER.routeTrail) return 'T2'
+  const zoom = TIER_MIN_ZOOM[tier]
+  if (zoom <= TIER_MIN_ZOOM.gateway) return 'T1'
+  if (zoom <= TIER_MIN_ZOOM.landmark) return 'T2'
   return 'T3'
 }

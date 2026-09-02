@@ -845,6 +845,38 @@ export function MapScreen({
   // tells a screen reader it is.
   const isDesktop = useDesktop()
 
+  /**
+   * Whether the day-hike builder owns this screen (#1194).
+   *
+   * WHAT IT SUPPRESSES, AND WHY EACH ONE. The complaint behind the builder's
+   * redesign was that its map was too small, and adding the rail alone made
+   * that WORSE on a wide screen rather than better: measured on this pull
+   * request's own preview at 1280x800, the tab sidebar (208px), the rail
+   * (348px) and the persistent legend (290px) left the map 434px, with the
+   * elevation chart taking another 200px of height under it. A rail that
+   * buys the map room by taking it from the map is not the fix anybody asked
+   * for.
+   *
+   * So while a walk is being built, two surfaces stand down:
+   *
+   *  - THE ELEVATION PROFILE, on both breakpoints. It draws the A.T.'s
+   *    whole-corridor silhouette (mi 0.0-2,197.9), and a hiker laying out a
+   *    loop in Harriman is not walking the A.T. It is not merely in the way,
+   *    it is about a different trail - see chrome/DayHikePanel.tsx for why
+   *    the walk being built has no profile of its own to put there.
+   *  - THE PERSISTENT LEGEND, on a desktop. Its filters decide which PINS
+   *    the map draws, and the builder has its own row deciding which LABELS
+   *    it draws; two panels of map controls flanking a 434px map is the
+   *    thing being fixed. The legend is one tap away the moment the builder
+   *    closes, and Cancel is always on screen.
+   *
+   * THE ATTRIBUTION LINE STAYS. ODbL is a licence condition rather than
+   * chrome, and MapAttribution's own note says the credit may not depend on
+   * whether a profile happened to download - so it may not depend on this
+   * either.
+   */
+  const buildingDayHike = builderPanel !== undefined && builderPanel !== null
+
   // The live map, kept here as well as reported upward, because the waypoint
   // card anchors to a pin by projecting its coordinates through the map - and
   // the shell above owns the POI data, not the canvas. Tee'd rather than
@@ -1413,7 +1445,11 @@ export function MapScreen({
           </div>
 
           <Legend
-            open={legendOpen}
+            // Stood down while the builder owns the screen - see
+            // `buildingDayHike`. `open` rather than not rendering it, so the
+            // component keeps its own state and a hiker who had it open
+            // finds it open again when they cancel.
+            open={legendOpen && !buildingDayHike}
             persistent={isDesktop}
             bbox={bbox}
             points={viewportPoints}
@@ -1472,7 +1508,7 @@ export function MapScreen({
           // the band is the attribution line alone, because the credit may
           // not depend on whether a profile happened to download.
           <div className="next-up-band">
-            {waypoints !== undefined && elevation !== undefined && (
+            {!buildingDayHike && waypoints !== undefined && elevation !== undefined && (
               <NextUpRail
                 points={waypoints.points}
                 subject={elevation.source}
@@ -1483,7 +1519,7 @@ export function MapScreen({
                 stalenessFor={waypoints.stalenessFor}
               />
             )}
-            {elevation !== undefined && (
+            {!buildingDayHike && elevation !== undefined && (
               <div className="next-up__ribbon-card">
                 <ElevationRibbon
                   {...elevation}
@@ -1504,7 +1540,7 @@ export function MapScreen({
             answer to the ribbon, needing no fix. Rendered below the body so
             the map and the legend keep their whole height until the profile
             exists to draw. `units` last, exactly as on the ribbon above. */}
-        {isDesktop && chart !== undefined && (
+        {isDesktop && !buildingDayHike && chart !== undefined && (
           <ElevationChart
             profile={chart.profile}
             currentMile={chart.currentMile}

@@ -197,41 +197,48 @@ export function DayHikePanel({
       </dl>
 
       <div className="day-hike-panel__body" id={bodyId} hidden={!detailsOpen}>
-        <div className="day-hike-panel__climb">
-          <p className="day-hike-panel__section-head">Climb</p>
-          {routed?.climb == null ? (
-            <p className="day-hike-panel__unknown">
-              This phone can&rsquo;t price the climb on this walk &mdash; either the
-              elevation download hasn&rsquo;t landed, or one of these trails has never
-              been measured.
-            </p>
-          ) : (
-            <>
-              <p className="day-hike-panel__climb-figures">
-                <span className="day-hike-panel__climb-up">
-                  &uarr; {formatElevation(routed.climb.gainFt, units)}
-                </span>
-                <span className="day-hike-panel__climb-down">
-                  &darr; {formatElevation(routed.climb.lossFt, units)}
-                </span>
+        {/* NOTHING TO SAY BEFORE THERE IS A WALK. With no route yet the stats
+            row above already reads "— / Unknown / —", and repeating that as a
+            paragraph is three lines of chrome on the screen whose complaint
+            was that the chrome had taken the map. The block returns the
+            moment a first leg routes. */}
+        {routed !== null && (
+          <div className="day-hike-panel__climb">
+            <p className="day-hike-panel__section-head">Climb</p>
+            {routed?.climb == null ? (
+              <p className="day-hike-panel__unknown">
+                This phone can&rsquo;t price the climb on this walk &mdash; either the
+                elevation download hasn&rsquo;t landed, or one of these trails has never
+                been measured.
               </p>
-              {/* The handoff's rail draws an elevation silhouette here. See
+            ) : (
+              <>
+                <p className="day-hike-panel__climb-figures">
+                  <span className="day-hike-panel__climb-up">
+                    &uarr; {formatElevation(routed.climb.gainFt, units)}
+                  </span>
+                  <span className="day-hike-panel__climb-down">
+                    &darr; {formatElevation(routed.climb.lossFt, units)}
+                  </span>
+                </p>
+                {/* The handoff's rail draws an elevation silhouette here. See
                   this file's header: the samples that would draw it are not
                   published for network trails, and the honest thing is to say
                   so where the chart would have been rather than to leave a
                   gap somebody fills in later with a guess. */}
+                <p className="day-hike-panel__note">
+                  No profile yet &mdash; these trails publish how much they climb, not the
+                  shape of it.
+                </p>
+              </>
+            )}
+            {stopping !== null && (
               <p className="day-hike-panel__note">
-                No profile yet &mdash; these trails publish how much they climb, not the
-                shape of it.
+                Stops add about {stopping} min, on top of the walking.
               </p>
-            </>
-          )}
-          {stopping !== null && (
-            <p className="day-hike-panel__note">
-              Stops add about {stopping} min, on top of the walking.
-            </p>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         <div className="day-hike-panel__rows">
           <p className="day-hike-panel__section-head">

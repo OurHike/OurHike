@@ -224,11 +224,39 @@ describe('the ladder', () => {
 })
 
 describe('the tier badge', () => {
-  it('reads T1 for the way in, T2 for the walk, T3 for the fine grain', () => {
+  it('is the zoom band a class arrives in, not its collision rung', () => {
+    // The distinction this got wrong first: it split at `routeTrail`, so
+    // shelters and campsites wore T3 while the handoff puts them in z2 with
+    // the trail names. Seven rungs are what collisions need; three bands are
+    // what a hiker reads.
     expect(tierBadge('gateway')).toBe('T1')
-    expect(tierBadge('route')).toBe('T2')
-    expect(tierBadge('routeTrail')).toBe('T2')
-    expect(tierBadge('landmark')).toBe('T3')
+    expect(tierBadge('landmark')).toBe('T2')
+    expect(tierBadge('junction')).toBe('T3')
+  })
+
+  it('badges shelters and campsites together, and water apart from them', () => {
+    // The handoff's own bands: z2 "route" adds shelters and campsites, z3
+    // "section" adds "junction markers and water".
+    const badge = (key: string) =>
+      tierBadge(LABEL_LAYERS.find((spec) => spec.key === key)?.tier ?? 'rest')
+
+    expect(badge('shelters')).toBe('T2')
+    expect(badge('campsites')).toBe('T2')
+    expect(badge('water')).toBe('T3')
+    expect(badge('contours')).toBe('T3')
+    expect(badge('parking')).toBe('T1')
+    expect(badge('roads')).toBe('T1')
+  })
+
+  it('badges a class by when it ACTUALLY draws, even where that parts from the design', () => {
+    // Trail names badge T1 rather than the handoff's T2, because
+    // map/trailLabels.ts has drawn them from POI_PIN_MIN_ZOOM since #930 and
+    // this change does not move them. A badge is a claim about the map, so it
+    // has to follow the map.
+    const trails = LABEL_LAYERS.find((spec) => spec.key === 'trails')
+
+    expect(TIER_MIN_ZOOM[trails?.tier ?? 'rest']).toBe(TIER_MIN_ZOOM.gateway)
+    expect(tierBadge(trails?.tier ?? 'rest')).toBe('T1')
   })
 
   it('gives every shipped toggle a badge', () => {

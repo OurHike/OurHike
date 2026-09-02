@@ -3035,8 +3035,14 @@
   /* Capped so a long route list can never push the map off the screen: the
      complaint this whole change answers is that the map was too small, and a
      panel that grows without limit would reintroduce it through the top of
-     the screen instead of the bottom. */
-  max-height: 45%;
+     the screen instead of the bottom.
+
+     35% rather than the 45% this shipped at first, measured off this pull
+     request's own preview at 390x844: with the details open the panel was
+     taking 39% of the screen and the map was left a band in the middle,
+     narrower than the bottom sheet had ever made it. The cap is what the
+     panel scrolls inside; nothing in it is lost. */
+  max-height: 35%;
   overflow-y: auto;
 }
 

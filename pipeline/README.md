@@ -220,6 +220,12 @@ One of those wants reading before it is trusted: the route-owner rule matches a 
 
 **And one number wants watching.** 7.3 MB gzipped is what a phone pulls in one request for the whole of New York state, against 1.7 MB when the ring was on — on a screen that still does not store what it fetched ([features/NEARBY_TRAILS.md](../features/NEARBY_TRAILS.md) §9). The junction graph derived from these lines grew with them: 8,185 edges → 37,134, which `build_trail_graph.py` itself now prints a warning about against the ~3,000 [#757](https://github.com/OurHike/OurHike/issues/757) established as routable on a phone. Neither is fixed here; both are [#552](https://github.com/OurHike/OurHike/issues/552)'s coverage-unit decision arriving with a bigger number attached than it had before.
 
+## The mile of every trail vertex, published beside the line (#1192)
+
+`export_trails.py` writes `trail_miles.json` next to `trails.geojson`: one mile per centerline vertex, keyed by the feature ids the GeoJSON carries, projected onto `export_elevation.calibrated_trail_axis` exactly as `export_poi.attach_miles` projects a shelter. It exists because the phone used to re-measure the line itself and then search that measurement for every waypoint - 16,949 of them after the other organizations' waypoints shipped, 13 s of one frozen task on a throttled phone profile (2026-09-02). Read off the phone's index (`client/src/lib/trailPosition.ts`), the published numbers make a POI's `mile` its position on the index with no search at all, and make [features/HIKE_PLANNING.md](../features/HIKE_PLANNING.md) Finding 1's two mile scales one.
+
+The file names the hash of the `trails.geojson` it was measured on (`trails_sha256`), and the client refuses any other pairing; a run without ATC's half-mile markers writes the line and a loud `HELD BACK` for the miles rather than an uncalibrated axis. The manifest records `monotonic_breaks` - vertices whose mile steps back against their chain's direction, where the calibrated axis's nearest piece changes underneath it. Measured on the 2026-09-02 run: 216,759 vertices, 112 steps in 46 of 461 chains, the largest 0.27 mi; the client treats each as a piece boundary. 1.83 MB, 0.52 MB gzipped.
+
 ## POI descriptions
 
 Every POI from one of ATC's own facility layers carries a `description` — one sentence the waypoint card shows under the name:

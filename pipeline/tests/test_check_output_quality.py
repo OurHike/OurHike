@@ -1536,3 +1536,24 @@ def test_main_still_flags_a_drop_an_unrelated_changed_source_cannot_explain(pass
 
     # poi:shelter is fed by 'atc' alone, so an elevation refresh explains nothing.
     assert check_output_quality.main(["--changed-source", "elevation"]) != 0
+
+
+def test_trails_verdict_checks_the_vertex_miles_when_the_manifest_claims_them(tmp_path):
+    """#1192: trail_miles.json is optional in a manifest, but a manifest that
+    records one whose bytes no longer match is the same silent corruption the
+    line's own hash check exists to catch - and on a phone the client's
+    fallback would hide it."""
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest = {
+        "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 10),
+        "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 10),
+        "miles": _artifact_entry(tmp_path / "trail_miles.json", "miles", 1),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    assert check_output_quality.trails_verdict(manifest_path)["verdict"] is Verdict.OK
+
+    (tmp_path / "trail_miles.json").write_text("truncated")
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("trail_miles.json" in p and "sha256 mismatch" in p for p in report["problems"])

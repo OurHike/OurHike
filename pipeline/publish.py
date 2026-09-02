@@ -510,6 +510,13 @@ NEARBY_POI_KEY = "nearby_poi.geojson"
 # contract-test reason as its two neighbours.
 NETWORK_OVERVIEW_KEY = "network_overview.geojson"
 
+# The mile of every centerline vertex, on the calibrated axis (#1192,
+# export_trails.write_trail_miles) - trails.geojson's sidecar, keyed by the
+# feature ids that file carries and naming its hash. Named here for the same
+# contract-test reason as its neighbours: one spelling for
+# test_published_key_contract.py and the client's lib/config.ts to agree with.
+TRAIL_MILES_KEY = "trail_miles.json"
+
 
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
@@ -538,6 +545,12 @@ def collect_artifacts() -> dict[str, dict]:
                 "path": manifest["overview"]["path"],
                 "sha256": manifest["overview"]["sha256"],
             }
+        # The per-vertex miles (#1192). Absent from a release exported before
+        # they existed, or from a checkout with no half-mile markers to
+        # calibrate an axis against, which the client reads as "measure the
+        # line yourself" rather than as a failure - spurs.json's own rule.
+        if "miles" in manifest:
+            artifacts[TRAIL_MILES_KEY] = {"path": manifest["miles"]["path"], "sha256": manifest["miles"]["sha256"]}
 
     # The trail lines other organizations maintain (#950,
     # export_nearby_trails.py). THE ONLY ARTIFACT IN THIS FUNCTION WITH A

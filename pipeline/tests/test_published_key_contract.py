@@ -170,6 +170,11 @@ def client_keys() -> dict[str, str]:
     keys = {
         _string_const(config, "TRAILS_KEY"): "config.ts TRAILS_KEY",
         _string_const(config, "TRAILS_OVERVIEW_KEY"): "config.ts TRAILS_OVERVIEW_KEY",
+        # The per-vertex miles beside the line (#1192). Optional on the phone,
+        # like spurs.json - and the fallback when it is missing is the client
+        # measuring the line itself, silently, which is exactly why a respelt
+        # name here would never be noticed from a phone.
+        _string_const(config, "TRAIL_MILES_KEY"): "config.ts TRAIL_MILES_KEY",
         _string_const(config, "SPURS_KEY"): "config.ts SPURS_KEY",
         _string_const(config, "ELEVATION_KEY"): "config.ts ELEVATION_KEY",
         # #831: the client started requesting the tombstones when it got a
@@ -249,6 +254,8 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # publish.collect_artifacts, and export_trails.write_overview for what it
     # is (#869).
     trails_manifest["overview"] = manifest_entry("trails_overview.geojson")
+    # The per-vertex miles, the same way (#1192, export_trails.write_trail_miles).
+    trails_manifest["miles"] = manifest_entry("trail_miles.json")
     (tmp_path / "trails_manifest.json").write_text(json.dumps(trails_manifest))
 
     poi_dir = tmp_path / "poi"

@@ -48,7 +48,7 @@ const config: CapacitorConfig = {
   backgroundColor: '#f7f3e9',
   android: {
     /**
-     * REQUIRED BY THE BACKGROUND-GEOLOCATION PLUGIN, and a real trade.
+     * REQUIRED BY THE BACKGROUND-GEOLOCATION PLUGIN, and a small trade.
      *
      * Without it, `@capacitor-community/background-geolocation` stops
      * delivering location about five minutes after the app goes to the
@@ -57,22 +57,29 @@ const config: CapacitorConfig = {
      * plugin without this flag would fail in exactly the way that looks like
      * success on a short test.
      *
-     * What it costs: the legacy bridge serves the WebView from
-     * `http://localhost` rather than `https://localhost`. That is a
-     * NON-SECURE origin, and the header above notes that Android is the shell
-     * where service workers exist. `'serviceWorker' in navigator` is false on
-     * a non-secure origin, so the Android shell now behaves like the iOS one -
-     * the vite-plugin-pwa registration is a no-op and lib/useAppUpdate.ts with
-     * it. Both were already guarded for iOS and both are already redundant in
-     * a shell that ships its assets in the binary, which is why this is
-     * acceptable rather than merely survivable.
+     * WHAT IT ACTUALLY COSTS, read off the vendored Capacitor 8.5.0 source
+     * rather than inferred (#1203, which is this paragraph being repaired -
+     * the version before it invented a scheme change and a consequence chain
+     * ending in a hiker's downloaded archive going missing, none of which
+     * follows from anything).
      *
-     * @unvalidated - no device build has been run since this was set. The
-     * scheme change is read off Capacitor's documented behaviour for
-     * `useLegacyBridge`, not observed here, and IndexedDB being keyed by
-     * origin means an existing install's downloaded archive may not be
-     * visible under the new scheme. What would settle it: install over a
-     * previous build and see whether the trail data is still there.
+     * The flag chooses the JS BRIDGE TRANSPORT and nothing else.
+     * `@capacitor/cli/dist/declarations.d.ts:254-261`: "Use legacy
+     * addJavascriptInterface instead of the new and more secure
+     * addWebMessageListener". Its only consumer is `MessageHandler.java:36-41`,
+     * which picks between exactly those two calls. The difference that matters
+     * is that `addWebMessageListener` is scoped to the bridge's allowed origin
+     * rules and `addJavascriptInterface` exposes the interface to whatever the
+     * WebView has loaded - which in this shell is only assets shipped in the
+     * binary, with no remote content and no third-party frames, so the
+     * exposure has nothing to reach.
+     *
+     * IT DOES NOT TOUCH THE URL. `CapConfig.java:39` defaults `androidScheme`
+     * to `CAPACITOR_HTTPS_SCHEME` and only `server.androidScheme` overrides
+     * it, which this config never sets. So the Android shell serves
+     * `https://localhost` with or without this flag, service workers keep
+     * existing there exactly as the header above says, and IndexedDB is not
+     * re-keyed - an existing install's archive is not at risk from this line.
      */
     useLegacyBridge: true,
   },

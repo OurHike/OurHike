@@ -1242,7 +1242,7 @@ function App() {
   // it on in Settings, and it reads the same watch rather than opening a
   // second one - a second high-accuracy watch is the mistake map/mapChrome.ts
   // and this file have each already made once.
-  const gpsTrace = useGpsTrace(trailIndex)
+  const gpsTrace = useGpsTrace(trailIndex, locationAllowed)
   const gps = useGeolocation(locationAllowed, {
     onFix: gpsTrace.onFix,
     // Recording holds the watch through a pocket, suspending #313's pause.

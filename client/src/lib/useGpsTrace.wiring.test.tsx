@@ -104,7 +104,7 @@ function useRecorderAndWatch(
   locationAllowed: boolean,
   trailIndex: TrailIndex | null = null,
 ) {
-  const gpsTrace = useGpsTrace(trailIndex)
+  const gpsTrace = useGpsTrace(trailIndex, locationAllowed)
   const gps = useGeolocation(locationAllowed, {
     onFix: gpsTrace.onFix,
     keepAwake: gpsTrace.status.recording,
@@ -169,6 +169,60 @@ function stubLongTasks() {
 }
 
 describe('the recorder wired to the watch, as App.tsx joins them', () => {
+  it('stops ASKING for fixes when the hiker turns location off mid-recording', async () => {
+    // #1201. The watch stopped correctly - useGeolocation gets the flag - and
+    // the poll did not, so the app went on calling getCurrentPosition with
+    // high accuracy on, every five seconds, after being told not to. Nothing
+    // left the phone; that is not the point.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const gps = stubGeolocation()
+    const { result, rerender } = renderHook(
+      ({ allowed }) => useRecorderAndWatch(allowed),
+      { initialProps: { allowed: true } },
+    )
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+    expect(gps.getCurrentPosition).toHaveBeenCalledOnce()
+
+    rerender({ allowed: false })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+
+    // Six more intervals passed and not one of them asked.
+    expect(gps.getCurrentPosition).toHaveBeenCalledOnce()
+  })
+
+  it('leaves the recording OPEN rather than ending it for the hiker', async () => {
+    // The other half of #1201, and the half it would be easy to get wrong.
+    // gpsTrace.ts's `resume` argues the case: a recording that ends itself
+    // hands back a truncated trace that looks complete, and the walk is not
+    // repeatable that day. So the recording stays open and inert, and the
+    // hiker decides - which is only a decision if More.tsx keeps the Stop
+    // button on screen, asserted separately in More.test.tsx.
+    stubGeolocation()
+    const { result, rerender } = renderHook(
+      ({ allowed }) => useRecorderAndWatch(allowed),
+      { initialProps: { allowed: true } },
+    )
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+
+    rerender({ allowed: false })
+
+    expect(result.current.gpsTrace.status.recording).toBe(true)
+    expect(result.current.gpsTrace.locationAllowed).toBe(false)
+  })
+
   it('stamps the main-thread stall onto the fix that follows it', async () => {
     // THE SIXTH WALK'S SEAM. A meter that measures perfectly and never reaches
     // a sample is the `useGeolocation`/`gpsTrace` failure again, one file

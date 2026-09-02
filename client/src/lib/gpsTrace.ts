@@ -53,9 +53,12 @@
 //
 // NOTHING HERE LEAVES THE PHONE. On-device storage, manual export, and no
 // caller anywhere may attach a trace to an app-failure report. A location
-// trace is the most sensitive thing this app could hold and
-// features/IDENTITY_AND_PRIVACY.md has no row for one, because until now
-// nothing produced one. See #1180 for the boundary as agreed.
+// trace is the most sensitive thing this app could hold, so it now has a row
+// in features/IDENTITY_AND_PRIVACY.md and a paragraph in the privacy policy
+// (#1204) - this comment used to observe that it had neither "because until
+// now nothing produced one", which stopped being the right answer the moment
+// #1180 shipped a Start button every hiker with location on can see. See
+// #1180 for the boundary as agreed.
 
 import { get, set, del } from 'idb-keyval'
 
@@ -134,7 +137,7 @@ export interface TraceSample {
    * background plugin (its own definition). Carried because the two are not
    * comparable and nothing downstream could otherwise tell.
    */
-  accuracyConfidence: 68 | 95
+  accuracyConfidence: AccuracyConfidence
   /**
    * The platform says this was mock-location software rather than GNSS.
    *
@@ -206,6 +209,11 @@ export type WakeLockLabel = string
  */
 export type FixSource = 'web' | 'native' | 'web-poll'
 
+/** The confidence an accuracy radius is stated at, as a percentage. Two
+ *  values because two sources: 95 is the W3C Geolocation definition, 68 is
+ *  the background plugin's own. Never converted between - see the header. */
+export type AccuracyConfidence = 68 | 95
+
 /** What the app made of a fix, or null when it could not place it at all.
  *  Structurally `TrailFix`, named separately so this module does not import
  *  the trail index just to describe three numbers. */
@@ -239,8 +247,17 @@ export interface TraceStatus {
    * heading - the fingerprint of a network fix, not GNSS. A tester who could
    * see "±100 m" would have known in thirty seconds that the phone had no
    * satellite lock. Instead it took 74 minutes and a CSV.
+   *
+   * PAIRED WITH ITS CONVENTION, never bare (#1205). The web API states its
+   * radius at 95% confidence and the background plugin states its at 68% -
+   * about a 1.62x factor - so a bare "40 ft" from the two sources means
+   * materially different things, and the smaller-looking number is the
+   * plugin's. The CSV has kept these apart in two columns since #1182 and
+   * this row printed only the first of them, which is the branch's own
+   * central argument applied everywhere except where a human reads it.
    */
   lastAccuracyM: number | null
+  lastAccuracyConfidence: AccuracyConfidence | null
 }
 
 /** The IndexedDB surface this needs, injected so the suite can exercise the
@@ -320,6 +337,7 @@ interface PersistedState {
   samples: number
   lastSampleAt: number | null
   lastAccuracyM: number | null
+  lastAccuracyConfidence: AccuracyConfidence | null
 }
 
 const EMPTY: PersistedState = {
@@ -330,6 +348,7 @@ const EMPTY: PersistedState = {
   samples: 0,
   lastSampleAt: null,
   lastAccuracyM: null,
+  lastAccuracyConfidence: null,
 }
 
 export interface GpsTrace {
@@ -359,6 +378,7 @@ function statusOf(state: PersistedState): TraceStatus {
     samples: state.samples,
     lastSampleAt: state.lastSampleAt,
     lastAccuracyM: state.lastAccuracyM,
+    lastAccuracyConfidence: state.lastAccuracyConfidence,
   }
 }
 
@@ -434,6 +454,21 @@ export function createGpsTrace(
     },
 
     async mark(marker: TraceMarker): Promise<TraceStatus> {
+      // FLUSHED BEFORE PERSISTED, and that order is the whole of #1202.
+      //
+      // `persist` writes `samples`. Flushing after it - or not at all, which
+      // is what this did - writes a count that includes rows still living
+      // only in the buffer, and `resume` drops the buffer. Reproduced: ten
+      // fixes, one mark, then a fresh reader resumes saying ten readings over
+      // a trace holding none. Bounded by one chunk, so a handful of phantom
+      // rows rather than a lost walk, and the count stays wrong for the rest
+      // of the recording.
+      //
+      // It also happens to be the right order for the DATA. `record` stamps
+      // the marker at record time, so everything in the buffer already
+      // carries the previous one; writing it out before the new marker is set
+      // is what keeps that true.
+      await flush()
       state = { ...state, marker }
       // Persisted immediately rather than with the next chunk: the marker is
       // the hiker's own statement about the minute they are standing in, and
@@ -474,6 +509,7 @@ export function createGpsTrace(
         samples: state.samples + 1,
         lastSampleAt: sample.timestampMs,
         lastAccuracyM: sample.accuracyM,
+        lastAccuracyConfidence: sample.accuracyConfidence,
       }
 
       // Either bound, whichever comes first. The count keeps a fast walk from

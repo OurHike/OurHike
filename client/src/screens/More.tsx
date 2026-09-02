@@ -513,8 +513,15 @@ export function More({
               returns `idle` and registers nothing), so a Start button would
               record nothing at all while looking exactly like one that
               worked - a tester finding that out is a walk nobody gets back. */}
+          {/* OR `status.recording`, and that half is #1201. Gating on the
+              preference ALONE meant turning location off mid-walk took the
+              app's only Stop button away with the section, leaving a
+              recording open with no way to close it but re-enabling location.
+              A recording in progress is a thing the hiker has to be able to
+              end, whatever else they have since switched off. */}
           {gpsTrace !== undefined &&
-            settings.preferences.location_permission_requested && (
+            (settings.preferences.location_permission_requested ||
+              gpsTrace.status.recording) && (
               <GpsTraceSettings {...gpsTrace} units={settings.preferences.unit_system} />
             )}
         </>

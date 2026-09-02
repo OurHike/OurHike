@@ -615,6 +615,7 @@ describe('the GPS trace section on Safety & privacy', () => {
       samples: 0,
       lastSampleAt: null,
       lastAccuracyM: null,
+      lastAccuracyConfidence: null,
     },
     onStart: vi.fn(),
     onStop: vi.fn(),
@@ -663,6 +664,27 @@ describe('the GPS trace section on Safety & privacy', () => {
     expect(
       screen.queryByRole('heading', { name: 'Record a GPS trace' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('comes BACK while a recording is open, so Stop is still reachable', () => {
+    // #1201. The test above is right and was half a rule: hidden while
+    // location is off is correct when nothing is recording, and takes the
+    // app's only Stop button away when something is. Turning the switch off
+    // mid-walk left a recording open that the hiker could not close without
+    // turning location back on first.
+    render(
+      <More
+        {...PROPS}
+        page="safety"
+        preferences={{ ...PROPS.preferences, location_permission_requested: false }}
+        gpsTrace={{
+          ...TRACE,
+          status: { ...TRACE.status, recording: true, startedAt: 0 },
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Stop recording' })).toBeInTheDocument()
   })
 
   it('does not put it on any other page', () => {

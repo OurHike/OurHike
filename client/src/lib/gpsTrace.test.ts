@@ -333,6 +333,53 @@ function column(csv: string): (name: string) => string {
   return (name) => row[header.indexOf(name)]
 }
 
+describe('the count and the file agree', () => {
+  it('does not report readings a fresh reader cannot find, after a mark', async () => {
+    // #1202, REPRODUCED before it was fixed: ten fixes, one mark, then a
+    // fresh reader - which is what a reload gets - resumed saying ten
+    // readings over a trace holding none. `mark` persisted a state carrying
+    // `samples` while those samples were still only in the buffer, and
+    // `resume` drops the buffer.
+    //
+    // Asserted as the INVARIANT rather than as one more case, because the
+    // reason this got through is that gpsTrace.test.ts only ever checked
+    // paths where a flush had already happened.
+    const { store } = fakeStore()
+    const trace = createGpsTrace(store)
+    await trace.start()
+    for (let i = 0; i < 10; i += 1) await trace.record(sampleAt(1_000 + i * 1_000))
+
+    const marked = await trace.mark('stationary')
+
+    const reader = createGpsTrace(store)
+    const resumed = await reader.resume()
+    expect(resumed.samples).toBe((await reader.readAll()).length)
+    expect(marked.samples).toBe(10)
+  })
+
+  it('keeps the marker off the readings taken before it was tapped', async () => {
+    // The flush `mark` now does happens BEFORE the new marker is set, which
+    // is not incidental: `record` stamps the marker at record time, so the
+    // buffered rows already carry the previous one and writing them out first
+    // is what keeps that true.
+    const { store } = fakeStore()
+    const trace = createGpsTrace(store)
+    await trace.start()
+    await trace.record(sampleAt(1_000))
+    await trace.mark('stationary')
+    await trace.record(sampleAt(2_000))
+    await trace.stop()
+
+    const reader = createGpsTrace(store)
+    await reader.resume()
+
+    expect((await reader.readAll()).map((row) => row.marker)).toEqual([
+      null,
+      'stationary',
+    ])
+  })
+})
+
 describe('traceToCsv', () => {
   it('writes a header DuckDB can read without being told the schema', () => {
     expect(traceToCsv([]).trim()).toBe(

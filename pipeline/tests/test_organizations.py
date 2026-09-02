@@ -123,9 +123,9 @@ def test_every_source_records_what_its_licence_rests_on():
 
 
 def test_most_of_this_registry_ships_on_the_maintainers_own_word():
-    """Measured 2026-08-27, and stated as a fact rather than left to be counted.
+    """Re-measured 2026-09-02, and stated as a fact rather than left to be counted.
 
-    26 of the 33 registered sources ship on `maintainer_authorisation` - which
+    26 of the 36 registered sources ship on `maintainer_authorisation` - which
     is NOT a grant from the organization - against 6 where the organization
     stated terms of its own. That includes all thirteen ATC layers, whose
     `atc_licence` basis reads "Maintainer authorisation, on the basis of
@@ -135,6 +135,16 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     of edge registrations. It is not: it is almost everything, including the
     trail this app was built for. #98 is the open question underneath it.
 
+    WHAT MOVED ON 2026-09-02, and it moved in the honest direction: `unresolved`
+    went 1 -> 4 when the White Mountains were registered (#1207) - two USFS
+    layers and NH GRANIT's trails, none of which ships. Neither organization
+    states any reuse terms, and the survey deliberately declined to settle the
+    federal-public-domain reading (17 U.S.C. 105) on the Forest Service's
+    behalf; see `usfs_licence` and pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md
+    section 6(a). So the growth here is three registrations that admit they have
+    no answer rather than three that assumed one, which is the outcome this
+    count exists to keep visible.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -142,4 +152,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 26, "stated_by_org": 6, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 26, "stated_by_org": 6, "unresolved": 4}

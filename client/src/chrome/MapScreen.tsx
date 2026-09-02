@@ -1446,11 +1446,17 @@ export function MapScreen({
 
           <Legend
             // Stood down while the builder owns the screen - see
-            // `buildingDayHike`. `open` rather than not rendering it, so the
-            // component keeps its own state and a hiker who had it open
-            // finds it open again when they cancel.
+            // `buildingDayHike`.
+            //
+            // BOTH PROPS, and the second is the one that does the work here.
+            // Legend.tsx renders unless `!open && !persistent`, so a
+            // persistent legend ignores `open` entirely - gating `open` alone
+            // left the panel on screen and the map at 380px, which the
+            // preview photographed. Neither prop is state, so this is a mode
+            // rather than a dismissal: cancel the builder and the panel is
+            // back, still holding whatever the hiker had set in it.
             open={legendOpen && !buildingDayHike}
-            persistent={isDesktop}
+            persistent={isDesktop && !buildingDayHike}
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}

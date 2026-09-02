@@ -1120,6 +1120,54 @@ describe('the desktop chart (#135)', () => {
     }
   }
 
+  it('stands the chart and the persistent legend down for the day-hike builder', () => {
+    // #1194. BOTH of the legend's props have to be gated, and that is the
+    // half this got wrong first: Legend.tsx renders unless
+    // `!open && !persistent`, so gating `open` alone left a desktop legend
+    // exactly where it was. The preview photographed the result - the map
+    // still 380px wide between two panels of map controls, which is the
+    // complaint the rail was added to fix.
+    const restore = stubDesktop()
+    try {
+      render(
+        <MapScreen
+          {...PROPS}
+          chart={chartProps()}
+          legendOpen
+          builderPanel={<div>the rail</div>}
+        />,
+      )
+
+      expect(screen.queryByTestId('elevation-chart')).toBeNull()
+      expect(screen.queryByRole('region', { name: /legend/i })).toBeNull()
+      expect(screen.getByText('the rail')).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('gives the chart and the legend back the moment the builder closes', () => {
+    const restore = stubDesktop()
+    try {
+      const { rerender } = render(
+        <MapScreen
+          {...PROPS}
+          chart={chartProps()}
+          legendOpen
+          builderPanel={<div>the rail</div>}
+        />,
+      )
+      expect(screen.queryByTestId('elevation-chart')).toBeNull()
+
+      rerender(<MapScreen {...PROPS} chart={chartProps()} legendOpen />)
+
+      expect(screen.getByTestId('elevation-chart')).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /legend/i })).not.toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
   it('swaps the ribbon and the lanes for the chart above the breakpoint', () => {
     const restore = stubDesktop()
     try {

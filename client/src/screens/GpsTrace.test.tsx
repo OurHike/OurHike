@@ -23,6 +23,7 @@ const IDLE: TraceStatus = {
   samples: 0,
   lastSampleAt: null,
   lastAccuracyM: null,
+  lastAccuracyConfidence: null,
 }
 
 afterEach(() => {
@@ -465,6 +466,66 @@ describe('GpsTraceSettings', () => {
     )
 
     expect(screen.getByText('none longer than 50 ms')).toBeInTheDocument()
+  })
+
+  it('says the app stopped recording because location was switched off', async () => {
+    // #1201. Without this the count simply stops moving and the screen offers
+    // one of the OTHER explanations - "no GPS signal right now", "waiting for
+    // the first reading" - all of which are wrong and all of which send the
+    // tester outside to look for sky.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 40 },
+      { locationAllowed: false },
+    )
+
+    expect(screen.getByText(/turned .Use my location. off/i)).toBeInTheDocument()
+  })
+
+  it('still offers Stop when location is off, because that is the way out', async () => {
+    const props = renderSection(
+      { recording: true, startedAt: 0, samples: 40 },
+      { locationAllowed: false },
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop recording' }))
+
+    expect(props.onStop).toHaveBeenCalledOnce()
+  })
+
+  it('states the confidence the accuracy radius was measured at', async () => {
+    // #1205. 40 ft at 95% and 40 ft at 68% are different claims about the
+    // same phone - about 1.62x apart - and this row printed them identically
+    // while the CSV beside it kept two columns to hold them apart.
+    renderSection(
+      {
+        recording: true,
+        startedAt: 0,
+        samples: 1,
+        lastAccuracyM: 12,
+        lastAccuracyConfidence: 68,
+      },
+      { units: 'imperial' },
+    )
+
+    expect(screen.getByText(/stated at 68%/)).toBeInTheDocument()
+  })
+
+  it('does not convert one convention into the other', async () => {
+    // The whole design refuses to convert, because a converted radius buries
+    // a 1.62x factor in a column nobody would think to question. The same web
+    // radius must print the same number it always did, with 95 beside it.
+    renderSection(
+      {
+        recording: true,
+        startedAt: 0,
+        samples: 1,
+        lastAccuracyM: 12,
+        lastAccuracyConfidence: 95,
+      },
+      { units: 'imperial' },
+    )
+
+    expect(screen.getByText(/give or take 39 ft, stated at 95%/)).toBeInTheDocument()
   })
 
   it('stops when asked', async () => {

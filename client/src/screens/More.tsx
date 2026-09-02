@@ -513,8 +513,27 @@ export function More({
               returns `idle` and registers nothing), so a Start button would
               record nothing at all while looking exactly like one that
               worked - a tester finding that out is a walk nobody gets back. */}
+          {/* THE PREFERENCE DECIDES WHETHER THIS IS OFFERED. IT DOES NOT
+              DECIDE WHETHER A WALK ALREADY IN HAND CAN BE REACHED (#1201).
+
+              Gating on the preference alone took the app's only Stop button
+              away when location went off mid-walk, leaving a recording open
+              with no way to close it but re-enabling location. Adding
+              `recording` fixed that and left the worse half standing: the
+              moment the hiker took the screen's own advice and tapped Stop,
+              `recording` went false and the section vanished again - this
+              time with the Save and Delete buttons, so a finished trace of
+              412 readings had no way out of the phone. The note beside that
+              button says "nothing recorded so far is lost either way", which
+              was true of the bytes and false of the hiker.
+
+              So: while a recording is open, or while one is sitting there
+              unsaved. `samples > 0` is the same condition the section itself
+              uses to decide whether to offer the export at all. */}
           {gpsTrace !== undefined &&
-            settings.preferences.location_permission_requested && (
+            (settings.preferences.location_permission_requested ||
+              gpsTrace.status.recording ||
+              gpsTrace.status.samples > 0) && (
               <GpsTraceSettings {...gpsTrace} units={settings.preferences.unit_system} />
             )}
         </>

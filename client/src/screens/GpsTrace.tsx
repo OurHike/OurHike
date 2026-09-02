@@ -72,6 +72,10 @@ export interface GpsTraceSettingsProps {
    * that could not say why it had none.
    */
   gpsStatus?: GeolocationState['status']
+  /** Whether "Use my location" is on (lib/useGpsTrace.ts). A recording can be
+   *  open while this is false, and then this screen is the only thing that
+   *  can say why the count has stopped moving. */
+  locationAllowed?: boolean
   /**
    * Whether the trail columns are being filled (lib/useGpsTrace.ts).
    *
@@ -266,7 +270,15 @@ export function backgroundNote(background: BackgroundState): string | null {
 export function recordingTrouble(
   gpsStatus: GeolocationState['status'],
   samples: number,
+  locationAllowed = true,
 ): string | null {
+  // FIRST, because it outranks every other explanation and is the only one
+  // the app itself caused (#1201). A recording left open with location
+  // switched off asks for nothing and writes nothing; without this line the
+  // count simply stops moving and the screen offers a reason that is wrong.
+  if (!locationAllowed) {
+    return 'You turned “Use my location” off, so nothing is being recorded. Turn it back on to carry on, or stop the recording and keep what it already has — nothing recorded so far is lost either way.'
+  }
   if (gpsStatus === 'denied') {
     return 'Your browser is blocking location for this site, so nothing is being recorded. Allow it in the site settings, then start again.'
   }
@@ -291,6 +303,7 @@ export function GpsTraceSettings({
   onDelete,
   wakeLock = 'off',
   gpsStatus = 'located',
+  locationAllowed = true,
   trailFix = 'waiting',
   background = 'off',
   polls,
@@ -338,6 +351,18 @@ export function GpsTraceSettings({
               <span className="settings__value">
                 give or take{' '}
                 {formatShortDistance(feetFromMetres(status.lastAccuracyM), units)}
+                {/* WITH THE CONVENTION, never bare (#1205). The web watch
+                    states its radius at 95% and the background plugin states
+                    its at 68% — about 1.62x apart — so the same printed
+                    number means materially different things, and the
+                    smaller-looking one is the plugin's. The CSV has carried
+                    both columns since #1182; this row carried one of them.
+                    Stated, never converted: converting is precisely what
+                    lib/gpsTrace.ts's header refuses to do, because it would
+                    bury the factor where nobody would think to question
+                    it. */}
+                {status.lastAccuracyConfidence !== null &&
+                  `, stated at ${status.lastAccuracyConfidence}%`}
               </span>
             </p>
           )}
@@ -426,9 +451,9 @@ export function GpsTraceSettings({
             </p>
           )}
 
-          {recordingTrouble(gpsStatus, status.samples) !== null && (
+          {recordingTrouble(gpsStatus, status.samples, locationAllowed) !== null && (
             <p className="settings__note settings__note--trouble">
-              {recordingTrouble(gpsStatus, status.samples)}
+              {recordingTrouble(gpsStatus, status.samples, locationAllowed)}
             </p>
           )}
 

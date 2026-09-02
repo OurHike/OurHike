@@ -80,6 +80,7 @@ const IDLE: TraceStatus = {
   samples: 0,
   lastSampleAt: null,
   lastAccuracyM: null,
+  lastAccuracyConfidence: null,
 }
 
 /**
@@ -132,6 +133,15 @@ export interface GpsTraceControls {
   trailFix: TrailFix
   /** Whether the recording survives a dark screen, and if not, why. */
   background: BackgroundState
+  /**
+   * Whether "Use my location" is on.
+   *
+   * On the controls rather than read separately by the screen, so the one
+   * fact that decides whether anything is being recorded has a single owner.
+   * A recording can be open while this is false — see the note above the
+   * hook — and that is the state the screen has to explain.
+   */
+  locationAllowed: boolean
   /** Whether the tester has asked for background recording. Kept here so the
    *  switch is a control rather than a report. */
   backgroundWanted: boolean
@@ -159,7 +169,32 @@ export interface GpsTraceControls {
   onDelete: () => void
 }
 
-export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
+/**
+ * WHY THIS TAKES THE LOCATION PREFERENCE, AND WHAT IT DOES NOT DO WITH IT
+ * (#1201).
+ *
+ * "Use my location" is the consent switch for everything positional in this
+ * app, and this hook used to be the one thing that never read it. Turning it
+ * off mid-recording stopped the watch - `useGeolocation` gets the flag - and
+ * left the 5-second poll firing `getCurrentPosition` with high accuracy on,
+ * the wake lock held, and rows still going to disk. The Stop button went with
+ * the Settings section, so the tester's only way back was to turn location on
+ * again. Nothing left the phone at any point; an app that keeps sampling a
+ * position after being told not to is the wrong shape regardless.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO is stop the recording. A recording that
+ * ends itself hands back a truncated trace that looks complete, which
+ * gpsTrace.ts's own `resume` argues against at length and is the one failure
+ * this instrument cannot afford - the walk is not repeatable that day. So the
+ * recording stays open and inert: nothing is asked for, nothing is written,
+ * the screen says why, and the tester decides whether to re-enable location
+ * or to stop and keep what they have. `More.tsx` keeps the section rendered
+ * while `recording` is true precisely so that second option exists.
+ */
+export function useGpsTrace(
+  trailIndex: TrailIndex | null,
+  locationAllowed: boolean,
+): GpsTraceControls {
   // One recorder for the life of the app. A second would claim the same
   // IndexedDB keys and the two would overwrite each other's chunks.
   const trace = useMemo(() => createGpsTrace(), [])
@@ -219,15 +254,19 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   // saying out loud, because the tester's report was that the app "hangs a
   // lot in general".
   useEffect(() => {
-    if (!status.recording) return
+    if (!status.recording || !locationAllowed) return
     stallMeter.start()
     return () => stallMeter.stop()
-  }, [status.recording, stallMeter])
+  }, [status.recording, locationAllowed, stallMeter])
 
   // Above `onFix` rather than below it, because every sample now carries this:
   // a gap in the trace is only readable if the fixes either side of it say
   // whether the screen was being held. See lib/gpsTrace.ts's header.
-  const wakeLock = useWakeLock(status.recording)
+  // Held for a recording that is actually recording. With location switched
+  // off nothing is being written, so a lock held on its behalf is battery
+  // spent for nothing - and a hiker whose phone dies is the fourth of
+  // CLAUDE.md's four ways this app can hurt somebody.
+  const wakeLock = useWakeLock(status.recording && locationAllowed)
 
   /**
    * Everything both watches share: place the fix, report whether the trail
@@ -324,7 +363,9 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
    * data.
    */
   useEffect(() => {
-    if (!status.recording) return
+    // `locationAllowed` first: the poll ASKS the platform for a position, so
+    // it is the one thing here that must not outlive the consent switch.
+    if (!status.recording || !locationAllowed) return
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return
 
     // One request at a time. A poll that is waiting out its timeout must not
@@ -369,7 +410,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
       stopped = true
       clearInterval(id)
     }
-  }, [status.recording, trace])
+  }, [status.recording, locationAllowed, trace])
 
   /**
    * The native watch, which is the whole point of #1182.
@@ -389,7 +430,12 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   const placeRef = useRef(placeAndStamp)
   placeRef.current = placeAndStamp
 
-  const backgroundOn = status.recording && backgroundWanted && backgroundWatchAvailable()
+  // Gated on `locationAllowed` like the poll, and for a louder reason: this
+  // one runs a foreground service with an undismissable notification, so a
+  // watch that outlived the consent switch would announce itself on the
+  // phone's own lock screen for as long as it lasted (#1201).
+  const backgroundOn =
+    status.recording && locationAllowed && backgroundWanted && backgroundWatchAvailable()
 
   useEffect(() => {
     if (!backgroundOn) return
@@ -428,6 +474,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     trailFix,
     background,
     backgroundWanted,
+    locationAllowed,
     polls,
     stall: { supported: stallMeter.supported, worstMs: worstStallMs },
     onBackgroundChange: setBackgroundWanted,
@@ -439,6 +486,10 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     onStart: useCallback(() => {
       setPolls({ asked: 0, answered: 0 })
       setWorstStallMs(null)
+      // Reset with the rest: a new recording showing the PREVIOUS one's trail
+      // verdict for its first few seconds is the same "stale reading presented
+      // as current" the two rows above exist to avoid.
+      setTrailFix('waiting')
       void trace.start().then(setStatus)
     }, [trace]),
     onStop: useCallback(() => void trace.stop().then(setStatus), [trace]),

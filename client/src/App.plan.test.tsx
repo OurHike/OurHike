@@ -37,7 +37,10 @@ vi.mock('idb-keyval', () => ({
   del: vi.fn(),
   update: vi.fn(),
 }))
-vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
+}))
 vi.mock('./lib/api', () => ({
   API_CONFIGURED: false,
   accessToken: vi.fn(async () => null),

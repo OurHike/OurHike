@@ -56,6 +56,7 @@ import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLay
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
+import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
 import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import {
@@ -615,6 +616,14 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
+      // The edge of the download (#557): over the ground it is an edge of,
+      // under every trail line, closure and pin - a seam takes away the
+      // sheet, never the hazard (features/OFFLINE_COVERAGE.md §8). Empty
+      // unless the phone holds cells, and in the stack either way for the
+      // drought wash's reason above; an offline phone holding a stretch is
+      // exactly the one that has to be shown where its map stops.
+      COVERAGE_SEAM_LAYER_ID,
+      COVERAGE_SEAM_LABEL_LAYER_ID,
       // The network's corridor-view sketch and its tape (#1135), below the
       // A.T.'s own sketch as everywhere: an offline phone is exactly the one
       // whose opening camera has to draw the network from the stored

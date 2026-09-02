@@ -6,8 +6,8 @@
 // the first run of the app on a new phone, which is not an edge case.
 
 import { useEffect, useState } from 'react'
-import { readArchiveZooms } from '../map/archiveZooms'
-import type { ArchiveZooms } from './archiveCoverage'
+import { readArchiveFootprint, readArchiveZooms } from '../map/archiveZooms'
+import type { ArchiveZooms, Footprint } from './archiveCoverage'
 
 /**
  * @param archivePresent whether a FINISHED archive is on the phone. A partial
@@ -40,4 +40,35 @@ export function useArchiveZooms(
   }, [idbKey, archivePresent])
 
   return zooms
+}
+
+/**
+ * The same archive's declared ground, on the same contract: keyed on
+ * presence, null while there is no finished archive to ask, and null again
+ * the moment it is deleted so the app cannot go on describing the edge of a
+ * file the hiker just reclaimed the space from (#557).
+ */
+export function useArchiveFootprint(
+  idbKey: string,
+  archivePresent: boolean,
+): Footprint | null {
+  const [footprint, setFootprint] = useState<Footprint | null>(null)
+
+  useEffect(() => {
+    if (!archivePresent) {
+      setFootprint(null)
+      return
+    }
+
+    let cancelled = false
+    void readArchiveFootprint(idbKey).then((next) => {
+      if (!cancelled) setFootprint(next)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [idbKey, archivePresent])
+
+  return footprint
 }

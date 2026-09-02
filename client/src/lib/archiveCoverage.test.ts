@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   CAMERA_ZOOM_TILE_OFFSET,
   archiveCoversZoom,
+  coverageAt,
   openingZoomFloor,
 } from './archiveCoverage'
 
@@ -66,5 +67,46 @@ describe('openingZoomFloor', () => {
 
   it('leaves the camera alone when there is nothing to ask', () => {
     expect(openingZoomFloor(null, 3.9)).toBeNull()
+  })
+})
+
+describe('coverageAt', () => {
+  // The horizontal edge (#557): the same rules as the zoom floor above,
+  // applied to ground. A held cell in Georgia and the whole-sheet archive's
+  // declared rectangle are both footprints; what matters is what the answer
+  // may claim and when.
+  const GEORGIA = { west: -85, south: 34, east: -84, north: 35 }
+  const CORRIDOR = { west: -84.4, south: 34.1, east: -68.9, north: 45.9 }
+
+  it('says covered inside a held cell', () => {
+    expect(coverageAt([GEORGIA], -84.5, 34.5)).toBe('covered')
+  })
+
+  it('says outside past every footprint held', () => {
+    expect(coverageAt([GEORGIA], -77.1, 39.3)).toBe('outside')
+  })
+
+  it('says covered inside any one of several', () => {
+    expect(coverageAt([GEORGIA, CORRIDOR], -77.1, 39.3)).toBe('covered')
+  })
+
+  it('says unknown before anything has been read, never outside', () => {
+    // Not-looked-yet rendered as your-download-does-not-reach-here is the
+    // conflation #216 was made of, and here it would send a hiker to town
+    // for a download they have.
+    expect(coverageAt(null, -84.5, 34.5)).toBe('unknown')
+  })
+
+  it('says unknown on a phone holding nothing - there is no edge to be outside of', () => {
+    // That phone's flags already exist (lib/backgroundHealth.ts), and a
+    // second one saying "outside" would describe an edge nobody crossed.
+    expect(coverageAt([], -84.5, 34.5)).toBe('unknown')
+  })
+
+  it('gives a point on the eastern edge to the ground beyond it', () => {
+    // Half-open, the way the cells themselves are: a point on a seam is in
+    // exactly one cell, and this footprint is not it.
+    expect(coverageAt([GEORGIA], -84, 34.5)).toBe('outside')
+    expect(coverageAt([GEORGIA], -85, 34.5)).toBe('covered')
   })
 })

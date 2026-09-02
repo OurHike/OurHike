@@ -23,6 +23,7 @@ vi.mock('idb-keyval', () => ({
 }))
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
 }))
 vi.mock('./screens/More', () => ({
   More: () => {

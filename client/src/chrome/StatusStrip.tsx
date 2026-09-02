@@ -86,6 +86,23 @@ export interface StatusStripProps {
    */
   belowArchiveZoom?: boolean
   /**
+   * Whether the view is past the edge of everything downloaded (#557) - the
+   * horizontal twin of `belowArchiveZoom`, decided by
+   * lib/archiveCoverage.ts's `coverageAt` from the cells and archives on the
+   * phone, and only ever true when something IS downloaded and the view is
+   * outside all of it.
+   *
+   * Three words that name COVERAGE, never damage, and the distinction is the
+   * whole reason the flag exists rather than a new case of
+   * `backgroundProblem` (#352). A hiker who took the stretch they are walking
+   * and panned a few miles past it, with no signal, is looking at paper - and
+   * "Downloaded map not drawing" would send them to delete a download that is
+   * fine. The seam on the map says the same thing in the same words
+   * (map/coverageLayers.ts), and the legend's picker says where the next
+   * stretch comes from.
+   */
+  outsideDownload?: boolean
+  /**
    * Whether the map is drawing no trail line at all.
    *
    * A sibling of `backgroundProblem` rather than one of its cases, and the
@@ -128,6 +145,7 @@ export function StatusStrip({
   backgroundProblem = null,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  outsideDownload = false,
   trailLinesMissing = false,
   alertsHidden = false,
 }: StatusStripProps) {
@@ -196,6 +214,15 @@ export function StatusStrip({
             repeatedly, while someone pinched. */}
         {belowArchiveZoom && (
           <span className="status-strip__flag">Zoomed out past your download</span>
+        )}
+        {/* The horizontal edge, beside the vertical one and for the same
+            reason: the choice is being honoured exactly, and this ground was
+            never in it (#557). Kept even beside a background problem, unlike
+            the 'nothing-downloaded' override above - lib/backgroundHealth.ts
+            already stands its two readings down when this one is true, so the
+            pair cannot both fire, and this is the one that names the fix. */}
+        {outsideDownload && (
+          <span className="status-strip__flag">Outside what you downloaded</span>
         )}
       </span>
 

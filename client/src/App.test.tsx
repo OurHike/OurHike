@@ -47,6 +47,7 @@ vi.mock('idb-keyval', () => ({
 const archiveHeader: { value: ArchiveZooms | null } = { value: null }
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve(archiveHeader.value),
+  readArchiveFootprint: () => Promise.resolve(null),
 }))
 
 const store = new Map<string, unknown>()

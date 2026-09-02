@@ -53,6 +53,7 @@ import { useDesktop } from '../lib/useDesktop'
 import { facingFullDownload } from '../lib/backgroundStatus'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
 import type { DetailOption } from './DetailPicker'
+import { StretchCard, type StretchOffer } from './StretchCard'
 import { Tabs } from './Tabs'
 import './downloads.css'
 
@@ -104,6 +105,15 @@ export interface SheetDownload {
    * and the clump cannot disagree.
    */
   assets?: readonly SheetAsset[]
+  /**
+   * The second decision on this sheet's panel (#558): just the stretch under
+   * the hiker's planned hike, priced against what is missing, rendered under
+   * the card by screens/StretchCard.tsx. Only the hiking sheet carries one -
+   * it is the sheet the pipeline cuts into cells - and a sheet without it
+   * renders exactly as it did before cells existed. The whole trail stays
+   * the card's own button, whatever this offers.
+   */
+  stretch?: StretchOffer
   onStart: () => void
   onResume: () => void
   onDelete: () => void
@@ -352,6 +362,11 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
             ))}
           </ul>
         )}
+        {/* Under the sheet's card and its breakdown, never beside the
+            button (#558): the whole trail is the decision above, and this
+            is the smaller one a hiker reaches for once they have said where
+            they are walking. */}
+        {sheet.stretch !== undefined && <StretchCard stretch={sheet.stretch} />}
       </>
     )
   }

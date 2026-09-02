@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { addProtocol } from 'maplibre-gl'
-import { registerBasemapProtocol, resetBasemapForTests } from './basemap'
+import { registerBasemapProtocol, resetBasemapForTests, setBasemapCells } from './basemap'
 import { BASEMAP_SCHEME, OPENFREEMAP_TILEJSON } from './liveTopo'
 import { ArchiveNotDownloadedError } from './pmtilesSource'
 import { BASEMAP_PACKAGE } from '../lib/packages'
+import {
+  cellPackageKey,
+  CONTEXT_PACKAGE_KEY,
+  parseCellIndex,
+  type CellIndex,
+} from '../lib/coverageCells'
 
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
 
@@ -12,7 +18,8 @@ vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
 // not pmtiles' directory walking, which is upstream's to test. One shared
 // getZxy across instances, because the module under test is allowed to
 // discard and recreate its PMTiles (that recreation is itself asserted, via
-// the constructor log).
+// the constructor log). Each instance keeps its source, so a test about the
+// cells (#557) can answer differently per archive by asking `this.source`.
 const { getZxy, constructed } = vi.hoisted(() => ({
   getZxy: vi.fn(),
   constructed: [] as unknown[],
@@ -21,7 +28,9 @@ const { getZxy, constructed } = vi.hoisted(() => ({
 vi.mock('pmtiles', () => ({
   PMTiles: class {
     getZxy = getZxy
+    source: unknown
     constructor(source: unknown) {
+      this.source = source
       constructed.push(source)
     }
   },
@@ -225,5 +234,160 @@ describe('local-first tile resolution (#189)', () => {
     await expect(requestTile(`${BASEMAP_SCHEME}://not/a/tile/url`)).rejects.toThrow(
       /tile URL/,
     )
+  })
+})
+
+describe('reading from the cells a phone holds (#557)', () => {
+  // Three real cells off the published index (UA release 2026-09-02). The
+  // tile under test sits in the middle of n34w085 - Georgia, the southern
+  // terminus's cell - at z12: x 1086, y 1629 spans 84.55-84.46° W and
+  // 34.45-34.52° N, half a degree clear of every seam.
+  const INDEX = parseCellIndex({
+    cell_degrees: 1,
+    seam_margin_km: 3,
+    context_zoom: 9,
+    context: 'at_basemap_context.pmtiles',
+    cells: [
+      {
+        name: 'n34w085',
+        key: 'at_basemap_cell_n34w085.pmtiles',
+        bounds: [-85, 34, -84, 35],
+      },
+      {
+        name: 'n35w085',
+        key: 'at_basemap_cell_n35w085.pmtiles',
+        bounds: [-85, 35, -84, 36],
+      },
+      {
+        name: 'n34w084',
+        key: 'at_basemap_cell_n34w084.pmtiles',
+        bounds: [-84, 34, -83, 35],
+      },
+    ],
+  }) as CellIndex
+  const GEORGIA = cellPackageKey('n34w085')
+  const IN_GEORGIA = `${BASEMAP_SCHEME}://12/1086/1629`
+
+  /** The keys every reader constructed so far was pointed at. */
+  const askedKeys = () =>
+    constructed.map((source) => (source as { getKey(): string }).getKey())
+
+  /** Answers per archive: the package is absent, and each held cell holds
+   *  one recognisable tile. */
+  function answersByArchive(tiles: Record<string, number[]>) {
+    getZxy.mockImplementation(function (this: { source: { getKey(): string } }) {
+      const key = this.source.getKey()
+      if (key === BASEMAP_PACKAGE.idbKey)
+        return Promise.reject(new ArchiveNotDownloadedError(key))
+      const bytes = tiles[key]
+      return Promise.resolve(
+        bytes === undefined ? undefined : { data: new Uint8Array(bytes).buffer },
+      )
+    })
+  }
+
+  it('serves a tile from the held cell it sits in, without touching the network', async () => {
+    setBasemapCells(INDEX, new Set([GEORGIA]))
+    answersByArchive({ [GEORGIA]: [3, 4] })
+
+    const result = await requestTile(IN_GEORGIA)
+
+    expect(Array.from(result.data)).toEqual([3, 4])
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(askedKeys()).toEqual([BASEMAP_PACKAGE.idbKey, GEORGIA])
+  })
+
+  it('asks the whole package first, since it holds everything a cell does', async () => {
+    setBasemapCells(INDEX, new Set([GEORGIA]))
+    getZxy.mockResolvedValue({ data: new Uint8Array([9]).buffer })
+
+    await requestTile(IN_GEORGIA)
+
+    expect(askedKeys()).toEqual([BASEMAP_PACKAGE.idbKey])
+  })
+
+  it('never asks a cell the phone does not hold', async () => {
+    // The shell's set is the whole of what is asked. A cell that is not in
+    // it is not "tried and found absent" - it is not tried, so a hiker with
+    // one stretch does not pay sixty-one failed reads per tile.
+    setBasemapCells(INDEX, new Set([cellPackageKey('n35w085')]))
+    answersByArchive({})
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ tiles: [TILE_TEMPLATE] }))
+      .mockResolvedValueOnce(tileResponse([7]))
+
+    const result = await requestTile(IN_GEORGIA)
+
+    expect(Array.from(result.data)).toEqual([7])
+    expect(askedKeys()).not.toContain(GEORGIA)
+  })
+
+  it('falls through to the context at and under the context zoom, and not above it', async () => {
+    const CONTEXT_TILE = `${BASEMAP_SCHEME}://9/136/203`
+    setBasemapCells(INDEX, new Set([CONTEXT_PACKAGE_KEY]))
+    answersByArchive({ [CONTEXT_PACKAGE_KEY]: [5] })
+
+    const shallow = await requestTile(CONTEXT_TILE)
+    expect(Array.from(shallow.data)).toEqual([5])
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    // z12 is a cell's to hold; the context is never asked for it.
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ tiles: [TILE_TEMPLATE] }))
+      .mockResolvedValueOnce(tileResponse([8]))
+    const deep = await requestTile(IN_GEORGIA)
+    expect(Array.from(deep.data)).toEqual([8])
+    expect(askedKeys().filter((key) => key === CONTEXT_PACKAGE_KEY)).toHaveLength(1)
+  })
+
+  it('serves from a cell the moment the shell says it landed', async () => {
+    // A stretch finishing mid-session: nothing is rebuilt, the next tile
+    // is simply answered from the new archive.
+    setBasemapCells(INDEX, new Set())
+    answersByArchive({ [GEORGIA]: [1] })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ tiles: [TILE_TEMPLATE] }))
+      .mockResolvedValueOnce(tileResponse([0]))
+    await requestTile(IN_GEORGIA)
+
+    setBasemapCells(INDEX, new Set([GEORGIA]))
+    const result = await requestTile(IN_GEORGIA)
+
+    expect(Array.from(result.data)).toEqual([1])
+  })
+
+  it('stops reading a cell the shell no longer lists', async () => {
+    setBasemapCells(INDEX, new Set([GEORGIA]))
+    answersByArchive({ [GEORGIA]: [1] })
+    await requestTile(IN_GEORGIA)
+
+    setBasemapCells(INDEX, new Set())
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ tiles: [TILE_TEMPLATE] }))
+      .mockResolvedValueOnce(tileResponse([2]))
+    const result = await requestTile(IN_GEORGIA)
+
+    expect(Array.from(result.data)).toEqual([2])
+  })
+
+  it('does not memoise a cell read that failed', async () => {
+    // pmtilesSource.ts's rule, once more: a rejected header promise cached
+    // in a reader would keep a resumed cell dark for the session.
+    setBasemapCells(INDEX, new Set([GEORGIA]))
+    getZxy.mockImplementation(function (this: { source: { getKey(): string } }) {
+      return Promise.reject(new ArchiveNotDownloadedError(this.source.getKey()))
+    })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ tiles: [TILE_TEMPLATE] }))
+      .mockResolvedValue(tileResponse([0]))
+    await requestTile(IN_GEORGIA)
+
+    answersByArchive({ [GEORGIA]: [6] })
+    const result = await requestTile(IN_GEORGIA)
+
+    expect(Array.from(result.data)).toEqual([6])
+    // A fresh reader for the cell after the failure, exactly as the package
+    // gets one.
+    expect(askedKeys().filter((key) => key === GEORGIA)).toHaveLength(2)
   })
 })

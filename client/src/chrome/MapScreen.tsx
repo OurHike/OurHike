@@ -57,6 +57,7 @@ import type { BackgroundOverride } from '../lib/dataSaver'
 import { downloadFillPercent, type DownloadActivity } from '../lib/downloadActivity'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
+import type { SeamEdge } from '../lib/coverageCells'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
 
@@ -635,6 +636,16 @@ export interface MapScreenProps {
    * disagree.
    */
   belowArchiveZoom?: boolean
+  /**
+   * Whether the view is past the edge of everything downloaded (#557) - the
+   * horizontal twin of `belowArchiveZoom`, and reported by the shell for
+   * the same reason: the strip, the legend's picker and the download window
+   * all say it, and one reading of one condition is what keeps them agreeing.
+   */
+  outsideDownload?: boolean
+  /** The outer edges of the held cells, for the dashed line the canvas draws
+   *  where the download ends (#557). Passed straight through to MapView. */
+  coverageSeams?: readonly SeamEdge[]
   /** How many waypoints of each `type::confidence` the map actually drew, and
    *  whether the camera is below the zoom pins are drawn at (#528). Passed
    *  straight to the legend, which is where both are said. */
@@ -802,6 +813,8 @@ export function MapScreen({
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
+  outsideDownload = false,
+  coverageSeams,
   drawnCounts,
   belowPoiZoom = false,
   trailLinesMissing = false,
@@ -1142,6 +1155,7 @@ export function MapScreen({
                     backgroundProblem={backgroundProblem}
                     backgroundOverride={backgroundOverride}
                     belowArchiveZoom={belowArchiveZoom}
+                    outsideDownload={outsideDownload}
                     trailLinesMissing={trailLinesMissing}
                     alertsHidden={!alertsShown}
                   />
@@ -1247,6 +1261,7 @@ export function MapScreen({
               verifiedOnly={verifiedOnly}
               drought={drought}
               showDrought={droughtShown}
+              coverageSeams={coverageSeams}
               closures={drawnClosures}
               corridor={corridor}
               onSelectHighlight={onSelectHighlight}
@@ -1408,6 +1423,7 @@ export function MapScreen({
             onChangeBackground={onChangeBackground}
             backgroundOverride={backgroundOverride}
             belowArchiveZoom={belowArchiveZoom}
+            outsideDownload={outsideDownload}
             offlineBackgroundAvailable={offlineBackgroundAvailable}
             drawnCounts={drawnCounts}
             belowPoiZoom={belowPoiZoom}

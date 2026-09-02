@@ -77,8 +77,25 @@ export interface BackgroundHealthInputs {
   online: boolean
   /** Whether the USGS raster archive is on the phone. */
   rasterArchiveDownloaded: boolean
-  /** Whether the hiking sheet's vector package is on the phone. */
+  /** Whether the hiking sheet's tiles are on the phone - the whole vector
+   *  package, or any cell of it (lib/coverageCells.ts, #557). */
   hikingSheetDownloaded: boolean
+  /**
+   * Whether the view is past the edge of everything downloaded
+   * (lib/archiveCoverage.ts's `coverageAt`), which changes what a failing
+   * source MEANS.
+   *
+   * A phone holding a stretch rather than the whole sheet, panned off it with
+   * no signal, has a basemap source that errors on every request - for the
+   * ordinary reason that the tiles beyond the stretch fall through to a
+   * network that is not there. That is not a download failing to draw, and
+   * calling it one is #352 again: a hiker past the edge of their package told
+   * their download was damaged. Nor is it "no downloaded map", which is false
+   * of a phone with a stretch on it. Both readings stand down, and the strip's
+   * own "Outside what you downloaded" says the true thing instead. Defaults to
+   * false, which is every phone that has not established an edge.
+   */
+  outsideDownload?: boolean
 }
 
 export function backgroundProblem({
@@ -86,16 +103,21 @@ export function backgroundProblem({
   online,
   rasterArchiveDownloaded,
   hikingSheetDownloaded,
+  outsideDownload = false,
 }: BackgroundHealthInputs): BackgroundProblem | null {
   // First, and above the connectivity questions below, because it is the only
   // one of the three that is both certainly wrong and fixable where the hiker
   // is standing. It also outranks them on truth: a phone holding a download
   // that will not draw is not suffering from being offline, and saying so
   // would send someone looking for signal they do not need.
+  //
+  // Unless the view is past the download's own edge - then a source that
+  // draws nothing is drawing exactly what the phone has there, which is
+  // nothing, and the edge flag is the honest sentence (see `outsideDownload`).
   const downloadFailing =
     (sources.archive && rasterArchiveDownloaded) ||
     (sources.basemap && hikingSheetDownloaded)
-  if (downloadFailing) return 'download-not-drawing'
+  if (downloadFailing && !outsideDownload) return 'download-not-drawing'
 
   // Nothing that was expected to draw has failed. The archive source failing
   // on a phone with no archive is the ordinary state and is not reported -
@@ -116,6 +138,11 @@ export function backgroundProblem({
   // has a map, it is simply the downloaded one. Flagging that would be
   // flagging the arrangement working exactly as designed.
   if (rasterArchiveDownloaded) return null
+
+  // Offline, past the edge of a download that exists. "No downloaded map"
+  // would be false - there is one, a few miles back - and the strip already
+  // carries the flag that says where it ends.
+  if (outsideDownload) return null
 
   return 'nothing-to-draw'
 }

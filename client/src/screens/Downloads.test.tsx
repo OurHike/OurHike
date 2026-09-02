@@ -93,6 +93,38 @@ describe('Downloads', () => {
     expect(screen.queryByText(/section/i)).not.toBeInTheDocument()
   })
 
+  it('offers the stretch under the hike beneath the sheet it belongs to, and nowhere else (#558)', async () => {
+    // The second decision on the hiking sheet's panel, and the whole trail
+    // stays the card's own button above it - one "Download the map", still.
+    const user = userEvent.setup()
+    const [hiking, usgs] = twoSheets()
+    hiking.stretch = {
+      hike: 'Northbound · mi 8.5 – 79.2',
+      available: true,
+      pieces: 3,
+      missing: 3,
+      bytes: 21_841_273,
+      marginKm: 3,
+      units: 'imperial',
+      status: { state: 'not-downloaded' },
+      wholeSheetHere: false,
+      onTake: vi.fn(),
+      onResume: vi.fn(),
+      onRemove: vi.fn(),
+    }
+    render(<Downloads sheets={[hiking, usgs]} />)
+
+    expect(
+      screen.getByRole('region', { name: /stretch you’re walking/i }),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /download the map/i })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /take this stretch/i })).toBeInTheDocument()
+
+    await openTab(user, /usgs sheet/i)
+
+    expect(screen.queryByRole('region', { name: /stretch you’re walking/i })).toBeNull()
+  })
+
   it('offers one button per sheet, never one per archive underneath', async () => {
     // The DEM and the vector basemap are pieces of the hiking sheet. A hiker
     // who had to tick archives off could get it wrong, and being wrong means

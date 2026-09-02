@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { readArchiveZooms } from './archiveZooms'
+import { readArchiveFootprint, readArchiveZooms } from './archiveZooms'
 
 // The client used to have no idea what the archive on the phone contained -
 // it pointed a raster source at it and hoped, which is how #216 survived. What
@@ -46,5 +46,35 @@ describe('readArchiveZooms', () => {
     getHeader.mockRejectedValue(new SyntaxError('bad magic number'))
 
     expect(await readArchiveZooms('ourhike:corridor-archive')).toBeNull()
+  })
+})
+
+describe('readArchiveFootprint', () => {
+  it('reports the ground the archive declares', async () => {
+    // The horizontal edge (#557), off the same 127-byte header as the zoom
+    // range - the bounds extract_package.py and cut_cells.py both write.
+    getHeader.mockResolvedValue({
+      minZoom: 0,
+      maxZoom: 14,
+      minLon: -84.4,
+      minLat: 34.1,
+      maxLon: -68.9,
+      maxLat: 45.9,
+    })
+
+    expect(await readArchiveFootprint('ourhike:basemap')).toEqual({
+      west: -84.4,
+      south: 34.1,
+      east: -68.9,
+      north: 45.9,
+    })
+  })
+
+  it('reports null rather than an edge when the archive is not there', async () => {
+    // An invented footprint here would be a claim about where a download
+    // that does not exist ends, and the strip would then say "outside" it.
+    getHeader.mockRejectedValue(new Error('No offline map archive found'))
+
+    expect(await readArchiveFootprint('ourhike:basemap')).toBeNull()
   })
 })

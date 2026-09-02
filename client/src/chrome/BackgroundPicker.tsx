@@ -109,6 +109,19 @@ const OVERRIDE_NOTES: Record<BackgroundOverride, string> = {
 const BELOW_ARCHIVE_NOTE =
   'Your download starts closer in than this, so there’s no background to draw at this zoom. Zoom in and it appears.'
 
+/**
+ * What to say past the edge of the download (#557), in the same register:
+ * nothing is overridden and nothing is broken, the ground here was never
+ * taken. Two things it must do, in this order. Say what STAYS - the trail
+ * line, its water and its warnings ship with the trail, never with a piece
+ * (features/OFFLINE_COVERAGE.md §8), and a hiker looking at blank paper needs
+ * that sentence before any other. Then say where the next stretch comes from,
+ * because "download more" is the whole remedy and the download window is not
+ * on this panel.
+ */
+const OUTSIDE_DOWNLOAD_NOTE =
+  'The map you downloaded stops before here. The trail line, its water and its warnings stay on the map wherever you are — it is the ground under them that ends. The download window can add the next stretch.'
+
 export interface BackgroundPickerProps {
   value: BackgroundSource
   onChange: (next: BackgroundSource) => void
@@ -131,6 +144,9 @@ export interface BackgroundPickerProps {
   /** Whether the view is zoomed out past what the download covers. Distinct
    *  from `override` - see StatusStripProps for why they are not one field. */
   belowArchiveZoom?: boolean
+  /** Whether the view is past the edge of everything downloaded (#557) -
+   *  the horizontal twin of the flag above. See StatusStripProps. */
+  outsideDownload?: boolean
   /**
    * Distinguishes this group's radios from another instance's.
    *
@@ -146,6 +162,7 @@ export function BackgroundPicker({
   onChange,
   override = null,
   belowArchiveZoom = false,
+  outsideDownload = false,
   offlineBackgroundAvailable = true,
   idPrefix = 'background',
 }: BackgroundPickerProps) {
@@ -200,6 +217,12 @@ export function BackgroundPicker({
       {belowArchiveZoom && (
         <p className="bg-picker__note" role="note">
           {BELOW_ARCHIVE_NOTE}
+        </p>
+      )}
+
+      {outsideDownload && (
+        <p className="bg-picker__note" role="note">
+          {OUTSIDE_DOWNLOAD_NOTE}
         </p>
       )}
     </fieldset>

@@ -13,6 +13,7 @@ import { naismithMinutes } from './naismith'
 import {
   anchoredClientMile,
   anchoredMile,
+  SAME_AXIS_ANCHORS,
   insertRoutePoint,
   legFigures,
   mileAtWalkingMinutes,
@@ -481,5 +482,17 @@ describe("a route measured at the hiker's own pace", () => {
     const standard = mileAtWalkingMinutes(rising, 0, 120, 'NOBO', STANDARD_PACE)
     const slower = mileAtWalkingMinutes(rising, 0, 120, 'NOBO', SLOWER)
     expect(slower).toBeLessThan(standard)
+  })
+})
+
+describe('SAME_AXIS_ANCHORS', () => {
+  it('carries any mile onto the other scale unchanged, in both directions', () => {
+    // One axis: the pipeline's numbers ARE the index's numbers (#1192), and
+    // the identity anchors have to say so at every mile, not only near the
+    // origin they sit at.
+    for (const mile of [0, 0.4, 99.4, 1503.6, 2197.857]) {
+      expect(anchoredMile(mile, SAME_AXIS_ANCHORS)).toBe(mile)
+      expect(anchoredClientMile(mile, SAME_AXIS_ANCHORS)).toBe(mile)
+    }
   })
 })

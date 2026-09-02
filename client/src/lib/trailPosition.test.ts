@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest'
 import type { Feature, FeatureCollection } from 'geojson'
 import {
   buildTrailIndex,
+  cellKey,
+  deserializeTrailIndex,
+  isSerializedTrailIndex,
   locateOnTrail,
   mileOnTrail,
+  serializeTrailIndex,
+  trailIndexBuffers,
   trailSlice,
   MAX_OFF_TRAIL_MILES,
 } from './trailPosition'
@@ -264,10 +269,10 @@ describe('locateOnTrail', () => {
     }
   })
 
-  it('finds the trail across a latitude-bucket boundary', () => {
-    // Buckets are 0.05 degrees, so a fix just below a boundary must still see
-    // the trail points sitting just above it - otherwise a hiker's mile would
-    // blank out at regular intervals up the trail.
+  it('finds the trail across a latitude-cell boundary', () => {
+    // Cells are 0.05 degrees of latitude, so a fix just below a boundary must
+    // still see the trail points sitting just above it - otherwise a hiker's
+    // mile would blank out at regular intervals up the trail.
     const boundary = 39.05
     const near = buildTrailIndex(
       collection([
@@ -538,5 +543,205 @@ describe('trailSlice', () => {
     const split = buildTrailIndex(collection([line(tenMiles()), line(tenMiles(41))]))
 
     expect(split.partStarts).toEqual([0, 11])
+  })
+})
+
+// The pipeline's own miles, read instead of measured (#1192). What these
+// prove: the published numbers are the index's numbers, whole or not at all;
+// a piece is oriented and split by them; and an index round-trips through its
+// typed-array form with the same answers.
+describe('buildTrailIndex on the pipeline axis', () => {
+  function chain(
+    id: string,
+    coordinates: Array<[number, number]>,
+    source = 'centerline',
+  ): Feature {
+    return {
+      type: 'Feature',
+      properties: { source, id },
+      geometry: { type: 'LineString', coordinates },
+    }
+  }
+
+  const rising: Array<[number, number]> = [
+    [-77, 39],
+    [-77, 39 + MILE_IN_DEGREES_LAT],
+    [-77, 39 + 2 * MILE_IN_DEGREES_LAT],
+  ]
+
+  it('takes the published miles verbatim and says so', () => {
+    const index = buildTrailIndex(
+      collection([chain('a', rising)]),
+      new Map([['a', [100.25, 101.3, 102.35]]]),
+    )
+
+    expect(index.onPipelineAxis).toBe(true)
+    expect(Array.from(index.miles)).toEqual([100.25, 101.3, 102.35])
+    expect(index.totalMiles).toBe(102.35)
+    expect(mileOnTrail(index, { lon: -77, lat: 39 + MILE_IN_DEGREES_LAT })).toBe(101.3)
+  })
+
+  it('measures the line itself when no miles were published', () => {
+    const index = buildTrailIndex(collection([chain('a', rising)]))
+
+    expect(index.onPipelineAxis).toBe(false)
+    expect(index.miles[0]).toBe(0)
+  })
+
+  it('measures the line itself when any piece lacks its published miles', () => {
+    // All or none: two scales in one array would be indistinguishable from
+    // downstream, which is the confusion `onPipelineAxis` exists to rule out.
+    const northern = chain('b', [
+      [-77, 40],
+      [-77, 40 + MILE_IN_DEGREES_LAT],
+    ])
+    const index = buildTrailIndex(
+      collection([chain('a', rising), northern]),
+      new Map([['a', [100, 101, 102]]]),
+    )
+
+    expect(index.onPipelineAxis).toBe(false)
+    expect(index.miles[0]).toBe(0)
+  })
+
+  it('measures the line itself when a published list is the wrong length', () => {
+    const index = buildTrailIndex(
+      collection([chain('a', rising)]),
+      new Map([['a', [100, 101]]]),
+    )
+
+    expect(index.onPipelineAxis).toBe(false)
+  })
+
+  it('orients a piece by its miles, not by its geometry', () => {
+    // Written south-to-north but published with falling miles: the axis says
+    // this piece runs the other way, and the axis wins.
+    const index = buildTrailIndex(
+      collection([chain('a', rising)]),
+      new Map([['a', [102, 101, 100]]]),
+    )
+
+    expect(Array.from(index.miles)).toEqual([100, 101, 102])
+    expect(index.lats[0]).toBeCloseTo(39 + 2 * MILE_IN_DEGREES_LAT, 5)
+  })
+
+  it('orders pieces by their first mile, however they arrive', () => {
+    const northern = chain('b', [
+      [-77, 40],
+      [-77, 40 + MILE_IN_DEGREES_LAT],
+    ])
+    const index = buildTrailIndex(
+      collection([northern, chain('a', rising)]),
+      new Map([
+        ['a', [10, 11, 12]],
+        ['b', [80, 81]],
+      ]),
+    )
+
+    expect(Array.from(index.miles)).toEqual([10, 11, 12, 80, 81])
+    expect(index.partStarts).toEqual([0, 3])
+  })
+
+  it('splits a piece where its miles step backwards, so no run claims miles it lacks', () => {
+    const five: Array<[number, number]> = Array.from({ length: 5 }, (_, i) => [
+      -77,
+      39 + i * MILE_IN_DEGREES_LAT,
+    ])
+    const index = buildTrailIndex(
+      collection([chain('a', five)]),
+      // A dip at the fourth vertex: 12 -> 11.9.
+      new Map([['a', [10, 11, 12, 11.9, 13]]]),
+    )
+
+    expect(index.partStarts).toEqual([0, 3])
+    expect(Array.from(index.miles)).toEqual([10, 11, 12, 11.9, 13])
+    // Slicing 12.5 - 13 reaches only the second part.
+    expect(trailSlice(index, 12.5, 13).length).toBe(1)
+  })
+
+  it('drops a single vertex stranded by a step, and keeps it as tread', () => {
+    const index = buildTrailIndex(
+      collection([chain('a', rising)]),
+      // The last vertex steps back on its own: not a run of anything.
+      new Map([['a', [10, 11, 10.5]]]),
+    )
+
+    expect(Array.from(index.miles)).toEqual([10, 11])
+    expect(index.tread.lons.length).toBe(3)
+  })
+})
+
+describe('the cell grid', () => {
+  it('finds the trail across a longitude-cell boundary', () => {
+    // Cells are 0.07 degrees of longitude; a fix just west of a boundary must
+    // still see trail points just east of it, as it does across latitude.
+    const boundary = -77.07
+    const near = buildTrailIndex(
+      collection([
+        line([
+          [boundary + 0.0001, 39.5],
+          [boundary + 0.0001, 39.51],
+        ]),
+      ]),
+    )
+
+    expect(locateOnTrail(near, { lon: boundary - 0.0001, lat: 39.5 })).not.toBeNull()
+  })
+
+  it('keys neighbouring rows apart however many columns a row holds', () => {
+    // The row shift has to be wider than any column index, or two cells a
+    // row apart could share a key and a lookup would search the wrong one.
+    // Well inside the next row and column rather than on the boundary, where
+    // floating-point division decides which side a value falls.
+    expect(cellKey(39, -77)).not.toBe(cellKey(39.07, -77))
+    expect(cellKey(39, -77)).not.toBe(cellKey(39, -77.1))
+    expect(cellKey(39, -180)).not.toBe(cellKey(39.07, 180))
+  })
+})
+
+describe('serialising an index', () => {
+  const index = buildTrailIndex(
+    collection([
+      line(
+        Array.from({ length: 30 }, (_, i) => [-77, 39 + i * MILE_IN_DEGREES_LAT * 0.2]),
+      ),
+      line(
+        [
+          [-77.001, 39.001],
+          [-77.002, 39.002],
+        ],
+        'side_trails',
+      ),
+    ]),
+  )
+
+  it('round-trips with the same answers', () => {
+    const back = deserializeTrailIndex(serializeTrailIndex(index))
+    const at = { lon: -77.0005, lat: 39 + MILE_IN_DEGREES_LAT }
+
+    expect(locateOnTrail(back, at)).toEqual(locateOnTrail(index, at))
+    expect(back.totalMiles).toBe(index.totalMiles)
+    expect(back.partStarts).toEqual(index.partStarts)
+    expect(back.onPipelineAxis).toBe(index.onPipelineAxis)
+    expect(trailSlice(back, 1, 3)).toEqual(trailSlice(index, 1, 3))
+  })
+
+  it('lists every buffer once, for a transfer list', () => {
+    const serialized = serializeTrailIndex(index)
+    const buffers = trailIndexBuffers(serialized)
+
+    expect(buffers).toContain(serialized.lons.buffer)
+    expect(buffers).toContain(serialized.tread.cellOrder.buffer)
+    expect(new Set(buffers).size).toBe(buffers.length)
+  })
+
+  it('recognises its own output and nothing else', () => {
+    const serialized = serializeTrailIndex(index)
+
+    expect(isSerializedTrailIndex(serialized)).toBe(true)
+    expect(isSerializedTrailIndex({ ...serialized, format: 0 })).toBe(false)
+    expect(isSerializedTrailIndex({ ...serialized, miles: [1, 2] })).toBe(false)
+    expect(isSerializedTrailIndex(null)).toBe(false)
+    expect(isSerializedTrailIndex('an index')).toBe(false)
   })
 })

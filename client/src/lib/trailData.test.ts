@@ -14,7 +14,9 @@ import {
   RETIRED_POI_STORE_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
+  TRAIL_MILES_STORE_KEY,
   TrailDataHashMismatchError,
+  trailMilesClaimedHash,
   type StoredPoi,
 } from './trailData'
 import {
@@ -27,6 +29,7 @@ import {
   POI_TYPES,
   SPURS_KEY,
   TRAILS_KEY,
+  TRAIL_MILES_KEY,
 } from './config'
 import {
   readTrailsMerged,
@@ -246,8 +249,9 @@ describe('trail data', () => {
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     // Every POI type, plus the trail lines, the spur detail, the maintaining
     // clubs, the data stewards (#927), the highlights, the tombstones (#831),
-    // the other organizations' waypoints (#1097) and the elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 8)
+    // the other organizations' waypoints (#1097), the per-vertex miles
+    // (#1192) and the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 9)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {
@@ -1857,5 +1861,130 @@ describe('the highlights', () => {
 
     await deleteTrailData()
     expect(store.has(HIGHLIGHTS_STORE_KEY)).toBe(false)
+  })
+})
+
+describe('the per-vertex miles beside the lines (#1192)', () => {
+  const LINES = '{"type":"FeatureCollection"}'
+  const linesHash = () => sha256Hex(new TextEncoder().encode(LINES))
+  const milesNaming = (hash: string) =>
+    `{"format":1,"trails_sha256":"${hash}","axis":"export_elevation.calibrated_trail_axis","miles":{"centerline:chain:0":[0,0.5]}}`
+
+  /** Serves the lines, empty everything else, and the given trail_miles.json
+   *  body - or a 404 for it when null. */
+  function serveWithMiles(miles: string | null) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes(TRAIL_MILES_KEY) && miles === null) {
+          return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' })
+        }
+        const body = url.includes(TRAIL_MILES_KEY)
+          ? (miles as string)
+          : url.includes('poi_')
+            ? poiCollection([])
+            : url.includes(TRAILS_KEY)
+              ? LINES
+              : '{}'
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          arrayBuffer: () => Promise.resolve(bytesOf(body)),
+          blob: () => Promise.resolve(new Blob([body])),
+          text: () => Promise.resolve(body),
+        })
+      }),
+    )
+  }
+
+  it('reads the hash the file names off its front without parsing it', () => {
+    const hash = 'a'.repeat(64)
+    expect(trailMilesClaimedHash(`{"format":1,"trails_sha256":"${hash}","miles":{`)).toBe(
+      hash,
+    )
+    expect(trailMilesClaimedHash(`{"format": 1, "trails_sha256" : "${hash}"`)).toBe(hash)
+    expect(trailMilesClaimedHash('{"format":1,"miles":{}}')).toBeNull()
+    expect(trailMilesClaimedHash('{"trails_sha256":"not-a-hash"}')).toBeNull()
+  })
+
+  it('stores the miles when the file names the lines this attempt verified', async () => {
+    const hash = await linesHash()
+    publishing((key) => (key === TRAILS_KEY ? hash : null))
+    serveWithMiles(milesNaming(hash))
+
+    await downloadTrailData()
+
+    const stored = store.get(TRAIL_MILES_STORE_KEY)
+    expect(stored).toBeInstanceOf(Blob)
+    expect(await (stored as Blob).text()).toBe(milesNaming(hash))
+    expect((await loadTrailData())?.trailMiles).toBe(stored)
+  })
+
+  it('treats a release with no trail_miles.json as no miles, not a failure', async () => {
+    serveWithMiles(null)
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.has(TRAIL_MILES_STORE_KEY)).toBe(true)
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+    expect((await loadTrailData())?.trailMiles).toBeNull()
+  })
+
+  it('refuses miles measured on some other release of the lines, and says so', async () => {
+    // The sidecar is only true of the vertices it was computed from. One that
+    // names another trails.geojson would put every mile a few vertices off,
+    // silently - so it is dropped, the lines are kept, and the phone measures
+    // the line itself as it did before the file existed.
+    const hash = await linesHash()
+    publishing((key) => (key === TRAILS_KEY ? hash : null))
+    serveWithMiles(milesNaming('b'.repeat(64)))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('measures the line itself'))
+    warn.mockRestore()
+  })
+
+  it('refuses miles when the lines themselves have no published hash to check against', async () => {
+    // An unpublished manifest verifies nothing, so nothing can vouch that the
+    // miles and the lines are one release. No miles is the honest answer.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    serveWithMiles(milesNaming(await linesHash()))
+
+    await downloadTrailData()
+
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+    warn.mockRestore()
+  })
+
+  it('takes the previous miles down with a re-download that publishes none', async () => {
+    store.set(TRAIL_MILES_STORE_KEY, new Blob(['old miles']))
+    store.set(TRAILS_BLOB_KEY, new Blob([LINES]))
+    serveWithMiles(null)
+
+    await downloadTrailData()
+
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+  })
+
+  it('reads anything but a Blob in the slot as no miles', async () => {
+    store.set(TRAILS_BLOB_KEY, new Blob([LINES]))
+    store.set(TRAIL_MILES_STORE_KEY, 'a string some other build wrote')
+
+    expect((await loadTrailData())?.trailMiles).toBeNull()
+  })
+
+  it('is removed with the rest of the trail data', async () => {
+    store.set(TRAILS_BLOB_KEY, new Blob([LINES]))
+    store.set(TRAIL_MILES_STORE_KEY, new Blob(['miles']))
+
+    await deleteTrailData()
+
+    expect(store.has(TRAIL_MILES_STORE_KEY)).toBe(false)
   })
 })

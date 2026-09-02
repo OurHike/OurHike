@@ -36,6 +36,7 @@ import {
   RETIRED_POI_KEY,
   SPURS_KEY,
   TRAILS_KEY,
+  TRAIL_MILES_KEY,
   type PoiType,
 } from './config'
 import {
@@ -68,6 +69,12 @@ export const ELEVATION_STORE_KEY = 'ourhike:elevation'
 export const CLUB_SECTIONS_STORE_KEY = 'ourhike:club-sections'
 export const STEWARDS_STORE_KEY = 'ourhike:stewards'
 export const HIGHLIGHTS_STORE_KEY = 'ourhike:highlights'
+/** The per-vertex miles beside the trail lines (#1192), as the verified
+ *  bytes - a Blob HANDLE like the lines themselves, so reading the release
+ *  back costs a round trip and not a 2 MB parse on the thread every tab tap
+ *  waits on. lib/trailIndexBuild.ts parses it, off that thread. Null or
+ *  absent for a release that publishes none. */
+export const TRAIL_MILES_STORE_KEY = 'ourhike:trail-miles'
 
 export interface StoredPoi {
   id: string
@@ -231,6 +238,18 @@ export interface PoiPhoto {
 
 export interface TrailData {
   trails: Blob
+  /**
+   * The mile of every centerline vertex in `trails`, on the pipeline's
+   * calibrated axis (#1192, pipeline/export_trails.py's write_trail_miles),
+   * or null for a release that publishes none.
+   *
+   * Null costs the phone its one-axis index: lib/trailIndexBuild.ts measures
+   * the line itself as it always did, and lib/route.ts's anchors carry
+   * numbers between that measurement and the POIs' published miles. Nothing
+   * is drawn differently; the route builder's figures are simply the older,
+   * reconciled kind rather than the same number end to end.
+   */
+  trailMiles: Blob | null
   pois: StoredPoi[]
   /** Spur detail keyed by trail id. Empty for a release built before
    *  export_spurs.py existed - the map still draws every spur, it just cannot
@@ -748,6 +767,63 @@ async function fetchOptionalArtifact(
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 
+/**
+ * The hash trail_miles.json says it was measured against, read off the front
+ * of the file without parsing it.
+ *
+ * The pipeline writes `trails_sha256` as the file's second key
+ * (export_trails.write_trail_miles), so it is inside the first hundred bytes
+ * of a two-megabyte document. A `JSON.parse` here would spend a quarter of a
+ * second of a 4x-throttled phone's launch on a question one regular expression
+ * answers - and this runs in the download, on the thread the progress bar is
+ * drawn on. Null when the front of the file does not carry one, which the
+ * caller treats exactly like a mismatch: no miles rather than somebody else's.
+ */
+export function trailMilesClaimedHash(head: string): string | null {
+  const match = /"trails_sha256"\s*:\s*"([0-9a-f]{64})"/.exec(head)
+  return match === null ? null : match[1]
+}
+
+/** How much of trail_miles.json is read to find the hash it names. Five
+ *  hundred bytes holds the first two keys of any file the pipeline writes,
+ *  with room for the format to grow a key or two ahead of them. */
+const TRAIL_MILES_HEAD_BYTES = 512
+
+/**
+ * The per-vertex miles, or null when this release publishes none - OR when
+ * the file names a trails.geojson other than the one this attempt verified.
+ *
+ * The second null is the point (#1192). The miles are only true of the exact
+ * vertices they were measured on, so a sidecar from one release paired with
+ * another release's lines would place every mile a few vertices off and
+ * nothing on the phone could tell. `trails_sha256` inside the file is the
+ * pipeline's promise about which line it describes; this is where the promise
+ * is checked, against the published hash the lines themselves were just
+ * verified to. A mismatch is not a failed download - the lines and waypoints
+ * are whole - so it degrades the way an absent file does: the phone measures
+ * the line itself, and says so in the console for whoever is looking.
+ */
+async function fetchTrailMiles(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<Blob | null> {
+  const fetched = await fetchOptionalArtifact(TRAIL_MILES_KEY, expected, signal)
+  if (fetched === null) return null
+  const trailsHash = expected(TRAILS_KEY)
+  const claimed = trailMilesClaimedHash(
+    decode(fetched.bytes.subarray(0, TRAIL_MILES_HEAD_BYTES)),
+  )
+  if (trailsHash === null || claimed !== trailsHash) {
+    console.warn(
+      `${TRAIL_MILES_KEY} names trails.geojson ${claimed ?? '(nothing)'} and the ` +
+        `published lines are ${trailsHash ?? '(unpublished)'}; the miles are not ` +
+        'stored and this phone measures the line itself.',
+    )
+    return null
+  }
+  return new Blob([fetched.buffer], { type: fetched.contentType })
+}
+
 /** Spur detail, or an empty map when this release does not publish it.
  *
  *  A 404 here is not a failed download. `spurs.json` did not exist before
@@ -896,6 +972,7 @@ export async function downloadTrailData({
   // the same breath as leaving its `finished()` call behind.
   const OTHER_ARTIFACTS = [
     'Trail lines',
+    'Vertex miles',
     'Spur destinations',
     'Maintaining clubs',
     'Data stewards',
@@ -979,55 +1056,70 @@ export async function downloadTrailData({
   // Still all-or-nothing: `Promise.all` rejects on the first failure and
   // nothing below commits, which is the property the `set()` calls at the end
   // depend on.
-  const [poiGroups, spurs, clubSections, stewards, highlights, retiredPois, nearbyPois] =
-    await Promise.all([
-      Promise.all(
-        POI_TYPES.map(async (type) => {
-          const fetched = await fetchArtifact(poiKey(type), expected, signal)
-          finished(type)
-          return readPois(decode(fetched.bytes), type)
-        }),
-      ),
-      fetchSpurs(expected, signal).then((value) => {
-        finished('Spur destinations')
-        return value
+  const [
+    poiGroups,
+    spurs,
+    clubSections,
+    stewards,
+    highlights,
+    retiredPois,
+    nearbyPois,
+    trailMiles,
+  ] = await Promise.all([
+    Promise.all(
+      POI_TYPES.map(async (type) => {
+        const fetched = await fetchArtifact(poiKey(type), expected, signal)
+        finished(type)
+        return readPois(decode(fetched.bytes), type)
       }),
-      // Beside the spurs rather than after them: another small keyed artifact
-      // that nothing else is waiting on, and a serial fetch here would buy a
-      // round trip of dead time for 30 clubs' worth of JSON.
-      fetchClubSections(expected, signal).then((value) => {
-        finished('Maintaining clubs')
-        return value
-      }),
-      // Beside the clubs for the same reason they sit beside the spurs: another
-      // small keyed artifact nothing else waits on. 1.5 KB against
-      // trails.geojson's 12 MB, so a serial fetch here would be a round trip of
-      // dead time for three organizations' worth of JSON.
-      fetchStewards(expected, signal).then((value) => {
-        finished('Data stewards')
-        return value
-      }),
-      fetchHighlights(expected, signal).then((value) => {
-        finished('Highlights')
-        return value
-      }),
-      // Beside the other three small keyed artifacts rather than after them,
-      // for the reason the club sections give: nothing is waiting on it, and a
-      // serial fetch would buy a round trip of dead time for ~23 KB.
-      fetchRetiredPois(expected, signal).then((value) => {
-        finished('Retired waypoints')
-        return value
-      }),
-      // Beside the A.T. waypoints rather than after them, for the reason every
-      // small keyed artifact here sits in this list: nothing is waiting on it,
-      // and a serial fetch would buy a round trip of dead time. 0.37 MB
-      // gzipped on 2026-08-27 - the heaviest of the optional artifacts in this
-      // group, and still an eighth of what the eight POI files carry.
-      fetchNearbyPois(expected, signal).then((value) => {
-        finished('Nearby waypoints')
-        return value
-      }),
-    ])
+    ),
+    fetchSpurs(expected, signal).then((value) => {
+      finished('Spur destinations')
+      return value
+    }),
+    // Beside the spurs rather than after them: another small keyed artifact
+    // that nothing else is waiting on, and a serial fetch here would buy a
+    // round trip of dead time for 30 clubs' worth of JSON.
+    fetchClubSections(expected, signal).then((value) => {
+      finished('Maintaining clubs')
+      return value
+    }),
+    // Beside the clubs for the same reason they sit beside the spurs: another
+    // small keyed artifact nothing else waits on. 1.5 KB against
+    // trails.geojson's 12 MB, so a serial fetch here would be a round trip of
+    // dead time for three organizations' worth of JSON.
+    fetchStewards(expected, signal).then((value) => {
+      finished('Data stewards')
+      return value
+    }),
+    fetchHighlights(expected, signal).then((value) => {
+      finished('Highlights')
+      return value
+    }),
+    // Beside the other three small keyed artifacts rather than after them,
+    // for the reason the club sections give: nothing is waiting on it, and a
+    // serial fetch would buy a round trip of dead time for ~23 KB.
+    fetchRetiredPois(expected, signal).then((value) => {
+      finished('Retired waypoints')
+      return value
+    }),
+    // Beside the A.T. waypoints rather than after them, for the reason every
+    // small keyed artifact here sits in this list: nothing is waiting on it,
+    // and a serial fetch would buy a round trip of dead time. 0.37 MB
+    // gzipped on 2026-08-27 - the heaviest of the optional artifacts in this
+    // group, and still an eighth of what the eight POI files carry.
+    fetchNearbyPois(expected, signal).then((value) => {
+      finished('Nearby waypoints')
+      return value
+    }),
+    // The lines' own sidecar (#1192), beside the waypoints it puts on the
+    // axis rather than after them: about 0.9 MB gzipped, and nothing here
+    // waits on it - its reader is a launch, not this download.
+    fetchTrailMiles(expected, signal).then((value) => {
+      finished('Vertex miles')
+      return value
+    }),
+  ])
   // Flattened in POI_TYPES order rather than in completion order, so what is
   // stored does not depend on which request happened to finish first.
   //
@@ -1073,6 +1165,11 @@ export async function downloadTrailData({
     ...(committingCenterlineFirst
       ? []
       : [[TRAILS_BLOB_KEY, trails] as [IDBValidKey, unknown]]),
+    // Null is written, not skipped: a re-download from a release that
+    // publishes no miles has to take the previous release's miles down with
+    // it, or the index would pair new lines with old numbers - the exact
+    // mismatch fetchTrailMiles refuses over the wire.
+    [TRAIL_MILES_STORE_KEY, trailMiles],
     [POIS_KEY, pois],
     [SPURS_STORE_KEY, spurs],
     [CLUB_SECTIONS_STORE_KEY, clubSections],
@@ -1157,6 +1254,11 @@ export async function loadTrailData(): Promise<TrailData | null> {
   const trails = await loadTrailLines()
   if (trails === null) return null
 
+  // A Blob or nothing. Anything else in the slot - a release stored by a
+  // build that wrote something different there - is "no miles", never a
+  // parse attempt on a value nobody stands behind.
+  const storedMiles = await get(TRAIL_MILES_STORE_KEY)
+  const trailMiles = storedMiles instanceof Blob ? storedMiles : null
   const pois = ((await get(POIS_KEY)) as StoredPoi[] | undefined) ?? []
   const spurs =
     ((await get(SPURS_STORE_KEY)) as Record<string, SpurRecord> | undefined) ?? {}
@@ -1178,6 +1280,7 @@ export async function loadTrailData(): Promise<TrailData | null> {
   const retiredPois = storedTombstones(await get(RETIRED_POI_STORE_KEY))
   return {
     trails,
+    trailMiles,
     pois,
     spurs,
     elevation,
@@ -1202,6 +1305,7 @@ export async function loadTrailData(): Promise<TrailData | null> {
  */
 export async function deleteTrailData(): Promise<void> {
   await del(TRAILS_BLOB_KEY)
+  await del(TRAIL_MILES_STORE_KEY)
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
   await del(CLUB_SECTIONS_STORE_KEY)

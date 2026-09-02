@@ -180,6 +180,42 @@ describe('the route order', () => {
     expect(screen.getByText(/Stops add about 15 min/)).toBeInTheDocument()
   })
 
+  it('prints the capacity and the water distance a stop was chosen on', () => {
+    // #1198. The whole point: a hiker comparing two shelters reads both rows
+    // at once rather than opening and closing two cards.
+    panel({ stops: [{ ...SHELTER, capacity: 8, waterDistanceFt: 350 }] })
+
+    expect(screen.getByText(/sleeps 8/)).toBeInTheDocument()
+    expect(screen.getByText(/water 350 ft/)).toBeInTheDocument()
+  })
+
+  it('omits each figure where nobody published it, and never prints a zero', () => {
+    // Absent capacity is not "sleeps 0" and absent water is not "water 0 ft",
+    // which would be the app inventing about the thing being decided.
+    panel({ stops: [SHELTER] })
+
+    expect(screen.queryByText(/sleeps/)).toBeNull()
+    expect(screen.queryByText(/water/)).toBeNull()
+  })
+
+  it('floors a stated water distance so it never reads as zero', () => {
+    // lib/units.ts's MIN_STATED_FEET, the same floor chrome/PoiCard.tsx
+    // applies to the same published column - one home since #1198.
+    panel({ stops: [{ ...SHELTER, waterDistanceFt: 0 }] })
+
+    expect(screen.queryByText(/water 0 ft/)).toBeNull()
+    expect(screen.getByText(/water 3 ft/)).toBeInTheDocument()
+  })
+
+  it('says how far off the walk a stop is without pricing the detour', () => {
+    panel({ stops: [{ ...FAR_SHELTER, capacity: 6 }] })
+
+    expect(screen.getByText(/off the walk/)).toBeInTheDocument()
+    expect(screen.getByText(/sleeps 6/)).toBeInTheDocument()
+    // One stop is one stop's worth of minutes, however far off the line.
+    expect(screen.getByText(/Stops add about 15 min/)).toBeInTheDocument()
+  })
+
   it('removes a stop when its × is pressed', async () => {
     const props = panel({ stops: [SHELTER] })
 

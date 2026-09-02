@@ -67,6 +67,26 @@ export interface DayHikeStop {
   mile: number
   /** Straight-line feet from the walk to the stop. */
   offCourseFeet: number
+  /**
+   * How many the shelter sleeps, and how far its water is (#1198).
+   *
+   * THE TWO FACTS A HIKER PICKS A STOP ON, carried onto the stop so the row
+   * can print them. Until #1198 they were on the waypoint card and the card
+   * is unreachable while the builder owns the tap - so choosing where to
+   * spend the night meant choosing blind, on the one screen built for
+   * choosing.
+   *
+   * OPTIONAL, AND ABSENT MEANS NOBODY PUBLISHED ONE. Both inherit
+   * `StoredPoi`'s rule verbatim: `capacity` is absent for the shelters
+   * ATC's layer covers in pairs or writes as "xxx", and `waterDistanceFt`
+   * is absent where nobody measured - "never 'no water'". A row that
+   * rendered a missing capacity as 0, or a missing water distance as "no
+   * water nearby", would be the invention FEATURES.md's omit-rather-than-
+   * guess rule exists to stop, and it would be inventing it about the two
+   * things a hiker is deciding on.
+   */
+  capacity?: number
+  waterDistanceFt?: number
 }
 
 /**
@@ -137,6 +157,14 @@ export function orderStops(
       lon: poi.lon,
       mile: found.mile,
       offCourseFeet: found.offCourseFeet,
+      // Spread rather than assigned, so a POI with no published figure has
+      // no key at all rather than one holding `undefined` - the same
+      // omit-don't-write shape `StoredPoi` itself uses, and what keeps
+      // "nobody published this" distinguishable from "this is zero".
+      ...(poi.capacity !== undefined ? { capacity: poi.capacity } : {}),
+      ...(poi.waterDistanceFt !== undefined
+        ? { waterDistanceFt: poi.waterDistanceFt }
+        : {}),
     })
   }
 

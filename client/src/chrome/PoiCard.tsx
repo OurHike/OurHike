@@ -110,7 +110,7 @@ import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
 import { waypointDistance } from '../lib/waypointDistance'
 import type { HikeDirection } from './Header'
-import { formatShortDistance, type UnitSystem } from '../lib/units'
+import { formatShortDistance, MIN_STATED_FEET, type UnitSystem } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { CARD_PHOTO_EDGE, type OwnPhotoSource } from '../lib/poiPhotos'
@@ -446,18 +446,17 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
- * One metre, in feet - pipeline/lib/poi_description.py's `MIN_PART_FT`, which
- * floors the distances the pipeline publishes for the same reason.
+ * One metre, in feet - lib/units.ts's `MIN_STATED_FEET`, aliased here so the
+ * call site below reads as it always has.
  *
- * A stated distance arrives unfloored (`water_distance_ft` is its own column,
- * not a nearby part), and a card claiming a hiker walks zero of anything to
- * reach water reads as a bug rather than as the very short walk it is
- * asserting. Stated in the coarser unit, so neither system rounds it away:
- * flooring at 1 ft would still print "0 m" for a metric hiker, which is the
- * defect arriving in the other unit. #694 floored it at a metre for exactly
- * this reason, back when this line printed only metres.
+ * It lived in this file as a private constant until #1198, which gave the
+ * figure a second reader: a day hike's stop rows print the same published
+ * `water_distance_ft` and must floor it the same way. The reasoning moved
+ * with it - see the constant's own note, and pipeline/lib/poi_description.py,
+ * which floors what it publishes for the same reason. #694 floored it at a
+ * metre back when this line printed only metres.
  */
-const MIN_PART_FT = 3.28084
+const MIN_PART_FT = MIN_STATED_FEET
 
 /**
  * How far a part of the site is from the pin, for its chip.

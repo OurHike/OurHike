@@ -71,7 +71,12 @@ import {
   type LabelLayerKey,
 } from '../lib/mapLabelLayers'
 import type { PaceEstimate } from '../lib/pace'
-import { formatDistance, formatElevation, formatShortDistance } from '../lib/units'
+import {
+  formatDistance,
+  formatElevation,
+  formatShortDistance,
+  MIN_STATED_FEET,
+} from '../lib/units'
 import type { UnitSystem } from '../lib/units'
 import '../screens/plan.css'
 
@@ -356,6 +361,35 @@ function RouteRowItem({
         <span className="day-hike-panel__row-detail">
           {row.stop.type === 'shelter' ? 'Shelter' : 'Campsite'} &middot; mile{' '}
           {row.stop.mile.toFixed(1)}
+          {/* THE TWO FACTS A HIKER PICKS A STOP ON (#1198). They live on the
+              waypoint card, and the card is unreachable while the builder owns
+              the tap - so until now choosing where to spend the night meant
+              choosing blind, on the screen built for choosing.
+
+              ON THE ROW RATHER THAN BEHIND A TAP, which is better than the
+              card would have been even if the card were reachable: a hiker
+              deciding between two shelters reads both rows at once instead of
+              opening and closing two sheets to compare four numbers.
+
+              EACH APPEARS ONLY WHERE IT WAS PUBLISHED. Absent capacity is not
+              zero and absent water is not "no water" - lib/dayHikeStops.ts
+              carries both rules from StoredPoi, and a row inventing either
+              would be inventing it about the thing being decided. */}
+          {row.stop.capacity !== undefined && <> &middot; sleeps {row.stop.capacity}</>}
+          {row.stop.waterDistanceFt !== undefined && (
+            <>
+              {' '}
+              &middot; water{' '}
+              {formatShortDistance(
+                // The floor the card applies to the same published column, from
+                // the one home both now read (lib/units.ts). A stop claiming a
+                // hiker walks zero feet to water reads as a bug rather than as
+                // the very short walk it asserts.
+                Math.max(MIN_STATED_FEET, row.stop.waterDistanceFt),
+                units,
+              )}
+            </>
+          )}
           {/* Said, never priced. The walk out to a stop is ground the app has
               no evidence about - see lib/dayHikeStops.ts - so the distance is
               shown and the minutes are not invented. */}

@@ -42,16 +42,24 @@
 // the analysis is required to look. Converting would bury a 1.62x factor
 // inside a column nobody would think to question afterwards.
 //
-// WHAT IS NOT VERIFIED, AND CANNOT BE FROM HERE.
+// WHAT IS VERIFIED, AND WHAT STILL IS NOT.
 //
-// There is no Android SDK and no device in the sandbox this was written in, so
-// no line below has ever executed against the real plugin. The mapping, the
-// platform gate and the teardown are unit-tested against a stub; everything
-// that happens on the far side of `registerPlugin` is verified by a human on a
-// phone or not at all. The plugin's own compatibility table stops at Capacitor
-// v7 and this repository is on 8.5.0 - its peer range says `>=3.0.0`, which
-// declares v8 by an open bound rather than by testing against it. A device
-// build is the first thing that will find out.
+// IT COMPILES, on both platforms, against Capacitor 8.5.0. That was an open
+// question until #1193 put `build-shells.yml` in front of it - the plugin's
+// own compatibility table stops at v7 and its peer range says `>=3.0.0`,
+// declaring v8 by an open bound rather than by testing. Measured against
+// `85965a3d` on 2026-09-02: Android reports `Found 1 Capacitor plugin for
+// android: @capacitor-community/background-geolocation@1.2.26`, builds its
+// Gradle module, and finishes BUILD SUCCESSFUL; iOS resolves it through Swift
+// Package Manager as a real target (`BackgroundGeolocationPlugin`, arm64,
+// Debug-iphoneos) and finishes BUILD SUCCEEDED. Both run on every push.
+//
+// NO LINE BELOW HAS EVER EXECUTED. Compiling is not running, and a compile
+// check does not open a WebView. The mapping, the platform gate and the
+// teardown are unit-tested against a stub; everything on the far side of
+// `registerPlugin` is verified by a human on a phone or not at all, and the
+// APK that makes that possible is the `ourhike-debug-apk` artifact on any
+// run of that workflow.
 
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type {

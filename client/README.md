@@ -270,8 +270,16 @@ stops at Capacitor v7 and this repository is on 8.5.0 — its peer range says
 `>=3.0.0`, which declares v8 by an open bound rather than by testing against
 it.
 
-Whether it **compiles** is now answered on every push. `build-shells.yml`
-(#1193) builds both shells:
+Whether it **compiles** is now answered on every push, and the first answer
+was **yes on both**, measured against `85965a3d` on 2026-09-02. Android reports
+`Found 1 Capacitor plugin for android: @capacitor-community/background-geolocation@1.2.26`,
+builds its Gradle module and finishes `BUILD SUCCESSFUL in 1m 35s` with a 25.1 MB
+APK; iOS resolves it through Swift Package Manager as a real target
+(`BackgroundGeolocationPlugin`, `arm64`, `Debug-iphoneos`) and finishes
+`** BUILD SUCCEEDED **`. So the open peer bound is not hiding a break —
+against 8.5.0, on both platforms, it compiles.
+
+`build-shells.yml` (#1193) is what runs:
 
 |             | what it does                                      | what you get                                                                                                                                      |
 | ----------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |

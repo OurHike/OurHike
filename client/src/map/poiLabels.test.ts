@@ -105,16 +105,41 @@ describe('which names are drawn', () => {
 })
 
 describe('the priority', () => {
-  it('puts parking on the gateway rung, above the landmarks', () => {
-    // The handoff's central claim: a lot is how a hiker reaches the trail, so
-    // on a PLANNING map its name outranks a spring's. Deliberately the
-    // opposite of map/poiPriority.ts, which is right about a hiker already
-    // walking.
+  it('puts the way IN on the gateway rung, above the landmarks', () => {
+    // The handoff's central claim: how a hiker reaches the trail is what a
+    // PLANNING map is for, so a trailhead and a lot outrank a spring.
+    // Deliberately the opposite of map/poiPriority.ts, which is right about a
+    // hiker already walking.
     const key = JSON.stringify(poiLabelSortKey([]))
 
-    expect(key).toContain(`"parking",${LABEL_TIER.gateway}`)
+    expect(key).toContain(`"trailhead",${LABEL_TIER.gateway}`)
+    expect(key).toContain(`"parking",${LABEL_TIER.gateway + 1}`)
     expect(key).toContain(`"shelter",${LABEL_TIER.landmark}`)
     expect(LABEL_TIER.gateway).toBeLessThan(LABEL_TIER.landmark)
+  })
+
+  it('breaks the gateway tie toward the trailhead, WITHIN the rung', () => {
+    // Both are tier 1 and both must stay tier 1 - map/labelLadder.ts spaces
+    // the rungs by tens precisely so a layer can rank inside one without
+    // leaving it. A trailhead wins the tie because it is the choice the map
+    // is being read to make; a lot is how you get to it.
+    //
+    // The +1 has to stay under the next rung or the ordering silently becomes
+    // a demotion rather than a tiebreak, which is the failure this pins.
+    const key = JSON.stringify(poiLabelSortKey([]))
+
+    expect(key.indexOf('"trailhead"')).toBeLessThan(key.indexOf('"parking"'))
+    expect(LABEL_TIER.gateway + 1).toBeLessThan(LABEL_TIER.route)
+  })
+
+  it('draws a trailhead name in the same zoom band as a lot', () => {
+    // A tiebreak inside a rung must not become a different arrival zoom: the
+    // handoff's "park" band names both, and one showing up two zooms later
+    // than the other would read as the map losing it.
+    const zoom = JSON.stringify(poiLabelMinZoom([]))
+
+    expect(zoom).toContain('trailhead')
+    expect(zoom).toContain('parking')
   })
 
   it('lifts a chosen stop to the route rung, above every trail name', () => {

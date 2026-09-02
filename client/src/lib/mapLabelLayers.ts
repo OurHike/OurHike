@@ -21,21 +21,32 @@
 // layer - which is how a toggle comes to look broken because another screen
 // has already turned its target off.
 //
-// TWO OF THE HANDOFF'S NINE ARE ABSENT, and are absent rather than present
-// and inert. `trailheads` and `junctions` have nothing to draw:
-// pipeline/lib/poi_schema.py publishes no `trailhead` type, and junctions
-// exist only as graph nodes in pipeline/build_trail_graph.py. A toggle whose
-// switch changes nothing teaches a hiker the app is broken - the same
-// argument chrome/DayHikePickBar.tsx makes for having no disabled buttons on
-// the builder bar - so the gap is recorded on #1194 instead, where it can be
-// closed by publishing the data rather than by adding a control.
+// ONE OF THE HANDOFF'S NINE IS STILL ABSENT, and is absent rather than
+// present and inert. It was two until #1197 gave `POI_TYPES` a ninth category
+// and OPRHP's 287 trailheads started shipping - so `trailheads` is a real
+// toggle now, and only `junctions` has nothing to draw: they exist as graph
+// nodes in pipeline/build_trail_graph.py and nothing publishes them as
+// features (#1213).
+//
+// A toggle whose switch changes nothing teaches a hiker the app is broken -
+// the same argument chrome/DayHikePickBar.tsx makes for having no disabled
+// buttons on the builder bar - so the remaining gap stays recorded rather
+// than shipped, and closing it means publishing the data rather than adding
+// a control.
 
 import { TRAIL_LABEL_LAYER_ID, NEARBY_TRAIL_LABEL_LAYER_ID } from '../map/trailLabels'
 import { LIVE_TOPO_LAYER_IDS } from '../map/liveTopo'
 import { TIER_MIN_ZOOM, type LabelTier } from '../map/labelLadder'
 
 export type LabelLayerKey =
-  'parking' | 'roads' | 'shelters' | 'campsites' | 'trails' | 'water' | 'contours'
+  | 'trailheads'
+  | 'parking'
+  | 'roads'
+  | 'shelters'
+  | 'campsites'
+  | 'trails'
+  | 'water'
+  | 'contours'
 
 export interface LabelLayerSpec {
   key: LabelLayerKey
@@ -67,6 +78,16 @@ export interface LabelLayerSpec {
  * problem the header warns about.
  */
 export const LABEL_LAYERS: readonly LabelLayerSpec[] = [
+  {
+    // The class the ladder's top rung was reserved for, and could not be
+    // filled with until #1197. First in the row because it is first in the
+    // ladder: this is the map for choosing where to start.
+    key: 'trailheads',
+    label: 'Trailheads',
+    tier: 'gateway',
+    poiType: 'trailhead',
+    layerIds: [],
+  },
   {
     key: 'parking',
     label: 'Parking',

@@ -922,6 +922,10 @@
             "status": "shipping",
             "source_key": "privies",
             "note": "ATC's own facility layer, ~1:1 with the poi_type."
+          },
+          "trailhead": {
+            "status": "absent",
+            "note": "ATC's facility layers carry shelters, campsites, vistas, parking and privies; none of them is a trailhead layer, and there is no separate one. Probed 2026-08-27 with the rest of this block. The A.T.'s starts are approached by `Type=0` Access side trails, which export_spurs.py filters before a destination is looked for - so the absence is consistent with how ATC models the corridor rather than a gap in what they publish."
           }
         }
       },
@@ -1081,6 +1085,24 @@
               "date": "2026-08-27",
               "artifact": "nearby_poi.geojson"
             }
+          },
+          "trailhead": {
+            "status": "shipping",
+            "source_key": "oprhp_facilities",
+            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+            "measured": {
+              "features": 287,
+              "date": "2026-08-27",
+              "values": {
+                "Trailhead": 287
+              }
+            },
+            "note": "SHIPPING since #1197, which gave POI_TYPES its ninth category. Found and dropped before that, with the named reason 'POI_TYPES has no trailhead category' printed by every export_nearby_poi.py run - so this was an exclusion lifted rather than a source ingested. Kept apart from the three `parking` values in the same layer on purpose: OPRHP publishes both, and a lot and the trailhead it serves are frequently not the same point.",
+            "published": {
+              "features": 287,
+              "date": "2026-09-02",
+              "artifact": "nearby_poi.geojson"
+            }
           }
         }
       },
@@ -1234,6 +1256,14 @@
               "date": "2026-08-27",
               "artifact": "nearby_poi.geojson"
             }
+          },
+          "trailhead": {
+            "status": "available",
+            "measured": {
+              "features": 10520,
+              "date": "2026-08-27"
+            },
+            "note": "DEC's own `Trailhead` layer - a SEPARATE dataset from dec_backcountry_features, which holds only 414 trailhead-ish rows and none under an ASSET value this export allowlists. Unregistered, and still unregistered after #1197: the ninth POI type removed the schema blocker the survey named, but registering a new layer is a licence-and-freshness change with its own review. This is the largest single cell in the matrix and the one worth taking next."
           }
         }
       },
@@ -1277,6 +1307,15 @@
           "privy": {
             "status": "absent",
             "note": "No point layer of any kind carries one; `Points` is empty."
+          },
+          "trailhead": {
+            "status": "unsuitable",
+            "layer": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Trailheads_HighlandsProject_Apr2026/FeatureServer/0",
+            "measured": {
+              "features": 26,
+              "date": "2026-08-27"
+            },
+            "note": "Trailheads_HighlandsProject_Apr2026 - 26 real points, and unsuitable here for exactly the reason they are already unsuitable as `parking`: it is a featured-hikes table whose rows happen to be trailheads (Park/Coord/Town/Hike/Difficulty/Length/ParkingLot), one row per suggested hike, with the lot's name as prose. A ninth category does not turn a curated hike list into an inventory. Recorded rather than dropped because it is the only POI-shaped data NYNJTC publishes."
           }
         }
       },
@@ -1315,6 +1354,10 @@
           "privy": {
             "status": "absent",
             "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
+          },
+          "trailhead": {
+            "status": "absent",
+            "note": "Probed whole 2026-08-27; Mohonk publishes no point layers of any type."
           }
         }
       },
@@ -1358,6 +1401,10 @@
           "privy": {
             "status": "absent",
             "note": "GATC's registered source is one water PDF; it carries nothing of this type."
+          },
+          "trailhead": {
+            "status": "absent",
+            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
           }
         }
       },
@@ -1397,6 +1444,10 @@
           "privy": {
             "status": "unprobed",
             "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "OSM is read for water alone (fetch_trail_water.py). Its `highway=trailhead` tagging has not been probed, and saying so is the honest answer rather than assuming a count."
           }
         }
       },
@@ -1436,6 +1487,10 @@
           "privy": {
             "status": "absent",
             "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+          },
+          "trailhead": {
+            "status": "absent",
+            "note": "The USGS data that ships is NHD hydrography, behind crossings and part of water. It carries nothing of this type."
           }
         }
       },

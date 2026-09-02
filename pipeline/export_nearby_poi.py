@@ -83,7 +83,10 @@ WHAT DOES NOT SHIP, AND WHY EACH ONE IS A DECISION RATHER THAN AN OVERSIGHT
     concession stand is resupply in the sense a thru-hiker means is exactly
     what #806 got wrong about opentrail's 'r' tag, where 0 of 72 published
     points turned out to be named for a store.
-  - **Trailheads.** Three orgs publish them; POI_TYPES has no category for one.
+(Trailheads were a fourth exclusion until #1197 gave POI_TYPES a ninth
+category. OPRHP's 287 ship now; DEC's 10,520 sit in a layer nobody has
+registered, and NYNJTC's 26 are a featured-hikes table rather than an
+inventory - POI_COVERAGE_SURVEY.md 7c has both.)
 
 Everything a source-specific fact - which field holds the id, which the name,
 which flag says public - is read from sources.json; everything that is a
@@ -139,9 +142,14 @@ DEC_ASSET_TYPES = {
     "HARDENED CROSSING": "crossing",
 }
 
-# OPRHP's Sub_Asset values. One layer carries all six types; 'Water Spigot',
-# 'Drinking Fountain', 'Concession', 'Store', 'Stairs', 'Vehicle Bridge' and
-# 'Trailhead' are all deliberately absent - the docstring says why for each.
+# OPRHP's Sub_Asset values. One layer carries all seven types; 'Water Spigot',
+# 'Drinking Fountain', 'Concession', 'Store', 'Stairs' and 'Vehicle Bridge'
+# are deliberately absent - the docstring says why for each.
+#
+# 'Trailhead' was the seventh absence until #1197, dropped with the named
+# reason "POI_TYPES has no trailhead category". lib/poi_schema.py has one now,
+# so the 287 rows OPRHP publishes ship - in the two parks the day-hike builder
+# is actually used in, which is what makes them worth the schema change.
 OPRHP_SUB_ASSET_TYPES = {
     "Lean-to": "shelter",
     "Campground": "campsite",
@@ -156,6 +164,12 @@ OPRHP_SUB_ASSET_TYPES = {
     "Pull Off": "parking",
     "Accessible Parking Area": "parking",
     "Trail Bridge": "crossing",
+    # Where the walking starts (#1197). Kept apart from the three `parking`
+    # values above rather than folded into them, which is the whole reason
+    # the ninth type was worth adding: OPRHP publishes both, and a lot and
+    # the trailhead it serves are frequently not the same point. Calling a
+    # trailhead "parking" would put a hiker's start where their car is.
+    "Trailhead": "trailhead",
 }
 
 # Which registry key gets which value map, and which field the values live in.
@@ -222,7 +236,6 @@ NAMED_EXCLUSIONS = {
     "WATER SUPPLY SYSTEM": "DEC water refused - see sources.json dec_water_holdback",
     "Concession": "unjudged as resupply (#806's precedent)",
     "Store": "unjudged as resupply (#806's precedent)",
-    "Trailhead": "POI_TYPES has no trailhead category",
 }
 
 #: Matched on the same terms as the allowlists - a value excluded on purpose

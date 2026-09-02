@@ -62,16 +62,33 @@ Read `n / p` as *features published / features the org's own flag marks visitor-
 here ingests it; **unsuitable** means it fails the bar, with evidence; **absent** means
 probed and there is nothing; **unprobed** is an admission, not a finding.
 
-| | shelter | campsite | water | resupply | crossing | viewpoint | parking | privy |
-|---|---|---|---|---|---|---|---|---|
-| **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping |
-| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 793** | **ships 629** | **ships 1,201** | **ships 574** |
-| **NYS DEC** | **ships 315** | **ships 2,077** | **unsuitable** 23 / **0** | absent | **ships 246** | **ships 202** | **ships 1,852** | **ships 350** |
-| **NYNJTC** | absent | absent | absent | absent | absent | absent | *unsuitable* 26 | absent |
-| **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent |
-| **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent |
-| **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed |
-| **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent |
+| | shelter | campsite | water | resupply | crossing | viewpoint | parking | privy | trailhead |
+|---|---|---|---|---|---|---|---|---|---|
+| **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping | absent |
+| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 793** | **ships 629** | **ships 1,201** | **ships 574** | **ships 287** |
+| **NYS DEC** | **ships 315** | **ships 2,077** | **unsuitable** 23 / **0** | absent | **ships 246** | **ships 202** | **ships 1,852** | **ships 350** | *available* 10,520 |
+| **NYNJTC** | absent | absent | absent | absent | absent | absent | *unsuitable* 26 | absent | *unsuitable* 26 |
+| **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
+| **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent | absent |
+| **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
+| **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent | absent |
+
+**The trailhead column is new with [#1197](https://github.com/OurHike/OurHike/issues/1197)**,
+which gave `POI_TYPES` the ninth category §7c said it lacked. Three of its cells are worth
+reading rather than skimming:
+
+- **OPRHP ships 287.** They were already being found and dropped, with the named reason
+  *"POI_TYPES has no trailhead category"* printed per run — so this was one exclusion
+  lifted rather than a new source ingested. They are in the parks the day-hike builder is
+  actually used in, which is what made the schema change worth its four keyed places.
+- **DEC's 10,520 stay *available*.** They live in DEC's own `Trailhead` layer, a separate
+  dataset from `dec_backcountry_features` (which holds only 414 trailhead-ish rows, none
+  under an `ASSET` value this export allowlists). Registering that layer is its own change
+  with its own licence footing, and is not this one.
+- **NYNJTC's 26 stay *unsuitable*, for the reason they are already unsuitable as parking.**
+  `Trailheads_HighlandsProject_Apr2026` is a featured-hikes table whose rows happen to be
+  trailheads — one row is one suggested hike, and `ParkingLot` is a lot's name as prose.
+  A ninth category does not make a curated hike list into an inventory.
 
 **Twelve of those cells became `shipping` on 2026-08-27**
 ([#1097](https://github.com/OurHike/OurHike/issues/1097)) — the maintainer's decision on

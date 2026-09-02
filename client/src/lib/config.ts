@@ -373,6 +373,20 @@ export const RETIRED_POI_KEY = 'retired_poi.geojson'
 // Keep it in step with pipeline/lib/poi_schema.POI_TYPES: verify_release.py
 // parses THIS array to know which artifacts a release must serve, so a type
 // published but missing here is a layer that silently never reaches a phone.
+//
+// NOTHING GOES INSIDE THE BRACKETS BUT TYPE NAMES. That parser is a regex -
+// it takes everything up to the `]` and then reads every single-quoted run as
+// a type - so a comment in there carrying an apostrophe ("OPRHP's", "the day
+// ATC fills it") publishes fragments of English as POI categories. Measured
+// the hard way at #1197, where the contract test caught two of them. Say it
+// out here instead.
+//
+// 'trailhead' (#1197) is where a hiker STARTS, and it is empty on the A.T.
+// today exactly as 'crossing' is: ATC publishes no trailhead layer, and the
+// 287 that ship are OPRHP's, which arrive inside `nearby_poi.geojson` rather
+// than as a per-type artifact. It is listed anyway for 'crossing's reason -
+// so it starts working the day ATC fills it, rather than needing a client
+// release to notice.
 export const POI_TYPES = [
   'shelter',
   'water',
@@ -382,6 +396,7 @@ export const POI_TYPES = [
   'viewpoint',
   'parking',
   'privy',
+  'trailhead',
 ] as const
 
 export type PoiType = (typeof POI_TYPES)[number]

@@ -412,16 +412,31 @@ describe('trail data', () => {
     })
 
     it('drops a waypoint whose type this build does not know, rather than filing it under one', async () => {
-      // One file carries every type here, unlike the eight poi_*.geojson keys,
+      // One file carries every type here, unlike the nine poi_*.geojson keys,
       // so readPois' fallback type would silently file a bad row under
-      // whichever type happened to be passed. A pipeline that publishes
-      // 'trailhead' before the client knows the word should lose that row, not
-      // gain a mislabelled shelter.
+      // whichever type happened to be passed. A pipeline that publishes a word
+      // before the client knows it should lose that row, not gain a
+      // mislabelled shelter.
+      //
+      // THE FIXTURE USED TO BE `trailhead`, and #1197 published it. The word
+      // had to change; the rule did not - and the swap is the clearest
+      // statement of what this test is actually for. The dangerous case is not
+      // a pipeline bug, it is AN OLDER CLIENT MEETING A NEWER RELEASE:
+      // `POI_TYPES` lives in lib/config.ts and ships with the app, so every
+      // phone built before #1197 is now being served trailheads it has never
+      // heard of. They must be dropped. `POI_TYPES[0]` is 'shelter', so filed
+      // under the fallback they would become shelter pins - a hiker choosing
+      // where to spend the night sent to a signboard in a parking lot, which
+      // is the app inventing an answer on one of the paths that can hurt
+      // somebody.
+      //
+      // So the fixture is a word nothing publishes today, which is the same
+      // position `trailhead` was in when this test was written.
       serveWithNearby(
         poiCollection([
           {
-            id: 'dec_trailheads:1',
-            poi_type: 'trailhead',
+            id: 'dec_towers:1',
+            poi_type: 'fire_tower',
             lat: 44,
             lon: -74,
             confidence: 'high',
@@ -431,7 +446,33 @@ describe('trail data', () => {
       await downloadTrailData()
 
       const pois = store.get(POIS_KEY) as StoredPoi[]
-      expect(pois.some((poi) => poi.id === 'dec_trailheads:1')).toBe(false)
+      expect(pois.some((poi) => poi.id === 'dec_towers:1')).toBe(false)
+    })
+
+    it('keeps a trailhead, which is the ninth type and the one #1197 added', async () => {
+      // The end-to-end proof that the type reaches the phone, and the other
+      // half of the test above: the same filter that drops an unknown word has
+      // to pass a known one, or `POI_TYPES` gaining an entry would be a change
+      // nothing observed.
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'oprhp_facilities:9001',
+            poi_type: 'trailhead',
+            name: 'Reeves Meadow',
+            lat: 41.2,
+            lon: -74.1,
+            confidence: 'high',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const stored = (store.get(POIS_KEY) as StoredPoi[]).find(
+        (poi) => poi.id === 'oprhp_facilities:9001',
+      )
+      expect(stored?.type).toBe('trailhead')
+      expect(stored?.name).toBe('Reeves Meadow')
     })
 
     it('treats a 404 as an ordinary answer and keeps the A.T. waypoints', async () => {

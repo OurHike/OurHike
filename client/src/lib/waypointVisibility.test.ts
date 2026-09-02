@@ -189,12 +189,30 @@ describe('DEFAULT_SHOWN_TYPES (#865)', () => {
     for (const type of DEFAULT_SHOWN_TYPES) expect(HIDEABLE_TYPES).toContain(type)
   })
 
-  it('hides exactly the other four when used as the stored preference', () => {
-    // What a fresh install's map actually draws: resupply, crossing, viewpoint
-    // and parking start off, same as if a hiker had toggled them off by hand.
+  it('hides exactly the other five when used as the stored preference', () => {
+    // What a fresh install's map actually draws: resupply, crossing, viewpoint,
+    // parking and trailhead start off, same as if a hiker had toggled them off
+    // by hand.
     const hidden = hiddenTypesFrom(DEFAULT_SHOWN_TYPES)
     expect([...hidden].sort()).toEqual(
-      ['crossing', 'parking', 'resupply', 'viewpoint'].sort(),
+      ['crossing', 'parking', 'resupply', 'trailhead', 'viewpoint'].sort(),
     )
+  })
+
+  it('leaves a category added after it OFF, which is not what the header used to claim', () => {
+    // The behaviour #1197 made observable, pinned so the next category's
+    // author meets it here rather than in a bug report. A stored `shown` list
+    // predating a category does not contain it, so `hiddenTypesFrom` hides it
+    // - the outcome the module header attributed to the REJECTED design.
+    //
+    // Asserted as the behaviour rather than argued as a defect: whether it
+    // should change is #1214, and changing it changes what every existing
+    // hiker's map draws.
+    const storedBefore = ['shelter', 'water']
+    expect(hiddenTypesFrom(storedBefore).has('trailhead')).toBe(true)
+
+    // The one population it does not apply to, and the reason the claim read
+    // as true for as long as it did.
+    expect(hiddenTypesFrom([]).has('trailhead')).toBe(false)
   })
 })

@@ -1510,13 +1510,32 @@ def poi_counts(records: list[dict]) -> dict[str, int]:
     return {poi_type: sum(1 for record in records if record["poi_type"] == poi_type) for poi_type in POI_TYPES}
 
 
+#: The poi_types this export may legally publish nothing for, each with the
+#: reason it is empty rather than broken. Everything absent from here must
+#: produce at least one feature.
+#:
+#:   crossing   filled from NHD and OSM geometry rather than an ATC layer,
+#:              and empty until fetch_trail_water.py has run (module docstring).
+#:   trailhead  ATC publishes no trailhead layer at all (#1197). The 287 that
+#:              ship are OPRHP's and they travel in nearby_poi.geojson, which
+#:              this export does not write. A ninth type with no A.T. source
+#:              is the state this entry describes, and it is expected to
+#:              outlive the others: nothing suggests ATC is about to publish
+#:              one.
+ALLOWED_EMPTY_POI_TYPES = {"crossing": 0, "trailhead": 0}
+
+
 def fail_if_any_type_is_empty(counts: dict[str, int], label: str) -> None:
-    """Every poi_type must produce at least one feature - a genuinely broken
-    source (e.g. shelter silently returning 0 after an upstream schema
-    change) would otherwise be structurally indistinguishable from crossing's
-    expected, intentional emptiness (see module docstring) and ship silently.
-    crossing is the only poi_type allowed to be 0."""
-    fail_if_incomplete(count_problems(counts, minimums={"crossing": 0}), label=label)
+    """Every poi_type must produce at least one feature, bar the exceptions.
+
+    A genuinely broken source (e.g. shelter silently returning 0 after an
+    upstream schema change) would otherwise be structurally indistinguishable
+    from an intentional emptiness and ship silently. The allowed-empty set is
+    a NAMED list with a reason per entry rather than a threshold, so adding a
+    type that legitimately has no A.T. source is a sentence somebody writes
+    rather than a gate somebody loosens.
+    """
+    fail_if_incomplete(count_problems(counts, minimums=ALLOWED_EMPTY_POI_TYPES), label=label)
 
 
 def check_sources() -> dict[str, int]:

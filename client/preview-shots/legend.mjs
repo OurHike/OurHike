@@ -29,10 +29,27 @@
 // the foot of the grid, immediately above the switch the last re-pointing
 // framed, so this scrolls further down the same sheet rather than anywhere
 // new. What the caption has to name is what is NOT on them: no number.
+// Re-pointed again 2026-09-02 (#1197): a ninth waypoint category. The camera
+// does not move at all this time - the Trailhead row lands directly above the
+// Closure row this recipe already scrolls to, alone in the last grid row
+// because nine is odd against two columns, and the "Showing" control at the
+// foot goes from "of 8 types" to "of 9". Only the caption changes, because
+// only what to look for changed.
+//
+// WHAT IT SHOWS IS A STRUCK-THROUGH ROW, and that is the shot rather than a
+// flaw in it. `trailhead` is not in DEFAULT_SHOWN_TYPES, so it arrives hidden
+// - correct for this screen (a trailhead is how a hiker REACHED the trail, and
+// map/labelLadder.ts ranks it first on the planning map for the same reason it
+// ranks last here) but arrived at by omission rather than by decision, which
+// is #1214. The grey swatch is therefore evidence for two things at once, and
+// the caption names the second because nobody would read it off the picture.
+//
+// The violet is not in this frame - a hidden row desaturates its pin. For the
+// colour, `npx vite-node scripts/preview-poi-pins.ts` writes the contact sheet.
 export const caption =
-  'The legend — the closure and serious-warning rows, on screen at last (#1051)'
+  'The legend — a ninth waypoint category, and it arrives switched off (#1197)'
 export const alt =
-  'The legend sheet over the trail screen, scrolled to the foot of the waypoint grid: two full-width rows below the two-column grid, a barrier-tape swatch labelled Closure and a hollow red triangle labelled Serious warning, each tagged ALERTS and neither carrying a count, where all eight rows above them read 0'
+  'The legend sheet over the trail screen, scrolled to the foot of the waypoint grid: a ninth row labelled Trailhead sits alone in the last grid row above the Closure and Serious warning rows, its signpost pin and label greyed and struck through like Resupply, Crossing, Viewpoint and Parking above it, and the Showing control at the foot reads 4 of 9 types'
 
 export default async function drive(page) {
   // The map first: the app opens on Today since #1054, and the legend's

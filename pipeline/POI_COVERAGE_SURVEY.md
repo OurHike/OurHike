@@ -89,6 +89,22 @@ reading rather than skimming:
   `Trailheads_HighlandsProject_Apr2026` is a featured-hikes table whose rows happen to be
   trailheads — one row is one suggested hike, and `ParkingLot` is a lot's name as prose.
   A ninth category does not make a curated hike list into an inventory.
+- **USFS's 7,358 are already published, as `parking`.** They are the loudest cell in the
+  column and the only one where the verdict is about *us* rather than about an org.
+  `export_nearby_poi.py` maps `site_type` `TRAILHEAD` onto `poi_type` `parking`, which
+  [#1207](https://github.com/OurHike/OurHike/issues/1207) chose on 2026-09-02 and recorded as
+  one of "the two clean mappings" — correct that morning, because there was no ninth category
+  until #1197 added one the same afternoon. Not changed here: it is a decision belonging to
+  whoever probed the layer, `test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings`
+  asserts it by name, and moving it would leave the `parking` cell describing something nobody
+  has measured — §2c of [WHITE_MOUNTAINS_SOURCE_SURVEY.md](WHITE_MOUNTAINS_SOURCE_SURVEY.md)
+  finds no `PARKING` site_type in its 335-row White Mountains census (a census, not a sample),
+  so on that evidence USFS would ship no parking at all. Tracked as [#1218](https://github.com/OurHike/OurHike/issues/1218).
+
+**USFS and NH GRANIT have no row in the matrix above**, because #1207 registered them after it
+was last redrawn and #1197 added a column rather than rows. Their verdicts are in
+`sources.json`, which `tests/test_poi_coverage.py` reads and this table does not — so the table
+is the stale half. Worth fixing next time somebody is in here.
 
 **Twelve of those cells became `shipping` on 2026-08-27**
 ([#1097](https://github.com/OurHike/OurHike/issues/1097)) — the maintainer's decision on

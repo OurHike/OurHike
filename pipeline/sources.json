@@ -1667,6 +1667,15 @@
           "privy": {
             "status": "absent",
             "note": "No privy or toilet site_type among the 31,405. Forest Service campgrounds plainly have toilets on the ground; this layer records the SITE and not its fixtures, so the absence is a limit of the schema rather than a finding about the national forests - worth saying, because 'absent' would otherwise read as 'there are no privies in a national forest'. Counts are nationwide by group-by statistics on site_type over the layer's 31,405 rows, measured 2026-09-02; the White Mountains subset that prompted the registration is in usfs_rec_sites' notes."
+          },
+          "trailhead": {
+            "status": "available",
+            "source_key": "usfs_rec_sites",
+            "measured": {
+              "features": 7358,
+              "date": "2026-09-02"
+            },
+            "note": "THESE 7,358 ROWS ARE ALREADY PUBLISHED, AND THEY ARE PUBLISHED AS `parking`. That is why this cell reads `available` rather than `shipping`: the features reach a hiker's phone, and not one of them arrives carrying the type this column is about. export_nearby_poi.py's USFS_SITE_TYPES maps site_type 'TRAILHEAD' to poi_type 'parking', which #1207 chose on 2026-09-02 and recorded as one of 'the two clean mappings' - correct on that day, because POI_TYPES had no ninth category until #1197 added one hours later. The mapping has not been revisited since, and revisiting it is not #1197's to do: it is a decision belonging to whoever probed the layer, it would leave the `parking` cell describing something nobody has measured (the White Mountains census in WHITE_MOUNTAINS_SOURCE_SURVEY.md shows no PARKING site_type at all, so USFS would ship no parking anywhere), and tests/test_export_nearby_poi.py::test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings asserts the current mapping by name. Tracked as https://github.com/OurHike/OurHike/issues/1218, with this note as the evidence. Count is nationwide, from #1207's group-by over the layer's 31,405 rows, measured 2026-09-02; 187 of them are in the White Mountains."
           }
         }
       },
@@ -1705,6 +1714,10 @@
           "privy": {
             "status": "unprobed",
             "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on exactly the same footing as this org's other eight. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened, and the three sibling POI layers in the same service were not looked at. A trailhead is a likelier thing to find in a state recreation-resources service than most of the types above it - GRANIT's trail layer alone holds 7,643 segments in the Whites - which makes the admission worth more here than the guess would be. #1197 gave POI_TYPES the category; it did not go and look."
           }
         }
       }

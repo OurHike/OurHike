@@ -57,6 +57,8 @@ function sampleAt(timestampMs: number): TraceSample {
     marker: null,
     wakeLock: null,
     visible: null,
+    blockedMs: null,
+    worstTaskMs: null,
     fixSource: 'web',
     accuracyConfidence: 95,
     simulated: null,
@@ -317,12 +319,25 @@ describe('sampleFromPosition', () => {
   })
 })
 
+/** Reads a one-row CSV by column NAME. A hardcoded offset silently starts
+ *  asserting about its neighbour the next time a column is added in the
+ *  middle, which is how a test stops testing - the native-fix test below
+ *  makes the same argument at length. */
+function column(csv: string): (name: string) => string {
+  const [header, row] = csv
+    .trim()
+    .split('\n')
+    .map((line) => line.split(','))
+  return (name) => row[header.indexOf(name)]
+}
+
 describe('traceToCsv', () => {
   it('writes a header DuckDB can read without being told the schema', () => {
     expect(traceToCsv([]).trim()).toBe(
       'timestamp_ms,iso_time,lat,lon,accuracy_m,altitude_m,altitude_accuracy_m,' +
         'speed_mps,heading_deg,mile,off_trail_ft,off_tread_ft,marker,' +
-        'wake_lock,page_visible,fix_source,accuracy_confidence,simulated',
+        'wake_lock,page_visible,blocked_ms,worst_task_ms,' +
+        'fix_source,accuracy_confidence,simulated',
     )
   })
 
@@ -353,6 +368,30 @@ describe('traceToCsv', () => {
 
     expect(cells[13]).toBe('released')
     expect(cells[14]).toBe('no')
+  })
+
+  it('records whether the app was too busy to take the fix', () => {
+    // THE SIXTH WALK'S UNANSWERED QUESTION, and the reason for these two
+    // columns: "the app is both unresponsive to taps and unresponsive to
+    // switch tabs". `wake_lock` and `page_visible` tell a dark screen from a
+    // pocketed phone and neither can tell either from a main thread that was
+    // awake, visible, and jammed. The blocking lands on the fix AFTER the
+    // jam - a blocked thread cannot run the callback that writes a row.
+    const cells = column(
+      traceToCsv([{ ...sampleAt(1_000), blockedMs: 480, worstTaskMs: 310 }]),
+    )
+
+    expect(cells('blocked_ms')).toBe('480')
+    expect(cells('worst_task_ms')).toBe('310')
+  })
+
+  it('leaves the stall columns empty where the browser cannot measure them', () => {
+    // All of iOS. A zero here would put a reassuring number in every row of
+    // an iPhone trace and retire the question without answering it.
+    const cells = column(traceToCsv([sampleAt(1_000)]))
+
+    expect(cells('blocked_ms')).toBe('')
+    expect(cells('worst_task_ms')).toBe('')
   })
 
   it('writes an unknown condition as empty, never as a confident "no"', () => {

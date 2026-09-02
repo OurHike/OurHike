@@ -299,6 +299,31 @@ and `page_visible` of `no`. A trace whose rows are all `web` recorded through
 the browser watch and stopped when the screen went dark, which is the failure
 this exists to end.
 
+### Reading a gap in the trace (#1180)
+
+A silence in the rows has four causes, and the columns exist so they can be
+told apart rather than argued about:
+
+| what happened                        | what the file looks like                                          |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| the screen went dark                 | rows resume with `wake_lock` reading something other than `held`  |
+| the phone was pocketed               | rows resume with `page_visible` reading `no`                      |
+| the platform had no fix to hand over | rows either side read `held` and `yes`, and `blocked_ms` is small |
+| **the app was too busy to take one** | the row _after_ the gap carries a large `blocked_ms`              |
+
+`blocked_ms` is milliseconds the main thread spent in tasks of 50 ms or more
+(W3C Long Tasks — the browser decides what counts, so the number is comparable
+across devices without anybody agreeing a threshold first) during the interval
+**ending** at that row. It lands after the jam rather than during it, because a
+blocked thread cannot run the callback that would have written a row.
+`worst_task_ms` is the longest single one, because 200 ms as one task is a
+visible freeze and as four tasks is a slightly sticky screen.
+
+**Both are empty on iOS**, which does not implement Long Tasks — and empty
+means _not measured_, never zero. The **App stalls** row on the recorder says
+which of the two an empty column is, while there is still a walk left to
+salvage.
+
 ## What is not wired up yet
 
 - **Sign-in and identity.** There is no deployed backend, so reports save to

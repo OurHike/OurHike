@@ -52,6 +52,7 @@ import {
   startBackgroundWatch,
   type BackgroundWatchProblem,
 } from './backgroundGeolocation'
+import { createStallMeter } from './mainThreadStall'
 import { locateOnTrail, type TrailIndex } from './trailPosition'
 import { useWakeLock, type WakeLockState } from './useWakeLock'
 
@@ -136,6 +137,17 @@ export interface GpsTraceControls {
   /** How often the recorder asked the platform for a fix, and how often it
    *  got one. A large gap is the finding, not a bug to hide. */
   polls: { asked: number; answered: number }
+  /**
+   * The worst the main thread has been jammed during this recording.
+   *
+   * Reported for the same reason `wakeLock` and `trailFix` are: it is a thing
+   * about this recording the tester can see the consequences of - taps that
+   * do nothing - and cannot otherwise tell from a phone that is simply not
+   * producing fixes. `supported` is false on iOS, where the browser does not
+   * measure it, and the screen must say so rather than print a reassuring
+   * zero.
+   */
+  stall: { supported: boolean; worstMs: number | null }
   onBackgroundChange: (wanted: boolean) => void
   /** Hand this to `useGeolocation` - it wants every fix, unfiltered. */
   onFix: (position: GeolocationPosition) => void
@@ -167,12 +179,38 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
   const [polls, setPolls] = useState({ asked: 0, answered: 0 })
   const [backgroundProblem, setBackgroundProblem] =
     useState<BackgroundWatchProblem | null>(null)
+  /**
+   * WHETHER THE APP ITSELF WAS THE THING NOT ANSWERING.
+   *
+   * The sixth walk produced 4h12m elapsed and about a minute of rows, and the
+   * tester read that as a hang: "unresponsive to taps and unresponsive to
+   * switch tabs". Every column in the trace was blind to it. `wake_lock` and
+   * `page_visible` separate a dark screen from a pocketed phone; nothing
+   * separated either from a main thread too busy to run the callback that
+   * writes a row. See lib/mainThreadStall.ts for what this can and cannot
+   * see - notably that iOS does not measure it at all, so an empty column is
+   * "not measured" and never "nothing blocked".
+   */
+  const stallMeter = useMemo(() => createStallMeter(), [])
+  const [worstStallMs, setWorstStallMs] = useState<number | null>(null)
 
   useEffect(() => {
     // A recording that survived a reload resumes without being asked - see
     // `resume`'s note. Nothing here starts one.
     void trace.resume().then(setStatus)
   }, [trace])
+
+  // Started and stopped with the recording rather than left running: this is
+  // a diagnostic, and an app that observes its own long tasks all the time is
+  // a behaviour change outside the mode somebody deliberately turned on. The
+  // cost is that a hang OUTSIDE a recording is not measured - which is worth
+  // saying out loud, because the tester's report was that the app "hangs a
+  // lot in general".
+  useEffect(() => {
+    if (!status.recording) return
+    stallMeter.start()
+    return () => stallMeter.stop()
+  }, [status.recording, stallMeter])
 
   // Above `onFix` rather than below it, because every sample now carries this:
   // a gap in the trace is only readable if the fixes either side of it say
@@ -201,10 +239,19 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
             ? 'off-corridor'
             : 'recorded',
       )
+      // Drained here, once per fix, so the number on a row is the interval
+      // ending at that row. Two callbacks carrying the SAME platform
+      // timestamp (the sixth walk's duplicate, `getCurrentPosition` answering
+      // the poll and the watch with one position) drain in order, and the
+      // first one is both the one that gets the real number and the one
+      // `record` keeps - so the surviving row is the truthful one either way.
+      const stall = stallMeter.take()
+      setWorstStallMs(stallMeter.worst())
       return [
         reading,
         {
           wakeLock,
+          stall,
           // Read at the moment the fix lands, not from a listener: this is
           // the state that actually applied to THIS sample. On a native
           // background fix this is routinely false, which is the point.
@@ -212,7 +259,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
         },
       ]
     },
-    [trailIndex, wakeLock],
+    [trailIndex, wakeLock, stallMeter],
   )
 
   const onFix = useCallback(
@@ -368,6 +415,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     background,
     backgroundWanted,
     polls,
+    stall: { supported: stallMeter.supported, worstMs: worstStallMs },
     onBackgroundChange: setBackgroundWanted,
     // Tied to recording rather than offered as its own switch: holding a
     // screen awake for anything else in this app would be a battery cost
@@ -376,6 +424,7 @@ export function useGpsTrace(trailIndex: TrailIndex | null): GpsTraceControls {
     onFix,
     onStart: useCallback(() => {
       setPolls({ asked: 0, answered: 0 })
+      setWorstStallMs(null)
       void trace.start().then(setStatus)
     }, [trace]),
     onStop: useCallback(() => void trace.stop().then(setStatus), [trace]),

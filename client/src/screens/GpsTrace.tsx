@@ -89,6 +89,17 @@ export interface GpsTraceSettingsProps {
   /** How often the recorder asked for a fix, and how often it was answered
    *  (lib/useGpsTrace.ts). A large gap between them IS the finding. */
   polls?: { asked: number; answered: number }
+  /**
+   * The worst the main thread has been jammed during this recording, and
+   * whether this browser measures that at all (lib/mainThreadStall.ts).
+   *
+   * On screen because the tester's report was that the app is "unresponsive
+   * to taps and unresponsive to switch tabs" and every other row here would
+   * look identical either way - a recording that has stopped taking fixes
+   * because the app is busy and one that has stopped because the platform has
+   * nothing to give both read as a stalled count.
+   */
+  stall?: { supported: boolean; worstMs: number | null }
   /** The hiker's chosen system, because the accuracy radius is a distance
    *  somebody reads — src/test/unitDisplay.test.ts holds this standard, and
    *  caught the first version of this row writing "m" into a string. */
@@ -283,6 +294,7 @@ export function GpsTraceSettings({
   trailFix = 'waiting',
   background = 'off',
   polls,
+  stall,
   units = 'imperial',
   backgroundWanted = false,
   onBackgroundChange,
@@ -339,6 +351,26 @@ export function GpsTraceSettings({
               <span className="settings__value">
                 {polls.answered.toLocaleString('en-US')} of{' '}
                 {polls.asked.toLocaleString('en-US')} answered
+              </span>
+            </p>
+          )}
+
+          {/* WHETHER THE APP ITSELF WAS THE THING NOT ANSWERING. Shown even
+              when the browser cannot measure it, and saying so: an empty
+              answer here is "not measured", and a row that quietly vanished
+              on iOS would read as "nothing to report". A number and no
+              verdict, like the reading above it - no stall threshold has been
+              validated against anything a hiker would notice, so this asserts
+              none. */}
+          {stall !== undefined && (
+            <p className="settings__row">
+              <span className="settings__label">App stalls</span>
+              <span className="settings__value">
+                {!stall.supported
+                  ? 'not measured on this browser'
+                  : stall.worstMs === null
+                    ? 'none longer than 50 ms'
+                    : `worst ${stall.worstMs.toLocaleString('en-US')} ms`}
               </span>
             </p>
           )}

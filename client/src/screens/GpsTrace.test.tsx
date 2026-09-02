@@ -428,6 +428,45 @@ describe('GpsTraceSettings', () => {
     expect(screen.queryByText('Readings asked for')).not.toBeInTheDocument()
   })
 
+  it('says how badly the main thread has stalled during this recording', async () => {
+    // The sixth walk's report was "unresponsive to taps and unresponsive to
+    // switch tabs", and every other row on this screen looks identical either
+    // way - a recording taking no fixes because the app is busy and one
+    // taking none because the platform has nothing to give both read as a
+    // count that has stopped moving.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 1 },
+      { stall: { supported: true, worstMs: 310 } },
+    )
+
+    expect(screen.getByText('App stalls')).toBeInTheDocument()
+    expect(screen.getByText('worst 310 ms')).toBeInTheDocument()
+  })
+
+  it('says NOT MEASURED rather than hiding the row, where iOS cannot measure', async () => {
+    // A row that quietly vanished on iOS would read as "nothing to report".
+    // Absent means unknown here as everywhere else.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 1 },
+      { stall: { supported: false, worstMs: null } },
+    )
+
+    expect(screen.getByText('App stalls')).toBeInTheDocument()
+    expect(screen.getByText('not measured on this browser')).toBeInTheDocument()
+  })
+
+  it('reports a clean thread as clean, and names the threshold it means', async () => {
+    // "none" alone would claim more than the browser measures: the Long Tasks
+    // spec only reports tasks of 50 ms and up, so a screen that was sticky
+    // below that is not being contradicted here.
+    renderSection(
+      { recording: true, startedAt: 0, samples: 1 },
+      { stall: { supported: true, worstMs: null } },
+    )
+
+    expect(screen.getByText('none longer than 50 ms')).toBeInTheDocument()
+  })
+
   it('stops when asked', async () => {
     const props = renderSection({ recording: true, startedAt: 0, samples: 12 })
 

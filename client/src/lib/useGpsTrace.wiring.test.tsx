@@ -18,6 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { clear as clearIdb } from 'idb-keyval'
 
+import { createGpsTrace } from './gpsTrace'
 import { useGpsTrace } from './useGpsTrace'
 import { useGeolocation } from './useGeolocation'
 import { buildTrailIndex, type TrailIndex } from './trailPosition'
@@ -133,7 +134,84 @@ afterEach(async () => {
   await clearIdb()
 })
 
+/** A stand-in for the browser's long-task observer, installed before the hook
+ *  renders because `createStallMeter` reads support once at construction. */
+function stubLongTasks() {
+  const fire: ((durations: number[]) => void)[] = []
+
+  class FakeObserver {
+    private callback: PerformanceObserverCallback
+
+    constructor(callback: PerformanceObserverCallback) {
+      this.callback = callback
+    }
+
+    observe() {
+      fire.push((durations) =>
+        this.callback(
+          {
+            getEntries: () => durations.map((duration) => ({ duration })),
+          } as unknown as PerformanceObserverEntryList,
+          this as unknown as PerformanceObserver,
+        ),
+      )
+    }
+    disconnect() {}
+    takeRecords() {
+      return []
+    }
+    static supportedEntryTypes = ['longtask']
+  }
+
+  vi.stubGlobal('PerformanceObserver', FakeObserver)
+
+  return (...durations: number[]) => act(() => fire.forEach((f) => f(durations)))
+}
+
 describe('the recorder wired to the watch, as App.tsx joins them', () => {
+  it('stamps the main-thread stall onto the fix that follows it', async () => {
+    // THE SIXTH WALK'S SEAM. A meter that measures perfectly and never reaches
+    // a sample is the `useGeolocation`/`gpsTrace` failure again, one file
+    // along: both halves pass their own suites while the column stays empty
+    // and nobody learns that until a walk comes back.
+    const jam = stubLongTasks()
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    await act(async () => {
+      result.current.gpsTrace.onStart()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(true))
+
+    jam(310, 80)
+    reportFix(-71.3033, 44.2705, 12, 1_724_800_000_000)
+    await waitFor(() => expect(result.current.gpsTrace.status.samples).toBe(1))
+
+    // Stopped so the buffer reaches disk, then read by a recorder that shares
+    // nothing with the hook's but the IndexedDB keys.
+    await act(async () => {
+      result.current.gpsTrace.onStop()
+    })
+    await waitFor(() => expect(result.current.gpsTrace.status.recording).toBe(false))
+    const reader = createGpsTrace()
+    await reader.resume()
+    const [sample] = await reader.readAll()
+
+    expect(sample.blockedMs).toBe(390)
+    expect(sample.worstTaskMs).toBe(310)
+    // And on the screen, where a tester can act on it while still outside.
+    expect(result.current.gpsTrace.stall).toEqual({ supported: true, worstMs: 310 })
+  })
+
+  it('reports the stall as unmeasured where the browser has no long tasks', async () => {
+    // jsdom by default, and every browser on iOS. The screen must say so
+    // rather than print a reassuring zero.
+    stubGeolocation()
+    const { result } = renderHook(() => useRecorderAndWatch(true))
+
+    expect(result.current.gpsTrace.stall).toEqual({ supported: false, worstMs: null })
+  })
+
   it('stores a fix that arrives while recording', async () => {
     // THE ONE THAT MATTERS. A walk that records zero points fails exactly
     // here, and passes both halves' own suites while doing it.

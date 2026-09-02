@@ -151,6 +151,24 @@ export interface TraceSample {
    * separates them.
    */
   visible: boolean | null
+  /**
+   * Milliseconds the main thread spent in long tasks in the interval ENDING
+   * at this fix, and the longest single one of them.
+   *
+   * Recorded because the tester's report was "unresponsive to taps and
+   * unresponsive to switch tabs" - a main-thread symptom, which every other
+   * column in this file is blind to. A gap in the rows currently means the
+   * screen went dark, or the phone was pocketed, or the platform had nothing
+   * to hand over; it could not also mean the app was too busy to take it.
+   *
+   * The blocking lands on the fix AFTER the jam rather than during it: a
+   * blocked thread cannot run the callback that would have written a row.
+   *
+   * Null on every browser that does not implement Long Tasks, which is all of
+   * iOS. Absent means unknown, NOT zero - see lib/mainThreadStall.ts.
+   */
+  blockedMs: number | null
+  worstTaskMs: number | null
 }
 
 /** `WakeLockState` from lib/useWakeLock.ts, restated as a string so this
@@ -496,6 +514,8 @@ export function createGpsTrace(
 export interface TraceConditions {
   wakeLock?: WakeLockLabel | null
   visible?: boolean | null
+  /** What the main thread did since the previous fix — see `TraceSample`. */
+  stall?: { blockedMs: number | null; worstMs: number | null }
   /** Which mechanism produced this fix. Defaults to `web` — a watch callback,
    *  which is what every caller but the poller is. */
   source?: FixSource
@@ -525,6 +545,8 @@ export function sampleFromPosition(
     marker: null,
     wakeLock: conditions.wakeLock ?? null,
     visible: conditions.visible ?? null,
+    blockedMs: conditions.stall?.blockedMs ?? null,
+    worstTaskMs: conditions.stall?.worstMs ?? null,
     fixSource: conditions.source ?? 'web',
     // The W3C definition, and written down rather than assumed: the other
     // source states 68 and nothing but this column separates them. A polled
@@ -562,6 +584,8 @@ export function sampleFromNativeFix(
     marker: null,
     wakeLock: conditions.wakeLock ?? null,
     visible: conditions.visible ?? null,
+    blockedMs: conditions.stall?.blockedMs ?? null,
+    worstTaskMs: conditions.stall?.worstMs ?? null,
     fixSource: 'native',
     // The plugin's own definitions file: "radius of horizontal uncertainty in
     // metres, with 68% confidence". Not converted - see the header.
@@ -589,6 +613,11 @@ const CSV_COLUMNS = [
   // stationary block the third walk was taken to collect.
   'wake_lock',
   'page_visible',
+  // WHETHER THE APP WAS TOO BUSY TO TAKE THE FIX. Long-task milliseconds in
+  // the interval ending at this row, and the worst single one. Empty on iOS,
+  // which does not implement Long Tasks - empty is "not measured", never 0.
+  'blocked_ms',
+  'worst_task_ms',
   // WHICH WATCH, AND WHAT ITS RADIUS MEANS. `accuracy_m` is not comparable
   // across these two - 95% from the web API, 68% from the background plugin,
   // about 1.62x apart - so any analysis that groups rows must group by these
@@ -636,6 +665,8 @@ export function traceToCsv(samples: TraceSample[]): string {
       cell(sample.marker),
       cell(sample.wakeLock),
       cell(sample.visible === null ? null : sample.visible ? 'yes' : 'no'),
+      cell(sample.blockedMs),
+      cell(sample.worstTaskMs),
       cell(sample.fixSource),
       cell(sample.accuracyConfidence),
       cell(sample.simulated === null ? null : sample.simulated ? 'yes' : 'no'),

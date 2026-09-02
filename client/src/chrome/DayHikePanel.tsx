@@ -38,20 +38,34 @@
 // recorded here because a redesign quietly dropping an exit is the kind of
 // regression that reads as a bug in the app rather than a gap in the mock.
 //
-// WHY THERE IS NO ELEVATION PROFILE HERE, WHICH THE HANDOFF ASKS FOR
+// WHY THERE IS NO ELEVATION PROFILE HERE YET, AND THE CLAIM THAT WAS WRONG
 //
-// Because nobody has published one for a network trail, and drawing it anyway
-// would be inventing a shape. pipeline/export_network_elevation.py publishes
-// `[gain_ft, loss_ft]` PER EDGE and says why in as many words - "Dense samples
-// are worth publishing only if a chart is ever drawn for a network route, and
-// then as a fourth artifact fetched when that chart opens." A silhouette
-// derived from two scalars per edge would be a picture of ground nobody
-// measured, on the screen a hiker uses to decide whether they beat the dark.
+// This file shipped saying the samples do not exist, and the line a hiker
+// read said so too - "these trails publish how much they climb, not the shape
+// of it". Both were false on the day they were written.
 //
-// What is here instead is the climb figures that ARE published, and one line
-// saying the shape is not. That is FEATURES.md's rule applied rather than
-// worked around: a confidently wrong prediction is more dangerous than an
-// honest unknown.
+// What happened: #1194 read pipeline/export_network_elevation.py's header,
+// which says dense samples are "worth publishing only if a chart is ever
+// drawn for a network route, and then as a fourth artifact fetched when that
+// chart opens", and stopped there. That sentence describes a decision taken
+// BEFORE the artifact existed. It has been built since -
+// pipeline/export_network_profile.py publishes trail_graph_profile.json, a
+// dense sample array per edge at 25 m, index-aligned with the other three;
+// App.tsx already fetches it into `graphProfile`; lib/walkProfile.ts already
+// turns a walk into ribbon samples on the walk's own mile axis. All of it
+// landed in #1119, closing #1045, before #1194 was written. A followed day
+// hike draws it today.
+//
+// So the honest sentence is about THIS SCREEN and nothing else: the builder
+// draws no profile yet because nobody has wired one here. What is genuinely
+// missing is narrow - `walkProfile` takes `WalkStep[]`, and lib/dayHikeWalk.ts
+// builds those from a saved `ResolvedDayHike` rather than from a draft being
+// tapped out. That is #1210.
+//
+// THE LESSON, because it cost a false claim in front of hikers: a module
+// header states what was true when it was written. "The data does not exist"
+// is a claim about the bucket, and it wants checking against the bucket
+// rather than against a comment.
 
 import { useId } from 'react'
 
@@ -71,7 +85,12 @@ import {
   type LabelLayerKey,
 } from '../lib/mapLabelLayers'
 import type { PaceEstimate } from '../lib/pace'
-import { formatDistance, formatElevation, formatShortDistance } from '../lib/units'
+import {
+  formatDistance,
+  formatElevation,
+  formatShortDistance,
+  MIN_STATED_FEET,
+} from '../lib/units'
 import type { UnitSystem } from '../lib/units'
 import '../screens/plan.css'
 
@@ -221,15 +240,13 @@ export function DayHikePanel({
                     &darr; {formatElevation(routed.climb.lossFt, units)}
                   </span>
                 </p>
-                {/* The handoff's rail draws an elevation silhouette here. See
-                  this file's header: the samples that would draw it are not
-                  published for network trails, and the honest thing is to say
-                  so where the chart would have been rather than to leave a
-                  gap somebody fills in later with a guess. */}
-                <p className="day-hike-panel__note">
-                  No profile yet &mdash; these trails publish how much they climb, not the
-                  shape of it.
-                </p>
+                {/* The handoff's rail draws an elevation silhouette here, and
+                  this says why one is not drawn YET - a fact about this
+                  screen, which is all it may honestly claim. It used to say
+                  the shape was not published, which was false the day it was
+                  written: see this file's header, and #1210 for the wiring
+                  that is genuinely missing. */}
+                <p className="day-hike-panel__note">No profile drawn here yet.</p>
               </>
             )}
             {stopping !== null && (
@@ -356,6 +373,35 @@ function RouteRowItem({
         <span className="day-hike-panel__row-detail">
           {row.stop.type === 'shelter' ? 'Shelter' : 'Campsite'} &middot; mile{' '}
           {row.stop.mile.toFixed(1)}
+          {/* THE TWO FACTS A HIKER PICKS A STOP ON (#1198). They live on the
+              waypoint card, and the card is unreachable while the builder owns
+              the tap - so until now choosing where to spend the night meant
+              choosing blind, on the screen built for choosing.
+
+              ON THE ROW RATHER THAN BEHIND A TAP, which is better than the
+              card would have been even if the card were reachable: a hiker
+              deciding between two shelters reads both rows at once instead of
+              opening and closing two sheets to compare four numbers.
+
+              EACH APPEARS ONLY WHERE IT WAS PUBLISHED. Absent capacity is not
+              zero and absent water is not "no water" - lib/dayHikeStops.ts
+              carries both rules from StoredPoi, and a row inventing either
+              would be inventing it about the thing being decided. */}
+          {row.stop.capacity !== undefined && <> &middot; sleeps {row.stop.capacity}</>}
+          {row.stop.waterDistanceFt !== undefined && (
+            <>
+              {' '}
+              &middot; water{' '}
+              {formatShortDistance(
+                // The floor the card applies to the same published column, from
+                // the one home both now read (lib/units.ts). A stop claiming a
+                // hiker walks zero feet to water reads as a bug rather than as
+                // the very short walk it asserts.
+                Math.max(MIN_STATED_FEET, row.stop.waterDistanceFt),
+                units,
+              )}
+            </>
+          )}
           {/* Said, never priced. The walk out to a stop is ground the app has
               no evidence about - see lib/dayHikeStops.ts - so the distance is
               shown and the minutes are not invented. */}

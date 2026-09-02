@@ -213,6 +213,25 @@ export function formatShortDistance(feet: number, units: UnitSystem): string {
 }
 
 /**
+ * One metre, in feet - the floor under any distance this app STATES.
+ *
+ * pipeline/lib/poi_description.py's `MIN_PART_FT` is the same number for the
+ * same reason, and chrome/PoiCard.tsx held a private copy of it until #1198
+ * gave the figure a second reader (a day hike's stop rows). Two copies of a
+ * rounding rule is how two surfaces come to disagree about one shelter's
+ * water.
+ *
+ * WHAT IT IS FOR. A stated distance arrives unfloored - `water_distance_ft`
+ * is its own published column rather than something measured between two
+ * coordinates - and a surface claiming a hiker walks zero of anything to
+ * reach water reads as a bug rather than as the very short walk it is
+ * asserting. Stated in the coarser unit so neither system rounds it away:
+ * flooring at 1 ft would still print "0 m" for a metric hiker, which is the
+ * same defect arriving in the other unit.
+ */
+export const MIN_STATED_FEET = 3.28084
+
+/**
  * What the system is called, for a control that has to name it.
  *
  * Feet and metres rather than "imperial" and "metric": the hiker chose the

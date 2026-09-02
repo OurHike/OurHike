@@ -150,6 +150,42 @@ describe('ordering stops along the walk', () => {
   })
 })
 
+describe('the two facts a stop is chosen on (#1198)', () => {
+  // They live on the waypoint card, and the card is unreachable while the
+  // builder owns the tap - so the stop carries them to the row instead.
+
+  it('carries capacity and water distance through from the waypoint', () => {
+    const withFacts = poi('east', 'shelter', -74.081, 41.2502)
+    const stops = orderStops(course(), new Set(['east']), [
+      { ...withFacts, capacity: 8, waterDistanceFt: 350 },
+    ])
+
+    expect(stops[0].capacity).toBe(8)
+    expect(stops[0].waterDistanceFt).toBe(350)
+  })
+
+  it('leaves the key ABSENT where nobody published a figure', () => {
+    // Not `undefined`-valued and not zero. StoredPoi's own rule: absent
+    // capacity is the shelters ATC covers in pairs, and absent water is
+    // "nobody measured", never "no water".
+    const stops = orderStops(course(), new Set(['east']), POIS)
+
+    expect('capacity' in stops[0]).toBe(false)
+    expect('waterDistanceFt' in stops[0]).toBe(false)
+  })
+
+  it('keeps a published zero, because zero feet to water is a real claim', () => {
+    // The flooring is the DISPLAY's job (lib/units.ts's MIN_STATED_FEET), not
+    // this module's - a stop that quietly rewrote the published number would
+    // put the app's guess into the hiker's plan rather than into one row.
+    const stops = orderStops(course(), new Set(['east']), [
+      { ...poi('east', 'shelter', -74.081, 41.2502), waterDistanceFt: 0 },
+    ])
+
+    expect(stops[0].waterDistanceFt).toBe(0)
+  })
+})
+
 describe('toggling', () => {
   it('adds one that is not there and removes one that is', () => {
     const once = toggleStop(new Set<string>(), 'east')

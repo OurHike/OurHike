@@ -4,10 +4,12 @@
 // The claims worth pinning are the ones a redesign could quietly break, and
 // two of them are about what the panel must NOT say:
 //
-//   IT DRAWS NO ELEVATION PROFILE. The samples that would draw one are not
-//   published for network trails (pipeline/export_network_elevation.py), so a
-//   silhouette here would be a picture of ground nobody measured. The panel
-//   says so where the chart would have been, and this asserts the saying.
+//   IT CLAIMS NOTHING ABOUT THE PIPELINE. This header used to say the samples
+//   were not published for network trails, and the panel said the same to
+//   hikers. Both were false: export_network_profile.py publishes
+//   trail_graph_profile.json and lib/walkProfile.ts already reads it (#1119,
+//   closing #1045). A panel may say what IT does not draw; it may not say
+//   what the pipeline does not publish, because it cannot see the bucket.
 //
 //   IT NEVER PRICES A DETOUR. A stop's distance off the walk is shown; the
 //   minutes to get there are not invented.
@@ -134,14 +136,19 @@ describe('what the panel says about the walk', () => {
 })
 
 describe('the elevation slot', () => {
-  it('draws no profile, and says why', () => {
-    // THE RULE: pipeline/export_network_elevation.py publishes two scalars per
-    // edge and no samples. A silhouette here would be invented.
+  it('says a profile is not drawn here, and claims nothing about the data', () => {
+    // THE CLAIM THAT WAS WRONG, pinned so it cannot come back. This line used
+    // to read "these trails publish how much they climb, not the shape of it"
+    // - false on the day it was written: export_network_profile.py publishes
+    // trail_graph_profile.json, and lib/walkProfile.ts already reads it
+    // (#1119, closing #1045). A panel may say what IT does not draw; it may
+    // not say what the pipeline does not publish, because that is a claim
+    // about the bucket and this screen cannot see the bucket.
     panel()
 
-    expect(
-      screen.getByText(/publish how much they climb, not the shape of it/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText('No profile drawn here yet.')).toBeInTheDocument()
+    expect(screen.queryByText(/not the shape of it/i)).toBeNull()
+    expect(screen.queryByText(/publish/i)).toBeNull()
   })
 
   it('prints the gain and the loss, which ARE published', () => {
@@ -177,6 +184,42 @@ describe('the route order', () => {
     expect(screen.getByText(/off the walk/)).toBeInTheDocument()
     // The stopping figure counts stops, never distance - one stop is one
     // stop's worth of minutes however far off the line it sits.
+    expect(screen.getByText(/Stops add about 15 min/)).toBeInTheDocument()
+  })
+
+  it('prints the capacity and the water distance a stop was chosen on', () => {
+    // #1198. The whole point: a hiker comparing two shelters reads both rows
+    // at once rather than opening and closing two cards.
+    panel({ stops: [{ ...SHELTER, capacity: 8, waterDistanceFt: 350 }] })
+
+    expect(screen.getByText(/sleeps 8/)).toBeInTheDocument()
+    expect(screen.getByText(/water 350 ft/)).toBeInTheDocument()
+  })
+
+  it('omits each figure where nobody published it, and never prints a zero', () => {
+    // Absent capacity is not "sleeps 0" and absent water is not "water 0 ft",
+    // which would be the app inventing about the thing being decided.
+    panel({ stops: [SHELTER] })
+
+    expect(screen.queryByText(/sleeps/)).toBeNull()
+    expect(screen.queryByText(/water/)).toBeNull()
+  })
+
+  it('floors a stated water distance so it never reads as zero', () => {
+    // lib/units.ts's MIN_STATED_FEET, the same floor chrome/PoiCard.tsx
+    // applies to the same published column - one home since #1198.
+    panel({ stops: [{ ...SHELTER, waterDistanceFt: 0 }] })
+
+    expect(screen.queryByText(/water 0 ft/)).toBeNull()
+    expect(screen.getByText(/water 3 ft/)).toBeInTheDocument()
+  })
+
+  it('says how far off the walk a stop is without pricing the detour', () => {
+    panel({ stops: [{ ...FAR_SHELTER, capacity: 6 }] })
+
+    expect(screen.getByText(/off the walk/)).toBeInTheDocument()
+    expect(screen.getByText(/sleeps 6/)).toBeInTheDocument()
+    // One stop is one stop's worth of minutes, however far off the line.
     expect(screen.getByText(/Stops add about 15 min/)).toBeInTheDocument()
   })
 

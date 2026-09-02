@@ -226,15 +226,13 @@ export function DayHikePanel({
                     &darr; {formatElevation(routed.climb.lossFt, units)}
                   </span>
                 </p>
-                {/* The handoff's rail draws an elevation silhouette here. See
-                  this file's header: the samples that would draw it are not
-                  published for network trails, and the honest thing is to say
-                  so where the chart would have been rather than to leave a
-                  gap somebody fills in later with a guess. */}
-                <p className="day-hike-panel__note">
-                  No profile yet &mdash; these trails publish how much they climb, not the
-                  shape of it.
-                </p>
+                {/* The handoff's rail draws an elevation silhouette here, and
+                  this says why one is not drawn YET - a fact about this
+                  screen, which is all it may honestly claim. It used to say
+                  the shape was not published, which was false the day it was
+                  written: see this file's header, and #1210 for the wiring
+                  that is genuinely missing. */}
+                <p className="day-hike-panel__note">No profile drawn here yet.</p>
               </>
             )}
             {stopping !== null && (

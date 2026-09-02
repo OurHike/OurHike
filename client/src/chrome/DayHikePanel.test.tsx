@@ -134,14 +134,19 @@ describe('what the panel says about the walk', () => {
 })
 
 describe('the elevation slot', () => {
-  it('draws no profile, and says why', () => {
-    // THE RULE: pipeline/export_network_elevation.py publishes two scalars per
-    // edge and no samples. A silhouette here would be invented.
+  it('says a profile is not drawn here, and claims nothing about the data', () => {
+    // THE CLAIM THAT WAS WRONG, pinned so it cannot come back. This line used
+    // to read "these trails publish how much they climb, not the shape of it"
+    // - false on the day it was written: export_network_profile.py publishes
+    // trail_graph_profile.json, and lib/walkProfile.ts already reads it
+    // (#1119, closing #1045). A panel may say what IT does not draw; it may
+    // not say what the pipeline does not publish, because that is a claim
+    // about the bucket and this screen cannot see the bucket.
     panel()
 
-    expect(
-      screen.getByText(/publish how much they climb, not the shape of it/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText('No profile drawn here yet.')).toBeInTheDocument()
+    expect(screen.queryByText(/not the shape of it/i)).toBeNull()
+    expect(screen.queryByText(/publish/i)).toBeNull()
   })
 
   it('prints the gain and the loss, which ARE published', () => {

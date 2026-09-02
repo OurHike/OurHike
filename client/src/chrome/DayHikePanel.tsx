@@ -38,20 +38,34 @@
 // recorded here because a redesign quietly dropping an exit is the kind of
 // regression that reads as a bug in the app rather than a gap in the mock.
 //
-// WHY THERE IS NO ELEVATION PROFILE HERE, WHICH THE HANDOFF ASKS FOR
+// WHY THERE IS NO ELEVATION PROFILE HERE YET, AND THE CLAIM THAT WAS WRONG
 //
-// Because nobody has published one for a network trail, and drawing it anyway
-// would be inventing a shape. pipeline/export_network_elevation.py publishes
-// `[gain_ft, loss_ft]` PER EDGE and says why in as many words - "Dense samples
-// are worth publishing only if a chart is ever drawn for a network route, and
-// then as a fourth artifact fetched when that chart opens." A silhouette
-// derived from two scalars per edge would be a picture of ground nobody
-// measured, on the screen a hiker uses to decide whether they beat the dark.
+// This file shipped saying the samples do not exist, and the line a hiker
+// read said so too - "these trails publish how much they climb, not the shape
+// of it". Both were false on the day they were written.
 //
-// What is here instead is the climb figures that ARE published, and one line
-// saying the shape is not. That is FEATURES.md's rule applied rather than
-// worked around: a confidently wrong prediction is more dangerous than an
-// honest unknown.
+// What happened: #1194 read pipeline/export_network_elevation.py's header,
+// which says dense samples are "worth publishing only if a chart is ever
+// drawn for a network route, and then as a fourth artifact fetched when that
+// chart opens", and stopped there. That sentence describes a decision taken
+// BEFORE the artifact existed. It has been built since -
+// pipeline/export_network_profile.py publishes trail_graph_profile.json, a
+// dense sample array per edge at 25 m, index-aligned with the other three;
+// App.tsx already fetches it into `graphProfile`; lib/walkProfile.ts already
+// turns a walk into ribbon samples on the walk's own mile axis. All of it
+// landed in #1119, closing #1045, before #1194 was written. A followed day
+// hike draws it today.
+//
+// So the honest sentence is about THIS SCREEN and nothing else: the builder
+// draws no profile yet because nobody has wired one here. What is genuinely
+// missing is narrow - `walkProfile` takes `WalkStep[]`, and lib/dayHikeWalk.ts
+// builds those from a saved `ResolvedDayHike` rather than from a draft being
+// tapped out. That is #1210.
+//
+// THE LESSON, because it cost a false claim in front of hikers: a module
+// header states what was true when it was written. "The data does not exist"
+// is a claim about the bucket, and it wants checking against the bucket
+// rather than against a comment.
 
 import { useId } from 'react'
 

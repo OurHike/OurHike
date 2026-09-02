@@ -4,10 +4,12 @@
 // The claims worth pinning are the ones a redesign could quietly break, and
 // two of them are about what the panel must NOT say:
 //
-//   IT DRAWS NO ELEVATION PROFILE. The samples that would draw one are not
-//   published for network trails (pipeline/export_network_elevation.py), so a
-//   silhouette here would be a picture of ground nobody measured. The panel
-//   says so where the chart would have been, and this asserts the saying.
+//   IT CLAIMS NOTHING ABOUT THE PIPELINE. This header used to say the samples
+//   were not published for network trails, and the panel said the same to
+//   hikers. Both were false: export_network_profile.py publishes
+//   trail_graph_profile.json and lib/walkProfile.ts already reads it (#1119,
+//   closing #1045). A panel may say what IT does not draw; it may not say
+//   what the pipeline does not publish, because it cannot see the bucket.
 //
 //   IT NEVER PRICES A DETOUR. A stop's distance off the walk is shown; the
 //   minutes to get there are not invented.

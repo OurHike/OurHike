@@ -176,6 +176,19 @@ describe('the cache', () => {
     expect(build).toHaveBeenCalledTimes(3)
   })
 
+  it("rebuilds when a waypoint's own coordinates or published mile changed, same count", async () => {
+    const build = vi.fn(buildTrailIndexNow)
+    await loadTrailIndex(request(), build)
+
+    // Same count, same lines - only a waypoint's own coordinates or published
+    // mile changed, the shape a pipeline correction takes (trailsHash never
+    // covers the POI files - useTrailData.ts's `readTheRest`).
+    const corrected = [POIS[0], { ...POIS[1], mile: 5.5 }, POIS[2]]
+    await loadTrailIndex(request({ pois: packPois(corrected) }), build)
+
+    expect(build).toHaveBeenCalledTimes(2)
+  })
+
   it('neither reads nor writes a cache for a store with no release record', async () => {
     const build = vi.fn(buildTrailIndexNow)
 

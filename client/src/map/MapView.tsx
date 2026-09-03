@@ -76,10 +76,6 @@ import {
 import { attachPoiLabels } from './poiLabels'
 import { attachLabelVisibility } from './labelVisibility'
 import type { MileTick } from '../lib/dayHikeCourse'
-
-/** A stable empty default, so an absent prop does not re-run the tick effect
- *  on every render with a fresh array. */
-const EMPTY_TICKS: readonly MileTick[] = []
 import {
   attachRouteData,
   attachRouteStroke,
@@ -459,6 +455,9 @@ const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
 const NO_DISPUTES: readonly DisputePoint[] = []
+/** Same reasoning as NO_POIS above: a stable identity so an absent prop does
+ *  not re-run the tick effect on every render with a fresh array. */
+const EMPTY_TICKS: readonly MileTick[] = []
 
 export function MapView({
   topoArchiveUrl,

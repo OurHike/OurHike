@@ -169,6 +169,30 @@ export function packPois(
   return packed
 }
 
+/**
+ * A cheap content fingerprint over the packed waypoints, for the cache below.
+ * POIs arrive as eight published files (useTrailData.ts's `readTheRest`),
+ * none of which `TrailIndexRequest.trailsHash` covers - so a coordinate or
+ * published-mile correction that lands with the trail lines and the waypoint
+ * count both unchanged (an ordinary dated fix in this pipeline's history, not
+ * a new download) needs its own signal, or the cache serves the pre-fix
+ * placement indefinitely.
+ *
+ * Not a security boundary - a collision costs a stale cache hit, which the
+ * cache already treats as safe to have - so a 32-bit FNV-1a over the raw
+ * bytes is enough, not sha256Rpc's streaming digest built for gigabyte
+ * archives.
+ */
+export function poiFingerprint(pois: Float64Array): number {
+  const bytes = new Uint8Array(pois.buffer, pois.byteOffset, pois.byteLength)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < bytes.length; i += 1) {
+    hash ^= bytes[i]
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
 /** Every mile a build answered for the waypoints, in their order - NaN read
  *  as "none", which is how the rest of the shell already spells a waypoint
  *  it cannot place. */
@@ -340,6 +364,9 @@ interface CachedTrailIndex {
    *  builds the same lines onto a different axis. */
   trailsHash: string
   poiCount: number
+  /** See {@link poiFingerprint} - catches a same-count content change that
+   *  trailsHash alone cannot, because trailsHash never covers the POI files. */
+  poiFingerprint: number
   withMiles: boolean
   index: SerializedTrailIndex
   poiMiles: Float64Array
@@ -349,6 +376,7 @@ interface CachedTrailIndex {
 function cachedIndexFor(
   request: TrailIndexRequest,
   stored: unknown,
+  fingerprint: number,
 ): TrailIndexBuilt | null {
   if (request.trailsHash === null) return null
   if (typeof stored !== 'object' || stored === null) return null
@@ -356,6 +384,7 @@ function cachedIndexFor(
   if (
     entry.trailsHash !== request.trailsHash ||
     entry.poiCount !== request.pois.length / POI_STRIDE ||
+    entry.poiFingerprint !== fingerprint ||
     entry.withMiles !== (request.trailMiles !== null) ||
     !isSerializedTrailIndex(entry.index) ||
     !(entry.poiMiles instanceof Float64Array) ||
@@ -386,7 +415,8 @@ export async function loadTrailIndex(
   } catch {
     stored = undefined
   }
-  const cached = cachedIndexFor(request, stored)
+  const fingerprint = poiFingerprint(request.pois)
+  const cached = cachedIndexFor(request, stored, fingerprint)
   if (cached !== null) return cached
 
   const built = await build(request)
@@ -394,6 +424,7 @@ export async function loadTrailIndex(
     const entry: CachedTrailIndex = {
       trailsHash: request.trailsHash,
       poiCount: request.pois.length / POI_STRIDE,
+      poiFingerprint: fingerprint,
       withMiles: request.trailMiles !== null,
       index: built.index,
       poiMiles: built.poiMiles,

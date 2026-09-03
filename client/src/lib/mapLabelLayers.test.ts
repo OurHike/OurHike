@@ -7,8 +7,9 @@
 // two of them authority over one layer is how a toggle comes to look broken
 // because another screen has already turned its target off.
 //
-// It also pins the two rungs that have NO DATA, so that adding a toggle for
-// one of them fails here rather than shipping a switch that changes nothing.
+// It also pins the rung that has NO DATA, so that adding a toggle for it
+// fails here rather than shipping a switch that changes nothing. There were
+// two; #1197 published the trailheads and filled the top one.
 
 import { describe, expect, it } from 'vitest'
 
@@ -78,15 +79,29 @@ describe('what the toggles have authority over', () => {
     }
   })
 
-  it('offers no toggle for the two rungs nothing publishes', () => {
-    // pipeline/lib/poi_schema.py has no `trailhead`; junctions exist only as
-    // graph nodes. Both are recorded on #1194 rather than shipped as inert
-    // switches - and if either ever gains data, this line is where the
-    // toggle's arrival should be argued rather than slipped in.
+  it('offers no toggle for the one rung nothing publishes', () => {
+    // Junctions exist only as graph nodes: pipeline/build_trail_graph.py
+    // splits every line at every crossing, so they route the walk and nothing
+    // publishes them as features. Recorded on #1194 and #1213 rather than
+    // shipped as an inert switch.
     const keys = LABEL_LAYERS.map((spec) => spec.key)
 
-    expect(keys).not.toContain('trailheads')
     expect(keys).not.toContain('junctions')
+  })
+
+  it('offers the trailhead toggle now that something publishes trailheads', () => {
+    // THIS ASSERTION IS THE DELETED HALF OF THE ONE ABOVE, and it is here
+    // rather than absent because the rule was "if either ever gains data,
+    // this line is where the toggle's arrival should be argued". The argument:
+    // #1197 gave pipeline/lib/poi_schema.py a ninth type and OPRHP's 287
+    // trailheads ship in `nearby_poi.geojson`, so the switch has features to
+    // act on. It goes first in the row because it is the top rung of
+    // map/labelLadder.ts - the class the whole ladder was ordered around.
+    const keys = LABEL_LAYERS.map((spec) => spec.key)
+
+    expect(keys[0]).toBe('trailheads')
+    expect(LABEL_LAYERS[0].poiType).toBe('trailhead')
+    expect(tierBadge(LABEL_LAYERS[0].tier)).toBe('T1')
   })
 })
 

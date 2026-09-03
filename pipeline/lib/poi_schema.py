@@ -24,7 +24,25 @@ this up against real raw GeoJSON and the corridor clip.
 #   - fetch_poi_images.SEARCH_RADIUS_M, the one that stays silent on purpose
 #     - an absent radius means the Commons crawl skips that category, which
 #     is a decision the map records rather than an error.
-POI_TYPES = ("shelter", "campsite", "water", "resupply", "crossing", "viewpoint", "parking", "privy")
+#
+# `trailhead` joined ninth (#1197). Where a hiker STARTS, which is neither
+# `parking` (a lot is where a car waits; a trailhead is where the walking
+# begins, and the two are often not the same point) nor `crossing`. Its
+# absence was the reason export_nearby_poi.py dropped every trailhead three
+# orgs publish - POI_COVERAGE_SURVEY.md 7c counted DEC 10,520, OPRHP 287,
+# NYNJTC 26 - with the named reason "POI_TYPES has no trailhead category".
+# Only OPRHP's ship today; DEC's live in a layer nobody has registered yet.
+POI_TYPES = (
+    "shelter",
+    "campsite",
+    "water",
+    "resupply",
+    "crossing",
+    "viewpoint",
+    "parking",
+    "privy",
+    "trailhead",
+)
 
 # Two tiers is enough for the one real distinction this schema needs to make
 # today: ATC's Communities layer (a town being an "official A.T. Community"

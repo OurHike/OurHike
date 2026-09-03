@@ -83,6 +83,51 @@ export const POI_COLORS: Record<PoiType, string> = {
   viewpoint: '#12615c',
   parking: '#3f4d8a',
   privy: '#7a2f66',
+  // The ninth (#1197), and there was no comfortable room left.
+  //
+  // THE FIRST ATTEMPT WAS AN OLIVE AT HUE 58, AND IT WAS WRONG in a way worth
+  // leaving on the record: it was checked against every hue in THIS table and
+  // against the closure red, found the 97-degree gap between resupply (26)
+  // and shelter (123), and sat in the middle of it. What that search left out
+  // is that this table is not the whole palette - map/workdayPin.ts's
+  // WORKDAY_COLOR is hue 68, its own test requires 30 degrees of clearance
+  // from every accent here, and 58 is 10 away. A measurement against the
+  // wrong denominator reads exactly like a measurement.
+  //
+  // With that band excluded (38-98) the wheel has four openings wide enough to
+  // matter - the rest leave under 20 degrees either side - and three are
+  // rejected for reasons no test states:
+  //
+  //   privy 316 -> resupply 26, through the top of the wheel. The widest
+  //     separation on offer (35 degrees at hue 351), and 17 degrees off the
+  //     closure red. That CLEARS the 15-degree bar. It fails the sentence the
+  //     bar was written for - "a pin that reads at a glance as do not walk
+  //     down there is a worse failure than a dull palette" - which is not a
+  //     threshold to squeak past by two degrees.
+  //   98 -> shelter 123. Exactly 30.1 degrees off the workday pin, against a
+  //     bar of 30. One rounding away from the failure this whole note is
+  //     about.
+  //   campsite 125 -> viewpoint 176. A third green, on a green basemap, for
+  //     the class map/labelLadder.ts ranks FIRST. Passing every bar and being
+  //     the hardest pin on the map to find is the wrong trade.
+  //
+  //   crossing 268 -> privy 316. Taken, at 292.
+  //
+  // Measured, and poiIcons.test.ts and workdayPin.test.ts compute all of it
+  // rather than taking this comment's word: 5.52:1 on the halo (bar 4.5),
+  // 23.7 degrees off its nearest neighbour crossing, 76 off the closure red,
+  // 137 off the workday pin.
+  //
+  // ITS 24 DEGREES ARE THE TIGHTEST PAIR IN THIS TABLE BAR ONE, and saying so
+  // is more use than the number alone. Hue is not the only channel: crossing
+  // is a muted grey-violet (saturation 0.32, contrast 6.91) and this is a
+  // clearer magenta-violet (0.42, 5.52), which is the same two-channel
+  // separation shelter and campsite already ship on 2.4 degrees of hue. The
+  // family is deliberate too - parking (229) and this are the two gateway
+  // classes and the two ways in, both cool, both off the terrain's own
+  // greens and browns. But a ninth accent leans harder on the glyph than the
+  // first did, and "shape as the primary channel" is doing real work here.
+  trailhead: '#9944a7',
 }
 
 /**
@@ -416,6 +461,36 @@ const GLYPHS: Record<string, Glyph> = {
       [0.98, 0.93],
     ],
     arc(0.19, 0.17, 0.13, 0, 360),
+  ],
+  // A signpost: a post with one arm pointing off it. The mark actually
+  // standing at a trailhead, and the one shape here that says "the walking
+  // starts, and it goes that way" (#1197).
+  //
+  // NOT the footprints the design handoff drew. Two boot prints are four
+  // small shapes with a lot of internal detail, and at the 22.8px this pin
+  // shrinks to at the seam (POI_PIN_MIN_SCALE) they silt up into one blob -
+  // the failure the privy's crescent exists to avoid. A post and an arm are
+  // two rectangles and a point, which survive the shrink.
+  //
+  // Distinct from parking's P by having no counter and an arm off one side,
+  // and from the shelter's house by having no roof. poiIcons.test.ts measures
+  // the overlap against every other glyph rather than trusting that.
+  trailhead: [
+    // The post.
+    [
+      [0.4, 0.06],
+      [0.52, 0.06],
+      [0.52, 0.96],
+      [0.4, 0.96],
+    ],
+    // The arm, pointed at its far end like every trail sign.
+    [
+      [0.52, 0.2],
+      [0.86, 0.2],
+      [0.96, 0.31],
+      [0.86, 0.42],
+      [0.52, 0.42],
+    ],
   ],
   // The letter P, the one waypoint here that is a letter rather than a
   // picture - and it earns the exception, because it is the sign a driver

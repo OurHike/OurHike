@@ -49,11 +49,11 @@ const FONT = ['Noto Sans Regular']
 /**
  * Which waypoints get a name, and which rung each sits on.
  *
- * `parking` is tier 1 with the roads, which is the handoff's central claim
- * about this screen and worth restating where somebody might "tidy" it into
- * poiPriority.ts's order: a lot is how a hiker reaches the trail, so on a
- * PLANNING map its name outranks a spring's. On the walking map it does not,
- * and that map does not draw this layer.
+ * `trailhead` and `parking` are tier 1 with the roads, which is the handoff's
+ * central claim about this screen and worth restating where somebody might
+ * "tidy" it into poiPriority.ts's order: how a hiker reaches the trail is what
+ * a PLANNING map is for, so those two outrank a spring's name. On the walking
+ * map they do not, and that map does not draw this layer.
  *
  * The rest are landmarks. A chosen stop is lifted out of this table
  * altogether by {@link poiLabelSortKey} - it is tier 2, above every trail
@@ -67,7 +67,13 @@ const FONT = ['Noto Sans Regular']
  * and a privy label at every shelter is the clutter complaint #2 was about.
  */
 const LABELLED_TYPES: Record<string, number> = {
-  parking: LABEL_TIER.gateway,
+  // The rung map/labelLadder.ts reserved and could not fill until #1197.
+  // A trailhead outranks the lot beside it for the same reason the lot
+  // outranks a spring: this is the map for choosing where to START, and a
+  // trailhead is that choice made. Where the two are the same place the
+  // collision pass drops one of them, which is the right outcome either way.
+  trailhead: LABEL_TIER.gateway,
+  parking: LABEL_TIER.gateway + 1,
   shelter: LABEL_TIER.landmark,
   campsite: LABEL_TIER.landmark,
   viewpoint: LABEL_TIER.landmark,
@@ -104,17 +110,18 @@ export function poiLabelSortKey(chosenStopIds: readonly string[]): unknown[] {
 /**
  * The zoom a name starts drawing at, per rung.
  *
- * Parking arrives with the pins; everything else waits for the landmark tier,
- * so the wide view is the handoff's "park" band - parking, roads and the
- * route - rather than every shelter in Harriman at once. A chosen stop is the
- * exception and appears as soon as any label does: the hiker put it there.
+ * Trailheads and parking arrive with the pins; everything else waits for the
+ * landmark tier, so the wide view is the handoff's "park" band - trailheads,
+ * parking, roads and the route - rather than every shelter in Harriman at
+ * once. A chosen stop is the exception and appears as soon as any label does:
+ * the hiker put it there.
  */
 export function poiLabelMinZoom(chosenStopIds: readonly string[]): unknown[] {
   return [
     'case',
     ['in', ['get', POI_ID_PROPERTY], ['literal', [...chosenStopIds]]],
     TIER_MIN_ZOOM.route,
-    ['==', ['get', 'poi_type'], 'parking'],
+    ['in', ['get', 'poi_type'], ['literal', ['trailhead', 'parking']]],
     TIER_MIN_ZOOM.gateway,
     TIER_MIN_ZOOM.landmark,
   ]

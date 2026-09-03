@@ -9,11 +9,25 @@
 //
 // THE STORED KEY IS *SHOWN*, AND THE MAP CONSUMES *HIDDEN*. This module is the
 // one translation between them, and the direction is deliberate
-// (features/POI_VISIBILITY.md Option 3): a list of what to show means a category
-// a later release adds is visible by default, where a list of what to hide would
-// make it invisible to everyone who had ever opened this screen. `[]` means ALL,
-// which is what it has always meant - though a fresh install no longer starts
-// there. See DEFAULT_SHOWN_TYPES below for what it opens to instead (#865).
+// (features/POI_VISIBILITY.md Option 3). `[]` means ALL, which is what it has
+// always meant - though a fresh install no longer starts there. See
+// DEFAULT_SHOWN_TYPES below for what it opens to instead (#865).
+//
+// THE REASON THAT WAS WRITTEN HERE FOR THE DIRECTION IS NOT TRUE, and #1197 is
+// what made it observable rather than theoretical. It said a show-list "means a
+// category a later release adds is visible by default, where a list of what to
+// hide would make it invisible to everyone who had ever opened this screen".
+// Read `hiddenTypesFrom` below: a stored `shown` list that predates a category
+// does not contain it, so the category is HIDDEN, which is the outcome the
+// sentence attributed to the rejected design. It holds only for `[]`, and #865
+// is exactly what stopped `[]` being where anybody starts - so #1197's
+// `trailhead` arrived invisible for every hiker who had ever opened this screen,
+// which is the case the sentence promised could not happen.
+//
+// Left standing rather than fixed here, because changing it changes what every
+// existing hiker's map draws and that is not #1197's to decide - it is
+// #1214. Option 3 may still be the right call for other reasons
+// (POI_VISIBILITY.md has them); this one is not among them.
 //
 // WHY THIS IS WORTH HAVING RATHER THAN TIDY. Hiding a category hands its
 // collision budget to the ones left. With #528's counts on screen that is
@@ -53,9 +67,17 @@ export const HIDEABLE_TYPES: readonly string[] = POI_TYPES.filter(
 
 /**
  * What a fresh install - or an account that has never touched this
- * preference - opens the map to. The other four (resupply, crossing,
- * viewpoint, parking) start hidden, reachable the same way any hidden
- * category is: Settings or the legend.
+ * preference - opens the map to. The other five (resupply, crossing,
+ * viewpoint, parking, trailhead) start hidden, reachable the same way any
+ * hidden category is: Settings or the legend.
+ *
+ * `trailhead` is the fifth and joined them by NOT being added here (#1197).
+ * That is the intended answer rather than an oversight: this list is the
+ * WALKING map's, a trailhead is how a hiker reached the trail rather than
+ * anything they need while on it, and map/poiPriority.ts ranks it beside
+ * parking at the bottom for the same reason. The planning map is where it
+ * matters, and map/labelLadder.ts ranks it FIRST there - two orderings of one
+ * category, each right about its own screen.
  *
  * Maintainer decision (#865), resolving the "all-on vs. a curated subset"
  * open question UX_CUSTOMIZATION.md and POI_VISIBILITY.md both carried:

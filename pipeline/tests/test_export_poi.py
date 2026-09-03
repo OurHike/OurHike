@@ -1404,6 +1404,12 @@ def test_check_reads_the_sources_and_writes_nothing(tmp_path, monkeypatch, con):
         "viewpoint": 1,
         "parking": 1,
         "privy": 1,
+        # Zero, and legitimately (#1197): ATC publishes no trailhead layer, so
+        # this export has no source for the ninth type. The 287 that ship are
+        # OPRHP's and travel in nearby_poi.geojson, which this export does not
+        # write. Asserted as a key rather than omitted, so a trailhead source
+        # arriving on the A.T. one day fails here and gets a decision.
+        "trailhead": 0,
     }
     assert not out_dir.exists()
 

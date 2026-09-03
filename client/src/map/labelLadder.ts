@@ -18,7 +18,7 @@
 // claim "rank 0, place me first", and which one actually survives is decided
 // by layer order rather than by anybody's judgement about what a hiker needs.
 //
-// THE LADDER IS THE DESIGN HANDOFF'S, WITH TWO RUNGS THAT HAVE NO DATA
+// THE LADDER IS THE DESIGN HANDOFF'S, WITH ONE RUNG THAT HAS NO DATA
 //
 // The handoff's central claim about complaint #2 - "locations were hard to
 // find" - is that a hiker choosing where to START a walk needs different
@@ -32,22 +32,25 @@
 // unified, and the difference is the whole reason this is a second file
 // rather than an edit to that one.
 //
-// Two rungs of the handoff's ladder are absent because nothing publishes
-// them, and they are written down here rather than silently skipped so the
-// next reader knows the ladder is incomplete rather than disagreeing with the
-// handoff:
+// One rung of the handoff's ladder is still absent because nothing publishes
+// it, written down here rather than silently skipped so the next reader knows
+// where the ladder is incomplete rather than where it disagrees with the
+// handoff. It was two until #1197:
 //
-//   - TRAILHEADS. pipeline/lib/poi_schema.py publishes eight POI types and
-//     `trailhead` is not one of them. This is tier 1 of the handoff's ladder,
-//     which makes it the most valuable missing rung: "roads exist specifically
-//     so a user can find a start point", and the start point itself is the
-//     thing that is not on the map.
+//   - TRAILHEADS ARE NO LONGER ONE OF THEM (#1197). This said the pipeline
+//     published eight types and `trailhead` was not among them, which was
+//     true when the ladder was written and is the rung it most wanted: "roads
+//     exist specifically so a user can find a start point", and the start
+//     point itself was the thing missing from the map. There is a ninth type
+//     now, and OPRHP's 287 trailheads ship in `nearby_poi.geojson` - so the
+//     top rung is filled by the class it was reserved for.
 //   - JUNCTIONS. pipeline/build_trail_graph.py splits every line at every
 //     crossing, so junctions exist as graph NODES and route the walk, but
 //     nothing publishes them as features and no layer draws them.
 //
-// Both are named on #1194 rather than fudged. A rung with no data draws
-// nothing whether or not it has a number here.
+// The junction rung is named on #1194 rather than fudged, and #1213 is where
+// it would be filled. A rung with no data draws nothing whether or not it has
+// a number here.
 
 /**
  * The rungs, lowest number first - and lower WINS.
@@ -132,7 +135,7 @@ export function zoomBand(zoom: number): ZoomBand {
 }
 
 export const ZOOM_BAND_TEXT: Record<ZoomBand, string> = {
-  park: 'Parking, roads and your route',
+  park: 'Trailheads, parking, roads and your route',
   route: 'Adds trail names, peaks, shelters and campsites',
   section: 'Adds water and the finer sheet',
 }

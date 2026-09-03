@@ -12,6 +12,7 @@ export const TYPE_LABELS: Record<string, string> = {
   resupply: 'Resupply',
   town: 'Town',
   parking: 'Parking',
+  trailhead: 'Trailhead',
   crossing: 'Crossing',
   viewpoint: 'Viewpoint',
   // "Privy" rather than "Toilet" or "Restroom": it is what the sign on the

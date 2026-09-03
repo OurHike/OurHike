@@ -161,7 +161,7 @@ from lib import fetch_receipts
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
 from lib.hashing import sha256_file
-from lib.poi_schema import POI_TYPES
+from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES, POI_TYPES
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -356,11 +356,13 @@ def trails_verdict(manifest_path: Path | None = None) -> dict:
 def poi_verdict(manifest_path: Path | None = None) -> dict:
     """Re-derive export_poi.py's own per-poi_type completeness gate from
     what is actually on disk right now - see the module docstring's check
-    #1 section. `crossing` is excepted from the non-zero requirement,
-    mirroring export_poi.py's own minimums={"crossing": 0} override (see
-    that script's module docstring: there is no NHD-crossing fetch script
-    yet, so an empty-but-present crossing layer is the intentional, honest
-    state, not a bug)."""
+    #1 section. The minimums mirror lib.poi_schema.ALLOWED_EMPTY_POI_TYPES,
+    export_poi.py's own gate - shared rather than copied, after `trailhead`
+    joining that dict once left this file with its own stale copy: this
+    check flagged a correct, empty-by-design trailhead export as a PROBLEM
+    and refused a v1.2.1 UA publish that had nothing wrong with it (run
+    33798908097). Nothing shipped wrong - refusing to publish is what this
+    gate is for - but the reason was itself the bug, not the data."""
     if manifest_path is None:
         manifest_path = POI_MANIFEST
 
@@ -400,7 +402,8 @@ def poi_verdict(manifest_path: Path | None = None) -> dict:
             )
         counts[f"poi:{poi_type}"] = kind_counts.get("geojson", kind_counts.get("fgb", 0))
 
-    problems += count_problems(counts, minimums={"poi:crossing": 0})
+    poi_minimums = {f"poi:{poi_type}": limit for poi_type, limit in ALLOWED_EMPTY_POI_TYPES.items()}
+    problems += count_problems(counts, minimums=poi_minimums)
 
     verdict = Verdict.PROBLEM if problems else Verdict.OK
     detail = f"{len(problems)} problem(s)" if problems else f"{sum(counts.values())} features across {len(POI_TYPES)} poi_types"

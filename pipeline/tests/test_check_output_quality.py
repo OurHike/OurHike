@@ -279,6 +279,23 @@ def test_poi_verdict_ok_when_every_type_has_features_except_crossing(tmp_path):
     assert report["counts"]["poi:shelter"] == 5
 
 
+def test_poi_verdict_ok_when_trailhead_is_the_only_empty_type(tmp_path):
+    """trailhead is export_poi.py's other legal zero (lib.poi_schema's
+    ALLOWED_EMPTY_POI_TYPES) - OPRHP's 287 ship through nearby_poi.geojson,
+    not this export. Regression test for the gap where this file had its
+    own hardcoded copy of that dict, `trailhead` never joined it, and a
+    real v1.2.1 UA publish (run 33798908097) failed this check over an
+    export that had nothing wrong with it."""
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"trailhead": 0})))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"]["poi:trailhead"] == 0
+    assert report["counts"]["poi:shelter"] == 5
+
+
 def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "shelter": 0})))

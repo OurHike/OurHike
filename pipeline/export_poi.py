@@ -259,7 +259,14 @@ from lib.poi_description import (
     describe_water,
     nearby_parts,
 )
-from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
+from lib.poi_schema import (
+    ALLOWED_EMPTY_POI_TYPES,
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    POI_TYPES,
+    poi_output_name,
+    unify_poi,
+)
 from lib.poi_sites import ANCHOR_TYPES, NAME_MATCH_RADIUS_M, ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
 from lib.spurs import distance_m
 
@@ -1508,21 +1515,6 @@ def poi_counts(records: list[dict]) -> dict[str, int]:
     instead of quietly not appearing in the tally.
     """
     return {poi_type: sum(1 for record in records if record["poi_type"] == poi_type) for poi_type in POI_TYPES}
-
-
-#: The poi_types this export may legally publish nothing for, each with the
-#: reason it is empty rather than broken. Everything absent from here must
-#: produce at least one feature.
-#:
-#:   crossing   filled from NHD and OSM geometry rather than an ATC layer,
-#:              and empty until fetch_trail_water.py has run (module docstring).
-#:   trailhead  ATC publishes no trailhead layer at all (#1197). The 287 that
-#:              ship are OPRHP's and they travel in nearby_poi.geojson, which
-#:              this export does not write. A ninth type with no A.T. source
-#:              is the state this entry describes, and it is expected to
-#:              outlive the others: nothing suggests ATC is about to publish
-#:              one.
-ALLOWED_EMPTY_POI_TYPES = {"crossing": 0, "trailhead": 0}
 
 
 def fail_if_any_type_is_empty(counts: dict[str, int], label: str) -> None:

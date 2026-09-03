@@ -290,12 +290,57 @@ def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
 
 
 def test_poi_verdict_does_not_flag_crossing_at_zero():
-    """Mirrors export_poi.py's own minimums={"crossing": 0} - there is no
-    NHD-crossing fetch script yet, so an empty crossing layer is expected,
-    not a bug."""
+    """There is no NHD-crossing fetch script yet, so an empty crossing layer
+    is expected, not a bug."""
     problems = check_output_quality.count_problems({"poi:crossing": 0, "poi:shelter": 5}, minimums={"poi:crossing": 0})
 
     assert problems == []
+
+
+def test_poi_verdict_does_not_flag_trailhead_at_zero(tmp_path):
+    """THE ONE THAT WAS MISSING, and it is written against poi_verdict rather
+    than against count_problems on purpose.
+
+    export_poi.py publishes no trailhead layer - ATC has no such source, and
+    the 287 that ship are OPRHP's, travelling in nearby_poi.geojson (#1197).
+    So `poi:trailhead` is legitimately 0 here.
+
+    The test above it exercises count_problems with a hand-written
+    `minimums=`, which is why it kept passing while the real gate refused:
+    it never asked what poi_verdict actually passes. This one goes through
+    poi_verdict, so it fails if the exemption is missing from the call.
+    Publish run 33798908097 is what that gap cost - 59 minutes of build,
+    nothing uploaded.
+    """
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "trailhead": 0})))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"]["poi:trailhead"] == 0
+
+
+def test_the_two_gates_read_one_allowed_empty_set():
+    """export_poi.py's gate and this one must never disagree about which
+    emptiness is honest.
+
+    They used to keep separate copies, described in both files as mirroring
+    each other, and they drifted the first time a type was added. Now both
+    import lib.poi_schema.ALLOWED_EMPTY_POI_TYPES, and this asserts the
+    identity rather than the contents - a new exemption is a sentence
+    somebody writes in poi_schema.py, and both gates get it at once.
+    """
+    import export_poi
+    from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+
+    assert export_poi.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+    assert check_output_quality.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+
+    # And every name in it is a real published type, so a typo cannot quietly
+    # exempt nothing at all.
+    for poi_type in ALLOWED_EMPTY_POI_TYPES:
+        assert poi_type in check_output_quality.POI_TYPES
 
 
 def test_poi_verdict_flags_a_kind_missing_within_an_otherwise_present_poi_type(tmp_path):

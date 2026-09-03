@@ -13,7 +13,7 @@ this up against real raw GeoJSON and the corridor clip.
 # carried since 2026-07-25 and `fetch_all.py` has been downloading ever since
 # - the data was on disk and nothing read it.
 #
-# Adding a type here is not a one-line change, and deliberately so. Three
+# Adding a type here is not a one-line change, and deliberately so. Four
 # other places are keyed on exactly this tuple:
 #   - export_spurs.DESTINATION_POI_TYPES / NOT_A_DESTINATION_POI_TYPES, a
 #     partition asserted against this tuple, so a new category fails a test
@@ -23,7 +23,18 @@ this up against real raw GeoJSON and the corridor clip.
 #     so a type missing there is a layer that never reaches a phone;
 #   - fetch_poi_images.SEARCH_RADIUS_M, the one that stays silent on purpose
 #     - an absent radius means the Commons crawl skips that category, which
-#     is a decision the map records rather than an error.
+#     is a decision the map records rather than an error;
+#   - ALLOWED_EMPTY_POI_TYPES below, if the new type has no A.T. source.
+#
+# THE FOURTH ENTRY IS NEW, AND IT IS HERE BECAUSE THIS LIST SAID THREE.
+# #1197 added `trailhead`, worked the three above, and did not know there was
+# a fourth thing to work - because the note enumerating the blast radius
+# stopped at three. The allowed-empty set lived in export_poi.py and was
+# mirrored BY HAND in check_output_quality.py, so exempting the type in one
+# left the other refusing it. That cost a full publish run: 2026-09-03, run
+# 33798908097 built for 59 minutes and died at `check_output_quality.py` on
+# "poi:trailhead: 0, expected >= 1", having uploaded nothing. Hence both the
+# fourth bullet and the move below.
 #
 # `trailhead` joined ninth (#1197). Where a hiker STARTS, which is neither
 # `parking` (a lot is where a car waits; a trailhead is where the walking
@@ -43,6 +54,34 @@ POI_TYPES = (
     "privy",
     "trailhead",
 )
+
+#: The poi_types that may legally publish nothing, each with the reason it is
+#: empty rather than broken. Everything absent from here must produce at least
+#: one feature.
+#:
+#:   crossing   filled from NHD and OSM geometry rather than an ATC layer,
+#:              and empty until fetch_trail_water.py has run (export_poi.py's
+#:              module docstring).
+#:   trailhead  ATC publishes no trailhead layer at all (#1197). The 287 that
+#:              ship are OPRHP's and they travel in nearby_poi.geojson, which
+#:              export_poi.py does not write. A ninth type with no A.T. source
+#:              is the state this entry describes, and it is expected to
+#:              outlive the other: nothing suggests ATC is about to publish
+#:              one.
+#:
+#: IT LIVES HERE, IN THE PURE MODULE, RATHER THAN IN EITHER GATE. Two
+#: independent gates read it - export_poi.py's `fail_if_any_type_is_empty`
+#: at export time, on counts in memory, and check_output_quality.py's
+#: `poi_verdict` afterwards, re-derived from the manifest on disk. Both
+#: still count for themselves, which is the whole value of the second gate;
+#: what they no longer do is each keep their own copy of the POLICY about
+#: which emptiness is honest. They did, and the copies drifted the first
+#: time anybody added a type (see the note above POI_TYPES).
+#:
+#: Values are the minimum each type may report, so this doubles as the
+#: `minimums=` argument lib/completeness.count_problems takes.
+ALLOWED_EMPTY_POI_TYPES = {"crossing": 0, "trailhead": 0}
+
 
 # Two tiers is enough for the one real distinction this schema needs to make
 # today: ATC's Communities layer (a town being an "official A.T. Community"

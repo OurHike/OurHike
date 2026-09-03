@@ -296,6 +296,26 @@ def test_poi_verdict_ok_when_trailhead_is_the_only_empty_type(tmp_path):
     assert report["counts"]["poi:shelter"] == 5
 
 
+def test_the_two_poi_gates_read_one_allowed_empty_set():
+    """export_poi.py's gate and this one must never disagree about which
+    emptiness is honest - the exact way they drifted in #1225/#1227.
+
+    Both import lib.poi_schema.ALLOWED_EMPTY_POI_TYPES now, so this asserts
+    the identity rather than the contents: a future exemption is one
+    sentence in poi_schema.py, not two copies to keep in step. The second
+    half guards a different failure mode - a typo in the allowlist quietly
+    exempting nothing at all, rather than the type somebody meant.
+    """
+    import export_poi
+    from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+
+    assert export_poi.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+    assert check_output_quality.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+
+    for poi_type in ALLOWED_EMPTY_POI_TYPES:
+        assert poi_type in check_output_quality.POI_TYPES
+
+
 def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "shelter": 0})))

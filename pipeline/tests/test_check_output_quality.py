@@ -296,6 +296,33 @@ def test_poi_verdict_ok_when_trailhead_is_the_only_empty_type(tmp_path):
     assert report["counts"]["poi:shelter"] == 5
 
 
+def test_the_two_gates_read_one_allowed_empty_set():
+    """The two gates must reference the SAME object, not equal copies.
+
+    #1228 shared lib.poi_schema.ALLOWED_EMPTY_POI_TYPES between
+    export_poi.py's export-time gate and this file's after-the-fact one,
+    which is what stopped `trailhead` being exempt in one and refused by the
+    other (run 33798908097, a correct export refused for 59 minutes of
+    nothing). The regression test beside this one covers that symptom.
+
+    This covers the SHAPE, because the symptom test cannot: a future change
+    that re-introduced a local copy holding the same two keys would keep it
+    green while restoring the exact fragility #1228 removed. Asserting
+    identity rather than equality is the whole point - there is one dict, and
+    a new exemption is a sentence somebody writes in poi_schema.py.
+    """
+    import export_poi
+    from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+
+    assert export_poi.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+    assert check_output_quality.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+
+    # And every name in it is a real published type, so a typo cannot quietly
+    # exempt nothing at all while looking like it exempts something.
+    for poi_type in ALLOWED_EMPTY_POI_TYPES:
+        assert poi_type in check_output_quality.POI_TYPES
+
+
 def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "shelter": 0})))

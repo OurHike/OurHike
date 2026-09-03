@@ -13,7 +13,7 @@ this up against real raw GeoJSON and the corridor clip.
 # carried since 2026-07-25 and `fetch_all.py` has been downloading ever since
 # - the data was on disk and nothing read it.
 #
-# Adding a type here is not a one-line change, and deliberately so. Three
+# Adding a type here is not a one-line change, and deliberately so. Four
 # other places are keyed on exactly this tuple:
 #   - export_spurs.DESTINATION_POI_TYPES / NOT_A_DESTINATION_POI_TYPES, a
 #     partition asserted against this tuple, so a new category fails a test
@@ -23,7 +23,16 @@ this up against real raw GeoJSON and the corridor clip.
 #     so a type missing there is a layer that never reaches a phone;
 #   - fetch_poi_images.SEARCH_RADIUS_M, the one that stays silent on purpose
 #     - an absent radius means the Commons crawl skips that category, which
-#     is a decision the map records rather than an error.
+#     is a decision the map records rather than an error;
+#   - ALLOWED_EMPTY_POI_TYPES below, if the new type has no A.T. source.
+#
+# THE COUNT WAS WRONG HERE, AND THAT IS WHAT THE FOURTH ENTRY COST. #1197
+# added `trailhead`, worked all three places this list named, and still broke
+# a UA publish - because the allowed-empty set was a fourth and the list
+# said three. #1228 shared the set so the two gates cannot drift again; this
+# is the other half, so the next person adding a type is told the truth about
+# the blast radius before they go looking. A list that undercounts is worse
+# than no list: it reads as complete.
 #
 # `trailhead` joined ninth (#1197). Where a hiker STARTS, which is neither
 # `parking` (a lot is where a car waits; a trailhead is where the walking

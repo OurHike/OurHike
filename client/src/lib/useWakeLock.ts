@@ -81,17 +81,39 @@ export function useWakeLock(active: boolean): WakeLockState {
     // arrives to nobody would hold the screen on for the life of the tab.
     let cancelled = false
     let sentinel: WakeLockSentinel | null = null
+    // WHY A TICKET AND NOT JUST `cancelled`. `acquire` runs on mount and again
+    // from `reacquire` on every visibilitychange, so a hidden -> visible ->
+    // hidden -> visible flap inside the time one `request` takes to resolve
+    // leaves two in flight. Both pass the guard below, and each resolves with
+    // its OWN sentinel - the platform grants a new one per request. Only one
+    // can be `sentinel`, and the other is then held by nothing: cleanup and
+    // the 'release' listener both only ever address whatever `sentinel` is
+    // now. The counter makes the LAST request win, which is the right one -
+    // it was asked for after the most recent time the page came back, so the
+    // earlier one was requested before a hide the platform releases on.
+    let generation = 0
 
     const acquire = async () => {
       if (cancelled || document.hidden) return
+      const mine = ++generation
       try {
         const held = await navigator.wakeLock.request('screen')
-        if (cancelled) {
+        if (cancelled || mine !== generation) {
           void held.release().catch(() => {})
           return
         }
+        // The other half, and the one the counter alone does not cover: this
+        // request may have overtaken one that already landed. Storing the new
+        // sentinel FIRST and releasing the old one after is deliberate - the
+        // old sentinel's 'release' listener guards on `sentinel === held`, so
+        // by releasing it second we stop it reporting 'released' for a screen
+        // that is still being held by its replacement.
+        const superseded = sentinel
         sentinel = held
         setState('held')
+        if (superseded !== null && superseded !== held) {
+          void superseded.release().catch(() => {})
+        }
         // The platform can take it back at any time. Without this the state
         // stays 'held' forever and the screen keeps promising a lock that is
         // gone - see the header. `once` because a fresh sentinel arrives with
@@ -110,7 +132,10 @@ export function useWakeLock(active: boolean): WakeLockState {
       } catch {
         // Refusal is a normal answer, not an error to surface as a crash: a
         // phone under 20% battery declines this on several platforms.
-        if (!cancelled) setState('refused')
+        // `mine === generation` for the same reason as above, one case over: a
+        // superseded request that rejects must not report 'refused' over a
+        // lock a later request has since been granted.
+        if (!cancelled && mine === generation) setState('refused')
       }
     }
 

@@ -1614,7 +1614,7 @@
       },
       "USFS": {
         "probed_date": "2026-09-02",
-        "note": "Probed for https://github.com/OurHike/OurHike/issues/1207, which began as a White Mountains question and ended as a nationwide registration - the maintainer's call that day was to ship the organization whole rather than clip it to the region that prompted it. Every verdict here therefore counts the NATIONWIDE layer, like the DEC and OPRHP rows and unlike the first draft of this block, which counted only White Mountain National Forest. The trails layer publishes no points at all, so all eight verdicts come from usfs_rec_sites' 31,405 recreation sites. Three types ship (parking, campsite, viewpoint); the strong result is 7,358 trailheads; the uncomfortable one is that the layer's LARGEST type is dispersed camping and is held back - see usfs_dispersed_camping_holdback.",
+        "note": "Probed for https://github.com/OurHike/OurHike/issues/1207, which began as a White Mountains question and ended as a nationwide registration - the maintainer's call that day was to ship the organization whole rather than clip it to the region that prompted it. Every verdict here therefore counts the NATIONWIDE layer, like the DEC and OPRHP rows and unlike the first draft of this block, which counted only White Mountain National Forest. The trails layer publishes no points at all, so all nine verdicts come from usfs_rec_sites' recreation sites - 31,405 on 2026-09-02, 31,406 on the 2026-09-04 re-run. Three types ship (trailhead, campsite, viewpoint); the strong result is 7,358 trailheads, which shipped as `parking` until https://github.com/OurHike/OurHike/issues/1218 moved them; the uncomfortable one is that the layer's LARGEST type is dispersed camping and is held back - see usfs_dispersed_camping_holdback.",
         "types": {
           "shelter": {
             "status": "unsuitable",
@@ -1656,26 +1656,25 @@
             "note": "636 rows of site_type 'OBSERVATION SITE' ship as of 2026-09-02 (#1207). The cleanest mapping of any USFS type onto a POI_TYPE - an observation site is a viewpoint with no reinterpretation needed. NOT folded in: 815 LOOKOUT/CABIN, which are structures rather than viewpoints and are answered under shelter, and the handful of WILDLIFE VIEWING SITE rows, which were not separately profiled nationwide. Counts are nationwide by group-by statistics on site_type over the layer's 31,405 rows, measured 2026-09-02; the White Mountains subset that prompted the registration is in usfs_rec_sites' notes."
           },
           "parking": {
-            "status": "shipping",
-            "source_key": "usfs_rec_sites",
+            "status": "absent",
             "measured": {
-              "features": 7358,
-              "date": "2026-09-02"
+              "features": 0,
+              "date": "2026-09-04"
             },
-            "note": "7,358 rows of site_type 'TRAILHEAD' ship as of 2026-09-02 (#1207) - the second-largest type in the layer and the most immediately useful thing either USFS layer holds for somebody planning a day out. Maps onto poi_type parking the way OPRHP's parking areas already do. Counts are nationwide by group-by statistics on site_type over the layer's 31,405 rows, measured 2026-09-02; the White Mountains subset that prompted the registration is in usfs_rec_sites' notes."
+            "note": "ABSENT, and this cell read `shipping` for sixteen days on the strength of one mapping. site_type 'TRAILHEAD' was the only value in USFS_SITE_TYPES pointing at parking, and https://github.com/OurHike/OurHike/issues/1218 moved it to poi_type trailhead - so this organization now publishes no parking at all. That is a MEASUREMENT and not a side effect: #1218 refused to close on the White Mountains census (335 rows of 31,405) that pointed this way, so the nationwide group-by was re-run 2026-09-04 and there is no `PARKING` site_type among the 33. The nearest are SNOWPARK 318, OHV STAGING AREA 181 and DAY USE AREA 1,034, none of which is a parking lot - this is a recreation-SITES layer, and a parking lot is not a recreation site, so the absence is structural rather than a gap in what the Forest Service publishes. A hiker looking for where to leave the car in a national forest is not served by this layer and is not served by pretending a trailhead is one. Counts are nationwide by group-by statistics on site_type, re-run 2026-09-04 for https://github.com/OurHike/OurHike/issues/1218: 33 distinct values over 31,406 features (31,405 on 2026-09-02 - the layer gained one row in two days)."
           },
           "privy": {
             "status": "absent",
             "note": "No privy or toilet site_type among the 31,405. Forest Service campgrounds plainly have toilets on the ground; this layer records the SITE and not its fixtures, so the absence is a limit of the schema rather than a finding about the national forests - worth saying, because 'absent' would otherwise read as 'there are no privies in a national forest'. Counts are nationwide by group-by statistics on site_type over the layer's 31,405 rows, measured 2026-09-02; the White Mountains subset that prompted the registration is in usfs_rec_sites' notes."
           },
           "trailhead": {
-            "status": "available",
+            "status": "shipping",
             "source_key": "usfs_rec_sites",
             "measured": {
               "features": 7358,
               "date": "2026-09-02"
             },
-            "note": "THESE 7,358 ROWS ARE ALREADY PUBLISHED, AND THEY ARE PUBLISHED AS `parking`. That is why this cell reads `available` rather than `shipping`: the features reach a hiker's phone, and not one of them arrives carrying the type this column is about. export_nearby_poi.py's USFS_SITE_TYPES maps site_type 'TRAILHEAD' to poi_type 'parking', which #1207 chose on 2026-09-02 and recorded as one of 'the two clean mappings' - correct on that day, because POI_TYPES had no ninth category until #1197 added one hours later. The mapping has not been revisited since, and revisiting it is not #1197's to do: it is a decision belonging to whoever probed the layer, it would leave the `parking` cell describing something nobody has measured (the White Mountains census in WHITE_MOUNTAINS_SOURCE_SURVEY.md shows no PARKING site_type at all, so USFS would ship no parking anywhere), and tests/test_export_nearby_poi.py::test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings asserts the current mapping by name. Tracked as https://github.com/OurHike/OurHike/issues/1218, with this note as the evidence. Count is nationwide, from #1207's group-by over the layer's 31,405 rows, measured 2026-09-02; 187 of them are in the White Mountains."
+            "note": "SHIPPING since https://github.com/OurHike/OurHike/issues/1218, which moved export_nearby_poi.py's USFS_SITE_TYPES entry for site_type 'TRAILHEAD' from poi_type parking to poi_type trailhead. This cell read `available` for sixteen days, and the distinction it was drawing was real: the 7,358 features reached a hiker's phone the whole time, and not one of them arrived carrying the type this column is about - they drew as a 'P' glyph on a category the app had decided is a different thing. #1207 wrote `parking` on 2026-09-02 and was right to; POI_TYPES had eight entries that morning and #1197 landed the ninth the same afternoon. What #1218 did that #1197 could not was take the measurement that has to come with the move: the nationwide group-by re-run, showing no PARKING site_type anywhere in the layer, so the `parking` cell above says `absent` on evidence rather than on a subset. 187 of the 7,358 are in the White Mountains. Counts are nationwide by group-by statistics on site_type, re-run 2026-09-04 for https://github.com/OurHike/OurHike/issues/1218: 33 distinct values over 31,406 features (31,405 on 2026-09-02 - the layer gained one row in two days)."
           }
         }
       },

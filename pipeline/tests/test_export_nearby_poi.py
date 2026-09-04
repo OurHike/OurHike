@@ -476,11 +476,40 @@ def test_a_usfs_lookout_is_not_a_shelter():
 
 
 def test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings():
+    """Still the two clean mappings, and one of them moved (#1218).
+
+    ARGUED AWAY RATHER THAN DELETED, because this assertion was right when it
+    was written and calling the TRAILHEAD -> parking mapping *clean* was fair:
+    POI_TYPES had eight entries on the morning #1207 wrote it, and parking was
+    the nearest honest home for a place where the walking begins. #1197 landed
+    the ninth the same afternoon. What changed is the vocabulary, not the
+    quality of the read - a trailhead maps onto exactly one category now and it
+    is not this one.
+
+    The mapping is what is asserted, not the count: the nationwide measurement
+    behind the move lives in USFS_SITE_TYPES' own comment, where a reader
+    deciding whether to trust it will actually be.
+    """
     features = [
         feature(site_type="TRAILHEAD", site_name="Fixture Notch Trailhead", objectid=1),
         feature(site_type="OBSERVATION SITE", site_name="Fixture Ledge Overlook", objectid=2),
     ]
-    assert kept_types(USFS, features) == ["parking", "viewpoint"]
+    assert kept_types(USFS, features) == ["trailhead", "viewpoint"]
+
+
+def test_usfs_ships_no_parking_at_all_now_and_that_is_the_measurement_not_an_oversight():
+    """TRAILHEAD was the ONLY site_type mapping to parking, so #1218 empties
+    that cell for this organization.
+
+    Measured nationwide 2026-09-04 by group-by statistics on `site_type`: 33
+    distinct values over 31,406 features, with no `PARKING` among them. The
+    nearest are SNOWPARK (318), OHV STAGING AREA (181) and DAY USE AREA
+    (1,034), none of which is a parking lot - this is a recreation-SITES layer
+    and a parking lot is not a recreation site. Pinned here so a later reader
+    meets the emptiness as a decision rather than as a gap somebody should fill
+    by re-adding the old mapping.
+    """
+    assert "parking" not in export_nearby_poi.USFS_SITE_TYPES.values()
 
 
 def test_the_two_typed_layer_maps_cannot_drift_apart():

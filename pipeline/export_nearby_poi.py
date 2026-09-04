@@ -196,7 +196,33 @@ OPRHP_SUB_ASSET_TYPES = {
 # unprobed; and the ski, boating, fishing, target-range and OHV-staging types
 # are not POI_TYPEs at all. Counts are nationwide, measured 2026-09-02.
 USFS_SITE_TYPES = {
-    "TRAILHEAD": "parking",
+    # `trailhead` since #1218, and `parking` for the sixteen days before it.
+    #
+    # #1207 wrote `parking` on 2026-09-02 and was right to: POI_TYPES had eight
+    # entries that morning and parking was the nearest honest home for a place
+    # where the walking begins. #1197 landed the ninth the same afternoon, and
+    # nobody had gone back to the mapping since - so 7,358 nationwide USFS
+    # trailheads reached hikers as a "P" glyph on a category the app had by
+    # then decided is a different thing.
+    #
+    # MOVING IT EMPTIES USFS'S PARKING CELL, and that is measured rather than
+    # assumed. #1218 would not close on the White Mountains census (335 rows of
+    # 31,405) that pointed this way. Re-run nationwide 2026-09-04 by group-by
+    # statistics on site_type: 33 distinct values over 31,406 features, and NO
+    # `PARKING` among them. The nearest things to one are SNOWPARK (318),
+    # OHV STAGING AREA (181) and DAY USE AREA (1,034), none of which is a
+    # parking lot. So this layer publishes no parking, and sources.json's
+    # `parking` cell says `absent` on that measurement.
+    #
+    # (31,406 rather than #1207's 31,405: the layer gained one row in two days.
+    # Recorded because a figure that quietly moves is worth a reader knowing
+    # about, not because one row matters.)
+    #
+    # #981 settled the direction this goes in - "a dayhike should be able to
+    # start anywhere - not just the parking lot" - and #1197 carried the
+    # consequence: a lot is an annotation on a start, never a precondition.
+    # 7,358 pins said the opposite by their glyph.
+    "TRAILHEAD": "trailhead",
     "CAMPGROUND": "campsite",
     "GROUP CAMPGROUND": "campsite",
     "OBSERVATION SITE": "viewpoint",

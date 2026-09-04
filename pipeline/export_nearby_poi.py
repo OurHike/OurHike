@@ -101,7 +101,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import duckdb
+
 from lib.completeness import count_problems, fail_if_incomplete
+from lib.corridor import GEOGRAPHIC_CRS, NETWORK_BUFFER_FEET, PROJECTED_CRS, count_features
 from lib.hashing import sha256_file
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 from lib.source_registry import load_registry
@@ -112,6 +115,30 @@ OUT_DIR = ROOT / "data" / "processed"
 
 ARTIFACT_NAME = "nearby_poi.geojson"
 MANIFEST_NAME = "nearby_poi_manifest.json"
+NETWORK_ARTIFACT_NAME = "nearby_trails.geojson"
+
+METERS_PER_FOOT = 0.3048
+
+#: The two types the ring does not apply to (#1113).
+#:
+#: MEASURED, 2026-09-04, against the published artifacts - and this exemption
+#: exists because the measurement asked for it rather than because it seemed
+#: kind. A 500 ft ring drops 49% of DEC's parking areas and 12% of OPRHP's,
+#: which are the largest per-type losses in the whole clip; #1113 predicted
+#: exactly that ("a trailhead parking area can legitimately sit further from
+#: the tread than a spring does").
+#:
+#: What settles it is that exempting them costs NOTHING on the screen the clip
+#: exists to fix. Both start hidden under #865's default, so the densest z12
+#: screen is identical either way - Harriman 19, Catskills 22, Adirondacks 35,
+#: run through spike_oprhp_poi_density.py --artifact both ways - while 2,493
+#: more waypoints survive. A hiker who turns parking on pays for it and is a
+#: hiker asking for parking.
+#:
+#: #981 is the supporting argument rather than this file's own: a lot is "an
+#: annotation on a start, never a precondition", so the type whose whole
+#: purpose is to sit off the tread is the wrong one to measure against tread.
+NETWORK_RING_EXEMPT_TYPES = frozenset({"parking", "trailhead"})
 
 # `trail_id` per org rather than export_poi.py's "AT". Nothing on the client
 # reads this field today; it is the pipeline's own record of which system a row
@@ -451,6 +478,122 @@ def build_records(source: dict, features: list[dict]) -> tuple[list[dict], dict]
     }
 
 
+def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict], dict]:
+    """Drop amenity waypoints further than NETWORK_BUFFER_FEET from a published line.
+
+    THE COLLISION THIS CLOSES (#1113). features/NEARBY_TRAILS.md's decisions
+    table says amenity POIs are chosen-trail-only and safety POIs are drawn for
+    every trail on screen; #1097 then shipped 8,480 DEC and OPRHP waypoints
+    clipped to nothing at all. The maintainer took that knowingly and asked for
+    the collision to be recorded rather than quietly resolved. This is the
+    other half.
+
+    THE SAME RING WATER ALREADY USES, deliberately - `NETWORK_BUFFER_FEET`, one
+    number with one home, rather than a second radius here that could drift
+    from it. NEARBY_TRAILS.md section 11 buffers a nearby trail's water by that
+    500 ft; this buffers its amenities by the same.
+
+    MEASURED, 2026-09-04, against the published `nearby_poi.geojson` (21,379
+    waypoints) and `nearby_trails.geojson` (112,378 lines), through
+    `spike_oprhp_poi_density.py --artifact` on both sides so the before and
+    after are the same arithmetic. Densest z12 screen at default visibility:
+
+        region        published   after
+        Harriman             26      19
+        Catskills            22      22
+        Adirondacks         107      35
+
+    The ring is TARGETED, which is what makes it worth doing: the Adirondack
+    screen falls by two thirds - it is 105 DEC primitive tent sites along the
+    Saranac lake shores, reached by water rather than by trail - while the
+    Catskills does not move at all.
+
+    AND IT DOES NOT REACH POI_VISIBILITY.md's ~16 PINS, said here because "clip
+    to the ring" reads like a fix and is an improvement. Sweeping every window
+    rather than the three named regions, the worst screen as published is the
+    Adirondacks at 106 (default visibility); after the clip the worst is
+    Allegany at 53, filled by OPRHP crossings, campsites and privies that
+    survive because they genuinely are trail-adjacent. #1105's "fifty is too
+    many" is still open for that screen and this does not answer it.
+
+    NOT CLIPPING IS THE FAILURE DIRECTION. A missing or empty network artifact
+    returns every record untouched with `ran: False` rather than dropping
+    everything - an empty artifact is an ordinary state (the licence gate
+    having held every steward's lines back, the reading `lib/corridor.py`
+    already gives it), and reading "no lines to measure against" as "nothing is
+    near a line" would empty the map on a state that is not an error.
+    """
+    stats = {
+        "ran": False,
+        "ring_feet": NETWORK_BUFFER_FEET,
+        "exempt_types": sorted(NETWORK_RING_EXEMPT_TYPES),
+        "kept": len(records),
+        "dropped": 0,
+        "dropped_by_source_type": {},
+    }
+    if not records:
+        return records, stats
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    if not count_features(con, network_path):
+        stats["reason"] = f"{network_path.name} holds no lines, so there is no ring to measure against"
+        return records, stats
+
+    con.execute(f"""
+        CREATE TABLE network AS
+        SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+        FROM ST_Read('{network_path.as_posix()}')
+    """)
+    con.execute("CREATE INDEX network_ring ON network USING RTREE (g)")
+
+    # Only the types the ring applies to are measured - the exempt ones never
+    # reach this table, so an exemption costs no query time and cannot be
+    # accidentally undone by a later filter.
+    candidates = [(at, record) for at, record in enumerate(records) if record["poi_type"] not in NETWORK_RING_EXEMPT_TYPES]
+    con.execute("CREATE TABLE candidate (idx INTEGER, lon DOUBLE, lat DOUBLE)")
+    con.executemany(
+        "INSERT INTO candidate VALUES (?, ?, ?)",
+        [(at, record["lon"], record["lat"]) for at, record in candidates],
+    )
+
+    radius_m = NETWORK_BUFFER_FEET * METERS_PER_FOOT
+    inside = {
+        row[0]
+        for row in con.execute(f"""
+            SELECT c.idx
+            FROM candidate c
+            JOIN network n
+              ON ST_Intersects(
+                   n.g,
+                   ST_Buffer(
+                     ST_Transform(ST_Point(c.lon, c.lat), '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}',
+                                  always_xy := true),
+                     {radius_m}
+                   )
+                 )
+            GROUP BY c.idx
+        """).fetchall()
+    }
+
+    dropped_by: dict[str, int] = {}
+    kept: list[dict] = []
+    for at, record in enumerate(records):
+        if record["poi_type"] in NETWORK_RING_EXEMPT_TYPES or at in inside:
+            kept.append(record)
+            continue
+        key = f"{record['source']}/{record['poi_type']}"
+        dropped_by[key] = dropped_by.get(key, 0) + 1
+
+    stats.update(
+        ran=True,
+        kept=len(kept),
+        dropped=len(records) - len(kept),
+        dropped_by_source_type=dict(sorted(dropped_by.items(), key=lambda kv: -kv[1])),
+    )
+    return kept, stats
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """One FeatureCollection, mixed poi_types.
 
@@ -474,7 +617,7 @@ def records_to_geojson(records: list[dict]) -> dict:
     }
 
 
-def write_artifact(records: list[dict], per_source: dict) -> dict:
+def write_artifact(records: list[dict], per_source: dict, ring: dict | None = None) -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
@@ -489,6 +632,11 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
         "feature_count": len(records),
         "by_type": {poi_type: by_type.get(poi_type, 0) for poi_type in POI_TYPES if by_type.get(poi_type)},
         "sources": per_source,
+        # What the ring did, in the manifest rather than only in the log. Each
+        # `sources` entry counts what its own layer contributed BEFORE the clip
+        # (see main), so without this block the manifest's per-source figures
+        # and its feature_count would disagree with no way to see why.
+        **({"network_ring": ring} if ring is not None else {}),
     }
 
 
@@ -533,7 +681,26 @@ def main() -> dict:
     # value - must fail the run rather than quietly shrink the map.
     fail_if_incomplete(count_problems(counts), label="Incomplete nearby-POI export")
 
-    manifest = write_artifact(all_records, per_source)
+    # AFTER the gate, not before, and the order is the argument: that gate
+    # exists to catch a source that silently returned zero - an ArcGIS schema
+    # change, a renamed asset value - and it reads the per-layer counts to do
+    # it. The ring legitimately removes most of some layers (57% of DEC's
+    # primitive tent sites), so clipping first would let a deliberate,
+    # measured drop fail the run wearing a fetch failure's name.
+    before = len(all_records)
+    all_records, ring = clip_to_network(all_records, OUT_DIR / NETWORK_ARTIFACT_NAME)
+    if ring["ran"]:
+        print(
+            f"\n  ring: {ring['dropped']:,} of {before:,} dropped further than "
+            f"{ring['ring_feet']} ft from a published line "
+            f"({', '.join(ring['exempt_types'])} exempt - see NETWORK_RING_EXEMPT_TYPES)"
+        )
+        for key, count in list(ring["dropped_by_source_type"].items())[:8]:
+            print(f"      dropped {count:>6,}  {key}")
+    else:
+        print(f"\n  ring: not applied - {ring.get('reason', 'no network artifact')}")
+
+    manifest = write_artifact(all_records, per_source, ring)
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
     print(f"  by type: {manifest['by_type']}")

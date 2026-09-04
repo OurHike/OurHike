@@ -341,6 +341,34 @@ describe('several stretches, and the gap between them (#935, #983)', () => {
     expect(status.stretches.every((stretch) => stretch.route.miles > 0)).toBe(true)
   })
 
+  it('places each gap in the walk, and reports the total as their sum', () => {
+    // #1220 needs to know WHERE a gap falls, not just how far it is, so the
+    // numbered route list can cross it in the right place. `gapMiles` stays
+    // the sum of exactly these, so the bar and the plan text keep printing the
+    // figure they always did rather than a second one measured elsewhere.
+    const status = draftStatus(index, twoStretches())
+
+    if (status.kind !== 'routed') throw new Error('expected a routed draft')
+    expect(status.gaps).toHaveLength(1)
+    expect(status.gaps[0].miles).toBeCloseTo(status.gapMiles, 10)
+    // Positioned at the end of the first stretch's legs, so the list crosses
+    // it after the last trail of that stretch and before the first of the next.
+    expect(status.gaps[0].afterLegs).toBe(status.stretches[0].route.legs.length)
+    expect(status.gaps[0].afterLegs).toBeGreaterThan(0)
+    expect(status.gaps[0].afterLegs).toBeLessThan(status.legs.length)
+  })
+
+  it('reports no gaps at all for a single-stretch walk', () => {
+    const status = draftStatus(
+      index,
+      tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER),
+    )
+
+    if (status.kind !== 'routed') throw new Error('expected a routed draft')
+    expect(status.gaps).toEqual([])
+    expect(status.gapMiles).toBe(0)
+  })
+
   it('is unroutable when a LATER stretch cannot be routed, rather than dropping it', () => {
     // Dropping it would turn the walk the hiker described into a shorter one
     // they did not, with totals that are right about a different walk.

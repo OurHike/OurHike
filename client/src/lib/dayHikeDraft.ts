@@ -395,6 +395,23 @@ export function stretchRoute(
   return looped ? closeTheLoop(index, [...points]) : routeThrough(index, [...points])
 }
 
+/**
+ * One gap between two stretches, placed in the walk as well as measured.
+ *
+ * The builder's counterpart to `lib/dayHikeShelf.ts`'s {@link DayHikeGap},
+ * which a SAVED hike carries. That one positions a gap by segment, because a
+ * saved record is a list of segments; this one positions it by leg, because
+ * the surfaces reading it - the numbered route list above all - walk the flat
+ * concatenation of every stretch's legs and have no segment to count against.
+ */
+export interface DraftGap {
+  /** How many legs of the walk come before this gap. */
+  afterLegs: number
+  /** Straight-line miles across it. The ground walked is the hiker's own
+   *  guess - that is what a gap IS - so nothing rounder exists to print. */
+  miles: number
+}
+
 export type DraftStatus =
   | { kind: 'empty' }
   | { kind: 'started' }
@@ -422,6 +439,12 @@ export type DraftStatus =
        * the other is ground nobody has walked for us.
        */
       gapMiles: number
+      /**
+       * The same crossings, one at a time and each placed in the walk - what a
+       * surface listing the route in order needs and `gapMiles` cannot give
+       * it. Empty for a single-stretch walk, and `gapMiles` is exactly its sum.
+       */
+      gaps: DraftGap[]
     }
   | { kind: 'unroutable' }
 
@@ -449,7 +472,13 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
   if (total === 1) return { kind: 'started' }
 
   const stretches: DraftStretch[] = []
-  for (const points of draft.segments) {
+  // How many legs each segment contributed, by segment index. A gap is a thing
+  // between two segments, and every surface that lists a walk in order counts
+  // in legs, so this is the translation between the two - kept here because
+  // this is the only place that knows which segments became stretches at all.
+  const legsBySegment = new Map<number, number>()
+  for (let at = 0; at < draft.segments.length; at += 1) {
+    const points = draft.segments[at]
     // A stretch with one tap is the one being built. It is not an error and
     // not a route - the walk so far is the stretches behind it.
     if (points.length === 0) continue
@@ -460,10 +489,12 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
     const route = stretchRoute(index, points, draft.looped)
     if (route === null) return { kind: 'unroutable' }
     stretches.push({ points, route })
+    legsBySegment.set(at, route.legs.length)
   }
   if (stretches.length === 0) return { kind: 'started' }
 
   const legs = stretches.flatMap((stretch) => stretch.route.legs)
+  const gaps = gapsAcross(draft, legsBySegment)
   return {
     kind: 'routed',
     stretches,
@@ -471,7 +502,10 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
     legs,
     legsBySource: tallyLegsBySource(legs),
     climb: climbAcrossStretches(stretches),
-    gapMiles: gapMilesAcross(draft),
+    // Summed here rather than measured separately, so the total and the parts
+    // are the same arithmetic and cannot disagree about one walk.
+    gapMiles: gaps.reduce((total, gap) => total + gap.miles, 0),
+    gaps,
   }
 }
 
@@ -509,24 +543,38 @@ function climbAcrossStretches(stretches: readonly DraftStretch[]): RouteClimb | 
 }
 
 /**
- * The gaps, measured the one way a gap can be measured.
+ * The gaps, measured the one way a gap can be measured, and placed.
  *
  * Straight-line from the last tap of one stretch to the first of the next -
  * `lib/dayHikeShelf.ts`'s `straightLineMiles`, shared rather than copied, so
  * the figure the builder prints and the figure the saved card prints for the
  * same gap cannot drift apart.
+ *
+ * `afterLegs` is where that gap falls in a walk counted in legs. A segment
+ * that produced no stretch contributes none, so a gap can land after the last
+ * leg there is - which happens the moment a hiker taps the first point of a
+ * new stretch, and is honest: they have named ground across a gap and not yet
+ * any trail beyond it.
+ *
+ * The pairs visited are exactly the ones this measured before it also placed
+ * them, so summing the result reproduces the old `gapMilesAcross` figure.
  */
-function gapMilesAcross(draft: DayHikeDraft): number {
-  let miles = 0
+function gapsAcross(
+  draft: DayHikeDraft,
+  legsBySegment: ReadonlyMap<number, number>,
+): DraftGap[] {
+  const gaps: DraftGap[] = []
+  let afterLegs = 0
   for (let at = 0; at + 1 < draft.segments.length; at += 1) {
+    afterLegs += legsBySegment.get(at) ?? 0
     const before = draft.segments[at]
     const after = draft.segments[at + 1]
     const from = before[before.length - 1]
     const to = after[0]
     if (from === undefined || to === undefined) continue
-    miles += straightLineMiles(from.at, to.at)
+    gaps.push({ afterLegs, miles: straightLineMiles(from.at, to.at) })
   }
-  return miles
+  return gaps
 }
 
 /**

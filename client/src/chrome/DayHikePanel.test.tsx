@@ -68,6 +68,7 @@ const ROUTED: DraftStatus = {
   legsBySource: [{ source: 'oprhp_trails', legs: 2 }],
   climb: { gainFt: 1180, lossFt: 940 },
   gapMiles: 0,
+  gaps: [],
 }
 
 const SHELTER: DayHikeStop = {
@@ -123,6 +124,27 @@ describe('what the panel says about the walk', () => {
     panel({ stops: [SHELTER] })
 
     expect(screen.getByText('2 legs · 1 shelter')).toBeInTheDocument()
+  })
+
+  it('lists the ground with no trail under it, in the order the walk reaches it', () => {
+    // #1220. The map has always drawn the gap and the saved card has always
+    // counted it; the live list - the surface a hiker is actually editing -
+    // read as one continuous routed walk. An itinerary that omits unrouted
+    // ground understates what the day is, which is the wrong direction for a
+    // list somebody plans a walk off.
+    panel({
+      status: { ...ROUTED, gapMiles: 0.4, gaps: [{ afterLegs: 1, miles: 0.4 }] },
+    })
+
+    expect(screen.getByText('0.4 mi with no trail under it')).toBeInTheDocument()
+  })
+
+  it('says nothing about a gap on a walk that has none', () => {
+    // The other half, and the one worth pinning: a row that appears on every
+    // walk is a row a hiker learns to ignore.
+    panel()
+
+    expect(screen.queryByText(/with no trail under it/)).not.toBeInTheDocument()
   })
 
   it('says the climb is unknown rather than printing a zero', () => {

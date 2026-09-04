@@ -104,10 +104,23 @@ export const caption = 'Following a day hike, or the card it starts from'
 export const alt =
   'Either the map screen while a saved day hike is being followed, with the next turn in the lower third, or - where this build could not reach the trail network to resolve the hike against - the saved hike card that carries the Follow door'
 
-// The settle after the map takes over. `drive` waits on the map region itself
-// rather than on a clock, so this is only for the tiles and the drawn route to
-// paint - the same shape day-hike-builder.mjs's wait has.
-export const wait = 6000
+// The settle after the map takes over, and 6 s was measured to be too short.
+//
+// `drive` waits on the map REGION, which exists the moment the screen mounts -
+// it says nothing about where the camera is. At 6 s this recipe's own CI run
+// photographed a live followed header ("DAY HIKE · LEG 4 OF 7 · 1777",
+// "1.8 mi in · 1.1 mi to go") and a correct next-turn card over a map still
+// sitting at the whole-corridor opening view: the A.T.'s orange highlight
+// marks running Georgia to Maine, and a 100 mi scale bar under a 2.9 mi walk.
+// The follow state was right and the camera had not arrived.
+//
+// Twice that, because the fly-to is queued behind a 59 MB network artifact and
+// a 60 MB graph geometry that are hashed before they are trusted, and the
+// tiles for wherever it lands are fetched after it gets there. There is no
+// DOM signal for "the camera stopped" to wait on instead - the scale bar's
+// text is the nearest thing and waiting on a rendered number is the fragile
+// kind of wait this repository has been bitten by before.
+export const wait = 12000
 
 /**
  * A walk on published tread (#1150), replacing the invented grid coordinates

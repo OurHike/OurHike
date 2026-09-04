@@ -524,6 +524,42 @@ class TestVectorContent:
         states = [r for r in check_vector(BASE, ["poi_water.geojson"]) if r["check"] == 14]
         assert states[0]["state"] == FAILED
 
+    def test_trailhead_may_be_empty_too(self, requests_mock):
+        """Regression test for #1225/#1227/#1231's second copy: this check
+        re-derives export_poi.py's per-type minimums independently, from
+        lib.poi_schema.ALLOWED_EMPTY_POI_TYPES rather than a hand-copy. A
+        real v1.2.1 UA release (run 33826498397) failed this exact check -
+        trailhead: 0, expected >= 1 - over a poi_trailhead.geojson that was
+        correctly empty (OPRHP's 287 ship through nearby_poi.geojson, not
+        this artifact)."""
+        requests_mock.get(f"{BASE}/poi_trailhead.geojson", json=self._collection([]))
+
+        states = [r for r in check_vector(BASE, ["poi_trailhead.geojson"]) if r["check"] == 14]
+
+        assert states[0]["state"] == OK
+
+    def test_usfs_features_outside_the_corridor_are_not_astray(self, requests_mock):
+        """usfs_trails/usfs_rec_sites are registered nationwide on purpose
+        (verify_release.py's own NATIONWIDE_SOURCES comment, #1231) - the
+        maintainer's 2026-08-25 "don't limit data from orgs based on
+        geography" decision applied to a source that actually leaves the
+        corridor. A point in Arizona from that source is not a projection
+        bug; the same point from an unlisted source still is."""
+        requests_mock.get(
+            f"{BASE}/nearby_trails.geojson",
+            json=self._collection([self._point(-110.98, 34.34, source="usfs_trails")]),
+        )
+        requests_mock.get(
+            f"{BASE}/nearby_poi.geojson",
+            json=self._collection([self._point(-110.98, 34.34, source="some_other_org")]),
+        )
+
+        exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_trails.geojson"])}
+        not_exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}
+
+        assert exempt[15] == OK
+        assert not_exempt[15] == FAILED
+
     def test_a_trail_without_a_blaze_colour_is_caught(self, requests_mock):
         requests_mock.get(f"{BASE}/trails.geojson", json=self._collection([self._point()]))
 

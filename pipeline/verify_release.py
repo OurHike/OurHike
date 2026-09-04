@@ -86,6 +86,7 @@ import requests
 
 from lib import data_env
 from lib.completeness import DROP_THRESHOLD, count_problems
+from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 from lib.releases import (
     RELEASE_INDEX_KEY,
     RELEASE_MANIFEST_NAME,
@@ -130,6 +131,23 @@ HIKER_ORIGIN = "https://ourhike.org"
 # hemisphere, which is what a projection bug produces. Deriving it from
 # trails.geojson would make check 15 assert that the data agrees with itself.
 CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
+
+# Sources this bound does not apply to - registered nationwide on purpose,
+# per the maintainer's 2026-08-25 decision (export_nearby_trails.py's own
+# docstring, #1019): "There shouldnt be a ring around NYC. Include all of
+# DEC, NYNJTC & NYSP. Don't limit data from orgs based on geography." USFS's
+# two layers are the case that policy actually bites: unlike the NY-state
+# sources, which stay near the corridor simply because their own service is
+# state-scoped, `usfs_trails`/`usfs_rec_sites` are federal layers that cover
+# the whole country, so an unfiltered fetch legitimately produces features
+# in Arizona and elsewhere (measured 2026-09-04: 68,622 of 112,378
+# nearby_trails features, 11,241 of 21,379 nearby_poi). A real projection
+# bug in one of these would still be caught - it would just also have to
+# land outside the whole country, which check 13's parse and this check's
+# empty-geometry half still watch for. Scoping this down to the region that
+# prompted the registration is tracked separately (#1231) and is not a
+# release blocker: nothing here is wrong, it is bigger than intended.
+NATIONWIDE_SOURCES = frozenset({"usfs_trails", "usfs_rec_sites"})
 
 # Check 21's reviewed side (#672): the identity ledger in THIS checkout,
 # against which every published POI id is verified.
@@ -628,8 +646,10 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
         name = key.removeprefix("poi_").removesuffix(".geojson")
         counts[name] = len(features)
 
-        # 15. No null or empty geometries, and nothing outside the corridor. A
-        # feature at (0, 0) is what a projection bug looks like.
+        # 15. No null or empty geometries, and nothing outside the corridor
+        # bar NATIONWIDE_SOURCES above. A feature at (0, 0) is what a
+        # projection bug looks like - empty geometry is held to that
+        # regardless of source; only the bbox half is exempted.
         west, south, east, north = CORRIDOR_BBOX
         empty = 0
         astray = 0
@@ -638,6 +658,8 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
             coordinates = geometry.get("coordinates")
             if not geometry or not coordinates:
                 empty += 1
+                continue
+            if (feature.get("properties") or {}).get("source") in NATIONWIDE_SOURCES:
                 continue
             for lon, lat in _positions(coordinates):
                 if not (west <= lon <= east and south <= lat <= north):
@@ -657,17 +679,22 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
             else:
                 reports.append(_report(16, key, OK, "every trail feature carries a blaze_color"))
 
-    # 14. Per-type minimums, with export_poi.py's own exception.
+    # 14. Per-type minimums, sharing export_poi.py's own exception
+    # (lib.poi_schema.ALLOWED_EMPTY_POI_TYPES - crossing and trailhead as of
+    # this writing) rather than a hand-copy: check_output_quality.py kept
+    # its own copy too, `trailhead` joined the real one in #1197 and reached
+    # neither copy, and a v1.2.1 UA release failed this exact check over an
+    # export that had nothing wrong with it (#1225/#1227/#1228 is the first
+    # copy's story; this is the second).
     #
-    # `retired_poi` joins `crossing` at zero, for a different reason (#673).
-    # `crossing` is empty because nothing fills it yet; the tombstones are
-    # empty because a bucket where upstream has never dropped a place is a
+    # `retired_poi` joins them at zero for a different, verify_release-only
+    # reason (#673): a bucket where upstream has never dropped a place is a
     # HEALTHY bucket, and the count only ever grows. A default minimum of 1
     # here would fail exactly the releases with nothing wrong with them.
     # Its geometry is still held to checks 13 and 15 above, which is the
     # half worth keeping: a tombstone at (0, 0) is the same projection bug
     # on a retired place as on a live one.
-    problems = count_problems(counts, minimums={"crossing": 0, "retired_poi": 0})
+    problems = count_problems(counts, minimums={**ALLOWED_EMPTY_POI_TYPES, "retired_poi": 0})
     if problems:
         reports.append(_report(14, "poi_*", FAILED, "; ".join(problems)))
     else:

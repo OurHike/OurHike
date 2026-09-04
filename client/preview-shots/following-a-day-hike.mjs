@@ -104,6 +104,11 @@ export const caption = 'Following a day hike, or the card it starts from'
 export const alt =
   'Either the map screen while a saved day hike is being followed, with the next turn in the lower third, or - where this build could not reach the trail network to resolve the hike against - the saved hike card that carries the Follow door'
 
+// The settle after the map takes over. `drive` waits on the map region itself
+// rather than on a clock, so this is only for the tiles and the drawn route to
+// paint - the same shape day-hike-builder.mjs's wait has.
+export const wait = 6000
+
 /**
  * A walk on published tread (#1150), replacing the invented grid coordinates
  * day-hike-card.mjs still plants.
@@ -236,6 +241,17 @@ export default async function drive(page) {
   await page.getByRole('heading', { name: 'Legs' }).waitFor()
 
   const follow = page.getByRole('button', { name: 'Follow this hike on the map' })
+  // WAITED ON RATHER THAN COUNTED, and the first version of this fix got it
+  // wrong in a way only the preview could show. `Legs` prints over the CACHED
+  // figures too, so it arrives long before the graph does - and this recipe's
+  // own first CI run photographed a card that had by then fully resolved (2.9
+  // mi, seven named legs, the ways-off block) with the door plainly on it. The
+  // drive had already returned: it counted a door that had not appeared yet.
+  //
+  // 60 MB on the wire for `nearby_trails.geojson` and 60 MB for the graph
+  // geometry, each hashed before it is trusted, so the door can be a while.
+  // The timeout is generous for that reason and swallowed for the next one.
+  //
   // Present only where the graph resolved the fixture, which since #1150 is
   // every build that can reach the bucket at all: the fixture's ends are
   // published vertices rather than invented grid points, so the tolerance is
@@ -249,6 +265,7 @@ export default async function drive(page) {
   // comment (photograph-preview.mjs:338-339), and filling that row with an
   // expected, filed condition is how a row that should mean "this recipe
   // broke" stops being read.
+  await follow.waitFor({ timeout: 30000 }).catch(() => {})
   if ((await follow.count()) === 0) return
   await follow.click()
   await page.getByRole('region', { name: /trail map/i }).waitFor()

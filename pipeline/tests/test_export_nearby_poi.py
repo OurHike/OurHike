@@ -40,6 +40,7 @@ import json
 import pytest
 
 import export_nearby_poi
+from lib import corridor
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES
 
 DEC_BIG = {
@@ -515,3 +516,113 @@ def test_folding_usfs_site_types_loses_nothing():
         "the dispersed-camping holdback has to survive case folding too - it is the whole point of #1207's "
         "USFS_SITE_TYPES allowlist"
     )
+
+
+class TestTheRingAroundThePublishedTrails:
+    """#1113: the decisions table says amenity POIs are chosen-trail-only, and
+    #1097 shipped 8,480 of them clipped to nothing. The maintainer took that
+    knowingly and asked for the collision to be recorded; this is the clip that
+    closes it, buffering by the same NETWORK_BUFFER_FEET water already uses."""
+
+    @staticmethod
+    def _network(tmp_path, lines):
+        path = tmp_path / "nearby_trails.geojson"
+        path.write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "LineString", "coordinates": line},
+                            "properties": {"source": "oprhp_trails"},
+                        }
+                        for line in lines
+                    ],
+                }
+            )
+        )
+        return path
+
+    @staticmethod
+    def _poi(poi_type, lon, lat, source="oprhp_facilities"):
+        return {"id": f"{source}:{poi_type}:{lon}:{lat}", "source": source, "poi_type": poi_type, "lon": lon, "lat": lat}
+
+    def test_a_waypoint_beside_a_trail_survives_and_one_far_off_does_not(self, tmp_path):
+        # A degree of latitude is ~364,000 ft, so 0.01 deg is ~3,650 ft - well
+        # outside the 500 ft ring - and 0.0005 deg is ~180 ft, well inside.
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        near = self._poi("campsite", -74.0, 44.0005)
+        far = self._poi("campsite", -74.01, 44.0005)
+
+        kept, ring = export_nearby_poi.clip_to_network([near, far], network)
+
+        assert [record["id"] for record in kept] == [near["id"]]
+        assert ring["ran"] is True
+        assert ring["dropped"] == 1
+
+    def test_parking_and_trailheads_are_exempt_because_that_is_where_you_leave_the_car(self, tmp_path):
+        """MEASURED: a uniform 500 ft ring drops 49% of DEC's parking areas,
+        and exempting them changes no densest-screen figure at all because both
+        types start hidden under #865. #981 is the argument - a lot is an
+        annotation on a start, never a precondition."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        far = [
+            self._poi("parking", -74.01, 44.0005),
+            self._poi("trailhead", -74.01, 44.001),
+            self._poi("privy", -74.01, 44.0015),
+        ]
+
+        kept, ring = export_nearby_poi.clip_to_network(far, network)
+
+        assert sorted(record["poi_type"] for record in kept) == ["parking", "trailhead"]
+        assert ring["exempt_types"] == ["parking", "trailhead"]
+        assert ring["dropped_by_source_type"] == {"oprhp_facilities/privy": 1}
+
+    def test_it_buffers_by_the_same_number_water_does_rather_than_one_of_its_own(self):
+        """One number, one home. A second radius here is the drift this
+        repository keeps finding - and NEARBY_TRAILS.md section 11's argument
+        for 500 ft is about this same ring."""
+        assert export_nearby_poi.NETWORK_BUFFER_FEET == corridor.NETWORK_BUFFER_FEET
+
+    def test_an_empty_network_keeps_everything_rather_than_emptying_the_map(self, tmp_path):
+        """An empty artifact is an ordinary state - the licence gate having held
+        every steward's lines back - and reading "no lines to measure against"
+        as "nothing is near a line" would drop every amenity waypoint on a day
+        nothing is wrong."""
+        network = tmp_path / "nearby_trails.geojson"
+        network.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+        records = [self._poi("campsite", -74.01, 44.0005)]
+
+        kept, ring = export_nearby_poi.clip_to_network(records, network)
+
+        assert kept == records
+        assert ring["ran"] is False
+        assert ring["dropped"] == 0
+        assert "no ring" in ring["reason"]
+
+    def test_a_missing_network_keeps_everything_too(self, tmp_path):
+        records = [self._poi("campsite", -74.01, 44.0005)]
+
+        kept, ring = export_nearby_poi.clip_to_network(records, tmp_path / "absent.geojson")
+
+        assert kept == records
+        assert ring["ran"] is False
+
+    def test_the_manifest_says_what_the_ring_did(self, tmp_path, monkeypatch):
+        """Each `sources` entry counts what its layer contributed BEFORE the
+        clip, so without this block the manifest's per-source figures and its
+        feature_count disagree with nothing to explain the gap."""
+        monkeypatch.setattr(export_nearby_poi, "OUT_DIR", tmp_path)
+        ring = {
+            "ran": True,
+            "ring_feet": 500,
+            "exempt_types": ["parking"],
+            "kept": 1,
+            "dropped": 2,
+            "dropped_by_source_type": {"a/b": 2},
+        }
+
+        manifest = export_nearby_poi.write_artifact([self._poi("campsite", -74.0, 44.0)], {}, ring)
+
+        assert manifest["network_ring"] == ring

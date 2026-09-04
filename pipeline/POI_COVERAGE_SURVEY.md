@@ -342,6 +342,37 @@ properly — clipping the amenity types to `NETWORK_BUFFER_FEET` around
 `nearby_trails.geojson`, the way §11 already buffers water. That is a follow-up with its
 own issue, not something this change did quietly either way.
 
+### The clip, and what it actually cost ([#1113](https://github.com/OurHike/OurHike/issues/1113))
+
+`export_nearby_poi.clip_to_network` now applies that ring. Measured 2026-09-04 against the
+published `nearby_poi.geojson` (21,379 waypoints) and `nearby_trails.geojson` (112,378
+lines), through `spike_oprhp_poi_density.py --artifact` on both sides so the two columns
+are the same arithmetic:
+
+| densest z12 screen, 390 × 700 | every category on | default visibility |
+|---|---:|---:|
+| Harriman / Bear Mountain | 66 → **57** | 26 → **19** |
+| Catskills | 34 → **32** | 22 → **22** |
+| **Adirondacks** | **114 → 43** | **107 → 35** |
+
+**The ring is targeted, which is what makes it worth the loss.** The Adirondack screen
+falls by two thirds — those 105 tent sites are reached by water rather than by trail — and
+the Catskills does not move at all. 5,115 of 21,379 waypoints drop.
+
+**It does not reach POI_VISIBILITY.md's ~16, and that is worth saying plainly.** Sweeping
+every window rather than the three named regions, the worst screen as published is the
+Adirondacks at 106 (default visibility); after the clip the worst is Allegany at 53,
+filled by OPRHP crossings, campsites and privies that survive because they genuinely are
+trail-adjacent. #1105's "fifty is too many" is still open for that screen.
+
+**`parking` and `trailhead` are exempt**, and the measurement is why rather than taste: a
+uniform ring drops 49% of DEC's parking areas and 12% of OPRHP's — the largest per-type
+losses in the clip — while exempting them changes *no* default-visibility figure above,
+because both start hidden under #865. 2,493 more waypoints survive for no density cost.
+#981 is the supporting argument: a lot is "an annotation on a start, never a
+precondition", so the type whose purpose is to sit off the tread is the wrong one to
+measure against tread.
+
 ## 5. NYS OPRHP — the richest, and the least curated where it matters most
 
 The only org publishing something for all eight types, all in one layer registered since
@@ -488,11 +519,12 @@ a fetcher or extending `export_poi.py` each needs its own issue and its own revi
 6. **Measure OSM's POI coverage over this ground** — seven of OSM's eight cells read
    `unprobed`, which is honest and unsatisfying.
    [#771](https://github.com/OurHike/OurHike/issues/771) is the runnable place for it.
-7. **Clip the amenity types to the trail ring** (§4b) — the follow-up that closes the
-   rule collision #1105 exposed, using §11's existing `NETWORK_BUFFER_FEET` machinery.
-   Ranked here rather than higher because the maintainer took the ship-and-record decision
-   knowingly; ranked at all because 107 waypoints competing for a 16-pin screen is a real
-   cost somebody should get to weigh with a number for what the clip would drop.
+7. ~~**Clip the amenity types to the trail ring**~~ — **done**
+   ([#1113](https://github.com/OurHike/OurHike/issues/1113)), and §4b carries what it
+   cost. It closes the rule collision #1105 exposed and takes the Adirondack screen from
+   107 to 35. What it does *not* do is reach POI_VISIBILITY.md's ~16: the worst screen
+   anywhere is 53 after the clip, so #1105's "fifty is too many" survives it and wants
+   an answer that is not a geographic one.
 8. **Get `N Vehicle Capacity` out of DEC's `DESCRIP`** (§4a). It is exactly what a hiker
    planning a trailhead start wants, it is in a free-text column 27% of which is
    maintenance shorthand, and #806's lesson is that a plausible read of an uncounted column

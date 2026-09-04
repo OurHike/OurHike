@@ -33,7 +33,7 @@
 
 import type { RouteLeg } from './trailGraph'
 import type { DayHikeStop } from './dayHikeStops'
-import type { DayHikeDraft } from './dayHikeDraft'
+import type { DayHikeDraft, DraftGap } from './dayHikeDraft'
 import { draftPoints } from './dayHikeDraft'
 
 export interface LegRow {
@@ -77,14 +77,31 @@ export type RouteRow = LegRow | StopRow | GapRow
  * 0.9 mi, THEN you are at the shelter. Ties - a stop at exactly a leg
  * boundary - resolve the same way, so a shelter at a junction reads as the
  * end of the leg that reached it rather than the start of the one leaving.
+ *
+ * AND SO DOES A GAP, for the same reason and one that matters more. `gaps` is
+ * `DraftStatus.gaps`; each one goes after the last leg before it and after
+ * that leg's stops, because crossing it is the next thing that happens. A gap
+ * is ground nobody maintains and nobody has walked for us, so a list that
+ * omitted it would read as one continuous routed walk and understate what the
+ * hiker is actually taking on.
  */
 export function routeRows(
   legs: readonly RouteLeg[],
   stops: readonly DayHikeStop[],
+  gaps: readonly DraftGap[] = [],
 ): RouteRow[] {
   const rows: RouteRow[] = []
   let mile = 0
   let placed = 0
+  let crossed = 0
+
+  /** Every gap the walk reaches by the time `walked` legs are behind it. */
+  const gapsThrough = (walked: number) => {
+    while (crossed < gaps.length && gaps[crossed].afterLegs <= walked) {
+      rows.push({ kind: 'gap', key: `gap-${crossed}`, miles: gaps[crossed].miles })
+      crossed += 1
+    }
+  }
 
   legs.forEach((leg, at) => {
     const fromMile = mile
@@ -112,6 +129,7 @@ export function routeRows(
       })
       placed += 1
     }
+    gapsThrough(at + 1)
   })
 
   // No legs at all and stops chosen anyway: they still list, because a hiker
@@ -120,6 +138,11 @@ export function routeRows(
     rows.push({ kind: 'stop', key: `stop-${stops[placed].poiId}`, stop: stops[placed] })
     placed += 1
   }
+
+  // Anything left: a gap the hiker has tapped across but not yet walked any
+  // trail beyond, and - defensively - a gap positioned past the legs it was
+  // measured against, which lists last rather than silently vanishing.
+  gapsThrough(Number.POSITIVE_INFINITY)
 
   return rows
 }

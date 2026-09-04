@@ -12,6 +12,10 @@
 //   NO STOP IS EVER DROPPED. The vertex-nearest projection can put a stop a
 //   hair past the last leg's end, and a row that silently vanished would be
 //   the app forgetting something the hiker chose.
+//
+//   AND NEITHER IS A GAP (#1220). Ground the router declined to bridge is the
+//   part of a walk nobody maintains, so a list that omitted it would read as
+//   one continuous routed walk and understate what the hiker is taking on.
 
 import { describe, expect, it } from 'vitest'
 
@@ -138,6 +142,58 @@ describe('where a stop lands', () => {
     const keys = rows.map((row) => row.key)
 
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe('the gap rows', () => {
+  it('crosses the gap after the leg it follows', () => {
+    const rows = routeRows([leg('A', 1), leg('B', 2)], [], [{ afterLegs: 1, miles: 0.4 }])
+
+    expect(rows.map((row) => row.kind)).toEqual(['leg', 'gap', 'leg'])
+    expect(rows[1]).toEqual({ kind: 'gap', key: 'gap-0', miles: 0.4 })
+  })
+
+  it("crosses it after that leg's stops, not before them", () => {
+    // A hiker reads the list as a sequence of things that happen: you walk the
+    // leg, you are at the shelter, THEN you cross ground with no trail on it.
+    const rows = routeRows(
+      [leg('A', 1), leg('B', 2)],
+      [stop('s', 0.5)],
+      [{ afterLegs: 1, miles: 0.4 }],
+    )
+
+    expect(rows.map((row) => row.kind)).toEqual(['leg', 'stop', 'gap', 'leg'])
+  })
+
+  it('lists every gap of a three-stretch walk, each in its place', () => {
+    const rows = routeRows(
+      [leg('A', 1), leg('B', 2), leg('C', 0.5)],
+      [],
+      [
+        { afterLegs: 1, miles: 0.4 },
+        { afterLegs: 2, miles: 1.1 },
+      ],
+    )
+
+    expect(rows.map((row) => row.kind)).toEqual(['leg', 'gap', 'leg', 'gap', 'leg'])
+    expect(rows.flatMap((row) => (row.kind === 'gap' ? [row.miles] : []))).toEqual([
+      0.4, 1.1,
+    ])
+  })
+
+  it('still lists a gap the walk has no trail beyond yet', () => {
+    // The hiker has tapped the first point of a new stretch. There is gap
+    // ground and no leg past it, and saying nothing would be the omission this
+    // whole block exists to prevent.
+    const rows = routeRows([leg('A', 1)], [], [{ afterLegs: 1, miles: 0.4 }])
+
+    expect(rows.map((row) => row.kind)).toEqual(['leg', 'gap'])
+  })
+
+  it('lists nothing extra for a walk with no gaps', () => {
+    // The default, and the shape every caller had before gaps were threaded
+    // through at all.
+    expect(routeRows([leg('A', 1)], []).map((row) => row.kind)).toEqual(['leg'])
   })
 })
 

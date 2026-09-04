@@ -108,6 +108,10 @@ function routedFrom(route: GraphRoute, gapMiles = 0): DraftStatus {
     legsBySource: route.legsBySource,
     climb: route.climb,
     gapMiles,
+    // One gap carrying the whole figure, placed past this walk's only stretch.
+    // The bar prints the total and not the parts, so the shape is what matters
+    // here rather than the split.
+    gaps: gapMiles > 0 ? [{ afterLegs: route.legs.length, miles: gapMiles }] : [],
   }
 }
 

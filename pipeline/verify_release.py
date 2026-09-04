@@ -106,6 +106,12 @@ CLIENT_LIB = ROOT.parent / "client" / "src" / "lib"
 OK = "ok"
 FAILED = "failed"
 SKIPPED = "skipped"
+# The check ran, answered, and the answer is worth a human's eye without being
+# a reason to hold a release (#1173). Distinct from SKIPPED, which means the
+# check could not run at all - `--strict` escalates that one and deliberately
+# not this one, because escalating "we looked and it is probably fine" is how a
+# gate goes back to crying wolf.
+WARN = "warn"
 
 # The response headers a browser must be allowed to READ, from
 # .github/expected-origins.yml's `expose_headers`. Named here rather than read
@@ -850,6 +856,23 @@ def _content_length(base: str, key: str, session=None) -> tuple[int, str] | None
         return None
 
 
+def decoded_size(manifest: dict, name: str) -> int | None:
+    """The DECODED size publish.py recorded for this artifact, or None.
+
+    `size_bytes` is written beside the hash only by a run that measured one
+    (#505/#556), so a manifest published before that carries entries without
+    it and a carried-forward remote entry keeps whatever it had. None therefore
+    means "this release cannot say", never zero - and check 17 treats the two
+    completely differently, because a guard that read an unknown as "no drop"
+    would be the false-clean this whole battery exists against.
+    """
+    entry = (manifest.get("artifacts") or {}).get(name)
+    if not isinstance(entry, dict):
+        return None
+    size = entry.get("size_bytes")
+    return size if isinstance(size, int) and size > 0 else None
+
+
 def acknowledged_drops(path: Path | None = None) -> list[dict]:
     """The deliberate shrinkages somebody has signed for (#1143).
 
@@ -919,6 +942,26 @@ def check_release_regression(
     loss would be a red gate on a change that lost nothing, and worse, it would
     teach whoever saw it that this check cries wolf.
 
+    AND A CHANGE THAT COMPRESSES BETTER IS THE THIRD (#1173). The encoding
+    comparison above catches a change of storage FORMAT; it cannot catch a
+    change in how well the same format compresses the same data. `latest.json`
+    publishes both figures per artifact - `size_bytes` decoded and
+    `transfer_bytes` on the wire - so both are compared here, and a drop past
+    the threshold on the wire alone is a WARN naming the ratio rather than a
+    red gate. Measured, from the v1.2.0 run that prompted this:
+    nearby_trails.geojson went 23,469,839 -> 15,921,393 decoded (-32%) and
+    7,703,741 -> 3,729,336 stored (-52%), a compression ratio of 3.05x
+    becoming 4.27x, with 21,805 features and all five organizations still
+    present. The gap between the two percentages IS the signal.
+
+    WHAT THIS DOES NOT FIX, said here because the run above is still red under
+    it: that release's DECODED size also fell 32%, well past the 10% threshold,
+    so the comparison below still fails it. Nothing about a byte count can tell
+    "stopped writing eleven junk digits per coordinate" from "lost a third of
+    the trails" - only a feature count can, which is #1173's option 3 and needs
+    a count published beside the artifact. A precision change is meanwhile
+    exactly the shape `reference/acknowledged_drops.json` exists to sign for.
+
     A DELIBERATE CULL IS THE OTHER WAY TO CRY WOLF, and until #1143 there was
     no way to say one had happened: this check's only exemption was an upstream
     that changed, which a gate culling unreachable water is not. Every one of
@@ -981,13 +1024,51 @@ def check_release_regression(
                     "and does not cover this much."
                 )
             )
+            raw_before = decoded_size(previous_manifest, name)
+            raw_now = decoded_size(current_manifest, name)
+            if raw_before is not None and raw_now is not None:
+                raw_drop = (raw_before - raw_now) / raw_before
+                if raw_drop <= DROP_THRESHOLD:
+                    reports.append(
+                        _report(
+                            17,
+                            name,
+                            WARN,
+                            f"{now} bytes against {before} in {previous_id} - down {drop:.0%} ON THE WIRE, but the "
+                            f"decoded size held: {raw_now} against {raw_before}, down {raw_drop:.0%}. This build "
+                            f"compresses better than {previous_id} did ({raw_before / before:.2f}x, now "
+                            f"{raw_now / now:.2f}x), which is not data loss. Nothing to hold the release for; "
+                            "worth a glance at what changed the entropy.",
+                        )
+                    )
+                    continue
+                reports.append(
+                    _report(
+                        17,
+                        name,
+                        FAILED,
+                        f"{now} bytes against {before} in {previous_id} - down {drop:.0%} on the wire and "
+                        f"{raw_drop:.0%} decoded ({raw_now} against {raw_before}), both past the "
+                        f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data." + covered,
+                    )
+                )
+                continue
             reports.append(
                 _report(
                     17,
                     name,
                     FAILED,
                     f"{now} bytes against {before} in {previous_id} - down {drop:.0%}, past the "
-                    f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data." + covered,
+                    f"{DROP_THRESHOLD:.0%} threshold. "
+                    + (
+                        f"{previous_id} publishes no size_bytes for it"
+                        if raw_before is None and raw_now is not None
+                        else f"{current_id} publishes no size_bytes for it"
+                        if raw_now is None and raw_before is not None
+                        else "neither release publishes a size_bytes for it"
+                    )
+                    + ", so the decoded size cannot be checked and this stored drop stands on its own. "
+                    "Either an upstream really shrank or this build lost data." + covered,
                 )
             )
         else:
@@ -1470,8 +1551,17 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
 
 
 def verdict_document(base: str, reports: list[dict], strict: bool) -> dict:
+    """The verdict, with the three kinds of not-OK kept apart.
+
+    `warned` does not gate, and `--strict` does not escalate it either. A WARN
+    is a check that ran and answered; SKIPPED is one that could not run, which
+    is what `--strict` exists to refuse to ship on. Escalating "we looked and
+    it is not data loss" would put this battery straight back to failing
+    releases for compression, which is the thing #1173 is about.
+    """
     failed = [report for report in reports if report["state"] == FAILED]
     skipped = [report for report in reports if report["state"] == SKIPPED]
+    warned = [report for report in reports if report["state"] == WARN]
     return {
         "checked_at": date.today().isoformat(),
         "base": base,
@@ -1479,6 +1569,7 @@ def verdict_document(base: str, reports: list[dict], strict: bool) -> dict:
         "checks": reports,
         "failed": failed,
         "skipped": skipped,
+        "warned": warned,
         "gate": "fail" if failed or (strict and skipped) else "pass",
     }
 
@@ -1522,12 +1613,14 @@ def main(argv: list[str] | None = None) -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(document, indent=2))
 
-    failed, skipped = document["failed"], document["skipped"]
+    failed, skipped, warned = document["failed"], document["skipped"], document["warned"]
     if failed:
         print(f"\n{len(failed)} check(s) FAILED - this candidate must not be promoted.")
     if skipped:
         print(f"{len(skipped)} check(s) could not run. They are listed above rather than counted as passes.")
-    if not failed and not skipped:
+    if warned:
+        print(f"{len(warned)} check(s) answered with something worth reading. They do not hold the release.")
+    if not failed and not skipped and not warned:
         print("\nEvery check passed.")
     elif not failed:
         print("Everything that could be asked, passed.")

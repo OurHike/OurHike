@@ -127,13 +127,31 @@ export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
  * The corridor-view sketch of that whole network (#1135,
  * pipeline/export_nearby_trails.py's write_overview) - trails_overview.geojson's
  * pattern applied to the artifact above, so the opening camera draws every
- * organization's trails without fetching or parsing the 7.3 MB file whose
- * lines only draw from the pin seam anyway.
+ * organization's trails without fetching or parsing the file whose lines only
+ * draw from the pin seam anyway.
  *
- * 255,263 gzipped bytes for all 7,669.7 line-miles as 31 features, measured
- * 2026-08-27 against the live nearby_trails.geojson
- * (pipeline/spike_network_overview.py) - beside the A.T. overview's 51,068,
- * about 306 KB for every line the opening camera can draw. Each feature
+ * WHAT BOTH OF THOSE WEIGH, and both figures here have moved by an order of
+ * magnitude since they were first written. Measured 2026-08-27 against the
+ * live artifacts, this said 255,263 gzipped bytes for all 7,669.7 line-miles
+ * as 31 features, beside the A.T. overview's 51,068 - about 306 KB for every
+ * line the opening camera can draw - and called its parent a 7.3 MB file.
+ * Re-measured 2026-09-04 off `latest.json`:
+ *
+ *   nearby_trails.geojson    228,820,578 raw   59,155,072 on the wire
+ *   network_overview.geojson  10,804,839 raw    3,042,884 on the wire (38 features)
+ *
+ * so the parent is 8x its stated size on the wire and this sketch is 12x its
+ * stated size. THE CAUSE IS ONE FEATURE. `usfs_trails` was registered
+ * nationwide (#1207), and `write_overview` unions each organization into one
+ * simplified geometry - so a single feature of 437,633 vertices spanning the
+ * country is 80.6% of this artifact's raw bytes and 2,577,012 of its 3,042,884
+ * gzipped. Every other organization together is under 500 KB gzipped, which is
+ * roughly the figure this comment used to claim for the whole thing.
+ *
+ * The sketch still saves a hiker the parent file, which is the argument for it
+ * and is unchanged. What is no longer true is that it is cheap in absolute
+ * terms, and whether nationwide USFS belongs in a corridor-view sketch at all
+ * is #1231's question rather than this file's. Each feature
  * carries the three properties the paint and the tape read - `source`,
  * `blaze_color`, `trail_status` - so it draws through the same expressions the
  * real lines do, ghosting included, and closed ground stays closed-looking

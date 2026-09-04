@@ -14,6 +14,15 @@
 # origin. That alone would have caught #427 on the first run after the policy
 # changed.
 #
+# IT ALSO ASKS WHETHER THE HOURLY CONDITIONS BAKE IS STILL RUNNING (#1129), by
+# ageing the newest `conditions/*` `generated_at` in the bucket rather than by
+# asking GitHub whether publish-conditions.yml fired. Watching the outcome
+# catches every way the bake can stop at once - a dropped schedule event, a
+# disabled workflow, a run that succeeds and publishes nothing - and needs no
+# credentials, which is what keeps the paragraph below true. On 2026-08-27 the
+# bake fired twice against sixteen slots and the fourteen misses left no trace
+# in the run listing at all; this is what would have said so.
+#
 # THE SEPARATION IS THE SAME AS check-upstream-freshness.yml's. This job holds
 # no credentials at all - not "chooses not to write", cannot. Its whole input
 # is public HTTPS requests to the same bucket a hiker's phone reads, so it is
@@ -193,7 +202,11 @@ jobs:
               // precisely because smoke-published.yml's version of the same
               // sentence is a different sentence.
               healthy: failed.length === 0 && verdict.checked_artifacts !== false,
-              allClear: `A browser can download the map from every declared origin again, as of ${verdict.checked_at}. Closing.`,
+              // Every check, not only the CORS ones. This job also asks
+              // whether the hourly conditions bake is still running (#1129),
+              // and an all-clear naming only the download would be reporting
+              // recovery of something that had not broken.
+              allClear: `Every deployment check passes again, as of ${verdict.checked_at} — a browser can download the map from every declared origin, and the published conditions are current. Closing.`,
 
               render: (firstSeen, cell) => {
                 const row = report => {
@@ -204,7 +217,12 @@ jobs:
                 return [
                   blocking.length
                     ? `**A hiker cannot download the map.** ${blocking.length} of ${failed.length} failing check(s) block the deployed app.`
-                    : `${failed.length} check(s) failed, none of which stop a hiker - previews or local development only.`,
+                    // NOT "previews or local development only", which is what
+                    // this said while CORS was the only thing that could fail
+                    // without blocking. A stale conditions bake (#1129) is
+                    // neither, and it is a real finding - the table's detail
+                    // says which, so this line only has to be true.
+                    : `${failed.length} check(s) failed, none of which stop a hiker downloading the map.`,
                   '',
                   `Checked \`${verdict.base}\`.`,
                   '',

@@ -120,7 +120,7 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 
 | | reports by | |
 |---|---|---|
-| `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 |
+| `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 — and ages the newest `conditions/*` stamp, which is what notices the hourly bake having stopped (#1129) |
 | `check-deployed-app.yml` | tracking issue | whether the deployed app draws a trail at all |
 | `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |

@@ -35,6 +35,8 @@ import verify_release
 from verify_release import (
     FAILED,
     OK,
+    OPTIONAL,
+    REQUIRED,
     SKIPPED,
     advertised_sizes,
     archive_keys,
@@ -58,13 +60,20 @@ from verify_release import (
 
 BASE = "https://data.example.org"
 
+#: The real client file, for the one test that has to read it rather than a
+#: fixture - see test_every_declared_key_is_read_not_the_four_that_used_to_be.
+CONFIG_SOURCE = (verify_release.CLIENT_LIB / "config.ts").read_text(encoding="utf-8")
+
 CONFIG_TS = """
 const BACKGROUND_ARCHIVES: Record<DetailLevel, string> = {
   light: 'background_z11.pmtiles',
   standard: 'background.pmtiles',
   fine: 'background_z13.pmtiles',
 }
+/** @release required - the checkout writes it with nothing in front of it. */
 export const TRAILS_KEY = 'trails.geojson'
+/** @release optional - held behind a steward's licence. */
+export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
 export const POI_TYPES = ['shelter', 'water'] as const
 export function poiKey(type: PoiType): string {
   return `poi_${type}.geojson`
@@ -118,14 +127,47 @@ def _headers(length="100", etag='"abc"', ranges="bytes", expose=None):
 
 class TestTheContractIsReadNotRestated:
     def test_every_key_the_client_asks_for_is_derived(self):
-        assert expected_client_keys(CONFIG_TS) == [
-            "trails.geojson",
-            "poi_shelter.geojson",
-            "poi_water.geojson",
-            "background_z11.pmtiles",
-            "background.pmtiles",
-            "background_z13.pmtiles",
-        ]
+        assert expected_client_keys(CONFIG_TS) == {
+            "trails.geojson": REQUIRED,
+            "nearby_trails.geojson": OPTIONAL,
+            "poi_shelter.geojson": REQUIRED,
+            "poi_water.geojson": REQUIRED,
+            "background_z11.pmtiles": REQUIRED,
+            "background.pmtiles": REQUIRED,
+            "background_z13.pmtiles": REQUIRED,
+        }
+
+    def test_every_declared_key_is_read_not_the_four_that_used_to_be(self):
+        """#1048's own defect, pinned against the real file rather than a
+        fixture. Four narrow regexes read `TRAILS_KEY`, the POI types and the
+        three archive tiers out of a config.ts declaring seventeen keys, so a
+        release missing nine artifacts passed check 2 - measured against
+        production's manifest on 2026-08-26. A fixture cannot catch that
+        coming back, because the bug was that the file said more than the
+        parser asked it."""
+        contract = expected_client_keys()
+        declared = set(re.findall(r"^export const \w+_KEY\s*=\s*'([^']+)'", CONFIG_SOURCE, re.M))
+
+        assert declared <= set(contract), sorted(declared - set(contract))
+        assert len(declared) >= 17, f"config.ts declares {len(declared)} keys, expected at least 17"
+
+    def test_a_key_that_declares_nothing_raises(self):
+        """The half that makes the declaration mean anything. Without it a new
+        artifact joins the contract as REQUIRED by silence, or worse, is added
+        to config.ts and quietly never asked about at all - which is how
+        `at_basemap_cells.json` came to be held out of this check entirely."""
+        with pytest.raises(ValueError, match="carries none where it needs exactly one"):
+            expected_client_keys(CONFIG_TS.replace("@release optional - held behind", "held behind"))
+
+    def test_two_declarations_on_one_key_raise_rather_than_picking_one(self):
+        """A copied comment block is the likely way this goes wrong, and it
+        would otherwise declare the wrong thing about the wrong artifact."""
+        doubled = CONFIG_TS.replace(
+            "/** @release optional - held behind a steward's licence. */",
+            "/** @release optional - held behind a steward's licence.\n * @release required */",
+        )
+        with pytest.raises(ValueError, match="carries 2 of them"):
+            expected_client_keys(doubled)
 
     def test_a_restructured_config_raises_rather_than_checking_fewer_keys(self):
         """The failure mode that matters. A regex quietly matching nothing
@@ -212,6 +254,76 @@ class TestAWithdrawnSheetIsASkipNotAFailure:
         reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
 
         assert reports["background_z13.pmtiles"]["state"] == OK
+
+    def test_a_key_declared_optional_is_a_named_skip_rather_than_a_failure(self):
+        """The half that keeps this usable. Without it every release built
+        while a steward's `reaches_hikers` is false fails a gate for obeying a
+        licence, which is #854's shape - and the reason the prescription in
+        #1048 pairs the wider read with a declaration rather than shipping it
+        alone."""
+        manifest = {"artifacts": {"trails.geojson": {"sha256": "x"}}}
+
+        reports = {r["key"]: r for r in check_client_keys(manifest, CONFIG_TS, PACKAGES_TS, HIKING_TS)}
+
+        assert reports["nearby_trails.geojson"]["state"] == SKIPPED
+        assert "@release optional" in reports["nearby_trails.geojson"]["detail"]
+
+
+class TestTheNineArtifactsProductionWasMissing:
+    """#1048, pinned against the real config.ts rather than a fixture.
+
+    Production's `latest.json` on 2026-08-26 was release `2026-08-18` with 33
+    artifacts, and UA's held nine that it did not. Check 2 read four names and
+    passed. The nine are the test: five are ungated in publish.py and are now
+    plain failures, four sit behind a `reaches_hikers` licence gate and are now
+    named skips. Before this change none of the nine produced a report at all -
+    not a pass, not a skip, no line in the verdict - which is why a maintainer
+    reading a green gate had nothing to notice."""
+
+    #: Verbatim from the issue's table, in its order.
+    MISSING = [
+        "trail_graph.json",
+        "trail_graph_geometry.json",
+        "trail_graph_elevation.json",
+        "nearby_trails.geojson",
+        "club_sections.json",
+        "highlights.json",
+        "trails_overview.geojson",
+        "stewards.json",
+        "retired_poi.geojson",
+    ]
+
+    def _reports(self):
+        contract = expected_client_keys()
+        held = {key: {"sha256": "x"} for key in contract if key not in self.MISSING}
+        return {r["key"]: r for r in check_client_keys({"artifacts": held})}
+
+    def test_every_one_of_the_nine_now_gets_a_report(self):
+        reports = self._reports()
+        assert set(self.MISSING) <= set(reports)
+
+    def test_the_five_ungated_ones_fail(self):
+        reports = self._reports()
+        failed = sorted(key for key in self.MISSING if reports[key]["state"] == FAILED)
+        assert failed == [
+            "club_sections.json",
+            "highlights.json",
+            "retired_poi.geojson",
+            "stewards.json",
+            "trails_overview.geojson",
+        ]
+
+    def test_the_four_behind_the_licence_gate_skip_and_say_so(self):
+        reports = self._reports()
+        gated = [key for key in self.MISSING if reports[key]["state"] == SKIPPED]
+        assert sorted(gated) == [
+            "nearby_trails.geojson",
+            "trail_graph.json",
+            "trail_graph_elevation.json",
+            "trail_graph_geometry.json",
+        ]
+        for key in gated:
+            assert "@release optional" in reports[key]["detail"]
 
 
 ACKNOWLEDGEMENTS = [

@@ -1342,10 +1342,17 @@ def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline
 
 def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[dict]) -> dict:
     """Write one poi_type's unified+clipped records to GeoJSON + FlatGeobuf
-    under OUT_DIR, even when records is empty (e.g. `crossing`, pending NHD
-    ingestion - this deliberately ships an empty-but-present layer rather
-    than omitting the poi_type or inventing data). Returns this poi_type's
-    manifest entry: per-artifact path/sha256/feature_count."""
+    under OUT_DIR, even when records is empty - this deliberately ships an
+    empty-but-present layer rather than omitting the poi_type or inventing
+    data. Returns this poi_type's manifest entry: per-artifact
+    path/sha256/feature_count.
+
+    The example used to be `crossing, pending NHD ingestion`. That ingestion
+    landed: production release 2026-09-04 publishes 5,318 crossings (measured
+    off the live artifact, PR #1247). `trailhead` is the empty one now, at 0
+    features on that same release, for the reason #1218 gives - USFS's 7,358
+    trailheads ship as parking pins. The rule is unchanged; only which
+    poi_type is currently demonstrating it."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     columns = ", ".join(f"{name} {sql_type}" for name, sql_type in POI_COLUMNS)

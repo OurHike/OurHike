@@ -376,9 +376,23 @@ export const ELEVATION_KEY = 'elevation_profile.json'
 // same way spurs.json is treated.
 export const RETIRED_POI_KEY = 'retired_poi.geojson'
 
-// 'crossing' is published but is currently an empty FeatureCollection; it is
-// listed anyway so it starts working the day the pipeline fills it, rather
-// than needing a client release to notice.
+// 'crossing' was listed here while it was still an empty FeatureCollection, so
+// that it would start working the day the pipeline filled it rather than
+// needing a client release to notice. IT WORKED, and the comment outlived the
+// fact: NHD ingestion has landed and production release 2026-09-04 publishes
+// **5,318** crossings, measured off the live artifact (PR #1247).
+//
+// 1,126 of those carry an A.T. mile and sit a median of 0 ft from the
+// centerline - they are line intersections, so they are as on-trail as a
+// waypoint gets. The other 4,192 carry `mile: null`, which is
+// export_poi.mark_off_trail_records (#1016) withholding it on purpose: a
+// crossing on somebody else's trail must not become a candidate stop in an
+// A.T. itinerary. Both halves draw; only the first can be planned around.
+//
+// `trailhead` is the empty-but-present layer now (0 features on that same
+// release), and #1218 is why - USFS's 7,358 trailheads ship as parking pins
+// today. So the argument for listing a key before it has data is unchanged and
+// is currently being made by a different poi_type.
 //
 // This list is the download list, so it is also the size of a hiker's first
 // fetch. 'viewpoint', 'parking' and 'privy' roughly double the POI count

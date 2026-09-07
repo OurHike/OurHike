@@ -56,6 +56,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -81,6 +82,27 @@ FAILED = "failed"
 # must not be able to declare an outage. These are reported and, unlike a real
 # refusal, do not on their own open the tracking issue.
 UNREACHABLE = "unreachable"
+
+# The prefix the hourly bake writes under, and how old its newest file may be
+# before this says so (#1129).
+#
+# REASONED, from the schedule and from measured jitter, not picked. The bake is
+# `publish-conditions.yml` at `40 * * * *` - hourly - so a healthy bucket's
+# newest conditions file is under an hour old plus however late GitHub starts
+# the run. #1129 measured that lateness at +20 and +22 minutes on the two
+# firings it caught, which is ordinary schedule jitter rather than a fault.
+#
+# Three hours is therefore TWO consecutive missed firings: one missed slot puts
+# the newest file at 2h00 plus jitter, about 2h22, comfortably under. GitHub
+# drops a scheduled event now and then and nobody should hear about it. What
+# this is for is the pattern #1129 recorded - fourteen of sixteen slots
+# producing nothing, and the published copy eleven hours old with no trace in
+# the run listing at all.
+#
+# It is deliberately not tighter. A monitor that fires on one dropped firing is
+# a monitor somebody mutes, and a muted monitor has already stopped watching.
+CONDITIONS_PREFIX = "conditions/"
+CONDITIONS_MAX_AGE_HOURS = 3
 
 
 def load_manifest(path: Path | None = None) -> dict:
@@ -569,8 +591,142 @@ def check_all(base: str, manifest: dict | None = None, session: requests.Session
     reports.append(check_if_range(base, rangeable or MANIFEST_KEY, session))
 
     reports.extend(check_advertised_sizes(base, artifacts, session))
+    reports.append(check_conditions_freshness(base, artifacts, session))
 
     return reports
+
+
+def check_conditions_freshness(
+    base: str,
+    artifacts: list[str],
+    session: requests.Session | None = None,
+    now: datetime | None = None,
+) -> dict:
+    """Is the hourly conditions bake still actually running? (#1129)
+
+    WATCHES THE OUTCOME, NOT THE SCHEDULER, which is the whole choice. Asking
+    GitHub whether `publish-conditions.yml` fired needs credentials this job
+    deliberately does not hold, and would answer only one of the ways the bake
+    can stop. Asking the bucket how old its newest conditions file is catches
+    every way at once - a dropped schedule event, a disabled workflow, a run
+    that succeeds and publishes nothing, a permissions change on the upload.
+
+    WHY IT IS WORTH WATCHING AT ALL. On 2026-08-27 the bake fired twice against
+    sixteen scheduled slots, and the fourteen misses left no trace: no
+    cancelled runs, no failures, nothing in the listing. The live closure path
+    is unaffected - RELEASING.md section 11, closures serve from Postgres
+    through the backend - but the PUBLISHED copies are what the offline sync
+    and the freshness display read, and section 8b names the freshness display
+    in the safety-critical set. An eleven-hour quiet gap meant a hiker's copy
+    was genuinely stale and nothing said so.
+
+    THE NEWEST FILE, not each of them. The question is whether the bake ran,
+    and one report answers it; per-file ages would be noise, because they are
+    legitimately different - `drought.json` carries a weekly product and sat at
+    15 hours old on a bucket whose other seven files were minutes old.
+
+    Not `hiker_facing`. That flag means "a hiker cannot download the map", and
+    this is not that - the map downloads fine and every artifact check above
+    still speaks for it. What is stale is one layer inside it, and calling that
+    an outage would put "**A hiker cannot download the map**" at the top of a
+    tracking issue about something else. The detail below carries the weight
+    instead.
+    """
+    keys = [key for key in artifacts if key.startswith(CONDITIONS_PREFIX)]
+    if not keys:
+        # Asked, and there was nothing to age. Said out loud rather than
+        # skipped: a check that emits no report reads exactly like one that
+        # passed, and this monitor exists because a silence was mistaken for
+        # health once already.
+        return {
+            "check": "conditions-freshness",
+            "key": CONDITIONS_PREFIX,
+            "state": OK,
+            "hiker_facing": False,
+            "detail": f"this manifest names no {CONDITIONS_PREFIX}* artifact, so there is no bake to age",
+        }
+
+    stamps: dict[str, datetime] = {}
+    unreadable: list[str] = []
+    for key in keys:
+        stamp = _generated_at(base, key, session)
+        if stamp is None:
+            unreadable.append(key)
+        else:
+            stamps[key] = stamp
+
+    if not stamps:
+        # Every one of them unreadable is the bucket or the network, not a
+        # verdict about the bake - the same reasoning UNREACHABLE carries for
+        # the CORS checks above, and #431's rule that a flaky third party must
+        # not be able to declare an outage.
+        return {
+            "check": "conditions-freshness",
+            "key": CONDITIONS_PREFIX,
+            "state": UNREACHABLE,
+            "hiker_facing": False,
+            "detail": (
+                f"none of the {len(keys)} {CONDITIONS_PREFIX}* artifact(s) could be read for a "
+                "`generated_at`, so nothing here says whether the bake ran"
+            ),
+        }
+
+    newest_key = max(stamps, key=lambda key: stamps[key])
+    newest = stamps[newest_key]
+    age = ((now or datetime.now(timezone.utc)) - newest).total_seconds() / 3600
+    missing = f" ({len(unreadable)} of {len(keys)} could not be read)" if unreadable else ""
+    where = f"the newest is {newest_key} at {newest.isoformat().replace('+00:00', 'Z')}"
+
+    if age > CONDITIONS_MAX_AGE_HOURS:
+        return {
+            "check": "conditions-freshness",
+            "key": CONDITIONS_PREFIX,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": (
+                f"{where}, {age:.1f} hours old against a {CONDITIONS_MAX_AGE_HOURS}-hour ceiling{missing}. "
+                "The hourly bake has missed at least two firings. Closures and warnings still serve live "
+                "from the backend; what is stale is the published copy the offline sync and the freshness "
+                "display read."
+            ),
+        }
+    return {
+        "check": "conditions-freshness",
+        "key": CONDITIONS_PREFIX,
+        "state": OK,
+        "hiker_facing": False,
+        "detail": f"{where}, {age:.1f} hours old{missing}",
+    }
+
+
+def _generated_at(base: str, key: str, session: requests.Session | None = None) -> datetime | None:
+    """The `generated_at` a conditions file stamps itself with, as an aware UTC
+    datetime, or None where it cannot be read.
+
+    None for every reason at once - the request failed, the body is not JSON,
+    the field is absent or unparseable - because the caller does the same thing
+    with all of them: leaves that file out of the comparison rather than
+    treating it as infinitely old. A file this cannot read says nothing about
+    when the bake last ran.
+
+    `generated_at` rather than the object's `Last-Modified` because it is the
+    figure that reaches a hiker: `dataRefresh.ts` and the freshness display
+    read this field, so ageing it is ageing what the screen actually shows.
+    """
+    try:
+        response = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT)
+        if response.status_code != 200:
+            return None
+        stamp = response.json().get("generated_at")
+    except (requests.RequestException, ValueError, AttributeError):
+        return None
+    if not isinstance(stamp, str):
+        return None
+    try:
+        when = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
 def check_advertised_sizes(base: str, artifacts: list[str], session: requests.Session | None = None) -> list[dict]:

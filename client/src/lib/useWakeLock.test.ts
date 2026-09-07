@@ -43,6 +43,37 @@ function setHidden(hidden: boolean) {
   })
 }
 
+/** A sentinel double whose `release()` fires the platform's own 'release'
+ *  event, the way a real one does - so a test can tell a lock this hook let go
+ *  of on purpose from one it reported as taken back. */
+function fakeSentinel() {
+  const target = new EventTarget()
+  const release = vi.fn(() => {
+    target.dispatchEvent(new Event('release'))
+    return Promise.resolve()
+  })
+  return Object.assign(target, { release })
+}
+
+/** A wake lock whose grants are handed out by the test, one per request, so
+ *  two `acquire()` calls can be left in flight together and resolved in either
+ *  order. `stubWakeLock` cannot express this: it answers every request with
+ *  the same already-resolved sentinel. */
+function deferredWakeLock() {
+  const grants: Array<{
+    resolve: (sentinel: WakeLockSentinel) => void
+    reject: (reason: Error) => void
+  }> = []
+  const request = vi.fn(
+    () =>
+      new Promise<WakeLockSentinel>((resolve, reject) => {
+        grants.push({ resolve, reject })
+      }),
+  )
+  vi.stubGlobal('navigator', { wakeLock: { request } })
+  return { grants, request }
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -159,6 +190,94 @@ describe('useWakeLock', () => {
     renderHook(() => useWakeLock(true))
 
     expect(request).not.toHaveBeenCalled()
+  })
+
+  // THE FLAP. `acquire` runs on mount and again from `reacquire` on every
+  // visibilitychange, so a hidden -> visible -> hidden -> visible flap inside
+  // the time one request takes to resolve leaves two in flight. Each resolves
+  // with its own sentinel and only one can be `sentinel`; the other is then
+  // held by nothing this hook can reach. Three tests, because the race has
+  // three orderings and the counter alone only settles the first.
+
+  it('releases a sentinel that lands after a later request has replaced it', async () => {
+    const { grants } = deferredWakeLock()
+
+    const { result } = renderHook(() => useWakeLock(true))
+    expect(grants).toHaveLength(1)
+
+    setHidden(true)
+    setHidden(false)
+    expect(grants).toHaveLength(2)
+
+    // The second request is granted first, so the first is already superseded
+    // by the time the platform answers it.
+    const second = fakeSentinel()
+    const first = fakeSentinel()
+    await act(async () => {
+      grants[1].resolve(second as unknown as WakeLockSentinel)
+    })
+    await act(async () => {
+      grants[0].resolve(first as unknown as WakeLockSentinel)
+    })
+
+    await waitFor(() => expect(first.release).toHaveBeenCalled())
+    expect(second.release).not.toHaveBeenCalled()
+    expect(result.current).toBe('held')
+  })
+
+  it('releases the sentinel it already holds rather than overwriting the reference', async () => {
+    // The ordering a generation counter alone does not cover: the first
+    // request has already landed as `sentinel`, so it is not superseded when
+    // it resolves - it is superseded later, by the assignment.
+    const { grants } = deferredWakeLock()
+
+    const { result } = renderHook(() => useWakeLock(true))
+    const first = fakeSentinel()
+    await act(async () => {
+      grants[0].resolve(first as unknown as WakeLockSentinel)
+    })
+    await waitFor(() => expect(result.current).toBe('held'))
+
+    setHidden(true)
+    setHidden(false)
+    expect(grants).toHaveLength(2)
+
+    const second = fakeSentinel()
+    await act(async () => {
+      grants[1].resolve(second as unknown as WakeLockSentinel)
+    })
+
+    await waitFor(() => expect(first.release).toHaveBeenCalled())
+    expect(second.release).not.toHaveBeenCalled()
+    // And the screen does not read as taken back on the way past. Releasing
+    // the old sentinel fires its 'release' event; the state must survive that,
+    // because a lock IS held - the replacement.
+    expect(result.current).toBe('held')
+  })
+
+  it('does not report refused for a request a later one has already replaced', async () => {
+    // A phone that declines under battery saver declines the stale request
+    // too, and its rejection arrives after the live one was granted. Reporting
+    // 'refused' there says the screen will sleep while it is being held awake,
+    // which is the lie in the other direction.
+    const { grants } = deferredWakeLock()
+
+    const { result } = renderHook(() => useWakeLock(true))
+    setHidden(true)
+    setHidden(false)
+    expect(grants).toHaveLength(2)
+
+    const second = fakeSentinel()
+    await act(async () => {
+      grants[1].resolve(second as unknown as WakeLockSentinel)
+    })
+    await waitFor(() => expect(result.current).toBe('held'))
+
+    await act(async () => {
+      grants[0].reject(new Error('policy'))
+    })
+
+    expect(result.current).toBe('held')
   })
 
   it('releases a sentinel that arrives after recording stopped', async () => {

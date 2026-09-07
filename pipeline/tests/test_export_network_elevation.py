@@ -271,6 +271,23 @@ class TestWriteArtifact:
         assert manifest["edges"] == 2
         assert json.loads((tmp_path / network_elevation.ARTIFACT_NAME).read_text()) == [[10, 5], None]
 
+    def test_the_edge_count_is_the_files_own_length_and_not_the_coverage_total(self, tmp_path, monkeypatch):
+        """#1245. The test above passes stats that AGREE with the array, so it
+        held while `"edges": len(climbs)` sat above the coverage spread and was
+        overwritten by it - the assertion was reading the coverage total and
+        could not tell. The two are different questions and only one of them is
+        the alignment check `lib/trailGraphData.ts:376` applies: coverage counts
+        what the sources accounted for, the client counts ENTRIES against the
+        graph it holds. A run whose stats disagree with its array must publish
+        the array's length, or the mismatch this field exists to catch is
+        papered over by a number that agrees with nothing."""
+        monkeypatch.setattr(network_elevation, "OUT_DIR", tmp_path)
+        stats = {"oprhp_trails": {"edges": 99, "measured": 99, "partial": 0, "unmeasured": 0}}
+
+        manifest = network_elevation.write_artifact([[10, 5], None], stats)
+
+        assert manifest["edges"] == 2
+
     def test_the_manifest_says_out_loud_that_these_are_estimates(self, tmp_path, monkeypatch):
         # The maintainer's decision, 2026-08-25: ship the figure and frame it
         # as an estimate. A consumer should not have to infer that from a

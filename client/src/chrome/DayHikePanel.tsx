@@ -165,7 +165,7 @@ export function DayHikePanel({
 }: DayHikePanelProps) {
   const bodyId = useId()
   const routed = status.kind === 'routed' ? status : null
-  const rows = routed === null ? [] : routeRows(routed.legs, stops)
+  const rows = routed === null ? [] : routeRows(routed.legs, stops, routed.gaps)
   const turns = turnMarks(draft)
   const stopping = stoppingMinutes(stops)
 

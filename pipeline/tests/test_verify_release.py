@@ -36,6 +36,7 @@ from verify_release import (
     FAILED,
     OK,
     SKIPPED,
+    WARN,
     advertised_sizes,
     archive_keys,
     check_all,
@@ -685,11 +686,18 @@ def _index(*ids):
     return {"releases": [{"id": name, "created_at": f"{name}T00:00:00+00:00", "version": name} for name in ids]}
 
 
-def _release_manifest(release_id, artifacts):
+def _release_manifest(release_id, artifacts, decoded=None):
+    """A release manifest. `decoded` adds the `size_bytes` publish.py writes
+    beside the hash - left out by default because a manifest published before
+    #505/#556 genuinely has none, and check 17 has to behave sanely there."""
+    sizes = decoded or {}
     return {
         "version": release_id,
         "release": release_id,
-        "artifacts": {name: {"sha256": digest} for name, digest in artifacts.items()},
+        "artifacts": {
+            name: {"sha256": digest, **({"size_bytes": sizes[name]} if name in sizes else {})}
+            for name, digest in artifacts.items()
+        },
     }
 
 
@@ -776,6 +784,82 @@ class TestASizeRegressionAgainstTheLastRelease:
         reports = check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)
 
         assert [report["key"] for report in reports] == ["trails.geojson"]
+
+    def test_a_drop_that_is_only_compression_warns_rather_than_failing(self, requests_mock):
+        """#1173. The stored bytes fell by half and the decoded bytes did not
+        move: this build compresses better, which is not data loss. Failing it
+        costs a release cycle and teaches whoever is on shift that check 17 is
+        noise, and a guard nobody trusts has already stopped guarding."""
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "1000"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "500"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"}, {"trails.geojson": 3000})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"}, {"trails.geojson": 3000})
+
+        [report] = check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)
+
+        assert report["state"] == WARN
+        # The ratio change is the finding, so the report has to carry it.
+        assert "3.00x" in report["detail"] and "6.00x" in report["detail"]
+        assert "not data loss" in report["detail"]
+
+    def test_a_warning_does_not_hold_the_release_and_strict_does_not_escalate_it(self):
+        """A WARN is a check that RAN. --strict refuses to ship on checks that
+        could not run, and escalating this one would put the battery straight
+        back to failing releases for compression."""
+        warned = [{"check": 17, "key": "trails.geojson", "state": WARN, "detail": "compresses better"}]
+
+        assert verdict_document(BASE, warned, strict=False)["gate"] == "pass"
+        assert verdict_document(BASE, warned, strict=True)["gate"] == "pass"
+        assert verdict_document(BASE, warned, strict=True)["warned"] == warned
+
+    def test_a_drop_in_both_figures_still_fails(self, requests_mock):
+        """The half that must not soften. Stored AND decoded both past the
+        threshold is the shape of an artifact that actually lost data."""
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "1000"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "500"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"}, {"trails.geojson": 3000})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"}, {"trails.geojson": 1500})
+
+        [report] = check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)
+
+        assert report["state"] == FAILED
+        assert "50% decoded" in report["detail"]
+
+    def test_a_missing_decoded_size_fails_on_the_stored_drop_rather_than_warning(self, requests_mock):
+        """An honest unknown must not weaken a safety gate. A manifest with no
+        `size_bytes` cannot say the decoded size held, and reading "cannot
+        tell" as "did not drop" is the false-clean this battery is against."""
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "1000"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "500"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"}, {"trails.geojson": 3000})
+
+        [report] = check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)
+
+        assert report["state"] == FAILED
+        assert "2026-08-12 publishes no size_bytes" in report["detail"]
+
+    def test_the_v1_2_0_release_is_still_red_and_that_is_the_known_limit(self, requests_mock):
+        """THE MEASUREMENT THIS CHANGE DOES NOT COVER, pinned so nobody reads
+        #1173 as closed by it.
+
+        The run that prompted the issue (verify-release #10, gate 6 of v1.2.0):
+        nearby_trails.geojson 23,469,839 -> 15,921,393 decoded and
+        7,703,741 -> 3,729,336 stored. The decoded figure fell 32%, well past
+        the 10% threshold, because #1113 stopped writing eleven junk digits per
+        coordinate - not because 21,805 features became fewer. No byte count
+        can tell those apart; only a feature count can (#1173's option 3), and
+        a precision cull is meanwhile exactly what
+        reference/acknowledged_drops.json exists to sign for."""
+        requests_mock.head(f"{BASE}/releases/2026-08-27-3/nearby_trails.geojson", headers={"Content-Length": "7703741"})
+        requests_mock.head(f"{BASE}/releases/2026-08-28/nearby_trails.geojson", headers={"Content-Length": "3729336"})
+        before = _release_manifest("2026-08-27-3", {"nearby_trails.geojson": "a"}, {"nearby_trails.geojson": 23469839})
+        now = _release_manifest("2026-08-28", {"nearby_trails.geojson": "b"}, {"nearby_trails.geojson": 15921393})
+
+        [report] = check_release_regression(BASE, "2026-08-27-3", "2026-08-28", before, now)
+
+        assert report["state"] == FAILED
+        assert "52% on the wire and 32% decoded" in report["detail"]
 
     def test_a_size_that_cannot_be_read_skips_rather_than_passing(self, requests_mock):
         """Never OK on a failure to ask. A missing Content-Length reported as

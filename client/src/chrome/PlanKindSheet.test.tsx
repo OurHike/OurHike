@@ -22,18 +22,13 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PlanKindSheet } from './PlanKindSheet'
-import type { TrailNetworkState } from '../lib/trailGraphData'
+import type { TrailNetworkAbsence, TrailNetworkState } from '../lib/trailGraphData'
 
 const READY: TrailNetworkState = { kind: 'ready' }
-const absent = (
-  because:
-    | 'unconfigured'
-    | 'unreachable'
-    | 'not-in-release'
-    | 'unverifiable'
-    | 'not-a-graph'
-    | 'empty',
-): TrailNetworkState => ({ kind: 'absent', because })
+const absent = (because: TrailNetworkAbsence): TrailNetworkState => ({
+  kind: 'absent',
+  because,
+})
 
 // This suite renders the same sheet many times; the repo's convention is an
 // explicit cleanup rather than relying on a global one.
@@ -146,6 +141,12 @@ describe('the sentence is true of the absence it is about (#1049)', () => {
     }
   })
 
+  it('says a network too big to load is not being used, and promises nothing (#1254)', () => {
+    renderSheet({ network: absent('too-large') })
+    expect(screen.getByRole('note')).toHaveTextContent(/too big/i)
+    expect(screen.getByRole('note')).not.toHaveTextContent(/sync|connection|yet/i)
+  })
+
   it('blames the ground, not the phone, when the release simply has no trails here', () => {
     // A valid graph with nothing routable in it. The loader accepts it on
     // purpose; the door must not open on it, and the sentence must not read
@@ -182,6 +183,7 @@ describe('the sentence is true of the absence it is about (#1049)', () => {
       absent('not-in-release'),
       absent('unverifiable'),
       absent('not-a-graph'),
+      absent('too-large'),
       absent('empty'),
     ]) {
       cleanup()
@@ -208,6 +210,7 @@ describe('the one absence a hiker can act on', () => {
       absent('not-in-release'),
       absent('unverifiable'),
       absent('not-a-graph'),
+      absent('too-large'),
       absent('empty'),
       { kind: 'looking' } as const,
     ]) {

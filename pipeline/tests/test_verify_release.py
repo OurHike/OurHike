@@ -43,12 +43,14 @@ from verify_release import (
     check_cors,
     check_fetchable,
     check_full_hash,
+    check_launch_budget,
     check_manifest,
     check_nothing_lost,
     check_release_regression,
     check_released_folder,
     check_vector,
     expected_client_keys,
+    launch_artifact_budget,
     previous_release_id,
     release_checks,
     skipped_checks,
@@ -576,6 +578,91 @@ class TestVectorContent:
         assert {r["check"]: r["state"] for r in check_vector(BASE, ["trails.geojson"])}[13] == FAILED
 
 
+class TestAnArtifactAPhoneCannotHold:
+    """Check 22 (#1254). The day it was written, gate 6 was green over a
+    228.8 MB nearby_trails.geojson and a 78.6 MB trail_graph.json, and every
+    phone that opened the app crashed its map or froze on its first page."""
+
+    BUDGET = 33_554_432
+
+    def test_the_budget_is_read_from_the_clients_own_declaration(self):
+        declared = "export const LAUNCH_ARTIFACT_BUDGET_BYTES = 33_554_432\n"
+        assert launch_artifact_budget(declared) == 33_554_432
+
+    def test_the_committed_declaration_parses(self):
+        # The real file, so a rewrite of artifactBudget.ts this regex cannot
+        # follow fails here rather than weighing nothing on a release.
+        assert launch_artifact_budget() > 0
+
+    def test_a_declaration_that_is_an_expression_raises_rather_than_weighing_nothing(self):
+        with pytest.raises(ValueError):
+            launch_artifact_budget("export const LAUNCH_ARTIFACT_BUDGET_BYTES = 32 * 1024 * 1024\n")
+
+    @staticmethod
+    def _manifest(**sizes):
+        return {"artifacts": {key: {"sha256": "x", "size_bytes": size} for key, size in sizes.items()}}
+
+    def test_the_two_artifacts_that_took_the_app_down_fail_by_name(self):
+        reports = check_launch_budget(
+            self._manifest(
+                **{
+                    "nearby_trails.geojson": 228_820_578,
+                    "trail_graph.json": 78_595_556,
+                    "trails.geojson": 11_540_417,
+                }
+            ),
+            budget=self.BUDGET,
+        )
+
+        failed = {r["key"]: r["detail"] for r in reports if r["state"] == FAILED}
+        assert set(failed) == {"nearby_trails.geojson", "trail_graph.json"}
+        assert "228,820,578" in failed["nearby_trails.geojson"]
+        assert "#1254" in failed["trail_graph.json"]
+        summary = [r for r in reports if r["key"] == "whole-fetched artifacts"]
+        assert [r["state"] for r in summary] == [OK]
+        assert "trails.geojson" in summary[0]["detail"]
+
+    def test_the_archives_are_read_by_range_and_not_weighed(self):
+        reports = check_launch_budget(
+            self._manifest(**{"dem.pmtiles": 275_601_483, "trails.fgb": 4_355_744}),
+            budget=1,
+        )
+
+        assert [r["state"] for r in reports] == [OK]
+        assert "nothing to weigh" in reports[0]["detail"]
+
+    def test_an_artifact_at_the_budget_passes(self):
+        reports = check_launch_budget(self._manifest(**{"trails.geojson": self.BUDGET}), budget=self.BUDGET)
+
+        assert [r["state"] for r in reports] == [OK]
+
+    def test_a_text_artifact_with_no_size_is_a_skip_not_a_pass(self):
+        reports = check_launch_budget({"artifacts": {"trails.geojson": {"sha256": "x"}}}, budget=self.BUDGET)
+
+        skipped = [r for r in reports if r["state"] == SKIPPED]
+        assert [r["key"] for r in skipped] == ["trails.geojson"]
+        assert "size_bytes" in skipped[0]["detail"]
+
+    def test_the_battery_fails_a_release_carrying_one_before_fetching_anything(self, tmp_path, monkeypatch, requests_mock):
+        ledger = tmp_path / "poi_identity.json"
+        ledger.write_text(json.dumps({"pois": {}}))
+        monkeypatch.setattr(verify_release, "IDENTITY_LEDGER_PATH", ledger)
+        requests_mock.head(re.compile(".*"), headers=_headers())
+        requests_mock.get(re.compile(".*"), status_code=404)
+        requests_mock.get(
+            f"{BASE}/latest.json",
+            json={"artifacts": {"nearby_trails.geojson": {"sha256": "x", "size_bytes": 228_820_578}}},
+        )
+
+        reports = check_all(BASE, hash_artifacts=False)
+
+        assert [r["state"] for r in reports if r["check"] == 22 and r["key"] == "nearby_trails.geojson"] == [FAILED]
+        # Weighed off the manifest alone, ahead of every per-artifact fetch.
+        first_22 = next(i for i, r in enumerate(reports) if r["check"] == 22)
+        first_fetch = next(i for i, r in enumerate(reports) if r["check"] in (4, 5))
+        assert first_22 < first_fetch
+
+
 class TestASkipIsNeverAPass:
     def test_the_checks_that_cannot_run_are_listed_by_number(self):
         """Three: 10, and since #653, 6 and 11. The two newcomers were not
@@ -618,7 +705,7 @@ class TestTheWholeRun:
         # or a reader counting checks finds a short clean run. 6 and 11 are
         # the standing skips (#653), present in every run until somebody
         # builds them.
-        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19, 20, 21}
+        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19, 20, 21, 22}
 
     def test_a_release_without_the_background_tiers_skips_9_12_and_18_by_name(self, tmp_path, monkeypatch, requests_mock):
         """#854's part 2, the same defect #653 fixed for checks 6 and 11 by

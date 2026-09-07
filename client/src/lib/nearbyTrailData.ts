@@ -93,14 +93,15 @@
 // captive portal that says "online" while carrying nothing must not silence
 // this module for the rest of the day.
 
-import { get, set } from 'idb-keyval'
+import { del, get, set } from 'idb-keyval'
 import {
   dataUrl,
   DATA_CONFIGURED,
   NEARBY_TRAILS_KEY,
   NETWORK_OVERVIEW_KEY,
 } from './config'
-import { publishedHash } from './dataManifest'
+import { oversized, warnOversized } from './artifactBudget'
+import { publishedSnapshot } from './dataManifest'
 import { sha256Of } from './trailData'
 
 /**
@@ -156,13 +157,32 @@ export type NearbyTrailsAnswer = {
   revalidated: boolean
 }
 
-async function readStored(storeKey: string): Promise<StoredNearbyTrails | null> {
+async function readStored(
+  key: string,
+  storeKey: string,
+): Promise<StoredNearbyTrails | null> {
   try {
     const record = (await get(storeKey)) as StoredNearbyTrails | undefined
     // Shape-checked because this store is written by every past version of
     // this module there will ever be: a record that is not exactly a blob and
     // a hash is treated as absent, and the next verified fetch rewrites it.
     if (record?.bytes instanceof Blob && typeof record.hash === 'string') {
+      // Weighed on the way out too (#1254), because a launch that had no
+      // budget to refuse it may have stored a copy this phone cannot hold -
+      // the 228,820,578-byte nearby_trails.geojson of 2026-09-07, verified
+      // and written by every phone that fetched it before this line existed.
+      // Served, it crashes the map exactly as the fetch did; kept, it is a
+      // quarter of a gigabyte nothing will ever draw. So it goes, and the
+      // next verified fetch that fits rewrites the slot.
+      if (oversized(record.bytes.size)) {
+        warnOversized(key, record.bytes.size, 'store')
+        try {
+          await del(storeKey)
+        } catch {
+          // A store that will not delete is the no-store case too.
+        }
+        return null
+      }
       return record
     }
   } catch {
@@ -220,13 +240,14 @@ async function loadVerifiedArtifact(
 ): Promise<NearbyTrailsAnswer | null> {
   if (!DATA_CONFIGURED) return null
 
-  const stored = await readStored(storeKey)
+  const stored = await readStored(key, storeKey)
   if (!online) {
     return stored === null ? null : urlFor(stored, false)
   }
 
   try {
-    const expected = await publishedHash(key, { signal })
+    const published = await publishedSnapshot({ signal })
+    const expected = published.hashes[key] ?? null
     if (expected === null) {
       // No manifest, or a manifest naming no hash. Fresh bytes would be
       // unverifiable and are not drawn (the header's #197 stance) - but the
@@ -241,6 +262,18 @@ async function loadVerifiedArtifact(
       return urlFor(stored, true)
     }
 
+    // Weighed before it is fetched (#1254): the manifest says what the
+    // artifact decodes to, and one this phone cannot hold is not fetched,
+    // hashed, stored or drawn. The stored copy - which passed the same
+    // budget on its way out of the store - stands, unrevalidated, exactly as
+    // it does when a refresh fails: the asking resumes when the phone next
+    // comes online, and a smaller publish is what answers it.
+    const decodedBytes = published.decodedSizes[key] ?? null
+    if (oversized(decodedBytes)) {
+      warnOversized(key, decodedBytes, 'manifest')
+      return stored === null ? null : urlFor(stored, false)
+    }
+
     const response = await fetch(dataUrl(key), { signal })
     // A release exported before this artifact existed, or a bucket a publish
     // has not reached. Not a failure - see the header. The stored copy, where
@@ -251,6 +284,13 @@ async function loadVerifiedArtifact(
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
+    // The manifest can predate `size_bytes`, or be wrong about it, and the
+    // bytes in hand are the backstop: over the budget they are not hashed,
+    // not stored and not drawn, for the reason the check above gives.
+    if (oversized(bytes.byteLength)) {
+      warnOversized(key, bytes.byteLength, 'response')
+      return stored === null ? null : urlFor(stored, false)
+    }
     if ((await sha256Of(bytes)) !== expected) {
       // Bytes that are not what was published are not drawn - and not
       // stored. The last verified copy stands, unrevalidated.

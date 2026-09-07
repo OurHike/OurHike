@@ -191,6 +191,31 @@ describe('publishedSnapshot (#919)', () => {
     expect((await publishedSnapshot()).sizes).toEqual({})
   })
 
+  it('carries the decoded size beside the wire cost, for the launch budget (#1254)', async () => {
+    // The other number, on purpose: `sizes` is what a hiker is shown before
+    // spending mobile data; this is what the phone pays in memory once the
+    // gzip is off, and lib/artifactBudget.ts weighs an artifact by it.
+    mockManifestResponse(manifest)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    const snapshot = await publishedSnapshot()
+
+    expect(snapshot.decodedSizes['poi_water.geojson']).toBe(300_000)
+    expect(snapshot.sizes['poi_water.geojson']).toBe(100_000)
+  })
+
+  it('has no decoded size for an artifact the manifest never measured', async () => {
+    mockManifestResponse({
+      version: 'v2',
+      artifacts: { 'poi_water.geojson': { sha256: HASH } },
+    })
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    // Absent, not zero: a launch reads absent as "unknown is not too large"
+    // and weighs the response on arrival instead.
+    expect((await publishedSnapshot()).decodedSizes).toEqual({})
+  })
+
   it('carries a well-formed change grade', async () => {
     mockManifestResponse(manifest)
     const { publishedSnapshot } = await loadWithBase(BASE)

@@ -20,8 +20,10 @@ vi.mock('idb-keyval', () => ({
 import { del, get, set } from 'idb-keyval'
 
 import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './config'
+import { LAUNCH_ARTIFACT_BUDGET_BYTES } from './artifactBudget'
 import {
   clearStoredGraph,
+  forgetStoredGraph,
   GRAPH_STORE_HEADROOM_BYTES,
   readStoredGraph,
   storedGraphBytes,
@@ -102,6 +104,41 @@ describe('what it keeps', () => {
         version: null,
       }),
     ).toBe(false)
+  })
+})
+
+describe('what it will not hand back (#1254)', () => {
+  it('forgets a record the phone cannot hold rather than handing it back', async () => {
+    // Written by a launch before the budget existed: the 78.6 MB graph of
+    // 2026-09-07, verified and stored, and a frozen main thread waiting for
+    // the next launch to parse it. A copy nothing will parse is storage taken
+    // from the map, so it goes.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(get).mockResolvedValue({
+      bytes: new Blob([new ArrayBuffer(LAUNCH_ARTIFACT_BUDGET_BYTES + 1)]),
+      hash: 'abc',
+      version: 'release-9',
+      fetchedAt: 1,
+    })
+
+    await expect(readStoredGraph(TRAIL_GRAPH_KEY)).resolves.toBeNull()
+
+    expect(vi.mocked(del)).toHaveBeenCalledWith('ourhike:trail-graph')
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('forgets one artifact and leaves the others', async () => {
+    await forgetStoredGraph(TRAIL_GRAPH_GEOMETRY_KEY)
+
+    expect(vi.mocked(del)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(del)).toHaveBeenCalledWith('ourhike:trail-graph-geometry')
+  })
+
+  it('never throws when the store will not forget', async () => {
+    vi.mocked(del).mockRejectedValue(new Error('locked'))
+
+    await expect(forgetStoredGraph(TRAIL_GRAPH_KEY)).resolves.toBeUndefined()
   })
 })
 

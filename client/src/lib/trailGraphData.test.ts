@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./trailGraphStore', () => ({
   readStoredGraph: vi.fn(async () => null),
   writeStoredGraph: vi.fn(async () => true),
+  forgetStoredGraph: vi.fn(async () => undefined),
 }))
 
 vi.mock('./config', async (importOriginal) => ({
@@ -41,6 +42,7 @@ const {
 const { TRAIL_GRAPH_KEY, TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_ELEVATION_KEY } =
   await import('./config')
 const { readStoredGraph, writeStoredGraph } = await import('./trailGraphStore')
+const { LAUNCH_ARTIFACT_BUDGET_BYTES } = await import('./artifactBudget')
 
 // Two nodes and the edge between them, carrying exactly what
 // pipeline/build_trail_graph.py writes.
@@ -487,9 +489,102 @@ describe('why there is no graph', () => {
       'not-in-release',
       'unverifiable',
       'not-a-graph',
+      'too-large',
     ] as const) {
       expect(isSettledAbsence(because)).toBe(true)
     }
+  })
+})
+
+describe('a graph the phone cannot hold (#1254)', () => {
+  // 2026-09-07: trail_graph.json published at 78,595,556 bytes decoded, and
+  // parsing it on the main thread was the frozen first page. The manifest
+  // carried that size the whole time; nothing read it before fetching.
+  const TOO_BIG = LAUNCH_ARTIFACT_BUDGET_BYTES + 1
+
+  function quietWarnings() {
+    return vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  }
+
+  function fetched(): string[] {
+    return vi.mocked(fetch).mock.calls.map(([url]) => String(url))
+  }
+
+  beforeEach(() => {
+    vi.mocked(writeStoredGraph).mockClear()
+  })
+
+  it('declines it before fetching a byte, as a settled absence', async () => {
+    const warn = quietWarnings()
+    serve({
+      manifest: {
+        artifacts: {
+          [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH), size_bytes: TOO_BIG },
+        },
+      },
+    })
+
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'too-large',
+    })
+
+    expect(fetched()).toEqual(['https://data.example/latest.json'])
+    expect(writeStoredGraph).not.toHaveBeenCalled()
+    // Only a smaller publish changes it - nothing here offers a retry.
+    expect(isSettledAbsence('too-large')).toBe(true)
+    expect(String(warn.mock.calls[0][0])).toContain(TRAIL_GRAPH_KEY)
+  })
+
+  it('weighs the bytes themselves where the manifest named no size', async () => {
+    quietWarnings()
+    // The size check comes before the hash check, so a body this big is
+    // declined without ever being hashed or parsed - which is the point: the
+    // hash costs a pass over 78 MB and the parse costs the main thread.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (String(url).includes('latest.json')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({ artifacts: { [TRAIL_GRAPH_KEY]: { sha256: 'x' } } }),
+          } as unknown as Response)
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          arrayBuffer: () => Promise.resolve(new ArrayBuffer(TOO_BIG)),
+        } as unknown as Response)
+      }),
+    )
+
+    await expect(loadTrailGraph()).resolves.toEqual({
+      kind: 'absent',
+      because: 'too-large',
+    })
+    expect(writeStoredGraph).not.toHaveBeenCalled()
+  })
+
+  it('weighs the halves the builder fetches later the same way', async () => {
+    quietWarnings()
+    serve({
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_GEOMETRY_KEY]: { sha256: 'x', size_bytes: TOO_BIG } },
+      },
+    })
+    await expect(fetchTrailGraphGeometry(1)).resolves.toBeNull()
+    expect(fetched()).toEqual(['https://data.example/latest.json'])
+
+    serve({
+      manifest: {
+        artifacts: { [TRAIL_GRAPH_ELEVATION_KEY]: { sha256: 'x', size_bytes: TOO_BIG } },
+      },
+    })
+    await expect(fetchTrailGraphElevation(1)).resolves.toBeNull()
+    expect(fetched()).toEqual(['https://data.example/latest.json'])
   })
 })
 

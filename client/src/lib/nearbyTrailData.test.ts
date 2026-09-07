@@ -29,9 +29,10 @@ vi.mock('./config', async (importOriginal) => ({
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   set: vi.fn(),
+  del: vi.fn(),
 }))
 
-const { get, set } = await import('idb-keyval')
+const { del, get, set } = await import('idb-keyval')
 const {
   loadNearbyTrails,
   loadNetworkOverview,
@@ -39,6 +40,7 @@ const {
   NETWORK_OVERVIEW_STORE_KEY,
 } = await import('./nearbyTrailData')
 const { NEARBY_TRAILS_KEY, NETWORK_OVERVIEW_KEY } = await import('./config')
+const { LAUNCH_ARTIFACT_BUDGET_BYTES } = await import('./artifactBudget')
 
 // One OPRHP line, carrying exactly the properties
 // pipeline/export_nearby_trails.py publishes.
@@ -119,8 +121,10 @@ beforeEach(() => {
   // performed.
   vi.mocked(get).mockReset()
   vi.mocked(set).mockReset()
+  vi.mocked(del).mockReset()
   vi.mocked(get).mockResolvedValue(undefined)
   vi.mocked(set).mockResolvedValue(undefined)
+  vi.mocked(del).mockResolvedValue(undefined)
   vi.stubGlobal('URL', {
     ...URL,
     createObjectURL: vi.fn(() => 'blob:nearby'),
@@ -404,5 +408,97 @@ describe('the network overview, through the same mechanism (#1135)', () => {
     serve({ network: 'missing', manifest: { artifacts: {} } })
 
     await expect(loadNetworkOverview(true)).resolves.toBeNull()
+  })
+})
+
+describe('an artifact the phone cannot hold (#1254)', () => {
+  // 2026-09-07: nearby_trails.geojson published at 228,820,578 bytes decoded,
+  // and every phone that fetched it crashed its map. The manifest carried
+  // that size the whole time; nothing read it before fetching.
+  const TOO_BIG = LAUNCH_ARTIFACT_BUDGET_BYTES + 1
+
+  function quietWarnings() {
+    return vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  }
+
+  it('does not fetch what the manifest says is over the budget, and says so once', async () => {
+    const warn = quietWarnings()
+    serve({
+      manifest: {
+        artifacts: {
+          [NEARBY_TRAILS_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
+        },
+      },
+    })
+
+    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+
+    expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
+    expect(set).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toContain(NEARBY_TRAILS_KEY)
+  })
+
+  it('keeps serving the last copy that fit, unrevalidated, so the asking resumes when a smaller one is published', async () => {
+    quietWarnings()
+    await aStoredCopy('the-hash-of-a-copy-that-fit')
+    serve({
+      manifest: {
+        artifacts: {
+          [NEARBY_TRAILS_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
+        },
+      },
+    })
+
+    await expect(loadNearbyTrails(true)).resolves.toEqual({
+      url: 'blob:nearby',
+      hash: 'the-hash-of-a-copy-that-fit',
+      revalidated: false,
+    })
+    expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
+  })
+
+  it('weighs the bytes themselves where the manifest named no size', async () => {
+    // A manifest from before size_bytes existed, or one that is wrong about
+    // it. The body is the backstop: not hashed, not stored, not drawn.
+    const warn = quietWarnings()
+    serve({
+      network: { arrayBuffer: () => Promise.resolve(new ArrayBuffer(TOO_BIG)) },
+      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+    })
+
+    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+
+    expect(set).not.toHaveBeenCalled()
+    expect(String(warn.mock.calls[0][0])).toContain('response')
+  })
+
+  it('forgets a stored copy it cannot hold rather than serving it, signal or no signal', async () => {
+    // Written by a launch before the budget existed: verified, stored, and a
+    // crash waiting for the next launch to hand it to the map.
+    const warn = quietWarnings()
+    vi.mocked(get).mockResolvedValue({
+      bytes: new Blob([new ArrayBuffer(TOO_BIG)]),
+      hash: 'stored-before-the-budget',
+    })
+
+    await expect(loadNearbyTrails(false)).resolves.toBeNull()
+
+    expect(del).toHaveBeenCalledWith(NEARBY_TRAILS_STORE_KEY)
+    expect(String(warn.mock.calls[0][0])).toContain('store')
+  })
+
+  it('weighs the overview through the same door', async () => {
+    quietWarnings()
+    serve({
+      manifest: {
+        artifacts: {
+          [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
+        },
+      },
+    })
+
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
+    expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
   })
 })

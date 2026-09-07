@@ -79,6 +79,7 @@ function publishing(
     lookup,
     hashes: {},
     sizes: {},
+    decodedSizes: {},
     changes: {},
   })
 }

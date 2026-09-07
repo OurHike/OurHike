@@ -295,6 +295,40 @@ def hiking_sheet_levels(hiking_detail_ts: str | None = None) -> list[dict]:
     ]
 
 
+def launch_artifact_budget(artifact_budget_ts: str | None = None) -> int:
+    """How many decoded bytes the client will fetch whole, from its own declaration.
+
+    `client/src/lib/artifactBudget.ts` is where the number lives and why
+    (#1254): the app declines an artifact the manifest says is bigger than
+    this, and the day that guard was written was the day a promotion carried
+    a 228.8 MB `nearby_trails.geojson` and a 78.6 MB `trail_graph.json` to
+    every phone - a crashed map and a frozen first page. Read out of the
+    client's source for the reason `expected_client_keys` reads config.ts: a
+    copy here would be a second home for the contract, and the two drifting
+    apart is the failure this check exists to catch.
+    """
+    source = artifact_budget_ts if artifact_budget_ts is not None else _read("artifactBudget.ts")
+    # Anchored to the end of its line, so an expression (`32 * 1024 * 1024`) is a
+    # restructuring this cannot follow rather than a budget of 32 bytes.
+    found = re.search(r"LAUNCH_ARTIFACT_BUDGET_BYTES\s*=\s*([\d_]+)\s*$", source, re.MULTILINE)
+    if not found:
+        raise ValueError(
+            "could not read LAUNCH_ARTIFACT_BUDGET_BYTES out of client/src/lib/artifactBudget.ts. "
+            "It has been restructured, and this check must be updated rather than left "
+            "weighing nothing."
+        )
+    return int(found.group(1).replace("_", ""))
+
+
+# What is read by byte range rather than fetched whole. Everything else
+# publish.py gzips and the client reads entire - `response.arrayBuffer()` or
+# `.json()` - so check 22's budget applies to every key NOT ending in one of
+# these. The same literal lib/dataManifest.ts keeps as STORED_UNCOMPRESSED,
+# rather than an import from content_types.py, so the two ends of the
+# contract name the same files by the same rule.
+RANGE_READ_SUFFIXES = (".pmtiles", ".fgb")
+
+
 # ---------------------------------------------------------------------------
 # A. Presence and contract
 # ---------------------------------------------------------------------------
@@ -1379,6 +1413,66 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
     return [_report(21, key, OK, f"{len(features)} tombstones, every retired ledger row present and resolving")]
 
 
+def check_launch_budget(manifest: dict, budget: int | None = None) -> list[dict]:
+    """Check 22: no whole-fetched artifact is bigger than the client will load.
+
+    The client fetches every text artifact entire and parses it - the junction
+    graph on the main thread - and on 2026-09-07 a promotion whose gate 6 was
+    green carried a 78,595,556-byte `trail_graph.json` and a 228,820,578-byte
+    `nearby_trails.geojson` to production: the first froze the main thread
+    for ten seconds, the second crashed the renderer (#1254). Check 15 had
+    looked straight at the cause - #1231's nationwide USFS features - and
+    documented it as an exception, and nothing weighed the result.
+
+    The client now declines an artifact over `LAUNCH_ARTIFACT_BUDGET_BYTES`
+    (client/src/lib/artifactBudget.ts), so a phone survives; this check is
+    what stops such a release being promoted at all, against the same number,
+    read from the same file. One OK row for the whole family rather than one
+    per artifact, because a hundred identical passes are where the one
+    failure hides; a failure or a skip names its artifact.
+
+    A text artifact with no `size_bytes` is a SKIP, never a pass: it is exactly
+    the artifact the client cannot weigh before fetching either.
+    """
+    budget = launch_artifact_budget() if budget is None else budget
+    reports = []
+    weighed: list[tuple[int, str]] = []
+    for key, entry in sorted(manifest["artifacts"].items()):
+        if key.endswith(RANGE_READ_SUFFIXES):
+            continue
+        size = entry.get("size_bytes")
+        if not isinstance(size, int) or isinstance(size, bool):
+            reports.append(
+                _report(
+                    22,
+                    key,
+                    SKIPPED,
+                    "no size_bytes published, so neither this check nor the client can weigh it before it is fetched whole",
+                )
+            )
+            continue
+        if size > budget:
+            reports.append(
+                _report(
+                    22,
+                    key,
+                    FAILED,
+                    f"{size:,} bytes decoded is over the {budget:,}-byte launch budget the client enforces "
+                    f"(client/src/lib/artifactBudget.ts, #1254): a phone declines it, and before the budget "
+                    f"existed a phone fetching it whole froze or crashed",
+                )
+            )
+            continue
+        weighed.append((size, key))
+    if weighed:
+        largest, largest_key = max(weighed)
+        detail = f"{len(weighed)} within the {budget:,}-byte launch budget; largest {largest:,} bytes ({largest_key})"
+    else:
+        detail = "no artifact in this release is fetched whole, so there is nothing to weigh"
+    reports.append(_report(22, "whole-fetched artifacts", OK, detail))
+    return reports
+
+
 def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict]:
     session = session or requests.Session()
     manifest = fetch_manifest(base, session)
@@ -1395,13 +1489,16 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports
             + [
                 _report(check, "latest.json", SKIPPED, "the manifest could not be read, so no release could be resolved")
-                for check in (3, 17, 19, 20, 21)
+                for check in (3, 17, 19, 20, 21, 22)
             ]
             + skipped_checks()
         )
 
     artifacts = manifest["artifacts"]
     reports += check_client_keys(manifest)
+    # Before anything is fetched: the one check that can fail a release on
+    # the manifest alone, and the cheapest question in the battery.
+    reports += check_launch_budget(manifest)
 
     for key in sorted(artifacts):
         # size_bytes only for the identity-uploaded binaries - see

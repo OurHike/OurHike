@@ -33,6 +33,7 @@ function snapshot(overrides: Partial<PublishedSnapshot> = {}): PublishedSnapshot
     lookup: () => null,
     hashes: {},
     sizes: {},
+    decodedSizes: {},
     changes: {},
     ...overrides,
   }

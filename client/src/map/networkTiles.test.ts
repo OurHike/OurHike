@@ -47,8 +47,11 @@ const {
   NETWORK_TILES_URL,
   registerNetworkProtocol,
   resetNetworkTilesForTests,
+  setNetworkCells,
 } = await import('./networkTiles')
 const { NEARBY_TRAILS_TILES_KEY } = await import('../lib/config')
+const { cellPackageKey, NETWORK_CELLS, parseCellIndex } =
+  await import('../lib/coverageCells')
 
 const ARCHIVE_URL = `https://data.example/${NEARBY_TRAILS_TILES_KEY}`
 const A_TILE = `${NETWORK_SCHEME}://12/1198/1540`
@@ -239,5 +242,152 @@ describe('failure, and what is never memoised', () => {
 
     expect(publishedSnapshot).toHaveBeenCalledTimes(2)
     expect(getZxy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('reading from the network cells a phone holds (#1257 stage 2)', () => {
+  // Two cells of the nearby_trails family over Harriman, as cut_cells.py
+  // would index them with --context-zoom 8: no context, z9 in the cells. The
+  // tile under test - z12 x 1200 y 1531, 74.53-74.44° W, 41.24-41.31° N -
+  // sits half a degree clear of every seam, inside n41w075 alone.
+  const INDEX = parseCellIndex({
+    cell_degrees: 1,
+    seam_margin_km: 3,
+    context_zoom: 8,
+    context: null,
+    cells: [
+      {
+        name: 'n41w075',
+        key: 'nearby_trails_cell_n41w075.pmtiles',
+        bounds: [-75, 41, -74, 42],
+      },
+      {
+        name: 'n41w074',
+        key: 'nearby_trails_cell_n41w074.pmtiles',
+        bounds: [-74, 41, -73, 42],
+      },
+    ],
+  })!
+  const HARRIMAN = cellPackageKey('n41w075', NETWORK_CELLS)
+  const IN_HARRIMAN = `${NETWORK_SCHEME}://12/1200/1531`
+
+  /** The archives every reader constructed so far was pointed at: a package
+   *  key for a cell, the bucket URL for the published archive. */
+  const askedArchives = () =>
+    constructed.map((source) =>
+      typeof source === 'string' ? source : (source as { getKey(): string }).getKey(),
+    )
+
+  /** Answers per archive: each held cell holds one recognisable tile, the
+   *  bucket another. */
+  function answersByArchive(tiles: Record<string, number[]>) {
+    getZxy.mockImplementation(function (this: { source: unknown }) {
+      const source = this.source
+      const key =
+        typeof source === 'string' ? source : (source as { getKey(): string }).getKey()
+      const bytes = tiles[key]
+      return Promise.resolve(
+        bytes === undefined ? undefined : { data: new Uint8Array(bytes).buffer },
+      )
+    })
+  }
+
+  it('serves a tile from the held cell it sits in, before the manifest or the bucket', async () => {
+    setNetworkCells(INDEX, new Set([HARRIMAN]))
+    answersByArchive({ [HARRIMAN]: [3, 4] })
+
+    const tile = await request(IN_HARRIMAN)
+
+    expect([...tile.data]).toEqual([3, 4])
+    expect(askedArchives()).toEqual([HARRIMAN])
+    expect(publishedSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('answers from a held cell with no bucket and no manifest at all - the trailhead', async () => {
+    config.configured = false
+    publishedSnapshot.mockRejectedValue(new Error('offline'))
+    setNetworkCells(INDEX, new Set([HARRIMAN]))
+    answersByArchive({ [HARRIMAN]: [1] })
+
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([1])
+  })
+
+  it('never asks a cell the phone does not hold', async () => {
+    // Not "tried and found absent" - not tried, so a hiker with one stretch
+    // does not pay five hundred failed reads per tile.
+    setNetworkCells(INDEX, new Set([cellPackageKey('n41w074', NETWORK_CELLS)]))
+    answersByArchive({ [ARCHIVE_URL]: [7] })
+
+    const tile = await request(IN_HARRIMAN)
+
+    expect([...tile.data]).toEqual([7])
+    expect(askedArchives()).toEqual([ARCHIVE_URL])
+  })
+
+  it('falls through to the bucket when the held cell has no such tile', async () => {
+    // A held cell answering undefined is ground with no trail on it - the
+    // same miss the bucket would report, asked anyway on basemap.ts's terms.
+    setNetworkCells(INDEX, new Set([HARRIMAN]))
+    answersByArchive({ [ARCHIVE_URL]: [9] })
+
+    const tile = await request(IN_HARRIMAN)
+
+    expect([...tile.data]).toEqual([9])
+    expect(askedArchives()).toEqual([HARRIMAN, ARCHIVE_URL])
+  })
+
+  it('serves from a cell the moment the shell says it landed', async () => {
+    setNetworkCells(INDEX, new Set())
+    answersByArchive({ [HARRIMAN]: [1], [ARCHIVE_URL]: [0] })
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([0])
+
+    setNetworkCells(INDEX, new Set([HARRIMAN]))
+
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([1])
+  })
+
+  it('stops reading a cell the shell no longer lists', async () => {
+    setNetworkCells(INDEX, new Set([HARRIMAN]))
+    answersByArchive({ [HARRIMAN]: [1], [ARCHIVE_URL]: [2] })
+    await request(IN_HARRIMAN)
+
+    setNetworkCells(INDEX, new Set())
+
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([2])
+  })
+
+  it('does not memoise a cell read that failed', async () => {
+    // pmtilesSource.ts's rule once more: a rejected header promise cached in
+    // a reader would keep a resumed cell dark for the session.
+    setNetworkCells(INDEX, new Set([HARRIMAN]))
+    getZxy.mockImplementation(function (this: { source: unknown }) {
+      return typeof this.source === 'string'
+        ? Promise.resolve({ data: new Uint8Array([0]).buffer })
+        : Promise.reject(new Error('not downloaded'))
+    })
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([0])
+
+    answersByArchive({ [HARRIMAN]: [6] })
+
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([6])
+    expect(askedArchives().filter((key) => key === HARRIMAN)).toHaveLength(2)
+  })
+
+  it('reads a context archive at and under its zoom, if a cut ever publishes one', async () => {
+    const WITH_CONTEXT = parseCellIndex({
+      cell_degrees: 1,
+      seam_margin_km: 3,
+      context_zoom: 9,
+      context: 'nearby_trails_context.pmtiles',
+      cells: [],
+    })!
+    setNetworkCells(WITH_CONTEXT, new Set([NETWORK_CELLS.contextPackageKey]))
+    answersByArchive({ [NETWORK_CELLS.contextPackageKey]: [5], [ARCHIVE_URL]: [8] })
+
+    expect([...(await request(`${NETWORK_SCHEME}://9/150/191`)).data]).toEqual([5])
+    expect([...(await request(IN_HARRIMAN)).data]).toEqual([8])
+    expect(
+      askedArchives().filter((key) => key === NETWORK_CELLS.contextPackageKey),
+    ).toHaveLength(1)
   })
 })

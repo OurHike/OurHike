@@ -168,6 +168,21 @@ OFFLINE_SHEET_ARCHIVES = {
 # prematurely deleted one costs a rollback.
 CELL_FAMILIES = ("at_basemap", "dem")
 
+# The third family, and the one that is not a sheet (#1257 stage 2): the
+# other organizations' trail lines as vector tiles, cut into the same 1-degree
+# cells so a stretch download carries the network above the seam as well as
+# the ground under it. NOT in CELL_FAMILIES, deliberately, because that loop
+# in collect_artifacts() is ungated and these cells are the same stewards'
+# geometry as nearby_trails.geojson: they are collected inside that artifact's
+# own `reaches_hikers` branch, so a steward held back holds back their lines,
+# their sketch, their tiles and their cells as one decision. A family added
+# to the loop instead would route licensed geometry around its own gate.
+NEARBY_TRAILS_CELL_FAMILY = "nearby_trails"
+
+# Every family cut_cells.py can be asked for, gated or not - what
+# tests/test_r2_keys.py enumerates and verify_release.py's check 20 walks.
+ALL_CELL_FAMILIES = (*CELL_FAMILIES, NEARBY_TRAILS_CELL_FAMILY)
+
 
 # Build metadata that travels with a release but is not part of it.
 #
@@ -619,6 +634,13 @@ def collect_artifacts() -> dict[str, dict]:
                     "path": manifest["tiles"]["path"],
                     "sha256": manifest["tiles"]["sha256"],
                 }
+            # Those tiles cut into 1-degree coverage cells (#1257 stage 2,
+            # cut_cells.py), inside this branch for the reason the tiles are:
+            # the same stewards' geometry, one decision. Collected from the
+            # cutter's own manifest exactly as the sheets' cells are below;
+            # absent when the workflow's cut step did not run, which the
+            # client reads as "no network cells to download".
+            _collect_cells(NEARBY_TRAILS_CELL_FAMILY, artifacts)
 
     # The POIs those same organizations publish (#1097, export_nearby_poi.py) -
     # DEC's lean-tos, campsites and privies, OPRHP's vistas, parking and
@@ -858,11 +880,7 @@ def collect_artifacts() -> dict[str, dict]:
     # different workflows on different runners - whichever ran publishes what
     # it has, the same partial-checkout posture as everything above.
     for family in CELL_FAMILIES:
-        cells_manifest = PROCESSED_DIR / f"{family}_cells_manifest.json"
-        if cells_manifest.exists():
-            manifest = json.loads(cells_manifest.read_text())
-            for name, entry in manifest["artifacts"].items():
-                artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+        _collect_cells(family, artifacts)
 
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
@@ -879,6 +897,18 @@ def collect_artifacts() -> dict[str, dict]:
         entry["size_bytes"] = Path(entry["path"]).stat().st_size
 
     return artifacts
+
+
+def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
+    """Add one cell family's context, per-cell archives and coverage index
+    to `artifacts`, from the manifest cut_cells.py wrote for it - or nothing,
+    when that family's cut did not run in this checkout."""
+    cells_manifest = PROCESSED_DIR / f"{family}_cells_manifest.json"
+    if not cells_manifest.exists():
+        return
+    manifest = json.loads(cells_manifest.read_text())
+    for name, entry in manifest["artifacts"].items():
+        artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
 
 
 def _verify_hashes(entries: dict[str, dict]) -> None:

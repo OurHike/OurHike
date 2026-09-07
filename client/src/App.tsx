@@ -72,7 +72,7 @@ import {
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
-import { DATA_CONFIGURED, dataUrl } from './lib/config'
+import { DATA_CONFIGURED } from './lib/config'
 import {
   forgetPreferencesSync,
   loadPreferences,
@@ -113,15 +113,19 @@ import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useArchiveFootprint, useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom, coverageAt, type Footprint } from './lib/archiveCoverage'
 import {
+  BASEMAP_CELLS,
+  cellDownloadRequests,
   cellPackageKey,
   cellsAlong,
   CONTEXT_PACKAGE_KEY,
-  priceStretch,
+  NETWORK_CELLS,
+  priceStretches,
   seamEdges,
   STRETCH_MARGIN_KM,
   useCellIndex,
 } from './lib/coverageCells'
 import { setBasemapCells } from './map/basemap'
+import { setNetworkCells } from './map/networkTiles'
 import type { StretchOffer } from './screens/StretchCard'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
 import {
@@ -1311,6 +1315,13 @@ function App() {
   // signal. Null on a phone that has never seen one, which is every phone on
   // a release without cells - the sheet stays one tap and nothing changes.
   const cellIndex = useCellIndex()
+  // The other organizations' network as cells of the same grid (#1257 stage
+  // 2, lib/coverageCells.ts's NETWORK_CELLS): what a stretch download carries
+  // above the seam, beside the ground the basemap cells carry under it. Null
+  // on a release without them - an export before the cut existed, or a
+  // steward's lines held back - and then the stretch is the basemap alone,
+  // exactly as before.
+  const networkCellIndex = useCellIndex(NETWORK_CELLS)
   const downloadRequests = useMemo(
     () => [
       ...catalogSheets
@@ -1320,30 +1331,15 @@ function App() {
           url: packageDownloadUrl(pkg, detailLevel, hikingLevel),
           artifactKey: packageArtifactKey(pkg, detailLevel, hikingLevel),
         })),
-      // Every cell and the shared context, registered the moment the index
-      // is known, so their markers are read on mount like every sheet's - a
-      // stretch on the phone is a stretch the map draws from before any
-      // window opens. Registering starts nothing (useArchiveDownloads).
-      ...(cellIndex === null
-        ? []
-        : [
-            ...cellIndex.cells.map((cell) => ({
-              packageKey: cellPackageKey(cell.name),
-              url: dataUrl(cell.key),
-              artifactKey: cell.key,
-            })),
-            ...(cellIndex.context === null
-              ? []
-              : [
-                  {
-                    packageKey: CONTEXT_PACKAGE_KEY,
-                    url: dataUrl(cellIndex.context),
-                    artifactKey: cellIndex.context,
-                  },
-                ]),
-          ]),
+      // Every cell of both families and each shared context, registered the
+      // moment an index is known, so their markers are read on mount like
+      // every sheet's - a stretch on the phone is a stretch the map draws
+      // from before any window opens. Registering starts nothing
+      // (useArchiveDownloads).
+      ...cellDownloadRequests(cellIndex, BASEMAP_CELLS),
+      ...cellDownloadRequests(networkCellIndex, NETWORK_CELLS),
     ],
-    [catalogSheets, detailLevel, hikingLevel, cellIndex],
+    [catalogSheets, detailLevel, hikingLevel, cellIndex, networkCellIndex],
   )
   const {
     statusFor: archiveStatusFor,
@@ -1509,6 +1505,36 @@ function App() {
     setBasemapCells(cellIndex, heldPackageKeys)
   }, [cellIndex, heldPackageKeys])
 
+  // The network's cells, the same way (#1257 stage 2): which are held is the
+  // markers' answer under NETWORK_CELLS' own keys, and map/networkTiles.ts is
+  // told so it can answer a tile from the stretch before it asks the bucket.
+  // Kept apart from the basemap's sets rather than merged: the two families
+  // share cell names and differ in what they cover, so one set would let a
+  // held basemap cell read as held network and draw nothing there.
+  const heldNetworkCells = useMemo(
+    () =>
+      networkCellIndex === null
+        ? []
+        : networkCellIndex.cells.filter(
+            (cell) =>
+              archiveStatusFor(cellPackageKey(cell.name, NETWORK_CELLS)).state ===
+              'downloaded',
+          ),
+    [networkCellIndex, archiveStatusFor],
+  )
+  const networkContextHeld =
+    archiveStatusFor(NETWORK_CELLS.contextPackageKey).state === 'downloaded'
+  const heldNetworkPackageKeys = useMemo(() => {
+    const keys = new Set(
+      heldNetworkCells.map((cell) => cellPackageKey(cell.name, NETWORK_CELLS)),
+    )
+    if (networkContextHeld) keys.add(NETWORK_CELLS.contextPackageKey)
+    return keys
+  }, [heldNetworkCells, networkContextHeld])
+  useEffect(() => {
+    setNetworkCells(networkCellIndex, heldNetworkPackageKeys)
+  }, [networkCellIndex, heldNetworkPackageKeys])
+
   // Where the download ends, for the canvas: the outer edge of what is held,
   // which is nothing at all on a phone holding no cells (lib/coverageCells.ts).
   const coverageSeams = useMemo(
@@ -1531,15 +1557,37 @@ function App() {
     )
   }, [hike, trailIndex, cellIndex])
 
-  /** The stretch's packages: its cells, and the context they are legible
-   *  through - fetched with the first piece, never offered as a decision
-   *  (features/OFFLINE_COVERAGE.md §6). */
+  /**
+   * The network's cells under the same hike (#1257 stage 2), from ITS index -
+   * a different set from the basemap's over the same walk, because the
+   * network's cells exist only where some organization's trail does and the
+   * basemap's only along the corridor. Empty, not null, on a release without
+   * them: the stretch is still a stretch.
+   */
+  const stretchNetworkCells = useMemo(() => {
+    if (hike === null || trailIndex === null || networkCellIndex === null) return []
+    return cellsAlong(
+      networkCellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, networkCellIndex])
+
+  /** The stretch's packages: its cells of both families, and each context
+   *  they are legible through - fetched with the first piece, never offered
+   *  as a decision (features/OFFLINE_COVERAGE.md §6). One list, because a
+   *  hiker taking "the stretch I am walking" is taking the ground and every
+   *  trail on it as one decision (features/NEARBY_TRAILS.md §9). */
   const stretchPackageKeys = useMemo(() => {
     if (stretchCells === null || cellIndex === null) return []
     const keys = stretchCells.map((cell) => cellPackageKey(cell.name))
     if (cellIndex.context !== null) keys.push(CONTEXT_PACKAGE_KEY)
+    keys.push(
+      ...stretchNetworkCells.map((cell) => cellPackageKey(cell.name, NETWORK_CELLS)),
+    )
+    if (networkCellIndex?.context != null) keys.push(NETWORK_CELLS.contextPackageKey)
     return keys
-  }, [stretchCells, cellIndex])
+  }, [stretchCells, cellIndex, stretchNetworkCells, networkCellIndex])
 
   /** One state for the stretch, out of however many pieces it is - the same
    *  join the sheets use, so "3 of 21 MB" means the same thing on both. */
@@ -1579,12 +1627,44 @@ function App() {
    *  stretch's own. */
   const handleRemoveStretch = useCallback(async () => {
     if (stretchCells === null) return
-    const cells = stretchCells.map((cell) => cellPackageKey(cell.name))
-    const others = heldCells.filter((cell) => !cells.includes(cellPackageKey(cell.name)))
-    const keys = others.length === 0 ? [...cells, CONTEXT_PACKAGE_KEY] : cells
+    const keys: string[] = []
+    // Both families, each judged against its own held set (the two share
+    // cell names, so a basemap cell still needed is no reason to keep the
+    // network's context, and the other way round).
+    for (const part of [
+      {
+        cells: stretchCells,
+        held: heldCells,
+        context: cellIndex?.context ?? null,
+        family: BASEMAP_CELLS,
+      },
+      {
+        cells: stretchNetworkCells,
+        held: heldNetworkCells,
+        context: networkCellIndex?.context ?? null,
+        family: NETWORK_CELLS,
+      },
+    ]) {
+      const own = part.cells.map((cell) => cellPackageKey(cell.name, part.family))
+      const others = part.held.filter(
+        (cell) => !own.includes(cellPackageKey(cell.name, part.family)),
+      )
+      keys.push(...own)
+      if (others.length === 0 && part.context !== null)
+        keys.push(part.family.contextPackageKey)
+    }
     await Promise.all(keys.map((key) => removePackage(key)))
     refreshAvailableBytes()
-  }, [stretchCells, heldCells, removePackage, refreshAvailableBytes])
+  }, [
+    stretchCells,
+    heldCells,
+    cellIndex,
+    stretchNetworkCells,
+    heldNetworkCells,
+    networkCellIndex,
+    removePackage,
+    refreshAvailableBytes,
+  ])
 
   // What is arriving right now, across every sheet, for the link that says so
   // (lib/downloadActivity.ts). Decided here rather than on either screen for
@@ -5594,16 +5674,29 @@ function App() {
    * card can say why there is nothing to take - no hike set, no index yet, the
    * whole trail already here - rather than vanishing.
    */
-  const stretchPrice = priceStretch(
-    stretchCells ?? [],
-    cellIndex?.context ?? null,
-    (key) => heldPackageKeys.has(key),
+  // Both families as one price (#1257 stage 2): a piece is a square of
+  // ground whatever is published for it, and the bytes are every missing
+  // archive of either family. Each family is held against its own key set.
+  const stretchPrice = priceStretches(
+    [
+      {
+        cells: stretchCells ?? [],
+        context: cellIndex?.context ?? null,
+        family: BASEMAP_CELLS,
+      },
+      {
+        cells: stretchNetworkCells,
+        context: networkCellIndex?.context ?? null,
+        family: NETWORK_CELLS,
+      },
+    ],
+    (key) => heldPackageKeys.has(key) || heldNetworkPackageKeys.has(key),
     publishedSizes,
   )
   const stretchOffer: StretchOffer = {
     hike: hike === null ? null : hikeSummary(hike),
     available: cellIndex !== null && trailIndex !== null,
-    pieces: stretchCells?.length ?? 0,
+    pieces: stretchPrice.pieces,
     missing: stretchPrice.missing,
     bytes: stretchPrice.bytes,
     marginKm: cellIndex?.seamMarginKm ?? STRETCH_MARGIN_KM,

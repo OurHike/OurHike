@@ -68,7 +68,7 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         # key rules have to admit every corner of the grid, not just the A.T.
         *[
             name
-            for family in publish.CELL_FAMILIES
+            for family in publish.ALL_CELL_FAMILIES
             for name in (
                 f"{family}_cells.json",
                 f"{family}_context.pmtiles",

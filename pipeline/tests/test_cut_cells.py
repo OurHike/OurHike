@@ -18,6 +18,7 @@ than the margin and every assertion about seams goes mushy.
 """
 
 import json
+import random
 
 import pytest
 from pmtiles.reader import MmapSource, all_tiles
@@ -74,12 +75,12 @@ def read_all(path):
         return {zxy: data for zxy, data in all_tiles(MmapSource(f))}
 
 
-def _cut(tmp_path, tiles, bounds=SOURCE_BOUNDS, **kwargs):
+def _cut(tmp_path, tiles, bounds=SOURCE_BOUNDS, family="at_basemap", **kwargs):
     source = _build_source(tmp_path / "source.pmtiles", tiles, bounds)
     out_dir = tmp_path / "out"
     manifest = cut_cells.cut_cells(
         source,
-        "at_basemap",
+        family,
         out_dir=out_dir,
         margin_km=kwargs.pop("margin_km", 3.0),
         **kwargs,
@@ -275,3 +276,78 @@ def test_the_manifest_reports_what_the_margin_cost(tmp_path):
     assert stats["cell_tile_placements"] == 4
     assert stats["seam_duplication_pct"] == pytest.approx(33.33, abs=0.01)
     assert stats["cells"] == 2
+
+
+# --------------------------------------------- a family that is not a sheet (#1257)
+
+
+@pytest.mark.parametrize("family", ["at_basemap", "dem", "nearby_trails"])
+def test_every_artifact_is_named_for_its_family(tmp_path, family):
+    """publish.py collects a family's cut by these names and nothing else, so
+    the family string has to reach every file the cut writes. Every fixture
+    above says at_basemap, which is exactly how a leaked literal would have
+    passed this suite."""
+    out_dir, manifest = _cut(tmp_path, _both_cells_tiles(), family=family, margin_km=0.0)
+
+    assert set(manifest["artifacts"]) == {
+        f"{family}_cells.json",
+        f"{family}_cell_n40w075.pmtiles",
+        f"{family}_cell_n40w074.pmtiles",
+    }
+    index = json.loads((out_dir / f"{family}_cells.json").read_text())
+    assert [c["key"] for c in index["cells"]] == [
+        f"{family}_cell_n40w075.pmtiles",
+        f"{family}_cell_n40w074.pmtiles",
+    ]
+    assert (out_dir / f"{family}_cells_manifest.json").exists()
+
+
+def test_a_context_zoom_under_the_archive_leaves_no_context_and_cuts_every_zoom_into_cells(tmp_path):
+    """The network family's cut (#1257 stage 2): publish-vector-data.yml
+    passes --context-zoom 8 against z9-z14 tiles, so nothing is a context
+    tile and the coarsest zoom rides in the cells with the rest - a stretch
+    then costs nothing shared. Modelled with the real archive's minimum
+    zoom: the z9 tile over lon -74.5 spans -74.53 to -73.83 and so crosses
+    the seam into both cells, margin or no margin."""
+    coarse = _tile_at(-74.5, 40.5, z=9)
+    fine = _tile_at(-74.5, 40.5)
+    out_dir, manifest = _cut(tmp_path, [coarse, fine], family="nearby_trails", context_zoom=8, margin_km=0.0)
+
+    index = json.loads((out_dir / "nearby_trails_cells.json").read_text())
+    assert index["context"] is None
+    assert index["context_zoom"] == 8
+    assert manifest["stats"]["context_tiles"] == 0
+    assert not any(name.endswith("_context.pmtiles") for name in manifest["artifacts"])
+    assert set(read_all(out_dir / "nearby_trails_cell_n40w075.pmtiles")) == {coarse, fine}
+    assert set(read_all(out_dir / "nearby_trails_cell_n40w074.pmtiles")) == {coarse}
+
+
+def test_graticule_routing_is_the_rectangle_scan_exactly():
+    """GraticuleLookup exists because a nationwide archive proposes a
+    thousand candidates and 173,209 tiles (measured 2026-09-07), and scanning
+    is a quarter of a billion tests. It may be faster; it may not be
+    different. Held to cells_for_tile on rectangles of every size at every
+    margin the cutter is run with, edges included - a rectangle touching a
+    square from outside is a hit in neither."""
+    cells = graticule_cells((-76.0, 39.0, -72.0, 42.0))
+    lookup = cut_cells.GraticuleLookup(cells)
+    rng = random.Random(1257)
+    for _ in range(500):
+        west, south = rng.uniform(-77.0, -71.0), rng.uniform(38.0, 43.0)
+        tile = (west, south, west + rng.uniform(0.001, 1.5), south + rng.uniform(0.001, 1.5))
+        margin = rng.choice([0.0, 3.0, 25.0])
+        assert lookup.hits(tile, margin) == cut_cells.cells_for_tile(tile, cells, margin), (tile, margin)
+
+    on_the_east_edge = (-72.0, 39.5, -71.5, 39.6)
+    assert lookup.hits(on_the_east_edge, 0.0) == cut_cells.cells_for_tile(on_the_east_edge, cells, 0.0) == []
+    on_the_west_edge = (-76.5, 39.5, -76.0, 39.6)
+    assert lookup.hits(on_the_west_edge, 0.0) == cut_cells.cells_for_tile(on_the_west_edge, cells, 0.0) == []
+
+
+def test_graticule_routing_refuses_a_grid_it_cannot_represent():
+    """A caller with ragged or bbox-anchored cells gets an error, never a
+    quietly wrong route - the scan is the answer for those."""
+    with pytest.raises(ValueError):
+        cut_cells.GraticuleLookup([(-74.6, 40.2, -73.6, 41.2)])
+    with pytest.raises(ValueError):
+        cut_cells.GraticuleLookup([(-75.0, 40.0, -74.5, 41.0)])

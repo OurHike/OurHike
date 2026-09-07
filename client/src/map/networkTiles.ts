@@ -33,6 +33,9 @@
 //
 // THE ORDER OF ANSWERS
 //
+//   a held cell holds the tile -> its bytes, before a byte of anybody's data
+//                                 plan is spent and with no signal at all -
+//                                 the stretch the hiker took (stage 2, below).
 //   build has no bucket        -> empty tile. Nothing to ask.
 //   manifest names no archive  -> empty tile, and the bucket is never asked
 //                                 for a byte. A release exported before
@@ -68,18 +71,39 @@
 // always stood on: a hiker reads a nearby trail from a tile on the same terms
 // they read the hills under it.
 //
-// NOTHING IS STORED. A tile lives in the browser's HTTP cache and nowhere
-// else, so with no signal the map above the seam draws no nearby trails - the
-// state before #1082 cached the whole file, and the state #1254's budget
-// already left every phone in from 2026-09-07. lib/nearbyTrailData.ts
-// deletes the copy earlier releases stored, and the Downloads window no
-// longer lists a row for it, because a row would claim coverage this build
-// does not have. The corridor-view sketch below the seam is stored as before.
+// WHAT IS STORED IS THE STRETCH (#1257 stage 2). A tile read from the bucket
+// lives in the browser's HTTP cache and nowhere else. What a phone keeps is
+// the 1° cells of these tiles under the hike it said it is on - cut by
+// pipeline/cut_cells.py as the `nearby_trails` family, indexed by
+// lib/config.ts's NEARBY_TRAILS_CELLS_KEY, taken with the basemap's cells by
+// the one "take this stretch" tap (screens/StretchCard.tsx) and held as
+// ordinary packages in IndexedDB. Which cells are held is the shell's
+// knowledge, handed to this handler through `setNetworkCells` exactly as
+// basemap.ts is told through `setBasemapCells`, and read on every tile: a
+// cell that lands mid-session answers the next tile. Off the stretch and
+// with no signal the map above the seam draws no nearby trails - the state
+// before #1082 cached the whole file - and lib/nearbyTrailData.ts deletes the
+// whole-file copy earlier releases stored. The corridor-view sketch below
+// the seam is stored as before, whole.
+//
+// No context archive to fall through to, today: the network's index publishes
+// `context: null` because the cut is made one below the tiles' minimum zoom
+// (cut_cells.py's docstring has the 9.65 MB measurement), so z9 rides in the
+// cells. The code below still honours a context if one is ever published,
+// on basemap.ts's terms, so the pipeline can change its mind without a
+// client release.
 
 import { addProtocol } from 'maplibre-gl'
 import { PMTiles } from 'pmtiles'
 import { DATA_CONFIGURED, dataUrl, NEARBY_TRAILS_TILES_KEY } from '../lib/config'
+import {
+  cellPackageKey,
+  cellsForTile,
+  NETWORK_CELLS,
+  type CellIndex,
+} from '../lib/coverageCells'
 import { publishedSnapshot } from '../lib/dataManifest'
+import { IndexedDbArchiveSource } from './pmtilesSource'
 
 export const NETWORK_SCHEME = 'network'
 export const NETWORK_TILES_URL = `${NETWORK_SCHEME}://{z}/{x}/{y}`
@@ -127,6 +151,93 @@ function archivePublished(): Promise<boolean> {
   return attempt
 }
 
+/** The cells the shell says this phone holds, by package key, and the index
+ *  they are in (#1257 stage 2). Null until the shell has an index to hand
+ *  over, which reads as "no cells" - the bucket is then the whole answer,
+ *  exactly as before cells existed. */
+let cells: { index: CellIndex; held: ReadonlySet<string> } | null = null
+
+/** One reader per held cell (and the context, if one is ever published), by
+ *  package key - created on first use and dropped on failure, on the
+ *  published archive's own rule above. */
+const readers = new Map<string, PMTiles>()
+
+/**
+ * What the shell knows about the network's cells, for the handler that cannot
+ * ask - basemap.ts's `setBasemapCells`, for this family.
+ *
+ * `held` is package keys (lib/coverageCells.ts's `cellPackageKey` under
+ * NETWORK_CELLS, plus its context key), and it is read on every tile rather
+ * than copied into anything: a cell that finishes downloading mid-session is
+ * answered from on the next tile the map asks for. A reader for a cell no
+ * longer in the set is dropped - it would answer from bytes the hiker has
+ * removed, or from a directory cached before a re-download replaced them.
+ */
+export function setNetworkCells(
+  index: CellIndex | null,
+  held: ReadonlySet<string>,
+): void {
+  cells = index === null ? null : { index, held }
+  for (const key of [...readers.keys()]) {
+    if (!held.has(key)) readers.delete(key)
+  }
+}
+
+function reader(packageKey: string): PMTiles {
+  let existing = readers.get(packageKey)
+  if (existing === undefined) {
+    existing = new PMTiles(new IndexedDbArchiveSource(packageKey))
+    readers.set(packageKey, existing)
+  }
+  return existing
+}
+
+/** Which held archives may hold this tile, in the order they are asked - the
+ *  cutter's own routing (`cellsForTile`), so a tile it wrote into a cell is
+ *  looked for there, and near a seam more than one may hold it. */
+function localCandidates(z: number, x: number, y: number): string[] {
+  if (cells === null) return []
+  const { index, held } = cells
+  const keys: string[] = []
+  for (const cell of cellsForTile(index.cells, z, x, y, index.seamMarginKm)) {
+    const key = cellPackageKey(cell.name, NETWORK_CELLS)
+    if (held.has(key)) keys.push(key)
+  }
+  if (
+    index.context !== null &&
+    z <= index.contextZoom &&
+    held.has(NETWORK_CELLS.contextPackageKey)
+  ) {
+    keys.push(NETWORK_CELLS.contextPackageKey)
+  }
+  return keys
+}
+
+/**
+ * A tile out of one held archive, or undefined for a miss.
+ *
+ * An unreadable archive is a miss too, and the reader is dropped so the next
+ * tile asks afresh - pmtiles never evicts a rejected header promise, so
+ * keeping the instance would keep answering from a stale failure after a
+ * resume lands.
+ */
+async function readHeld(
+  packageKey: string,
+  z: number,
+  x: number,
+  y: number,
+  signal: AbortSignal,
+): Promise<ArrayBuffer | undefined> {
+  try {
+    const tile = await reader(packageKey).getZxy(z, x, y, signal)
+    return tile?.data
+  } catch (error) {
+    if (isAbort(error)) throw error
+    readers.delete(packageKey)
+    return undefined
+  }
+}
+
 /** Abort is the map cancelling a tile it no longer wants - a normal event
  *  that must propagate as itself, never be misread as a failed archive.
  *  Matched on the name rather than instanceof: an abort arrives as a
@@ -156,10 +267,19 @@ export async function loadNetworkTile(
 ): Promise<{ data: Uint8Array }> {
   const match = url.match(TILE_URL)
   if (match === null) throw new Error(`Not a ${NETWORK_SCHEME}:// tile URL: ${url}`)
+  const [z, x, y] = [Number(match[1]), Number(match[2]), Number(match[3])]
+
+  // The stretch first (#1257 stage 2): every held cell that could hold this
+  // tile, before the manifest is read or a byte of a data plan is spent - and
+  // the only answer there is with no signal.
+  for (const key of localCandidates(z, x, y)) {
+    const held = await readHeld(key, z, x, y, signal)
+    if (held !== undefined) return { data: new Uint8Array(held) }
+  }
+
   if (!DATA_CONFIGURED) return emptyTile()
   if (!(await archivePublished())) return emptyTile()
 
-  const [z, x, y] = [Number(match[1]), Number(match[2]), Number(match[3])]
   try {
     const tile = await publishedArchive().getZxy(z, x, y, signal)
     // undefined is pmtiles' word for "this archive never held that tile" -
@@ -189,11 +309,13 @@ export function registerNetworkProtocol(): void {
   registered = true
 }
 
-/** Test seam only - drops the registration guard and both memos so a test can
- *  observe a fresh registration and a fresh manifest read. Production never
- *  needs it. */
+/** Test seam only - drops the registration guard, both memos and the cells so
+ *  a test can observe a fresh registration and a fresh manifest read.
+ *  Production never needs it. */
 export function resetNetworkTilesForTests(): void {
   registered = false
   archive = null
   published = null
+  cells = null
+  readers.clear()
 }

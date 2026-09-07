@@ -932,7 +932,7 @@ def test_the_manifest_is_never_cached(s3_client, local_artifacts):
     assert "ContentEncoding" not in stored
 
 
-def _write_nearby_manifest(tmp_path, sources, *, tiles=False):
+def _write_nearby_manifest(tmp_path, sources, *, tiles=False, cells=False):
     artifact = tmp_path / "nearby_trails.geojson"
     artifact.write_text('{"type":"FeatureCollection","features":[]}')
     manifest = {"path": str(artifact), "sha256": "n34rby", "feature_count": 3663, "sources": sources}
@@ -941,6 +941,14 @@ def _write_nearby_manifest(tmp_path, sources, *, tiles=False):
         archive.write_bytes(b"PMTiles")
         manifest["tiles"] = {"path": str(archive), "sha256": "t1l3s", "layer": "trails", "min_zoom": 9, "max_zoom": 14}
     (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(manifest))
+    if cells:
+        # cut_cells.py's own manifest for the nearby_trails family, beside the
+        # export's - what the workflow's cut step leaves in PROCESSED_DIR.
+        entries = {}
+        for name in ("nearby_trails_cells.json", "nearby_trails_cell_n41w075.pmtiles"):
+            (tmp_path / name).write_bytes(b"cut " + name.encode())
+            entries[name] = {"path": str(tmp_path / name), "sha256": f"c3ll-{name}", "size_bytes": 4 + len(name)}
+        (tmp_path / "nearby_trails_cells_manifest.json").write_text(json.dumps({"artifacts": entries, "stats": {}}))
 
 
 def test_collect_publishes_the_network_tiles_inside_the_lines_own_gate(tmp_path, monkeypatch):
@@ -963,6 +971,42 @@ def test_collect_holds_back_the_network_tiles_with_the_lines(tmp_path, monkeypat
 
     assert publish.NEARBY_TRAILS_TILES_KEY not in artifacts
     assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_collect_publishes_the_network_cells_inside_the_lines_own_gate(tmp_path, monkeypatch):
+    """The tiles' 1-degree cells (#1257 stage 2) are the same stewards'
+    geometry cut a fourth way, so they ship with the lines - and through
+    the gated branch, never the ungated sheet loop."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}}, tiles=True, cells=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["nearby_trails_cells.json"]["sha256"] == "c3ll-nearby_trails_cells.json"
+    assert artifacts["nearby_trails_cell_n41w075.pmtiles"]["sha256"] == "c3ll-nearby_trails_cell_n41w075.pmtiles"
+    assert artifacts["nearby_trails_cell_n41w075.pmtiles"]["size_bytes"] == len(b"cut nearby_trails_cell_n41w075.pmtiles")
+
+
+def test_collect_holds_back_the_network_cells_with_the_lines(tmp_path, monkeypatch, capsys):
+    """A steward held back holds back their cells too. This is the test the
+    family's placement exists for: had `nearby_trails` gone into
+    CELL_FAMILIES, the ungated loop would have published these."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}}, tiles=True, cells=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert not any(name.startswith("nearby_trails") for name in artifacts)
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_the_network_cell_family_is_gated_and_still_a_family():
+    # Two tuples on purpose: what the ungated loop walks, and what
+    # cut_cells.py can be asked for at all (which test_r2_keys.py and
+    # verify_release.py's check 20 both enumerate from).
+    assert publish.NEARBY_TRAILS_CELL_FAMILY not in publish.CELL_FAMILIES
+    assert publish.NEARBY_TRAILS_CELL_FAMILY in publish.ALL_CELL_FAMILIES
+    assert set(publish.CELL_FAMILIES) < set(publish.ALL_CELL_FAMILIES)
 
 
 def test_collect_treats_a_manifest_written_before_the_tiles_as_an_absence(tmp_path, monkeypatch):

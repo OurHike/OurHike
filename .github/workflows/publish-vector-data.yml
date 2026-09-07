@@ -407,6 +407,19 @@ jobs:
       - name: Export the trails other organizations maintain
         run: python export_nearby_trails.py
 
+      # The same lines as 1-degree coverage cells (#1257 stage 2), so a
+      # stretch download carries the network above the seam and not only the
+      # ground under it. Cut here rather than in the basemap or DEM builds
+      # because the archive it cuts is written by the step above, in this
+      # job, and hands off to nothing. `--context-zoom 8` is one below the
+      # archive's minimum zoom: no shared context, z9 rides in the cells -
+      # cut_cells.py's docstring carries the measurement (9.65 MB of z9
+      # nationwide, for a zoom the sketch already draws below and the cells
+      # draw above). publish.py collects the result inside the lines' own
+      # reaches_hikers gate, never through the ungated sheet loop.
+      - name: Cut the network tiles into coverage cells
+        run: python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
+
       # The waypoints those same organizations publish (#1097) - NYS DEC's
       # lean-tos, primitive campsites and privies, NYS OPRHP's vistas, parking
       # areas and trail bridges. Beside its sibling above rather than anywhere

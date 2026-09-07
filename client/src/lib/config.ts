@@ -184,12 +184,14 @@ export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
  * directory to open. Uploaded uncompressed (pipeline/lib/content_types.py's
  * BINARY_TYPES), because a gzipped body has no byte ranges to ask for.
  *
- * NOT STORED ON THE PHONE, said plainly: a tile lives in the browser's HTTP
- * cache and nowhere else, so with no signal the map above the seam draws no
- * nearby trails - the state before #1082 cached the whole file, and the
- * state #1254's budget already left every phone in from 2026-09-07. Cells of
- * these tiles a hiker can download are #1257's second stage, on
- * cut_cells.py's machinery, not this key's business.
+ * NOT STORED ON THE PHONE AS A WHOLE, said plainly: a tile read from the
+ * bucket lives in the browser's HTTP cache and nowhere else. What a phone
+ * keeps is the stretch it took - the 1° cells of these tiles under the hike
+ * (NEARBY_TRAILS_CELLS_KEY below, #1257 stage 2), which map/networkTiles.ts
+ * answers from before it asks the bucket. Off the stretch and with no
+ * signal, the map above the seam draws no nearby trails: the state before
+ * #1082 cached the whole file, and the state #1254's budget already left
+ * every phone in from 2026-09-07.
  *
  * Absent from a release exported before write_tiles existed, which reads as
  * "no network above the seam" rather than as a failure: map/networkTiles.ts
@@ -220,6 +222,26 @@ export const NEARBY_TRAILS_TILES_KEY = 'nearby_trails.pmtiles'
  */
 export const NEARBY_TRAILS_TILES_MIN_ZOOM = 9
 export const NEARBY_TRAILS_TILES_MAX_ZOOM = 14
+
+/**
+ * The same tiles cut into 1° coverage cells (#1257 stage 2): the index
+ * pipeline/cut_cells.py writes for its `nearby_trails` family, the exact
+ * shape of BASEMAP_CELLS_KEY's and read by the same lib/coverageCells.ts
+ * code, so a stretch download (screens/StretchCard.tsx) carries the network
+ * above the seam as well as the ground under it, and map/networkTiles.ts asks
+ * a held cell before it asks the bucket - the local-first order
+ * map/basemap.ts walks for the hiking sheet.
+ *
+ * No context archive, unlike the basemap's: the index's `context` is null,
+ * because z9 nationwide is 9,653,907 bytes (measured 2026-09-07) for a zoom
+ * the sketch already draws below and the cells draw above, so z9 rides in the
+ * cells and a first stretch costs nothing shared.
+ *
+ * @release optional - inside its parent's `reaches_hikers` branch in
+ * publish.py's collect_artifacts, the one gated cell family: held back and
+ * shipped as one decision with the lines its cells are cut from.
+ */
+export const NEARBY_TRAILS_CELLS_KEY = 'nearby_trails_cells.json'
 
 /**
  * The corridor-view sketch of that whole network (#1135,

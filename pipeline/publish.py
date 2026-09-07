@@ -510,6 +510,14 @@ NEARBY_POI_KEY = "nearby_poi.geojson"
 # contract-test reason as its two neighbours.
 NETWORK_OVERVIEW_KEY = "network_overview.geojson"
 
+# The same lines as vector tiles (#1257, export_nearby_trails.write_tiles) -
+# what the client draws above the seam since the GeoJSON grew past what a
+# phone can hold whole (#1254). Published under NEARBY_TRAILS_KEY's own
+# licence gate below for the reason the overview is: the same stewards'
+# geometry, re-cut. Named here for the same contract-test reason as its
+# neighbours.
+NEARBY_TRAILS_TILES_KEY = "nearby_trails.pmtiles"
+
 # The mile of every centerline vertex, on the calibrated axis (#1192,
 # export_trails.write_trail_miles) - trails.geojson's sidecar, keyed by the
 # feature ids that file carries and naming its hash. Named here for the same
@@ -600,6 +608,16 @@ def collect_artifacts() -> dict[str, dict]:
                 artifacts[NETWORK_OVERVIEW_KEY] = {
                     "path": manifest["overview"]["path"],
                     "sha256": manifest["overview"]["sha256"],
+                }
+            # The vector tiles of the same lines (#1257), inside this branch
+            # for the reason the overview is: one decision, three files.
+            # Absent from a manifest written before write_tiles existed, which
+            # the client reads as "no network lines above the seam" - the
+            # state #1254's budget already leaves a phone in.
+            if "tiles" in manifest:
+                artifacts[NEARBY_TRAILS_TILES_KEY] = {
+                    "path": manifest["tiles"]["path"],
+                    "sha256": manifest["tiles"]["sha256"],
                 }
 
     # The POIs those same organizations publish (#1097, export_nearby_poi.py) -

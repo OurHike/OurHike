@@ -16,8 +16,11 @@ way. Several tests below exist only to pin that direction.
 """
 
 import json
+import re
+from pathlib import Path
 
 import pytest
+from pmtiles.reader import MmapSource, Reader
 from shapely.geometry import shape
 
 import export_nearby_trails as ex
@@ -191,6 +194,63 @@ def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypat
         "blaze_color": "Red",
         "trail_status": "open",
     }
+
+
+# --------------------------------------------------------------------------
+# The same lines as vector tiles (#1257). What a phone draws above the seam
+# since the GeoJSON outgrew it (#1254): read by byte range, so the archive's
+# weight is never the phone's problem.
+# --------------------------------------------------------------------------
+
+
+def _tiles_header(manifest):
+    with Path(manifest["tiles"]["path"]).open("rb") as f:
+        reader = Reader(MmapSource(f))
+        return reader.header(), reader.metadata()
+
+
+def test_the_lines_ship_as_vector_tiles_a_phone_reads_by_range(tmp_path, monkeypatch):
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    tiles = manifest["tiles"]
+    path = Path(tiles["path"])
+    # Beside the lines it was cut from, under the name publish.py uploads.
+    assert path.name == ex.TILES_ARTIFACT_NAME
+    assert path.parent == Path(manifest["path"]).parent
+    assert tiles["sha256"] == ex.sha256_file(path)
+
+    header, metadata = _tiles_header(manifest)
+    # Every tile the archive addresses is one the client can ask for: the
+    # header's range is the manifest's, and neither is empty.
+    assert (header["min_zoom"], header["max_zoom"]) == (tiles["min_zoom"], tiles["max_zoom"])
+    assert tiles["tile_count"] == header["addressed_tiles_count"] > 0
+    # One layer, named what map/networkTiles.ts asks for, carrying the same
+    # five properties the GeoJSON test above pins - the tiles are the same
+    # contract with map/style.ts, re-cut, not a second one.
+    (layer,) = metadata["vector_layers"]
+    assert layer["id"] == ex.TILES_LAYER == tiles["layer"]
+    assert {"id", "source", "name", "blaze_color", "trail_status"} <= set(layer["fields"])
+
+
+def test_the_tile_zooms_are_the_ones_the_client_is_built_for():
+    # The two ends of one contract. map/style.ts declares the source over
+    # these tiles with the client's constants; an archive cut to other zooms
+    # is asked for tiles it does not hold and draws nothing, silently.
+    config = (Path(__file__).parent.parent.parent / "client" / "src" / "lib" / "config.ts").read_text()
+
+    def declared(name):
+        match = re.search(rf"^export const {name} = (\d+)$", config, re.MULTILINE)
+        assert match is not None, f"client/src/lib/config.ts no longer declares {name}"
+        return int(match.group(1))
+
+    assert declared("NEARBY_TRAILS_TILES_MIN_ZOOM") == ex.TILES_MIN_ZOOM
+    assert declared("NEARBY_TRAILS_TILES_MAX_ZOOM") == ex.TILES_MAX_ZOOM
 
 
 def test_coordinates_are_cut_to_six_decimals_not_written_as_survey_noise(tmp_path, monkeypatch):

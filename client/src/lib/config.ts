@@ -150,13 +150,76 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
  * Both outstanding licences resolved on 2026-08-24 and this key publishes. A
  * 404 is still an ordinary answer rather than a failure - a release exported
  * before the artifact existed, or a bucket a publish has not reached yet - and
- * lib/nearbyTrailData.ts reads it as "no nearby trails", the same reading
- * spurs.json and trails_overview.geojson get.
+ * reads as "no nearby trails", the same reading spurs.json and
+ * trails_overview.geojson get.
+ *
+ * THE PHONE NO LONGER FETCHES THIS FILE (#1257). It was promoted at
+ * 228,820,578 bytes on 2026-09-07 with nationwide USFS trails in it (#1231),
+ * and every phone that took it whole crashed its map (#1254). The lines it
+ * holds reach the map as NEARBY_TRAILS_TILES_KEY below, read by byte range.
+ * The file itself stays published: it is what the tiles are cut from, and
+ * pipeline/build_trail_graph.py and fetch_trail_water.py read it, not the
+ * phone. lib/nearbyTrailData.ts deletes the copy earlier releases stored.
  *
  * @release optional - publish.py:578 writes it only in the `else:` of a
  * `reaches_hikers` check over sources.json, so absent is a licence answer.
  */
 export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
+
+/**
+ * The same lines as vector tiles (#1257, pipeline/export_nearby_trails.py's
+ * write_tiles) - what map/style.ts's NEARBY_TRAILS_SOURCE_ID draws above the
+ * pin seam, through map/networkTiles.ts.
+ *
+ * READ BY BYTE RANGE, NEVER WHOLE, and that is the entire reason it exists. A
+ * PMTiles archive is a header, directories and tiles; a phone reads the header
+ * and root directory once, then one leaf directory and one tile per request,
+ * each a ranged GET the bucket answers with the bytes asked for. So the
+ * 228.8 MB above becomes some kilobytes a tile, however many organizations
+ * the export grows to hold - the way the hiking sheet has shipped since it
+ * existed, and these lines never did.
+ *
+ * Measured against that day's real file: 112,378 features tiled z9-z14 in
+ * 92 s into 132,995,363 bytes and 173,209 tiles, 388 bytes of header and root
+ * directory to open. Uploaded uncompressed (pipeline/lib/content_types.py's
+ * BINARY_TYPES), because a gzipped body has no byte ranges to ask for.
+ *
+ * NOT STORED ON THE PHONE, said plainly: a tile lives in the browser's HTTP
+ * cache and nowhere else, so with no signal the map above the seam draws no
+ * nearby trails - the state before #1082 cached the whole file, and the
+ * state #1254's budget already left every phone in from 2026-09-07. Cells of
+ * these tiles a hiker can download are #1257's second stage, on
+ * cut_cells.py's machinery, not this key's business.
+ *
+ * Absent from a release exported before write_tiles existed, which reads as
+ * "no network above the seam" rather than as a failure: map/networkTiles.ts
+ * asks latest.json before it asks the bucket, answers every tile empty when
+ * the manifest names no archive, and the sketch below the seam still draws.
+ *
+ * @release optional - inside its parent's `reaches_hikers` branch in
+ * publish.py's collect_artifacts, held back and shipped as one decision with
+ * the lines it is cut from.
+ */
+export const NEARBY_TRAILS_TILES_KEY = 'nearby_trails.pmtiles'
+
+/**
+ * The zoom range that archive is cut to - the one contract a tileset has that
+ * a GeoJSON does not. A vector source asked for a zoom its archive does not
+ * hold draws nothing, silently, with no error anywhere. So both ends are
+ * declared here for the source map/style.ts builds, export_nearby_trails.py
+ * declares its own pair (TILES_MIN_ZOOM, TILES_MAX_ZOOM) for the cut, and
+ * pipeline/tests/test_export_nearby_trails.py reads this file to hold the two
+ * pairs equal - the way verify_release.py reads the keys above.
+ *
+ * 9 is the pin seam (map/poiLayers.ts's POI_PIN_MIN_ZOOM), the zoom the full
+ * network's layers already start at; below it the corridor-view sketch
+ * (NETWORK_OVERVIEW_KEY) is the drawing of these trails, so tiles there would
+ * be tiles nothing asks for. 14 is where the Fine hiking sheet stops and
+ * MapLibre overzooms - a line simplified to 1 m (export_nearby_trails.py's
+ * tolerance) has nothing more to show past it.
+ */
+export const NEARBY_TRAILS_TILES_MIN_ZOOM = 9
+export const NEARBY_TRAILS_TILES_MAX_ZOOM = 14
 
 /**
  * The corridor-view sketch of that whole network (#1135,

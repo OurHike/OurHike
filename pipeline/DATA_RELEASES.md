@@ -168,6 +168,9 @@ This inverts today's `check_output_quality.py`-then-`publish.py` order, and that
 **F. The releases hikers are already on still work**
 19. Re-run A and B against the **currently released** folder, not just the candidate. This is what actually enforces the headline property: it catches an accidental deletion, a lifecycle rule, or a permissions change on a folder people are pinned to today. Failing it blocks the PR even when the new candidate is flawless.
 
+**G. What a phone can hold**
+22. **Launch budget** ([#1254](https://github.com/OurHike/OurHike/issues/1254)): every artifact the client fetches whole — everything `publish.py` gzips, which is everything not read by byte range (`.pmtiles`, `.fgb`) — decodes to no more than `LAUNCH_ARTIFACT_BUDGET_BYTES` in `client/src/lib/artifactBudget.ts`, read out of the client rather than restated, the way check 2 reads its keys. The client declines a bigger artifact before fetching it; this check is what stops one being promoted at all. A text artifact with no `size_bytes` is a skip, never a pass. Written the day gate 6 passed a 228.8 MB `nearby_trails.geojson` and a 78.6 MB `trail_graph.json` to production — the first crashed the map, the second froze the first page — with check 15 having looked straight at the cause ([#1231](https://github.com/OurHike/OurHike/issues/1231)) and recorded it as an exception.
+
 Unit tests for all of the above go in `pipeline/tests/test_verify_release.py`, synthetic fixtures + `requests-mock`/`moto`, per [TESTING.md](../TESTING.md). The battery itself runs as a workflow step rather than a pytest test, consistent with TESTING.md's standing position that real-data end-to-end verification is a documented procedure, not part of the suite.
 
 ## 3a. The standing monitor

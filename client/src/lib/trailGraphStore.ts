@@ -73,6 +73,7 @@ import {
   TRAIL_GRAPH_KEY,
   TRAIL_GRAPH_PROFILE_KEY,
 } from './config'
+import { oversized, warnOversized } from './artifactBudget'
 
 /** One artifact's stored copy. */
 export interface StoredGraphArtifact {
@@ -127,6 +128,18 @@ export async function readStoredGraph(
     // this module there will ever be. A record that is not a blob and a hash
     // is treated as absent, and the next verified fetch rewrites it.
     if (record?.bytes instanceof Blob && typeof record.hash === 'string') {
+      // Weighed on the way out (#1254): a launch before the budget existed
+      // stored whatever it had verified, and on 2026-09-07 that was a
+      // 78,595,556-byte graph whose parse is the frozen first page the
+      // budget exists to prevent. lib/nearbyTrailData.ts makes the same call
+      // for the same reason. Forgotten rather than kept: a copy nothing will
+      // parse is storage taken from the map, and the next fetch that fits
+      // rewrites it.
+      if (oversized(record.bytes.size)) {
+        warnOversized(publishedKey, record.bytes.size, 'store')
+        await forgetStoredGraph(publishedKey)
+        return null
+      }
       return {
         bytes: record.bytes,
         hash: record.hash,
@@ -186,6 +199,18 @@ async function hasRoomFor(bytes: number): Promise<boolean> {
     return quota - usage >= bytes + GRAPH_STORE_HEADROOM_BYTES
   } catch {
     return true
+  }
+}
+
+/** Forget one stored artifact. Never throws: a key that will not delete is
+ *  the no-store case, and the caller has already decided not to read it. */
+export async function forgetStoredGraph(publishedKey: string): Promise<void> {
+  const storeKey = GRAPH_STORE_KEYS[publishedKey]
+  if (storeKey === undefined) return
+  try {
+    await del(storeKey)
+  } catch {
+    // See above.
   }
 }
 

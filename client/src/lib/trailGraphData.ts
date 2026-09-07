@@ -55,7 +55,8 @@ import {
   TRAIL_GRAPH_GEOMETRY_KEY,
   TRAIL_GRAPH_KEY,
 } from './config'
-import { publishedHash, publishedSnapshot } from './dataManifest'
+import { oversized, warnOversized } from './artifactBudget'
+import { publishedSnapshot } from './dataManifest'
 import {
   readStoredGraph,
   writeStoredGraph,
@@ -112,6 +113,15 @@ export type TrailNetworkAbsence =
    *  right about each other and still be the wrong file. */
   | 'not-a-graph'
   /**
+   * A graph this phone cannot hold (#1254): the manifest says it decodes to
+   * more than lib/artifactBudget.ts allows, so it was not fetched - or, where
+   * the manifest named no size, it arrived and was not parsed. Settled the
+   * way a 404 is: nothing on this phone changes it, and a smaller publish
+   * does. The one of 2026-09-07 was 78,595,556 bytes, and parsing it on the
+   * main thread was what "the app is hanging on the first page" was.
+   */
+  | 'too-large'
+  /**
    * A real, valid graph with no routable trail in it.
    *
    * A ring with nothing maintained inside it publishes empty, and the loader
@@ -155,6 +165,21 @@ export function isSettledAbsence(because: TrailNetworkAbsence): boolean {
 }
 
 /**
+ * The manifest's word on one artifact: the hash its bytes must match, and
+ * the size they decode to. Null for either where the manifest names none.
+ */
+async function published(
+  key: string,
+  signal?: AbortSignal,
+): Promise<{ hash: string | null; decodedBytes: number | null }> {
+  const snapshot = await publishedSnapshot({ signal })
+  return {
+    hash: snapshot.hashes[key] ?? null,
+    decodedBytes: snapshot.decodedSizes[key] ?? null,
+  }
+}
+
+/**
  * The junction graph, indexed and ready to route on - or the reason there is
  * none.
  *
@@ -186,6 +211,20 @@ export async function loadTrailGraph(
   }
 
   try {
+    // The manifest first, and before the fetch (#1254). Every loader here
+    // used to fetch, read the body whole and only then ask the manifest what
+    // the bytes should hash to - an order that cost nothing while every
+    // artifact fit, and cost a frozen main thread the day one did not,
+    // because by the time anything could have weighed the graph it was
+    // already in memory. Asking first is what lets an artifact the phone
+    // cannot hold be declined for the price of a ~KB manifest read, with no
+    // bytes moved at all.
+    const { hash: expected, decodedBytes } = await published(TRAIL_GRAPH_KEY, signal)
+    if (oversized(decodedBytes)) {
+      warnOversized(TRAIL_GRAPH_KEY, decodedBytes, 'manifest')
+      return { kind: 'absent', because: 'too-large' }
+    }
+
     const response = await fetch(dataUrl(TRAIL_GRAPH_KEY), { signal })
     // Any non-2xx, not only 404. A 403 on a misconfigured bucket and a 500
     // from the edge are both "this bucket is not serving a graph", and
@@ -193,7 +232,12 @@ export async function loadTrailGraph(
     if (!response.ok) return { kind: 'absent', because: 'not-in-release' }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    const expected = await publishedHash(TRAIL_GRAPH_KEY, { signal })
+    // The backstop for a manifest that named no size: the bytes in hand are
+    // weighed before anything hashes or parses them.
+    if (oversized(bytes.byteLength)) {
+      warnOversized(TRAIL_GRAPH_KEY, bytes.byteLength, 'response')
+      return { kind: 'absent', because: 'too-large' }
+    }
     // No hash, no routing. There is no lesser use of a graph to fall back to.
     if (expected === null) return { kind: 'absent', because: 'unverifiable' }
     if ((await sha256Of(bytes)) !== expected) {
@@ -280,12 +324,27 @@ export async function fetchTrailGraphGeometry(
     return await readStoredJson(TRAIL_GRAPH_GEOMETRY_KEY, isGraphGeometry, edgeCount)
 
   try {
+    // Weighed at the manifest before the fetch and at the response after it,
+    // exactly as the graph is (#1254); null is what this half already means
+    // by "not on this phone".
+    const { hash: expected, decodedBytes } = await published(
+      TRAIL_GRAPH_GEOMETRY_KEY,
+      signal,
+    )
+    if (oversized(decodedBytes)) {
+      warnOversized(TRAIL_GRAPH_GEOMETRY_KEY, decodedBytes, 'manifest')
+      return null
+    }
+
     const response = await fetch(dataUrl(TRAIL_GRAPH_GEOMETRY_KEY), { signal })
     if (!response.ok)
       return await readStoredJson(TRAIL_GRAPH_GEOMETRY_KEY, isGraphGeometry, edgeCount)
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    const expected = await publishedHash(TRAIL_GRAPH_GEOMETRY_KEY, { signal })
+    if (oversized(bytes.byteLength)) {
+      warnOversized(TRAIL_GRAPH_GEOMETRY_KEY, bytes.byteLength, 'response')
+      return null
+    }
     if (expected === null) return null
     if ((await sha256Of(bytes)) !== expected) return null
 
@@ -361,13 +420,28 @@ export async function fetchTrailGraphElevation(
   }
 
   try {
+    // Weighed at the manifest before the fetch and at the response after it,
+    // exactly as the graph is (#1254); null is what this half already means
+    // by "not on this phone".
+    const { hash: expected, decodedBytes } = await published(
+      TRAIL_GRAPH_ELEVATION_KEY,
+      signal,
+    )
+    if (oversized(decodedBytes)) {
+      warnOversized(TRAIL_GRAPH_ELEVATION_KEY, decodedBytes, 'manifest')
+      return null
+    }
+
     const response = await fetch(dataUrl(TRAIL_GRAPH_ELEVATION_KEY), { signal })
     if (!response.ok) {
       return await readStoredJson(TRAIL_GRAPH_ELEVATION_KEY, isGraphElevation, edgeCount)
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    const expected = await publishedHash(TRAIL_GRAPH_ELEVATION_KEY, { signal })
+    if (oversized(bytes.byteLength)) {
+      warnOversized(TRAIL_GRAPH_ELEVATION_KEY, bytes.byteLength, 'response')
+      return null
+    }
     if (expected === null) return null
     if ((await sha256Of(bytes)) !== expected) return null
 
@@ -431,13 +505,28 @@ export async function fetchTrailGraphProfile(
   }
 
   try {
+    // Weighed at the manifest before the fetch and at the response after it,
+    // exactly as the graph is (#1254); null is what this half already means
+    // by "not on this phone".
+    const { hash: expected, decodedBytes } = await published(
+      TRAIL_GRAPH_PROFILE_KEY,
+      signal,
+    )
+    if (oversized(decodedBytes)) {
+      warnOversized(TRAIL_GRAPH_PROFILE_KEY, decodedBytes, 'manifest')
+      return null
+    }
+
     const response = await fetch(dataUrl(TRAIL_GRAPH_PROFILE_KEY), { signal })
     if (!response.ok) {
       return await readStoredJson(TRAIL_GRAPH_PROFILE_KEY, isGraphProfile, edgeCount)
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    const expected = await publishedHash(TRAIL_GRAPH_PROFILE_KEY, { signal })
+    if (oversized(bytes.byteLength)) {
+      warnOversized(TRAIL_GRAPH_PROFILE_KEY, bytes.byteLength, 'response')
+      return null
+    }
     if (expected === null) return null
     if ((await sha256Of(bytes)) !== expected) return null
 

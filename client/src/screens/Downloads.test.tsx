@@ -617,7 +617,7 @@ describe('the trail data account (#1103)', () => {
       { id: 'trail-line', bytes: 12_300_000, count: null, present: true },
       { id: 'waypoints', bytes: null, count: 2837, present: true },
       { id: 'elevation', bytes: null, count: 141_000, present: true },
-      { id: 'nearby-trails', bytes: null, count: null, present: false },
+      { id: 'network-overview', bytes: null, count: null, present: false },
     ])
     render(<Downloads sheets={[sheet()]} />)
 
@@ -626,7 +626,7 @@ describe('the trail data account (#1103)', () => {
     expect(section).toHaveTextContent(/12\.3 MB on this phone/)
     expect(section).toHaveTextContent(/2,837 places/)
     // Absent means not here, never zero - and never a missing row.
-    expect(within(section).getByText('Nearby trails network')).toBeInTheDocument()
+    expect(within(section).getByText('Nearby trails, zoomed out')).toBeInTheDocument()
     expect(section).toHaveTextContent(/not here yet — arrives with signal/)
     // Nothing in this section is a button: these arrive on their own.
     expect(within(section).queryByRole('button')).toBe(null)

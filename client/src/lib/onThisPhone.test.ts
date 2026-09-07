@@ -19,8 +19,7 @@ vi.mock('idb-keyval', () => ({
 const { get } = await import('idb-keyval')
 const { storedTrailData } = await import('./onThisPhone')
 const { TRAILS_BLOB_KEY, POIS_KEY, ELEVATION_STORE_KEY } = await import('./trailData')
-const { NEARBY_TRAILS_STORE_KEY, NETWORK_OVERVIEW_STORE_KEY } =
-  await import('./nearbyTrailData')
+const { NETWORK_OVERVIEW_STORE_KEY } = await import('./nearbyTrailData')
 const { TRAIL_DATA_LABEL } = await import('../screens/Downloads')
 
 beforeEach(() => {
@@ -39,7 +38,6 @@ describe('storedTrailData', () => {
       [TRAILS_BLOB_KEY]: new Blob(['x'.repeat(1234)]),
       [POIS_KEY]: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
       [ELEVATION_STORE_KEY]: { samples: [1, 2, 3, 4] },
-      [NEARBY_TRAILS_STORE_KEY]: { bytes: new Blob(['y'.repeat(999)]), hash: 'h' },
       // Two of the four graph artifacts, which is a real state: the routing
       // half arrives at launch and the geometry only when a builder opens.
       // They sum into one row - see storedTrailData for why.
@@ -55,29 +53,26 @@ describe('storedTrailData', () => {
       { id: 'waypoints', bytes: null, count: 3, present: true },
       { id: 'elevation', bytes: null, count: 4, present: true },
       { id: 'day-hike-routing', bytes: 700, count: null, present: true },
-      { id: 'nearby-trails', bytes: 999, count: null, present: true },
       { id: 'network-overview', bytes: 321, count: null, present: true },
     ])
   })
 
-  it('counts the corridor-view sketch as its own row, not folded into the network', async () => {
-    // The two nearby-network artifacts draw at different zooms, so losing
-    // only the sketch is a distinguishable thing to be missing: the map opens
-    // A.T.-only and the detail arrives as you zoom in. A hiker checking what
-    // is on the phone can only see that if it has a line of its own.
+  it('has no row for the whole-file network copy, and does not read its key (#1257)', async () => {
+    // The lines above the seam are tiles kept in no store, so a row would
+    // claim coverage the build does not have - and the copy earlier releases
+    // stored is deleted at launch, so a row about it would be a row about
+    // nothing. A stale one left behind must not surface as a figure either.
     store({
-      [NEARBY_TRAILS_STORE_KEY]: { bytes: new Blob(['y'.repeat(999)]), hash: 'h' },
+      'ourhike:nearby-trails': { bytes: new Blob(['y'.repeat(999)]), hash: 'h' },
     })
 
     const assets = await storedTrailData()
 
-    expect(assets.find((asset) => asset.id === 'nearby-trails')?.present).toBe(true)
-    expect(assets.find((asset) => asset.id === 'network-overview')).toEqual({
-      id: 'network-overview',
-      bytes: null,
-      count: null,
-      present: false,
-    })
+    expect(assets.map((asset) => asset.id)).not.toContain('nearby-trails')
+    expect(vi.mocked(get).mock.calls.map(([key]) => key)).not.toContain(
+      'ourhike:nearby-trails',
+    )
+    expect(assets.every((asset) => !asset.present)).toBe(true)
   })
 
   it('covers every id the window can label, in both directions', async () => {
@@ -110,14 +105,14 @@ describe('storedTrailData', () => {
     expect(assets.every((asset) => !asset.present)).toBe(true)
   })
 
-  it('shape-checks the nearby record, because every past version of that module wrote it', async () => {
-    store({ [NEARBY_TRAILS_STORE_KEY]: { bytes: 'not a blob', hash: 'h' } })
+  it('shape-checks the sketch record, because every past version of that module wrote it', async () => {
+    store({ [NETWORK_OVERVIEW_STORE_KEY]: { bytes: 'not a blob', hash: 'h' } })
 
     const assets = await storedTrailData()
 
-    const nearby = assets.find((asset) => asset.id === 'nearby-trails')
-    expect(nearby).toEqual({
-      id: 'nearby-trails',
+    const overview = assets.find((asset) => asset.id === 'network-overview')
+    expect(overview).toEqual({
+      id: 'network-overview',
       bytes: null,
       count: null,
       present: false,

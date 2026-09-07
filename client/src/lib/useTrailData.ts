@@ -28,7 +28,7 @@ import {
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
 import {
-  loadNearbyTrails,
+  forgetNearbyTrails,
   loadNetworkOverview,
   type NearbyTrailsAnswer,
 } from './nearbyTrailData'
@@ -181,19 +181,6 @@ export interface TrailData {
    */
   overviewTrailsUrl: string | null
   /**
-   * The trail lines other organizations maintain, as an object URL, or null
-   * (#950, lib/nearbyTrailData.ts).
-   *
-   * Null is the ordinary answer today and is not a failure: publish.py holds
-   * that artifact back while NYS OPRHP's or NYNJTC's reuse terms are unstated
-   * (pipeline/sources.json), so the bucket does not have one to fetch.
-   *
-   * Unlike `overviewTrailsUrl` above, this is never withdrawn once set. The
-   * overview is a stand-in for a line that is coming; these are lines of
-   * their own.
-   */
-  nearbyTrailsUrl: string | null
-  /**
    * The corridor-view sketch of that whole network, as an object URL, or null
    * (#1135, lib/nearbyTrailData.ts's loadNetworkOverview).
    *
@@ -203,10 +190,16 @@ export interface TrailData {
    * organizations' trails the phone holds. 255 KB gzipped for all of them,
    * measured 2026-08-27 (pipeline/spike_network_overview.py).
    *
-   * Like `nearbyTrailsUrl` and unlike `overviewTrailsUrl`: never withdrawn
-   * once set, because nothing better replaces it - it IS the below-seam
-   * network, not a stand-in for one. Null is ordinary: an older release, or
-   * a bucket holding the artifact back with its parent.
+   * Unlike `overviewTrailsUrl`: never withdrawn once set, because nothing
+   * better replaces it - it IS the below-seam network, not a stand-in for
+   * one. Null is ordinary: an older release, or a bucket holding the artifact
+   * back with its parent.
+   *
+   * THE ONLY NEARBY-NETWORK ARTIFACT HERE since #1257. The full lines above
+   * the seam are vector tiles the map reads for itself by byte range
+   * (map/networkTiles.ts), declared in the style rather than handed over as
+   * a URL - no hook could hand over a 228.8 MB file without parsing it, which
+   * is what crashed every phone on 2026-09-07 (#1254).
    */
   networkOverviewUrl: string | null
   /** The junction graph's routing half, indexed - or null while this phone
@@ -424,6 +417,10 @@ export function useTrailData(
    * (7,524 KB) at 2,612 ms - and the trail line, the one thing every entry
    * step is talking about, did not land until 20,267 ms of a 32,325 ms launch
    * that moved 14.71 MB.
+   *
+   * Since #1257 the gate holds one artifact rather than two: the other
+   * organizations' lines are tiles the map reads per view (map/networkTiles.ts)
+   * and no longer a launch fetch at all, so only the junction graph waits here.
    *
    * SETTLED, not "succeeded". See the launch effect's `finally`.
    *
@@ -826,32 +823,15 @@ export function useTrailData(
     setOverviewUrl(null)
   }, [haveTrailLines, overviewUrl])
 
-  /**
-   * The other organizations' trails (#950), from the store first and checked
-   * against the manifest once per online launch (#1082).
-   *
-   * NOT GATED ON WHAT THE PHONE HOLDS the way the overview above is, because
-   * the store IS what the phone holds: lib/nearbyTrailData.ts keeps the last
-   * verified copy, serves it with or without signal, and re-fetches the
-   * 7.3 MB artifact only when the manifest names a hash the stored copy does
-   * not carry - a ~KB question on the ordinary launch, where this used to be
-   * the whole artifact every time (pipeline/README.md's "one number wants
-   * watching"). What a named download CONTAINS is still
-   * **#552 — Decide the unit of offline coverage, and write it down**'s
-   * decision - see that module's header for the line between this cache and
-   * that machinery.
-   *
-   * Behind the trail line, never beside it (#1117): the gate holds the online
-   * fetch until the launch fetch settles either way. On the cold run where
-   * the refetch would be the whole 7.5 MB artifact, there is no stored copy
-   * to draw in the meantime either, so the wait costs a hiker nothing
-   * visible and buys `trails.geojson` the pipe.
-   */
-  const nearbyTrails = useVerifiedNetworkArtifact(
-    loadNearbyTrails,
-    online,
-    trailFetchSettled,
-  )
+  // The whole-file copy of the other organizations' lines that releases
+  // before #1257 stored (lib/nearbyTrailData.ts) - up to 228.8 MB of it, on a
+  // phone that fetched 2026-09-07's artifact before #1254's budget existed.
+  // Nothing draws from it any more; the lines are tiles the map reads for
+  // itself. Deleted once per launch rather than on a version check, because
+  // the store carries no version and deleting nothing is free.
+  useEffect(() => {
+    void forgetNearbyTrails()
+  }, [])
 
   /**
    * The corridor-view sketch of that network (#1135), through the same state
@@ -985,7 +965,6 @@ export function useTrailData(
     // The url alone: whether it was revalidated is this hook's business (the
     // effect above), not a consumer's - the map draws a stored copy and a
     // fresh one identically.
-    nearbyTrailsUrl: nearbyTrails?.url ?? null,
     networkOverviewUrl: networkOverview?.url ?? null,
     graphIndex,
     trailNetwork,

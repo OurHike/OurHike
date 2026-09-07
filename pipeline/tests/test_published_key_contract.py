@@ -192,6 +192,11 @@ def client_keys() -> dict[str, str]:
         # 7.3 MB artifact above. Published under the same licence gate, so the
         # same day-the-gate-opens argument applies to its spelling.
         _string_const(config, "NETWORK_OVERVIEW_KEY"): "config.ts NETWORK_OVERVIEW_KEY",
+        # The same lines as vector tiles (#1257), read by byte range through
+        # map/networkTiles.ts rather than fetched whole. A respelling here is
+        # the quietest failure in this file: the map asks a scheme for tiles
+        # and every tile is a 404 that draws as "no network here".
+        _string_const(config, "NEARBY_TRAILS_TILES_KEY"): "config.ts NEARBY_TRAILS_TILES_KEY",
         # The waypoints those same organizations publish (#1097). Unlike its
         # sibling above, this one is NOT held back today - DEC's and OPRHP's
         # POI sources ship on the same footing their trails do - so a spelling
@@ -292,6 +297,9 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # The corridor-view sketch riding the same manifest (#1135), the way the
     # A.T.'s overview rides trails_manifest.json above.
     nearby["overview"] = manifest_entry("network_overview.geojson")
+    # The vector tiles of the same lines (#1257), the third file the one
+    # decision publishes.
+    nearby["tiles"] = manifest_entry("nearby_trails.pmtiles")
     (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(nearby))
 
     # The nearby waypoints (#1097), through the same reaches_hikers gate as the

@@ -204,11 +204,12 @@ export const TRAIL_DATA_LABEL: Record<TrailDataAsset['id'], string> = {
   'trail-line': 'Trail line',
   waypoints: 'Waypoints',
   elevation: 'Elevation profile',
-  'nearby-trails': 'Nearby trails network',
-  // The same network as the row above, drawn for the opening view. Named for
-  // WHEN a hiker sees it rather than for what it is - "corridor-view sketch"
-  // is the pipeline's phrase and answers nothing somebody is asking while
-  // looking at a storage list.
+  // The other organizations' network, drawn for the opening view - and since
+  // #1257 the only part of it this phone stores; above the seam the lines are
+  // tiles read over the network per view and kept nowhere (lib/onThisPhone.ts
+  // says why that earns no row). Named for WHEN a hiker sees it rather than
+  // for what it is - "corridor-view sketch" is the pipeline's phrase and
+  // answers nothing somebody is asking while looking at a storage list.
   'network-overview': 'Nearby trails, zoomed out',
   // Named for what it DOES rather than for what it is. "Junction graph" is the
   // pipeline's word and answers no question a hiker has; this row exists so

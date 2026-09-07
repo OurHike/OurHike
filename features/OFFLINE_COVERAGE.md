@@ -29,6 +29,12 @@ only `at_basemap` is cut, so a stretch is the basemap alone and the terrain stay
 archive. The cells are cut from the Fine (z14) package only, so the "one global level with
 a per-piece override" decision below has no pipeline behind it: the client reads whatever
 level the index publishes and promises none. And named pieces wait on open question 2.
+Since 2026-09-07 there is one more: the other organizations' trail lines above the seam are
+vector tiles read over the network per view (`nearby_trails.pmtiles`,
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) — the 228.8 MB GeoJSON they replaced
+crashed every phone that fetched it whole, [#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254))
+and are cut into no cells yet, so a phone with no signal draws the network sketch below the
+seam and no nearby trails above it. Cutting them is the second stage of the same issue.
 
 Measurements below are dated. Everything read off the published bucket was fetched
 2026-08-28 against release `2026-08-28`, whose manifest carries a `size_bytes` per
@@ -287,7 +293,9 @@ seam takes away the *ground* and never the *hazard*. Three reasons:
 3. It is cheap in the only place it is expensive. The 0.7 MB gzipped figure for two parks'
    full trail geometry (#771) says geometry is not the problem; the 23.5 MB is a *parse and
    memory* problem, and the fix for that is a per-region cut of the artifact for **drawing**,
-   which is not the same thing as a per-region cut for **coverage**.
+   which is not the same thing as a per-region cut for **coverage**. (That cut exists since
+   [#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257): vector tiles, read by range. The
+   coverage cut does not, yet.)
 
 So: **pieces scope the sheet; they do not scope safety.** What a seam banner may say is
 "the map stops here", never "your water stops here".

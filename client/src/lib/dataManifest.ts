@@ -132,6 +132,17 @@ export interface PublishedSnapshot {
    * decoded size is the wrong answer rather than a rough one.
    */
   sizes: Record<string, number>
+  /**
+   * What each artifact occupies once fetched and decoded, where the manifest
+   * carries `size_bytes` - the question lib/artifactBudget.ts asks before a
+   * launch fetches something whole (#1254).
+   *
+   * Deliberately the OTHER number from `sizes`: that one is the wire cost a
+   * hiker is shown, this is the memory cost the phone pays, and for a gzipped
+   * text artifact they are about 4x apart. Neither is a cautious version of
+   * the other, which is why both are carried rather than one derived.
+   */
+  decodedSizes: Record<string, number>
   /** Every artifact's change grade, where this release describes one. */
   changes: Record<string, ArtifactChange>
 }
@@ -163,6 +174,7 @@ const NOTHING_READABLE: PublishedSnapshot = {
   lookup: NOTHING_PUBLISHED,
   hashes: {},
   sizes: {},
+  decodedSizes: {},
   changes: {},
 }
 
@@ -204,12 +216,14 @@ const STORED_UNCOMPRESSED = ['.pmtiles', '.fgb']
 function snapshotInto(manifest: DataManifest): PublishedSnapshot {
   const hashes: Record<string, string> = {}
   const sizes: Record<string, number> = {}
+  const decodedSizes: Record<string, number> = {}
   const changes: Record<string, ArtifactChange> = {}
   const lookup = lookupInto(manifest)
 
   for (const [key, entry] of Object.entries(manifest?.artifacts ?? {})) {
     const hash = lookup(key)
     if (hash !== null) hashes[key] = hash
+    if (isCount(entry?.size_bytes)) decodedSizes[key] = entry.size_bytes
     if (isCount(entry?.transfer_bytes)) sizes[key] = entry.transfer_bytes
     else if (
       isCount(entry?.size_bytes) &&
@@ -228,6 +242,7 @@ function snapshotInto(manifest: DataManifest): PublishedSnapshot {
     lookup,
     hashes,
     sizes,
+    decodedSizes,
     changes,
   }
 }

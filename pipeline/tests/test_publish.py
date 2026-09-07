@@ -932,12 +932,50 @@ def test_the_manifest_is_never_cached(s3_client, local_artifacts):
     assert "ContentEncoding" not in stored
 
 
-def _write_nearby_manifest(tmp_path, sources):
+def _write_nearby_manifest(tmp_path, sources, *, tiles=False):
     artifact = tmp_path / "nearby_trails.geojson"
     artifact.write_text('{"type":"FeatureCollection","features":[]}')
-    (tmp_path / "nearby_trails_manifest.json").write_text(
-        json.dumps({"path": str(artifact), "sha256": "n34rby", "feature_count": 3663, "sources": sources})
-    )
+    manifest = {"path": str(artifact), "sha256": "n34rby", "feature_count": 3663, "sources": sources}
+    if tiles:
+        archive = tmp_path / "nearby_trails.pmtiles"
+        archive.write_bytes(b"PMTiles")
+        manifest["tiles"] = {"path": str(archive), "sha256": "t1l3s", "layer": "trails", "min_zoom": 9, "max_zoom": 14}
+    (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(manifest))
+
+
+def test_collect_publishes_the_network_tiles_inside_the_lines_own_gate(tmp_path, monkeypatch):
+    """The vector tiles (#1257) are the same stewards' geometry re-cut, so
+    they ship with the lines - one decision, three files."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}}, tiles=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["nearby_trails.geojson"]["sha256"] == "n34rby"
+    assert artifacts[publish.NEARBY_TRAILS_TILES_KEY]["sha256"] == "t1l3s"
+
+
+def test_collect_holds_back_the_network_tiles_with_the_lines(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}}, tiles=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert publish.NEARBY_TRAILS_TILES_KEY not in artifacts
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_collect_treats_a_manifest_written_before_the_tiles_as_an_absence(tmp_path, monkeypatch):
+    # An export from before write_tiles existed publishes its lines and no
+    # tileset, and the client reads the missing key as "no lines above the
+    # seam" rather than as a failure.
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "nearby_trails.geojson" in artifacts
+    assert publish.NEARBY_TRAILS_TILES_KEY not in artifacts
 
 
 def test_collect_holds_back_the_network_while_any_steward_has_not_stated_terms(tmp_path, monkeypatch, capsys):

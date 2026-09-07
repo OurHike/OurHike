@@ -63,6 +63,13 @@ export function trailNetworkRefusal(
       // this phone or this release, so it says so. No promise either way:
       // trails arrive when a steward publishes them.
       return 'There are no mapped trails here yet to build a day hike from.'
+    case 'too-large':
+      // Declined, said as declined (#1254): the app weighed the published
+      // graph against lib/artifactBudget.ts and would not fetch it. A fact
+      // about this release, not about this phone or its signal - so no
+      // promise about when, and no retry, because only a smaller publish
+      // changes it.
+      return 'The trail network in this release is too big for the app to load safely, so it is not being used.'
     case 'unverifiable':
     case 'not-a-graph':
       // A refusal, said as one. lib/trailGraphData.ts will not route on

@@ -59,6 +59,8 @@ import {
 } from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
 import { NEARBY_TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_LAYER_ID } from './trailLabels'
+import { NETWORK_TILES_LAYER, NETWORK_TILES_URL } from './networkTiles'
+import { NEARBY_TRAILS_TILES_MAX_ZOOM, NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
 // load-bearing rather than decorative:
@@ -1093,13 +1095,39 @@ describe('the trails other organizations maintain (#950)', () => {
     expect(style().sources[NEARBY_TRAILS_SOURCE_ID]).toBeDefined()
   })
 
-  it('opens empty, so a bucket with no network is one shape of style', () => {
-    // The ordinary state today. An absent source would mean the style
-    // depended on what the bucket happened to hold.
-    expect(style().sources[NEARBY_TRAILS_SOURCE_ID]).toMatchObject({
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
+  it('is a vector source over the published tiles, read by range (#1257)', () => {
+    // One shape of style whatever the bucket holds: the tiles are asked for
+    // through a scheme networkTiles.ts answers, and a bucket with no archive
+    // answers every tile empty rather than changing the style. The zoom range
+    // is the archive's - lib/config.ts holds both ends against the pipeline's.
+    expect(style().sources[NEARBY_TRAILS_SOURCE_ID]).toEqual({
+      type: 'vector',
+      tiles: [NETWORK_TILES_URL],
+      minzoom: NEARBY_TRAILS_TILES_MIN_ZOOM,
+      maxzoom: NEARBY_TRAILS_TILES_MAX_ZOOM,
+      attribution: expect.any(String),
     })
+  })
+
+  it('cuts the tiles to start at the seam its layers start at', () => {
+    // The source's minzoom, its layers' minzoom and the pipeline's
+    // TILES_MIN_ZOOM are one number. A source that started above its layers
+    // would leave a band of zooms asking for tiles that do not exist; one
+    // that started below would cut tiles nothing asks for.
+    expect(NEARBY_TRAILS_TILES_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(NEARBY_TRAILS_TILES_MIN_ZOOM)
+  })
+
+  it('names the one layer inside the tiles on every layer drawn from them', () => {
+    // A vector layer with no source-layer, or the wrong one, draws nothing and
+    // says nothing - the quietest failure a tileset has. Every layer over this
+    // source, not a sample, so a fourth layer added later cannot forget it.
+    const over = style().layers.filter(
+      (l) => 'source' in l && l.source === NEARBY_TRAILS_SOURCE_ID,
+    ) as { 'source-layer'?: string }[]
+
+    expect(over.length).toBeGreaterThanOrEqual(4)
+    for (const l of over) expect(l['source-layer']).toBe(NETWORK_TILES_LAYER)
   })
 
   it('draws the network under the chosen trail, both lines and casings', () => {
@@ -1123,18 +1151,22 @@ describe('the trails other organizations maintain (#950)', () => {
     // one and not the other is a nearby trail that stops looking like a
     // trail, and nothing else in the build would catch it.
     //
-    // `minzoom` is the ONE permitted difference and is asserted on its own
-    // below, so that admitting it here cannot quietly admit a second.
+    // `minzoom` and `source-layer` are the TWO permitted differences - the
+    // seam, and the layer inside the tiles - and each is asserted on its own
+    // elsewhere in this block, so that admitting them here cannot quietly
+    // admit a third.
     expect(layer(NEARBY_BLAZE_LAYER_ID)).toEqual({
       ...layer(BLAZE_LAYER_ID),
       id: NEARBY_BLAZE_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
+      'source-layer': NETWORK_TILES_LAYER,
       minzoom: POI_PIN_MIN_ZOOM,
     })
     expect(layer(NEARBY_TRAIL_CASING_LAYER_ID)).toEqual({
       ...layer(TRAIL_CASING_LAYER_ID),
       id: NEARBY_TRAIL_CASING_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
+      'source-layer': NETWORK_TILES_LAYER,
       minzoom: POI_PIN_MIN_ZOOM,
     })
   })
@@ -1162,6 +1194,7 @@ describe('the trails other organizations maintain (#950)', () => {
       ...layer(LONG_TERM_CLOSURE_LAYER_ID),
       id: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
+      'source-layer': NETWORK_TILES_LAYER,
     })
   })
 

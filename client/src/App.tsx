@@ -1040,7 +1040,6 @@ function App() {
     retiredPois,
     trailsUrl,
     overviewTrailsUrl,
-    nearbyTrailsUrl,
     networkOverviewUrl,
     graphIndex,
     trailNetwork,
@@ -6270,7 +6269,6 @@ function App() {
               topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
-              nearbyTrailsUrl={nearbyTrailsUrl}
               networkOverviewUrl={networkOverviewUrl}
               background={effectiveBackground(
                 preferences.background_source,
@@ -6307,12 +6305,14 @@ function App() {
               // the USGS survey only while there are USGS tiles on the phone to
               // draw, and a hiking-sheet-only download has none.
               hasRasterArchive={archiveDownloaded}
-              // Either representation of the network: the corridor-view sketch
-              // draws the same stewards' lines below the seam (#1135), and
-              // OPRHP's terms require credit whenever their lines are drawn -
-              // a credit keyed to the full artifact alone would lapse for the
-              // opening view.
-              hasNearbyTrails={nearbyTrailsUrl !== null || networkOverviewUrl !== null}
+              // The sketch is what the shell can see of the network: above the
+              // seam its lines are tiles the map reads straight off the bucket
+              // (map/networkTiles.ts, #1257), which no prop carries. The two
+              // ship as one publish decision and no release has the tiles
+              // without the sketch, so the sketch stands for both - and
+              // OPRHP's terms, credit whenever their lines are drawn, are met
+              // at every zoom by the one flag.
+              hasNearbyTrails={networkOverviewUrl !== null}
               // Decided here rather than on the screen (#334): the same failing
               // source has to reach the downloads window, which opens over the
               // More tab where the map screen is not rendered at all. What the

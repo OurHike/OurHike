@@ -49,9 +49,10 @@ import type { MapPoint } from '../lib/legendContents'
 // React StrictMode deliberately mounts -> unmounts -> remounts in development
 // precisely to expose that class of bug, so these tests run under it.
 
-const { registrationOrder, basemapOrder, workerOrder } = vi.hoisted(() => ({
+const { registrationOrder, basemapOrder, networkOrder, workerOrder } = vi.hoisted(() => ({
   registrationOrder: [] as number[],
   basemapOrder: [] as number[],
+  networkOrder: [] as number[],
   workerOrder: [] as number[],
 }))
 
@@ -78,6 +79,22 @@ vi.mock('./basemap', async () => {
   return {
     registerBasemapProtocol: vi.fn(() => {
       basemapOrder.push(Recorded.instances.length)
+    }),
+  }
+})
+
+// And the network:// scheme (#1257): the style declares the other
+// organizations' lines as a vector source over it, so a map built first would
+// ask for tiles through a scheme nothing answers - and a vector source that
+// errors its first tiles is one MapLibre has already given up on.
+vi.mock('./networkTiles', async () => {
+  const { MockMap: Recorded } = await import('../test/mocks/maplibre-gl')
+  return {
+    NETWORK_SCHEME: 'network',
+    NETWORK_TILES_URL: 'network://{z}/{x}/{y}',
+    NETWORK_TILES_LAYER: 'trails',
+    registerNetworkProtocol: vi.fn(() => {
+      networkOrder.push(Recorded.instances.length)
     }),
   }
 })
@@ -128,6 +145,7 @@ beforeEach(async () => {
 
   registrationOrder.length = 0
   basemapOrder.length = 0
+  networkOrder.length = 0
   workerOrder.length = 0
 })
 
@@ -256,6 +274,13 @@ describe('MapView', () => {
 
     expect(basemapOrder.length).toBeGreaterThan(0)
     expect(basemapOrder[0]).toBe(0)
+  })
+
+  it('registers the network tiles protocol before constructing any map (#1257)', () => {
+    render(<MapView {...PROPS} />)
+
+    expect(networkOrder.length).toBeGreaterThan(0)
+    expect(networkOrder[0]).toBe(0)
   })
 
   it('points MapLibre at its bundled worker before constructing any map', () => {

@@ -43,6 +43,7 @@ import { Map as MapLibreMap } from 'maplibre-gl'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachMapChrome } from './mapChrome'
 import { registerBasemapProtocol } from './basemap'
+import { registerNetworkProtocol } from './networkTiles'
 import { registerMapWorker } from './mapWorker'
 import { registerPMTilesProtocol } from './protocol'
 
@@ -54,6 +55,7 @@ export interface MapEngine {
   registerMapWorker: typeof registerMapWorker
   registerPMTilesProtocol: typeof registerPMTilesProtocol
   registerBasemapProtocol: typeof registerBasemapProtocol
+  registerNetworkProtocol: typeof registerNetworkProtocol
   registerTerrain: typeof registerTerrain
   attachMapChrome: typeof attachMapChrome
   attachContourUnits: typeof attachContourUnits
@@ -76,6 +78,7 @@ export function mapEngine(): MapEngine {
     registerMapWorker: (...args) => registerMapWorker(...args),
     registerPMTilesProtocol: (...args) => registerPMTilesProtocol(...args),
     registerBasemapProtocol: (...args) => registerBasemapProtocol(...args),
+    registerNetworkProtocol: (...args) => registerNetworkProtocol(...args),
     registerTerrain: (...args) => registerTerrain(...args),
     attachMapChrome: (...args) => attachMapChrome(...args),
     attachContourUnits: (...args) => attachContourUnits(...args),

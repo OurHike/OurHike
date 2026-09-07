@@ -423,12 +423,38 @@ half of #783's split is no longer true of every organization on the map.** It ho
 the A.T. corridor, where `export_poi.py` still clips amenities to it; it does not hold for
 DEC and OPRHP, whose amenities ship statewide.
 
-**What would close it properly**, and is not done: clip `nearby_poi.geojson`'s amenity
-types to `NETWORK_BUFFER_FEET` around `nearby_trails.geojson`, exactly as §11 already
-buffers water — the machinery exists and the ring is already computed. That would keep the
-waypoints near a trail somebody could be walking and drop the lake-shore clusters that
-produce the Adirondack figure. It wants its own issue and its own measurement of what it
-costs.
+**What closed it**, and what it cost ([#1113](https://github.com/OurHike/OurHike/issues/1113)):
+`export_nearby_poi.clip_to_network` clips the amenity types to `NETWORK_BUFFER_FEET`
+around `nearby_trails.geojson`, exactly as §11 buffers water — the same 500 ft, one number
+with one home, rather than a second radius here that could drift from it.
+
+Measured 2026-09-04 through `spike_oprhp_poi_density.py --artifact` on both sides, so the
+before and after are the same arithmetic:
+
+| densest z12 screen, default visibility | published | clipped |
+|---|---:|---:|
+| Harriman / Bear Mountain | 26 | **19** |
+| Catskills | 22 | **22** |
+| **Adirondacks** | **107** | **35** |
+
+**Targeted, which is the point.** The Adirondack screen falls by two thirds — those 105
+tent sites sit along the Saranac lake shores and are reached by water rather than by trail
+— while the Catskills does not move at all. 5,115 of 21,379 waypoints drop.
+
+**And it does not reach POI_VISIBILITY.md's ~16.** Sweeping every window rather than the
+three named regions, the worst screen as published is the Adirondacks at 106; after the
+clip the worst is Allegany at 53, filled by OPRHP crossings, campsites and privies that
+survive because they genuinely *are* trail-adjacent. So the clip is a large improvement
+and not a fix, and #1105's "fifty is too many" is still open for that screen — which is
+worth writing down, because "clip to the ring" reads like an answer.
+
+**`parking` and `trailhead` are exempt**, from the measurement rather than from taste. A
+uniform ring drops 49% of DEC's parking areas and 12% of OPRHP's, the largest per-type
+losses in the clip; exempting them changes *no* figure in the table above, because both
+start hidden under #865's default, and keeps 2,493 more waypoints. A hiker who turns
+parking on pays for it and is a hiker asking for parking. #981 is the supporting argument:
+a lot is "an annotation on a start, never a precondition", so the type whose whole purpose
+is to sit off the tread is the wrong one to measure against tread.
 
 ### What this does not measure, and it is the bigger half
 

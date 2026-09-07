@@ -65,13 +65,15 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | | shelter | campsite | water | resupply | crossing | viewpoint | parking | privy | trailhead |
 |---|---|---|---|---|---|---|---|---|---|
 | **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping | absent |
-| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 793** | **ships 629** | **ships 1,201** | **ships 574** | **ships 287** |
-| **NYS DEC** | **ships 315** | **ships 2,077** | **unsuitable** 23 / **0** | absent | **ships 246** | **ships 202** | **ships 1,852** | **ships 350** | *available* 10,520 |
+| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 1,222** | **ships 629** | **ships 1,202** | **ships 574** | **ships 287** |
+| **NYS DEC** | **ships 331** | **ships 2,315** | **unsuitable** 23 / **0** | absent | **ships 1,182** | **ships 248** | **ships 2,256** | **ships 393** | *available* 10,520 |
 | **NYNJTC** | absent | absent | absent | absent | absent | absent | *unsuitable* 26 | absent | *unsuitable* 26 |
 | **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 | **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent | absent |
 | **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
 | **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent | absent |
+| **USFS** | *unsuitable* 815 | **ships 4,605** | absent | absent | absent | **ships 636** | absent | absent | **ships 7,358** |
+| **NH GRANIT** | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
 
 **The trailhead column is new with [#1197](https://github.com/OurHike/OurHike/issues/1197)**,
 which gave `POI_TYPES` the ninth category §7c said it lacked. Three of its cells are worth
@@ -89,22 +91,42 @@ reading rather than skimming:
   `Trailheads_HighlandsProject_Apr2026` is a featured-hikes table whose rows happen to be
   trailheads — one row is one suggested hike, and `ParkingLot` is a lot's name as prose.
   A ninth category does not make a curated hike list into an inventory.
-- **USFS's 7,358 are already published, as `parking`.** They are the loudest cell in the
-  column and the only one where the verdict is about *us* rather than about an org.
-  `export_nearby_poi.py` maps `site_type` `TRAILHEAD` onto `poi_type` `parking`, which
+- **USFS's 7,358 ship as trailheads since [#1218](https://github.com/OurHike/OurHike/issues/1218),**
+  and shipped as `parking` for the sixteen days before it. This was the loudest cell in the
+  column and the only one where the verdict was about *us* rather than about an org:
+  `export_nearby_poi.py` mapped `site_type` `TRAILHEAD` onto `poi_type` `parking`, which
   [#1207](https://github.com/OurHike/OurHike/issues/1207) chose on 2026-09-02 and recorded as
   one of "the two clean mappings" — correct that morning, because there was no ninth category
-  until #1197 added one the same afternoon. Not changed here: it is a decision belonging to
-  whoever probed the layer, `test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings`
-  asserts it by name, and moving it would leave the `parking` cell describing something nobody
-  has measured — §2c of [WHITE_MOUNTAINS_SOURCE_SURVEY.md](WHITE_MOUNTAINS_SOURCE_SURVEY.md)
-  finds no `PARKING` site_type in its 335-row White Mountains census (a census, not a sample),
-  so on that evidence USFS would ship no parking at all. Tracked as [#1218](https://github.com/OurHike/OurHike/issues/1218).
+  until #1197 added one the same afternoon. So 7,358 pins drew a "P" glyph on a category the
+  app had since decided is a different thing.
 
-**USFS and NH GRANIT have no row in the matrix above**, because #1207 registered them after it
-was last redrawn and #1197 added a column rather than rows. Their verdicts are in
-`sources.json`, which `tests/test_poi_coverage.py` reads and this table does not — so the table
-is the stale half. Worth fixing next time somebody is in here.
+  **What #1218 did that #1197 could not was take the measurement the move has to come with.**
+  `TRAILHEAD` was the *only* value in `USFS_SITE_TYPES` pointing at `parking`, so moving it
+  empties that cell for this organization — and #1218 refused to write `absent` there on the
+  strength of §2c of [WHITE_MOUNTAINS_SOURCE_SURVEY.md](WHITE_MOUNTAINS_SOURCE_SURVEY.md)'s
+  335-row White Mountains census, which is a census of the wrong 1% of the layer. The
+  nationwide `site_type` group-by was re-run **2026-09-04: 33 distinct values over 31,406
+  features, and no `PARKING` among them.** The nearest are `SNOWPARK` 318, `OHV STAGING AREA`
+  181 and `DAY USE AREA` 1,034, none of which is a parking lot — this is a recreation-*sites*
+  layer, and a parking lot is not a recreation site, so the absence is structural rather than
+  a gap in what the Forest Service publishes.
+
+  `test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings` was argued away
+  rather than deleted: it still asserts two clean mappings and one of them moved.
+
+**USFS and NH GRANIT have rows now** ([#1218](https://github.com/OurHike/OurHike/issues/1218)).
+They had none while #1207 registered them after the table was last redrawn and #1197 added a
+column rather than rows, which left `sources.json` and this table disagreeing with only one of
+them under test. The table above is regenerated from `sources.json` — the file
+`tests/test_poi_coverage.py` reads — so every cell in it is now the same verdict the tests see.
+
+That redraw moved seven numbers besides the two new rows, all of them stale in the direction of
+under-counting: OPRHP `crossing` 793 → 1,222, DEC `shelter` 315 → 331, `campsite` 2,077 → 2,315,
+`crossing` 246 → 1,182, `viewpoint` 202 → 248, `parking` 1,852 → 2,256, `privy` 350 → 393. Named
+rather than silently corrected, because a table that quietly gains a thousand crossings is one a
+reader should be able to ask about. **NH GRANIT's row is nine `unprobed` cells**, which is an
+admission and not a finding — #1207's scope was trails, and only layer 2 of its service was
+opened.
 
 **Twelve of those cells became `shipping` on 2026-08-27**
 ([#1097](https://github.com/OurHike/OurHike/issues/1097)) — the maintainer's decision on

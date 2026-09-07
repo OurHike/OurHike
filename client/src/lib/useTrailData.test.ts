@@ -9,10 +9,13 @@
 // here: jsdom has no network stack worth the name, and a millisecond budget
 // tuned on one machine is the flaky test CLAUDE.md warns about.
 //
-// What IS assertable, exactly, is the RULE those milliseconds came from:
-// neither background artifact may be asked for while the trail line is still
-// coming. So this counts calls and the order they happen in, which is
-// deterministic on a machine of any speed.
+// What IS assertable, exactly, is the RULE those milliseconds came from: no
+// background artifact may be asked for while the trail line is still coming.
+// So this counts calls and the order they happen in, which is deterministic
+// on a machine of any speed. Since #1257 the rule holds one artifact rather
+// than two - the other organizations' lines are tiles the map reads per view
+// (map/networkTiles.ts), not a launch fetch at all - so the gated sibling
+// below is the junction graph alone.
 //
 // Every wait below is on something observable - a mock having been called, a
 // deferred promise having been resolved by the test itself - rather than on a
@@ -37,7 +40,7 @@ vi.mock('./trailData', () => ({
   TrailDataHashMismatchError: class extends Error {},
 }))
 vi.mock('./nearbyTrailData', () => ({
-  loadNearbyTrails: vi.fn(),
+  forgetNearbyTrails: vi.fn(),
   loadNetworkOverview: vi.fn(),
 }))
 vi.mock('./trailGraphData', () => ({
@@ -56,7 +59,7 @@ vi.mock('./dataRefresh', () => ({
 
 const { downloadTrailData, haveTrailData, loadTrailData, loadTrailLines } =
   await import('./trailData')
-const { loadNearbyTrails, loadNetworkOverview } = await import('./nearbyTrailData')
+const { forgetNearbyTrails, loadNetworkOverview } = await import('./nearbyTrailData')
 const { loadTrailGraph } = await import('./trailGraphData')
 const { fetchTrailOverview } = await import('./trailOverview')
 const { publishedSnapshot } = await import('./dataManifest')
@@ -94,7 +97,7 @@ beforeEach(() => {
   vi.mocked(fetchTrailOverview).mockResolvedValue(null)
   vi.mocked(publishedSnapshot).mockResolvedValue({} as never)
   vi.mocked(recallRelease).mockResolvedValue(null)
-  vi.mocked(loadNearbyTrails).mockResolvedValue(null)
+  vi.mocked(forgetNearbyTrails).mockResolvedValue(undefined)
   vi.mocked(loadNetworkOverview).mockResolvedValue(null)
   vi.mocked(loadTrailGraph).mockResolvedValue({
     kind: 'absent',
@@ -108,7 +111,7 @@ afterEach(() => {
 })
 
 describe('a cold launch, with signal', () => {
-  it('asks for neither background artifact while the trail line is still coming', async () => {
+  it('does not ask for the junction graph while the trail line is still coming', async () => {
     const trailFetch = deferred<void>()
     vi.mocked(haveTrailData).mockResolvedValue(false)
     vi.mocked(downloadTrailData).mockReturnValue(trailFetch.promise)
@@ -117,15 +120,13 @@ describe('a cold launch, with signal', () => {
 
     // The observable that proves the sequence reached the point being
     // asserted: the launch fetch is genuinely in flight, not merely not
-    // started yet. Without this the two expectations below would pass on a
-    // render that had not run any effect at all.
+    // started yet. Without this the expectation below would pass on a render
+    // that had not run any effect at all.
     await waitFor(() => expect(downloadTrailData).toHaveBeenCalled())
-    expect(loadNearbyTrails).not.toHaveBeenCalled()
     expect(loadTrailGraph).not.toHaveBeenCalled()
 
     trailFetch.settle()
 
-    await waitFor(() => expect(loadNearbyTrails).toHaveBeenCalled())
     await waitFor(() => expect(loadTrailGraph).toHaveBeenCalled())
   })
 
@@ -144,8 +145,7 @@ describe('a cold launch, with signal', () => {
 
     await waitFor(() => expect(downloadTrailData).toHaveBeenCalled())
     await waitFor(() => expect(loadNetworkOverview).toHaveBeenCalled())
-    // While its two gated siblings still wait.
-    expect(loadNearbyTrails).not.toHaveBeenCalled()
+    // While its gated sibling still waits.
     expect(loadTrailGraph).not.toHaveBeenCalled()
   })
 
@@ -161,40 +161,54 @@ describe('a cold launch, with signal', () => {
 
     renderHook(() => useTrailData(true))
     await waitFor(() => expect(downloadTrailData).toHaveBeenCalled())
-    expect(loadNearbyTrails).not.toHaveBeenCalled()
+    expect(loadTrailGraph).not.toHaveBeenCalled()
 
     trailFetch.fail(new Error('the bucket refused this origin'))
 
-    await waitFor(() => expect(loadNearbyTrails).toHaveBeenCalled())
     await waitFor(() => expect(loadTrailGraph).toHaveBeenCalled())
   })
 })
 
 describe('the launches that must not pay for the rule', () => {
+  it('forgets the whole-file network copy an earlier release stored, on every launch (#1257)', async () => {
+    // Up to 228.8 MB under one IndexedDB key on a phone that fetched
+    // 2026-09-07's artifact before #1254's budget existed, drawn by nothing
+    // now that the lines are tiles. Once per mount, gated on nothing: a
+    // delete of nothing is free and the store carries no version to check.
+    vi.mocked(haveTrailData).mockResolvedValue(true)
+
+    const { unmount } = renderHook(() => useTrailData(true))
+
+    await waitFor(() => expect(forgetNearbyTrails).toHaveBeenCalledTimes(1))
+    // Unmounted by hand rather than left to the runner: a hook still mounted
+    // when the next test starts keeps answering its effects into that test's
+    // mocks, and this file is about call counts.
+    unmount()
+  })
+
   it('lets a warm phone through without waiting on any fetch', async () => {
     // `fetchOnce` returns after two small IndexedDB reads once a release is
     // on the phone, so the gate opens in milliseconds and a returning hiker
     // is charged nothing for it. Asserted as "downloadTrailData was never
-    // called AND both ran", which is the warm launch exactly.
+    // called AND the graph ran", which is the warm launch exactly.
     vi.mocked(haveTrailData).mockResolvedValue(true)
 
     renderHook(() => useTrailData(true))
 
-    await waitFor(() => expect(loadNearbyTrails).toHaveBeenCalled())
     await waitFor(() => expect(loadTrailGraph).toHaveBeenCalled())
     expect(downloadTrailData).not.toHaveBeenCalled()
   })
 
-  it('reads the stored nearby lines with no signal, without waiting for anything', async () => {
+  it('reads the stored network sketch with no signal, without waiting for anything', async () => {
     // Offline the gate is not applied at all, and that asymmetry is the
-    // design: what waits is the 7.5 MB refetch, never the store read. A phone
-    // on a ridge draws its last verified nearby lines on the first tick.
+    // design: what waits is a refetch, never a store read. A phone on a ridge
+    // draws its last verified sketch on the first tick.
     vi.mocked(haveTrailData).mockResolvedValue(true)
 
     renderHook(() => useTrailData(false))
 
     await waitFor(() =>
-      expect(loadNearbyTrails).toHaveBeenCalledWith(false, expect.anything()),
+      expect(loadNetworkOverview).toHaveBeenCalledWith(false, expect.anything()),
     )
     // The graph reads its store on the same tick, and used to be the
     // exception here. #1050 removed the offline early return that recorded

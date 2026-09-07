@@ -27,7 +27,6 @@ import { readTrailsMerged } from '../lib/trailShape'
 import {
   attachMapAppearance,
   attachTrailData,
-  attachNearbyTrails,
   attachNetworkOverview,
   attachTrailOverview,
   buildMapStyle,
@@ -114,17 +113,6 @@ export interface MapViewProps {
    * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
    */
   overviewTrailsUrl?: string | null
-  /**
-   * The trail lines other organizations maintain, as an object URL (#950,
-   * features/NEARBY_TRAILS.md).
-   *
-   * Drawn ghosted and under the chosen trail, by the same expressions that
-   * draw the chosen trail - see map/style.ts's buildTrailLineLayers. Null is
-   * the ordinary state today, because publish.py holds that artifact back
-   * while NYS OPRHP's and NYNJTC's reuse terms are unstated, and it renders
-   * as the A.T.-only map this app has always drawn.
-   */
-  nearbyTrailsUrl?: string | null
   /**
    * The corridor-view sketch of that whole network, as an object URL (#1135,
    * lib/config.ts's NETWORK_OVERVIEW_KEY).
@@ -464,7 +452,6 @@ export function MapView({
   trailsUrl,
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
-  nearbyTrailsUrl = null,
   networkOverviewUrl = null,
   pois = NO_POIS,
   pinCondition,
@@ -577,6 +564,15 @@ export function MapView({
       // per-tile fallthrough of a source the chosen style actually declares,
       // so there is no behind-the-back request to guard against.
       engine.registerBasemapProtocol()
+
+      // And network:// URLs - the other organizations' trail lines, out of
+      // their published PMTiles archive by byte range (networkTiles.ts,
+      // #1257). No prop carries these lines any more: the style declares the
+      // source and the handler reads the bucket per tile. Registered
+      // unconditionally for the basemap scheme's reason - it reaches the
+      // network only as tiles of a source the style declares, and never
+      // before latest.json has said the archive exists.
+      engine.registerNetworkProtocol()
 
       // Same contract for the DEM and contour protocols, with one difference
       // worth being deliberate about: this one reaches the network, so it is
@@ -808,14 +804,6 @@ export function MapView({
     if (map === null) return
     return attachTrailOverview(map, overviewTrailsUrl)
   }, [map, overviewTrailsUrl])
-
-  // Its own effect rather than a branch inside the one above, because the two
-  // move on different clocks: the overview is set once early and cleared once,
-  // and this arrives whenever the network answers and then stays.
-  useEffect(() => {
-    if (map === null) return
-    return attachNearbyTrails(map, nearbyTrailsUrl)
-  }, [map, nearbyTrailsUrl])
 
   // The network's own sketch (#1135), on the nearby lines' clock rather than
   // the A.T. sketch's: it arrives once and stays, because nothing better

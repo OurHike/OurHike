@@ -172,6 +172,8 @@ attribution so that screen has one place to read them from when it does.
 import json
 from pathlib import Path
 
+import duckdb
+from pmtiles.reader import MmapSource, Reader
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
 from shapely.ops import unary_union
@@ -203,6 +205,36 @@ MANIFEST_NAME = "nearby_trails_manifest.json"
 # full file (#1135). Its own flat name for publish.py and lib/config.ts to
 # agree on, like NEARBY_TRAILS_KEY.
 OVERVIEW_ARTIFACT_NAME = "network_overview.geojson"
+
+# THE SAME LINES AS VECTOR TILES (#1257), which is how the map draws them
+# above the seam since the GeoJSON above outgrew a phone.
+#
+# On 2026-09-07 the artifact reached 228,820,578 bytes - nationwide USFS
+# trails, #1231 - and every phone that fetched it whole crashed its map
+# (#1254): the file was parsed entire on the way to MapLibre, and a renderer
+# at 1.7 GB is a dead one. A PMTiles archive is read by byte range - the
+# header, one directory, then only the tiles under the viewport - so what a
+# phone holds is a few kilobytes per tile whatever the archive weighs. The
+# basemap has shipped that way all along; these lines never did.
+#
+# GDAL writes it, through the same DuckDB spatial extension every exporter
+# here already loads - no new tool. Measured against that day's real file on
+# a 4-core runner: 112,378 features tiled z9-z14 in 92 s into 132,995,363
+# bytes and 173,209 tiles, layer `trails`, every property intact - and 388
+# bytes of header and root directory to open, which is what a phone reads
+# before its first tile.
+#
+# THE ZOOM RANGE IS A CONTRACT WITH THE CLIENT. client/src/lib/config.ts
+# declares NEARBY_TRAILS_TILES_MIN_ZOOM and _MAX_ZOOM for the source it
+# builds over these tiles, and tests/test_export_nearby_trails.py reads that
+# file to hold the two ends equal - a tileset the map asks the wrong zooms of
+# draws nothing, silently. 9 is the pin seam (map/poiLayers.ts), where the
+# full network's layers start; below it the overview sketch above still
+# draws. 14 is where the Fine hiking sheet stops and MapLibre overzooms.
+TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"
+TILES_LAYER = "trails"
+TILES_MIN_ZOOM = 9
+TILES_MAX_ZOOM = 14
 
 # Coordinates are written at six decimals - about 0.11 m of longitude at
 # these latitudes - by export_trails.py's own precision rule: an order finer
@@ -854,6 +886,67 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
+def write_tiles(geojson_path: Path) -> dict:
+    """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
+    manifest entry (#1257).
+
+    Cut from the written GeoJSON rather than from the records, so the tiles
+    and the file cannot disagree about a vertex: ST_Read hands GDAL exactly
+    the features and properties the file carries, and `SELECT *` keeps every
+    property - the closure_* columns only exist on a run whose records hold a
+    closed trail, and a hand-kept column list would fail the runs that do not.
+
+    GDAL's PMTiles driver builds an MBTiles beside the output and converts it,
+    so the run needs roughly the archive's own size again in scratch space
+    while it runs, released when the COPY returns.
+
+    Fails loudly if the header does not declare the zooms the client is
+    built for: a creation option GDAL silently ignored would publish a
+    tileset the map never asks the right zooms of, and the failure on the
+    phone is an empty map with no error anywhere.
+    """
+    path = OUT_DIR / TILES_ARTIFACT_NAME
+    # COPY TO refuses to overwrite for these drivers - export_trails.py's own
+    # note - and this needs to be safely re-runnable.
+    path.unlink(missing_ok=True)
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(
+        f"""
+        COPY (SELECT * FROM ST_Read('{geojson_path.as_posix()}'))
+        TO '{path.as_posix()}'
+        WITH (
+            FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
+            DATASET_CREATION_OPTIONS (
+                'MINZOOM={TILES_MIN_ZOOM}', 'MAXZOOM={TILES_MAX_ZOOM}',
+                'NAME={TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
+                'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+            )
+        )
+        """
+    )
+
+    with path.open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+    zooms = (header["min_zoom"], header["max_zoom"])
+    if zooms != (TILES_MIN_ZOOM, TILES_MAX_ZOOM):
+        raise SystemExit(
+            f"{path} declares zooms {zooms}, not the z{TILES_MIN_ZOOM}-z{TILES_MAX_ZOOM} the client is "
+            "built for (client/src/lib/config.ts). GDAL did not honour the creation options, and a "
+            "tileset the map asks the wrong zooms of draws nothing."
+        )
+
+    return {
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "layer": TILES_LAYER,
+        "min_zoom": TILES_MIN_ZOOM,
+        "max_zoom": TILES_MAX_ZOOM,
+        "tile_count": header["addressed_tiles_count"],
+    }
+
+
 def write_artifact(records: list[dict], per_source: dict) -> dict:
     """Write the artifact and return its manifest entry."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -941,6 +1034,9 @@ def main() -> dict:
     # overview simplifies the same geometry a second time at its own coarser
     # tolerance.
     manifest["overview"] = write_overview(simplified)
+    # The same lines as vector tiles (#1257), cut from the file just written
+    # so the two cannot disagree - see write_tiles for what a phone gains.
+    manifest["tiles"] = write_tiles(Path(manifest["path"]))
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
@@ -948,6 +1044,12 @@ def main() -> dict:
     print(
         f"  overview: {overview['feature_count']} features, {overview['coordinate_count']:,} coordinates "
         f"-> {overview['path']} ({Path(overview['path']).stat().st_size:,} bytes)"
+    )
+
+    tiles = manifest["tiles"]
+    print(
+        f"  tiles: {tiles['tile_count']:,} tiles z{tiles['min_zoom']}-z{tiles['max_zoom']} "
+        f"-> {tiles['path']} ({Path(tiles['path']).stat().st_size:,} bytes)"
     )
 
     held_back = [k for k, s in per_source.items() if not s["reaches_hikers"]]

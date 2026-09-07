@@ -113,6 +113,8 @@ import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warn
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
 import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
 import { nearbyTrailOpacityExpression } from './nearbyTrails'
+import { NETWORK_TILES_LAYER, NETWORK_TILES_URL } from './networkTiles'
+import { NEARBY_TRAILS_TILES_MAX_ZOOM, NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
 import {
   buildTrailLabelLayer,
   NEARBY_TRAIL_LABEL_LAYER_ID,
@@ -157,8 +159,22 @@ export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
  * pipeline publishes them as their own artifact and publish.py holds that
  * artifact back entirely while ANY steward in it is outstanding (lib/config.ts's
  * NEARBY_TRAILS_KEY).
- * One MapLibre GeoJSON source takes one `data`, so two artifacts is two
- * sources.
+ *
+ * A VECTOR SOURCE SINCE #1257, where the A.T.'s is GeoJSON. The artifact grew
+ * to 228,820,578 bytes on 2026-09-07 (nationwide USFS, #1231) and a GeoJSON
+ * source takes its `data` whole - parsed on the main thread, indexed in the
+ * worker, every phone that tried crashed (#1254). So these lines are cut into
+ * z9-z14 tiles (lib/config.ts's NEARBY_TRAILS_TILES_KEY) and this source
+ * declares a network:// template that map/networkTiles.ts answers by byte
+ * range, the way the hiking sheet's basemap:// is answered. What the map
+ * holds is the tiles under the camera and nothing else. The A.T.'s own line
+ * stays GeoJSON because it is 3.9 MB and the thing every entry step is about;
+ * it is not this problem.
+ *
+ * The one thing a vector source needs that a GeoJSON one does not is the name
+ * of the layer inside the tiles: every layer over this source carries
+ * `source-layer: NETWORK_TILES_LAYER` (onSourceLayer below), and a layer that
+ * did not would draw nothing and say nothing.
  *
  * WHAT THAT COSTS, stated so nobody rediscovers it: the layers below are a
  * second instance of the trail line's casing, blaze, closure band and label.
@@ -176,11 +192,12 @@ export const NEARBY_TRAILS_SOURCE_ID = 'nearby-trails'
  * network's layers carry `minzoom` at the seam and the A.T.'s own sketch
  * covers only the A.T.
  *
- * A third source rather than a second `data` for NEARBY_TRAILS_SOURCE_ID
- * because the two are on the map AT ONCE with disjoint zoom ranges: the
- * sketch below the seam, the full lines above it, and one GeoJSON source
- * takes one `data`. Same stewards, so the same attribution rides it - the
- * licence condition follows the lines, not the artifact.
+ * A third source rather than folded into NEARBY_TRAILS_SOURCE_ID because
+ * the two are on the map AT ONCE with disjoint zoom ranges - the sketch below
+ * the seam, the full lines above it - and since #1257 because the two are
+ * different kinds of source: the sketch is one GeoJSON handed over whole, the
+ * lines are tiles read by range. Same stewards, so the same attribution rides
+ * it - the licence condition follows the lines, not the artifact.
  */
 export const NETWORK_OVERVIEW_SOURCE_ID = 'network-overview'
 
@@ -648,41 +665,20 @@ function buildTrailLineLayers(
 }
 
 /**
- * The other organizations' trail lines, or nothing (#950).
- *
- * attachTrailOverview's shape, and one difference that matters: the overview
- * is pushed and then CLEARED, because it exists only until the real
- * centerline lands. These lines are not a stand-in for anything. Once they
- * are on the map they stay, so `null` here means "there are none" - a bucket
- * that holds no such artifact, which is what publish.py produces while either
- * steward's terms are unresolved - rather than "they are finished".
- */
-export function attachNearbyTrails(
-  map: MapLibreMap,
-  nearbyTrailsUrl: string | null,
-): () => void {
-  return whenStyleReady(
-    map,
-    () => map.getSource(NEARBY_TRAILS_SOURCE_ID) !== undefined,
-    () => {
-      const source = map.getSource<GeoJSONSource>(NEARBY_TRAILS_SOURCE_ID)
-      if (source === undefined || typeof source.setData !== 'function') return
-
-      source.setData((nearbyTrailsUrl ?? emptyTrailOverview()) as never)
-    },
-    'Nearby trails',
-  )
-}
-
-/**
  * The network's corridor-view sketch, or nothing (#1135).
  *
- * attachNearbyTrails' shape and clock, not attachTrailOverview's: once these
- * lines are on the map they stay, because nothing better replaces them below
- * the seam - the full network's layers start where this one stops. `null`
+ * attachTrailOverview's shape but not its clock: that overview is pushed and
+ * then CLEARED, because it exists only until the real centerline lands. Once
+ * these lines are on the map they stay, because nothing better replaces them
+ * below the seam - the full network's tiles start where this one stops. `null`
  * means "there is no sketch" - an older release, or a bucket holding the
  * artifact back with its parent - and draws as the A.T.-only opening view
  * this app had before the artifact existed.
+ *
+ * The full lines above the seam have no attach function since #1257: they are
+ * a vector source (NEARBY_TRAILS_SOURCE_ID) whose tiles map/networkTiles.ts
+ * reads as the camera asks, so there is no URL to hand over and no moment to
+ * hand it over at.
  */
 export function attachNetworkOverview(
   map: MapLibreMap,
@@ -707,6 +703,27 @@ export function attachNetworkOverview(
  *  later `setData` is one object two of them could write to. */
 function emptyTrailOverview(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] }
+}
+
+/**
+ * The same layers, told which layer inside a vector tile they draw from.
+ *
+ * The builders below (buildTrailLineLayers, buildClosureLayers,
+ * buildTrailLabelLayer) were written for GeoJSON sources, which have no inner
+ * layers, and they still serve the A.T.'s that way. A vector source's layers
+ * need `source-layer` besides, and a layer without one draws nothing, without
+ * an error - so it is set here in one place over the whole set rather than
+ * threaded through three builders as a parameter two of their callers would
+ * have to pass as undefined. style.test.ts checks every layer over the
+ * network source carries it.
+ */
+function onSourceLayer(
+  layers: LayerSpecification[],
+  sourceLayer: string,
+): LayerSpecification[] {
+  return layers.map(
+    (layer) => ({ ...layer, 'source-layer': sourceLayer }) as LayerSpecification,
+  )
 }
 
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
@@ -1076,9 +1093,17 @@ export function buildMapStyle({
       // than from these declarations, so this is the second half of the same
       // fact rather than the mechanism - see that module for why one source
       // cannot be credited in one file and go uncredited in another.
+      //
+      // A VECTOR SOURCE, not a GeoJSON one (#1257): the tiles are asked for
+      // through a scheme map/networkTiles.ts answers by byte range off the
+      // published archive, and the zoom range is the archive's (lib/config.ts
+      // holds both ends against the pipeline's). One shape of style whatever
+      // the bucket holds - a bucket with no archive answers every tile empty.
       [NEARBY_TRAILS_SOURCE_ID]: {
-        type: 'geojson',
-        data: emptyTrailOverview(),
+        type: 'vector',
+        tiles: [NETWORK_TILES_URL],
+        minzoom: NEARBY_TRAILS_TILES_MIN_ZOOM,
+        maxzoom: NEARBY_TRAILS_TILES_MAX_ZOOM,
         attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT} · ${DEC_CREDIT}`,
       },
       // The same network as a corridor-view sketch (#1135), empty until
@@ -1315,26 +1340,29 @@ export function buildMapStyle({
       // map/dayHikeLayers.ts carries the full argument; style.test.ts pins
       // the order by index.
       ...buildDayHikeCasingLayers(),
-      ...buildTrailLineLayers(
-        NEARBY_TRAILS_SOURCE_ID,
-        NEARBY_TRAIL_CASING_LAYER_ID,
-        NEARBY_BLAZE_LAYER_ID,
-        appearance,
-        // ABOVE THE SEAM ONLY (features/NEARBY_TRAILS.md §8). "Forty short
-        // trails are not a below-seam subject - at z7 Harriman is one green
-        // shape", and 3,663 lines drawn across the corridor view would be a
-        // smear over the thing that view is actually about, which is the
-        // thirty club sections tiling the A.T.
-        //
-        // HALF OF §8, and the missing half is named rather than hidden: it
-        // also says the marquee routes - the A.T., the Long Path - should
-        // still be drawn through the parks below the seam, with the PARK as
-        // the subject there. That needs the park polygons exported and a way
-        // to tell a marquee route from a short park trail, neither of which
-        // exists. Until it does, the Long Path is absent below z9 rather than
-        // drawn at the wrong prominence. Cutting the smear is the half worth
-        // having first; the other half is #557's ground.
-        POI_PIN_MIN_ZOOM,
+      ...onSourceLayer(
+        buildTrailLineLayers(
+          NEARBY_TRAILS_SOURCE_ID,
+          NEARBY_TRAIL_CASING_LAYER_ID,
+          NEARBY_BLAZE_LAYER_ID,
+          appearance,
+          // ABOVE THE SEAM ONLY (features/NEARBY_TRAILS.md §8). "Forty short
+          // trails are not a below-seam subject - at z7 Harriman is one green
+          // shape", and 3,663 lines drawn across the corridor view would be a
+          // smear over the thing that view is actually about, which is the
+          // thirty club sections tiling the A.T.
+          //
+          // HALF OF §8, and the missing half is named rather than hidden: it
+          // also says the marquee routes - the A.T., the Long Path - should
+          // still be drawn through the parks below the seam, with the PARK as
+          // the subject there. That needs the park polygons exported and a way
+          // to tell a marquee route from a short park trail, neither of which
+          // exists. Until it does, the Long Path is absent below z9 rather than
+          // drawn at the wrong prominence. Cutting the smear is the half worth
+          // having first; the other half is #557's ground.
+          POI_PIN_MIN_ZOOM,
+        ),
+        NETWORK_TILES_LAYER,
       ),
       // A nearby trail marked closed long-term gets the same barrier tape the
       // A.T.'s closures get (features/NEARBY_TRAILS.md §3: a hiker learns ONE
@@ -1342,10 +1370,13 @@ export function buildMapStyle({
       // chosen trail's band is over its own - a barrier under the line is a
       // picture of an open trail - and still under everything about the
       // chosen trail, per the ordering argument above.
-      ...buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
-        bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
-        filter: LONG_TERM_CLOSED_FILTER,
-      }),
+      ...onSourceLayer(
+        buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
+          bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+          filter: LONG_TERM_CLOSED_FILTER,
+        }),
+        NETWORK_TILES_LAYER,
+      ),
       ...buildTrailLineLayers(
         TRAILS_SOURCE_ID,
         TRAIL_CASING_LAYER_ID,
@@ -1379,12 +1410,17 @@ export function buildMapStyle({
       // trail's name cannot both be placed, the one the map is about is the
       // one that should survive. Same layer, same expressions, same opacity
       // rule; only the id and the source differ.
-      buildTrailLabelLayer(
-        NEARBY_TRAILS_SOURCE_ID,
-        trailCasingColor(appearance),
-        mapBackdrop(appearance),
-        TRAIL_LABEL_MIN_ZOOM,
-        NEARBY_TRAIL_LABEL_LAYER_ID,
+      ...onSourceLayer(
+        [
+          buildTrailLabelLayer(
+            NEARBY_TRAILS_SOURCE_ID,
+            trailCasingColor(appearance),
+            mapBackdrop(appearance),
+            TRAIL_LABEL_MIN_ZOOM,
+            NEARBY_TRAIL_LABEL_LAYER_ID,
+          ),
+        ],
+        NETWORK_TILES_LAYER,
       ),
       buildTrailLabelLayer(
         TRAILS_SOURCE_ID,

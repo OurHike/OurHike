@@ -1,6 +1,17 @@
 // The other organizations' trail lines: stricter than the sketch it is
 // modelled on, and since #1082 a cache of the last verified fetch.
 //
+// SINCE #1257 THE MECHANISM CARRIES THE NETWORK'S CORRIDOR-VIEW SKETCH AND
+// NOTHING ELSE. The whole-file network artifact these tests were written
+// around was promoted at 228,820,578 bytes on 2026-09-07 and crashed every
+// phone that fetched it (#1254); its lines are vector tiles now
+// (map/networkTiles.ts) and never pass through here. Every test below that
+// used to load the network loads the sketch instead - same store shape, same
+// manifest question, same strictness, because the sketch is drawn under the
+// hiker's dot at the opening zooms exactly as the lines are above the seam.
+// What this module still does for the old copy is delete it, tested at the
+// end.
+//
 // The strictness (#950): lib/trailOverview.ts draws unverifiable bytes,
 // because what rides on the sketch is three seconds of a line drawn only
 // below the pin seam. Nothing about that argument survives the move to these
@@ -34,12 +45,12 @@ vi.mock('idb-keyval', () => ({
 
 const { del, get, set } = await import('idb-keyval')
 const {
-  loadNearbyTrails,
+  forgetNearbyTrails,
   loadNetworkOverview,
   NEARBY_TRAILS_STORE_KEY,
   NETWORK_OVERVIEW_STORE_KEY,
 } = await import('./nearbyTrailData')
-const { NEARBY_TRAILS_KEY, NETWORK_OVERVIEW_KEY } = await import('./config')
+const { NETWORK_OVERVIEW_KEY } = await import('./config')
 const { LAUNCH_ARTIFACT_BUDGET_BYTES } = await import('./artifactBudget')
 
 // One OPRHP line, carrying exactly the properties
@@ -137,13 +148,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('the nearby-trail network, online with nothing stored', () => {
+describe('the network sketch, online with nothing stored', () => {
   it('hands back a URL for bytes that match what was published, and stores them', async () => {
     serve({
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: true,
@@ -151,7 +164,7 @@ describe('the nearby-trail network, online with nothing stored', () => {
     // The half that makes the next launch cheap and the next dead spot lit:
     // the verified bytes and the hash they matched, under the store's key.
     expect(vi.mocked(set)).toHaveBeenCalledWith(
-      NEARBY_TRAILS_STORE_KEY,
+      NETWORK_OVERVIEW_STORE_KEY,
       expect.objectContaining({ hash: await networkHash() }),
     )
   })
@@ -161,9 +174,9 @@ describe('the nearby-trail network, online with nothing stored', () => {
     // hiker at a junction cannot tell which organization drew the line they
     // are looking at. Somebody else's trail gets the same check ours does -
     // and a store holding unverified bytes would serve them for launches.
-    serve({ manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: 'nope' } } } })
+    serve({ manifest: { artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: 'nope' } } } })
 
-    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
     expect(vi.mocked(set)).not.toHaveBeenCalled()
   })
 
@@ -174,7 +187,7 @@ describe('the nearby-trail network, online with nothing stored', () => {
     // These lines are read for a position, so unverifiable means undrawn.
     serve({ manifest: { artifacts: {} } })
 
-    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
   })
 
   it('says nothing when the bucket holds no network', async () => {
@@ -183,10 +196,10 @@ describe('the nearby-trail network, online with nothing stored', () => {
     // answer.
     serve({
       network: 'missing',
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: 'ahead' } } },
+      manifest: { artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: 'ahead' } } },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
   })
 
   it('says nothing when the fetch fails outright', async () => {
@@ -197,22 +210,22 @@ describe('the nearby-trail network, online with nothing stored', () => {
       vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
     )
 
-    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
   })
 
   it('asks for the key the pipeline publishes', async () => {
-    // The client end of the contract pipeline/publish.py's NEARBY_TRAILS_KEY
+    // The client end of the contract pipeline/publish.py's NETWORK_OVERVIEW_KEY
     // holds up. A name that drifts is a silent 404, and silent is exactly
     // what this path already is.
-    serve({ manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: 'anything' } } } })
+    serve({ manifest: { artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: 'anything' } } } })
 
-    await loadNearbyTrails(true)
+    await loadNetworkOverview(true)
 
-    expect(fetchedUrls()).toContain(`https://data.example/${NEARBY_TRAILS_KEY}`)
+    expect(fetchedUrls()).toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
   })
 })
 
-describe('the nearby-trail network, from the store (#1082)', () => {
+describe('the network sketch, from the store (#1082)', () => {
   it('serves the stored copy without signal, and says it was not revalidated', async () => {
     // The offline launch that used to draw no nearby lines at all. False on
     // `revalidated` is the caller's cue to ask again when signal arrives.
@@ -222,7 +235,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
       vi.fn(() => Promise.reject(new TypeError('should not be called'))),
     )
 
-    await expect(loadNearbyTrails(false)).resolves.toEqual({
+    await expect(loadNetworkOverview(false)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: false,
@@ -231,7 +244,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
   })
 
   it('serves nothing without signal when nothing is stored - the old offline launch', async () => {
-    await expect(loadNearbyTrails(false)).resolves.toBeNull()
+    await expect(loadNetworkOverview(false)).resolves.toBeNull()
   })
 
   it('does not fetch the artifact when the manifest still names the stored hash', async () => {
@@ -240,15 +253,17 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     // launch (pipeline/README.md's "one number wants watching").
     await aStoredCopy()
     serve({
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: true,
     })
-    expect(fetchedUrls()).not.toContain(`https://data.example/${NEARBY_TRAILS_KEY}`)
+    expect(fetchedUrls()).not.toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
   })
 
   it('replaces the stored copy when the manifest names a new hash', async () => {
@@ -257,17 +272,19 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     // and the store rewritten - the same door every stored copy came in by.
     await aStoredCopy('an-earlier-release')
     serve({
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: true,
     })
-    expect(fetchedUrls()).toContain(`https://data.example/${NEARBY_TRAILS_KEY}`)
+    expect(fetchedUrls()).toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
     expect(vi.mocked(set)).toHaveBeenCalledWith(
-      NEARBY_TRAILS_STORE_KEY,
+      NETWORK_OVERVIEW_STORE_KEY,
       expect.objectContaining({ hash: await networkHash() }),
     )
   })
@@ -282,9 +299,11 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     // closure. The fetch-only version retried on every online flip until a
     // fetch succeeded; a failure being terminal would be the regression.
     await aStoredCopy('an-earlier-release')
-    serve({ manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: 'newer-still' } } } })
+    serve({
+      manifest: { artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: 'newer-still' } } },
+    })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: 'an-earlier-release',
       revalidated: false,
@@ -301,10 +320,10 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     await aStoredCopy('an-earlier-release')
     serve({
       network: 'missing',
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: 'newer' } } },
+      manifest: { artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: 'newer' } } },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: 'an-earlier-release',
       revalidated: false,
@@ -319,7 +338,7 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     await aStoredCopy()
     serve({ manifest: { artifacts: {} } })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: false,
@@ -332,10 +351,12 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     // simply fetches again - which is every launch before this cache.
     vi.mocked(set).mockRejectedValue(new Error('QuotaExceededError'))
     serve({
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: true,
@@ -347,10 +368,12 @@ describe('the nearby-trail network, from the store (#1082)', () => {
     // still answers, and the next verified fetch rewrites the record.
     vi.mocked(get).mockRejectedValue(new Error('not today'))
     serve({
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: await networkHash(),
       revalidated: true,
@@ -372,49 +395,43 @@ describe('the nearby-trail network, from the store (#1082)', () => {
       }),
     )
 
-    await expect(loadNearbyTrails(true, controller.signal)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true, controller.signal)).resolves.toBeNull()
   })
 })
 
-describe('the network overview, through the same mechanism (#1135)', () => {
-  it('asks for its own key and stores under its own record, beside the network', async () => {
-    // The overview is the OPENING view's lines, so the two artifacts must
-    // never share a store record - a 255 KB sketch overwritten by (or
-    // overwriting) the 23.5 MB network would cost one launch the other's
-    // layer. The key spelling is the other half of the contract
-    // pipeline/tests/test_published_key_contract.py checks from its side.
-    serve({
-      manifest: {
-        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
-      },
-    })
+describe('what is left of the whole-file network copy (#1257)', () => {
+  it('deletes the copy an earlier release stored, and touches nothing else', async () => {
+    // Up to 228.8 MB under this one key on a phone that fetched 2026-09-07's
+    // artifact before #1254's budget existed. Nothing draws from it now.
+    await forgetNearbyTrails()
 
-    await expect(loadNetworkOverview(true)).resolves.toEqual({
-      url: 'blob:nearby',
-      hash: await networkHash(),
-      revalidated: true,
-    })
-    expect(fetchedUrls()).toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
-    expect(vi.mocked(set)).toHaveBeenCalledWith(
-      NETWORK_OVERVIEW_STORE_KEY,
-      expect.objectContaining({ hash: await networkHash() }),
-    )
-    expect(NETWORK_OVERVIEW_STORE_KEY).not.toBe(NEARBY_TRAILS_STORE_KEY)
+    expect(del).toHaveBeenCalledTimes(1)
+    expect(del).toHaveBeenCalledWith(NEARBY_TRAILS_STORE_KEY)
+    expect(set).not.toHaveBeenCalled()
   })
 
-  it('treats a 404 as an older release, exactly like its parent artifact', async () => {
-    // The bucket also 404s this while publish.py holds the pair back on a
-    // steward's reaches_hikers - one decision, two files, same reading.
-    serve({ network: 'missing', manifest: { artifacts: {} } })
+  it('treats a store that refuses the delete as one with nothing to forget', async () => {
+    vi.mocked(del).mockRejectedValue(new Error('no IndexedDB here'))
 
-    await expect(loadNetworkOverview(true)).resolves.toBeNull()
+    await expect(forgetNearbyTrails()).resolves.toBeUndefined()
+  })
+
+  it('keeps the sketch under its own record, so the delete cannot take it', () => {
+    // The sketch is the OPENING view's lines. The two artifacts never shared a
+    // record, and the key spelling is the other half of the contract
+    // pipeline/tests/test_published_key_contract.py checks from its side.
+    expect(NETWORK_OVERVIEW_STORE_KEY).not.toBe(NEARBY_TRAILS_STORE_KEY)
   })
 })
 
 describe('an artifact the phone cannot hold (#1254)', () => {
   // 2026-09-07: nearby_trails.geojson published at 228,820,578 bytes decoded,
   // and every phone that fetched it crashed its map. The manifest carried
-  // that size the whole time; nothing read it before fetching.
+  // that size the whole time; nothing read it before fetching. That file is
+  // tiles now (#1257) and never comes through here; the door stays, because
+  // the sketch is on the same road - 10,804,839 bytes decoded on 2026-09-04,
+  // 80.6% of it one nationwide USFS feature (lib/config.ts's
+  // NETWORK_OVERVIEW_KEY), which is a third of the way to the budget.
   const TOO_BIG = LAUNCH_ARTIFACT_BUDGET_BYTES + 1
 
   function quietWarnings() {
@@ -426,17 +443,17 @@ describe('an artifact the phone cannot hold (#1254)', () => {
     serve({
       manifest: {
         artifacts: {
-          [NEARBY_TRAILS_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
+          [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
         },
       },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
 
     expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
     expect(set).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0][0])).toContain(NEARBY_TRAILS_KEY)
+    expect(String(warn.mock.calls[0][0])).toContain(NETWORK_OVERVIEW_KEY)
   })
 
   it('keeps serving the last copy that fit, unrevalidated, so the asking resumes when a smaller one is published', async () => {
@@ -445,12 +462,12 @@ describe('an artifact the phone cannot hold (#1254)', () => {
     serve({
       manifest: {
         artifacts: {
-          [NEARBY_TRAILS_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
+          [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
         },
       },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toEqual({
+    await expect(loadNetworkOverview(true)).resolves.toEqual({
       url: 'blob:nearby',
       hash: 'the-hash-of-a-copy-that-fit',
       revalidated: false,
@@ -464,10 +481,12 @@ describe('an artifact the phone cannot hold (#1254)', () => {
     const warn = quietWarnings()
     serve({
       network: { arrayBuffer: () => Promise.resolve(new ArrayBuffer(TOO_BIG)) },
-      manifest: { artifacts: { [NEARBY_TRAILS_KEY]: { sha256: await networkHash() } } },
+      manifest: {
+        artifacts: { [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash() } },
+      },
     })
 
-    await expect(loadNearbyTrails(true)).resolves.toBeNull()
+    await expect(loadNetworkOverview(true)).resolves.toBeNull()
 
     expect(set).not.toHaveBeenCalled()
     expect(String(warn.mock.calls[0][0])).toContain('response')
@@ -482,23 +501,9 @@ describe('an artifact the phone cannot hold (#1254)', () => {
       hash: 'stored-before-the-budget',
     })
 
-    await expect(loadNearbyTrails(false)).resolves.toBeNull()
+    await expect(loadNetworkOverview(false)).resolves.toBeNull()
 
-    expect(del).toHaveBeenCalledWith(NEARBY_TRAILS_STORE_KEY)
+    expect(del).toHaveBeenCalledWith(NETWORK_OVERVIEW_STORE_KEY)
     expect(String(warn.mock.calls[0][0])).toContain('store')
-  })
-
-  it('weighs the overview through the same door', async () => {
-    quietWarnings()
-    serve({
-      manifest: {
-        artifacts: {
-          [NETWORK_OVERVIEW_KEY]: { sha256: await networkHash(), size_bytes: TOO_BIG },
-        },
-      },
-    })
-
-    await expect(loadNetworkOverview(true)).resolves.toBeNull()
-    expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
   })
 })

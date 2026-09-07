@@ -1,0 +1,62 @@
+// The other organizations' trails above the pin seam, drawn from vector tiles
+// (#1257).
+//
+// The standing trail-screen shot cannot be the evidence for this change. It
+// photographs the map as the app opens it - the whole corridor near z4.9 -
+// and below the seam the network is the corridor-view sketch, one GeoJSON
+// that #1257 leaves exactly as it was. What changed is everything from z9 up:
+// those lines used to arrive as one 228,820,578-byte GeoJSON handed to
+// MapLibre whole, which crashed every phone on 2026-09-07 (#1254), and they
+// now arrive as tiles read by byte range out of `nearby_trails.pmtiles`
+// (map/networkTiles.ts), a few kilobytes under the camera and nothing else.
+// A frame at z12 over a park where several organizations' trails cross the
+// A.T. is the one picture that shows the change: the same ghosted lines,
+// same widths, same tape, drawn from a source the old build could not hold.
+//
+// Harriman State Park is that ground. The A.T. runs through it, and within
+// 150 m of another marked trail for half its length there (#771): OPRHP's
+// blazed park trails, the NYNJTC-maintained ones, the Long Path a ridge over.
+// Public ground throughout - no campsite readable at this zoom, nobody's
+// report, nobody's fix (the four things SKILL.md says must never appear).
+//
+// The camera is seeded through lib/cameraMemory.ts's session-storage key, as
+// basemap-ground-network.mjs does and for its reasons: the app restores a
+// remembered view on load, validates the shape field by field, and a reload
+// is what that memory is for.
+//
+// WHAT THIS FRAME SHOWS, AND WHEN IT SHOWS NOTHING. The tiles come from the
+// bucket this preview reads, so the network appears here once a publish has
+// carried `nearby_trails.pmtiles` - until then map/networkTiles.ts reads
+// latest.json, finds no archive named, and draws nothing above the seam
+// rather than erroring, which is exactly the honest state a phone on an older
+// release is in. So a frame with the A.T. alone over Harriman is not a
+// broken recipe: it is the answer to "has publish-vector-data.yml run since
+// the merge", which is the handoff the PR body's Data pipelines section
+// exists to track.
+export const caption =
+  'Harriman at zoom 12 — the other organizations’ trails drawn from range-read vector tiles, ghosted under the A.T. (#1257); empty above the seam until nearby_trails.pmtiles is in the bucket this preview reads'
+export const alt =
+  'The map screen over Harriman State Park at zoom 12: the A.T. as a cased white line with the park’s blazed trails ghosted around and across it in their own colours, drawn from vector tiles rather than a whole-file download'
+
+/** Vector tiles from the bucket plus generated contours over a park both take
+ *  longer than chrome. */
+export const wait = 6000
+
+export default async function drive(page) {
+  // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back
+  // with every field validated, and null on anything that does not convince.
+  // Lake Tiorati, where the A.T., the Ramapo-Dunderberg and the Long Path's
+  // feeder trails all sit inside one z12 frame.
+  await page.evaluate(() => {
+    sessionStorage.setItem(
+      'ourhike:camera',
+      JSON.stringify({ center: [-74.09, 41.25], zoom: 12 }),
+    )
+  })
+  await page.reload({ waitUntil: 'load' })
+
+  // First run stays skipped across the reload: the runner installs that
+  // through an init script on the CONTEXT (scripts/screenshot.mjs's
+  // skipFirstRun), which re-runs on every document rather than only the first.
+  await page.getByRole('tab', { name: 'Map' }).click()
+}

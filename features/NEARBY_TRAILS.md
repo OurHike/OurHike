@@ -353,6 +353,23 @@ question and keeps the stored copy — but every phone still parses the whole st
 any of it. A per-region cut is the obvious answer and it is
 [#552](https://github.com/OurHike/OurHike/issues/552)'s to make, not this doc's.
 
+**The whole-file cache was withdrawn on 2026-09-07, and the reason is the number above
+having moved again.** The artifact was promoted that day at 228,820,578 bytes raw — nationwide
+USFS trails, [#1231](https://github.com/OurHike/OurHike/issues/1231) — and every phone that
+fetched it whole crashed its map ([#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254)).
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257)
+changes the shape rather than the data: the same lines are cut into z9–z14 vector tiles
+(`nearby_trails.pmtiles`, `export_nearby_trails.py`'s `write_tiles`) and the map reads them by
+byte range as the camera asks, a few kilobytes a tile, whatever the archive weighs — the way
+the hiking sheet has always been read. What that costs, stated: **a tile lives in the
+browser's HTTP cache and nowhere else, so with no signal the map above the seam draws no
+nearby trails.** The corridor-view sketch below the seam is still cached and still draws.
+That is the state this section described before #1082 and the state #1254's budget had
+already left every phone in; it is honest rather than good, and it is the paragraph above
+as written: a **named** download of the network, cut to #552's unit, is now #1257's second
+stage, on `cut_cells.py`'s per-family machinery, rather than a cache that quietly held the
+whole state.
+
 ## 10. POI density, measured
 
 Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI

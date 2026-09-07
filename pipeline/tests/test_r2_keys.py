@@ -41,6 +41,16 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "trail_graph_geometry.json",
         "trail_graph_elevation.json",
         "trail_graph_profile.json",
+        # The other organizations' network (#950, #1135, #1257): the lines,
+        # their corridor-view sketch, and the same lines as vector tiles, all
+        # three written by export_nearby_trails.py and published as one
+        # reaches_hikers decision. The archive is the one the client reads by
+        # byte range, so its extension is what the bucket's CORS and
+        # content-type rules key off - a respelling here is a map that draws
+        # no network above the seam and reports nothing.
+        "nearby_trails.geojson",
+        "network_overview.geojson",
+        "nearby_trails.pmtiles",
         # The tombstones (#673). Spelled WITHOUT the `poi_` prefix on
         # purpose - that prefix is a namespace meaning "live rows of one
         # poi_type", and export_retired_poi.py's docstring lists the three

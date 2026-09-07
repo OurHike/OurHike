@@ -193,23 +193,107 @@ def _report(check: int, key: str, state: str, detail: str) -> dict:
 # failure being guarded against is the two disagreeing. The regexes are narrow
 # and `expected_client_keys` raises rather than returning a short list, so a
 # rename in config.ts fails this loudly instead of quietly checking fewer keys.
+#
+# UNTIL #1048 IT READ FOUR NAMES OUT OF A FILE DECLARING SEVENTEEN, and the
+# gap was invisible from here: the four matched, nothing raised, and of those
+# seventeen keys check 2 reached exactly one - `TRAILS_KEY`. (It asked after
+# thirteen keys in all; the other twelve are the POI types and archive tiers,
+# which are generated names rather than declared ones.) A release missing
+# `trail_graph.json`, `club_sections.json`, `highlights.json`,
+# `trails_overview.geojson`, `stewards.json`, `retired_poi.geojson`,
+# `nearby_trails.geojson` and the two graph companions passed it (measured
+# 2026-08-26, #1048's own table). Now every `export const *_KEY = '...'` is
+# read, and each one carries an `@release` declaration beside it.
+#
+# WHAT THAT DECLARATION ANSWERS, because the obvious reading is the wrong one.
+# It is NOT "does the app survive this artifact's absence" - measured against
+# `main` on 2026-09-05, sixteen of the seventeen survive it deliberately, each
+# through its own fetch path (`fetchOptionalArtifact` for seven of them,
+# trailOverview.ts:56, trailGraphData.ts:193 and nearbyTrailData.ts:245 for the
+# rest), because a hiker holding a release exported before an artifact existed
+# must not be shown an error. A declaration on that axis would SKIP every key
+# this check exists to catch. The phone structurally cannot tell "this release
+# predates it" from "this release should have it", and this script is the only
+# thing that can, because it knows the checkout it was run from.
+#
+# So it answers #940's invariant instead - can an exporter in THIS CHECKOUT
+# write it - which is the half PR #1108 deliberately left ("the bucket-contents
+# half is still worth having and is not this"). `publish.py` can write all
+# seventeen, so that alone would be no discriminator either; what separates
+# them is that seven sit behind a `reaches_hikers` licence gate and one behind
+# whether a sheet's cut ran, and those are conditions no reading of the code
+# can evaluate.
+#
+# THE CONTRACT IS BETWEEN THIS CHECKOUT AND THE RELEASE IT BUILT. Pointed at an
+# older release, this will fail keys that release's checkout could not write -
+# that is the check working rather than a false positive, and it is how #1048
+# was found. verify-release.yml is dispatch-only for exactly this reason: a
+# person asks it about a candidate they are deciding whether to promote.
+#
+# @unvalidated - a licence-gated key reports SKIPPED whether or not its gate is
+# actually shut, so a graph missing while every steward says `reaches_hikers:
+# true` reads the same as one held back. Resolving it needs the artifact ->
+# steward mapping, which today exists only in the generated manifests under
+# `pipeline/data/` and so is unavailable to a gate run from a clean checkout
+# against a public URL. `pipeline/sources.json` is checked in and would be half
+# of it; the other half is what would settle this.
 # ---------------------------------------------------------------------------
+
+#: A release must carry this key, or check 2 fails.
+REQUIRED = "required"
+#: publish.py can decline to write this key for a reason outside the code, so
+#: its absence is a declaration rather than a defect - a named SKIPPED.
+OPTIONAL = "optional"
+
+_KEY_DECLARATION = re.compile(r"^export const (\w+_KEY)\s*=\s*'([^']+)'", re.MULTILINE)
+_RELEASE_TAG = re.compile(rf"@release\s+({REQUIRED}|{OPTIONAL})\b")
 
 
 def _read(name: str) -> str:
     return (CLIENT_LIB / name).read_text(encoding="utf-8")
 
 
-def expected_client_keys(config_ts: str | None = None) -> list[str]:
-    """Every object key the client is built to request."""
+def _declared_keys(source: str) -> dict[str, str]:
+    """Each `*_KEY` constant in config.ts, mapped to its `@release` word.
+
+    A key's declaration is the one tag between the previous key and this one,
+    which is that key's own comment block and nothing else. Exactly one, so a
+    tag left behind by a copied comment fails here rather than quietly
+    declaring the wrong thing about the wrong artifact.
+    """
+    declared: dict[str, str] = {}
+    cursor = 0
+    for match in _KEY_DECLARATION.finditer(source):
+        name, key = match.group(1), match.group(2)
+        tags = _RELEASE_TAG.findall(source[cursor : match.start()])
+        cursor = match.end()
+        if len(tags) != 1:
+            found = f"{len(tags)} of them" if tags else "none"
+            raise ValueError(
+                f"{name} in client/src/lib/config.ts carries {found} where it needs exactly one "
+                f"`@release {REQUIRED}` or `@release {OPTIONAL}` line. Every key the client can "
+                "request has to say whether a release built from this checkout must carry it - "
+                "that question is what check 2 asks, and an artifact added without answering it "
+                "is the gap #1048 found."
+            )
+        declared[key] = tags[0]
+    return declared
+
+
+def expected_client_keys(config_ts: str | None = None) -> dict[str, str]:
+    """Every object key the client is built to request, and what it is owed.
+
+    Maps key -> REQUIRED or OPTIONAL. Iterating it yields the keys, which is
+    what most callers want; the values are what check 2 grades against.
+    """
     source = config_ts if config_ts is not None else _read("config.ts")
 
-    trails = re.search(r"TRAILS_KEY\s*=\s*'([^']+)'", source)
     poi_types = re.search(r"POI_TYPES\s*=\s*\[([^\]]+)\]", source)
     poi_pattern = re.search(r"poiKey\([^)]*\)[^{]*\{\s*return\s*`([^`]+)`", source)
     archives = re.findall(r"^\s*(?:light|standard|fine):\s*'([^']+)'", source, re.MULTILINE)
+    declared = _declared_keys(source)
 
-    if not (trails and poi_types and poi_pattern and archives):
+    if not (poi_types and poi_pattern and archives and declared):
         raise ValueError(
             "could not read the key contract out of client/src/lib/config.ts. "
             "It has been restructured, and this check must be updated rather than "
@@ -217,10 +301,16 @@ def expected_client_keys(config_ts: str | None = None) -> list[str]:
         )
 
     types = re.findall(r"'([^']+)'", poi_types.group(1))
-    keys = [trails.group(1)]
-    keys += [poi_pattern.group(1).replace("${type}", poi_type) for poi_type in types]
-    keys += archives
-    return keys
+    # The generated names carry no declaration of their own and need none:
+    # publish.py writes every `poi_<type>.geojson` from one ungated manifest
+    # (:706) and every archive is a file on disk (:849), so a type or a tier
+    # the client offers and the release lacks is the plain failure this check
+    # has always called it. A withdrawn tier is still weakened below.
+    keys = dict.fromkeys(
+        [poi_pattern.group(1).replace("${type}", poi_type) for poi_type in types] + archives,
+        REQUIRED,
+    )
+    return {**declared, **keys}
 
 
 def advertised_sizes(download_detail_ts: str | None = None) -> dict[str, int]:
@@ -363,6 +453,18 @@ def check_client_keys(
 ) -> list[dict]:
     """2. Every key the CLIENT will request exists in the release.
 
+    Every key, since #1048 - this read four names out of a file declaring
+    seventeen, and a production release missing nine artifacts passed it.
+
+    A key config.ts declares `@release optional` is held to the weaker claim
+    that its own comment names: publish.py can decline to write it for a
+    reason outside the code - a steward's `reaches_hikers`, a sheet whose cut
+    has not run - so its absence is a declaration and reports SKIPPED. Never
+    OK, which would erase the declaration, and never FAILED, which is what
+    made every UA run un-passable in #854. The eight keys declared `required`
+    are ungated in publish.py, so their absence is the promotion gap this
+    check now exists to name.
+
     A key whose sheet is withdrawn (#855) is held to a weaker claim: no new
     request will ever be made for it, so its absence from a release is a
     named SKIPPED - never OK, which would erase the declaration, and never
@@ -381,7 +483,7 @@ def check_client_keys(
     published = set((manifest.get("artifacts") or {}).keys())
     withdrawn = withdrawn_tier_keys(packages_ts, config_ts)
     reports = []
-    for key in expected_client_keys(config_ts):
+    for key, owed in expected_client_keys(config_ts).items():
         if key in published:
             reports.append(_report(2, key, OK, "the client asks for this and the release has it"))
         elif key in withdrawn:
@@ -393,6 +495,17 @@ def check_client_keys(
                     "absent, and its sheet is marked `withdrawn` in client/src/lib/packages.ts - "
                     "the app makes no new request for it, so only a phone already holding it "
                     "resolves this key, and it resolves locally",
+                )
+            )
+        elif owed == OPTIONAL:
+            reports.append(
+                _report(
+                    2,
+                    key,
+                    SKIPPED,
+                    "absent, and client/src/lib/config.ts declares it `@release optional` - "
+                    "publish.py can decline to write it for a reason outside the code, so this "
+                    "is a state somebody declared rather than an artifact nobody published",
                 )
             )
         else:

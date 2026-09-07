@@ -9,6 +9,20 @@
 // Keys are flat at the bucket root and must match publish.py's artifact
 // names exactly - a mismatch here is a 404 on a mountain, which is why the
 // background tier names are spelled the same way in both places.
+//
+// EVERY `*_KEY` BELOW CARRIES AN `@release` LINE saying `required` or
+// `optional`, and `expected_client_keys` (pipeline/verify_release.py) RAISES
+// on one that does not. That is the point of putting the declaration here
+// rather than in the pipeline: this file is where an artifact is added, so
+// this is the only home where adding one cannot skip the question.
+//
+// It answers "must a release built from THIS CHECKOUT carry it", which is not
+// the same question as "does the app survive its absence" - the app survives
+// every one of them, deliberately, because a hiker on an older release must
+// not be shown an error (lib/trailData.ts's fetchOptionalArtifact). `optional`
+// here means publish.py can decline to write it for a reason outside the code:
+// a steward's `reaches_hikers` in sources.json, or a sheet whose cut has not
+// run. Name that reason on the line.
 
 import type { DetailLevel } from './downloadDetail'
 
@@ -57,12 +71,24 @@ export function archiveKey(level: DetailLevel): string {
  * A 404 is an ordinary answer - a release cut before the cells existed, or a
  * bucket a publish has not reached (production holds none while the cells
  * are UA-only) - and reads as "no pieces on offer": the whole sheet stays one
- * tap, and nothing the app had before is lost. Deliberately NOT in
- * `expected_client_keys`'s contract (pipeline/verify_release.py), for that
- * reason: an optional artifact must not fail the release gate by its absence.
+ * tap, and nothing the app had before is lost. It used to be held out of
+ * `expected_client_keys`'s contract (pipeline/verify_release.py) for that
+ * reason - an optional artifact must not fail the release gate by its absence.
+ * Since #1048 it is IN the contract and declared optional there, which buys
+ * the same immunity and says so out loud: absence is now a named SKIPPED in
+ * the verdict rather than a key the gate never mentions.
+ *
+ * @release optional - published by whichever sheet's cut ran
+ * (publish.py's CELL_FAMILIES loop), so a release holding none is the
+ * partial-checkout posture that loop is written for rather than a gap.
  */
 export const BASEMAP_CELLS_KEY = 'at_basemap_cells.json'
 
+/**
+ * @release required - publish.py:527 writes it from trails_manifest.json with
+ * nothing in front of it, and it is the one key the client fetches through
+ * `fetchArtifact` ("an artifact this release must have", lib/trailData.ts:724).
+ */
 export const TRAILS_KEY = 'trails.geojson'
 
 /**
@@ -74,6 +100,8 @@ export const TRAILS_KEY = 'trails.geojson'
  * Optional the way spurs.json is: a release exported before it existed has
  * none, and the phone measures the line itself as it always did - with the
  * two-axis anchors lib/route.ts keeps for exactly that release.
+ *
+ * @release required - publish.py:553, ungated, beside the file it measures.
  */
 export const TRAIL_MILES_KEY = 'trail_miles.json'
 
@@ -98,6 +126,10 @@ export const TRAIL_MILES_KEY = 'trail_miles.json'
  * Absent from a release exported before it existed, which reads as "no
  * overview" rather than as a failure - the same rule spurs.json and
  * elevation_profile.json already follow.
+ *
+ * @release required - publish.py:537 writes it whenever the trails manifest
+ * carries an overview, with no gate in front. Absent from a release built
+ * here, it is the promotion gap #1048 describes rather than an old release.
  */
 export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
 
@@ -120,6 +152,9 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
  * before the artifact existed, or a bucket a publish has not reached yet - and
  * lib/nearbyTrailData.ts reads it as "no nearby trails", the same reading
  * spurs.json and trails_overview.geojson get.
+ *
+ * @release optional - publish.py:578 writes it only in the `else:` of a
+ * `reaches_hikers` check over sources.json, so absent is a licence answer.
  */
 export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
 
@@ -169,6 +204,9 @@ export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
  * exported before the artifact existed, and a bucket where either steward's
  * `reaches_hikers` is false - pipeline/publish.py holds this sketch back with
  * the artifact it sketches, as one decision.
+ *
+ * @release optional - inside its parent's `reaches_hikers` branch
+ * (publish.py:587), held back and shipped as one decision with the lines.
  */
 export const NETWORK_OVERVIEW_KEY = 'network_overview.geojson'
 
@@ -198,6 +236,9 @@ export const NETWORK_OVERVIEW_KEY = 'network_overview.geojson'
  * reached. It is also what a hiker sees while either steward's `reaches_hikers`
  * is false — pipeline/publish.py holds the whole artifact back rather than
  * publishing part of it.
+ *
+ * @release optional - publish.py:622, the identical `reaches_hikers` gate the
+ * lines above carry, over the same registry.
  */
 export const NEARBY_POI_KEY = 'nearby_poi.geojson'
 
@@ -215,6 +256,9 @@ export const NEARBY_POI_KEY = 'nearby_poi.geojson'
  * reached. lib/trailGraphData.ts reads it as "no day hikes on this phone",
  * which chrome/PlanKindSheet.tsx says in a sentence rather than by offering a
  * control that does not work.
+ *
+ * @release optional - publish.py:653 carries the nearby manifest's `sources`
+ * forward, so the same `reaches_hikers` gate decides this too.
  */
 export const TRAIL_GRAPH_KEY = 'trail_graph.json'
 
@@ -225,6 +269,9 @@ export const TRAIL_GRAPH_KEY = 'trail_graph.json'
  * the door - with the whole A.T. in the graph, this is by far the heavier
  * half. One manifest binds the pair; lib/trailGraphData.ts refuses a geometry
  * whose edge count disagrees with the graph it was fetched for.
+ *
+ * @release optional - publish.py:656, inside the routing half's own gate: one
+ * manifest binds the pair so they cannot publish separately.
  */
 export const TRAIL_GRAPH_GEOMETRY_KEY = 'trail_graph_geometry.json'
 
@@ -242,6 +289,9 @@ export const TRAIL_GRAPH_GEOMETRY_KEY = 'trail_graph_geometry.json'
  * in a sentence. A null ENTRY is different and stronger: that edge's ground was
  * never measured, so a walk crossing it has no total at all rather than a
  * total missing one edge.
+ *
+ * @release optional - publish.py:681, the graph's `reaches_hikers` gate plus
+ * the workflow's `include_elevation`, either of which can hold it alone.
  */
 export const TRAIL_GRAPH_ELEVATION_KEY = 'trail_graph_elevation.json'
 
@@ -272,6 +322,9 @@ export const TRAIL_GRAPH_ELEVATION_KEY = 'trail_graph_elevation.json'
  *   an array is one missing sample with its place on the axis kept. Either
  *   one means no ribbon for that walk, on the all-or-nothing rule the climb
  *   already follows.
+ *
+ * @release optional - publish.py:711, the same two gates its two-scalar
+ * sibling carries and for the same reasons.
  */
 export const TRAIL_GRAPH_PROFILE_KEY = 'trail_graph_profile.json'
 
@@ -285,6 +338,8 @@ export const TRAIL_GRAPH_PROFILE_KEY = 'trail_graph_profile.json'
 // Published by pipeline/export_spurs.py. Absent from data releases built
 // before that existed, which lib/trailData.ts treats as "no spur detail" - not
 // as a failed download.
+//
+// @release required - publish.py:723, ungated.
 export const SPURS_KEY = 'spurs.json'
 
 // Who maintains which stretch of trail, published by
@@ -301,6 +356,8 @@ export const SPURS_KEY = 'spurs.json'
 // Absent from releases built before export_club_sections.py, which
 // lib/trailData.ts treats as "no attribution" rather than a failed download -
 // the same way spurs.json is treated.
+//
+// @release required - publish.py:733, ungated.
 export const CLUB_SECTIONS_KEY = 'club_sections.json'
 
 // Who the map's data belongs to, published by pipeline/export_sources.py
@@ -316,6 +373,8 @@ export const CLUB_SECTIONS_KEY = 'club_sections.json'
 // Absent from releases built before that exporter existed, which
 // lib/trailData.ts treats as "no steward list" rather than a failed download -
 // the same way club_sections.json above is treated.
+//
+// @release required - publish.py:745, ungated.
 export const STEWARDS_KEY = 'stewards.json'
 
 // Stretches of trail somebody says are worth going to, published by
@@ -328,6 +387,10 @@ export const STEWARDS_KEY = 'stewards.json'
 //
 // Absent from releases built before that exporter, which lib/trailData.ts
 // treats as "nothing to explore yet" rather than a failed download.
+//
+// @release required - publish.py:773, ungated. #940's own example: an
+// exporter, a reference file, tests, a place in the manifest list, and three
+// weeks in which nothing ran it.
 export const HIGHLIGHTS_KEY = 'highlights.json'
 
 // The along-the-trail elevation profile, published by
@@ -346,6 +409,8 @@ export const HIGHLIGHTS_KEY = 'highlights.json'
 // Absent from data releases built before export_elevation.py existed, which
 // lib/trailData.ts treats as "no profile" rather than a failed download - the
 // same way spurs.json is treated.
+//
+// @release required - publish.py:714, ungated.
 export const ELEVATION_KEY = 'elevation_profile.json'
 
 // The tombstones: every POI id that has ever been retired, published by
@@ -374,6 +439,8 @@ export const ELEVATION_KEY = 'elevation_profile.json'
 // Absent from releases built before that exporter, which lib/trailData.ts
 // treats as "nothing has been retired" rather than a failed download — the
 // same way spurs.json is treated.
+//
+// @release required - publish.py:784, ungated.
 export const RETIRED_POI_KEY = 'retired_poi.geojson'
 
 // 'crossing' was listed here while it was still an empty FeatureCollection, so

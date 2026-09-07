@@ -337,12 +337,31 @@ describe('seamEdges', () => {
     expect(onTheSeam).toEqual([])
   })
 
-  it('keeps the seam between a held cell and one that is not', () => {
+  it('leaves out the shared edge when the two held cells are stacked north-south', () => {
     const edges = seamEdges([N34W085, N35W085], 1)
     // Stacked north-south: the shared parallel at 35° N goes, the rest stay.
     expect(edges).toHaveLength(6)
-    const eastEdges = edges.filter(([from, to]) => from[0] === -84 && to[0] === -84)
-    expect(eastEdges).toHaveLength(2)
+    // The seam runs west-east along 35° N, so both its endpoints sit at that
+    // latitude and its longitudes differ. Filtering on a constant longitude
+    // instead - which this assertion used to do - can only ever select a
+    // meridian, so it matched each cell's own east edge and never the seam.
+    const onTheSeam = edges.filter(([from, to]) => from[1] === 35 && to[1] === 35)
+    expect(onTheSeam).toEqual([])
+  })
+
+  it('keeps the seam between a held cell and one that is not', () => {
+    // Only the southern cell is held, so 35° N is a real boundary of the
+    // downloaded area rather than an internal join, and has to be drawn. This
+    // is the direction the assertion above cannot check, and the case the
+    // test that now sits above it was named for while checking the other one.
+    const edges = seamEdges([N34W085], 1)
+    const onTheSeam = edges.filter(([from, to]) => from[1] === 35 && to[1] === 35)
+    expect(onTheSeam).toEqual([
+      [
+        [-85, 35],
+        [-84, 35],
+      ],
+    ])
   })
 
   it('draws nothing for nothing', () => {

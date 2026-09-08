@@ -529,8 +529,16 @@ NHD_STREAM_SOURCE = "nhd_stream"
 # A crossing's identity is WHERE it is, not which reach it belongs to: NHD
 # splits reaches at confluences, so one reach can cross the trail twice and
 # a reach id alone would collide. Five decimal places is about a metre -
-# finer than the geometry, coarse enough that the id is stable while the
-# snapshot is frozen (which is forever, per fetch_trail_water.py).
+# finer than the geometry, coarse enough that the id is stable while BOTH
+# lines that make the point hold still. The stream half does: the NHD
+# snapshot is frozen forever (fetch_trail_water.py). The trail half does not
+# - a re-measure of the centerline moves the meeting point, and #1028 found
+# the one such move the 2026-08-25 ledger recorded had re-minted an unnamed
+# crossing 24.7 m from its retired self, because a nameless point had no
+# other evidence to be carried on. That is why the stream's own id rides
+# RAW_PROPERTIES_KEY below: reconcile_poi_identity.py carries a moved
+# crossing on the half of the meeting that cannot have moved
+# (SCORE_STREAM_INTACT there).
 CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
@@ -1078,6 +1086,13 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": {
                 "crossing_id": f"{lat:.{CROSSING_ID_PRECISION}f},{lon:.{CROSSING_ID_PRECISION}f}",
+                # The stream the crossing is made of - NHD's permanent
+                # identifier where USGS saw it, the OSM way id otherwise. Not
+                # a column (write_poi_type never publishes it); it rides
+                # RAW_PROPERTIES_KEY so reconcile_poi_identity.py can carry a
+                # nameless crossing across a trail re-measure on the one half
+                # of the intersection that cannot have moved (#1028).
+                "stream_id": crossing.get("stream_id"),
                 "sources": crossing.get("sources"),
                 "name": crossing.get("name"),
                 "flow": crossing.get("flow"),
@@ -1112,6 +1127,9 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
                 # id stable: one reachable stream point per site by
                 # construction, so the site's own GlobalID names it.
                 "site_global_id": site["atc_global_id"],
+                # The same passport a crossing carries, for the same reader
+                # (#1028): a site's water point is derived from a stream too.
+                "stream_id": water.get("stream_id"),
                 "sources": water.get("sources"),
                 "name": water.get("name"),
                 "flow": water.get("flow"),

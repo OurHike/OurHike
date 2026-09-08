@@ -235,6 +235,7 @@ describe('badgeFeatures', () => {
           throughRoute: true,
           chosen: true,
           anchor: null,
+          badgeFit: 'full',
           properties: {},
         },
       ]).features,
@@ -436,11 +437,11 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(map.featureQueries.some((q) => q.layers.includes(WARNING_LAYER_ID))).toBe(true)
   })
 
-  it('keeps the plate inside the clear when the chrome is known, and hands over the middle when nowhere has room', () => {
+  it('falls back to the mark alone where the full plate has no room, at a vertex where the mark has', () => {
     // With the chrome's bands in force the plate must fit inside the
     // canvas between them; a pin at the middle of a trail across a phone
-    // leaves no 230 px strip on either side, so the middle goes to the
-    // placer as it is, and the placer decides.
+    // leaves no 230 px strip on either side. The mark's 32 px plate fits
+    // one vertex along, to the right of the pin's box.
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap, {
       top: 110,
@@ -448,7 +449,34 @@ describe('the pins in view (#1283, the third preview frame)', () => {
       bottom: 62,
       left: 0,
     })
+    expect(at.badgeFit).toBe('mark')
+    expect(at.anchor).toEqual([209, 400])
+  })
+
+  it('hands over the middle, in full, where not even the mark has room', () => {
+    // Pins every nineteen pixels along the whole line: nothing fits
+    // anywhere, so the middle goes to the placer as it is, and the placer
+    // decides.
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [ACROSS],
+      [POI_LAYER_ID]: Array.from({ length: 21 }, (_, i) => pin(i * 19, 400)),
+    })
+    const [at] = trailsInView(map as unknown as MapLibreMap, {
+      top: 110,
+      right: 0,
+      bottom: 62,
+      left: 0,
+    })
+    expect(at.badgeFit).toBe('full')
     expect(at.anchor).toEqual([190, 400])
+  })
+
+  it('takes the full form wherever it fits, and says so on the feature', () => {
+    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS] })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails[0].badgeFit).toBe('full')
+    const { features } = badgeFeatures(trails)
+    expect(features[0].properties).toMatchObject({ fit: 'full' })
   })
 
   it('searches only for a through-route, which is the only line that gets a badge', () => {
@@ -466,5 +494,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     // the estimate must not come out narrower than what will be drawn.
     expect(badgePlateWidth('Appalachian National Scenic Trail')).toBeGreaterThan(185 + 42)
     expect(badgePlateWidth('A.T.')).toBeLessThan(badgePlateWidth('Long Path'))
+    // The mark alone: the mark and its paper, whatever the name.
+    expect(badgePlateWidth('Appalachian National Scenic Trail', 'mark')).toBe(32)
   })
 })

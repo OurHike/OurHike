@@ -1618,8 +1618,12 @@ describe('the through-route badge (#1283)', () => {
     expect(layout['symbol-placement']).toBe('point')
     expect(layout['icon-text-fit']).toBe('both')
     expect(layout['icon-image']).toBe(badgePlateImageId({ theme: 'light' }))
+    // A `case` on the feature's fit - the full form or the mark alone
+    // (trailBadges.ts's header) - and either branch is one `format`.
     const text = layout['text-field'] as unknown[]
-    expect(text[0]).toBe('format')
+    expect(text[0]).toBe('case')
+    expect((text[2] as unknown[])[0]).toBe('format')
+    expect((text[3] as unknown[])[0]).toBe('format')
     expect(JSON.stringify(text)).toContain('"image"')
     expect(JSON.stringify(text)).toContain('["get","name"]')
     // Both halves required: a plate with no name says nothing, and a name

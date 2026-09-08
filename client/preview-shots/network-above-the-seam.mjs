@@ -46,14 +46,21 @@
 // is which line is solid and which carries the plate, because the old frame
 // had neither distinction to point at.
 //
-// THE BADGE'S MARK IS THE ONE THING THIS FRAME CANNOT PROMISE. It decodes
+// TWO THINGS THIS FRAME CANNOT PROMISE ABOUT THE BADGE. The mark decodes
 // from at-logo.png on a canvas; where that fails the badge falls through to
 // the White blaze chip - a stone rounded square with the white bar - and is
-// still a badge. Either is the change; the caption claims only the plate.
+// still a badge. And the NAME is on the plate only where the plate has room:
+// this stretch of the A.T. is lined with shelters, campsites and springs a
+// thumb's width apart, and four preview rounds established that no 230 px
+// strip along it is free of pins (map/trailsInView.ts's header). So here the
+// badge is most likely the mark alone on its small plate, the fallback
+// map/trailBadges.ts's header argues for, and the full plate with the name
+// is what a less crowded stretch gets. The caption claims the plate and the
+// mark; whether the name is beside them is what the frame answers.
 export const caption =
-  'Harriman at zoom 12 — the A.T. is the one solid line, inked dark with no casing and wearing its badge; every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
+  'Harriman at zoom 12 — the A.T. is the one solid line, inked dark with no casing and wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid dark line with a small paper pill on it reading Appalachian National Scenic Trail beside a trail mark, and the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
+  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid dark line with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

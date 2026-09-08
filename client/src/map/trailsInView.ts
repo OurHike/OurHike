@@ -72,10 +72,12 @@ import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
 import {
   BADGE_CHIP_PROPERTY,
+  BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
   BADGE_NAME_PROPERTY,
   BADGE_SOURCE_PROPERTY,
   BADGE_SOURCES,
+  type BadgeFit,
   TRAIL_BADGE_ANCHORS,
   TRAIL_BADGE_MARK_GAP,
   TRAIL_BADGE_MARK_SIZE,
@@ -115,7 +117,8 @@ const OBSTACLE_HALF_PX = 44 / 2 + 2
  * so 0.5 em a character is a slight over-estimate - the right direction for
  * a box that decides whether there is room.
  */
-export function badgePlateWidth(name: string): number {
+export function badgePlateWidth(name: string, fit: BadgeFit = 'full'): number {
+  if (fit === 'mark') return 4 + TRAIL_BADGE_MARK_SIZE + 10
   const text = name.length * TRAIL_BADGE_TEXT_SIZE * 0.5
   return 4 + TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text + 10
 }
@@ -170,10 +173,17 @@ function obstacleBoxes(map: TrailsInViewMap): Box[] {
   return boxes
 }
 
+interface BadgeAnchor {
+  point: Position
+  fit: BadgeFit
+}
+
 /**
- * The vertex of `run` the badge should anchor to: the first, walking
- * outward from the middle, at which one of the plate's positions overlaps
- * no pin and stays inside `clear`. The middle itself where none does.
+ * The vertex of `run` the badge should anchor to, and in which form: the
+ * first vertex, walking outward from the middle, at which one of the full
+ * plate's positions overlaps no pin and stays inside `clear`; failing that,
+ * the same search for the mark's small plate; failing that, the middle
+ * itself, in full, for the placer to decide.
  */
 function anchorWithRoom(
   run: Run,
@@ -181,34 +191,38 @@ function anchorWithRoom(
   obstacles: readonly Box[],
   clear: Box | null,
   name: string,
-): Position {
+): BadgeAnchor {
   const middle = midpointIndex(run)
-  if (obstacles.length === 0 && clear === null) return run.points[middle]
-  const width = badgePlateWidth(name)
-  for (let step = 0; step < run.points.length; step += 1) {
-    for (const index of step === 0 ? [middle] : [middle - step, middle + step]) {
-      if (index < 0 || index >= run.points.length) continue
-      const point = run.points[index]
-      const at = map.project([point[0], point[1]])
-      for (const anchor of TRAIL_BADGE_ANCHORS) {
-        const box = plateBox(anchor, at, width)
-        if (
-          clear !== null &&
-          !(
-            box.x1 >= clear.x1 &&
-            box.x2 <= clear.x2 &&
-            box.y1 >= clear.y1 &&
-            box.y2 <= clear.y2
-          )
-        ) {
-          continue
+  if (obstacles.length === 0 && clear === null) {
+    return { point: run.points[middle], fit: 'full' }
+  }
+  for (const fit of ['full', 'mark'] as const) {
+    const width = badgePlateWidth(name, fit)
+    for (let step = 0; step < run.points.length; step += 1) {
+      for (const index of step === 0 ? [middle] : [middle - step, middle + step]) {
+        if (index < 0 || index >= run.points.length) continue
+        const point = run.points[index]
+        const at = map.project([point[0], point[1]])
+        for (const anchor of TRAIL_BADGE_ANCHORS) {
+          const box = plateBox(anchor, at, width)
+          if (
+            clear !== null &&
+            !(
+              box.x1 >= clear.x1 &&
+              box.x2 <= clear.x2 &&
+              box.y1 >= clear.y1 &&
+              box.y2 <= clear.y2
+            )
+          ) {
+            continue
+          }
+          if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
+          return { point, fit }
         }
-        if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
-        return point
       }
     }
   }
-  return run.points[middle]
+  return { point: run.points[middle], fit: 'full' }
 }
 
 /** The real MapLibre map - see map/drawnPois.ts for why not a structural
@@ -232,6 +246,9 @@ export interface TrailInView {
   /** A vertex on the trail, in view, where its badge sits; null where none of
    *  the drawn geometry put a vertex inside the viewport. */
   anchor: [number, number] | null
+  /** Which form the badge takes at that vertex: the full plate, or the mark
+   *  alone where nothing wider had room (map/trailBadges.ts's header). */
+  badgeFit: BadgeFit
   /** The published properties of the piece that named it, verbatim, so a tap
    *  on the badge can open the same sheet a tap on the line opens. */
   properties: Record<string, unknown>
@@ -460,6 +477,7 @@ export function trailsInView(
         throughRoute,
         chosen,
         anchor: null,
+        badgeFit: 'full',
         properties,
         best,
         bestClear,
@@ -496,16 +514,14 @@ export function trailsInView(
       const run = bestClear ?? best
       if (run === null || !trail.throughRoute) return { ...trail, anchor: null }
       const { obstacles: pins, clearBox: within } = placement()
-      return {
-        ...trail,
-        anchor: anchorWithRoom(
-          run,
-          map,
-          pins,
-          bestClear === null ? null : within,
-          trail.name,
-        ),
-      }
+      const { point, fit } = anchorWithRoom(
+        run,
+        map,
+        pins,
+        bestClear === null ? null : within,
+        trail.name,
+      )
+      return { ...trail, anchor: point, badgeFit: fit }
     })
     .sort((a, b) => {
       if (a.throughRoute !== b.throughRoute) return a.throughRoute ? -1 : 1
@@ -535,6 +551,7 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
           [BADGE_SOURCE_PROPERTY]: trail.source,
           [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
           [BADGE_CHIP_PROPERTY]: blazeChipImageId(trail.blazeColor),
+          [BADGE_FIT_PROPERTY]: trail.badgeFit,
         },
         geometry: { type: 'Point', coordinates: trail.anchor as Position },
       })),

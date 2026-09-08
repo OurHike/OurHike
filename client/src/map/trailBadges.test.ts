@@ -3,7 +3,10 @@ import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   attachTrailBadgeImages,
+  BADGE_FIT_PROPERTY,
   BADGE_SOURCES,
+  bareImageId,
+  buildTrailBadgeLayer,
   BLAZE_CHIP_BAR_COLOR,
   BLAZE_CHIP_CORNER,
   buildBadgePlate,
@@ -59,17 +62,42 @@ describe('who earns a badge', () => {
     expect(trailMarkImageId(null)).toBeNull()
   })
 
-  it('gives every palette member a chip, and the neutrals one grey chip between them', () => {
+  it('gives every palette member a chip, and the neutrals one grey chip between them - each with a bare twin', () => {
     for (const blaze of BLAZE_PALETTE_MEMBERS) {
       expect(blazeChipImageId(blaze)).toBe(`blaze-chip-${blaze}`)
     }
     expect(blazeChipImageId('None')).toBe('blaze-chip-neutral')
     expect(blazeChipImageId('Unknown')).toBe('blaze-chip-neutral')
     expect(blazeChipImageId(null)).toBe('blaze-chip-neutral')
-    expect(buildBlazeChips().map((chip) => chip.id)).toEqual([
-      ...BLAZE_PALETTE_MEMBERS.map((blaze) => `blaze-chip-${blaze}`),
-      'blaze-chip-neutral',
-    ])
+    expect(buildBlazeChips().map((chip) => chip.id)).toEqual(
+      [
+        ...BLAZE_PALETTE_MEMBERS.map((blaze) => `blaze-chip-${blaze}`),
+        'blaze-chip-neutral',
+      ].flatMap((id) => [id, bareImageId(id)]),
+    )
+    // The bare twin is the mark with no gap after it - the mark-only plate's.
+    const bare = buildBlazeChips().find(
+      (chip) => chip.id === bareImageId('blaze-chip-Blue'),
+    )
+    expect(bare?.image.width).toBe(TRAIL_BADGE_MARK_SIZE * POI_PIN_PIXEL_RATIO)
+  })
+
+  it('sets the name on a full badge and only the mark on a mark-only one', () => {
+    // The layer's text is a `case` on the feature's fit: the mark alone
+    // where trailsInView found room for nothing wider.
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    const text = layout['text-field'] as unknown[]
+    expect(text[0]).toBe('case')
+    expect(text[1]).toEqual(['==', ['get', BADGE_FIT_PROPERTY], 'mark'])
+    const markOnly = JSON.stringify(text[2])
+    const full = JSON.stringify(text[3])
+    expect(markOnly).toContain('-bare')
+    expect(markOnly).not.toContain('"name"')
+    expect(full).toContain('["get","name"]')
+    expect(full).not.toContain('-bare')
   })
 })
 

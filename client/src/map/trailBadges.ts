@@ -35,7 +35,21 @@
 // BADGE_MARK_BY_SOURCE becomes a lookup against the registry and nothing
 // else here changes.
 //
-// The pill. MapLibre cannot draw a rounded rectangle behind an icon-and-text
+// WHEN THE PILL HAS NO ROOM, THE MARK STANDS ALONE. The fourth preview frame
+// over Harriman is the reason: with the anchor in the clear and the pins in
+// view, no vertex of the A.T. had a free 230 px strip for the full plate -
+// shelters, campsites and springs sit a thumb's width apart along that
+// stretch - and a badge whose every position collides is dropped whole. The
+// design handoff's frame `3c` drew an unselected trail wearing its bare mark
+// on the line, "24 px so a gloved thumb still hits it", and rejected it as
+// the default because the name is what makes a badge findable. As the
+// FALLBACK it is exactly right: map/trailsInView.ts searches for room for the
+// full plate first and for the mark's small plate second, writes which it
+// found on the feature (BADGE_FIT_PROPERTY), and the layer sets the name or
+// not accordingly. A tap on either opens the line's sheet with the full
+// name. Never nothing, on the screen the badge was designed for.
+//
+// The pill. MapLibre cannot draw a rectangle behind an icon-and-text
 // pair from a style spec alone, and the handoff's preferred answer is the one
 // built here: one stretchable plate image (a 9-slice pill) fitted to the text
 // with `icon-text-fit`, and the mark carried INSIDE the text as an image
@@ -88,6 +102,20 @@ export function trailMarkImageId(source: string | null | undefined): string | nu
     source === null || source === undefined ? undefined : BADGE_MARK_BY_SOURCE[source]
   return trail === undefined ? null : `trail-mark-${trail}`
 }
+
+/**
+ * Every mark and chip is registered twice: with the gap to the name baked
+ * in, for the full badge, and bare, for the mark-only plate - where a gap
+ * would be paper with nothing after it. This is the bare twin's id.
+ */
+export function bareImageId(id: string): string {
+  return `${id}-bare`
+}
+
+/** Which form a badge takes - see the header. Written on the feature by
+ *  map/trailsInView.ts, read by the layer's `text-field`. */
+export type BadgeFit = 'full' | 'mark'
+export const BADGE_FIT_PROPERTY = 'fit'
 
 /** The chip a blaze falls through to. Every palette member has one, derived
  *  from BLAZE_PALETTE_MEMBERS so lib/blaze.ts's closed-palette rule (#782)
@@ -374,6 +402,7 @@ export function buildBadgePlate(
 export function buildBlazeChip(
   blazeColor: string | null,
   pixelRatio: number = POI_PIN_PIXEL_RATIO,
+  gap: number = TRAIL_BADGE_MARK_GAP,
 ): PoiIconImage {
   const side = TRAIL_BADGE_MARK_SIZE
   const ground =
@@ -387,7 +416,7 @@ export function buildBlazeChip(
   const barWidth = side * BLAZE_CHIP_BAR_WIDTH
   const barHeight = side * BLAZE_CHIP_BAR_HEIGHT
 
-  const width = Math.round((side + TRAIL_BADGE_MARK_GAP) * pixelRatio)
+  const width = Math.round((side + gap) * pixelRatio)
   const height = Math.round(side * pixelRatio)
   return rasterise(width, height, (x, y) => {
     const cx = x / pixelRatio
@@ -412,15 +441,17 @@ export function buildBlazeChip(
   })
 }
 
-/** Every chip the style can ask for, with the id each is registered under. */
+/** Every chip the style can ask for, with the id each is registered under -
+ *  each in both forms, with the gap and bare. */
 export function buildBlazeChips(): Array<{ id: string; image: PoiIconImage }> {
-  return [
-    ...BLAZE_PALETTE_MEMBERS.map((blaze) => ({
-      id: blazeChipImageId(blaze),
-      image: buildBlazeChip(blaze),
-    })),
-    { id: blazeChipImageId(null), image: buildBlazeChip(null) },
-  ]
+  const blazes: Array<string | null> = [...BLAZE_PALETTE_MEMBERS, null]
+  return blazes.flatMap((blaze) => [
+    { id: blazeChipImageId(blaze), image: buildBlazeChip(blaze) },
+    {
+      id: bareImageId(blazeChipImageId(blaze)),
+      image: buildBlazeChip(blaze, POI_PIN_PIXEL_RATIO, 0),
+    },
+  ])
 }
 
 /**
@@ -437,12 +468,13 @@ export function buildBlazeChips(): Array<{ id: string; image: PoiIconImage }> {
 export function rasteriseTrailMark(
   url: string,
   pixelRatio: number = POI_PIN_PIXEL_RATIO,
+  gap: number = TRAIL_BADGE_MARK_GAP,
 ): Promise<PoiIconImage | null> {
   if (typeof document === 'undefined' || typeof Image === 'undefined') {
     return Promise.resolve(null)
   }
   const canvas = document.createElement('canvas')
-  const width = Math.round((TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP) * pixelRatio)
+  const width = Math.round((TRAIL_BADGE_MARK_SIZE + gap) * pixelRatio)
   const height = Math.round(TRAIL_BADGE_MARK_SIZE * pixelRatio)
   canvas.width = width
   canvas.height = height
@@ -498,13 +530,18 @@ export function attachTrailBadgeImages(map: MapLibreMap): () => void {
           map.addImage(id, image, { pixelRatio: POI_PIN_PIXEL_RATIO })
       }
       for (const trail of Object.values(TRAILS)) {
-        const id = `trail-mark-${trail.id}`
-        if (map.hasImage(id)) continue
-        void rasteriseTrailMark(trail.logo).then((image) => {
-          if (detached || image === null || map.hasImage(id)) return
-          if (map.getLayer(TRAIL_BADGE_LAYER_ID) === undefined) return
-          map.addImage(id, image, { pixelRatio: POI_PIN_PIXEL_RATIO })
-        })
+        const full = `trail-mark-${trail.id}`
+        for (const [id, gap] of [
+          [full, TRAIL_BADGE_MARK_GAP],
+          [bareImageId(full), 0],
+        ] as const) {
+          if (map.hasImage(id)) continue
+          void rasteriseTrailMark(trail.logo, POI_PIN_PIXEL_RATIO, gap).then((image) => {
+            if (detached || image === null || map.hasImage(id)) return
+            if (map.getLayer(TRAIL_BADGE_LAYER_ID) === undefined) return
+            map.addImage(id, image, { pixelRatio: POI_PIN_PIXEL_RATIO })
+          })
+        }
       }
     },
     'Trail badge images',
@@ -564,16 +601,33 @@ export function buildTrailBadgeLayer(appearance: SheetAppearance): LayerSpecific
       'icon-text-fit-padding': [...TRAIL_BADGE_TEXT_FIT_PADDING],
       'icon-optional': false,
       'text-optional': false,
+      // The full badge, or the mark alone where trailsInView found room for
+      // nothing wider - the header's fallback. Both are one `format`: the
+      // registry mark where the source has one, the blaze chip otherwise,
+      // in the form with the gap to the name or the bare form.
       'text-field': [
-        'format',
+        'case',
+        ['==', ['get', BADGE_FIT_PROPERTY], 'mark'],
         [
-          'coalesce',
-          ['image', ['get', BADGE_MARK_PROPERTY]],
-          ['image', ['get', BADGE_CHIP_PROPERTY]],
+          'format',
+          [
+            'coalesce',
+            ['image', ['concat', ['get', BADGE_MARK_PROPERTY], '-bare']],
+            ['image', ['concat', ['get', BADGE_CHIP_PROPERTY], '-bare']],
+          ],
+          { 'vertical-align': 'center' },
         ],
-        { 'vertical-align': 'center' },
-        ['get', BADGE_NAME_PROPERTY],
-        { 'vertical-align': 'center' },
+        [
+          'format',
+          [
+            'coalesce',
+            ['image', ['get', BADGE_MARK_PROPERTY]],
+            ['image', ['get', BADGE_CHIP_PROPERTY]],
+          ],
+          { 'vertical-align': 'center' },
+          ['get', BADGE_NAME_PROPERTY],
+          { 'vertical-align': 'center' },
+        ],
       ] as never,
       'text-font': ['Noto Sans Regular'],
       'text-size': TRAIL_BADGE_TEXT_SIZE,

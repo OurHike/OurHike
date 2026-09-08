@@ -1508,6 +1508,7 @@ describe('the "Trails in view" block (#1283)', () => {
       throughRoute: true,
       chosen: true,
       anchor: [-74.1, 41.25] as [number, number],
+      badgeFit: 'full' as const,
       properties: {},
     },
     {
@@ -1517,6 +1518,7 @@ describe('the "Trails in view" block (#1283)', () => {
       throughRoute: false,
       chosen: false,
       anchor: null,
+      badgeFit: 'full' as const,
       properties: {},
     },
   ]

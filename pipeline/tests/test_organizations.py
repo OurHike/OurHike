@@ -163,6 +163,15 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     carries that distinction and the limits of section 105 - domestic only,
     employees not contractors, and no claim on the Forest Service shield.
 
+    WHAT MOVED ON 2026-09-08 (#1288): `unresolved` went 1 -> 2. NYNJTC's Long
+    Path section guide (`nynjtc_long_path_guide`) is registered on that
+    footing rather than the maintainer's, and deliberately so: it is the
+    first NYNJTC surface with STATED terms - their site's Terms & Conditions
+    claim copyright over its text and maps - so it is a thing to ask about,
+    where the two extracts and the alerts had nothing to read and were
+    authorised on the maintainer's own word. `nynjtc_guide_licence` carries
+    the reasoning, and reaches_hikers is false until it changes.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -170,4 +179,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 27, "stated_by_org": 8, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 27, "stated_by_org": 8, "unresolved": 2}

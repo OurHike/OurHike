@@ -655,3 +655,100 @@ class TestTheRingAroundThePublishedTrails:
         manifest = export_nearby_poi.write_artifact([self._poi("campsite", -74.0, 44.0)], {}, ring)
 
         assert manifest["network_ring"] == ring
+
+
+# ---------------------------------------------------------------------------
+# NYNJTC's Long Path section guide (#1288) - the one input that is not a layer,
+# and the one whose licence gate must not be allowed to hold back everybody
+# else's waypoints.
+
+GUIDE_ENTRY = {
+    "key": "nynjtc_long_path_guide",
+    "kind": "guide_pages",
+    "provider": "NYNJTC",
+    "steward": "New York-New Jersey Trail Conference",
+    "attribution": "New York-New Jersey Trail Conference",
+}
+
+GUIDE_SECTION = {
+    "number": 18,
+    "title": "Denning Road to Wittenberg Mountain",
+    "distance_miles": 8.4,
+    "parks": "Slide Mountain Wilderness",
+    "url": "https://www.nynjtc.org/lp-section-18/",
+    "parking": [{"mile": 0.0, "text": "Lot at the road. (41.96556°, -74.45248°)", "lat": 41.96556, "lon": -74.45248}],
+    "camping": [{"mile": 8.4, "text": "Terrace Mountain Lean-to (1.05 miles from the Long Path)", "off_trail_miles": 1.05}],
+    "description": [{"mile": 4.3, "text": "A sign marks the way to a spring, a dependable source of water."}],
+    "notes": {},
+}
+
+GUIDE_LINE = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": [[-74.4, 42.0], [-74.4, 42.01]]},
+            "properties": {"LP_Section": 18},
+        }
+    ],
+}
+
+
+def guide_cache(tmp_path) -> tuple:
+    raw = tmp_path / "guide"
+    raw.mkdir()
+    (raw / "sections.json").write_text(json.dumps([GUIDE_SECTION]))
+    lines = tmp_path / "external"
+    lines.mkdir()
+    (lines / "nynjtc_long_path.geojson").write_text(json.dumps(GUIDE_LINE))
+    return raw, lines
+
+
+def test_an_unregistered_guide_contributes_nothing_and_says_nothing(tmp_path):
+    assert export_nearby_poi.guide_records({"sources": []}, tmp_path, tmp_path) == ([], None)
+
+
+def test_a_held_back_guide_is_read_for_review_and_reports_itself_held_back(tmp_path):
+    raw, lines = guide_cache(tmp_path)
+    records, stats = export_nearby_poi.guide_records({"sources": [{**GUIDE_ENTRY, "reaches_hikers": False}]}, raw, lines)
+    assert stats["reaches_hikers"] is False
+    assert sorted(r["poi_type"] for r in records) == ["parking", "shelter", "water"]
+    assert all(r["trail_id"] == "LP" for r in records)
+
+
+def test_a_held_back_guide_with_no_cache_is_a_line_not_a_failure(tmp_path):
+    records, stats = export_nearby_poi.guide_records({"sources": [{**GUIDE_ENTRY, "reaches_hikers": False}]}, tmp_path, tmp_path)
+    assert records == [] and stats["kept"] == 0 and "not on disk" in stats["reason"]
+
+
+def test_a_published_guide_with_no_cache_refuses_rather_than_shipping_short(tmp_path):
+    with pytest.raises(FileNotFoundError, match="fetch_nynjtc_long_path_guide.py"):
+        export_nearby_poi.guide_records({"sources": [{**GUIDE_ENTRY, "reaches_hikers": True}]}, tmp_path, tmp_path)
+
+
+def test_a_published_guide_rides_in_the_artifact_with_its_facts_and_not_its_prose(tmp_path):
+    raw, lines = guide_cache(tmp_path)
+    records, stats = export_nearby_poi.guide_records({"sources": [{**GUIDE_ENTRY, "reaches_hikers": True}]}, raw, lines)
+    assert stats["reaches_hikers"] is True and stats["kept"] == 3
+    feature = [f for f in export_nearby_poi.records_to_geojson(records)["features"] if f["properties"]["poi_type"] == "shelter"][
+        0
+    ]
+    props = feature["properties"]
+    assert props["lp_section"] == 18 and props["section_mile"] == 8.4 and props["off_trail_miles"] == 1.05
+    assert props["confidence"] == CONFIDENCE_LOW and props["placement"] == "interpolated"
+    assert "mile" not in props
+    assert "yellow-blazed" not in json.dumps(props), "the guide's sentence stays on NYNJTC's page"
+
+
+def test_a_held_back_source_never_enters_the_manifests_sources(tmp_path, monkeypatch):
+    """publish.py's gate on this artifact is all-or-nothing over `sources`; a
+    fourth source waiting on a licence answer must not empty every phone of
+    DEC's, OPRHP's and USFS's waypoints."""
+    monkeypatch.setattr(export_nearby_poi, "OUT_DIR", tmp_path)
+    manifest = export_nearby_poi.write_artifact(
+        [],
+        {"dec_lean_tos": {"reaches_hikers": True, "kept": 1}},
+        held_back={"nynjtc_long_path_guide": {"reaches_hikers": False, "kept": 3}},
+    )
+    assert set(manifest["sources"]) == {"dec_lean_tos"}
+    assert manifest["held_back_sources"]["nynjtc_long_path_guide"]["reaches_hikers"] is False

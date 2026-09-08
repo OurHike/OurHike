@@ -128,6 +128,7 @@ jobs:
         pipeline/data/raw/poi_images.json
         pipeline/data/raw/poi_images_atc.json
         pipeline/data/raw/elevation
+        pipeline/data/raw/nynjtc_long_path_guide
 
     steps:
       - uses: actions/checkout@v7
@@ -424,6 +425,26 @@ jobs:
       # exist rather than a reviewer noticing: it caught export_nearby_poi.py
       # wired into publish.py, marked reaches_hikers true, and invoked by
       # nothing - #940's pattern, on its second outing in one day.
+      # NYNJTC's Long Path section guide (#1288): forty web pages the
+      # registered Long Path layer links to from its own GuideURL field, and
+      # the only place NYNJTC publishes a waypoint - a lot with coordinates,
+      # a lean-to at a mile, a spring. fetch_nynjtc_long_path_guide.py caches
+      # them under data/raw/nynjtc_long_path_guide/ (in FETCH_OUTPUTS above,
+      # so an unchanged page costs one hash compare) and parses them;
+      # export_nearby_poi.py below reads the parse behind the entry's own
+      # reaches_hikers gate, which is false while sources.json's
+      # nynjtc_guide_licence is unresolved - so today this step feeds a
+      # review file and nothing a hiker downloads. It runs anyway, for the
+      # reason fetch_club_pdfs.py gives: a cache a person can review is the
+      # first step of every licence conversation this project has had.
+      #
+      # continue-on-error for the reason the external fetch above gives its
+      # own: a website's bad afternoon must not fail an A.T. publish. The
+      # export then reads whatever the restore left on disk, and says so.
+      - name: Fetch the Long Path section guide
+        continue-on-error: true
+        run: python fetch_nynjtc_long_path_guide.py
+
       - name: Export the waypoints other organizations publish
         run: python export_nearby_poi.py
 

@@ -28,6 +28,16 @@ Six of the eight POI types, from both orgs. The counts each org publishes, and
 what this module actually emits, are in POI_COVERAGE_SURVEY.md §0; the
 per-source totals are printed by every run and written into the manifest.
 
+A THIRD INPUT SINCE 2026-09-08 (#1288), AND THE FIRST THAT IS NOT A LAYER:
+NYNJTC's Long Path section guide, forty web pages fetch_nynjtc_long_path_guide.py
+caches and lib/nynjtc_long_path_guide.py reads into waypoints - 271 on the day
+it landed: parking lots at NYNJTC's own coordinates, and lean-tos, springs,
+campsites, lookouts and restrooms placed by walking the guide's mile along the
+registered Long Path line at low confidence with a measured error. guide_records
+below is the whole of it; the gate is the entry's own reaches_hikers, and what
+that gate holding back must NOT do to everybody else's waypoints is that
+function's docstring.
+
 THE TWO ORG FLAGS, AND WHY THEY ARE READ DIFFERENTLY
 
 This is the one decision in this module that a reviewer should push on, because

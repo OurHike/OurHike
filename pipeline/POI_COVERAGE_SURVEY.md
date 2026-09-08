@@ -67,7 +67,7 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping | absent |
 | **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 1,222** | **ships 629** | **ships 1,202** | **ships 574** | **ships 287** |
 | **NYS DEC** | **ships 331** | **ships 2,315** | **unsuitable** 23 / **0** | absent | **ships 1,182** | **ships 248** | **ships 2,256** | **ships 393** | *available* 10,520 |
-| **NYNJTC** | *available* 17 | *available* 17 | *available* 21 | absent | absent | *available* 92 | *available* 120 | *available* 4 | *unsuitable* 26 |
+| **NYNJTC** | **ships 17** | **ships 17** | **ships 21** | absent | absent | **ships 92** | **ships 120** | **ships 4** | *unsuitable* 26 |
 | **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 | **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent | absent |
 | **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
@@ -469,22 +469,30 @@ point projects onto the line is **median 86 m, p90 476 m, max 2,430 m**
 37 measured markedly worse (medians 573, 950 and 1,223 m); the layer's line and the guide's
 mileage disagree there, and a republish of either may move them.
 
-**Every cell reads `available` and not `shipping`, for a reason the parent surveys' rule
-makes sharp.** This is the first NYNJTC surface with *stated* terms: nynjtc.org's Terms &
-Conditions §3 (page dated 2025-03-10, read 2026-09-08) say all content including maps and
-text is owned by NYNJTC — a copyright claim, not a grant. `nynjtc_licence` covers the two
-trail extracts "and nothing else", `nynjtc_notices_licence` covers the alerts, and both say
-they must not be read as precedent; so `nynjtc_long_path_guide` is registered
-`reaches_hikers: false` with its own `nynjtc_guide_licence` block recording nothing yet,
-and `export_nearby_poi.py` reads the cache, writes the records to a review file
-`publish.py` never collects, and keeps the source out of the artifact's manifest so the
-all-or-nothing gate on that artifact cannot hold back DEC's, OPRHP's and USFS's waypoints
-on NYNJTC's account. What would ship if the maintainer records an authorisation is facts
-and a link — type, position, section and mile, an off-trail distance where the guide states
-one, a short name, the page URL — never the guide's sentence, the split the notices already
-ship on. The interactive map at `nynjtc.org/long-path-interactive-map/` was read the same
-day and adds nothing point-shaped: three line layers, two of them already catalogued by
-ALERTS_NOTICES_SURVEY.md.
+**Every cell read `available` for most of that day, and the reason is worth keeping
+because it is the parent surveys' rule made sharp.** This is the first NYNJTC surface with
+*stated* terms: nynjtc.org's Terms & Conditions §3 (page dated 2025-03-10, read
+2026-09-08) say all content including maps and text is owned by NYNJTC — a copyright claim,
+not a grant. `nynjtc_licence` covers the two trail extracts "and nothing else",
+`nynjtc_notices_licence` covers the alerts, and both say they must not be read as
+precedent; so `nynjtc_long_path_guide` was registered `reaches_hikers: false` with its own
+`nynjtc_guide_licence` block recording nothing, and `export_nearby_poi.py` was built to keep
+a held-back source out of the artifact's manifest so the all-or-nothing gate on that
+artifact could never hold back DEC's, OPRHP's and USFS's waypoints on NYNJTC's account.
+
+**The maintainer answered the same day** — *"make reach_hikers:true - I'm assuming my
+relationship with nynjtc is enough"* — and the six cells read **ships** on that
+authorisation, recorded in those words in `nynjtc_guide_licence`. It is the maintainer's
+decision and not a grant from NYNJTC, the footing their alerts already ship on, and
+[#768](https://github.com/OurHike/OurHike/issues/768) remains where NYNJTC's own answer
+belongs. What ships is facts and a link — type, position, section and mile, an off-trail
+distance where the guide states one, a short name, the page URL — never the guide's
+sentence, the split the notices already ship on; and the safety holdbacks are the
+measurement's, not the licence's: every mile-placed record is `CONFIDENCE_LOW` with a stated
+500 m error, water carries the guide's reliability word in the cautious direction, and an
+off-trail place is pinned at its turn-off with the card saying so. The interactive map at
+`nynjtc.org/long-path-interactive-map/` was read the same day and adds nothing
+point-shaped: three line layers, two of them already catalogued by ALERTS_NOTICES_SURVEY.md.
 
 **Mohonk Preserve.** All 23 services listed; three carry real data and none is a POI layer
 — the 304 trail polylines already shipping, a single boundary polygon, and the

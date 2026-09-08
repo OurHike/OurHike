@@ -432,15 +432,16 @@ jobs:
       # them under data/raw/nynjtc_long_path_guide/ (in FETCH_OUTPUTS above,
       # so an unchanged page costs one hash compare) and parses them;
       # export_nearby_poi.py below reads the parse behind the entry's own
-      # reaches_hikers gate, which is false while sources.json's
-      # nynjtc_guide_licence is unresolved - so today this step feeds a
-      # review file and nothing a hiker downloads. It runs anyway, for the
-      # reason fetch_club_pdfs.py gives: a cache a person can review is the
-      # first step of every licence conversation this project has had.
+      # reaches_hikers gate - true since 2026-09-08 on the maintainer's
+      # authorisation (sources.json's nynjtc_guide_licence), so these ride in
+      # nearby_poi.geojson beside DEC's, OPRHP's and USFS's waypoints.
       #
       # continue-on-error for the reason the external fetch above gives its
       # own: a website's bad afternoon must not fail an A.T. publish. The
-      # export then reads whatever the restore left on disk, and says so.
+      # export then reads whatever the restore left on disk; with no cache
+      # at all it refuses, as it does for a missing layer, because an
+      # artifact silently short of a source it is meant to carry is the
+      # worse outcome.
       - name: Fetch the Long Path section guide
         continue-on-error: true
         run: python fetch_nynjtc_long_path_guide.py

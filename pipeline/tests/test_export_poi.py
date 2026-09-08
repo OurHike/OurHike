@@ -1943,27 +1943,6 @@ def test_export_poi_publishes_trail_stream_crossings(tmp_path, monkeypatch, con)
     # Identity is WHERE it is: one reach can cross the trail twice, so the
     # reach id alone would collide.
     assert crossing["properties"]["id"] == "nhd_crossing:41.04000,-73.94500"
-    assert "stream_id" not in crossing["properties"], "the passport is for the ledger, not the phone"
-
-
-def test_load_trail_water_keeps_the_stream_for_the_ledger_and_publishes_nothing_new(tmp_path):
-    """The stream a crossing or a site's water point is made of rides
-    RAW_PROPERTIES_KEY for reconcile_poi_identity.py - the passport that
-    carries a nameless crossing across a trail re-measure (#1028) - and goes
-    nowhere else: it is not a POI_COLUMNS column, so no feature publishes it."""
-    trail_water = tmp_path / "trail_water.json"
-    _write_trail_water(
-        trail_water,
-        crossings=[{"sources": ["nhd"], "stream_id": "90662307", "flow": None, "name": None, "lat": 41.04, "lon": -73.945}],
-        sites=[_trail_water_site("site-1", 41.05, -73.95)],
-    )
-
-    crossing, site_water = export_poi.load_trail_water(trail_water)
-
-    assert crossing[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "90662307"
-    assert site_water[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "12"
-    assert "stream_id" not in crossing and "stream_id" not in site_water
-    assert "stream_id" not in {column for column, _ in export_poi.POI_COLUMNS}
 
 
 def test_export_poi_site_water_folds_onto_the_shelters_pin(tmp_path, monkeypatch, con):

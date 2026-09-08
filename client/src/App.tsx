@@ -2000,7 +2000,8 @@ function App() {
    * which. Trusting the plan over the observation would redefine "ahead" as
    * the way they are NOT going and warn about closures behind them, which is
    * the worse of the two failures. Telling them they are walking the wrong
-   * way is the wrong-way alert's job (#93, #247), not this line's.
+   * way was the wrong-way alert's job (#93, #247) before its removal - not
+   * this line's, and nothing has taken it on since.
    */
   const heading =
     direction?.direction ?? (hike === null ? undefined : plannedDirection(hike))

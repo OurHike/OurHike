@@ -648,9 +648,10 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     partly. Closing those 33 whole would draw the barred band along the entire
     Ramapo-Dunderberg on the strength of 16.7% of its length, and along the
     whole Suffern-Bear Mountain on 0.0% - a trail that touches the boundary and
-    goes nowhere near the closure. A band across a trail that is open is the
-    cry-wolf failure wrongWay.test.ts names for its own module, on a mark a
-    hiker is meant to obey without checking.
+    goes nowhere near the closure. A band across a trail that is open is a
+    cry-wolf failure on a mark a hiker is meant to obey without checking -
+    the same false-positive cost this codebase's safety paths generally
+    treat as worse than a miss (CLAUDE.md, "Miss rather than cry wolf").
 
     THE DIRECTION THIS ERRS, stated because the split makes it a choice rather
     than an accident: a line is closed where it is INSIDE the polygon, by

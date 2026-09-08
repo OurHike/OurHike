@@ -3,8 +3,10 @@
 // `severity: serious` lives on the existing Report model and is set by a
 // moderator, never self-declared - the client only ever reads it. A serious
 // warning surfaces prominently in-app (a distinct pin, plus a banner when the
-// map opens) and NEVER pushes. See lib/push.ts for where that rule is
-// enforced rather than merely intended.
+// map opens) and NEVER pushes - OurHike sends no push notification of any
+// kind today. The wrong-way alert, the one exception that used to exist, was
+// removed (#93, #308), and lib/push.ts, the module that used to enforce this
+// rule, went with it.
 
 import { POI_PIN_SIZE } from '../map/poiIcons'
 import { mileOnTrail, type TrailIndex } from './trailPosition'

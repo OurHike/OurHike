@@ -711,9 +711,10 @@ deliberately removed the thing that would be farmed. Submit, and read the answer
 it, with what, when — is real work and is not this. It belongs with VOLUNTEERING.md's work
 projects if it belongs anywhere.
 
-**Not a notification.** HIKER_SAFETY.md's wrong-way alert remains the only push this app
-sends, and nothing here is an exception. A determination read back is waiting in the app when
-somebody next opens it.
+**Not a notification.** OurHike sends no push notification of any kind (the wrong-way alert,
+which would have been the exception, was removed - HIKER_SAFETY.md §5), and nothing here is
+an exception either. A determination read back is waiting in the app when somebody next opens
+it.
 
 **No badge, no count, no leaderboard.** A credential is visible to its holder and to the club
 that granted it, and appears on nothing another hiker can see. VOLUNTEERING.md's Ridge Runner

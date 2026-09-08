@@ -143,7 +143,7 @@ Three tiers, deliberately unequal:
 
 **Volume is capped structurally, not by good intentions.** One tracking issue per source, **updated in place** — DATA_RELEASES.md's existing rule ("never a second issue, never a comment per day"), applied to a second producer. At most one email per source per week no matter how many times a nightly job fails. A weekly build that fails five times sends one message.
 
-And to be explicit, because this project guards it hard: these are emails to organizations. The wrong-way alert remains the only push notification OurHike sends to a hiker.
+And to be explicit, because this project guards it hard: these are emails to organizations. OurHike sends no push notification of any kind to a hiker - the wrong-way alert, which would have been the exception, was removed ([HIKER_SAFETY.md](HIKER_SAFETY.md) §5).
 
 ### When nobody answers: quarantine, not deletion
 

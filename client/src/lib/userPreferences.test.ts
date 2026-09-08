@@ -45,10 +45,10 @@ describe('UserPreferences schema', () => {
     expect(suspicious).toEqual([])
   })
 
-  it('keeps the wrong-way alert togglable - it is the one push, and it is opt-out', () => {
-    // Distinct from the above: the alert is a NOTIFICATION preference, not a
-    // question of whether hazards appear on the map. WIREFRAMES.md §10 puts
-    // this toggle in Safety & privacy on purpose.
+  it('keeps the wrong-way alert preference present, even though nothing reads it', () => {
+    // Legacy: the alert was removed (#93, #308) after shipping fully built but
+    // never mounted. The key stays synced with the backend rather than being
+    // dropped - see this field's own comment in userPreferences.ts for why.
     expect(PREFERENCE_KEYS).toContain('wrong_way_alert_enabled')
   })
 
@@ -113,7 +113,7 @@ describe('UserPreferences schema', () => {
     expect(DEFAULT_PREFERENCES.unit_system).toBe('imperial')
   })
 
-  it('defaults the wrong-way alert to on, so the one safety push is not opt-in', () => {
+  it('defaults the (now-inert) wrong-way alert preference to on', () => {
     expect(DEFAULT_PREFERENCES.wrong_way_alert_enabled).toBe(true)
   })
 

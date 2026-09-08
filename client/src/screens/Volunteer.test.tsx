@@ -45,8 +45,8 @@ describe('Volunteer', () => {
   })
 
   it('says plainly that nothing here is a notification', () => {
-    // HIKER_SAFETY.md pins the wrong-way alert as the only push this app
-    // sends, and this tab is the feature most likely to grow a second one.
+    // OurHike sends no push notifications at all, and this tab is the
+    // feature most likely to grow one.
     renderTab()
 
     expect(screen.getByText(/never a notification/i)).toBeTruthy()

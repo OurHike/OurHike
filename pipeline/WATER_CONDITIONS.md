@@ -287,8 +287,8 @@ work:
 - **The wording is the whole risk, and it is a safety path.** "Streams in this area are
   running much below normal for mid-August (USGS, 3 gauges, updated 2 hours ago)" is a
   claim this data supports. "The spring at Thomas Knob is dry" is not, and no amount of
-  modelling makes it one. HIKER_SAFETY.md's asymmetry applies exactly as `wrongWay.ts`
-  states it: a false "there is water" is the failure that matters.
+  modelling makes it one. [CLAUDE.md](../CLAUDE.md)'s false-positive/false-negative
+  asymmetry applies exactly here: a false "there is water" is the failure that matters.
 
 ## 7. The options, ranked
 

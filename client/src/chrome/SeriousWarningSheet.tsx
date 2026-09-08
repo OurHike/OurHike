@@ -10,7 +10,7 @@
 // warning for the first time will reasonably wonder why they were not
 // notified; an app that leaves that unanswered invites the conclusion that
 // notifications are broken - worse than the silence. Saying it plainly makes
-// the one-notification policy legible instead of something to infer.
+// the no-push-notifications policy legible instead of something to infer.
 //
 // It used to say two more things, and #292 removed both. The shape below is
 // what a backend can actually fill.
@@ -78,8 +78,8 @@ export function SeriousWarningSheet({ warning, onClose }: SeriousWarningSheetPro
       <p className="warning-sheet__note">{warning.note}</p>
 
       <p className="closure-sheet__limit" role="note">
-        Your phone didn&rsquo;t buzz for this. OurHike only ever sends one kind of
-        notification — the wrong-way alert — so warnings appear here on the map instead.
+        Your phone didn&rsquo;t buzz for this. OurHike doesn&rsquo;t send push
+        notifications, so warnings appear here on the map instead.
       </p>
     </div>
   )

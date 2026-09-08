@@ -207,7 +207,7 @@ Cloudflare now steers new projects toward **Workers static assets** rather than 
 After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch). This used to say "push any commit to `main`" — that stopped being true when RELEASING.md §2 landed: a push to `main` now deploys **UA**, and production Pages deploys only from a `v*` tag or a dispatch (#661).
 
 Two things to check after that redeploy:
-- The PWA installs (service worker registers, manifest loads). iOS Web Push **only** works for home-screen installs, which matters for the wrong-way alert later.
+- The PWA installs (service worker registers, manifest loads).
 - The download window actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build). It opens from the "Choose what to download" link at the foot of the legend, or at the foot of Settings under the More tab.
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
@@ -432,11 +432,10 @@ Each of these is an issue, so that fixing one closes it here too rather than lea
 What is genuinely still not done, of what this list carried:
 
 - **Real OAuth login has never been exercised end to end** ([#92](https://github.com/OurHike/OurHike/issues/92)). The auth code path is fully tested against a mocked Supabase client, but no real Google or Apple sign-in has happened, because that needs credentials only you can create. Expect to find something here.
-- **The wrong-way alert's thresholds (90 ft / 12 min / 25 min) are wireframe placeholders** ([#93](https://github.com/OurHike/OurHike/issues/93)), not validated numbers. `HIKER_SAFETY.md` explicitly declines to guess them pending field testing under tree canopy. The mechanism is tested; the numbers are not trustworthy yet, and this is the one feature where a false alarm costs the most.
 - **The cumulative-ascent threshold is derived rather than confirmed** ([#133](https://github.com/OurHike/OurHike/issues/133) — the surviving half of closed [#91](https://github.com/OurHike/OurHike/issues/91), which fixed the over-count itself). `pipeline/check_elevation_gain.py` compares the result against published figures section by section, and `pipeline/reference/published_gain.json` has no sections in it yet, so the check deliberately fails. It needs a full `export_elevation.py` run plus two or three cited section figures.
 - **Backend has never run against real Postgres outside CI** ([#95](https://github.com/OurHike/OurHike/issues/95)).
 
-Closed since this list was written, kept here so a reader of an old copy is not chasing ghosts: the photo picker that discarded photos (#89 — report photos ship end to end now), POIs never drawn on the map (#90), the ascent over-count itself (#91), and the missing end-to-end test against real published artifacts (#94 — `smoke_published.py` fetches what a phone fetches, from the bucket it fetches it from).
+Closed since this list was written, kept here so a reader of an old copy is not chasing ghosts: the photo picker that discarded photos (#89 — report photos ship end to end now), POIs never drawn on the map (#90), the ascent over-count itself (#91), the missing end-to-end test against real published artifacts (#94 — `smoke_published.py` fetches what a phone fetches, from the bucket it fetches it from), and the wrong-way alert's unvalidated thresholds (#93 — the feature was removed rather than validated).
 
 ## Rough ordering if you want a working map fastest
 

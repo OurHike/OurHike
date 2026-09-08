@@ -143,8 +143,10 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # private planning (#976), published to nobody and relied on by nobody.
     day_hikes = db.query(SyncedDayHike).filter(SyncedDayHike.profile_id == profile_id).delete(synchronize_session=False)
     planned = db.query(SyncedPlannedHike).filter(SyncedPlannedHike.profile_id == profile_id).delete(synchronize_session=False)
-    # The wrong-way alert's server-side reference to which direction they are
-    # walking. Nobody else reads it and nothing downstream aggregates it.
+    # Originally the wrong-way alert's server-side reference to which
+    # direction they were walking (feature removed, #93/#308). Nobody reads
+    # it and nothing downstream aggregates it; the table stays for API
+    # compatibility (app/models/hike.py) but a deleted account's rows go too.
     hikes = db.query(Hike).filter(Hike.user_id == profile_id).delete(synchronize_session=False)
     preferences = db.query(UserPreferences).filter(UserPreferences.profile_id == profile_id).delete(synchronize_session=False)
     # A stretch of trail this person had taken on. Deleting the account

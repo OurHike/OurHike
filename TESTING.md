@@ -33,13 +33,16 @@ was arbitrary. So a suite exercising a value tagged `@unvalidated` (see
 placeholders, asserts against the imported constants rather than literals, and names
 what would validate them.
 
-`client/src/lib/wrongWay.test.ts` is the worked example. Its header states that the
-90 ft / 12 min / 25 min figures are WIREFRAMES.md mock-up placeholders pending
-field-testing under canopy, that "these tests assert the MECHANISM behaves correctly
-against the placeholder constants, never that the numbers themselves are correct", and
-which direction of error the module exists to avoid. Every case then reads
-`OFF_TRAIL_THRESHOLD_FT - 10` rather than `80`, so re-tuning the threshold moves the
-tests with it and only a genuine behaviour change goes red.
+`client/src/map/nearbyTrails.test.ts` is a worked example. Its test for
+`NEARBY_TRAIL_OPACITY` opens "Not a validated number - see the constant's
+`@unvalidated` note and #105," then asserts the two *properties* the value was
+picked for (dimmer than the chosen trail, not so faint it stops reading as a
+colour) rather than the number itself - reading `NEARBY_TRAIL_OPACITY` and
+`CHOSEN_TRAIL_OPACITY` as imported constants, never as literals. A later
+re-tuning that keeps both properties true passes unchanged; only a genuine
+behaviour change goes red. (`client/src/lib/wrongWay.test.ts` was the worked
+example here before the wrong-way alert it tested was removed - #93, #308 -
+same pattern, a different file.)
 
 Where a number *is* backed, cite the backing in the test rather than only at the
 definition - the test is where the next person arrives when it fails.
@@ -117,7 +120,7 @@ One boundary worth stating plainly: everything in this suite runs in jsdom again
 3. **Download detail levels** - each of Light/Standard/Fine maps to its correct zoom (z11/z12/z13) and its correct measured size (64 MB/314 MB/1.18 GB, from `pipeline/README.md`) as a table-driven test, guarding against one of the three drifting out of sync with the other two. No per-section math - see WIREFRAMES.md Known Deviations #1.
 4. **Staleness tiers** - boundary tests at 14 and 60 days, `never confirmed` ⇒ stale, and staleness is independent of the verified/unverified flag (all four combinations produce the right pin treatment).
 5. **Onboarding step counter** - total derived from the live step list; skipping a step does not change the total; adding a future step (trail name) yields "of 4" without touching call sites.
-6. **Wrong-way detector** - table-driven against synthetic GPS traces: short backtrack to a spring ⇒ silent; standing still at a shelter ⇒ silent; sustained reversal past the persistence threshold ⇒ cue, then push; off-line distance under threshold ⇒ silent. False negatives are acceptable; **false positives are the failure**.
+6. **Wrong-way detector** - removed along with the feature it tested (#93, #308); this suite no longer exists.
 
 **Component tests:**
 7. **Legend contents** - equals exactly what the viewport contains, with correct counts; recomputes on pan/zoom; closure and serious-warning rows render **without** a hide control of their own. Since [#1047](https://github.com/OurHike/OurHike/issues/1047) the panel does carry one **Alerts** switch over all three alert layers at once, and what the suite pins is the boundary rather than the switch: the banners and the `aria-live` line survive it, the status strip says "Alerts hidden" while it is off, and nothing about it is ever written down - `client/src/chrome/alertLayerPanel.test.ts` watches `Storage.setItem` rather than reading the source, so a stored flag added later fails a test instead of reaching a trail.
@@ -134,7 +137,7 @@ One boundary worth stating plainly: everything in this suite runs in jsdom again
 
 **Invariants worth asserting explicitly (regression guards):**
 16. No *stored preference* in the app can hide closures or warnings - assert on the settings schema, not the DOM. (Amended by [#1047](https://github.com/OurHike/OurHike/issues/1047), which built the legend's Alerts switch: this invariant was "no toggle anywhere", and what it defends is the half a toggle cannot reach - a synced key would arrive on a second phone with the alerts already off, where the switch is in memory and gone by the next open.)
-17. Serious warnings never enqueue a push; the wrong-way alert is the only push publisher in the client codebase.
+17. Serious warnings never enqueue a push (`client/src/map/warningLayers.test.ts` checks its own source touches no notification API). OurHike sends no push notification of any kind today: `push.ts`, the app's only push-notification sender, was removed along with the wrong-way alert (#93, #308), and `push.test.ts`'s repo-wide scan proving it was the *only* one went with it. Nothing currently catches a new module adding push code elsewhere - a gap worth naming rather than implying this still self-enforces.
 18. **Every POI category the app can name, it can draw.** The legend, search and the map all read one array, and the style's icon `match` resolves every published `POI_TYPES` entry to an image that was really registered - with an unknown type falling through to a neutral pin rather than to nothing. This is a regression guard for a real bug: POIs were fetched, stored, searchable and counted in the legend for months while the style had no layer that could put any of them on the map, so the legend's hide toggles were toggling layers that did not exist. Shape carries the category and colour only reinforces it (no two glyphs coincide, and none is a subset of another), since the accents sit within ~2:1 of each other and vanish as a channel in glare or greyscale - the same reasoning as the blaze line widths in #1.
 
 19. **A build that cannot draw a map does not ship.** Every test in `client/src` mocks `maplibre-gl` outright - it has to, since jsdom has no WebGL context and a real map cannot be constructed there at all - so the whole suite can pass while the shipped bundle draws nothing. That is not a hypothetical gap: maplibre-gl 6 stopped inlining its web worker and resolves one from its own module URL, which after bundling is the app chunk, so the built app fetched `assets/maplibre-gl-worker.mjs`, which no build ever emitted. MapLibre fires no error for that. The style still parsed, every layer was still in it, and the map was a blank sheet of paper on every platform, online and off - including the off-archive hatch that exists to say "no data here", which waits on a `load` event that a workerless map never fires. So the guard is on the artifact, not the source: `client/scripts/check-build-output.mjs` reads `dist/` and asserts that every asset the bundle references is really published, that the assets whose absence is *silent* are wired up rather than merely emitted, and that they are in the service worker's precache - a map that fetches part of itself on demand works in town and goes blank on a ridge. It runs as part of `npm run build`, so the check cannot be skipped by deploying. The source half is `client/src/map/mapWorker.test.ts` and one ordering test in `MapView.test.tsx`: MapLibre is pointed at a bundled worker URL, and pointed at it before any map is constructed (there is one worker pool per page, built for the first map, so a URL set afterwards is one nothing reads).

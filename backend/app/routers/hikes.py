@@ -1,6 +1,7 @@
 """`/hikes` endpoints - standard CRUD scoped to the authenticated user, plus
-a derived-direction endpoint for ../../../features/HIKER_SAFETY.md section
-5's wrong-way alert. See app/models/hike.py for why this table exists.
+a derived-direction endpoint originally built for
+../../../features/HIKER_SAFETY.md section 5's wrong-way alert, since removed
+(#93, #308). See app/models/hike.py for why this table and endpoint stay.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -90,6 +91,7 @@ def get_hike_direction(
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    """The wrong-way alert's dependency: NOBO/SOBO, derived, never stored."""
+    """NOBO/SOBO, derived, never stored - originally the wrong-way alert's
+    dependency (removed, #93/#308); see app/models/hike.py."""
     hike = _get_owned_hike_or_404(hike_id, current_user, db)
     return {"direction": derive_direction(hike.overall_start_reference, hike.overall_end_reference)}

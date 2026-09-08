@@ -115,8 +115,8 @@ near-identical models for a later reader to reconcile, which is the drift
 takes the record and `DATA_NUDGES.md` keeps what it was actually about: *when* to ask, and
 the passive map prominence that does the asking. That doc's central rule is unchanged and
 still governs the prompt: **no push, no in-app banner, no alert.**
-[HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way alert stays the only notification the app
-ever sends.
+OurHike sends no push notification of any kind — the wrong-way alert, which would have
+been the exception, was removed ([HIKER_SAFETY.md](HIKER_SAFETY.md) §5).
 
 ## 3. The roll-up — what the map shows without reading the feed
 
@@ -386,8 +386,9 @@ proves that, and still the recovery path for anything written before the ledger 
   moderating, and the moderation burden is the thing this design exists to avoid. A note is
   addressed to the next hiker, not to the previous one.
 - **Not a rating system.** No votes, stars, scores or "helpful" taps — settled twice already.
-- **Not a notification.** Nothing here interrupts anyone; `HIKER_SAFETY.md`'s wrong-way alert
-  remains the only one.
+- **Not a notification.** Nothing here interrupts anyone; OurHike sends no push
+  notification of any kind — the wrong-way alert, which would have been the exception, was
+  removed (`HIKER_SAFETY.md` §5).
 - **Not gamified.** No streaks, no contribution counts, no leaderboard, no "you haven't
   contributed lately" — the guardrail stated in four docs, with its boundary settled in
   `VOLUNTEERING.md` (it targets *comparison and pressure*, not *memory*).

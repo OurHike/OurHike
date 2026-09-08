@@ -14,8 +14,8 @@
 // WHAT THIS SCREEN MUST NEVER DO, from four docs' shared guardrail: no
 // counts of contributions, no streaks, no leaderboard, no "you haven't
 // volunteered lately", no comparison to anyone. And nothing here is a
-// notification or ever becomes one - HIKER_SAFETY.md's wrong-way alert stays
-// the only push this app sends.
+// notification or ever becomes one - OurHike sends no push notifications at
+// all.
 
 import type { UnitSystem } from '../lib/units'
 import {

@@ -1662,8 +1662,8 @@ interface CallItADaySheetProps {
 /**
  * "Call it Day 24?" - the record half of the cascade (#758, wireframe 2b
  * frame 1), without the background inference: the hiker opens it from the
- * current day's actions, and it never pushes - the wrong-way alert stays
- * the only notification OurHike sends.
+ * current day's actions, and it never pushes - OurHike sends no push
+ * notifications at all.
  *
  * Two honest ends are offered: the planned stop, and where the hiker
  * actually is when a fix exists - named by the nearest real stop when one

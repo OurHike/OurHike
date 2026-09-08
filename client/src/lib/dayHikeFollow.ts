@@ -23,9 +23,9 @@
 // HYSTERESIS RATHER THAN A TIMER, and it is doing real work. A single
 // threshold flips this state every time a fix wobbles across it under
 // canopy, and a banner that appears and vanishes twice a minute is a banner
-// nobody reads - the same "cry wolf" failure lib/wrongWay.ts's persistence
-// window exists to prevent. Going OFF takes {@link OFF_ROUTE_FEET}; coming
-// back ON takes the tighter {@link BACK_ON_ROUTE_FEET}, so the boundary
+// nobody reads - the same "cry wolf" failure a persistence window exists to
+// prevent. Going OFF takes {@link OFF_ROUTE_FEET}; coming back ON takes the
+// tighter {@link BACK_ON_ROUTE_FEET}, so the boundary
 // itself is never a place the state can oscillate. No clock, no trace, no
 // stored history: the caller hands back the previous answer and this stays a
 // pure function of two fixes.
@@ -52,17 +52,18 @@ import { formatDistance, formatShortDistance, type UnitSystem } from './units'
 /**
  * How far off the route a hiker gets before the screen says so.
  *
- * The same NUMBER `lib/wrongWay.ts` uses for `OFF_TRAIL_THRESHOLD_FT`, and
- * not the same measurement - which is a correction to what this comment used
- * to claim.
+ * The same NUMBER the wrong-way alert used for `OFF_TRAIL_THRESHOLD_FT` (that
+ * module is gone now, removed along with the rest of the feature - #93,
+ * #308), and not the same measurement - which was a correction to what this
+ * comment used to claim.
  *
  * It said the two "answer the same question", so sharing the constant kept
  * the off-route band and the wrong-way cue on screen at the same moment. That
- * is not true and cannot be made true by choosing the number differently.
- * `wrongWay.ts` states its input as a CONTRACT: it is fed
+ * was not true and could not have been made true by choosing the number
+ * differently. The wrong-way alert took its input as a CONTRACT: it was fed
  * `TrailFix.offTreadFeet`, the distance to the nearest mapped tread of ANY
- * kind, and it says which of the two it must be, because fed the centerline
- * distance instead it fires at roughly three shelter stops in four. This
+ * kind, and said which of the two it had to be, because fed the centerline
+ * distance instead it fired at roughly three shelter stops in four. This
  * module measures to ONE route's own tread. So a hiker who takes the wrong
  * arm at a fork is 0 ft from mapped tread - silent by that contract, and
  * correctly so - while walking steadily past this threshold. Two surfaces,
@@ -73,7 +74,7 @@ import { formatDistance, formatShortDistance, type UnitSystem } from './units'
  * to be on", and inventing a second would be a second unmeasured number.
  *
  * @unvalidated by inheritance, and the inherited caveat travels with it -
- * that constant is a WIREFRAMES.md mock-up placeholder, not a validated
+ * that constant was a WIREFRAMES.md mock-up placeholder, not a validated
  * HIKER_SAFETY.md figure, and §5 declines to guess pending field testing
  * under tree canopy. What would settle it is the same field test, run against
  * a route rather than against the corridor.

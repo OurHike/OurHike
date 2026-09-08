@@ -21,10 +21,8 @@ vi.mock('../lib/usePublishedSizes', () => ({
 // that a later well-meaning change could quietly undo, so they are asserted
 // directly:
 //
-//  - NO notification prompt anywhere in first run. Notifications belong to the
-//    wrong-way alert, asked at hike start. OurHike sends exactly one kind of
-//    push and asking for it up front would spend that permission before it has
-//    been earned.
+//  - NO notification prompt anywhere in first run. OurHike sends no push
+//    notifications, so there is nothing to ask permission for.
 //  - NO account prompt. Reading the map never needs an account; sign-in is
 //    asked at the first contribution instead.
 //

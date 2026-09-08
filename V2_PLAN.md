@@ -76,8 +76,9 @@ thirty miles of the trail".
 declines to guess at, and the issue argues at length that the number must not be picked
 before the census is run. **Run the census first** — `spike_osm_water_census.py`, in the
 shape the issue describes — and put the distribution in the issue before touching a
-threshold. Note also that this is *not* the `wrongWay.ts` asymmetry: over-filtering water
-hurts a hiker too, so neither direction is the safe one.
+threshold. Note also that this is *not* the wrong-way alert's old asymmetry (false negatives fine,
+false positives not): over-filtering water hurts a hiker too, so neither direction is the
+safe one.
 
 **Where this stands, 2026-08-20.** The core is built: **#749** and **#710 — "Corroborated
 by both databases" is worth much less in Virginia than in New Hampshire** closed via
@@ -289,7 +290,6 @@ and has the longest lead time.
 **#92 — Real Apple OAuth has never been exercised end to end** ·
 **#279 — Replace the password sign-in path with an emailed code** ·
 **#255 — PATCH null semantics are opposite in sibling endpoints: hikes 500s on an explicit null, closures silently ignore one** ·
-**#247 — POST /wrong-way-events requires a hike_id the client will never have** ·
 **#320 — Backend test harness drops every table in whatever DATABASE_URL names — add a guard** ·
 **#322 — Backend endpoint and error-path test gaps** ·
 **#658 — Backend audit follow-ups: inputs nobody has been bitten by yet, and a moderation trail with gaps**
@@ -306,7 +306,9 @@ does — `backend/scripts/local-postgres.sh` starts it, and the session-start ho
 too. A connection-refused failure means that script has not been run, not that the check
 cannot run here.
 
-**#255 and #247 are contract bugs** — small, well-specified, and good for a short session.
+**#255 is a contract bug** — small, well-specified, and good for a short session. #247
+sat here too; it closed 2026-08-21 (PR #903 deleted the `/wrong-way-events` endpoint
+rather than fixing its contract).
 
 ## J. What it costs and who pays
 
@@ -319,22 +321,21 @@ cannot run here.
 **#395 is the one with a deadline attached to reality** — the app is public now. Worth
 reading as *already overdue* rather than as planning.
 
-## K. Safety surfaces built but not trusted
+## K. Outdoor usability and real-trail testing
 
-**#93 — Wrong-way alert thresholds are wireframe placeholders, not validated numbers** ·
-**#308 — WrongWayCue.tsx is still referenced by 0 non-test files, and mounting it is a decision rather than wiring** ·
 **#105 — Outdoor usability pass — sunlight glare and gloved, one-handed use** ·
 **#106 — Real-trail field testing**
 
-**Why together:** all four need a person on a trail with a phone, and #93 and #308 are one
-decision wearing two numbers.
+**Why together:** both need a person on a trail with a phone.
 
-**Do not "fix" #308 by mounting the component.** ROADMAP.md records that it is unmounted
-*deliberately*: its thresholds are placeholders (#93), it is the only notification this app
-sends, and a false alarm spends the trust budget the single alert was designed around.
-`wrongWay.test.ts` states the asymmetry outright — false negatives are acceptable, false
-positives are the failure the module exists to prevent. **#93 is the prerequisite and it is
-field measurement, not code.**
+**#93 — Wrong-way alert thresholds are wireframe placeholders, not validated numbers** and
+**#308 — WrongWayCue.tsx is still referenced by 0 non-test files, and mounting it is a
+decision rather than wiring** used to sit in this group too. They closed together, not
+separately: the wrong-way alert was fully built, but its thresholds were never
+field-validated and — found later, more fundamentally — its "wrong direction" detection was
+never actually implemented, since nothing in the client ever computed a GPS movement
+bearing; only the off-trail-by-distance mode existed. Rather than keep carrying unmounted,
+partially-implemented safety code, it was removed instead of mounted.
 
 ## L. Client performance and the App.tsx chokepoint
 
@@ -631,8 +632,8 @@ Worth raising alongside the other ATC asks in **#479**.
 
 **Two guardrails that are easy to breach here.** The anti-gamification rule has a stated
 boundary — it targets *comparison and pressure*, not *memory* — and #761 is the phase that
-tests it. And this feature must never become the second thing that sends a notification;
-[HIKER_SAFETY.md](features/HIKER_SAFETY.md)'s wrong-way alert stays the only one.
+tests it. And this feature must not be what makes OurHike send its first push
+notification; it sends none today.
 
 ## V. Trails within reach of NYC — the second trail system, for real
 
@@ -783,8 +784,9 @@ in one sitting rather than discovered one at a time.
    Hudson Highlands core plus the Catskills plus everything NYNJTC maintains, with
    maintainer outreach to OPRHP and NYNJTC in motion. #100's timing question is settled:
    it rises, and its Phase A is already merged.
-4. **Who is field-testing, and when?** Group K is four issues that no amount of code
-   advances. #93 gates #308, which gates the app's only notification.
+4. **Who is field-testing, and when?** Group K is two issues that no amount of code
+   advances. (It was four; #93 and #308 — the wrong-way alert's threshold validation and
+   its mounting — closed with the feature's removal rather than with field-testing.)
 5. ~~**What are `FRESH_MAX_DAYS` and `AGEING_MAX_DAYS` supposed to be?**~~ **Answered
    2026-08-20, by the maintainer in session (recorded on #256):** they stand at 14 and
    60, tagged `@unvalidated` with real confirmation volume named as what settles them —

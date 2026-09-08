@@ -419,10 +419,12 @@ The failures that can mislead somebody in a place where being wrong is expensive
 Nothing here is ever a soft gate, and a finding in this set can never become a
 follow-up issue:
 
-- **Position** — where the hiker is, where the trail is, which way they are facing.
-  The wrong-way alert's false-positive behaviour above all: `features/HIKER_SAFETY.md`
-  and TESTING.md both already say false negatives are acceptable and false positives
-  are the failure.
+- **Position** — where the hiker is, where the trail is. `trailPosition.ts` and the
+  map layers it feeds (closures, ATC updates, the corridor view) are what this protects
+  today; the wrong-way alert that used to be its highest-stakes consumer was removed
+  having never been field-validated (#93, #308). CLAUDE.md's
+  false-negatives-acceptable/false-positives-are-the-failure asymmetry remains this
+  codebase's general standard for any alert-shaped feature.
 - **Water** — a water source shown that is not there, or omitted where it is.
 - **Hazard, warning and closure** — anything that would keep somebody out of a place
   they should not be, including its freshness display.
@@ -502,19 +504,19 @@ duration attached, and it is the price of the row above that.
 
 ### 8d. What is not validated goes in the notes
 
-Three things are known-unvalidated today and each is already an issue: the wrong-way
-alert's thresholds ([#93](https://github.com/OurHike/OurHike/issues/93) —
-wireframe placeholders, and the feature where a false alarm costs most), cumulative
+Two things are known-unvalidated today and each is already an issue: cumulative
 ascent ([#91](https://github.com/OurHike/OurHike/issues/91) — the
 check exists and deliberately fails for want of reference figures), and end-to-end
 verification against real published artifacts
-([#94](https://github.com/OurHike/OurHike/issues/94)).
+([#94](https://github.com/OurHike/OurHike/issues/94)). (A third item lived here until
+2026-09-08: the wrong-way alert's thresholds — wireframe placeholders that were never
+field-tested. The alert itself was removed rather than the thresholds fixed, having
+shipped fully built but never mounted — [#93](https://github.com/OurHike/OurHike/issues/93),
+[#308](https://github.com/OurHike/OurHike/issues/308).)
 
-**A release does not have to resolve them. It has to say so.** A hiker deciding
-whether to trust a direction cue is entitled to know the thresholds behind it have
-never been tested under tree canopy. LAUNCH_CHECKLIST.md's "Things I know are not
-done, stated plainly" is the register this section is written in, and the reason it
-works is that it is not optional.
+**A release does not have to resolve them. It has to say so.** LAUNCH_CHECKLIST.md's
+"Things I know are not done, stated plainly" is the register this section is written
+in, and the reason it works is that it is not optional.
 
 ## 9. The release review
 

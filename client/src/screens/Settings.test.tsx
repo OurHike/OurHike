@@ -545,29 +545,6 @@ describe('SafetyPrivacySettings', () => {
     expect(toggles.filter((name) => /closure|warning/i.test(name))).toEqual([])
   })
 
-  it('shows the wrong-way alert as Later, because nothing implements it yet', () => {
-    // The preference is real (lib/userPreferences.ts) but the feature is not:
-    // no monitor runs, no cue mounts, no push fires. A live-looking switch
-    // here told a hiker an alarm was armed when there is no alarm - the worst
-    // kind of safety copy. The row stays visible so the answer to "is there a
-    // wrong-way alert?" is an honest "later", not a hunt through screens.
-    render(<SafetyPrivacySettings {...PROPS} />)
-    const toggle = screen.getByRole('checkbox', { name: /wrong-way alert.*later/i })
-
-    expect(toggle).toBeDisabled()
-    expect(toggle).not.toBeChecked()
-    expect(screen.getAllByText('Later').length).toBeGreaterThan(0)
-  })
-
-  it('never reports a wrong-way preference change, since no tap can happen', async () => {
-    const user = userEvent.setup()
-    render(<SafetyPrivacySettings {...PROPS} />)
-
-    await user.click(screen.getByRole('checkbox', { name: /wrong-way alert.*later/i }))
-
-    expect(PROPS.onChange).not.toHaveBeenCalled()
-  })
-
   describe('the location switch (#312)', () => {
     // `location_permission_requested` was written in exactly one place - the
     // onboarding completion handler - and that step is skippable. So "Not now"

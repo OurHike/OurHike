@@ -17,12 +17,12 @@
 //     it pushes waypoints aside rather than being pushed.
 //
 // NOTHING HERE PUSHES, and that is a rule rather than an omission.
-// lib/push.ts makes the wrong-way alert the only notification this app sends
-// and push.test.ts scans the tree to keep it true, so the module that finally
-// mounts the warning path must not become the exception. HIKER_SAFETY.md §1 is
-// where the reasoning lives: a warning about a named person arriving as a
-// phone notification is a different and much worse thing than the same words
-// on a map a hiker chose to open.
+// OurHike sends no push notifications at all, and warningLayers.test.ts
+// scans this file's own source to keep it that way, so the module that
+// finally mounts the warning path does not become the exception.
+// HIKER_SAFETY.md §1 is where the reasoning lives: a warning about a named
+// person arriving as a phone notification is a different and much worse
+// thing than the same words on a map a hiker chose to open.
 
 import type {
   GeoJSONSourceSpecification,

@@ -33,10 +33,27 @@
 // broken recipe: it is the answer to "has publish-vector-data.yml run since
 // the merge", which is the handoff the PR body's Data pipelines section
 // exists to track.
+//
+// Re-pointed 2026-09-08 (#1283) rather than copied, per README.md: this is
+// the frame where the design handoff's park camera lands, and what changes
+// in it is everything a hiker sees on the lines. The A.T. is no longer a
+// cased white line but a single dark one - a near-white blaze on paper is
+// inked in the casing colour with no casing - and it is the ONLY solid line:
+// every other trail in the park is a dot rhythm in its own blaze hue,
+// ghosted as before, with its name set along it. Somewhere on the A.T.'s
+// longest visible stretch sits its badge, a paper pill carrying the ATC mark
+// and the full name; no other line wears one. What the caption has to name
+// is which line is solid and which carries the plate, because the old frame
+// had neither distinction to point at.
+//
+// THE BADGE'S MARK IS THE ONE THING THIS FRAME CANNOT PROMISE. It decodes
+// from at-logo.png on a canvas; where that fails the badge falls through to
+// the White blaze chip - a stone rounded square with the white bar - and is
+// still a badge. Either is the change; the caption claims only the plate.
 export const caption =
-  'Harriman at zoom 12 — the other organizations’ trails drawn from range-read vector tiles, ghosted under the A.T. (#1257); empty above the seam until nearby_trails.pmtiles is in the bucket this preview reads'
+  'Harriman at zoom 12 — the A.T. is the one solid line, inked dark with no casing and wearing its badge; every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The map screen over Harriman State Park at zoom 12: the A.T. as a cased white line with the park’s blazed trails ghosted around and across it in their own colours, drawn from vector tiles rather than a whole-file download'
+  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid dark line with a small paper pill on it reading Appalachian National Scenic Trail beside a trail mark, and the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

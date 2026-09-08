@@ -1498,3 +1498,99 @@ describe('the maintaining club', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('the "Trails in view" block (#1283)', () => {
+  const TRAILS = [
+    {
+      name: 'Appalachian National Scenic Trail',
+      source: 'centerline',
+      blazeColor: 'White',
+      throughRoute: true,
+      chosen: true,
+      anchor: [-74.1, 41.25] as [number, number],
+      properties: {},
+    },
+    {
+      name: 'Long Path',
+      source: 'oprhp_trails',
+      blazeColor: 'Aqua',
+      throughRoute: false,
+      chosen: false,
+      anchor: null,
+      properties: {},
+    },
+  ]
+
+  it('lists one row per trail the map is drawing, above the pin grid', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(
+      within(block).getByRole('heading', { name: 'Trails in view' }),
+    ).toBeInTheDocument()
+    const rows = within(block).getAllByRole('listitem')
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
+      'Appalachian National Scenic Trail · taken',
+      'Long Path',
+    ])
+    // Above the pin grid: the block precedes the first pin row in the DOM.
+    const pinRow = rowFor('Water')
+    expect(
+      block.compareDocumentPosition(pinRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('draws the taken trail solid and every other row dotted, as the map does', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const [at, longPath] = within(block).getAllByRole('listitem')
+
+    expect(at.querySelector('svg')?.getAttribute('data-drawn')).toBe('solid')
+    expect(longPath.querySelector('svg')?.getAttribute('data-drawn')).toBe('dotted')
+    expect(within(at).getByText('taken')).toBeInTheDocument()
+    expect(within(longPath).queryByText('taken')).toBeNull()
+  })
+
+  it('prints no mileage, because nothing published carries a trail’s length', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).queryByText(/mi\b/)).toBeNull()
+  })
+
+  it('draws no block at all when the map is drawing no named trail', () => {
+    render(<Legend {...PROPS} trailsInView={[]} />)
+    expect(screen.queryByRole('region', { name: 'Trails in view' })).toBeNull()
+    cleanup()
+    render(<Legend {...PROPS} />)
+    expect(screen.queryByRole('region', { name: 'Trails in view' })).toBeNull()
+  })
+
+  it('makes a row a control only when the shell offers to take a trail', async () => {
+    const { unmount } = render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).queryAllByRole('button')).toEqual([])
+    unmount()
+
+    const onTakeTrail = vi.fn()
+    render(<Legend {...PROPS} trailsInView={TRAILS} onTakeTrail={onTakeTrail} />)
+    const buttons = within(
+      screen.getByRole('region', { name: 'Trails in view' }),
+    ).getAllByRole('button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(buttons[1])
+    expect(onTakeTrail).toHaveBeenCalledWith(TRAILS[1])
+  })
+
+  it('keeps the ghosting sentence directly under the rows it explains', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} ghostedTrailsDrawn />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const note = screen.getByText(GHOSTED_TRAILS_NOTE)
+    expect(
+      block.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      note.compareDocumentPosition(rowFor('Water')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+})

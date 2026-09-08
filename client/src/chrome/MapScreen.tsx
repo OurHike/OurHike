@@ -75,6 +75,7 @@ import { MapAttribution } from './MapAttribution'
  *  band's ends off the very frame edge. */
 const CHART_FIT_PADDING = 48
 import type { ResolvedTheme } from '../lib/theme'
+import type { TrailInView } from '../map/trailsInView'
 import type {
   BackgroundSource,
   LayerDetailLevel,
@@ -400,6 +401,11 @@ export interface MapScreenProps {
   /** Passed straight through to the Legend (#783) - MapScreen decides nothing
    *  about it. */
   ghostedTrailsDrawn?: boolean
+  /** The named trails on screen (#1283), passed straight through to the
+   *  Legend's "Trails in view" block; and the map's report of them, passed
+   *  straight through to MapView. MapScreen decides nothing about either. */
+  trailsInView?: readonly TrailInView[]
+  onTrailsInView?: (trails: readonly TrailInView[]) => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -791,6 +797,8 @@ export function MapScreen({
   bbox,
   viewportPoints,
   ghostedTrailsDrawn,
+  trailsInView,
+  onTrailsInView,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -1357,6 +1365,7 @@ export function MapScreen({
               archiveZooms={archiveZooms}
               boundsPadding={boundsPadding}
               onViewportChange={onViewportChange}
+              onTrailsInView={onTrailsInView}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
             />
@@ -1470,6 +1479,10 @@ export function MapScreen({
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
+            trailsInView={trailsInView}
+            // The sheet the canvas beside it is drawn in, so each row's swatch
+            // inks its line the way the map does (#1283).
+            sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}

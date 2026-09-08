@@ -66,6 +66,8 @@ import {
 } from './workdayLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
+import { attachTrailBadgeImages } from './trailBadges'
+import { attachTrailsInView, type TrailInView } from './trailsInView'
 import { attachPoiTaps } from './poiTaps'
 import {
   attachDayHikeData,
@@ -400,6 +402,14 @@ export interface MapViewProps {
    */
   onViewportChange?: (bbox: BoundingBox, fromGesture: boolean) => void
   /**
+   * The named trails the map is drawing, for the legend's block (#1283,
+   * map/trailsInView.ts) - measured off the settled frame and reported on
+   * change. Must be stable across renders, like `onViewportChange`. The
+   * badge source is kept current on the same pass whether or not a shell
+   * listens.
+   */
+  onTrailsInView?: (trails: readonly TrailInView[]) => void
+  /**
    * The live map, handed over on build and `null` on teardown, so the shell
    * can move the camera imperatively. `center` cannot do that job - it seeds
    * the opening view only, and the first GPS fix usually lands after it.
@@ -497,6 +507,7 @@ export function MapView({
   redLight = false,
   detail = 'standard',
   onViewportChange,
+  onTrailsInView,
   onMapReady,
   onLiveSourceHealth,
 }: MapViewProps) {
@@ -893,6 +904,23 @@ export function MapView({
     if (map === null) return
     return attachClosureData(map, closures)
   }, [map, closures])
+
+  // The through-route badge's images (#1283) - two plates, the blaze chips,
+  // the registry marks - registered off `map` alone, like the tape above:
+  // constants and assets, never data, so nothing here re-runs on a tap.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailBadgeImages(map)
+  }, [map])
+
+  // And the badges' points, plus the legend's list, off the same pass over
+  // the settled frame (map/trailsInView.ts). Its own effect on the map's
+  // clock and the callback's: a shell that starts listening does not cost a
+  // WebGL context.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailsInView(map, onTrailsInView)
+  }, [map, onTrailsInView])
 
   // Its own effect rather than folded into the closures above: the two arrive
   // on completely different schedules - closures from the network whenever

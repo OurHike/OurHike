@@ -6,10 +6,19 @@ import { loadMapEngine, resetMapEngineForTests } from './mapEngineLoader'
 import { MapView } from './MapView'
 import {
   BACKDROP_LAYER_ID,
+  BLAZE_LAYER_ID,
   MAP_BACKDROP,
+  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  TAPPABLE_BLAZE_LAYER_IDS,
   TRAIL_OVERVIEW_SOURCE_ID,
   TRAILS_SOURCE_ID,
 } from './style'
+import {
+  blazeChipImageId,
+  TRAIL_BADGE_LAYER_ID,
+  TRAIL_BADGE_PLATE_DAY,
+  TRAIL_BADGE_SOURCE_ID,
+} from './trailBadges'
 import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
 import { poiIconImages } from './poiIconImages'
 import { buildPoiIcons, poiIconId } from './poiIcons'
@@ -556,6 +565,49 @@ describe('POI pins', () => {
     ]
     map.emit('load')
   }
+
+  it('registers the badge images and fills the badge source once the style is up (#1283)', () => {
+    render(<MapView {...PROPS} pois={[]} />)
+    const [map] = MockMap.live
+
+    // The mock adopts the built style's layers and sources, so the badge
+    // layer and source are there from construction and the images land on
+    // attach. The points follow the settled frame: seeded, then `idle`.
+    expect(map.layerIds).toContain(TRAIL_BADGE_LAYER_ID)
+    expect(map.sourceIds).toContain(TRAIL_BADGE_SOURCE_ID)
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: { name: 'Appalachian National Scenic Trail', source: 'centerline' },
+        geometry: { type: 'LineString', coordinates: [[0, 0]] },
+      },
+    ])
+    act(() => map.emit('idle'))
+
+    expect(map.images.has(TRAIL_BADGE_PLATE_DAY.id)).toBe(true)
+    expect(map.images.has(blazeChipImageId('White'))).toBe(true)
+    const badges = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
+    expect(badges.features).toHaveLength(1)
+  })
+
+  it('reports the trails on screen to the shell, and re-reports as the camera settles', () => {
+    const onTrailsInView = vi.fn()
+    render(<MapView {...PROPS} pois={[]} onTrailsInView={onTrailsInView} />)
+    const [map] = MockMap.live
+
+    expect(map.layerIds).toEqual(expect.arrayContaining([...TAPPABLE_BLAZE_LAYER_IDS]))
+    expect(onTrailsInView).toHaveBeenLastCalledWith([])
+
+    map.renderedFeatures.set(NEARBY_BLAZE_DOTTED_LAYER_ID, [
+      {
+        properties: { name: 'Long Path', source: 'oprhp_trails', blaze_color: 'Aqua' },
+        geometry: { type: 'LineString', coordinates: [[0, 0]] },
+      },
+    ])
+    act(() => map.emit('idle'))
+    expect(
+      onTrailsInView.mock.calls.at(-1)?.[0].map((t: { name: string }) => t.name),
+    ).toEqual(['Long Path'])
+  })
 
   it('registers the pin images once the style is up', async () => {
     render(<MapView {...PROPS} pois={POIS} />)

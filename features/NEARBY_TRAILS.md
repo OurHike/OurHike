@@ -99,9 +99,17 @@ real blaze hue — and add the one new value this feature introduces:
   (WIREFRAMES.md §2) gain one sentence of state". Those rows were removed as clutter at
   the maintainer's request, and the sentence outlived them — it now sits directly above
   the pin grid, and is the only thing the legend still says about the trail lines.)*
-- **Not a contradiction of §3, an extension.** Every line stays solid; the no-dash rule
-  holds; the through-route is still the widest and last-drawn. Ghosting adds a third
-  channel (opacity) for a distinction the AT-only map never had to draw.
+- **Not a contradiction of §3, an extension.** The through-route is still the widest and
+  last-drawn. Ghosting adds a third channel (opacity) for a distinction the AT-only map
+  never had to draw. *(Amended 2026-09-08,
+  [#1283](https://github.com/OurHike/OurHike/issues/1283): this said "every line stays
+  solid; the no-dash rule holds". It no longer does — a nearby trail is now also a
+  **dot rhythm**, a fourth channel on a layer of its own under the chosen system's solid
+  lines, because at the opening camera opacity alone could not say which of a
+  country's worth of threads the map was about. Ghosting is unchanged and applies to
+  both halves of the split; the argument above for opacity over a halo or a hue
+  survives a dash pattern untouched. WIREFRAMES.md §3 carries the amended rule, the
+  through-route badge, and the near-white ink that goes with them.)*
 
 The tradeoff this choice accepts, stated so nobody rediscovers it: blaze identity weakens
 on exactly the trails a hiker might be thinking of taking. Two things recover it — the hue

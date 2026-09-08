@@ -13,15 +13,32 @@
 // width alone leads by 2 px in a forty-line park.
 //
 // This module adds the third channel NEARBY_TRAILS.md §1 specifies - OPACITY -
-// and nothing else. Every existing rule survives unchanged: lines stay solid
-// (no dash rhythms), the chosen trail stays widest and last-drawn, and hue
-// still comes from the reviewed blaze mapping. Ghosting is deliberately an
-// opacity fact rather than a hue fact, and that is the argument that beat the
+// and, since #1283, the FOURTH: a dot rhythm for every line that is not the
+// chosen system's. The chosen trail stays widest and last-drawn, and hue still
+// comes from the reviewed blaze mapping. Ghosting is deliberately an opacity
+// fact rather than a hue fact, and that is the argument that beat the
 // alternatives: under red-light mode every blaze collapses to one hue
 // (MAP_STYLE_SPEC.md), so a halo or a hue shift would have erased the
 // distinction in exactly the light where a hiker most needs it. An opacity
 // difference survives red light, greyscale (WIREFRAMES.md `9d`), glare and
 // colour vision deficiency alike.
+//
+// THE DOT RHYTHM IS A FOURTH CHANNEL, NOT A REPLACEMENT FOR THE THIRD. "Lines
+// stay solid (no dash rhythms)" was this header's own sentence until #1283,
+// and the reason it changed is the opening camera: at z4 over the whole
+// country every published trail was a solid 0.8 px thread in its blaze hue,
+// and opacity alone could not say which of them the map was about. The
+// maintainer's design handoff (2026-09-08, chosen from six drawn directions)
+// makes the taken trail the ONLY solid line and everything else a dot
+// rhythm. Opacity is unaffected and still applies to both halves of the
+// split - the ghosting argument above survives a dash pattern untouched.
+//
+// WHY IT IS A LAYER SPLIT AND NOT A PAINT PROPERTY: `line-dasharray` is not
+// data-driven. It takes zoom expressions only, so `['case', isNearby, [0, 2],
+// ...]` is not something MapLibre will honour per feature. So the rule is two
+// FILTERS, built here from CHOSEN_SYSTEM_SOURCES so that admitting a source
+// cannot leave one of them behind, and map/style.ts draws each side of the
+// split with the same builder and a different dasharray.
 //
 // WHY THIS FILE OWNS THE SOURCE LIST AND style.ts IMPORTS IT
 //
@@ -178,22 +195,54 @@ export function nearbyTrailOpacityExpression(): unknown[] {
   ]
 }
 
-// LABELS: THE ONE PART OF §1 THIS DOES NOT BUILD, SAID PLAINLY
+/**
+ * Dot rhythm for a line that is not the chosen system's (#1283).
+ *
+ * DASH UNITS, so this is 2x the line's own width whatever that width is, and
+ * `line-cap: round` turns the zero-length dash into a round dot: dots of the
+ * line's diameter at a pitch of two diameters. That is the prototype's
+ * `stroke-dasharray: 0 <2.2 x width>` to within the rounding MapLibre's dash
+ * atlas does anyway.
+ *
+ * The casing under a dotted line takes a DIFFERENT dasharray for the same
+ * pitch - see map/style.ts's NEARBY_TRAIL_CASING_DASHARRAY - because dash
+ * units scale with each layer's own width and the casing is wider.
+ */
+export const NEARBY_TRAIL_DASHARRAY: readonly number[] = [0, 2]
+
+/**
+ * The two filters the layer split needs, built from CHOSEN_SYSTEM_SOURCES so
+ * admitting a source cannot leave one of them behind.
+ *
+ * `chosenSystemFilter` matches a feature whose `source` is in the chosen
+ * system; `nearbyTrailFilter` is its exact negation, so every feature lands in
+ * exactly one of the two layers and none in both or neither -
+ * nearbyTrails.test.ts holds the pair as complements over the same inputs.
+ *
+ * A feature with NO source goes to the DOTTED side, and that is the one place
+ * this split rounds differently from `nearbyTrailOpacity()` above, where a
+ * source-less feature draws at full strength. The two are not in conflict:
+ * opacity is the channel a fault must not quietly dim, and it still does not
+ * - the dotted layer paints the same `nearbyTrailOpacityExpression()`, so a
+ * source-less line draws dotted AND full-strength, which is visible, which is
+ * how it gets fixed. What the dotted side must never do is claim a line is the
+ * chosen trail, and a line nobody can source has not earned that.
+ */
+export function chosenSystemFilter(): unknown[] {
+  return ['in', ['to-string', ['get', 'source']], ['literal', [...CHOSEN_SYSTEM_SOURCES]]]
+}
+
+export function nearbyTrailFilter(): unknown[] {
+  return ['!', chosenSystemFilter()]
+}
+
+// LABELS DIM WITH THEIR LINES, AND THE EXPRESSION IS SHARED, NOT COPIED
 //
 // NEARBY_TRAILS.md §1 also requires "Labels dim with their lines — a
-// full-strength name on a ghosted line points at the wrong thing", and the v2
-// export draws exactly that in frame `1f` ("A.T.", "Long Path", "Kakiat Tr."
-// beside their lines).
-//
-// Nothing here implements it, because there is no trail-name label layer in
-// this client to dim. Checked 2026-08-23: `text-field` appears in map/ only in
-// liveTopo.ts, on contour labels, peak labels and the OSM basemap's own name
-// layers - none of which read the trails source. Per-trail names have never
-// been drawn on this map.
-//
-// So the rule has nothing to bind to yet, and an expression exported for a
-// layer that does not exist would read as "labels are handled" to the next
-// person who greps for it. When a trail-label layer is built, it takes
-// `nearbyTrailOpacityExpression()` for its `text-opacity` unchanged - the rule
-// is the line's own, and one expression for both is what keeps a label from
-// drifting away from the line it names.
+// full-strength name on a ghosted line points at the wrong thing". This
+// header used to say nothing here built it, because no trail-name layer
+// existed to bind it to (checked 2026-08-23). map/trailLabels.ts is that
+// layer since #930, and map/trailBadges.ts the through-route's badge since
+// #1283; both paint `nearbyTrailOpacityExpression()` for their text and icon
+// opacity unchanged. The rule is the line's own, and one expression for all
+// of them is what keeps a name from drifting away from the line it names.

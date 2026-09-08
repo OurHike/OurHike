@@ -104,6 +104,15 @@ export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
  *    twice". Printing it along the line is that same repetition, at every
  *    `symbol-spacing` interval down the whole corridor.
  *
+ *    SINCE #1283 THIS IS ALSO THE BADGE RULE, and it is the reason the next
+ *    reader must not "fix" it. A through-route says its name in exactly one
+ *    place on the canvas: the badge map/trailBadges.ts draws once per line in
+ *    view, with its registry mark. A trail either carries a badge or a name
+ *    along its line, never both - the design handoff rejected the "both"
+ *    direction (its frame `2c`) as saying the same name twice. So this
+ *    exclusion and BADGE_SOURCES over there are two halves of one sentence,
+ *    and trailBadges.test.ts holds them equal.
+ *
  * WHAT MADE THIS CONCRETE, measured against the live bucket 2026-08-23: the
  * published `trails.geojson` names every one of its 4,221 features, and all
  * 3,025 centerline segments carry the same string - "Appalachian National
@@ -132,23 +141,66 @@ export const TRAIL_LABEL_FILTER: unknown[] = [
 ]
 
 /**
- * The zoom trail names start drawing at.
+ * The zoom trail names start drawing at: the overview band, not the pin band
+ * (#1283).
  *
- * Set to the zoom waypoint pins start at, which is the same threshold
- * map/poiLayers.ts calls "something a hiker reads a position off". Below it
- * the map's subject is the corridor or the park - features/NEARBY_TRAILS.md §8
- * is explicit that "at z7 Harriman is one green shape" and the below-seam
- * subject is the park, not forty short trails - so naming individual trails
- * there is answering a question nobody asked at that altitude.
+ * This was `POI_PIN_MIN_ZOOM` re-exported - the pins' z9, borrowed on the
+ * reasoning that below the seam the subject is the park, not forty short
+ * trails (features/NEARBY_TRAILS.md §8). The whole complaint #1283 answers
+ * is that the opening camera names nothing, and borrowing the pins' floor
+ * kept the names off exactly the screen that needed them. The design was
+ * what #930 said should settle it, and did: labels start where the map
+ * starts, and map/labelLadder.ts's tiers stage which labels win above this
+ * floor. §8's worry is answered by the split rather than by a floor - a
+ * park's forty trails are dotted and ghosted at z7, and a name on a dotted
+ * line is context, not a subject.
  *
- * `@unvalidated` as a *display* choice rather than a safety one: it is picked
- * to match a threshold this map already uses, not measured against how a hiker
- * actually zooms. The issue (#930) names it as something the design should
- * settle rather than this module; borrowing the neighbouring constant is the
- * smallest defensible answer until it does, and it cannot drift from the pins
- * because it IS the pins' constant.
+ * WHAT ACTUALLY DRAWS BELOW THE SEAM is less than this floor allows, and the
+ * gap is the data's, not this module's. The nearby network below z9 is the
+ * overview sketch (NETWORK_OVERVIEW_SOURCE_ID), which
+ * export_nearby_trails.py's write_overview publishes with `source`,
+ * `blaze_color` and `trail_status` only - no `name`, because it merges lines
+ * by those three. So the Long Path is drawn dotted at the state camera and
+ * cannot be named there until the overview artifact carries names, which is
+ * a pipeline change and a publish (#1283 records it). The A.T.'s own side
+ * trails are the only lines this floor names below z9 today.
+ *
+ * The value itself is the handoff's overview band, matched to the opening
+ * camera (App.tsx fits the whole trail near z4.9). `@unvalidated` as a
+ * display choice: picked against the prototype's four cameras, not measured
+ * against how a hiker zooms.
  */
-export { POI_PIN_MIN_ZOOM as TRAIL_LABEL_MIN_ZOOM } from './poiLayers'
+export const TRAIL_LABEL_MIN_ZOOM = 4
+
+/**
+ * How far apart a name repeats along its line, by zoom.
+ *
+ * 250 px is right at hiking zooms and far too dense at the overview, where a
+ * long trail crossing the whole screen would print its name seven times
+ * across it. Interpolated from 700 px at the overview floor down to 250 at
+ * the seam, both measured on the handoff prototype's four cameras rather
+ * than picked - the same `@unvalidated` caveat as the floor above.
+ */
+export const TRAIL_LABEL_SPACING_EXPRESSION: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  TRAIL_LABEL_MIN_ZOOM,
+  700,
+  9,
+  250,
+]
+
+/**
+ * The sharpest bend a name is allowed to follow, in degrees per glyph.
+ *
+ * MapLibre's default is 45. The overview geometry is full of switchbacks at
+ * the pixel scale, and at 45 a name bends around them into something
+ * unreadable; at 30 it is dropped instead, which is the right failure - a
+ * name that cannot be read is worse than one that is not there, and the
+ * next `symbol-spacing` interval along a straighter stretch places it.
+ */
+export const TRAIL_LABEL_MAX_ANGLE = 30
 
 /**
  * The label layer for the trails source.
@@ -182,13 +234,16 @@ export function buildTrailLabelLayer(
       'text-field': ['get', 'name'] as never,
       'text-font': FONT,
       // Along the line, not beside a point: a trail is a line and a name
-      // floating off it belongs to nothing. `text-max-angle` is left at
-      // MapLibre's default, which drops a label rather than bending it around
-      // a switchback into something unreadable.
+      // floating off it belongs to nothing. `text-max-angle` drops a label
+      // rather than bending it around a switchback into something
+      // unreadable - tighter than MapLibre's default, see
+      // TRAIL_LABEL_MAX_ANGLE.
       'symbol-placement': 'line',
+      'text-max-angle': TRAIL_LABEL_MAX_ANGLE,
       // Repeated at intervals so a long trail is identifiable wherever a hiker
-      // is looking, rather than once at a midpoint that may be off screen.
-      'symbol-spacing': 250,
+      // is looking, rather than once at a midpoint that may be off screen -
+      // sparser at the overview, see TRAIL_LABEL_SPACING_EXPRESSION.
+      'symbol-spacing': TRAIL_LABEL_SPACING_EXPRESSION as never,
       'text-size': 11,
       // Small, because this layer is orientation rather than subject. The map
       // is about the lines; the names say which line is which.

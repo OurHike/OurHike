@@ -1001,6 +1001,41 @@
   pointer-events: none;
 }
 
+/* The "Trails in view" block (#1283), above the pin grid: one row per named
+   trail on screen, the line drawn as the map draws it (map/MapIcon.tsx's
+   TrailLineSwatch), the name, and `taken` where the row is the trail the map
+   is about. Same row geometry as the pin rows - the 24px slot, the 44px
+   touch floor, the mono slot on the right - because to a hiker they are the
+   same kind of row about a different kind of thing. One column, never two:
+   a trail name is longer than a category name and `Ramapo-Dunderberg Trail`
+   beside `Suffern-Bear Mountain Trail` at 150px each is two ellipses. */
+.legend__trails {
+  margin: var(--space-3, 12px) 0 0;
+}
+
+.legend__trail-rows {
+  margin: var(--space-2, 8px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend__trail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  font-size: 13px;
+}
+
+/* The line, in the same 24px slot the pins fill. Reintroduced with the block
+   - the old blaze rows' swatch went with them on 2026-08-25, and this one is
+   the map's own line rather than a painted bar. */
+.legend__swatch {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
 /* features/NEARBY_TRAILS.md §1's sentence of state, above the blaze rows it
    describes (#783). Quiet like the drop summary, and for the same reason: it
    explains the rows rather than competing with them. No control, so nothing

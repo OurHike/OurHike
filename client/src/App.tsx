@@ -108,6 +108,7 @@ import {
 } from './lib/downloadDetail'
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
+import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useArchiveFootprint, useArchiveZooms } from './lib/useArchiveZooms'
@@ -4782,6 +4783,13 @@ function App() {
     ghostedTrailsDrawn,
   } = useDrawnPoiCounts(map)
 
+  // The named trails the map is drawing (#1283), for the legend's "Trails in
+  // view" block. Reported by the map off its settled frame (map/trailsInView.ts)
+  // rather than derived here, for the reason the drawn counts above are: only
+  // MapLibre knows what it actually drew. The setter is the stable callback
+  // MapView asks for.
+  const [trailsInView, setTrailsInView] = useState<readonly TrailInView[]>([])
+
   // One thing open at a time. The waypoint card floats by its pin rather than
   // at the bottom where the legend sits, but the rule survives the move: two
   // dialogs at once means a screen-reader user in one with the other still
@@ -6888,6 +6896,8 @@ function App() {
               onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
               viewportPoints={viewportPoints}
               ghostedTrailsDrawn={ghostedTrailsDrawn}
+              trailsInView={trailsInView}
+              onTrailsInView={setTrailsInView}
               drawnCounts={drawnPoiCounts}
               belowPoiZoom={belowPoiZoom}
               {...filters.mapScreen}

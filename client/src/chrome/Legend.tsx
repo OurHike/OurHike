@@ -25,6 +25,33 @@
 // `withSafetyKey` appends them and `lib/legendContents.ts` carries why they
 // carry no count, which is that nobody measures those layers.
 //
+// A "TRAILS IN VIEW" BLOCK ABOVE THE PIN GRID (#1283), and it is not the
+// blaze rows coming back. Those keyed COLOURS - one row per blaze in view,
+// "what does aqua mean". These name TRAILS: one row per named trail on
+// screen, the line drawn as the map draws it, the name, and `taken` on the
+// trail the map is about. The maintainer's design handoff asked for it
+// because on the desktop this is a permanent panel beside a map that, since
+// the dot rhythm and the badges, is a sheet of lines only one of which wears
+// its name - and the block is the key to the rest. Rows are sorted the way
+// the map ranks them: through-routes first, then the chosen system, then by
+// name. map/trailsInView.ts measures the list on the same settled frame as
+// the counts, so the panel cannot name a trail the canvas is not drawing.
+//
+// NO MILEAGE, though the handoff's frames print one. Nothing published
+// carries a whole trail's length: the A.T.'s features carry none, and a
+// nearby record's `length_miles` is that record's, on geometry that comes
+// back here clipped per tile. Summing what is on screen would be a number
+// about the viewport wearing a trail's name, and inventing "2,197 mi" for the
+// A.T. would be a client claim nobody's data stands behind. Absent means
+// unknown - the rule CLAUDE.md gives for a shelter's capacity.
+//
+// THE ROW IS A CONTROL ONLY WHEN THE SHELL OFFERS ONE. The handoff's "tap a
+// row to take that trail" waits on features/NEARBY_TRAILS.md §2's standing
+// decision that a tap must not switch the chosen trail; until that is
+// re-argued nothing in the app takes a trail, and a button that goes
+// nowhere is worse than a row (this file's own rule for every other
+// control). `onTakeTrail` is the seam it plugs into the day it exists.
+//
 // NO BLAZE ROWS, AND WHAT THAT COSTS (maintainer's call, 2026-08-25).
 //
 // The panel used to open with one row per blaze in view - a painted line
@@ -97,7 +124,9 @@ import {
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
-import { MapIcon } from '../map/MapIcon'
+import { MapIcon, TrailLineSwatch } from '../map/MapIcon'
+import type { SheetAppearance } from '../map/liveTopo'
+import type { TrailInView } from '../map/trailsInView'
 import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
@@ -129,6 +158,21 @@ export interface LegendProps {
   /** Whether a trail from outside the chosen system is on screen (#783), which
    *  is the only condition under which the ghosting sentence means anything. */
   ghostedTrailsDrawn?: boolean
+  /**
+   * The named trails the map is drawing (#1283, map/trailsInView.ts), for the
+   * block above the pin grid. Omitted or empty, no block is drawn - a heading
+   * over nothing is a claim about an empty screen.
+   */
+  trailsInView?: readonly TrailInView[]
+  /** Which sheet the map is drawn in, so each row's swatch is inked the way
+   *  the canvas beside it inks that line. Defaults to the field day sheet. */
+  sheetAppearance?: SheetAppearance
+  /**
+   * Takes that trail, from the panel. Offered by nothing today - see the
+   * header - and then the rows are plain; offered, each row is the control,
+   * the same shape `.legend__toggle` already has.
+   */
+  onTakeTrail?: (trail: TrailInView) => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /**
@@ -310,6 +354,9 @@ export function Legend({
   bbox,
   points,
   ghostedTrailsDrawn = false,
+  trailsInView,
+  sheetAppearance,
+  onTakeTrail,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -428,6 +475,63 @@ export function Legend({
         )}
       </div>
 
+      {/* The trails on screen (#1283), first, because the map is lines before
+          it is pins and the sentence under this block explains those lines.
+          One row per named trail, ranked as the map ranks them. */}
+      {trailsInView !== undefined && trailsInView.length > 0 && (
+        <section className="legend__trails" aria-label="Trails in view">
+          <h3 className="legend__title">Trails in view</h3>
+          <ul className="legend__trail-rows">
+            {trailsInView.map((trail) => {
+              const taken = trail.throughRoute && trail.chosen
+              const face = (
+                <>
+                  <TrailLineSwatch
+                    className="legend__swatch"
+                    blazeColor={trail.blazeColor}
+                    throughRoute={trail.throughRoute}
+                    chosen={trail.chosen}
+                    appearance={sheetAppearance}
+                  />
+                  <span className="legend__label">{trail.name}</span>
+                  {/* `taken`, in the slot a count would take, on the trail
+                      the map is about. No mileage on the others - the header
+                      says why the number is absent rather than estimated. */}
+                  {taken && <span className="legend__count">taken</span>}
+                </>
+              )
+              return (
+                <li
+                  key={trail.name}
+                  className="legend__trail-row"
+                  aria-label={taken ? `${trail.name} · taken` : trail.name}
+                >
+                  {onTakeTrail === undefined ? (
+                    face
+                  ) : (
+                    <button
+                      type="button"
+                      className="legend__toggle"
+                      aria-pressed={taken}
+                      onClick={() => onTakeTrail(trail)}
+                    >
+                      {face}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
+      {/* features/NEARBY_TRAILS.md §1's sentence of state - directly under the
+          trail rows it explains (#1283 moved it up from above the pin grid,
+          where it sat because it is about the LINES on the map and everything
+          below it is about the pins). No control accompanies it, and that is
+          the decision rather than an omission. */}
+      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
+
       {/* Below the pin zoom this panel used to render the sentence below, which
           at the opening view is false in both halves: there is plenty here, and
           zooming OUT is the wrong direction (#528). Checked first, so the true
@@ -483,15 +587,6 @@ export function Legend({
           the rest.
         </p>
       )}
-
-      {/* features/NEARBY_TRAILS.md §1's sentence of state - above the pin
-          grid, because it is about the LINES on the map and everything below
-          it is about the pins. It used to sit above the blaze rows and its
-          reason was those rows; with them gone it is the only thing on this
-          panel that speaks about the trail lines at all, which is why it
-          stayed. No control accompanies it, and that is the decision rather
-          than an omission. */}
-      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
 
       {rows.length > 0 && (
         <ul className="legend__pins">

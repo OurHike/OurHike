@@ -27,10 +27,11 @@ import { highlightIdAt } from './corridorLayers'
 import { poiIdAt } from './poiTaps'
 import {
   BLAZE_LAYER_ID,
-  NEARBY_BLAZE_LAYER_ID,
   PRIMARY_TRAIL_SOURCES,
   PRIMARY_TRAIL_WIDTH,
+  TAPPABLE_BLAZE_LAYER_IDS,
 } from './style'
+import { TRAIL_BADGE_LAYER_ID } from './trailBadges'
 
 /** `--min-touch-target` (chrome/chrome.css), same as every other control. */
 const MIN_TOUCH_TARGET_PX = 44
@@ -137,6 +138,11 @@ function* coordinatesOf(geometry: unknown): Generator<[number, number]> {
           yield [point[0] as number, point[1] as number]
       }
     }
+  } else if (shape?.type === 'Point') {
+    // A badge (#1283): a point that IS a vertex of the line it names, so
+    // snapping to it is snapping to the line.
+    if (coordinates.length >= 2)
+      yield [coordinates[0] as number, coordinates[1] as number]
   }
 }
 
@@ -208,20 +214,46 @@ export function tappedLineAt(
   // hiker aimed at, sitting on the corridor line that is always under it.
   if (highlightIdAt(map, point) !== null) return null
 
-  // BOTH BLAZE LAYERS (#979). The chosen system's lines are on
-  // BLAZE_LAYER_ID and every other organization's are ghosted onto
-  // NEARBY_BLAZE_LAYER_ID, and querying only the first meant a tap on any
-  // trail this app does not call the through-route reported nothing at all.
-  // That is the sheet #134 built and #979 hangs an action on, unreachable on
-  // exactly the trails a day hike is made of.
+  // THE BADGE FIRST (#1283). A through-route's badge is a deliberate thumb
+  // target sitting on its line - the design chose it over bare along-line
+  // names precisely because a name is not something a thumb can aim at -
+  // and it carries the line's own published properties, so a tap on it
+  // yields exactly what a tap on the line yields. Asked before the lines
+  // because the plate is wider than the line under it: a tap on the far end
+  // of a long name may be a thumb's width from the vertex it anchors to.
   //
-  // Rule 2 below is unchanged and is what makes adding the second layer safe:
+  // Not a switch. features/NEARBY_TRAILS.md §2's standing decision is that a
+  // tap on the map informs and does not change which trail the app is about
+  // - the handoff's "tap a badge to take that trail" waits on that decision
+  // being re-argued, and #1283 says so. Until then the badge opens the sheet
+  // the line opens, which is the one thing the app can honestly do with a
+  // trail today.
+  if (map.getLayer(TRAIL_BADGE_LAYER_ID) !== undefined) {
+    const badges = map.queryRenderedFeatures(lineTapBox(point), {
+      layers: [TRAIL_BADGE_LAYER_ID],
+    })
+    if (badges.length > 0) {
+      const touch = map.unproject([point.x, point.y])
+      return asTappedLine(badges[0], [touch.lng, touch.lat])
+    }
+  }
+
+  // EVERY BLAZE LAYER (#979, #1283). The chosen system's lines are on
+  // BLAZE_LAYER_ID and every other organization's on NEARBY_BLAZE_LAYER_ID,
+  // and querying only the first meant a tap on any trail this app does not
+  // call the through-route reported nothing at all. That is the sheet #134
+  // built and #979 hangs an action on, unreachable on exactly the trails a
+  // day hike is made of. Since #1283 each of those is split into a solid
+  // and a dotted half, and every line outside the chosen system is on a
+  // dotted one - so the list is the style's own, not two names spelled here.
+  //
+  // Rule 2 below is unchanged and is what makes the extra layers safe:
   // among several lines the narrow specific one wins, and a ghosted trail is
   // never a PRIMARY_TRAIL_SOURCE - so where the two overlap the ghosted line
   // is preferred, which is right. A hiker tapping the ground where the A.T.
   // and Ramapo-Dunderberg share tread is asking about the line they can see
   // as distinct.
-  const layers = [BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID].filter(
+  const layers = TAPPABLE_BLAZE_LAYER_IDS.filter(
     (layer) => map.getLayer(layer) !== undefined,
   )
   const features = map.queryRenderedFeatures(lineTapBox(point), { layers })

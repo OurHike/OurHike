@@ -42,7 +42,10 @@
 // positions map/trailBadges.ts hands the placer, tested against the pins'
 // boxes here - wins. MapLibre still places the badge; this only asks it to
 // place one where there is room. Where no vertex has room the middle is
-// handed over anyway, and the placer decides.
+// handed over anyway, and the placer decides. The box tested has to be the
+// one the placer will test, to the pixel, and the fifth preview frame is
+// what that sentence cost: plateBox() below says which box that is and how
+// the first model got it wrong.
 //
 // "THE SCREEN" IS THE PART OF THE CANVAS A HIKER CAN SEE, and the second
 // preview frame is why that sentence is here. Over Harriman the A.T.'s
@@ -81,9 +84,10 @@ import {
   TRAIL_BADGE_ANCHORS,
   TRAIL_BADGE_MARK_GAP,
   TRAIL_BADGE_MARK_SIZE,
-  TRAIL_BADGE_PLATE_HEIGHT,
+  TRAIL_BADGE_PLATE_BORDER,
   TRAIL_BADGE_RADIAL_OFFSET,
   TRAIL_BADGE_SOURCE_ID,
+  TRAIL_BADGE_TEXT_FIT_PADDING,
   TRAIL_BADGE_TEXT_SIZE,
   blazeChipImageId,
   trailMarkImageId,
@@ -111,17 +115,37 @@ export const BADGE_OBSTACLE_LAYER_IDS: readonly string[] = [
 const OBSTACLE_HALF_PX = 44 / 2 + 2
 
 /**
- * How wide the plate comes out for a name, in CSS px. Measured on the
- * stand-alone render of 2026-09-08: "Appalachian National Scenic Trail"
- * (33 characters) set 185 px wide at 12 px Noto Sans, 5.6 px a character,
- * so 0.5 em a character is a slight over-estimate - the right direction for
- * a box that decides whether there is room.
+ * The TEXT block the placer anchors, in CSS px: the mark, and for the full
+ * form the gap and the name. Measured on the stand-alone render of
+ * 2026-09-08: "Appalachian National Scenic Trail" (33 characters) set 185 px
+ * wide at 12 px Noto Sans, 5.6 px a character, so 0.5 em a character is a
+ * slight over-estimate - the right direction for a box that decides whether
+ * there is room. As tall as the mark, which is taller than the 12 px name.
  */
-export function badgePlateWidth(name: string, fit: BadgeFit = 'full'): number {
-  if (fit === 'mark') return 4 + TRAIL_BADGE_MARK_SIZE + 10
+export function badgeTextSize(
+  name: string,
+  fit: BadgeFit = 'full',
+): { width: number; height: number } {
+  if (fit === 'mark')
+    return { width: TRAIL_BADGE_MARK_SIZE, height: TRAIL_BADGE_MARK_SIZE }
   const text = name.length * TRAIL_BADGE_TEXT_SIZE * 0.5
-  return 4 + TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text + 10
+  return {
+    width: TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text,
+    height: TRAIL_BADGE_MARK_SIZE,
+  }
 }
+
+/** How wide the plate comes out for a name: the text block plus the paper
+ *  round it. What the legend and the tests reason about; the collision
+ *  model below builds its own box from the same parts. */
+export function badgePlateWidth(name: string, fit: BadgeFit = 'full'): number {
+  const [, right, , left] = TRAIL_BADGE_TEXT_FIT_PADDING
+  return badgeTextSize(name, fit).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+}
+
+/** MapLibre's default `text-padding` and `icon-padding`: the ring it grows
+ *  every symbol's box by before testing it against the others. */
+const SYMBOL_PADDING_PX = 2
 
 interface Box {
   x1: number
@@ -135,21 +159,42 @@ function overlaps(a: Box, b: Box): boolean {
 }
 
 /**
- * The plate's box for one anchor at one screen point - the same geometry
- * MapLibre's variable placement produces from `text-variable-anchor` and
- * `text-radial-offset`, so what is tested here is what will be placed.
+ * The box the placer will test for one anchor at one screen point - the
+ * geometry MapLibre's variable placement produces, and it is the TEXT block
+ * that is anchored, not the plate.
+ *
+ * `text-variable-anchor` puts the text block's edge at the vertex, pushed
+ * out by `text-radial-offset`; `icon-text-fit` then grows the plate round
+ * the text by TRAIL_BADGE_TEXT_FIT_PADDING, which is not symmetric - nine
+ * px on the right against three on the left - so on a right-hand anchor
+ * the plate reaches past the vertex on the far side; and the engine grows
+ * the result by its two px of padding before testing it. The first model
+ * here anchored the plate itself, and found a spot "free" of a shelter by
+ * under a pixel that the engine, growing the box as above, found taken and
+ * dropped - the fifth preview frame over Harriman, and the instrumented
+ * build that showed the feature written and never drawn (2026-09-08).
  */
-function plateBox(anchor: string, at: { x: number; y: number }, width: number): Box {
-  const height = TRAIL_BADGE_PLATE_HEIGHT
+function plateBox(
+  anchor: string,
+  at: { x: number; y: number },
+  text: { width: number; height: number },
+): Box {
   const offset = TRAIL_BADGE_RADIAL_OFFSET * TRAIL_BADGE_TEXT_SIZE
-  // Where the anchor point sits on the box: 0 = the box's start, 1 = its end.
+  // Where the anchor point sits on the text block: 0 = its start, 1 = its end.
   const horizontal = anchor.includes('left') ? 0 : anchor.includes('right') ? 1 : 0.5
   const vertical = anchor.includes('top') ? 0 : anchor.includes('bottom') ? 1 : 0.5
   const dx = horizontal === 0 ? offset : horizontal === 1 ? -offset : 0
   const dy = vertical === 0 ? offset : vertical === 1 ? -offset : 0
-  const x1 = at.x + dx - width * horizontal
-  const y1 = at.y + dy - height * vertical
-  return { x1, y1, x2: x1 + width, y2: y1 + height }
+  const textX1 = at.x + dx - text.width * horizontal
+  const textY1 = at.y + dy - text.height * vertical
+  const [top, right, bottom, left] = TRAIL_BADGE_TEXT_FIT_PADDING
+  const grow = TRAIL_BADGE_PLATE_BORDER + SYMBOL_PADDING_PX
+  return {
+    x1: textX1 - left - grow,
+    y1: textY1 - top - grow,
+    x2: textX1 + text.width + right + grow,
+    y2: textY1 + text.height + bottom + grow,
+  }
 }
 
 /** The pins on screen, as the boxes a plate must clear. */
@@ -197,14 +242,14 @@ function anchorWithRoom(
     return { point: run.points[middle], fit: 'full' }
   }
   for (const fit of ['full', 'mark'] as const) {
-    const width = badgePlateWidth(name, fit)
+    const text = badgeTextSize(name, fit)
     for (let step = 0; step < run.points.length; step += 1) {
       for (const index of step === 0 ? [middle] : [middle - step, middle + step]) {
         if (index < 0 || index >= run.points.length) continue
         const point = run.points[index]
         const at = map.project([point[0], point[1]])
         for (const anchor of TRAIL_BADGE_ANCHORS) {
-          const box = plateBox(anchor, at, width)
+          const box = plateBox(anchor, at, text)
           if (
             clear !== null &&
             !(

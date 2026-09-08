@@ -419,13 +419,19 @@ describe('the pins in view (#1283, the third preview frame)', () => {
   })
 
   it('walks outward from the middle to the first vertex with a free plate position', () => {
-    // A shelter on the trail just short of the middle: every position round
-    // the middle vertex overlaps its box, as does every one round the
-    // vertex before it. One vertex past the middle, the plate to the right
-    // clears it.
+    // A shelter on the trail just short of the middle, its box reaching
+    // from x = 161 to 209: every position round the middle vertex overlaps
+    // it, as does every one round the vertices either side. Two vertices
+    // short of the middle, at 152, the plate hung off the vertex's left -
+    // the `right` anchor, its text block ending 3.6 px before the vertex
+    // and the plate's paper and the engine's padding reaching 12 px past
+    // that - ends at 160.4, clear of the box by under a pixel. The margin
+    // is that small on purpose: it is the geometry the placer tests, to the
+    // decimal, and the model this replaced called positions free that the
+    // placer dropped (the fifth preview frame, 2026-09-08).
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap)
-    expect(at.anchor).toEqual([209, 400])
+    expect(at.anchor).toEqual([152, 400])
   })
 
   it('reads every pin layer placed before the badge, not the waypoints alone', () => {
@@ -440,8 +446,10 @@ describe('the pins in view (#1283, the third preview frame)', () => {
   it('falls back to the mark alone where the full plate has no room, at a vertex where the mark has', () => {
     // With the chrome's bands in force the plate must fit inside the
     // canvas between them; a pin at the middle of a trail across a phone
-    // leaves no 230 px strip on either side. The mark's 32 px plate fits
-    // one vertex along, to the right of the pin's box.
+    // leaves no 240 px strip on either side of its box for the full plate.
+    // The mark's 32 px plate does fit: at the same vertex the full search
+    // reached first, two short of the middle, hung off the vertex's left,
+    // ending 0.6 px clear of the pin's box.
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap, {
       top: 110,
@@ -450,7 +458,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
       left: 0,
     })
     expect(at.badgeFit).toBe('mark')
-    expect(at.anchor).toEqual([209, 400])
+    expect(at.anchor).toEqual([152, 400])
   })
 
   it('hands over the middle, in full, where not even the mark has room', () => {

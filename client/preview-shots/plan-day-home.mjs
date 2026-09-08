@@ -29,9 +29,14 @@
 //
 // The preview reached no data because of the camera's own origin, not the
 // build - "the preview build carries no data source (#1024)" was the wrong
-// cause, and #1096 fixed the camera on 2026-08-27. With the graph arriving,
-// this home OFFERS the day-hike action instead, so the frame is the band
-// over a home that can start one; the refusal frames live in the tests.
+// cause, and #1096 fixed the camera on 2026-08-27. So which sentence this
+// frame carries is now a fact about the BUCKET rather than the camera.
+// Measured 2026-09-08 on #1268's preview: "The trail network in this release
+// is too big for the app to load safely, so it is not being used" - #1255's
+// launch budget declining a trail_graph.json of 78,595,556 bytes (#1254),
+// which is exactly the case that sentence was written for. The day a
+// release's graph fits, this home offers the day-hike action instead and
+// the frame is the band over a home that can start one.
 
 export const caption = 'The day-hikes home, with its mode band'
 export const alt = 'The Plan tab in day-hike mode: forest band, switch chip, saved hikes'

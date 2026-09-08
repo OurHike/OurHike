@@ -93,6 +93,19 @@
 // with a route and a stop row; the builder waiting for its first tap, where
 // the search found no such shelter or every tap was refused; and the
 // withheld door where this build has no graph.
+//
+// THE WALK IS UNVERIFIED, and this is the record of why. Measured
+// 2026-09-08 on #1268's preview, the first run of this drive: both builder
+// frames were the withheld door. The bucket's trail_graph.json is
+// 78,595,556 bytes against the 32 MiB launch budget #1255 set after #1254's
+// frozen first page, so the app declines it - the desktop frame says so in
+// #1255's own words, and the phone's read "has not downloaded yet, and it
+// needs a connection". Nothing about the camera changed that; the door is
+// withheld for every hiker on that release too. `walkInHarriman` never ran,
+// because the drive returns before it when the door is a div. What would
+// settle it is a preview whose graph loads: #1257's stage 3 cuts the graph
+// per cell, and #1231 is the decision that would shrink it. Until one of
+// those lands, the ring's arithmetic below is derived and not measured.
 
 export const caption =
   'The day-hike builder with a walk in it: the route order, a stop row, the mile marks (#1194, #1212)'

@@ -28,9 +28,11 @@
 // the camera's own origin was failing the bucket's CORS allowlist, and #1096
 // fixed the camera (2026-08-27; .claude/skills/pr-screenshot/SKILL.md has
 // the measurement). The blaze line comes from the release's trails.geojson,
-// which arrives now, so it should be in this frame; if it is not, that is a
-// finding about the camera's data path and not about the ground network.
-// Read this shot for the road weight and the ink either way.
+// which arrives now - measured 2026-09-08 on #1268's preview, where the
+// cased white line runs through the town and over the bridge in this very
+// frame. If a later frame loses it, that is a finding about the camera's
+// data path and not about the ground network. Read this shot for the road
+// weight and the ink either way.
 export const caption =
   'The live sheet at Harpers Ferry — roads as single strokes, other trails quieted (#1074)'
 export const alt =

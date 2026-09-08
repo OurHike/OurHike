@@ -21,9 +21,10 @@
 // row, which need `elevation_profile.json` from the release. This used to say
 // the preview never had one, because its build carried an empty
 // VITE_DATA_BASE_URL (#1024); that was the camera's own origin, fixed in
-// #1096, and the release arrives now - so the rows may print a price, and
-// whether they do depends on the fetch landing before the frame. Either way
-// the badge is what this change touches, and the badge does not need it.
+// #1096, and the release arrives now - measured 2026-09-08 on #1268's
+// preview, where every row prints its ≈time and climb. Whether a given
+// frame does depends on the fetch landing before it; either way the badge
+// is what this change touches, and the badge does not need it.
 //
 // THE SURVIVING BADGE IS NOW LEGIBLE, which it was not when this recipe was
 // written: `.plan__day` set an exact height over hidden overflow, so a row

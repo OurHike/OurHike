@@ -35,7 +35,9 @@
 // reused rather than copied - preview-shots/README.md's rule - so the two
 // builders photograph the same route and a change to the drive lands in
 // both frames. The rail keeps its body open on desktop, so the stop row is
-// in frame without a Details click.
+// in frame without a Details click. Unverified as of 2026-09-08 for the
+// reason the phone recipe's header records: the release's graph is over the
+// launch budget, so the door was withheld before the walk could run.
 import { walkInHarriman } from './day-hike-builder.mjs'
 
 export const caption =

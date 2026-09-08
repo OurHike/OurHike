@@ -113,7 +113,12 @@ the color on the map"*), and the tap sheet below shows the blaze at full strengt
 Tapping any line already opens a sheet naming the blaze and its source (WIREFRAMES.md §3;
 [#134](https://github.com/OurHike/OurHike/issues/134)'s line-detail sheet is the pattern).
 A nearby trail's sheet carries: the name, the blaze chip at full color, the length and the
-park, the provenance line (§6 below) — **and no switch action**. Switching trails stays in
+park, the provenance line (§6 below) — **and no switch action**. Where the trail is one the
+client's trail registry knows by name (`lib/trails.ts` — the A.T., and since
+[#1288](https://github.com/OurHike/OurHike/issues/1288) the Long Path), its own mark sits
+beside the name; a trail with no recorded mark gets none, never a placeholder, and every
+mark in that registry is a third-party trademark whose permission is recorded on its org's
+row in `pipeline/sources.json`'s `org_marks`. Switching trails stays in
 the picker ([#558 — Let a hiker take the stretch they are walking, without picking it off a
 list](https://github.com/OurHike/OurHike/issues/558) is that flow's home).
 

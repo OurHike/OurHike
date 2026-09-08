@@ -913,7 +913,14 @@
       },
       "NYNJTC": {
         "state": "not_asked",
-        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+        "note": "NOT ASKED for an ORG mark - no NYNJTC logo or wordmark is in the tree, and the ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933. But a TRAIL mark of theirs is, since 2026-09-08 (#1288): client/src/design-system/assets/trails/lp-logo.png is the Long Path's own logo, NYNJTC's, fetched from the URL the maintainer supplied with the ask to add it (https://www.nynjtc.org/wp-content/uploads/2024/12/Long_Path_logo-1.png, 150x151 PNG, 8,359 bytes, unmodified). It is committed to a public AGPL-3.0 repository and ships inside the bundle, beside the trail's name on the tapped-line sheet. Its permission is the maintainer's own decision - the same footing the A.T. marker above stands on, and the same relationship with NYNJTC the maintainer named for the trail's data the same day ('I'm assuming my relationship with nynjtc is enough') - recorded in trail_mark_in_tree below so it does not live only in lib/trails.ts's header comment. It is NOT a grant from NYNJTC as an organization and must not be read as one, and it does not extend to an NYNJTC org mark on a steward card.",
+        "trail_mark_in_tree": {
+          "asset": "client/src/design-system/assets/trails/lp-logo.png",
+          "basis": "Maintainer authorisation, 2026-09-08 (#1288): the maintainer asked for the logo to be added and supplied its URL on NYNJTC's own site, on the strength of their relationship with NYNJTC - the footing nynjtc_guide_licence records for the trail's waypoints the same day, and the footing the A.T. marker's own record above uses. Recorded here per #933's item 3 so the permission has a home outside a source comment.",
+          "source_url": "https://www.nynjtc.org/wp-content/uploads/2024/12/Long_Path_logo-1.png",
+          "recorded_date": "2026-09-08",
+          "scope": "This trail marker, in this application, beside the Long Path's name on the surfaces that name the trail a hiker tapped (chrome/LineSheet.tsx via lib/trails.ts). Not an org mark, not a licence to sublicense onward, not recoloured or redrawn, and not precedent for any other organization's mark."
+        }
       },
       "NYS DEC": {
         "state": "not_asked",

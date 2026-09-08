@@ -126,6 +126,15 @@
   flex-shrink: 0;
 }
 
+/* A trail's mark beside its name on the line sheet (#1288) - the same 20px
+   the plate gives the chosen trail's, inline with the words it stands for. */
+.line-sheet__trail-mark {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
 .map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);

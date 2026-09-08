@@ -268,20 +268,22 @@ a source whose steward disclaims accuracy may not render in the same voice as a 
 one ("never let a display outrun its source"). The exact sentence is settled with the
 first shipped rendering; the canvas mock's wording is a placeholder and says so.
 
-## 7. Wrong-way in a network
+## 7. Wrong-way in a network — historical, feature removed
 
-`trailPosition.ts` and `wrongWay.ts` infer "lost" from distance-to-*the*-centerline. The
-spike's number says what that inference does in Harriman: half the AT is within 150 m of a
-different marked trail, so "off the chosen trail" usually means "on another one" — not
-lost, and alerting on it is the false positive `wrongWay.test.ts` exists to prevent.
+`trailPosition.ts` used to feed `wrongWay.ts`'s "lost" inference from
+distance-to-*the*-centerline alone (both files, along with the wrong-way alert itself,
+are gone as of [#93](https://github.com/OurHike/OurHike/issues/93)/[#308](https://github.com/OurHike/OurHike/issues/308)'s
+resolution — see [features/HIKER_SAFETY.md](HIKER_SAFETY.md) §5). Kept here because the
+underlying measurement outlives the feature it was made for: half the AT's length in
+Harriman runs within 150 m of a different marked trail, so "off the chosen trail" usually
+means "on another one," not lost — a real false-positive risk for any future detection
+built against centerline distance alone.
 
-The answer for now, honoring [#93](https://github.com/OurHike/OurHike/issues/93): **the
-wrong-way alert stays scoped to the AT corridor's isolation profile and does not arm on
-network ground** until its thresholds are field-validated there. The network-aware design,
-sketched for when that work happens: a position within threshold of *any* shipped trail
-line is not "off trail" — the alert's question becomes "off the network", and "off the
-chosen trail but on the Ramapo-Dunderberg" is a banner-grade note at most, never the app's
-one notification.
+If a similar feature is built again, the network-aware shape this section used to sketch
+is worth re-deriving fresh against whatever detection logic exists at that time, rather
+than resurrected from here: broadly, a position within threshold of *any* shipped trail
+line is not "off trail," and "off the chosen trail but on another mapped one" reads as a
+much lower-stakes signal than actually being lost.
 
 ## 8. The seam, and what sits below it in a park
 

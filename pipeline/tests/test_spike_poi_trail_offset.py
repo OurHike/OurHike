@@ -34,8 +34,9 @@ class TestSummarise:
         assert offset.summarise(values)["median"] == 30.0
 
     def test_the_threshold_count_is_the_clients_own_ninety_feet(self):
-        # 90 is read from wrongWay.ts rather than re-derived, so a change
-        # there has to arrive here rather than the two drifting.
+        # 90 was read from wrongWay.ts before that file (and the wrong-way
+        # alert it belonged to) was removed (#93, #308). Fixed at that value
+        # now rather than re-derived - see the constant's own comment.
         assert offset.OFF_TRAIL_THRESHOLD_FT == 90
         values = [89.0, 90.0, 91.0, 1000.0]
 

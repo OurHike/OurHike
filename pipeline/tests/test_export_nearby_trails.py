@@ -7,8 +7,8 @@ from the real data it is stated as a comment and the fixture reproduces the
 SHAPE of it, not the volume - the point of a fixture here is that a reviewer
 can see the whole input on one screen.
 
-The asymmetry this suite is written around, and it is the same one
-wrongWay.test.ts states for its own module: for a map that draws somebody
+The asymmetry this suite is written around is the same shape CLAUDE.md's
+"Miss rather than cry wolf" names generally: for a map that draws somebody
 else's trails, DROPPING A REAL TRAIL IS THE EXPENSIVE FAILURE and drawing one
 line twice is the cheap one. A hiker who cannot see the trail they are
 standing on is worse off than one who sees a duplicate they can walk either

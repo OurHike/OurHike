@@ -319,7 +319,8 @@ Four things the build decided that this document left open, each argued where it
 - **The planned hike rides in that envelope rather than reusing `POST /hikes`.** That table
   is a collection with ids and the planned hike is a singleton with none, so syncing it
   through `/hikes` would mean every device remembering which row is "the" one. `/hikes`
-  stays exactly what it is: the reference the wrong-way alert reads server-side.
+  stays exactly what it is: the reference the wrong-way alert read server-side before its
+  removal, kept now for API compatibility.
 - **The conflict rule is the server's**, because it is the only party that can see both
   versions — and because two devices implementing keep-both slightly differently would
   produce a divergence indistinguishable from the loss the rule prevents.

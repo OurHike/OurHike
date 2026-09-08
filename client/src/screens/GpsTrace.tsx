@@ -81,11 +81,13 @@ export interface GpsTraceSettingsProps {
    *
    * Reported from the first real trace: `mile`, `off_trail_ft` and
    * `off_tread_ft` came back empty on all 136 rows, and nothing on this screen
-   * had said so. Those three columns are the entire reason #93 wants a trace -
-   * drift measured against the trail rather than against a reconstruction of
-   * it - so a walk that collects the other ten columns has collected the easy
-   * half. Both reasons for the blank are the tester's to fix and only while
-   * they are still outside, which is why this is here and not in the export.
+   * had said so. Those three columns were the entire reason #93 wanted a
+   * trace - drift measured against the trail rather than against a
+   * reconstruction of it - so a walk that collects the other ten columns has
+   * collected the easy half. #93 is closed now: the wrong-way alert it would
+   * have calibrated was removed rather than shipped. Both reasons for the
+   * blank are the tester's to fix and only while they are still outside,
+   * which is why this is here and not in the export.
    */
   trailFix?: TrailFix
   /** Whether fixes survive a dark screen, and if not why (#1182). */
@@ -166,10 +168,10 @@ export function elapsedLabel(startedAt: number | null, now: Date): string {
  * six were a healthy recording doing exactly what it was asked to do.
  *
  * A warning that fires five times wrongly during the one activity this
- * instrument exists to measure is the cry-wolf failure `wrongWay.test.ts`
- * states outright - "false positives are the failure this whole module exists
- * to prevent" - committed on the screen a tester reads to decide whether their
- * afternoon is working.
+ * instrument exists to measure is the same cry-wolf failure that made false
+ * positives, not false negatives, the failure worth guarding against in the
+ * wrong-way alert's own research (#308) - committed here on the screen a
+ * tester reads to decide whether their afternoon is working.
  *
  * 180 s clears the largest healthy gap seen (150.2 s) with room, and still
  * catches the failure it was built for: the third walk's silence ran 272 s.

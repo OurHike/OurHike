@@ -211,7 +211,8 @@ def offset_stats(subject_lines: list, other_lines: list, stride_m: float = SAMPL
     """Sample points every `stride_m` along `subject_lines` and measure each
     point's distance to the union of `other_lines`, in meters. This is both
     the AT-vs-OPRHP's-own-AT divergence measurement and the how-close-is-the-
-    nearest-other-trail exposure the wrong-way question needs."""
+    nearest-other-trail exposure the (now-removed) wrong-way alert's
+    false-positive risk needed (#93, #308; features/NEARBY_TRAILS.md §7)."""
     others = unary_union([to_meters(line) for line in other_lines])
     distances = []
     for line in subject_lines:

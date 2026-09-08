@@ -14,11 +14,11 @@ one question: *here is what I did, what did everyone else do?*
 
 WHAT THIS DOES NOT TOUCH
 
-`app/routers/hikes.py`. That table is the durable start/end reference the
-wrong-way alert reads server-side, and it stays exactly that - see
-`app/models/synced_trip.py`'s `SyncedPlannedHike` docstring for why syncing
-a singleton through a collection with ids would mean every device
-remembering which row is "the" one.
+`app/routers/hikes.py`. That table is the durable start/end reference
+originally built for the wrong-way alert (removed, #93/#308) and kept for
+API compatibility - see `app/models/synced_trip.py`'s `SyncedPlannedHike`
+docstring for why syncing a singleton through a collection with ids would
+mean every device remembering which row is "the" one.
 """
 
 from fastapi import APIRouter, Depends

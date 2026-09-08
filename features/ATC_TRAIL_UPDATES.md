@@ -107,8 +107,9 @@ damage is patchy: *"The worst of the damage occurred along the section between�
 
 **So band length needs a ceiling, and above it an update becomes a list entry rather than a
 band.** Where exactly that ceiling sits is an open question below; that there must be one is
-not. This is the same instinct as `HIKER_SAFETY.md`'s conservative wrong-way alert — a
-warning that fires too broadly trains people to ignore warnings.
+not. This is the same instinct `HIKER_SAFETY.md`'s conservative wrong-way alert was built
+on, before its removal (#93/#308) — a warning that fires too broadly trains people to
+ignore warnings.
 
 The ceiling now exists in code, as `MAX_BAND_MILES` in `client/src/lib/closureSpan.ts` — one
 constant, provisional, with the reasoning for its current value beside it (#462). It governs

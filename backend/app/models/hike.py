@@ -1,13 +1,18 @@
 """The `hikes` table - the minimal slice of SEGMENTS.md's `Hike` model that
-../../../features/HIKER_SAFETY.md section 5's wrong-way/off-trail alert
-depends on.
+../../../features/HIKER_SAFETY.md section 5's wrong-way/off-trail alert was
+built to depend on, before that feature was removed (#93, #308) having
+shipped fully built but never mounted.
 
 SEGMENTS.md's full `Hike`/`Segment` tree (day-by-day planning, completion
 tracking, client-side IndexedDB storage) is Post-MVP - this table is
-deliberately not that. It exists only so the wrong-way alert has a durable
-overall start/end reference to read a hiker's intended direction of travel
-from, matching that section's own framing: "no new state needed... just
-reading what Segments already has."
+deliberately not that. It exists so a durable overall start/end reference and
+the derived NOBO/SOBO direction stay available server-side (the wrong-way
+alert was this table's only reader; nothing reads it today), matching
+HIKER_SAFETY.md section 5's original framing: "no new state needed... just
+reading what Segments already has." Kept rather than dropped along with the
+alert: it is part of three released clients' API contracts
+(backend/openapi_baselines/), and removing it is a major-version break
+(RELEASING.md section 8c), not a same-PR deletion.
 
 `trail_id` is a plain string defaulting to "AT", not a foreign key to a
 `Trail` table - multi-trail support stays Post-MVP (SEGMENTS.md's

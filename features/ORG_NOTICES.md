@@ -114,9 +114,10 @@ gives, and that component's header points back here for the rule.)
 
 **Nothing is ever promoted between arms by inference.** A park-only notice does not become
 a trail notice because a park contains one trail we happen to draw. That is the
-cry-wolf direction, and `wrongWay.test.ts`'s asymmetry — "false negatives are acceptable;
-false positives are the failure this whole module exists to prevent" — is the rule for a
-mark a hiker is meant to obey.
+cry-wolf direction, and the same asymmetry the wrong-way alert's tests once held it to,
+before removal (#93/#308) — "false negatives are acceptable; false positives are the
+failure this whole module exists to prevent" — is the rule for a mark a hiker is meant to
+obey.
 
 ## 4. The join: a reviewed table over a closed vocabulary, not a matcher
 

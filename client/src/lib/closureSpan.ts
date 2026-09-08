@@ -14,9 +14,10 @@
 // own text says the damage is patchy: "The worst of the damage occurred along
 // the section between...".
 //
-// This is the same instinct as features/HIKER_SAFETY.md's deliberately
-// conservative wrong-way alert. A warning that fires too broadly trains people
-// to ignore warnings, and a safety surface cannot afford to be ignored.
+// This is the same instinct as the wrong-way alert's deliberately conservative
+// design (features/HIKER_SAFETY.md §5, removed #93/#308): a warning that fires
+// too broadly trains people to ignore warnings, and a safety surface cannot
+// afford to be ignored.
 //
 // IT IS NOT ONLY ATC'S PROBLEM. Nothing in the data model or the moderation
 // path stops an OurHike moderator entering a 300-mile range today, which is why

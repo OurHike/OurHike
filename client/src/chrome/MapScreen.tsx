@@ -321,9 +321,9 @@ export interface MapScreenProps {
    * new.
    *
    * ONE BANNER ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 calls
-   * the banner "a scarce surface rather than a record"; a second one is a
-   * third of the chrome the wrong-way alert competes with. So the count merges
-   * and every row survives in the list.
+   * the banner "a scarce surface rather than a record"; a second one is more
+   * chrome this screen doesn't have room for. So the count merges and every
+   * row survives in the list.
    */
   newNoticeCount?: number
   /**

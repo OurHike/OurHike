@@ -183,7 +183,7 @@ Three screens, each skippable, each with a step counter:
 2. **Map size** — the whole corridor at Light 64 MB / **Standard 314 MB** (recommended) / Fine 1.18 GB. ⚠ The wireframe copy adds "...or take single sections later, in Downloads" — **drop that clause**, see Known Deviations. **Amended 2026-08-06 ([#277](https://github.com/OurHike/OurHike/issues/277)/[#298](https://github.com/OurHike/OurHike/issues/298)):** the sizes above are the USGS raster's, which is not the download this step is sizing — #277 moved it to the hiking sheet's own Standard / Fine levels, the map a newcomer actually leaves first run with. #298 then gave it the download window's shape: the same tab strip, the same level ladder, the same greying (§4), because this step and that window are two consecutive views of one decision and looked like two different ones. The USGS tab is named and priced here and configures nothing — every rung under it is greyed, pointing at Downloads — which keeps #277's rule while letting a newcomer see what the optional map would cost. What this step does _not_ carry at all is the download itself: no progress, no buttons, nothing on the phone to delete. That belongs to the window, one screen later.
 3. **Location permission** — asked as an overlay **on top of the already-downloading map**, so the reason is visible. Copy: works with no signal, position never leaves the phone.
 
-**Never asked here:** notifications (belongs to the wrong-way alert, at hike start) and **accounts** (asked at first contribution — see Reporting below). The step counter is derived from the live step list, and a skipped step still counts so the total never grows mid-flow.
+**Never asked here:** notifications (OurHike sends none — §9 below has the history) and **accounts** (asked at first contribution — see Reporting below). The step counter is derived from the live step list, and a skipped step still counts so the total never grows mid-flow.
 
 **Amended 2026-08-06 — over the map, all three of them.** Step 3 was always specified as an overlay on the map so the reason for asking was visible; the same argument holds for the other two, and they were an opaque full-page screen. So the map is behind all three now (`client/src/App.tsx`'s onboarding branch): the corridor view the map screen itself opens on, drawn under a card anchored to the bottom of the screen and capped short of filling it. The "small map vignette" in step 1 is that map rather than a picture of one. What is behind the steps is the canvas and **nothing else** — no header, no tab bar, no legend — and it is `inert`, which is not only about stray taps: MapLibre's locate control would otherwise raise the OS location prompt before the step whose whole job is to explain why we are asking. The credit line the live sheet's licences require is rendered over the map's top-left corner, since the bottom corners are where the card is.
 
@@ -255,15 +255,9 @@ A closure is a **line**, not a pin: **barrier tape** (14px) laid along the close
   - *Reporter attribution*, named or withheld. #252 closed by removing reporter identity from the public read path entirely, so identity is now withheld from **every** report — which means a line explaining why *this* one is anonymous implies the others are named. #245 took `marked_by` off the closure sheet the same way and for the same reason: a field nothing can fill is a quiet lie, and deleting is the reversible way to end it.
 - **Warnings never push.**
 
-### 9. Wrong-way / off-trail alert (`15c`) — the only notification
+### 9. Wrong-way / off-trail alert (`15c`) — removed 2026-09-08
 
-Three beats:
-
-1. **In-app cue** while the app is open: "You may be off the trail — about 90 ft from the white blazes for the last 12 minutes," with Show me the way back / I'm fine.
-2. **Push**, only after sustained divergence: "You've been heading south for 25 minutes. Your hike is set NOBO." It won't ask again.
-3. **Permission asked when a hike direction is set**, not at launch — before a direction exists there's nothing to be wrong about.
-
-Two detection modes: distance-from-centerline (reuses `ST_LineLocatePoint` snap math) and reversed bearing vs. the `Hike`'s direction (needs a trailing GPS window, a minimum-movement threshold, a minimum persistence). Thresholds in the wireframe (90 ft, 12 min, 25 min) are **placeholders for field testing under canopy**. Web push requires the PWA added to the Home Screen on iOS; the Capacitor build is the reliable channel.
+Wireframed as three beats - an in-app cue, a push gated on sustained divergence, and permission asked when a hike direction is set rather than at launch - and built in full against this frame, but removed rather than shipped. The thresholds shown here (90 ft, 12 min, 25 min) were always **placeholders for field testing under canopy** that never happened, and the reversed-bearing detection mode this wireframe called for was never actually built in the client - only the distance-from-centerline mode existed. Full history: [#93](https://github.com/OurHike/OurHike/issues/93), [#308](https://github.com/OurHike/OurHike/issues/308), [features/HIKER_SAFETY.md](features/HIKER_SAFETY.md) §5.
 
 ### 10. Settings (`16a`)
 
@@ -284,7 +278,7 @@ not one of them:
 - **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units (Feet / Metres, the same segmented control; built 2026-08-13, [#619](https://github.com/OurHike/OurHike/issues/619)).
 
   The units row was the standing example of the _(Later)_ treatment for a year and is now the standing example of it being temporary. It is labelled by the unit rather than by the system — a hiker asks "can I get this in metres?", not "is this app imperial?" — and each segment names the distance unit that rides along with it, because choosing metres is also choosing kilometres and finding that out afterwards on the closure banner is a surprise four words prevent. Its description carries the exception under both options: **mile markers stay in miles either way.** The choice reaches every screen and the canvas alike, which is the standard [CONTRIBUTING.md](CONTRIBUTING.md) states and `client/src/test/unitDisplay.test.ts` enforces.
-- **Safety & privacy** — **Use my location** (added 2026-08-07, [#312](https://github.com/OurHike/OurHike/issues/312) — the section's one live switch), wrong-way alert toggle, "hide my name on reports for…" _(Later)_, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
+- **Safety & privacy** — **Use my location** (added 2026-08-07, [#312](https://github.com/OurHike/OurHike/issues/312) — the section's one live switch), "hide my name on reports for…" _(Later)_, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
 
   The location row is not a new preference — it is the first control for one that existed and could only ever be written once, by onboarding's completion handler. That step is skippable, correctly, so "Not now" during setup disabled GPS for the life of the install with no way back and a header still claiming to look for it. The switch governs both consumers together: the watch in `lib/useGeolocation.ts` and the map's locate control (§1.5). Turning it on does not grant browser permission — it starts the watch, which asks; a browser that has already been told no surfaces as `Location blocked` in the header rather than as a switch that appears to have done nothing.
 
@@ -350,7 +344,6 @@ A one-tap "Was it flowing?" updates the date and changes nothing else — this i
 - Downloaded-package registry — **shape depends on resolving Known Deviations #1** below (whole-corridor vs. per-section).
 - Live map state: viewport, visible-layer set, legend contents (derived), GPS fix + accuracy + age.
 - Outbox: queued reports / thanks / confirmations with authored timestamps.
-- Ephemeral `WrongWayCheck`: `{distance_from_nearest_trail_line, bearing_delta_from_hike_direction, sustained_since}`.
 
 **Server (FastAPI + Postgres):**
 
@@ -446,7 +439,7 @@ Which repo docs each screen derives from — useful when a frame's intent isn't 
 | Search `6c`, `2c`                            | FEATURES.md (basic search/filter by POI type)                                                                                                                                                                                       |
 | Downloads `6d`, `2d`–`2e`, `10a`–`10b`       | ROADMAP.md Phase 2 offline download flow; `pipeline/README.md` z11/z12/z13 sizes — **see Known Deviations #1**, per-section framing is superseded                                                                                   |
 | Reporting `14a`–`14d` (supersedes `8a`–`8e`) | REPORT_A_PROBLEM.md (types, reporter_type, statuses), AUTHENTICATION.md (sign-in at first contribution), IDENTITY_AND_PRIVACY.md (trail name + who-sees-what) — **see Known Deviations #2**, type split isn't in the data model yet |
-| Safety `15a`–`15c`                           | MAP_OPTIONS.md §4 (closures as a line, never a stored preference, no reroute computation), HIKER_SAFETY.md §1 + §5 (moderator-set severity, no push for warnings; wrong-way cue → push)                                                          |
+| Safety `15a`–`15c`                           | MAP_OPTIONS.md §4 (closures as a line, never a stored preference, no reroute computation), HIKER_SAFETY.md §1 + §5 (moderator-set severity, no push for warnings; §5's wrong-way cue removed, see §9 above)                                                          |
 | Blaze colours `11a`–`11c`                    | TRAIL_BLAZE_COLORS.md (coded domain + real counts, neutral fallback, accessibility), SEGMENTS.md (segments inherit line colour)                                                                                                     |
 | Route setup / direction `6e`                 | SEGMENTS.md, TRIP_PLANNING.md, MAP_OPTIONS.md (snap-to-trail)                                                                                                                                                                       |
 | Component inventory `6f`, `2m`               | all feature docs                                                                                                                                                                                                                    |
@@ -480,4 +473,4 @@ The source handoff's own "not yet wireframed" checklist listed several screens t
 
 ## Test plan
 
-See [TESTING.md](TESTING.md)'s **Client (React/TypeScript)** section — the behaviors these screens need covered (blaze normalization, Naismith, download sizing, staleness tiers, the wrong-way detector, offline outbox, moderation invariants) before implementation starts.
+See [TESTING.md](TESTING.md)'s **Client (React/TypeScript)** section — the behaviors these screens need covered (blaze normalization, Naismith, download sizing, staleness tiers, offline outbox, moderation invariants) before implementation starts.

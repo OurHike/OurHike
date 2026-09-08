@@ -15,15 +15,16 @@ import { resolve as resolvePath } from 'node:path'
 // WHY THIS EXISTS AT ALL. `Button.jsx` hardcoded `--paper-0` as the label for
 // both filled variants and read the BASE token `--blaze-orange` for the
 // secondary fill. Measured 2026-08-27, that was 4.14:1 under both themes for
-// secondary and 3.42:1 under the dark theme for primary - and the same
-// `--brand-secondary` carries `.wrong-way-cue__primary`, the primary action on
-// the one alert HIKER_SAFETY.md lets this app send.
+// secondary and 3.42:1 under the dark theme for primary (#1131) - and at the
+// time, the same `--brand-secondary` also carried the wrong-way alert's
+// primary action button, since removed along with the rest of that feature
+// (#93, #308).
 //
 // It checks the two filled variants and nothing else. A full audit of every
 // pair in the app is real work and is not this; a test that tried it would
 // either be wrong about which pairs actually occur or would need every
-// stylesheet parsed. These four are the ones a filled Button and the wrong-way
-// cue genuinely produce.
+// stylesheet parsed. These four are the ones a filled Button genuinely
+// produces.
 
 // `process.cwd()` rather than `import.meta.url`, matching
 // src/test/poiCardChipLayout.test.ts - the convention this repo already has
@@ -131,7 +132,9 @@ describe('a filled button’s label, against its own fill', () => {
     })
 
     it(`carries the secondary button under the ${theme} theme`, () => {
-      // And this is the one that also carries `.wrong-way-cue__primary`.
+      // This is the pair that used to also be the wrong-way alert's primary
+      // action button, removed along with the rest of that feature (#93,
+      // #308).
       expect(pair('fg-on-brand', 'brand-secondary', theme)).toBeGreaterThanOrEqual(AA)
     })
 

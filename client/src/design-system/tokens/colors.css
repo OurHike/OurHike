@@ -136,9 +136,10 @@ color-scheme:light;
    This was `--blaze-orange`, and a label in `--fg-on-brand` on it measured
    4.14:1 - under AA, at the 14px a `size="s"` Button sets. Two controls wore
    it: the Button component's `secondary` variant, and `.wrong-way-cue__primary`,
-   which is the primary action on the one alert HIKER_SAFETY.md lets this app
-   send. A hiker reads that button in the dark, off-trail, deciding whether to
-   turn around.
+   the wrong-way alert's primary action button - a hiker would have read that
+   button in the dark, off-trail, deciding whether to turn around. The alert
+   was removed (#93, #308) after this fix shipped; the token split stands on
+   the Button variant alone now.
 
    `--blaze-orange-dark` takes it to 5.98:1 (measured 2026-08-27 against
    `--fg-on-brand`'s own light value, paper-0). The dark theme already points

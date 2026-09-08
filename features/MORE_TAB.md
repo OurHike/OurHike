@@ -29,7 +29,7 @@ Ordered top to bottom, today:
 4. **The map** — background source, map style, night-hike red-light mode, detail
    level, which waypoint types show, roads & walkability (*Later*)
 5. **Display** — theme, units
-6. **Safety & privacy** — use-my-location, wrong-way alert (*Later*), hide my name
+6. **Safety & privacy** — use-my-location, hide my name
    (*Later*), and the locked notice that closures and warnings are not a setting
    (amended by [#1047](https://github.com/OurHike/OurHike/issues/1047): the notice
    used to say there was no switch anywhere, and the legend now has one — so it

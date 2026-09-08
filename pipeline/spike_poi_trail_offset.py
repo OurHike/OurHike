@@ -9,10 +9,11 @@
 
 THE NUMBER UNDER SUSPICION is the mock-up's. #941's design pass drew the
 card's second line as `0.3 mi ahead, 20 ft off trail`, and #1101's argument
-for measuring before rendering is that `wrongWay.ts` already records 72% of
-shelters sitting past `OFF_TRAIL_THRESHOLD_FT` (90 ft) - so 20 ft may be a
-designer's round number rather than a typical value, and a card printing it
-as typical would teach hikers the wrong scale.
+for measuring before rendering is that issue #308's investigation already
+found 72% of shelters sitting past 90 ft, the now-removed wrong-way alert's
+`OFF_TRAIL_THRESHOLD_FT` (#93, #308) - so 20 ft may be a designer's round
+number rather than a typical value, and a card printing it as typical would
+teach hikers the wrong scale.
 
 THIS IS A SPIKE, and the code is throwaway. What should survive is the SHAPE
 of the answer - the distribution per POI type, and the gap between the two
@@ -50,9 +51,10 @@ report a bushwhack where there is a path.
 So both are reported per type:
 
     centerline   nearest point on `source == 'centerline'` - the A.T. itself.
-                 This is what "off trail" means in wrongWay.ts and
-                 trailPosition.ts, which measure a HIKER's distance from the
-                 tread, and therefore what a card's line would be read against.
+                 This is what "off trail" meant to the now-removed wrong-way
+                 alert, and what trailPosition.ts still measures a HIKER's
+                 distance from the tread against, and therefore what a card's
+                 line would be read against.
     any trail    nearest point on any feature in trails.geojson, side trails
                  included. Still not the walk - a spur's LENGTH is the walk,
                  and that is build_water_distance.py's quantity - but it
@@ -101,8 +103,10 @@ PROJECTED_CRS = "EPSG:5070"
 
 METERS_PER_FOOT = 0.3048
 
-#: client/src/lib/wrongWay.ts. Read rather than re-derived: one threshold is
-#: the whole evidence that it is a measurement and not a knob.
+#: Historical: the now-removed wrong-way alert's off-trail threshold
+#: (client/src/lib/wrongWay.ts, deleted - #93, #308). Fixed at the value that
+#: alert shipped with rather than re-derived, since this spike's job is to
+#: measure the population against that specific number, not to pick a new one.
 OFF_TRAIL_THRESHOLD_FT = 90
 
 POI_TYPES = ("shelter", "water", "campsite", "resupply", "crossing", "viewpoint", "parking", "privy", "trailhead")

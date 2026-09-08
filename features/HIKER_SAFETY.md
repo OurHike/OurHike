@@ -1,8 +1,10 @@
 # OurHike — Hiker Safety (Feature Design Draft v1)
 
-Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (serious warnings are an escalation of its existing report types, not a new report system), [AUTHENTICATION.md](AUTHENTICATION.md) (the anonymity setting lives on the identity layer it designs), [SEGMENTS.md](SEGMENTS.md) (a Hike's direction of travel is what "wrong way" is measured against), and [MAP_OPTIONS.md](MAP_OPTIONS.md) (off-trail detection reuses its DuckDB distance-to-trail math). The `anonymity_window_days` setting's data model consolidated 2026-07-28 into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md), which also reconciles this section against Community Building's check-in privacy - different audiences, not competing settings.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (serious warnings are an escalation of its existing report types, not a new report system), [AUTHENTICATION.md](AUTHENTICATION.md) (the anonymity setting lives on the identity layer it designs), and [MAP_OPTIONS.md](MAP_OPTIONS.md) (serious-warning pins reuse its waypoint icon spec). The `anonymity_window_days` setting's data model consolidated 2026-07-28 into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md), which also reconciles this section against Community Building's check-in privacy - different audiences, not competing settings.
 
 **Scope note, revised 2026-07-28: split, not uniform.** This doc originally flagged serious warning pins and the wrong-way alert as "genuinely safety-critical enough to deserve the same MVP-promotion conversation Elevation got" without deciding it here - that conversation happened, and **both moved into v1 MVP**, along with their real dependencies (Authentication, Report a Problem's moderation queue and backend), rather than staying blocked behind a Post-MVP timeline. **The comment-anonymity window and NWS weather integration (sections 2-4) stay genuinely Post-MVP** - they don't carry the same physical-safety weight, and nothing about promoting the other two requires them to move too.
+
+**Update, 2026-09-08: the wrong-way alert (section 5, as promoted above) was built in full and later removed** ([#93](https://github.com/OurHike/OurHike/issues/93), [#308](https://github.com/OurHike/OurHike/issues/308)) - see section 5 below for what shipped, what didn't, and why. Serious warning pins (section 1) are unaffected and remain in v1 MVP.
 
 ---
 
@@ -14,7 +16,7 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **Display:** `serious`-tier reports render as a visually distinct pin (larger, high-contrast, an exclamation treatment) - a variant within the same waypoint icon spec / legend system [MAP_OPTIONS.md](MAP_OPTIONS.md) already designs, not a separate visual language.
 
-**Notification - resolved by your own framing below, not decided here independently:** per the "only notification we ever send" line in section 5, a serious warning does **not** trigger a push. It surfaces prominently in-app instead (the distinct pin above, plus a "serious warnings on your route" indicator when the map or a planned Segment is opened) - consistent with FEATURES.md's own existing UX principle, "use the app less often, and find information faster when you do... no reason to manufacture engagement."
+**Notification:** a serious warning does **not** trigger a push - OurHike sends no push notification of any kind (section 5 below). It surfaces prominently in-app instead (the distinct pin above, plus a "serious warnings on your route" indicator when the map or a planned Segment is opened) - consistent with FEATURES.md's own existing UX principle, "use the app less often, and find information faster when you do... no reason to manufacture engagement."
 
 **The real tension worth naming, not glossing over:** Report a Problem deliberately keeps `bad_hikers` off the public map entirely, routed privately to moderators, because an unverified accusation about a specific person can cause real harm if wrong. A *verified, moderator-escalated* dangerous-person warning is a different thing - genuinely useful to surface - but where exactly that line sits (how much corroboration, whose judgment call) is real moderation policy, not a data-model question. Report a Problem already flagged this exact category as needing "a real moderation conversation before it ships" - this feature is why that conversation now has real stakes attached, not a reason to skip it.
 
@@ -44,7 +46,7 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **Geographic scope:** ties to the hiker's live GPS position (already MVP) or a planned Segment's location (Trip Planning) - either resolves to the same NWS zone lookup, no separate mechanism needed per source.
 
-**Notification - a genuine open tension, not resolved here.** Section 5 sets "the wrong-way alert is the only notification we ever send." A tornado warning or flash-flood alert is arguably as time-critical as being lost - it's a real question whether weather alerts deserve a second exception to that rule, or whether they stay in-app-only like serious warnings above. Flagging this directly rather than picking one side quietly.
+**Notification - a genuine open tension, not resolved here.** OurHike sends no push notification of any kind today (section 5 below records the wrong-way alert's removal). A tornado warning or flash-flood alert is arguably as time-critical as being lost - it's a real question whether weather alerts would be worth building push infrastructure for at all, or whether they stay in-app-only like serious warnings above. Flagging this directly rather than picking one side quietly.
 
 ## 4. Weather conditions (daily temperature)
 
@@ -52,41 +54,18 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **The actual buildable path: replicate the approach directly on the same underlying free data, using what this project already has.** Same NWS point-lookup plumbing as section 3's alerts (literally the same API call, different response fields - current conditions/forecast instead of alerts - not a second integration). The elevation-sensitivity the user is right to flag ("weather changes a lot based on elevation") is exactly what the already-MVP dense 1-meter DEM elevation data (see [TRIP_PLANNING.md](TRIP_PLANNING.md)'s design history) is for - and it's a real opportunity to do this *better* than atweather.org's own approach, which is necessarily limited to named shelters/waypoints: OurHike's continuous elevation coverage means a forecast/current-temp reading could be offered at any point along the trail a hiker actually is, not just at a fixed list of named locations.
 
-## 5. Wrong-way / off-trail alert - moved into v1 MVP 2026-07-28
+## 5. Wrong-way / off-trail alert — removed 2026-09-08
 
-**Ships as the conservative in-app-cue version described below, not the full background-tracking/push version** - consistent with TECHNICAL_ARCHITECTURE.md's foreground-GPS-is-sufficient-for-MVP stance, which didn't need to change to accommodate this promotion.
+**Promoted into v1 MVP 2026-07-28, built in full, and removed** ([#93](https://github.com/OurHike/OurHike/issues/93), [#308](https://github.com/OurHike/OurHike/issues/308)) rather than shipped or left sitting unmounted indefinitely. Kept brief here on purpose - the full design history (the two detection modes, the notification-delivery-by-platform research, the false-positive measurements) lives in those closed issues' comment history and in git, not repeated in a doc describing a feature that no longer exists.
 
-**Taking "extremely difficult to do well" seriously rather than hand-waving past it.** Two distinct failure modes, worth separating because they need different detection logic:
+**Two independent reasons drove the removal, and fixing one would not have fixed the other:**
 
-- **Off the path** - physically wandered off the trail line. This reuses [MAP_OPTIONS.md](MAP_OPTIONS.md)'s snap-to-segment math, run continuously against live GPS instead of once against a tap. If the live position's distance from the nearest trail line exceeds a threshold, the hiker is probably off-trail. **"Nearest trail line" means the nearest mapped tread of any kind - the centerline or a blue-blazed side trail - and not the centerline alone.** That distinction is the whole feature rather than a detail: the median A.T. shelter is 197 ft from the A.T. and 72% of them sit past the threshold, because a shelter is at the end of a side trail. Measured against the centerline alone, this mode is a shelter detector wearing an off-trail name; counting the side trails takes that 72% to 5% without moving a threshold. The client therefore keeps two distances - a centerline one, which is what a mile is measured along, and a tread one, which is what "off trail" means (`TrailFix.offTreadFeet`).
-- **Wrong direction** - physically on the trail, but walking back the way they came. This needs to know *intended* direction, which [SEGMENTS.md](SEGMENTS.md)'s `Hike` already models (its overall start/end reference implies NOBO vs. SOBO) - no new state needed, just reading what Segments already has. Detecting it needs a trailing window of GPS samples (a single point has no direction), a minimum-movement threshold (so standing still at a shelter doesn't read as "stopped going the right way"), and a minimum-persistence duration before concluding anything - a short backtrack to a spring, a privy, or a dropped pack is completely normal hiker behavior and must not trigger a false alarm.
+- **The distance-from-trail mode's thresholds were never field-validated** ([#93](https://github.com/OurHike/OurHike/issues/93)). 90 ft / 12 min / 25 min were WIREFRAMES.md mock-up placeholders from the start. Even after [#699](https://github.com/OurHike/OurHike/issues/699) (closed by PR #700) made the distance measurement side-trail-aware - cutting the shelter false-positive rate from a measured 72% down to 5% - nobody ever walked real GPS traces under canopy to check the numbers themselves, and the maintainer deferred that field validation to v2 rather than guess.
+- **The wrong-direction mode was never built at all.** The design below called for a movement bearing derived from a trailing GPS window; no such computation ever existed in the client. So the mechanism that reached production could only ever detect "off the trail," never "walking the trail backwards" - an off-trail cue wearing a wrong-way name, per [#308](https://github.com/OurHike/OurHike/issues/308)'s investigation. [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s auto-rotate feature was designed to reuse the same bearing computation and is in the same unbuilt state.
 
-**Why the false-positive cost matters more here than almost anywhere else in this project:** you've scoped this as the *only* notification OurHike ever sends - which means every false alarm spends the entire trust budget this feature was designed around (value #4). Recommend a deliberately conservative v1: generous distance/duration thresholds biased toward silence, and considering a lower-stakes first step (an in-app visual/audible cue while the app is open, escalating to an actual push only after sustained divergence) rather than jumping straight to an interrupt. A more sophisticated version - extra sensitivity specifically near known `side_trails` junctions, since that's genuinely where a missed blaze turn actually happens, using data the pipeline already has - is a real refinement worth flagging for later, not solving in v1.
+**What stays, and why:** the client's `wrong_way_alert_enabled` preference and the backend's `hikes` table / `GET /hikes/{id}/direction` endpoint remain in place even though nothing reads or calls them today - both are part of released clients' API contracts, and removing either is an expand/contract change across supported releases (RELEASING.md §8c), not a same-PR deletion. `WrongWayCheck` in the data model below has no successor.
 
-**A real architecture constraint already on record, not new to this feature:** FEATURES.md's own "trade-off to know about" already says continuous background GPS is weaker in a PWA/Capacitor app than a fully native one, and foreground use is what reliably works today. This feature is exactly the case that trade-off was warning about - a wrong-way check that only runs while the app is open misses the case of a phone locked in a pocket. Building this well likely means adopting the native GPS plugin path FEATURES.md already named as the way to close that gap, not assuming the default PWA behavior is sufficient. **[COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md)'s auto-tracking check-ins need the exact same capability** - worth building once for both rather than treating each as a separate ask.
-
-**Notification delivery, checked directly rather than assumed - and it splits by distribution channel:**
-- **The wrapped app-store app (Capacitor):** native push (APNs/FCM), no special caveats beyond the usual platform permission prompt.
-- **The web PWA specifically:** Web Push works on iOS Safari, but **only for installs added to the Home Screen** - a hiker just using OurHike in a regular Safari tab cannot receive it at all, iOS support only since 16.4 (any current device, so not a practical gap, just a real mechanic worth knowing). The service worker ROADMAP.md's Phase 2 already scaffolds is the prerequisite either way. Practically: the wrapped app is the more reliable channel for the one notification this feature sends: if this ships, prompting/encouraging Home Screen installation for web users becomes more than a nice-to-have.
-
-**Reused elsewhere:** [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s auto-rotate feature reuses this section's trailing-GPS-window bearing computation directly, preferring it over the device compass while the hiker is actually moving - one bearing calculation, two features.
-
-**No server relay in v1 — decided 2026-08-20, resolving
-[#247](https://github.com/OurHike/OurHike/issues/247).** The backend briefly carried a
-`POST /wrong-way-events` endpoint whose docstring deferred to "a later task wires this
-endpoint's acceptance to an actual push send". It has been removed rather than reshaped:
-its contract required ownership of a `Hike` no client code created, no client code named
-the endpoint at all (the monitor's `relay` is an injected seam, mounted nowhere — #308),
-its acceptance persisted nothing and pushed nothing, and the data model below never
-defined a server-side wrong-way record — `WrongWayCheck` is client-side and ephemeral by
-design. The endpoint was an inference ahead of this doc, not an implementation of it.
-When the open question at the foot of this doc is answered and push infrastructure is
-actually built, the relay should be designed against the reality then — the client's
-declared hike in `plannedHike.ts`, and whatever server story
-[ACCOUNT_SYNC.md](ACCOUNT_SYNC.md) has given plans by that point — not rebuilt from
-today's guess. The client keeps the seam: `createWrongWayMonitor` still takes a `relay`
-dependency and still treats it as fire-and-forget telemetry that may never swallow the
-alert.
+If a wrong-way or off-trail alert is built again, it should be designed against whatever GPS and notification story exists at that time - not resurrected from this section's placeholder thresholds or its never-built bearing mode.
 
 ## Data model additions
 
@@ -103,15 +82,12 @@ Report                       (extends REPORT_A_PROBLEM.md's existing model)
 
 WeatherAlert                  (relayed + briefly cached server-side, not owned data)
   nws_alert_id, zone, headline, effective, expires, relayed_at
-
-WrongWayCheck                 (client-side, ephemeral - a live computation, not a persisted record)
-  distance_from_nearest_trail_line, bearing_delta_from_hike_direction, sustained_since
 ```
+
+(`WrongWayCheck`, the wrong-way alert's client-side ephemeral computation, is gone with section 5 above.)
 
 ## Open questions (for you, not decided here)
 
 - **The "dangerous humans" verified-serious threshold and moderation policy** - flagged above as needing a real conversation, the same one Report a Problem already deferred.
-- **Whether weather alerts earn a second exception to "only one notification"** - presented both ways above, not resolved.
+- **Whether weather alerts are worth building push-notification infrastructure for at all**, given OurHike sends none today - an investment question, not a design one.
 - **Default `anonymity_window_days` value, and the change-it-later edge case** - a real policy/UX choice once there's a real settings screen in front of you, not answerable from this doc.
-- **Off-trail distance and wrong-direction persistence thresholds** - need real field-testing against actual GPS behavior under tree canopy, not a number this doc can responsibly guess at.
-- **Whether it's worth building push-notification infrastructure (web + native) for one alert type**, given how deliberately narrow its use is meant to stay - an investment question, not a design one.

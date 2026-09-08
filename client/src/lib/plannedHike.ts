@@ -37,10 +37,11 @@
 // re-entering two numbers.
 //
 // `POST /hikes` is still uncalled and is still not this. That table is the
-// durable start/end reference the wrong-way alert reads SERVER-side, and it
-// is complete CRUD over a collection with ids - syncing a singleton through
-// it would mean every device remembering which row is "the" one, a second
-// identifier to keep in step for no gain. #247 is the feature that needs the
+// durable start/end reference originally built for the wrong-way alert to
+// read SERVER-side, and it is complete CRUD over a collection with ids -
+// syncing a singleton through it would mean every device remembering which
+// row is "the" one, a second identifier to keep in step for no gain. #247
+// is the feature that needs the
 // server to know a hike; #892 was the feature that needed two devices to
 // agree on one.
 

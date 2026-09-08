@@ -203,18 +203,24 @@ class PreferencesIn(BaseModel):
 
     # Safety / privacy
     #
-    # `wrong_way_alert_enabled` SYNCS, and that is a decision rather than an
-    # oversight corrected (#242). It is not the OS notification permission -
-    # that is genuinely per-device and lives with the platform. This is the
+    # `wrong_way_alert_enabled` SYNCS, and that was a decision rather than an
+    # oversight corrected (#242). It was not the OS notification permission -
+    # that is genuinely per-device and lives with the platform. This was the
     # app-level question "do I want OurHike's one alert at all", which
-    # belongs to a person rather than to a handset.
+    # belonged to a person rather than to a handset.
     #
-    # It defaults ON, so the safety path is opt-out - which is exactly why
-    # not syncing it would be the wrong way round: a hiker who deliberately
-    # turned the alert off would get it back on a reinstalled phone, firing
-    # when they had chosen silence. For the one notification this app ever
-    # sends (client/src/lib/push.ts), spending the trust budget that way is
-    # worse than losing a preference.
+    # It defaulted ON, so the safety path was opt-out - which is exactly why
+    # not syncing it would have been the wrong way round: a hiker who
+    # deliberately turned the alert off would get it back on a reinstalled
+    # phone, firing when they had chosen silence.
+    #
+    # The wrong-way alert itself was removed (#93, #308) after shipping fully
+    # built but never mounted - see features/HIKER_SAFETY.md section 5's
+    # history note. OurHike sends no push notification today. This field
+    # stays rather than following it out: it is part of three released
+    # clients' API contracts (backend/openapi_baselines/v1.1.1.json onward),
+    # and RELEASING.md section 8c makes removing a field an expand/contract
+    # change across supported releases, not a same-PR deletion.
     #
     # Defaulted here for the same reason `map_style` is: a row synced before
     # this key existed must read back as the safety default rather than as a

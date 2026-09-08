@@ -1,0 +1,226 @@
+/* A published route's card, in its three sizes (chrome/SuggestedHikeCard.tsx,
+ * #1284): the Today shelf's 172px card, the Find screen's thumb row, and the
+ * results screen's full-bleed hero.
+ *
+ * Semantic tokens only - themeTokens.test.ts fails this file the moment it
+ * names a base colour. The transit line reads --accent-blaze-blue, the
+ * water/transit blue the POI accents already use, and re-points under the
+ * dark theme with the rest.
+ */
+
+/* ---------- What every size shares ---------- */
+
+.suggested-hike__name {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--fg-1);
+}
+
+.suggested-hike__figures {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+/* #851's baseline, quiet mono under the figure it qualifies - the same
+   treatment .today__pace-line gives the greeting. */
+.suggested-hike__baseline {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
+/* The badge and the transit line side by side, on the two sizes with the
+   width for it. */
+.suggested-hike__facets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The Badge component stretches to its flex line otherwise. */
+.suggested-hike__badge {
+  display: inline-flex;
+  align-self: flex-start;
+}
+
+/* Availability only: rendered when transit was published, absent otherwise.
+   See the component header for the struck-through bus this replaced. */
+.suggested-hike__transit {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--accent-blaze-blue);
+}
+
+.suggested-hike__transit-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.suggested-hike__author {
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-2);
+}
+
+/* A route with no photo gets a plain block of the photo's size - never a
+   stand-in picture, which would be a photo claiming to be of somewhere. */
+.suggested-hike__no-photo {
+  display: block;
+  background: var(--bg-sunken);
+}
+
+/* A card that opens something is a button and says so under the thumb;
+   one that does not is an article and stays still. Design-system motion:
+   colour transitions only, and the 0.97 press. */
+button.today__suggested-card,
+button.find-hike__row,
+button.find-hike__hero {
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    transform var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+button.today__suggested-card:active,
+button.find-hike__row:active,
+button.find-hike__hero:active {
+  transform: scale(0.97);
+}
+
+/* ---------- The shelf card (Today) ---------- */
+
+/* border-box, STATED: the prototype that preceded .next-up__card shipped
+   content-box and overflowed its own rail (chrome.css). */
+.today__suggested-card {
+  box-sizing: border-box;
+  flex: 0 0 172px;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.today__suggested-photo {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+  display: block;
+}
+
+.today__suggested-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.today__suggested-card .suggested-hike__name {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+/* Two lines beside the bus, so the icon sits on the first of them. */
+.today__suggested-card .suggested-hike__transit {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.today__suggested-card .suggested-hike__transit-icon {
+  margin-top: 1px;
+}
+
+/* ---------- The list row (Find a hike) ---------- */
+
+.find-hike__row {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  gap: 11px;
+  margin: 0;
+  padding: 12px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+}
+
+.find-hike__thumb {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-m, 8px);
+  object-fit: cover;
+  display: block;
+}
+
+.find-hike__row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.find-hike__row .suggested-hike__name {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+/* ---------- The hero (first result) ---------- */
+
+.find-hike__hero {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.find-hike__hero-photo {
+  width: 100%;
+  height: 112px;
+  object-fit: cover;
+  display: block;
+}
+
+.find-hike__hero-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.find-hike__hero .suggested-hike__name {
+  font-size: 17px;
+  line-height: 1.2;
+}

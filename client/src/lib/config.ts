@@ -510,6 +510,23 @@ export const ELEVATION_KEY = 'elevation_profile.json'
 // @release required - publish.py:784, ungated.
 export const RETIRED_POI_KEY = 'retired_poi.geojson'
 
+// Routes somebody published - a maintaining club, a guidebook author, another
+// OurHike hiker, an editorial pick - for the Today shelf and the Find-a-hike
+// screen (#1284, features/SUGGESTED_HIKES.md). Read by
+// lib/suggestedHikesData.ts, which validates every record through the same
+// gate a saved day hike passes (lib/dayHikes.ts: ends only, never an
+// edgeIndex) and keeps the last copy that arrived in IndexedDB, so the shelf
+// works with no signal like everything else here.
+//
+// THE CLIENT HALF LANDED FIRST. No exporter writes this yet - where published
+// routes come from (a club's own GPX, a guidebook's tables, a hiker's saved
+// day hike shared out) is a decision nobody has made, and the pipeline half
+// waits on it. A release without it is a phone with an empty shelf and no
+// section, never a failed download.
+//
+// @release optional - no exporter writes it; see the paragraph above.
+export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
+
 // 'crossing' was listed here while it was still an empty FeatureCollection, so
 // that it would start working the day the pipeline filled it rather than
 // needing a client release to notice. IT WORKED, and the comment outlived the

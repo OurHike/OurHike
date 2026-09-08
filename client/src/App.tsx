@@ -110,6 +110,8 @@ import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
+import { useSuggestedHikes } from './lib/useSuggestedHikes'
+import { hikePlaces } from './lib/suggestedHikes'
 import { useArchiveFootprint, useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom, coverageAt, type Footprint } from './lib/archiveCoverage'
 import {
@@ -339,6 +341,7 @@ import { Volunteer } from './screens/Volunteer'
 import { VolunteerHours } from './screens/VolunteerHours'
 import { VolunteerImpact } from './screens/VolunteerImpact'
 import { Today } from './screens/Today'
+import { FindHike } from './screens/FindHike'
 import {
   DEFAULT_HIKER_MODE,
   loadHikerMode,
@@ -882,6 +885,19 @@ function App() {
    * courtesy every tab's own state already keeps.
    */
   const [morePage, setMorePage] = useState<MorePage>('home')
+  /**
+   * Which room the Today tab is showing (#1284): the journal, or the Find-a-
+   * hike search pushed from its shelf. Not a fifth tab - Today stays the
+   * selected tab while the search is up, which is why this is a page under
+   * the tab rather than a TabId - and any tab selection returns it to the
+   * journal (`selectTab`), so a hiker who leaves mid-search comes back to
+   * the room the tab is named for.
+   */
+  const [todayPage, setTodayPage] = useState<'home' | 'find'>('home')
+  const selectTab = useCallback((id: TabId) => {
+    setTodayPage('home')
+    setActiveTab(id)
+  }, [])
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -1301,6 +1317,11 @@ function App() {
     // Nothing else in the app asks for that.
     keepAwake: gpsTrace.status.recording,
   })
+  // The fix as a point, for the surfaces that measure from it rather than
+  // along the trail: the suggested-hikes shelf and the Find screen's "Near
+  // me" (#1284). Null is the honest answer everywhere else the app gives
+  // one - never a stale point, never Springer.
+  const fixAt = gps.status === 'located' ? gps.at : null
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
   // The hiking sheet's own level (#276) - a separate dial from the USGS
@@ -1431,6 +1452,10 @@ function App() {
   // manifest where it carries one, and from the catalog's constants where it
   // does not (#505) - see lib/usePublishedSizes.ts for why both are needed.
   const publishedSizes = usePublishedSizes()
+  // Routes somebody published (#1284): the kept copy first, the bucket when
+  // there is signal, empty until an exporter writes any - see
+  // lib/useSuggestedHikes.ts and config.ts's SUGGESTED_HIKES_KEY.
+  const suggestedHikes = useSuggestedHikes(online)
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -2245,6 +2270,9 @@ function App() {
       }),
     [pois, poiMiles],
   )
+  // The towns and trailheads the Find screen's field can resolve (#1284) -
+  // from the same downloaded waypoints, so the search needs no signal.
+  const hikePlaceOptions = useMemo(() => hikePlaces(pois), [pois])
 
   // What the tapped pin's card says - see cardDetail for why it is assembled
   // from both arrays rather than from the POI alone.
@@ -6085,8 +6113,30 @@ function App() {
       onOpenDayHike={handleOpenDayHike}
       hasDownload={anySheetDownloaded}
       onOpenDownloads={openDownloads}
+      // The shelf (#1284): routes somebody published, and the way to the rest
+      // of them. No `onOpenSuggestedHike` yet - the detail a card would open
+      // (wireframe 1g) is not designed, so the cards read rather than press.
+      suggestedHikes={suggestedHikes}
+      fixAt={fixAt}
+      onFindHike={() => setTodayPage('find')}
     />
   )
+
+  // The search the shelf's row pushes (#1284), in Today's slot on both
+  // layouts: the phone's Today branch and the desktop's journal column both
+  // dock `todayPane`, so the tab bar under it stays put and Today stays the
+  // selected tab.
+  const findHikeScreen = (
+    <FindHike
+      hikes={suggestedHikes}
+      places={hikePlaceOptions}
+      fixAt={fixAt}
+      units={units}
+      pace={pace}
+      onBack={() => setTodayPage('home')}
+    />
+  )
+  const todayPane = todayPage === 'find' ? findHikeScreen : todayScreen
 
   // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
   // for it, and only the desktop needs it there - the phone carries the same
@@ -6120,7 +6170,7 @@ function App() {
               reason rather than beside it - a throw while resolving a saved
               walk is a throw on this screen. */}
           <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-            {todayScreen}
+            {todayPane}
             {/* The details a row on "Your day hikes" promises. A sheet over
                 the journal, not a screen instead of it: the tab bar stays
                 put and closing returns to the row that was tapped. It docks
@@ -6131,11 +6181,7 @@ function App() {
             {savedDayHikeCardNode}
           </ErrorBoundary>
         </div>
-        <TabBar
-          active={activeTab}
-          onSelect={setActiveTab}
-          modeSwitch={sidebarModeSwitch}
-        />
+        <TabBar active={activeTab} onSelect={selectTab} modeSwitch={sidebarModeSwitch} />
       </div>
     )
   } else if (!entering && activeTab === 'more') {
@@ -6268,7 +6314,7 @@ function App() {
           </div>
           <TabBar
             active={activeTab}
-            onSelect={setActiveTab}
+            onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
           />
         </div>
@@ -6441,7 +6487,7 @@ function App() {
           </div>
           <TabBar
             active={activeTab}
-            onSelect={setActiveTab}
+            onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
           />
         </div>
@@ -6509,7 +6555,7 @@ function App() {
             fallback={() => (
               <div className="app__screen">
                 <ScreenFailed what="The map" />
-                <TabBar active={activeTab} onSelect={setActiveTab} />
+                <TabBar active={activeTab} onSelect={selectTab} />
               </div>
             )}
           >
@@ -6525,7 +6571,7 @@ function App() {
               journal={
                 !entering && isDesktop && activeTab === 'today' ? (
                   <>
-                    {todayScreen}
+                    {todayPane}
                     {/* The same card the phone's Today docks, in the column
                         the row was tapped in rather than over the map beside
                         it - the map's own sheet slot belongs to the builders
@@ -6832,7 +6878,7 @@ function App() {
               lastSyncedAt={lastSyncedAt}
               conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
               activeTab={activeTab}
-              onSelectTab={setActiveTab}
+              onSelectTab={selectTab}
               onOpenLegend={handleOpenLegend}
               onOpenSearch={() => setSearchOpen(true)}
               legendOpen={legendOpen}

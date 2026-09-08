@@ -60,9 +60,15 @@ import {
 } from '../lib/workProjects'
 import type { PassedPlace } from './Volunteer'
 import type { DayHike } from '../lib/dayHikes'
+import type { LonLat } from '../lib/trailGraph'
+import { shelfPicks, type SuggestedHike } from '../lib/suggestedHikes'
+import { SuggestedHikeCard } from '../chrome/SuggestedHikeCard'
+import { HikeFinderIcon } from '../chrome/HikeFinderIcon'
 import { Button } from '../design-system/components'
 import '../chrome/chrome.css'
 import './today.css'
+
+const NO_SUGGESTIONS: readonly SuggestedHike[] = []
 
 export interface TodayProps {
   now: Date
@@ -149,6 +155,22 @@ export interface TodayProps {
   // The nothing-downloaded empty state: a starting point, not an apology.
   hasDownload?: boolean
   onOpenDownloads?: () => void
+
+  /** Routes somebody published (lib/suggestedHikes.ts, #1284), for the
+   *  shelf. Empty collapses the whole section - a hiker with no suggestions
+   *  costs no gap, and no rule with nothing under it. */
+  suggestedHikes?: readonly SuggestedHike[]
+  /** The fix, so the shelf can pick the nearest starts. Null makes no
+   *  distance claim: the shelf takes the first published, and the rule
+   *  above it reads "Suggested hikes", not "near you". */
+  fixAt?: LonLat | null
+  /** Pushes the Find screen. The row renders only when there is somewhere
+   *  for it to go. */
+  onFindHike?: () => void
+  /** Opens a suggested route's detail. Omitted - as it is until wireframe
+   *  `1g` is designed - the cards render as things to read rather than as
+   *  buttons that go nowhere (chrome/SuggestedHikeCard.tsx). */
+  onOpenSuggestedHike?: (id: string) => void
 }
 
 /** The section rule's word for the entries, sized to what is known - "ahead"
@@ -201,6 +223,10 @@ export function Today({
   onOpenDayHike,
   hasDownload = true,
   onOpenDownloads,
+  suggestedHikes = NO_SUGGESTIONS,
+  fixAt = null,
+  onFindHike,
+  onOpenSuggestedHike,
 }: TodayProps) {
   // Memoized because this screen re-renders for reasons that have nothing to do
   // with it (#1090). It is the home screen now, so it is mounted while the GPS
@@ -465,6 +491,55 @@ export function Today({
       </>
     ) : null
 
+  // The shelf's picks, memoized with the journal's argument: this screen
+  // re-renders on every fix and every clock tick, and the picks change only
+  // when the routes or the fix do.
+  const picks = useMemo(() => shelfPicks(suggestedHikes, fixAt), [suggestedHikes, fixAt])
+  const morePublished = suggestedHikes.length - picks.length
+
+  // SUGGESTED HIKES (#1284): routes somebody published, near the hiker, and
+  // the way to the rest of them. The app surfaces them and names who wrote
+  // each; it never rates, ranks or scores a route itself, and the note under
+  // the row says whose they are. Renders in every mode - it leads in day
+  // mode and sits last in long and volunteer, where the hiker's own walk is
+  // the subject - and not at all when there is nothing to suggest.
+  const suggested =
+    suggestedHikes.length > 0 ? (
+      <>
+        <div className="today__rule">
+          <span className="today__rule-label">Suggested hikes</span>
+        </div>
+        <div className="today__suggested-rail">
+          {picks.map((hike) => (
+            <SuggestedHikeCard
+              key={hike.id}
+              hike={hike}
+              variant="shelf"
+              units={units}
+              pace={pace}
+              {...(onOpenSuggestedHike === undefined
+                ? {}
+                : { onOpen: onOpenSuggestedHike })}
+            />
+          ))}
+        </div>
+        {onFindHike !== undefined && (
+          <button type="button" className="today__find" onClick={onFindHike}>
+            <HikeFinderIcon name="search" className="today__find-icon" />
+            <span className="today__find-label">Find a hike</span>
+            {/* How many the shelf did not show - a count of routes, never
+                of anybody. Absent when the shelf holds them all. */}
+            {morePublished > 0 && (
+              <span className="today__find-count">{morePublished} more ›</span>
+            )}
+          </button>
+        )}
+        <p className="today__note">
+          Routes from community contributions. Check before traveling.
+        </p>
+      </>
+    ) : null
+
   const download =
     !hasDownload && onOpenDownloads !== undefined ? (
       <div className="today__card today__card--download">
@@ -498,13 +573,14 @@ export function Today({
     journal: journal ?? noJournal,
     climb,
     hikes,
+    suggested,
   }
   const order =
     mode === 'volunteer'
-      ? ['alerts', 'volunteer', 'soFar', 'journal', 'climb', 'hikes']
+      ? ['alerts', 'volunteer', 'soFar', 'journal', 'climb', 'hikes', 'suggested']
       : mode === 'day'
-        ? ['alerts', 'hikes', 'journal', 'climb', 'soFar', 'volunteer']
-        : ['alerts', 'journal', 'climb', 'soFar', 'volunteer', 'hikes']
+        ? ['alerts', 'suggested', 'hikes', 'journal', 'climb', 'soFar', 'volunteer']
+        : ['alerts', 'journal', 'climb', 'soFar', 'volunteer', 'hikes', 'suggested']
   const sections = order.map((key) => (
     <div key={key} className="today__section">
       {named[key]}

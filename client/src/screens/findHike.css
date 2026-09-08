@@ -1,0 +1,420 @@
+/* Find a hike (screens/FindHike.tsx, #1284) and the facet sheet over it
+ * (chrome/FacetSheet.tsx).
+ *
+ * Semantic tokens only - themeTokens.test.ts fails this file the moment it
+ * names a base colour. The set chip reads the --*-chrome family, which is
+ * dark under both themes on purpose: a set chip is a small piece of the
+ * pine chrome, and stays ink at night.
+ */
+
+.find-hike {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg-page);
+  color: var(--fg-1);
+}
+
+/* ---------- The header ---------- */
+
+.find-hike__head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.find-hike__head--results {
+  gap: 10px;
+}
+
+.find-hike__crumb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.find-hike__crumb {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 8px 0 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-body, sans-serif);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.find-hike__title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.find-hike__title--count {
+  flex: 1;
+}
+
+.find-hike__sort {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--brand-primary);
+  white-space: nowrap;
+}
+
+/* One honest sort is a word, not a control. */
+.find-hike__sort--word {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+  color: var(--fg-2);
+}
+
+/* chrome.css's .search__input, with the glass inside the field. */
+.find-hike__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  transition: box-shadow var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.find-hike__search:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+
+.find-hike__search-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--fg-3);
+}
+
+.find-hike__search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  color: var(--fg-1);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.find-hike__search-input::placeholder {
+  color: var(--fg-3);
+}
+
+/* What the field can resolve to, under it. */
+.find-hike__places {
+  list-style: none;
+  margin: -4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.find-hike__place {
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.find-hike__place-kind {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* ---------- The chip row ---------- */
+
+/* The same edge bleed and chaining stop as the Today shelf. 4px of vertical
+   padding rather than 2, because a chip's hit area reaches 4px past what it
+   draws (below) and the row would otherwise clip it. */
+.find-hike__chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 4px 16px;
+}
+
+.find-hike__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.find-hike__chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  font-family: var(--font-body, sans-serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    transform var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+/* Draws 36px, hits 44px - the same invisible expansion .map-header__button
+   makes for its 38px buttons (chrome.css). */
+.find-hike__chip::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+
+.find-hike__chip:active {
+  transform: scale(0.97);
+}
+
+.find-hike__chip--set {
+  color: var(--fg-chrome-1);
+  background: var(--bg-chrome);
+  border-color: var(--bg-chrome);
+}
+
+.find-hike__chip--add {
+  color: var(--fg-2);
+  background: transparent;
+  border: 1px dashed var(--fg-3);
+}
+
+.find-hike__chip-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- The scrolling body ---------- */
+
+.find-hike__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.find-hike__note {
+  margin: 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+
+.find-hike__footer {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+/* ---------- The facet sheet (chrome/FacetSheet.tsx) ---------- */
+
+.facet-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgb(20 19 15 / 42%);
+  animation: facet-scrim-in var(--duration-normal, 200ms) var(--ease-standard, ease);
+}
+
+/* chrome.css's .route-entrance treatment: the brand's top rule, because
+   nothing about a filter changes what a hiker does next. Enters with a
+   translate and a fade at 200ms - no spring, no bounce. */
+.facet-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 70%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -6px 24px rgb(20 19 15 / 18%);
+  outline: none;
+  animation: facet-sheet-in var(--duration-normal, 200ms) var(--ease-standard, ease);
+}
+
+@keyframes facet-sheet-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes facet-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.facet-sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.facet-sheet__title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 18px;
+  color: var(--fg-1);
+}
+
+.facet-sheet__aside {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.facet-sheet__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.facet-sheet__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 14px;
+  text-align: left;
+  font-family: var(--font-body, sans-serif);
+  font-size: 14px;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    border-color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+/* The 2px border eats 1px of padding on each side, so the label does not
+   shift when a row is picked. */
+.facet-sheet__option--selected {
+  padding: 0 13px;
+  font-weight: var(--weight-semibold, 600);
+  background: var(--bg-sunken);
+  border: 2px solid var(--brand-primary);
+}
+
+.facet-sheet__option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.facet-sheet__option-note {
+  font-size: 12px;
+  font-weight: var(--weight-regular, 400);
+  line-height: 1.35;
+  color: var(--fg-2);
+}
+
+.facet-sheet__count {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
+.facet-sheet__option--selected .facet-sheet__count {
+  color: var(--brand-primary);
+}
+
+.facet-sheet__check {
+  width: 15px;
+  height: 15px;
+}
+
+.facet-sheet__caveat {
+  margin: 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+
+.facet-sheet__footer {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}

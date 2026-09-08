@@ -415,6 +415,80 @@
   color: var(--fg-chrome-3);
 }
 
+/* ---------- Suggested hikes (#1284) ---------- */
+
+/* The shelf: a horizontal rail bleeding to the screen edges, with the same
+   chaining stop .next-up__cards carries (a flick off the end must not become
+   a page gesture) and the same 2px of bottom padding, so the cards may cast
+   their shadow without the row clipping it. The cards themselves are
+   chrome/suggestedHikeCard.css's .today__suggested-card, border-box stated. */
+.today__suggested-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 2px 16px;
+}
+
+.today__suggested-rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* The way to the rest of them. One step stronger a border than a card
+   (--border-2 against --border-1), so it reads as a control rather than as
+   a fourth card. Both the label and the count are nowrap: at 358px of inner
+   width the label otherwise breaks to two lines and drops the chevron onto
+   its own. */
+.today__find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  box-sizing: border-box;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-card);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    transform var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.today__find:active {
+  transform: scale(0.97);
+}
+
+.today__find-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--brand-primary);
+}
+
+.today__find-label {
+  flex: 1;
+  font-family: var(--font-body, sans-serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 14px;
+  color: var(--brand-primary);
+  white-space: nowrap;
+}
+
+.today__find-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
 /* ---------- Notes, download card, footer ---------- */
 
 .today__note {

@@ -219,14 +219,6 @@ score each pair on signals this repository has already measured the worth of:
   `Exterior_M` and the facility counts are non-null on all 280, and privies carry `Year_Built`
   on 308 of 316. A renamed, moved shelter that still says "built 1938, one storey, log" is
   carrying its own passport.
-- **The stream a derived crossing is made of** (#1028, built 2026-09-07) — a crossing's key
-  is the coordinate where a trail line meets a stream line, so re-measuring the trail re-keys
-  it, and one with no name could reach 1.5 against the 2.5 threshold however close its
-  successor sat. NHD's permanent identifier is the half of that meeting that cannot have
-  moved (the snapshot is frozen), so each crossing row carries it as `stream_id` and
-  agreement scores like an exact name; disagreement scores nothing, because the id a merged
-  crossing carries is whichever hydrography `dedupe_crossings` kept. The open question at the
-  foot of this document has the arithmetic.
 
 Acceptance is deliberately three conditions, not a bare score, each bought by a failure already
 in this repository: **clear the threshold**, **clear it by a margin over the runner-up** (the
@@ -484,55 +476,27 @@ Each step useful alone, per the house convention:
   corroboration numbers: settled against the first real refresh, not guessed harder in
   advance. The structure (margin + ceiling + mutual-best) is the decision; the constants are
   calibration.
-- ~~**Whether tier 2 should be reachable at all by a POI carrying no name and no fingerprint**~~
-  **Answered 2026-09-07 (#1028 — A POI with no name and no fingerprint can never be carried by
-  tier 2, and 42% of the ledger is now that shape): reachable, on evidence the rows already
-  carried and the ledger never saw.** The question was a different one from calibrating the
-  constants above, because for those rows the constants decided nothing: `_score_pair` could
-  award such a pair `SCORE_NEAR` (1.0) and `SCORE_MILE` (0.5) and nothing else, so its maximum
-  reachable score was **1.5 against `ACCEPT_THRESHOLD` 2.5** — no distance was close enough,
-  and the margin, ceiling and mutual-best conditions were never consulted. Measured against the
-  2026-08-25 ledger, **3,567 of 8,469 live rows were that shape (42.1%)**: 3,370
-  `nhd_crossing`, 177 `osm_water`, 17 `nhd_stream`, 3 `atc_communities`. It bit hardest on
-  exactly those crossings, because their ids are *coordinate-derived* —
-  `nhd_crossing:{lat},{lon}`, with `source_feature_id` the same string — so tier 1's key is
-  minted from geometry this project re-measures itself, which **PR #1023 — Measure water
-  against every trail this app draws, not only the A.T.** did wholesale. That run had the
-  instance: its single retirement, `nhd_crossing:41.40819,-73.87630`, sits 24.7 m from
-  `nhd_crossing:41.40803,-73.87609`, minted new in the same run — same type, both unnamed —
-  while the one crossing that *was* carried, "Beechy Bottom Brook", moved 8 m and survived on
-  the 2.0 its name scored. That reading is proximity and a plausible cause, not a measurement:
-  nobody has checked the two against the raw NHD flowlines, and a second unnamed crossing sits
-  31.7 m out on the other side.
-
-  **What was built.** A crossing is where a trail line meets a stream line, and the export had
-  been dropping the stream half on the way to the record: `fetch_trail_water.py` records NHD's
-  `permanent_identifier` (a snapshot USGS froze in 2023) on every crossing, and
-  `export_poi.load_trail_water` copied everything but it. It now rides `RAW_PROPERTIES_KEY`
-  and each crossing row as `stream_id`, and agreement on it scores `SCORE_STREAM_INTACT`
-  (2.0) — the same as an exact name, which two crossings of one creek share anyway — so the
-  24.7 m pair carries at 3.0 with or without a mile, and the second unnamed crossing 31.7 m out
-  on the other side, if it is the same stream, fails the margin and retires honestly instead of
-  being guessed. A mismatch is neutral rather than the fingerprint's −3.0, because the id a
-  merged crossing carries is whichever hydrography `dedupe_crossings` kept and the two draw one
-  stream tens of metres apart. The constant is `@unvalidated`; the first trail re-measure after
-  this lands, read in `identity_review/summary.txt`, is what settles it. Site water
-  (`nhd_stream`) carries the same passport, for the same reader.
-
-  **What was deliberately not done.** *The key did not change.* A key that survives a
-  re-measure — the issue's first option — would have re-minted all 3,370 rows once to stop them
-  re-minting later, which the three rules above forbid; the stream is evidence, and tier 2 is
-  where evidence goes. *Distance alone still carries nothing*, for the reason the issue gave:
-  the 50 m band is not evidence, and the 903 km lesson argues against widening a gate without
-  any. *The remaining 197 rows are answered by writing the default down*: `osm_water`,
-  `nhd_stream` and `atc_communities` carry upstream-owned keys, so tier 1 holds while upstream
-  holds still, and when it does not they retire-and-create — the recoverable direction, and now
-  the stated one.
-
-  **One consequence for the next run.** Every crossing and site-water row gains its
-  `stream_id` under tier 1 — named or not, no id moving — so `--check` fails until the ledger
-  is regenerated (`publish-vector-data.yml`'s `regenerate_identity_ledger`) and that diff, one
-  line per such row, is reviewed once.
+- **Whether tier 2 should be reachable at all by a POI carrying no name and no fingerprint**,
+  which is a different question from calibrating the constants above, because for those rows
+  the constants do not decide anything. `_score_pair` can award such a pair `SCORE_NEAR` (1.0)
+  and `SCORE_MILE` (0.5) and nothing else, so its **maximum reachable score is 1.5 against
+  `ACCEPT_THRESHOLD` 2.5** — no distance is close enough, and the margin, ceiling and
+  mutual-best conditions are never consulted. Measured against the 2026-08-25 ledger, **3,567
+  of 8,469 live rows are that shape (42.1%)**: 3,370 `nhd_crossing`, 177 `osm_water`, 17
+  `nhd_stream`, 3 `atc_communities`. It bites hardest on exactly those crossings, because their
+  ids are *coordinate-derived* — `nhd_crossing:{lat},{lon}`, with `source_feature_id` the same
+  string — so tier 1's key is minted from geometry this project re-measures itself, and a
+  re-measure is an identity event for a population that has no way to survive one. The
+  2026-08-25 run has an instance: its single retirement, `nhd_crossing:41.40819,-73.87630`,
+  sits 24.7 m from `nhd_crossing:41.40803,-73.87609`, minted new in the same run — same type,
+  both unnamed — while the one crossing that *was* carried, "Beechy Bottom Brook", moved 8 m
+  and survived on the 2.0 its name scored. That reading is proximity and a plausible cause, not
+  a measurement: nobody has checked the two against the raw NHD flowlines, and a second unnamed
+  crossing sits 31.7 m out on the other side.
+  **#1028 — A POI with no name and no fingerprint can never be carried by tier 2, and 42% of
+  the ledger is now that shape** holds the options. Retire-and-create is the recoverable
+  direction and "miss rather than cry wolf" is the stated asymmetry, so accepting this is a
+  legitimate answer — it is just not currently a written-down one.
 - **Whether search indexes `name_was` aliases**, and whether the card ever says "formerly
   Winturri Shelter". The record exists regardless.
 - **Whether tier 2 should ever run cross-`poi_type`.** A campsite upstream reclassifies as a

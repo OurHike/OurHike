@@ -117,12 +117,15 @@ import {
   cellDownloadRequests,
   cellPackageKey,
   cellsAlong,
+  cellsAt,
   CONTEXT_PACKAGE_KEY,
+  GRAPH_CELLS,
   NETWORK_CELLS,
   priceStretches,
   seamEdges,
   STRETCH_MARGIN_KM,
   useCellIndex,
+  useCellIndexState,
 } from './lib/coverageCells'
 import { setBasemapCells } from './map/basemap'
 import { setNetworkCells } from './map/networkTiles'
@@ -238,6 +241,7 @@ import {
   removeTap,
   undoTap,
   type DayHikeDraft,
+  NETWORK_STILL_ARRIVING,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
 import { buildCourse, mileTicks } from './lib/dayHikeCourse'
@@ -260,10 +264,11 @@ import { DayHikePanel } from './chrome/DayHikePanel'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
-  fetchTrailGraphElevation,
-  fetchTrailGraphGeometry,
-  fetchTrailGraphProfile,
+  fetchTrailGraphElevationCells,
+  fetchTrailGraphGeometryCells,
+  fetchTrailGraphProfileCells,
 } from './lib/trailGraphData'
+import { useTrailGraph } from './lib/useTrailGraph'
 import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
@@ -632,6 +637,17 @@ function App() {
    * a chord across a switchback is a picture of a trail that does not exist.
    */
   const [dayHikeIndex, setDayHikeIndex] = useState<TrailGraphIndex | null>(null)
+  /**
+   * Where the builder's finger has been (#1257 stage 3): every tap and every
+   * stroke since it opened, as runs of [lon, lat]. A tap in a cell this phone
+   * has not loaded is how that cell gets asked for - the graph is cells now,
+   * and the shell cannot know which ones a hiker will want before they say
+   * so. Cleared wherever the draft is (the three `setDayHike(null)` sites);
+   * the cells they brought in stay merged.
+   */
+  const [graphAnchors, setGraphAnchors] = useState<
+    ReadonlyArray<ReadonlyArray<readonly [number, number]>>
+  >([])
   /**
    * `trail_graph_profile.json` - the SHAPE of the ground along each edge
    * (#1045), held beside the index rather than attached to it.
@@ -1045,9 +1061,7 @@ function App() {
     trailsUrl,
     overviewTrailsUrl,
     networkOverviewUrl,
-    graphIndex,
-    trailNetwork,
-    retryTrailNetwork,
+    trailFetchSettled,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
@@ -1322,6 +1336,23 @@ function App() {
   // steward's lines held back - and then the stretch is the basemap alone,
   // exactly as before.
   const networkCellIndex = useCellIndex(NETWORK_CELLS)
+  /**
+   * The junction graph's cells (#1257 stage 3, lib/coverageCells.ts's
+   * GRAPH_CELLS), with the two facts the Plan door reads beside the index:
+   * whether it has answered at all, and whether signal would change the
+   * answer. `graphAttempt` is the door's "Try again": bumping it re-asks the
+   * bucket for the index and, in lib/useTrailGraph.ts, forgives every cell
+   * the bucket refused. The whole graph used to be one 78,595,556-byte
+   * launch fetch (2026-09-07) and the door opened when its parse finished;
+   * the index is 166,721 bytes on the same data, and the cells follow where
+   * the hiker is planning (`graphWanted`, below the fix).
+   */
+  const [graphAttempt, setGraphAttempt] = useState(0)
+  const retryTrailNetwork = useCallback(() => {
+    setGraphAttempt((current) => current + 1)
+  }, [])
+  const graphCellState = useCellIndexState(GRAPH_CELLS, graphAttempt)
+  const graphCellIndex = graphCellState.index
   const downloadRequests = useMemo(
     () => [
       ...catalogSheets
@@ -1757,6 +1788,110 @@ function App() {
   // recomputes everything keyed here - that is a changed input, and how often
   // it happens under canopy is #1100's unmeasured radius question.
   const fixMile = fix?.mile ?? null
+
+  /** The hike a card is showing: the unsaved review outranks the store's
+   *  open one - they cannot both be on screen, and the review is newer. */
+  const cardDayHike =
+    dayHikeReview ??
+    (dayHikeStore.openId !== null
+      ? (dayHikeStore.hikes.find((hike) => hike.id === dayHikeStore.openId) ?? null)
+      : null)
+  /** The saved hike being followed (#1041), or null. */
+  const followingHike =
+    followingId === null
+      ? null
+      : (dayHikeStore.hikes.find((hike) => hike.id === followingId) ?? null)
+
+  /**
+   * The graph cells under the planned hike (#1257 stage 3) - `stretchCells`'s
+   * walk along the centerline, against the graph's own index. Its own memo
+   * because the slice is thousands of vertices and the rest of `graphWanted`
+   * moves with every fix.
+   */
+  const graphHikeCells = useMemo(() => {
+    if (hike === null || trailIndex === null || graphCellIndex === null) return []
+    return cellsAlong(
+      graphCellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, graphCellIndex])
+
+  /**
+   * The cells a day hike could be wanted in, for lib/useTrailGraph.ts to
+   * load: under the planned hike, under the fix, under the camera once it is
+   * past the seam (below it a tap cannot land within 150 ft of anything, and
+   * the corridor view would otherwise ask for every cell it shows), under
+   * every tap and stroke in the builder, and under the ends of the hike a
+   * card is showing or the hiker is following - a saved hike re-resolves
+   * from its coordinates, so its cells are what it needs to resolve at all.
+   * Cells are never unloaded, so this only ever adds.
+   */
+  const graphWanted = useMemo(() => {
+    if (graphCellIndex === null) return []
+    const runs: Array<ReadonlyArray<readonly [number, number]>> = [...graphAnchors]
+    if (gps.status === 'located') runs.push([[gps.at.lon, gps.at.lat]])
+    if (camera !== null && camera.zoom >= POI_PIN_MIN_ZOOM) runs.push([camera.center])
+    for (const shown of [cardDayHike, followingHike]) {
+      if (shown !== null) runs.push(shown.segments.flat().map((end) => end.coord))
+    }
+    return [
+      ...graphHikeCells,
+      ...cellsAlong(graphCellIndex.cells, runs, STRETCH_MARGIN_KM),
+    ]
+  }, [
+    graphCellIndex,
+    graphHikeCells,
+    graphAnchors,
+    gps,
+    camera,
+    cardDayHike,
+    followingHike,
+  ])
+
+  const { graphIndex, graphMerged, trailNetwork } = useTrailGraph({
+    online,
+    // #1117's gate, kept: with signal the cells wait for the trail line's
+    // own launch fetch, exactly as the whole graph did.
+    gate: trailFetchSettled,
+    cellIndex: graphCellIndex,
+    cellIndexSettled: graphCellState.settled,
+    cellIndexUnreachable: graphCellState.unreachable,
+    wanted: graphWanted,
+    attempt: graphAttempt,
+  })
+
+  /**
+   * Whether the attached index (`dayHikeIndex`) was built from a smaller
+   * graph than the one merged now - a cell landed since. Its edges are a
+   * prefix of the merged graph's (lib/trailGraphData.ts's append-only
+   * merge), so nothing resolved against it is wrong; it just does not reach
+   * the new cell. The companion effect further down replaces it.
+   */
+  const dayHikeIndexStale =
+    dayHikeIndex !== null &&
+    graphIndex !== null &&
+    dayHikeIndex.graph.edges.length !== graphIndex.graph.edges.length
+
+  /**
+   * Whether a tap at `at` falls in a graph cell this phone has not merged
+   * yet - the difference between "still arriving" and "not on a trail",
+   * which lib/dayHikeDraft.ts keeps as two sentences for a reason. The cell
+   * whose own bounds hold the point is the one asked, not its neighbours
+   * within the seam margin: every edge within 3 km of a seam is filed in
+   * both cells (pipeline/cut_trail_graph.py), so the core cell answers for
+   * everything under a tap in it.
+   */
+  const graphCellPendingAt = useCallback(
+    (at: { lon: number; lat: number }): boolean => {
+      if (graphCellIndex === null) return false
+      const loaded = new Set((graphMerged?.cells ?? []).map((cell) => cell.name))
+      return cellsAt(graphCellIndex.cells, at.lon, at.lat).some(
+        (cell) => !loaded.has(cell.name),
+      )
+    },
+    [graphCellIndex, graphMerged],
+  )
 
   // The settled direction alone, for the same reason: the TRACKER holds its
   // identity below the quarter-mile threshold (lib/hikeDirection.ts), but a
@@ -2623,6 +2758,7 @@ function App() {
     // over the route builder describing a walk that no longer exists.
     setDayHikeReview(null)
     setDayHike(null)
+    setGraphAnchors([])
     setDayHikeDraftDate(null)
     // AND FOLLOWING, which is the fifth occupant of the routeSheet slot and
     // was missed when it was added (#1044 review). It outranks the route
@@ -2753,10 +2889,26 @@ function App() {
           if (tappedPoi !== null && toggleDayHikeStop(tappedPoi)) return
         }
 
-        const graphForTaps = dayHikeIndex ?? graphIndex
-        if (graphForTaps === null) return
+        // The tap asks for its cell whether or not it can be answered yet
+        // (#1257 stage 3): a cell this phone has not loaded is loaded because
+        // a finger landed in it, and nothing else knows to ask.
+        setGraphAnchors((current) => [...current, [[at.lon, at.lat]]])
+        // While the cell under the finger is still arriving, the honest
+        // answer is lib/dayHikeDraft.ts's "not yet" and never its "not on a
+        // trail": a bare index would say the first on its own, and an index
+        // holding every OTHER cell's lines would say the second.
+        const pending = graphCellPendingAt(at)
+        // An attached index behind the merged graph is still right about
+        // every edge it holds, so the card and the highlight keep it; taps go
+        // to the bare graph, which answers "not yet" until the companions
+        // catch up (`dayHikeIndexStale`).
+        const graphForTaps = dayHikeIndexStale ? graphIndex : (dayHikeIndex ?? graphIndex)
+        if (graphForTaps === null && !pending) return
         setDayHike((draft) => {
           if (draft === null) return draft
+          if (pending || graphForTaps === null) {
+            return { ...draft, refusal: NETWORK_STILL_ARRIVING }
+          }
           const tapped = tapAt(graphForTaps, draft, at)
           // #931: a tap that missed every trail may still have landed on
           // something the app DREW. `map/liveTopo.ts` puts roads, tracks and
@@ -2779,7 +2931,9 @@ function App() {
       dayHike,
       dayHikeReview,
       dayHikeIndex,
+      dayHikeIndexStale,
       graphIndex,
+      graphCellPendingAt,
       routeBuilder,
       map,
       toggleDayHikeStop,
@@ -2889,11 +3043,21 @@ function App() {
 
   const handleDayHikeStroke = useCallback(
     (stroke: Array<{ lon: number; lat: number }>) => {
-      const graphForTaps = dayHikeIndex ?? graphIndex
+      // The whole stroke is an anchor (#1257 stage 3): a line drawn into a
+      // cell this phone has not loaded asks for it, as a tap there would.
+      setGraphAnchors((current) => [
+        ...current,
+        stroke.map(({ lon, lat }) => [lon, lat] as const),
+      ])
+      const graphForTaps = dayHikeIndexStale ? graphIndex : (dayHikeIndex ?? graphIndex)
       if (graphForTaps === null) return
-      setDayHike(drawStroke(graphForTaps, stroke))
+      setDayHike(
+        stroke.some((at) => graphCellPendingAt(at))
+          ? { ...EMPTY_DRAFT, refusal: NETWORK_STILL_ARRIVING }
+          : drawStroke(graphForTaps, stroke),
+      )
     },
-    [dayHikeIndex, graphIndex],
+    [dayHikeIndex, dayHikeIndexStale, graphIndex, graphCellPendingAt],
   )
 
   /**
@@ -2926,6 +3090,7 @@ function App() {
   const handleDayHikeCancel = useCallback(() => {
     setDayHikeReview(null)
     setDayHike(null)
+    setGraphAnchors([])
     setDayHikeDraftDate(null)
     setDayHikeDrawMode(false)
     setDayHikeKind('planned')
@@ -3213,6 +3378,7 @@ function App() {
     })
     setDayHikeReview(null)
     setDayHike(null)
+    setGraphAnchors([])
     setDayHikeDraftDate(null)
     // The stops belong to the walk that just saved. Clearing them here as
     // well as on Cancel is what keeps the two exits symmetrical - a builder
@@ -3291,14 +3457,6 @@ function App() {
     })
   }, [])
 
-  /** The hike a card is showing: the unsaved review outranks the store's
-   *  open one - they cannot both be on screen, and the review is newer. */
-  const cardDayHike =
-    dayHikeReview ??
-    (dayHikeStore.openId !== null
-      ? (dayHikeStore.hikes.find((hike) => hike.id === dayHikeStore.openId) ?? null)
-      : null)
-
   // Derived once per state change, not per render, for dayHikeStatus's
   // reason: resolution runs the router per tapped pair and App re-renders
   // on the GPS clock.
@@ -3326,11 +3484,6 @@ function App() {
    * chord can point the opposite way to the trail, which is what
    * lib/dayHikeTurns.ts withholds a turn's side rather than guess at.
    */
-  const followingHike =
-    followingId === null
-      ? null
-      : (dayHikeStore.hikes.find((hike) => hike.id === followingId) ?? null)
-
   const followResolution = useMemo(() => {
     if (followingHike === null) return null
     const graph = dayHikeIndex ?? graphIndex
@@ -3722,38 +3875,55 @@ function App() {
   // keep cancelling the very fetch that would stop the refusals, and the
   // refusals are what makes somebody tap again. `wantsGraphGeometry` flips
   // once, when a door opens.
+  //
+  // PER CELL SINCE #1257 STAGE 3, AND AGAIN WHEN THE GRAPH GROWS. The
+  // companions are fetched for every merged cell at once and aligned to the
+  // merged graph's edges (lib/trailGraphData.ts), so a cell landing after
+  // the attached index was built leaves that index BEHIND - still right
+  // about every edge it holds, since the merge is append-only, and missing
+  // the new cell's. The effect replaces it rather than clearing it first, so
+  // a followed walk keeps its vertices while the new cell's lines arrive.
   const wantsGraphGeometry =
     dayHike !== null || cardDayHike !== null || followingId !== null
   useEffect(() => {
-    if (!wantsGraphGeometry || graphIndex === null || dayHikeIndex !== null) {
-      return
-    }
+    if (!wantsGraphGeometry || graphIndex === null || graphMerged === null) return
+    if (dayHikeIndex !== null && !dayHikeIndexStale) return
 
     const controller = new AbortController()
     let wanted = true
 
-    const edgeCount = graphIndex.graph.edges.length
     void Promise.all([
       // `online` is passed rather than assumed (#1050): offline both read the
       // store, which is what makes a drawn or followed walk work at a
       // trailhead with no signal instead of only at the hostel.
-      fetchTrailGraphGeometry(edgeCount, controller.signal, online),
-      fetchTrailGraphElevation(edgeCount, controller.signal, online),
+      fetchTrailGraphGeometryCells(graphMerged, controller.signal, online),
+      fetchTrailGraphElevationCells(graphMerged, controller.signal, online),
     ]).then(([geometry, elevation]) => {
       if (!wanted) return
       let next = graphIndex
       if (geometry !== null) next = attachTrailGraphGeometry(next, geometry)
       if (elevation !== null) next = attachTrailGraphElevation(next, elevation)
-      // Unchanged means both 404'd - leave dayHikeIndex null so the builder
-      // keeps routing on the graph it already has.
+      // Unchanged means neither half is on this phone for some merged cell -
+      // leave dayHikeIndex null so the builder keeps routing on the graph it
+      // already has. An index built before the graph grew goes too: a
+      // highlight drawn from it would stop at the old cells' edge without
+      // saying so, and null is the state every surface below already says.
       if (next !== graphIndex) setDayHikeIndex(next)
+      else if (dayHikeIndexStale) setDayHikeIndex(null)
     })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [wantsGraphGeometry, graphIndex, dayHikeIndex, online])
+  }, [
+    wantsGraphGeometry,
+    graphIndex,
+    graphMerged,
+    dayHikeIndex,
+    dayHikeIndexStale,
+    online,
+  ])
 
   /**
    * The dense per-edge profile, fetched ONLY once a walk is being followed
@@ -3771,27 +3941,43 @@ function App() {
    * aborts the very fetch that would let the ribbon draw.
    */
   const wantsGraphProfile = followingId !== null
+  // Behind the merged graph the way `dayHikeIndexStale` is, and refetched
+  // the same way. lib/walkProfile.ts answers null for a walk that reaches
+  // past the end of a profile that is, so the ribbon waits rather than
+  // draws short.
+  const graphProfileStale =
+    graphProfile !== null &&
+    graphIndex !== null &&
+    graphProfile.length !== graphIndex.graph.edges.length
   useEffect(() => {
-    if (!wantsGraphProfile || graphIndex === null || graphProfile !== null) return
+    if (!wantsGraphProfile || graphIndex === null || graphMerged === null) return
+    if (graphProfile !== null && !graphProfileStale) return
 
     const controller = new AbortController()
     let wanted = true
 
-    void fetchTrailGraphProfile(
-      graphIndex.graph.edges.length,
-      controller.signal,
-      online,
-    ).then((profile) => {
-      // Null is ordinary and its consequence is #1041's: no ribbon on this
-      // walk, which is the honest state rather than a missing feature.
-      if (wanted && profile !== null) setGraphProfile(profile)
-    })
+    void fetchTrailGraphProfileCells(graphMerged, controller.signal, online).then(
+      (profile) => {
+        if (!wanted) return
+        // Null is ordinary and its consequence is #1041's: no ribbon on this
+        // walk, which is the honest state rather than a missing feature.
+        if (profile !== null) setGraphProfile(profile)
+        else if (graphProfileStale) setGraphProfile(null)
+      },
+    )
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [wantsGraphProfile, graphIndex, graphProfile, online])
+  }, [
+    wantsGraphProfile,
+    graphIndex,
+    graphMerged,
+    graphProfile,
+    graphProfileStale,
+    online,
+  ])
 
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to

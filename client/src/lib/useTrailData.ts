@@ -13,7 +13,7 @@
 // calls about what this hook reports, and they stay where the rest of that
 // reasoning is.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DATA_CONFIGURED, TRAILS_KEY } from './config'
 import type { TrailIndex } from './trailPosition'
 import { packPois, resolveTrailIndex } from './trailIndexBuild'
@@ -32,13 +32,6 @@ import {
   loadNetworkOverview,
   type NearbyTrailsAnswer,
 } from './nearbyTrailData'
-import {
-  isSettledAbsence,
-  loadTrailGraph,
-  type TrailNetworkAbsence,
-  type TrailNetworkState,
-} from './trailGraphData'
-import type { TrailGraphIndex } from './trailGraph'
 import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
 import { NO_TOMBSTONES, type Tombstones } from './poiIdentity'
@@ -202,35 +195,13 @@ export interface TrailData {
    * is what crashed every phone on 2026-09-07 (#1254).
    */
   networkOverviewUrl: string | null
-  /** The junction graph's routing half, indexed - or null while this phone
-   *  has not got one, which PlanKindSheet reads as "no day hikes yet". The
-   *  two heavy halves are NOT here: the edge vertices and the per-edge climb
-   *  (#1011) are fetched lazily when the builder opens
-   *  (lib/trailGraphData.fetchTrailGraphGeometry and
-   *  fetchTrailGraphElevation), because with the whole A.T. in the graph they
-   *  are far heavier than the routing half and a launch that never opens the
-   *  builder should not pay for either. */
-  graphIndex: TrailGraphIndex | null
   /**
-   * The same fact with its REASON attached, for the one surface that speaks
-   * to a hiker about it (#1049).
-   *
-   * `graphIndex` above answers "can the router route", which is what almost
-   * everything needs. This answers "what do I tell somebody who just asked
-   * for a day hike", and those are different questions: four of the five ways
-   * to have no graph never resolve by waiting, and the door used to promise
-   * all of them a data sync.
+   * Whether the trail line's own launch fetch has settled (#1117) - the gate
+   * the junction graph's cells wait behind with signal (lib/useTrailGraph.ts,
+   * which App.tsx feeds this). SETTLED, not "succeeded": see the launch
+   * effect's `finally`.
    */
-  trailNetwork: TrailNetworkState
-  /**
-   * Ask the bucket for the graph again.
-   *
-   * A no-op unless the last answer was one a connection could cure - see
-   * `isSettledAbsence`. A 404 re-requested on a button press is a hammer on a
-   * bucket that has already answered, and the sheet only offers the button
-   * where it is honest to.
-   */
-  retryTrailNetwork: () => void
+  trailFetchSettled: boolean
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
   haveTrailLines: boolean
@@ -392,14 +363,6 @@ export function useTrailData(
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
-  const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
-  /** Why there is no graph, or null while nothing has answered yet. The two
-   *  are different on screen: "looking" is not "there isn't one". */
-  const [graphAbsence, setGraphAbsence] = useState<TrailNetworkAbsence | null>(null)
-  /** Bumped by `retryTrailNetwork` to make the effect below run again. A
-   *  counter rather than a flag because two retries in a row must both fire,
-   *  and re-setting a flag to the same value would not. */
-  const [graphAttempt, setGraphAttempt] = useState(0)
   /** Whether the phone has been asked whether it holds trail lines yet.
    *  Distinct from holding none: for the first tick of every launch those two
    *  look the same, and one of them is a reason to spend a hiker's data. */
@@ -845,82 +808,11 @@ export function useTrailData(
    */
   const networkOverview = useVerifiedNetworkArtifact(loadNetworkOverview, online, true)
 
-  // The junction graph's routing half, on the nearby-lines pattern above -
-  // once, not once per reconnection, with the state itself as the guard. No
-  // object URL to revoke: fetchTrailGraph returns a parsed index.
-  useEffect(() => {
-    if (graphIndex !== null) return
-    if (!DATA_CONFIGURED) {
-      setGraphAbsence('unconfigured')
-      return
-    }
-    // OFFLINE NO LONGER MEANS ABSENT (#1050). Until the graph was stored,
-    // this branch set 'unreachable' and returned: a hiker at a trailhead with
-    // no signal got a builder that refused every tap, having downloaded the
-    // corridor at home the night before. `loadTrailGraph` now reads the store
-    // when there is no connection, and 'unreachable' is what it answers when
-    // the store is empty too - which is the same sentence, arrived at only
-    // when it is true.
-    //
-    // Behind the trail line (#1117), and ONLINE ONLY - which is the same
-    // asymmetry the nearby-lines effect above spells out, arrived at here by
-    // #1050 rather than by design. What #1117's gate buys `trails.geojson` is
-    // the pipe, and offline there is no 1.2 MB fetch to defer: there is a
-    // store read, which competes with nothing. Gating it unconditionally
-    // would have handed back exactly the trailhead #1050 exists to fix, one
-    // effect further down. 'unconfigured' is still recorded above, on the
-    // tick it becomes true, because that is an answer the network strip
-    // renders rather than a fetch.
-    if (online && !trailFetchSettled) return
-    // A settled absence is not re-requested. Without this the reason below
-    // becoming a dependency would put the app back on the bucket every time
-    // React re-ran the effect, for an answer that cannot have changed.
-    if (graphAbsence !== null && isSettledAbsence(graphAbsence)) return
-
-    const controller = new AbortController()
-    let wanted = true
-
-    void loadTrailGraph(controller.signal, online).then((load) => {
-      if (!wanted) return
-      if (load.kind === 'graph') {
-        // A VALID GRAPH IS NOT THE SAME AS A ROUTABLE ONE (#1044 review). An
-        // empty one is a real published state - a ring with no maintained
-        // trail in it - and the loader accepts it on purpose. Treating it as
-        // "ready" opened the day-hike door onto a builder that could answer
-        // no tap, which reads as a broken app rather than as empty ground.
-        if (load.index.graph.edges.length === 0) {
-          setGraphAbsence('empty')
-          return
-        }
-        setGraphIndex(load.index)
-        setGraphAbsence(null)
-        return
-      }
-      setGraphAbsence(load.because)
-    })
-
-    return () => {
-      wanted = false
-      controller.abort()
-    }
-  }, [online, graphIndex, graphAbsence, graphAttempt, trailFetchSettled])
-
-  const retryTrailNetwork = useCallback(() => {
-    setGraphAttempt((attempt) => attempt + 1)
-  }, [])
-
-  /**
-   * What to SAY about the graph, as against whether there is one.
-   *
-   * Memoised on the two facts it is built from rather than rebuilt per render:
-   * it is a prop, and a fresh object every render is a re-render for whatever
-   * holds it.
-   */
-  const trailNetwork = useMemo<TrailNetworkState>(() => {
-    if (graphIndex !== null) return { kind: 'ready' }
-    if (graphAbsence === null) return { kind: 'looking' }
-    return { kind: 'absent', because: graphAbsence }
-  }, [graphIndex, graphAbsence])
+  // The junction graph is no longer loaded here (#1257 stage 3): it is cells
+  // now, and which cells is a question about where the hiker is planning,
+  // which this hook does not know. lib/useTrailGraph.ts loads them, behind
+  // `trailFetchSettled` below with signal - the same #1117 gate the whole
+  // graph waited behind.
 
   const ensure = useCallback(async () => {
     setError(null)
@@ -966,9 +858,7 @@ export function useTrailData(
     // effect above), not a consumer's - the map draws a stored copy and a
     // fresh one identically.
     networkOverviewUrl: networkOverview?.url ?? null,
-    graphIndex,
-    trailNetwork,
-    retryTrailNetwork,
+    trailFetchSettled,
     trailsUrl,
     haveTrailLines,
     error,

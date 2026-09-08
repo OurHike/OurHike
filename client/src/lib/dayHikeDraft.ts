@@ -83,10 +83,12 @@ export const OFF_NETWORK_REFUSAL =
 /**
  * The other thing a tap can be answered with, and it is NOT a refusal (#1093).
  *
- * The routing artifact (`trail_graph.json` - nodes, lengths, attribution)
- * arrives at launch; the lines themselves (`trail_graph_geometry.json`) are
- * fetched only when this builder opens, because they are much the heavier
- * half. In between, this phone knows the shape of the network and not where
+ * The routing half of a cell (`trail_graph_cell_<name>.json` - nodes,
+ * lengths, attribution; one 1° cell at a time since #1257 stage 3) arrives
+ * as the cell is wanted; the lines themselves
+ * (`trail_graph_geometry_cell_<name>.json`) are fetched only when this
+ * builder opens, because they are much the heavier half. In between, this
+ * phone knows the shape of the network and not where
  * any of it runs, and `nearestPointOnGraph` declines every tap rather than
  * measuring it against the straight chord between two junctions - measured on
  * the published artifact at 11.3% of on-trail taps refused and 19.7% placed on
@@ -105,16 +107,20 @@ export const OFF_NETWORK_REFUSAL =
  * the window this sentence exists for, and false for the one case where the
  * geometry artifact never arrives at all - a release that published the
  * routing half without the lines, a hash the manifest disagrees with, an edge
- * count that does not match. `fetchTrailGraphGeometry` collapses all of those
- * to `null`, so nothing here can tell them apart from a fetch still in
+ * count that does not match. `fetchTrailGraphGeometryCells` collapses all of
+ * those to `null`, so nothing here can tell them apart from a fetch still in
  * flight; lib/trailGraphData.ts's own header records that collapse as the bug
  * #1049 fixed for the ROUTING half and left standing for this one. A hiker in
  * that state is told to wait for something that is not coming.
  *
  * It is still the better sentence than the one it replaced, which told them
  * their finger was in the wrong place. Telling the two apart needs the
- * geometry fetch to carry its reason the way `loadTrailGraph` now does, which
- * is a change to a different module than this one.
+ * geometry fetch to carry its reason the way `loadGraphShard` now does, which
+ * is a change to a different module than this one. Since #1257 stage 3 the
+ * same sentence also covers a tap in a cell whose routing half has not
+ * landed yet - App.tsx asks that before it asks this module - and a cell
+ * the bucket refused for good, which the console names and the door does
+ * not.
  */
 export const NETWORK_STILL_ARRIVING =
   "OurHike hasn't got this area's trail lines yet, so it can't tell what you tapped. Try again in a moment."

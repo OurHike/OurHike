@@ -56,11 +56,12 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
     storedGraphBytes(),
   ])
 
-  // The four graph artifacts as ONE row, because they are one capability to a
-  // hiker: either day hikes work without a signal or they do not, and a row
-  // per file would be four numbers answering a question nobody asked. Summed
-  // rather than counted for the same reason - what a hiker wants to know is
-  // what it is costing them.
+  // Every graph cell half this phone holds as ONE row (#1257 stage 3 - four
+  // halves per 1° cell, lib/trailGraphStore.ts), because they are one
+  // capability to a hiker: either day hikes work without a signal or they
+  // do not, and a row per file would be dozens of numbers answering a
+  // question nobody asked. Summed rather than counted for the same reason -
+  // what a hiker wants to know is what it is costing them.
   const graphBytes = Object.values(graph).reduce((sum, bytes) => sum + bytes, 0)
 
   // lib/nearbyTrailData.ts's record shape (`{ bytes: Blob, hash: string }`),

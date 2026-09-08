@@ -105,7 +105,7 @@ never interleave. All are dispatch-only except `publish-conditions.yml`.
 | `build-dem.yml` | DEM archive → `build`, `publish` |
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
-| `publish-conditions.yml` | closures and warnings, on a daily schedule as well as dispatch |
+| `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
 
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
@@ -212,12 +212,12 @@ gathered rather than restated.
 
 | When | | |
 |---|---|---|
-| `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the only one that is not daily or weekly, because its worst case is a production publish expiring unapproved at 30 days |
+| `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
 | `10 8 * * *` | daily | `schema-drift.yml` |
-| `40 8 * * *` | daily | `publish-conditions.yml` |
+| `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |

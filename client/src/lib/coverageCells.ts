@@ -42,6 +42,7 @@ import {
   DATA_CONFIGURED,
   dataUrl,
   NEARBY_TRAILS_CELLS_KEY,
+  TRAIL_GRAPH_CELLS_KEY,
 } from './config'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
@@ -120,6 +121,19 @@ export const NETWORK_CELLS: CellFamily = {
   packagePrefix: 'ourhike:network-cell:',
   contextPackageKey: 'ourhike:network-context',
   indexStoreKey: 'ourhike:network-cells-index',
+}
+
+/** The junction graph in the same cells (#1257 stage 3, config.ts's
+ *  TRAIL_GRAPH_CELLS_KEY) - JSON shards a phone parses rather than archives it
+ *  reads by range, so the two package keys here name nothing: a graph cell is
+ *  kept by lib/trailGraphStore.ts under its own keys, never by
+ *  lib/archiveStore.ts. The index, the geometry and `cellsAlong` are the same
+ *  as every other family's, which is the point of it being one. */
+export const GRAPH_CELLS: CellFamily = {
+  indexKey: TRAIL_GRAPH_CELLS_KEY,
+  packagePrefix: 'ourhike:graph-cell:',
+  contextPackageKey: 'ourhike:graph-context',
+  indexStoreKey: 'ourhike:graph-cells-index',
 }
 
 /** The basemap family's prefix, kept under its old name for the callers and
@@ -512,31 +526,64 @@ export async function fetchCellIndex({
   signal,
   family = BASEMAP_CELLS,
 }: { signal?: AbortSignal; family?: CellFamily } = {}): Promise<CellIndex | null> {
-  if (!DATA_CONFIGURED) return null
+  return (await fetchCellIndexOutcome({ signal, family })).index
+}
+
+/**
+ * The same fetch, saying WHY there is no index when there is none: whether
+ * the bucket answered (a release without this family's cells, or bytes that
+ * are not what was published - settled, nothing on this phone changes it) or
+ * the request never completed (no signal, a refused origin - the one absence
+ * a connection cures). The junction graph's door needs the difference
+ * (lib/useTrailGraph.ts): "needs a connection" over a release that has no
+ * cells is #1048's bug one surface over.
+ */
+export async function fetchCellIndexOutcome({
+  signal,
+  family = BASEMAP_CELLS,
+}: { signal?: AbortSignal; family?: CellFamily } = {}): Promise<{
+  index: CellIndex | null
+  unreachable: boolean
+}> {
+  if (!DATA_CONFIGURED) return { index: null, unreachable: false }
 
   try {
     const expected = await publishedHash(family.indexKey, { signal })
     const response = await fetch(dataUrl(family.indexKey), { signal })
-    if (!response.ok) return null
+    if (!response.ok) return { index: null, unreachable: false }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    if (expected !== null && (await sha256Of(bytes)) !== expected) return null
+    if (expected !== null && (await sha256Of(bytes)) !== expected) {
+      return { index: null, unreachable: false }
+    }
 
     const raw: unknown = JSON.parse(new TextDecoder().decode(bytes))
     const index = parseCellIndex(raw)
-    if (index === null) return null
+    if (index === null) return { index: null, unreachable: false }
 
     await set(family.indexStoreKey, {
       index: raw,
       hash: expected,
     } satisfies StoredCellIndex)
-    return index
+    return { index, unreachable: false }
   } catch (error) {
     // An abort is the caller unmounting, not a missing index - the same
     // matching, and the same reason for it, as lib/dataManifest.ts.
     if ((error as { name?: string } | null)?.name === 'AbortError') throw error
-    return null
+    return { index: null, unreachable: true }
   }
+}
+
+/** What {@link useCellIndexState} knows about one family's index. */
+export interface CellIndexState {
+  index: CellIndex | null
+  /** Whether the store has answered and, with signal, the bucket has too -
+   *  before this, a null index is "not asked yet", not "there is none". */
+  settled: boolean
+  /** Whether the reason there is no index is one a connection would cure:
+   *  no signal, or a fetch that never completed. False for a bucket that
+   *  answered "no such index". */
+  unreachable: boolean
 }
 
 /**
@@ -548,13 +595,32 @@ export async function fetchCellIndex({
  * index with last month's.
  */
 export function useCellIndex(family: CellFamily = BASEMAP_CELLS): CellIndex | null {
+  return useCellIndexState(family).index
+}
+
+/**
+ * {@link useCellIndex} with its two other answers: whether it has answered at
+ * all, and whether a connection would change the answer. `attempt` re-asks
+ * the bucket when bumped - a "Try again" control's handle.
+ */
+export function useCellIndexState(
+  family: CellFamily = BASEMAP_CELLS,
+  attempt = 0,
+): CellIndexState {
   const [index, setIndex] = useState<CellIndex | null>(null)
+  const [storeRead, setStoreRead] = useState(false)
+  const [fetched, setFetched] = useState<{ done: boolean; unreachable: boolean }>({
+    done: false,
+    unreachable: false,
+  })
   const online = useOnline()
 
   useEffect(() => {
     let wanted = true
     void readStoredCellIndex(family).then((stored) => {
-      if (wanted && stored !== null) setIndex((current) => current ?? stored)
+      if (!wanted) return
+      if (stored !== null) setIndex((current) => current ?? stored)
+      setStoreRead(true)
     })
     return () => {
       wanted = false
@@ -569,19 +635,27 @@ export function useCellIndex(family: CellFamily = BASEMAP_CELLS): CellIndex | nu
 
     const controller = new AbortController()
     let wanted = true
-    fetchCellIndex({ signal: controller.signal, family })
-      .then((fetched) => {
-        if (wanted && fetched !== null) setIndex(fetched)
+    setFetched({ done: false, unreachable: false })
+    fetchCellIndexOutcome({ signal: controller.signal, family })
+      .then((outcome) => {
+        if (!wanted) return
+        if (outcome.index !== null) setIndex(outcome.index)
+        setFetched({ done: true, unreachable: outcome.unreachable })
       })
       .catch(() => {
-        // The abort path; fetchCellIndex resolves null on everything else.
+        // The abort path; fetchCellIndexOutcome answers everything else.
       })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [online, family])
+  }, [online, family, attempt])
 
-  return index
+  // Offline the store is the whole answer; with signal the bucket's word is
+  // waited for, so a phone with an old index stored is not told "no cells"
+  // in the seconds before this release's list arrives.
+  const settled = storeRead && (!online || !DATA_CONFIGURED || fetched.done)
+  const unreachable = index === null && settled && (!online || fetched.unreachable)
+  return { index, settled, unreachable }
 }

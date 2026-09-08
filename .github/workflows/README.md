@@ -108,8 +108,12 @@ never interleave. All are dispatch-only except `publish-conditions.yml`.
 | `publish-conditions.yml` | closures and warnings, on a daily schedule as well as dispatch |
 
 `publish-vector-data.yml` and `migrate.yml`'s production job both run under the
-`production` environment, which is what makes RELEASING.md §12 — only the
-maintainer ships — a GitHub setting rather than a habit.
+`production` environment whenever they will actually write, which is what
+makes RELEASING.md §12 — only the maintainer ships — a GitHub setting rather
+than a habit. `publish-vector-data.yml`'s job runs ungated when it cannot
+write at all — a dry run, or a ledger-regeneration run that never publishes
+(#1262) — since gating a run that structurally cannot ship anything is
+friction rather than safety.
 
 ### Watches a live system
 

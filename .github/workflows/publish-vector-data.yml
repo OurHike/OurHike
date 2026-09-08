@@ -74,23 +74,25 @@ on:
 # WHAT THAT COSTS A DISPATCHED RUN, WHICH IS NOT OBVIOUS FROM HERE. Concurrency
 # groups coalesce rather than queue - one pending entrant, and a newer pending
 # run cancels the older (publish-conditions.yml's own header spells the
-# mechanism out, for its two legs). Every job in this workflow runs under the
-# `production` environment, so a dispatch waits in `pending` until a human
-# approves it - and `publish-conditions.yml` is on an hourly cron into this
-# same group. So a run left un-approved is cancelled by the next bake, however
-# innocent it was: a dry run with `publish: false` dies exactly as a real
-# publish would.
+# mechanism out, for its two legs). A run that will actually write parks in
+# `pending` under the `production` environment until a human approves it (see
+# the job's `environment:` below) - and `publish-conditions.yml` is on an
+# hourly cron into this same group. So a real publish left un-approved is
+# cancelled by the next bake.
 #
-# Measured 2026-08-19: run 32294671249 queued 19:44:16Z with `publish: false`,
-# sat pending awaiting approval, and was cancelled 19:56:39Z - one second after
-# the hourly bake queued at 19:56:38Z. Nothing reported a cause.
+# Measured 2026-08-19, before #1262: run 32294671249 queued 19:44:16Z with
+# `publish: false`, sat pending awaiting approval, and was cancelled
+# 19:56:39Z - one second after the hourly bake queued at 19:56:38Z. Nothing
+# reported a cause. That run was a dry run - it uploaded nothing whether it
+# lived or died - which is exactly the case #1262 fixed: a dispatch that
+# cannot write no longer asks for approval at all, so it no longer has an
+# hour to lose. A DISPATCH THAT WILL WRITE STILL CAN LOSE ITS HOUR - the trap
+# is unchanged for a real publish, and remains open as #838 finding 1.
 #
-# PRACTICAL CONSEQUENCE: approve a dispatch within the hour or re-dispatch it.
-# Once a job actually starts it is safe - `cancel-in-progress: false` means the
-# bake queues behind it rather than killing it. The structural fix (a run that
-# uploads nothing should not need the production environment at all) is
-# #838 - v3: shipping anything takes thirty workflows and a maintainer who
-# remembers all of them.
+# PRACTICAL CONSEQUENCE, for a run that will write: approve it within the
+# hour or re-dispatch it. Once a job actually starts it is safe -
+# `cancel-in-progress: false` means the bake queues behind it rather than
+# killing it.
 concurrency:
   group: publish-data
   cancel-in-progress: false
@@ -106,7 +108,25 @@ jobs:
     # reads those paths back, so the two only agree on one filesystem. Splitting
     # them across jobs would work only as long as the runner's checkout path
     # never changed - a trap rather than a design.
-    environment: production
+    #
+    # GATED ONLY WHEN THE RUN CAN ACTUALLY WRITE (#1262 - a dry run that
+    # uploads nothing still needed a production approval). This is deliberately
+    # the SAME predicate as "Publish to R2"'s own `if:` below, spelled the same
+    # way, rather than a second one that happens to agree today -
+    # test_the_environment_gate_mirrors_the_write_condition in
+    # test_publish_dry_run_gate.py fails if the two ever diverge.
+    #
+    # `no-write` names no configured environment and does not need to become
+    # one: referencing an environment that does not exist auto-creates it with
+    # no protection rules, and a job naming an environment with none runs
+    # immediately rather than waiting on a reviewer -
+    # test_repository_protections.py's test_the_production_environment_asks_a_human
+    # already depends on that exact behaviour for its own failure mode. Every
+    # run that reaches "Publish to R2" still names `production` and still
+    # waits - `data_environment: ua` included, since ua/production there is
+    # the publish TARGET (features/DATA_ENVIRONMENTS.md), not this GitHub
+    # environment, and only the write predicate below decides who is gated.
+    environment: ${{ (inputs.publish && !inputs.regenerate_identity_ledger) && 'production' || 'no-write' }}
     # Raised from 60 when photos were added, because the old ceiling no longer
     # fit and the failure mode is bad: a timeout kills a release mid-run, and
     # the first thing publish.py uploads is photos, so a half-finished publish
@@ -907,6 +927,11 @@ jobs:
       # a run would publish POIs under ids whose diff no human has read - the
       # failure #671 built the ledger to make impossible - so the two inputs are
       # mutually exclusive here rather than merely discouraged in the form.
+      #
+      # THIS EXACT CONDITION IS ALSO THE JOB'S `environment:` PREDICATE, above
+      # (#1262). Whoever changes this line on purpose has to change that one
+      # too - test_publish_dry_run_gate.py checks the two stay textually
+      # identical rather than merely equivalent today.
       - name: Publish to R2
         id: publish
         if: ${{ inputs.publish && !inputs.regenerate_identity_ledger }}

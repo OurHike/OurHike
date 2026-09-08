@@ -1,15 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set } from 'idb-keyval'
 import {
+  BASEMAP_CELLS,
   CELL_INDEX_STORE_KEY,
+  cellDownloadRequests,
   cellPackageKey,
   cellsAlong,
   cellsAt,
   cellsForTile,
   CONTEXT_PACKAGE_KEY,
   fetchCellIndex,
+  NETWORK_CELLS,
   parseCellIndex,
   priceStretch,
+  priceStretches,
   readStoredCellIndex,
   seamEdges,
   tileBounds,
@@ -19,7 +23,7 @@ import {
 } from './coverageCells'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
-import { BASEMAP_CELLS_KEY } from './config'
+import { BASEMAP_CELLS_KEY, NEARBY_TRAILS_CELLS_KEY } from './config'
 
 // The hiking sheet in pieces (#557/#558). What is under test is the client's
 // half of the contract with pipeline/cut_cells.py: that a tile the cutter put
@@ -448,5 +452,171 @@ describe('fetchCellIndex', () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
 
     expect(await fetchCellIndex()).toBeNull()
+  })
+})
+
+describe('a second family of cells (#1257 stage 2)', () => {
+  // The network's tiles, cut on the same graticule: the same geometry, a
+  // different index, and different keys for the same square of ground.
+  const NETWORK_PUBLISHED = {
+    cell_degrees: 1.0,
+    seam_margin_km: 3.0,
+    context_zoom: 8,
+    context: null,
+    cells: [
+      {
+        name: 'n34w085',
+        key: 'nearby_trails_cell_n34w085.pmtiles',
+        bounds: [-85, 34, -84, 35],
+      },
+      {
+        name: 'n34w084',
+        key: 'nearby_trails_cell_n34w084.pmtiles',
+        bounds: [-84, 34, -83, 35],
+      },
+    ],
+  }
+  const NETWORK_INDEX = parseCellIndex(NETWORK_PUBLISHED) as CellIndex
+
+  it('keeps the two families under different keys for the same ground', () => {
+    // Both hold n34w085. One key space would let the basemap's Georgia
+    // overwrite the network's, and a marker for one read as the other's.
+    expect(cellPackageKey('n34w085', NETWORK_CELLS)).not.toBe(cellPackageKey('n34w085'))
+    expect(cellPackageKey('n34w085', BASEMAP_CELLS)).toBe(cellPackageKey('n34w085'))
+    expect(NETWORK_CELLS.contextPackageKey).not.toBe(BASEMAP_CELLS.contextPackageKey)
+    expect(NETWORK_CELLS.indexStoreKey).not.toBe(BASEMAP_CELLS.indexStoreKey)
+    expect(NETWORK_CELLS.indexKey).toBe(NEARBY_TRAILS_CELLS_KEY)
+  })
+
+  it('registers a family as download requests - every cell, the context if there is one, nothing for no index', () => {
+    expect(cellDownloadRequests(NETWORK_INDEX, NETWORK_CELLS)).toEqual([
+      {
+        packageKey: cellPackageKey('n34w085', NETWORK_CELLS),
+        url: 'https://data.test/nearby_trails_cell_n34w085.pmtiles',
+        artifactKey: 'nearby_trails_cell_n34w085.pmtiles',
+      },
+      {
+        packageKey: cellPackageKey('n34w084', NETWORK_CELLS),
+        url: 'https://data.test/nearby_trails_cell_n34w084.pmtiles',
+        artifactKey: 'nearby_trails_cell_n34w084.pmtiles',
+      },
+    ])
+    expect(cellDownloadRequests(INDEX, BASEMAP_CELLS).at(-1)).toEqual({
+      packageKey: CONTEXT_PACKAGE_KEY,
+      url: 'https://data.test/at_basemap_context.pmtiles',
+      artifactKey: 'at_basemap_context.pmtiles',
+    })
+    expect(cellDownloadRequests(null, NETWORK_CELLS)).toEqual([])
+  })
+
+  it('fetches a family’s own index and stores it under its own record', async () => {
+    vi.mocked(publishedHash).mockResolvedValue('feed')
+    vi.mocked(sha256Of).mockResolvedValue('feed')
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: () =>
+        Promise.resolve(
+          new TextEncoder().encode(JSON.stringify(NETWORK_PUBLISHED)).buffer,
+        ),
+    } as unknown as Response)
+
+    const fetched = await fetchCellIndex({ family: NETWORK_CELLS })
+
+    expect(names(fetched?.cells ?? [])).toEqual(['n34w085', 'n34w084'])
+    expect(fetched?.context).toBeNull()
+    expect(publishedHash).toHaveBeenCalledWith(NEARBY_TRAILS_CELLS_KEY, expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://data.test/${NEARBY_TRAILS_CELLS_KEY}`,
+      expect.anything(),
+    )
+    expect(set).toHaveBeenCalledWith(NETWORK_CELLS.indexStoreKey, {
+      index: NETWORK_PUBLISHED,
+      hash: 'feed',
+    })
+  })
+
+  it('reads a family’s stored index from its own record', async () => {
+    vi.mocked(get).mockImplementation((key) =>
+      Promise.resolve(
+        key === NETWORK_CELLS.indexStoreKey
+          ? { index: NETWORK_PUBLISHED, hash: null }
+          : undefined,
+      ),
+    )
+
+    expect(names((await readStoredCellIndex(NETWORK_CELLS))?.cells ?? [])).toEqual([
+      'n34w085',
+      'n34w084',
+    ])
+    expect(await readStoredCellIndex()).toBeNull()
+  })
+
+  describe('priceStretches - one price for both families', () => {
+    const SIZES = {
+      'at_basemap_cell_n34w085.pmtiles': 9_000_000,
+      'at_basemap_cell_n34w084.pmtiles': 7_000_000,
+      'at_basemap_context.pmtiles': 5_710_000,
+      'nearby_trails_cell_n34w085.pmtiles': 1_468_402,
+      'nearby_trails_cell_n34w084.pmtiles': 87_729,
+    }
+    const [NET_N34W085, NET_N34W084] = NETWORK_INDEX.cells as [CoverageCell, CoverageCell]
+    const parts = (basemap: CoverageCell[], network: CoverageCell[]) => [
+      { cells: basemap, context: INDEX.context, family: BASEMAP_CELLS },
+      { cells: network, context: NETWORK_INDEX.context, family: NETWORK_CELLS },
+    ]
+
+    it('counts a square of ground once, whatever is published for it', () => {
+      // Two archives over n34w085 and two over n34w084 are two pieces to a
+      // hiker, not four - and the bytes are all four plus the context.
+      expect(
+        priceStretches(
+          parts([N34W085, N34W084], [NET_N34W085, NET_N34W084]),
+          () => false,
+          SIZES,
+        ),
+      ).toEqual({
+        pieces: 2,
+        missing: 2,
+        bytes: 9_000_000 + 7_000_000 + 5_710_000 + 1_468_402 + 87_729,
+      })
+    })
+
+    it('calls a piece missing while any family’s cell for it is', () => {
+      // The basemap of n34w085 is here and the network is not: the ground is
+      // held, the trails on it are not, and the card must still offer it.
+      const held = (key: string) =>
+        key === cellPackageKey('n34w085') || key === CONTEXT_PACKAGE_KEY
+      expect(priceStretches(parts([N34W085], [NET_N34W085]), held, SIZES)).toEqual({
+        pieces: 1,
+        missing: 1,
+        bytes: 1_468_402,
+      })
+    })
+
+    it('prices nothing for a piece both families hold, and counts it', () => {
+      const held = (key: string) =>
+        key === cellPackageKey('n34w085') ||
+        key === cellPackageKey('n34w085', NETWORK_CELLS) ||
+        key === CONTEXT_PACKAGE_KEY
+      expect(priceStretches(parts([N34W085], [NET_N34W085]), held, SIZES)).toEqual({
+        pieces: 1,
+        missing: 0,
+        bytes: 0,
+      })
+    })
+
+    it('withholds the total when either family has an unpriced archive', () => {
+      const { 'nearby_trails_cell_n34w084.pmtiles': _unpriced, ...partial } = SIZES
+      expect(
+        priceStretches(parts([N34W084], [NET_N34W084]), () => false, partial).bytes,
+      ).toBeNull()
+    })
+
+    it('is priceStretch for a single family', () => {
+      expect(priceStretches(parts([N34W085, N34W084], []), () => false, SIZES)).toEqual(
+        priceStretch([N34W085, N34W084], INDEX.context, () => false, SIZES),
+      )
+    })
   })
 })

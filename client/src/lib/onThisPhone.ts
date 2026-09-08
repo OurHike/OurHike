@@ -108,12 +108,15 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
       present: graphBytes > 0,
     },
     // The other organizations' network as the corridor-view sketch the
-    // opening camera draws (#1135) - and since #1257 the ONLY part of that
-    // network this phone stores. Above the seam the lines are vector tiles
-    // read off the bucket per view (map/networkTiles.ts) and kept nowhere, so
-    // there is no row for them: this window claims to be what is on the
-    // phone, and a row for tiles that live in an HTTP cache would claim
-    // coverage the build does not have. The whole-file copy earlier releases
+    // opening camera draws (#1135) - and since #1257 the only part of that
+    // network that arrives on its own, which is what this list is. Above the
+    // seam the lines are vector tiles read off the bucket per view
+    // (map/networkTiles.ts) and kept nowhere, so there is no row for them
+    // here; the part of them a phone DOES keep is the stretch it took - 1°
+    // cells of those tiles, chosen and priced with the basemap's on the
+    // hiking sheet's stretch card (screens/StretchCard.tsx, #1257 stage 2),
+    // which is where a chosen download is accounted for, not in a list of
+    // things that arrive with signal. The whole-file copy earlier releases
     // stored is deleted at launch (lib/nearbyTrailData.ts's
     // forgetNearbyTrails), and a row that said "gone" would be a row about
     // nothing.

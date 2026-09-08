@@ -37,7 +37,12 @@
 
 import { get, set } from 'idb-keyval'
 import { useEffect, useState } from 'react'
-import { BASEMAP_CELLS_KEY, DATA_CONFIGURED, dataUrl } from './config'
+import {
+  BASEMAP_CELLS_KEY,
+  DATA_CONFIGURED,
+  dataUrl,
+  NEARBY_TRAILS_CELLS_KEY,
+} from './config'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
 import { useOnline } from './useOnline'
@@ -70,18 +75,90 @@ export interface CellIndex {
   cells: readonly CoverageCell[]
 }
 
-/** Where a cell's archive lives in IndexedDB. One key per cell, under the
- *  same suffix scheme every package's download records derive from. */
-export const CELL_PACKAGE_PREFIX = 'ourhike:basemap-cell:'
-
-export function cellPackageKey(name: string): string {
-  return `${CELL_PACKAGE_PREFIX}${name}`
+/**
+ * One family of cells: everything about a cut that is a NAME rather than
+ * geometry (#1257 stage 2). The geometry below is family-neutral - every
+ * family is cut on the same graticule by the same cutter - but each family
+ * has its own published index, its own store record for it, and its own
+ * IndexedDB keys for the archives, because two families' cells share a cell
+ * name (`n41w075` is the same ground whichever sheet holds it) and a single
+ * key space would let the basemap's Harriman overwrite the network's.
+ */
+export interface CellFamily {
+  /** The published index's bucket key (lib/config.ts). */
+  indexKey: string
+  /** Where a cell's archive lives in IndexedDB: `${packagePrefix}${name}`,
+   *  under the same suffix scheme every package's download records derive
+   *  from. */
+  packagePrefix: string
+  /** The shared context archive's key. Fetched with the first piece and
+   *  never offered as a decision - it is what makes a piece legible when a
+   *  hiker zooms out past it (OFFLINE_COVERAGE.md §6). */
+  contextPackageKey: string
+  /** The last verified copy of the index, whole, so a phone with a stretch
+   *  on it can place itself with no signal. */
+  indexStoreKey: string
 }
 
-/** The shared context archive's key. Fetched with the first piece and never
- *  offered as a decision - it is what makes a piece legible when a hiker zooms
- *  out past it (OFFLINE_COVERAGE.md §6). */
-export const CONTEXT_PACKAGE_KEY = 'ourhike:basemap-context'
+/** The hiking sheet's cells - the first family, and the default everywhere a
+ *  family is not named, so the code written before there were two reads as
+ *  it did. */
+export const BASEMAP_CELLS: CellFamily = {
+  indexKey: BASEMAP_CELLS_KEY,
+  packagePrefix: 'ourhike:basemap-cell:',
+  contextPackageKey: 'ourhike:basemap-context',
+  indexStoreKey: 'ourhike:basemap-cells-index',
+}
+
+/** The other organizations' trail lines as tiles, cut into the same cells
+ *  (#1257 stage 2, config.ts's NEARBY_TRAILS_CELLS_KEY) - what
+ *  map/networkTiles.ts asks before the bucket. Its index carries no context
+ *  today (the cut is made one below the tiles' minimum zoom), and nothing
+ *  here assumes that: a context published later is read like the basemap's. */
+export const NETWORK_CELLS: CellFamily = {
+  indexKey: NEARBY_TRAILS_CELLS_KEY,
+  packagePrefix: 'ourhike:network-cell:',
+  contextPackageKey: 'ourhike:network-context',
+  indexStoreKey: 'ourhike:network-cells-index',
+}
+
+/** The basemap family's prefix, kept under its old name for the callers and
+ *  tests written when it was the only one. */
+export const CELL_PACKAGE_PREFIX = BASEMAP_CELLS.packagePrefix
+
+export function cellPackageKey(name: string, family: CellFamily = BASEMAP_CELLS): string {
+  return `${family.packagePrefix}${name}`
+}
+
+/** The basemap family's context key, likewise. */
+export const CONTEXT_PACKAGE_KEY = BASEMAP_CELLS.contextPackageKey
+
+/**
+ * Every cell and the shared context as download requests
+ * (lib/useArchiveDownload.ts's shape), so a shell can register a whole family
+ * the moment its index is known and read the markers on mount like every
+ * sheet's. Empty for no index, which is every phone on a release without
+ * that family's cells. Registering starts nothing.
+ */
+export function cellDownloadRequests(
+  index: CellIndex | null,
+  family: CellFamily,
+): { packageKey: string; url: string; artifactKey: string }[] {
+  if (index === null) return []
+  const requests = index.cells.map((cell) => ({
+    packageKey: cellPackageKey(cell.name, family),
+    url: dataUrl(cell.key),
+    artifactKey: cell.key,
+  }))
+  if (index.context !== null) {
+    requests.push({
+      packageKey: family.contextPackageKey,
+      url: dataUrl(index.context),
+      artifactKey: index.context,
+    })
+  }
+  return requests
+}
 
 /**
  * How far past the hike's own ground a stretch reaches, in kilometres - the
@@ -283,10 +360,49 @@ export function priceStretch(
   context: string | null,
   held: (packageKey: string) => boolean,
   sizes: PublishedSizes,
+  family: CellFamily = BASEMAP_CELLS,
 ): StretchPrice {
-  const missingCells = cells.filter((cell) => !held(cellPackageKey(cell.name)))
-  const artifacts = missingCells.map((cell) => cell.key)
-  if (context !== null && !held(CONTEXT_PACKAGE_KEY)) artifacts.push(context)
+  return priceStretches([{ cells, context, family }], held, sizes)
+}
+
+/** One family's share of a stretch: the cells under the hike from ITS index,
+ *  and its context, if the cut published one. */
+export interface StretchPart {
+  cells: readonly CoverageCell[]
+  context: string | null
+  family: CellFamily
+}
+
+/**
+ * One price for a stretch that is several families of cells (#1257 stage 2:
+ * the basemap's and the network's, taken as one decision).
+ *
+ * A PIECE IS A SQUARE OF GROUND, not an archive. Two families' cells over the
+ * same square are one piece to a hiker - "3 pieces" is three squares of the
+ * trail, whatever is published for each - so `pieces` counts distinct cell
+ * names across the parts, and a piece is `missing` while ANY family's cell for
+ * it is. The bytes are every missing archive across every part, contexts
+ * included, on priceStretch's all-or-nothing rule: one unpriced archive
+ * anywhere and the total is withheld rather than understated.
+ */
+export function priceStretches(
+  parts: readonly StretchPart[],
+  held: (packageKey: string) => boolean,
+  sizes: PublishedSizes,
+): StretchPrice {
+  const pieces = new Set<string>()
+  const missing = new Set<string>()
+  const artifacts: string[] = []
+  for (const { cells, context, family } of parts) {
+    for (const cell of cells) {
+      pieces.add(cell.name)
+      if (!held(cellPackageKey(cell.name, family))) {
+        missing.add(cell.name)
+        artifacts.push(cell.key)
+      }
+    }
+    if (context !== null && !held(family.contextPackageKey)) artifacts.push(context)
+  }
 
   let bytes: number | null = 0
   for (const artifact of artifacts) {
@@ -298,7 +414,7 @@ export function priceStretch(
     bytes += size
   }
 
-  return { pieces: cells.length, missing: missingCells.length, bytes }
+  return { pieces: pieces.size, missing: missing.size, bytes }
 }
 
 /** One straight edge of the downloaded area, as the two ends of a line. */
@@ -356,9 +472,8 @@ export function seamEdges(
   return edges
 }
 
-/** The last verified copy of the index, whole, so a phone with a stretch on
- *  it can place itself with no signal. */
-export const CELL_INDEX_STORE_KEY = 'ourhike:basemap-cells-index'
+/** The basemap family's index record, under its old name. */
+export const CELL_INDEX_STORE_KEY = BASEMAP_CELLS.indexStoreKey
 
 interface StoredCellIndex {
   /** The published document as it arrived, re-parsed on every read - a value
@@ -369,9 +484,11 @@ interface StoredCellIndex {
   hash: string | null
 }
 
-export async function readStoredCellIndex(): Promise<CellIndex | null> {
+export async function readStoredCellIndex(
+  family: CellFamily = BASEMAP_CELLS,
+): Promise<CellIndex | null> {
   try {
-    const stored = (await get(CELL_INDEX_STORE_KEY)) as StoredCellIndex | undefined
+    const stored = (await get(family.indexStoreKey)) as StoredCellIndex | undefined
     if (stored === undefined || stored === null) return null
     return parseCellIndex(stored.index)
   } catch {
@@ -393,12 +510,13 @@ export async function readStoredCellIndex(): Promise<CellIndex | null> {
  */
 export async function fetchCellIndex({
   signal,
-}: { signal?: AbortSignal } = {}): Promise<CellIndex | null> {
+  family = BASEMAP_CELLS,
+}: { signal?: AbortSignal; family?: CellFamily } = {}): Promise<CellIndex | null> {
   if (!DATA_CONFIGURED) return null
 
   try {
-    const expected = await publishedHash(BASEMAP_CELLS_KEY, { signal })
-    const response = await fetch(dataUrl(BASEMAP_CELLS_KEY), { signal })
+    const expected = await publishedHash(family.indexKey, { signal })
+    const response = await fetch(dataUrl(family.indexKey), { signal })
     if (!response.ok) return null
 
     const bytes = new Uint8Array(await response.arrayBuffer())
@@ -408,7 +526,7 @@ export async function fetchCellIndex({
     const index = parseCellIndex(raw)
     if (index === null) return null
 
-    await set(CELL_INDEX_STORE_KEY, {
+    await set(family.indexStoreKey, {
       index: raw,
       hash: expected,
     } satisfies StoredCellIndex)
@@ -429,19 +547,19 @@ export async function fetchCellIndex({
  * a launch with signal that reads the store slowly must not replace today's
  * index with last month's.
  */
-export function useCellIndex(): CellIndex | null {
+export function useCellIndex(family: CellFamily = BASEMAP_CELLS): CellIndex | null {
   const [index, setIndex] = useState<CellIndex | null>(null)
   const online = useOnline()
 
   useEffect(() => {
     let wanted = true
-    void readStoredCellIndex().then((stored) => {
+    void readStoredCellIndex(family).then((stored) => {
       if (wanted && stored !== null) setIndex((current) => current ?? stored)
     })
     return () => {
       wanted = false
     }
-  }, [])
+  }, [family])
 
   useEffect(() => {
     // Never with no signal, and never on a build with no bucket - the same
@@ -451,7 +569,7 @@ export function useCellIndex(): CellIndex | null {
 
     const controller = new AbortController()
     let wanted = true
-    fetchCellIndex({ signal: controller.signal })
+    fetchCellIndex({ signal: controller.signal, family })
       .then((fetched) => {
         if (wanted && fetched !== null) setIndex(fetched)
       })
@@ -463,7 +581,7 @@ export function useCellIndex(): CellIndex | null {
       wanted = false
       controller.abort()
     }
-  }, [online])
+  }, [online, family])
 
   return index
 }

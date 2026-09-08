@@ -627,14 +627,30 @@ code. Those keys stay in the bucket (the manifest merge is additive-only, so a n
 only be abandoned) until somebody deletes them deliberately, which belongs after a cell cut
 has published and verified.
 
-Both build workflows cut after their package/archive step:
+Both build workflows cut after their package/archive step, and since
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) (stage 2) `publish-vector-data.yml` cuts a third family after
+`export_nearby_trails.py` writes its tiles:
 
 ```
 python cut_cells.py data/processed/at_basemap_package.pmtiles --family at_basemap
 python cut_cells.py data/processed/dem.pmtiles --family dem
+python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
 ```
 
-The client half — reading several units, the seam banner, the picker — is #557 and #558.
+**The network family differs from the sheets in two measured ways** (`cut_cells.py`'s
+docstring carries both): it publishes **no context archive** — `--context-zoom 8` is one
+below the tiles' minimum zoom, because z9 nationwide is 9,653,907 bytes (915 tiles,
+measured 2026-09-07) for a zoom the corridor-view sketch already draws below and the cells
+draw above, so z9 rides in the cells and a first stretch costs nothing shared — and it is
+**gated**: `publish.py` collects `nearby_trails_cells_manifest.json` inside
+`nearby_trails.geojson`'s own `reaches_hikers` branch (`NEARBY_TRAILS_CELL_FAMILY`), never
+through the ungated `CELL_FAMILIES` loop the two sheets use, so a steward held back holds
+back their lines, sketch, tiles and cells as one decision. `ALL_CELL_FAMILIES` is every
+family the cutter can be asked for; `verify_release.py`'s check 20 walks the same three.
+
+The client half — reading several units, the seam banner, the picker — is #557 and #558;
+the network cells ride the same stretch download (`client/src/lib/coverageCells.ts`'s
+`NETWORK_CELLS`) and `map/networkTiles.ts` asks a held cell before the bucket.
 
 ## The dbt transform layer (#100, Phase A)
 

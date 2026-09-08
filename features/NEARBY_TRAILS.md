@@ -370,6 +370,18 @@ as written: a **named** download of the network, cut to #552's unit, is now #125
 stage, on `cut_cells.py`'s per-family machinery, rather than a cache that quietly held the
 whole state.
 
+**Stage 2 landed the same day.** `cut_cells.py` cuts `nearby_trails.pmtiles` into
+`nearby_trails_cell_<name>.pmtiles` as a third family (no shared context: z9 nationwide is
+9,653,907 bytes for a zoom the sketch draws below and the cells draw above, so z9 rides in
+the cells), `publish.py` ships the cells inside the lines' own `reaches_hikers` gate, and the
+client's "take this stretch" tap takes the network cells under the hike with the basemap's
+(`client/src/lib/coverageCells.ts`'s `NETWORK_CELLS`, priced as one decision by
+`priceStretches`). `map/networkTiles.ts` asks a held cell before the bucket, so a phone that
+took its stretch draws every organization's trail on it with no signal — which is this
+section's promise as written, at #552's unit, for the first time. A phone holding the whole
+hiking sheet is the one still outside it: the stretch card stands down for it, and nothing
+else offers the network cells yet.
+
 ## 10. POI density, measured
 
 Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI

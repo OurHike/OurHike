@@ -197,6 +197,10 @@ def client_keys() -> dict[str, str]:
         # the quietest failure in this file: the map asks a scheme for tiles
         # and every tile is a 404 that draws as "no network here".
         _string_const(config, "NEARBY_TRAILS_TILES_KEY"): "config.ts NEARBY_TRAILS_TILES_KEY",
+        # Those tiles' coverage-cell index (#1257 stage 2), fetched by
+        # lib/coverageCells.ts under its NETWORK_CELLS family. A respelling
+        # is a stretch download that quietly carries no network.
+        _string_const(config, "NEARBY_TRAILS_CELLS_KEY"): "config.ts NEARBY_TRAILS_CELLS_KEY",
         # The waypoints those same organizations publish (#1097). Unlike its
         # sibling above, this one is NOT held back today - DEC's and OPRHP's
         # POI sources ship on the same footing their trails do - so a spelling
@@ -301,6 +305,19 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # decision publishes.
     nearby["tiles"] = manifest_entry("nearby_trails.pmtiles")
     (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(nearby))
+    # Those tiles' coverage cells (#1257 stage 2): cut_cells.py's own manifest
+    # for the nearby_trails family, which publish.py collects inside the
+    # nearby gate above. One cell, because the question is the index's name.
+    (tmp_path / "nearby_trails_cells_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "nearby_trails_cells.json": manifest_entry("nearby_trails_cells.json"),
+                    "nearby_trails_cell_n41w075.pmtiles": manifest_entry("nearby_trails_cell_n41w075.pmtiles"),
+                }
+            }
+        )
+    )
 
     # The nearby waypoints (#1097), through the same reaches_hikers gate as the
     # lines above. Stated here as shipping because that is what the real

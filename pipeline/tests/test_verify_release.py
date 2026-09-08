@@ -1541,3 +1541,13 @@ class TestPoiIdentity:
 
         assert reports[1]["state"] == FAILED
         assert "publishes no tombstones" in reports[1]["detail"]
+
+
+def test_the_cell_families_check_20_walks_are_the_ones_publish_cuts():
+    """verify_release.py imports nothing from the publisher it checks, so the
+    family tuple is spelled twice; this is what keeps the two spellings one.
+    A family added to publish.py alone would cut cells check 20 never looked
+    at - the gap that let #1257's third family need this test."""
+    import publish
+
+    assert set(verify_release.CELL_FAMILIES) == set(publish.ALL_CELL_FAMILIES)

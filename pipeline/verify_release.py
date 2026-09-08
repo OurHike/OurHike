@@ -1306,6 +1306,14 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
     ]
 
 
+# Every family cut_cells.py cuts - publish.py's ALL_CELL_FAMILIES, spelled
+# again here because this gate deliberately imports nothing from the publisher
+# it checks. tests/test_verify_release.py holds the two tuples equal, so a
+# family added to one and not the other fails a test rather than shipping
+# cells this check never looks at. `nearby_trails` is #1257 stage 2's.
+CELL_FAMILIES = ("at_basemap", "dem", "nearby_trails")
+
+
 def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
     """20. Every coverage cell the index names is really in the release, and
     every cell it names is a whole graticule square (#1175).
@@ -1333,7 +1341,7 @@ def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
     """
     artifacts = manifest.get("artifacts") or {}
     reports = []
-    for family in ("at_basemap", "dem"):
+    for family in CELL_FAMILIES:
         index_key = f"{family}_cells.json"
         if index_key not in artifacts:
             reports.append(_report(20, index_key, SKIPPED, "no cell index published for this sheet yet"))

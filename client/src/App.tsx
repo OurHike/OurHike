@@ -3050,12 +3050,18 @@ function App() {
         stroke.map(({ lon, lat }) => [lon, lat] as const),
       ])
       const graphForTaps = dayHikeIndexStale ? graphIndex : (dayHikeIndex ?? graphIndex)
-      if (graphForTaps === null) return
-      setDayHike(
-        stroke.some((at) => graphCellPendingAt(at))
-          ? { ...EMPTY_DRAFT, refusal: NETWORK_STILL_ARRIVING }
-          : drawStroke(graphForTaps, stroke),
-      )
+      // Same relaxation as the tap handler above (#1257 stage 3): before the
+      // first cell has merged at all, graphForTaps is null too, and without
+      // the `!pending` escape hatch a stroke drawn in that window vanished
+      // with no feedback while an identical tap correctly showed
+      // NETWORK_STILL_ARRIVING (v1.2.2 release review).
+      const pending = stroke.some((at) => graphCellPendingAt(at))
+      if (graphForTaps === null && !pending) return
+      if (pending || graphForTaps === null) {
+        setDayHike({ ...EMPTY_DRAFT, refusal: NETWORK_STILL_ARRIVING })
+        return
+      }
+      setDayHike(drawStroke(graphForTaps, stroke))
     },
     [dayHikeIndex, dayHikeIndexStale, graphIndex, graphCellPendingAt],
   )

@@ -821,12 +821,33 @@ describe('the phone that has no signal (#1050)', () => {
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()
   })
 
+  it('routes from the store when a request with signal never completes', async () => {
+    // One bar on a ridge, a captive portal, a bucket that stopped answering:
+    // `navigator.onLine` says yes and the request never gets an answer. The
+    // whole-graph loader called that unreachable while the phone held the
+    // graph; a cell kept is a cell that routes.
+    holding({ [graphCellStoreKey(WEST.name, 'graph')]: WEST_SHARD })
+    serve({ failing: true })
+
+    const load = await loadGraphShard(WEST)
+
+    expect(load.kind).toBe('shard')
+    // And the bucket was asked first - the store is the fallback, not the
+    // answer, while there is signal to ask with.
+    expect(vi.mocked(fetch)).toHaveBeenCalled()
+  })
+
   it('says unreachable when there is nothing stored either', async () => {
     // The same sentence as before this store existed, arrived at only when it
-    // is true.
+    // is true - with no signal, and with signal that answers nothing.
     holding({})
 
     await expect(loadGraphShard(WEST, undefined, false)).resolves.toEqual({
+      kind: 'absent',
+      because: 'unreachable',
+    })
+    serve({ failing: true })
+    await expect(loadGraphShard(WEST)).resolves.toEqual({
       kind: 'absent',
       because: 'unreachable',
     })

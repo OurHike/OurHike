@@ -14,22 +14,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  keys: vi.fn(),
 }))
 
-const { get } = await import('idb-keyval')
+const { get, keys } = await import('idb-keyval')
 const { storedTrailData } = await import('./onThisPhone')
 const { TRAILS_BLOB_KEY, POIS_KEY, ELEVATION_STORE_KEY } = await import('./trailData')
 const { NETWORK_OVERVIEW_STORE_KEY } = await import('./nearbyTrailData')
+const { graphCellStoreKey } = await import('./trailGraphStore')
 const { TRAIL_DATA_LABEL } = await import('../screens/Downloads')
 
 beforeEach(() => {
   vi.mocked(get).mockReset()
   vi.mocked(get).mockResolvedValue(undefined)
+  vi.mocked(keys).mockReset()
+  vi.mocked(keys).mockResolvedValue([])
 })
 
-/** Answers per key, everything else absent. */
+/** Answers per key, everything else absent - and lists exactly those keys,
+ *  which is how the graph's cells are found (lib/trailGraphStore.ts). */
 function store(values: Record<string, unknown>): void {
   vi.mocked(get).mockImplementation((key) => Promise.resolve(values[String(key)]))
+  vi.mocked(keys).mockResolvedValue(Object.keys(values))
 }
 
 describe('storedTrailData', () => {
@@ -38,11 +44,18 @@ describe('storedTrailData', () => {
       [TRAILS_BLOB_KEY]: new Blob(['x'.repeat(1234)]),
       [POIS_KEY]: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
       [ELEVATION_STORE_KEY]: { samples: [1, 2, 3, 4] },
-      // Two of the four graph artifacts, which is a real state: the routing
-      // half arrives at launch and the geometry only when a builder opens.
-      // They sum into one row - see storedTrailData for why.
-      'ourhike:trail-graph': { bytes: new Blob(['g'.repeat(500)]), hash: 'g' },
-      'ourhike:trail-graph-geometry': { bytes: new Blob(['v'.repeat(200)]), hash: 'v' },
+      // Two of the four halves of one graph cell (#1257 stage 3), which is a
+      // real state: the routing half arrives where the hiker plans and the
+      // geometry only when a builder opens. They sum into one row - see
+      // storedTrailData for why.
+      [graphCellStoreKey('n41w075', 'graph')]: {
+        bytes: new Blob(['g'.repeat(500)]),
+        hash: 'g',
+      },
+      [graphCellStoreKey('n41w075', 'geometry')]: {
+        bytes: new Blob(['v'.repeat(200)]),
+        hash: 'v',
+      },
       [NETWORK_OVERVIEW_STORE_KEY]: { bytes: new Blob(['o'.repeat(321)]), hash: 'o' },
     })
 
@@ -55,6 +68,30 @@ describe('storedTrailData', () => {
       { id: 'day-hike-routing', bytes: 700, count: null, present: true },
       { id: 'network-overview', bytes: 321, count: null, present: true },
     ])
+  })
+
+  it('counts no whole-file graph an earlier release stored, only cells (#1257 stage 3)', async () => {
+    // The 78.6 MB graph of 2026-09-07 is deleted at launch and read by
+    // nothing; a phone that still holds it must not be told day hikes cost
+    // that, and must not be told they work without a signal.
+    store({
+      'ourhike:trail-graph': { bytes: new Blob(['g'.repeat(78_000)]), hash: 'old' },
+      'ourhike:trail-graph-geometry': {
+        bytes: new Blob(['v'.repeat(224_000)]),
+        hash: 'old',
+      },
+    })
+
+    const routing = (await storedTrailData()).find(
+      (asset) => asset.id === 'day-hike-routing',
+    )
+
+    expect(routing).toEqual({
+      id: 'day-hike-routing',
+      bytes: null,
+      count: null,
+      present: false,
+    })
   })
 
   it('has no row for the whole-file network copy, and does not read its key (#1257)', async () => {

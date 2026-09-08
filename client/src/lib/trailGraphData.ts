@@ -317,12 +317,23 @@ export async function loadGraphShard(
     // of a request that never got an answer - and it is the one absence the
     // shell will try again.
     //
+    // BUT THE STORE FIRST, which the whole-graph loader never did: a phone
+    // that reports a connection and cannot complete a request - one bar on a
+    // ridge, a captive portal, a bucket that stopped answering - used to be
+    // told the graph was unreachable while holding it. A cell kept is a cell
+    // that routes; "unreachable" is what this says only when the phone holds
+    // nothing for it. The companions below take the same fallback.
+    //
     // A JSON.parse throw lands here too and is NOT reachability. It is
     // unreachable in practice: the bytes matched a published hash one line
     // above, so a release whose shard does not parse is one whose manifest
     // signed off on it. Rather than a second try/catch for a case nobody can
     // produce, it costs one retry on reconnect and then settles.
-    return { kind: 'absent', because: 'unreachable' }
+    const stored = await readStoredGraph(storeKey)
+    const parsed = stored === null ? null : await parseStored(stored.bytes, isGraphShard)
+    return parsed === null
+      ? { kind: 'absent', because: 'unreachable' }
+      : { kind: 'shard', shard: parsed }
   }
 }
 

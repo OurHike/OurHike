@@ -30,6 +30,18 @@
 // Recomputed as the camera settles, so the badge slides along its line as
 // the hiker pans and never sits off screen while the trail is on it.
 //
+// "THE SCREEN" IS THE PART OF THE CANVAS A HIKER CAN SEE, and the second
+// preview frame is why that sentence is here. Over Harriman the A.T.'s
+// longest visible stretch ran along the top of the canvas, its middle sat
+// under the identity plate, and the badge was placed there - correctly, by
+// MapLibre's lights, which knows nothing about the DOM laid over it - and
+// was invisible. So the shell hands this module the chrome's insets
+// (MapView's `chromeInsets`, measured by MapScreen), the anchor is chosen
+// among the vertices inside the canvas MINUS those bands, and only a trail
+// with no vertex in the clear falls back to the whole canvas. The list of
+// trails in view still reads the whole canvas: a trail under the plate is
+// still on the map.
+//
 // `@unvalidated` as a display choice: the longest-visible-run rule was
 // chosen against the handoff's four cameras, not watched on a phone in a
 // hiker's hand. What would settle it is somebody panning through a park
@@ -85,6 +97,21 @@ interface Bounds {
   east: number
   north: number
 }
+
+/**
+ * How much of each edge of the canvas the chrome covers, in CSS px - the
+ * identity plate and what stacks under it at the top, the controls and the
+ * count chip at the foot. MapView's `chromeInsets` prop carries it down.
+ */
+export interface ViewInsets {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+/** No chrome anywhere: what a map with no shell over it gets. */
+export const NO_INSETS: ViewInsets = { top: 0, right: 0, bottom: 0, left: 0 }
 
 type Position = [number, number]
 
@@ -171,6 +198,38 @@ function stringProp(properties: Record<string, unknown>, key: string): string | 
 }
 
 /**
+ * The canvas minus the chrome, as a geographic rectangle: the corners of the
+ * inset viewport unprojected. Axis-aligned in lng/lat, which is exact for
+ * an unrotated, unpitched map and close enough for this map, which is never
+ * either. Falls back to the whole view where the container reports no
+ * size, which is what a map not yet laid out says.
+ */
+function clearViewOf(map: TrailsInViewMap, insets: ViewInsets, view: Bounds): Bounds {
+  if (
+    insets.top === 0 &&
+    insets.right === 0 &&
+    insets.bottom === 0 &&
+    insets.left === 0
+  ) {
+    return view
+  }
+  const container = map.getContainer()
+  const width = container.clientWidth
+  const height = container.clientHeight
+  if (width <= insets.left + insets.right || height <= insets.top + insets.bottom)
+    return view
+
+  const northWest = map.unproject([insets.left, insets.top])
+  const southEast = map.unproject([width - insets.right, height - insets.bottom])
+  return {
+    west: Math.min(northWest.lng, southEast.lng),
+    east: Math.max(northWest.lng, southEast.lng),
+    south: Math.min(northWest.lat, southEast.lat),
+    north: Math.max(northWest.lat, southEast.lat),
+  }
+}
+
+/**
  * Every named trail the trail layers are drawing, one entry per name,
  * through-routes first, then the chosen system, then by name.
  *
@@ -178,8 +237,14 @@ function stringProp(properties: Record<string, unknown>, key: string): string | 
  * (style.ts's TAPPABLE_BLAZE_LAYER_IDS) - and not the sketches, which carry
  * no `name`. Empty where the layers are not in the style yet, which is a
  * cold start's honest answer.
+ *
+ * `insets` is the chrome over the canvas: the anchor prefers a vertex in the
+ * clear, and the header explains why.
  */
-export function trailsInView(map: TrailsInViewMap): TrailInView[] {
+export function trailsInView(
+  map: TrailsInViewMap,
+  insets: ViewInsets = NO_INSETS,
+): TrailInView[] {
   const layers = TAPPABLE_BLAZE_LAYER_IDS.filter((id) => map.getLayer(id) !== undefined)
   if (layers.length === 0) return []
 
@@ -190,9 +255,13 @@ export function trailsInView(map: TrailsInViewMap): TrailInView[] {
     east: bounds.getEast(),
     north: bounds.getNorth(),
   }
+  const clear = clearViewOf(map, insets, view)
 
   const features = map.queryRenderedFeatures(undefined, { layers })
-  const byName = new Map<string, TrailInView & { best: Run | null }>()
+  const byName = new Map<
+    string,
+    TrailInView & { best: Run | null; bestClear: Run | null }
+  >()
 
   for (const feature of features) {
     const properties = (feature.properties ?? {}) as Record<string, unknown>
@@ -203,9 +272,15 @@ export function trailsInView(map: TrailsInViewMap): TrailInView[] {
     const chosen = CHOSEN_SYSTEM_SOURCES.includes(source)
 
     let best: Run | null = null
+    let bestClear: Run | null = null
     for (const part of partsOf(feature.geometry)) {
       for (const run of visibleRuns(part, view)) {
         if (best === null || run.length > best.length) best = run
+      }
+      if (clear !== view) {
+        for (const run of visibleRuns(part, clear)) {
+          if (bestClear === null || run.length > bestClear.length) bestClear = run
+        }
       }
     }
 
@@ -220,6 +295,7 @@ export function trailsInView(map: TrailsInViewMap): TrailInView[] {
         anchor: null,
         properties,
         best,
+        bestClear,
       })
       continue
     }
@@ -227,6 +303,12 @@ export function trailsInView(map: TrailsInViewMap): TrailInView[] {
     // shows the most of it, and the through-route's piece names it.
     if (best !== null && (existing.best === null || best.length > existing.best.length)) {
       existing.best = best
+    }
+    if (
+      bestClear !== null &&
+      (existing.bestClear === null || bestClear.length > existing.bestClear.length)
+    ) {
+      existing.bestClear = bestClear
     }
     if (throughRoute && !existing.throughRoute) {
       existing.throughRoute = true
@@ -238,10 +320,13 @@ export function trailsInView(map: TrailsInViewMap): TrailInView[] {
   }
 
   return [...byName.values()]
-    .map(({ best, ...trail }) => ({
-      ...trail,
-      anchor: best === null ? null : midpoint(best),
-    }))
+    .map(({ best, bestClear, ...trail }) => {
+      // In the clear if any of the trail is; under the chrome only when all
+      // of it is, which still beats no badge - a plate at 94% shows a badge
+      // through it, faintly, and the placer may yet move it out.
+      const run = bestClear ?? best
+      return { ...trail, anchor: run === null ? null : midpoint(run) }
+    })
     .sort((a, b) => {
       if (a.throughRoute !== b.throughRoute) return a.throughRoute ? -1 : 1
       if (a.chosen !== b.chosen) return a.chosen ? -1 : 1
@@ -287,12 +372,13 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
 export function attachTrailsInView(
   map: TrailsInViewMap,
   onChange?: (trails: readonly TrailInView[]) => void,
+  insets: ViewInsets = NO_INSETS,
 ): () => void {
   let last = ''
   let listening = false
 
   const update = () => {
-    const trails = trailsInView(map)
+    const trails = trailsInView(map, insets)
     const key = JSON.stringify(trails)
     if (key === last) return
     last = key

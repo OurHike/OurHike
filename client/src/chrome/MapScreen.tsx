@@ -75,7 +75,7 @@ import { MapAttribution } from './MapAttribution'
  *  band's ends off the very frame edge. */
 const CHART_FIT_PADDING = 48
 import type { ResolvedTheme } from '../lib/theme'
-import type { TrailInView } from '../map/trailsInView'
+import type { TrailInView, ViewInsets } from '../map/trailsInView'
 import type {
   BackgroundSource,
   LayerDetailLevel,
@@ -726,6 +726,16 @@ export interface MapScreenProps {
   entering?: boolean
 }
 
+/** chrome.css's `--map-control-size`: the zoom buttons at the foot of the
+ *  canvas. Restated, since a stylesheet token cannot be read from here
+ *  before layout; src/test/mapChromeContrast.test.ts is where the CSS is
+ *  pinned. */
+const MAP_CONTROL_SIZE_PX = 42
+/** MapLibre's own `.maplibregl-ctrl` margin (maplibre-gl.css). */
+const MAP_CONTROL_MARGIN_PX = 10
+/** Breathing room under the float column before a badge may anchor. */
+const CHROME_CLEARANCE_PX = 8
+
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
@@ -861,6 +871,41 @@ export function MapScreen({
   // permanent panel it is neither. No media query can change what a component
   // tells a screen reader it is.
   const isDesktop = useDesktop()
+
+  // How much of the canvas the floating chrome covers (#1283), for the
+  // through-route badge's anchor. The top band is MEASURED off the float
+  // column - the identity plate plus whatever stacks under it, which grows
+  // with the flags and the alerts - because the second preview frame put
+  // the A.T.'s badge exactly there, under the plate, where MapLibre could
+  // not know a plate was. The foot is reasoned rather than measured: the
+  // zoom control is `--map-control-size` (42 px, chrome.css) inside
+  // MapLibre's own 10 px control margin, and the count chip and the scale
+  // bar sit within that band. `@unvalidated` only in the sense that nobody
+  // has watched a badge land beside the zoom buttons; what would settle it
+  // is a frame where one does.
+  const floatRef = useRef<HTMLDivElement | null>(null)
+  const [floatBottom, setFloatBottom] = useState(0)
+  useEffect(() => {
+    const float = floatRef.current
+    if (float === null) return
+    const measure = () => setFloatBottom(float.offsetTop + float.offsetHeight)
+    measure()
+    // jsdom has no ResizeObserver and no layout to observe; the one
+    // measurement above is what it gets, and it is zero there.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(float)
+    return () => observer.disconnect()
+  }, [])
+  const chromeInsets = useMemo<ViewInsets>(
+    () => ({
+      top: floatBottom + CHROME_CLEARANCE_PX,
+      right: 0,
+      bottom: MAP_CONTROL_SIZE_PX + MAP_CONTROL_MARGIN_PX * 2,
+      left: 0,
+    }),
+    [floatBottom],
+  )
 
   /**
    * Whether the day-hike builder owns this screen (#1194).
@@ -1207,7 +1252,7 @@ export function MapScreen({
                 alerts down rather than overlapping them. Inside the canvas
                 so the .map-screen--entering rules hide all of it during
                 first run without a list of names (chrome.css). */}
-            <div className="map-screen__float">
+            <div className="map-screen__float" ref={floatRef}>
               <Header
                 trailName={trailName}
                 trailLogo={trailLogo}
@@ -1366,6 +1411,7 @@ export function MapScreen({
               boundsPadding={boundsPadding}
               onViewportChange={onViewportChange}
               onTrailsInView={onTrailsInView}
+              chromeInsets={chromeInsets}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
             />

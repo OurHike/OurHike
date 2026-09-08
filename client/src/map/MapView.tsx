@@ -67,7 +67,7 @@ import {
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachTrailBadgeImages } from './trailBadges'
-import { attachTrailsInView, type TrailInView } from './trailsInView'
+import { attachTrailsInView, type TrailInView, type ViewInsets } from './trailsInView'
 import { attachPoiTaps } from './poiTaps'
 import {
   attachDayHikeData,
@@ -410,6 +410,15 @@ export interface MapViewProps {
    */
   onTrailsInView?: (trails: readonly TrailInView[]) => void
   /**
+   * How much of each edge of the canvas the shell's chrome covers, in CSS
+   * px, so a through-route's badge is anchored where a hiker can see it
+   * (map/trailsInView.ts's header has the frame that taught this). Must be
+   * stable across renders (useMemo) - a fresh object would re-attach the
+   * badge listeners on every render of the parent. Omitted, the whole
+   * canvas counts as clear.
+   */
+  chromeInsets?: ViewInsets
+  /**
    * The live map, handed over on build and `null` on teardown, so the shell
    * can move the camera imperatively. `center` cannot do that job - it seeds
    * the opening view only, and the first GPS fix usually lands after it.
@@ -508,6 +517,7 @@ export function MapView({
   detail = 'standard',
   onViewportChange,
   onTrailsInView,
+  chromeInsets,
   onMapReady,
   onLiveSourceHealth,
 }: MapViewProps) {
@@ -919,8 +929,8 @@ export function MapView({
   // WebGL context.
   useEffect(() => {
     if (map === null) return
-    return attachTrailsInView(map, onTrailsInView)
-  }, [map, onTrailsInView])
+    return attachTrailsInView(map, onTrailsInView, chromeInsets)
+  }, [map, onTrailsInView, chromeInsets])
 
   // Its own effect rather than folded into the closures above: the two arrive
   // on completely different schedules - closures from the network whenever

@@ -288,3 +288,95 @@ describe('attachTrailsInView', () => {
     expect(map.listenerCount('moveend')).toBe(0)
   })
 })
+
+describe('the chrome over the canvas (#1283, the second preview frame)', () => {
+  // The mock unprojects identically - x IS the longitude, y IS the latitude -
+  // and reports a 390x844 container, so a viewport of [0..390] x [0..844] in
+  // "degrees" is the canvas in pixels, and an inset is an inset.
+  function screenMap(byLayer: Record<string, unknown[]>): MockMap {
+    const map = mapWith(byLayer)
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
+    return map
+  }
+  const PLATE = { top: 110, right: 0, bottom: 62, left: 0 }
+
+  it('anchors the badge in the clear when the trail’s longest stretch runs under the plate', () => {
+    // The A.T. over Harriman: most of it along the top of the canvas, under
+    // the identity plate, and a tail down the left edge in the clear.
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [0, 300],
+            [100, 200],
+            [150, 60],
+            [250, 40],
+            [390, 50],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const [withoutInsets] = trailsInView(map as unknown as MapLibreMap)
+    const [withInsets] = trailsInView(map as unknown as MapLibreMap, PLATE)
+
+    // Free of insets the middle of the whole run is under the plate.
+    expect(withoutInsets.anchor?.[1]).toBeLessThan(PLATE.top)
+    // With them it is on the stretch a hiker can see.
+    expect(withInsets.anchor).toEqual([100, 200])
+  })
+
+  it('falls back to the whole canvas for a trail with no vertex in the clear', () => {
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [100, 30],
+            [200, 40],
+            [300, 20],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const [at] = trailsInView(map as unknown as MapLibreMap, PLATE)
+    expect(at.anchor).toEqual([200, 40])
+  })
+
+  it('still lists a trail that is only under the plate: it is on the map', () => {
+    const map = screenMap({
+      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+        line('Long Path', 'oprhp_trails', [[100, 30]], 'Aqua'),
+      ],
+    })
+    expect(trailsInView(map as unknown as MapLibreMap, PLATE).map((t) => t.name)).toEqual(
+      ['Long Path'],
+    )
+  })
+
+  it('reads the insets it was attached with', () => {
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [0, 300],
+            [100, 200],
+            [150, 60],
+            [250, 40],
+            [390, 50],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const onChange = vi.fn()
+    attachTrailsInView(map as unknown as MapLibreMap, onChange, PLATE)
+    expect(onChange.mock.calls[0][0][0].anchor).toEqual([100, 200])
+  })
+})

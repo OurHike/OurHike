@@ -609,6 +609,34 @@ describe('POI pins', () => {
     ).toEqual(['Long Path'])
   })
 
+  it('hands the chrome insets to the badge anchor, so a badge is never picked under the plate', () => {
+    const insets = { top: 110, right: 0, bottom: 62, left: 0 }
+    render(<MapView {...PROPS} pois={[]} chromeInsets={insets} />)
+    const [map] = MockMap.live
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: { name: 'Appalachian National Scenic Trail', source: 'centerline' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [0, 300],
+            [100, 200],
+            [150, 60],
+            [250, 40],
+            [390, 50],
+          ],
+        },
+      },
+    ])
+    act(() => map.emit('idle'))
+
+    const badges = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as {
+      features: Array<{ geometry: { coordinates: number[] } }>
+    }
+    expect(badges.features[0].geometry.coordinates).toEqual([100, 200])
+  })
+
   it('registers the pin images once the style is up', async () => {
     render(<MapView {...PROPS} pois={POIS} />)
     const [map] = MockMap.live

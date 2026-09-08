@@ -523,6 +523,11 @@ describe('the fixture itself', () => {
     // arrived here - so the guard reported success about the one release that
     // changed the layout. The archive entries below are derived from
     // archiveStore.ts's own builders for that reason.
+    //
+    // This list is the BASELINE's. The keys the tagged releases added - the
+    // sync ledgers, the hiker mode, the side stores, the GPS trace, the
+    // coverage cells - have the same guard in storedShapes.releases.test.ts,
+    // against RELEASE_SHAPES (#1253).
     const packageKeys = MAP_PACKAGES.map((mapPackage) => mapPackage.idbKey)
     const required = [
       OUTBOX_KEY,

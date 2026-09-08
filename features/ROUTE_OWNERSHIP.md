@@ -51,8 +51,7 @@ all.
 The postures are opposite in the way that matters most. LAND_OWNERSHIP.md:105-106 is
 explicit that it is **not an authority surface**:
 
-> **Not a routing constraint.** It does not affect snapping, wrong-way detection, or
-> anything that computes.
+> **Not a routing constraint.** It does not affect snapping or anything that computes.
 > **Not a substitute for signage and blazes.** On the ground, the blazes and the
 > landowner's own signs are authoritative. This is orientation, not permission.
 

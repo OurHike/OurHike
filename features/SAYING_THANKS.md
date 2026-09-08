@@ -124,7 +124,7 @@ This is a deliberate privacy default, not caution for its own sake. Maintainers 
 
 ## Open questions (for you, not decided here)
 
-- **Does a maintainer get notified?** OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - HIKER_SAFETY.md §5). A thanks should almost certainly reach a maintainer as in-app or digest email, never a push — but "email volunteers" is a channel this project does not have yet, and adding one is its own decision.
+- **Does a maintainer get notified?** OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - [HIKER_SAFETY.md](HIKER_SAFETY.md) §5). A thanks should almost certainly reach a maintainer as in-app or digest email, never a push — but "email volunteers" is a channel this project does not have yet, and adding one is its own decision.
 - **Can a hiker see the thanks they have sent?** Their own, certainly. Whether they see that it was read is a different question, and "read receipts on gratitude" may add pressure where none is wanted.
 - **Club-level vs crew-level.** WIREFRAMES.md's original copy offered "the club or a specific crew." Crews are a real organisational unit in some clubs and absent in others; modelling them now risks inventing structure that does not match how partner clubs actually work. Recommend club + optional individual for v1, crews later if clubs ask.
 - **Abuse handling specifics.** Hiding an unkind "thanks" is clearly needed. Whether that reuses the moderation queue's dismiss action or gets a lighter path is a moderation-policy call, and this doc has deliberately kept thanks *out* of that queue.

@@ -46,7 +46,7 @@ Entering a trail name should stay optional at every point - even once Authentica
 
 The one piece of "helpful info" actually worth including: pointing at the waypoint icon spec / legend (already designed in [MAP_OPTIONS.md](MAP_OPTIONS.md)) so a new hiker knows what the pins mean - reusing existing design work, not writing new explanatory content. Everything else (how to plan a trip, how Segments work) is better taught contextually the first time a hiker actually opens that feature, not front-loaded into a tutorial they'll forget before they need it.
 
-**Push-notification permission (if the wrong-way alert ships) does not belong here at all.** Consistent with "ask in context, not upfront": that permission is far better requested when its value is concretely obvious - e.g. when a hiker starts an active hike/plan - than bundled into first-run onboarding before there's any reason to say yes.
+**Push-notification permission does not belong here at all — moot now, since OurHike sends none.** The wrong-way alert would have been the one feature to need it; it was removed before shipping ([HIKER_SAFETY.md](HIKER_SAFETY.md) §5). Worth keeping as a principle regardless, for whatever asks a permission next: "ask in context, not upfront" - a permission is far better requested when its value is concretely obvious - e.g. when a hiker starts an active hike/plan - than bundled into first-run onboarding before there's any reason to say yes.
 
 ## Architecture fit
 

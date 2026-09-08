@@ -28,9 +28,10 @@ const RELEASED = {
 }
 
 // Resolved from the working directory rather than import.meta.url, which
-// vitest does not hand back as a file:// URL - the same gotcha, and the same
-// answer, as lib/push.test.ts. Both candidates are checked so this works
-// whether the suite is run from the repo root or from client/.
+// vitest does not hand back as a file:// URL - the same gotcha other suites
+// in this repo have hit and answered the same way. Both candidates are
+// checked so this works whether the suite is run from the repo root or from
+// client/.
 const PACKAGE_JSON = [
   join(cwd(), 'package.json'),
   join(cwd(), 'client', 'package.json'),

@@ -199,10 +199,11 @@ mechanisms hold it, and none of them is "choose carefully":
 3. **The default is not a choice at all.** §5.
 
 **Neither direction of error is safe here, and that is worth stating plainly** because it
-is unlike `wrongWay.ts`. Over-cutting strands somebody without a map; over-shipping puts
-the app back to asking for a gigabyte, which is the harm #551 exists to end. There is no
-conservative direction to round toward — only a margin wide enough that the question stops
-being sharp.
+is unlike the wrong-way alert, whose design preferred false negatives over false positives
+(`wrongWay.ts`, before its removal - #93/#308). Over-cutting strands somebody without a
+map; over-shipping puts the app back to asking for a gigabyte, which is the harm #551
+exists to end. There is no conservative direction to round toward — only a margin wide
+enough that the question stops being sharp.
 
 ## 5. The whole trail stays one tap
 

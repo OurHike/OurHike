@@ -54,6 +54,7 @@ import boto3
 from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
+from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
@@ -380,7 +381,7 @@ def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dic
             continue
         try:
             previous = _published_bytes(s3_client, bucket, f"{prefix}{name}")
-            described[name] = data_change.classify(previous, Path(entry["path"]).read_bytes())
+            described[name] = data_change.classify(previous, from_manifest_path(entry["path"]).read_bytes())
         except Exception as exc:  # noqa: BLE001 - see the docstring
             described[name] = data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
     return described
@@ -392,7 +393,7 @@ def collect_sidecars() -> dict[str, dict]:
     for name, shelf in SIDECARS.items():
         path = (PROCESSED_DIR if shelf == "processed" else RAW_DIR) / name
         if path.exists():
-            found[name] = {"path": str(path), "sha256": sha256_file(path)}
+            found[name] = {"path": to_manifest_path(path), "sha256": sha256_file(path)}
     return found
 
 
@@ -470,7 +471,7 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     for name, entry in artifacts.items():
         if not (name.startswith("poi_") and name.endswith(".geojson")):
             continue
-        document = json.loads(Path(entry["path"]).read_text(encoding="utf-8"))
+        document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
         for feature in document.get("features", []):
             properties = feature.get("properties") or {}
             if properties.get("photo_key"):
@@ -898,7 +899,7 @@ def collect_artifacts() -> dict[str, dict]:
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
         if path.exists():
-            artifacts[name] = {"path": str(path), "sha256": sha256_file(path)}
+            artifacts[name] = {"path": to_manifest_path(path), "sha256": sha256_file(path)}
 
     # Every entry carries the byte size of the artifact as built - the
     # measurement #505 wanted published rather than hand-kept, and the thing
@@ -907,7 +908,7 @@ def collect_artifacts() -> dict[str, dict]:
     # gzip-uploaded text artifacts this is the DECODED size - the bytes a
     # client's fetch hands to code, the same bytes the sha256 describes.
     for entry in artifacts.values():
-        entry["size_bytes"] = Path(entry["path"]).stat().st_size
+        entry["size_bytes"] = from_manifest_path(entry["path"]).stat().st_size
 
     return artifacts
 
@@ -935,7 +936,7 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
     still matches the bucket. Raises before the first upload, naming every
     mismatch, so a bad state costs a failed run instead of a poisoned
     manifest."""
-    stale = {name: entry for name, entry in entries.items() if sha256_file(Path(entry["path"])) != entry["sha256"]}
+    stale = {name: entry for name, entry in entries.items() if sha256_file(from_manifest_path(entry["path"])) != entry["sha256"]}
     if stale:
         raise RuntimeError(
             "manifest hash does not match the file on disk for: "
@@ -1125,7 +1126,7 @@ def publish(
 
     uploaded: list[str] = []
     for name, entry in changed.items():
-        upload_path, extra = upload_args(name, entry["path"])
+        upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])))
         # What a phone actually spends on this artifact, as against `size_bytes`
         # above, which is the DECODED size (#919).
         #
@@ -1155,7 +1156,7 @@ def publish(
     # After the decision, never before: a sidecar must never be able to cause
     # a version, and must never describe data that was not published.
     for name, entry in sidecars.items():
-        upload_path, extra = upload_args(name, entry["path"], compress=False)
+        upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])), compress=False)
         s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
 
     # Merge, don't replace: an artifact that's live in remote_artifacts but

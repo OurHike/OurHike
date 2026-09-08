@@ -106,6 +106,7 @@ from lib.elevation_gain import (
     loss_over_gaps,
 )
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
@@ -285,7 +286,7 @@ def write_artifact(climbs: list, stats: dict, sources: dict | None = None) -> di
     path.write_text(json.dumps(climbs, separators=(",", ":")), encoding="utf-8")
 
     manifest = {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
         "threshold_m": DEFAULT_THRESHOLD_M,

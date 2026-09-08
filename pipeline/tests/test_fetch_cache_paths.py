@@ -94,7 +94,7 @@ FETCHER_OUTPUTS = (
 def cached_paths() -> list[str]:
     """The workflow's FETCH_OUTPUTS, as workspace-relative path strings."""
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    raw = workflow["jobs"]["build-and-publish"]["env"]["FETCH_OUTPUTS"]
+    raw = workflow["jobs"]["build"]["env"]["FETCH_OUTPUTS"]
     entries = [line.strip() for line in raw.splitlines() if line.strip()]
     if not entries:
         raise AssertionError(
@@ -153,7 +153,7 @@ def test_the_cache_is_restored_before_the_first_fetch_and_saved_after_the_last(c
     below it produced - which is exactly what the photo-only cache this
     replaced did to elevation."""
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    names = [step.get("name") or step.get("uses") for step in workflow["jobs"]["build-and-publish"]["steps"]]
+    names = [step.get("name") or step.get("uses") for step in workflow["jobs"]["build"]["steps"]]
 
     restore = names.index("Restore fetched data")
     save = names.index("Save fetched data")
@@ -169,7 +169,7 @@ def test_the_save_runs_even_when_an_earlier_step_failed(cached_paths):
     The split into restore/save exists for this one line, so the line is
     pinned."""
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    save = next(step for step in workflow["jobs"]["build-and-publish"]["steps"] if step.get("name") == "Save fetched data")
+    save = next(step for step in workflow["jobs"]["build"]["steps"] if step.get("name") == "Save fetched data")
 
     assert "always()" in str(save.get("if", ""))
 
@@ -202,7 +202,7 @@ RESTORE_STEP = "Restore derived water data from the published data"
 @pytest.fixture(scope="module")
 def workflow_steps() -> list[dict]:
     parsed = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return parsed["jobs"]["build-and-publish"]["steps"]
+    return parsed["jobs"]["build"]["steps"]
 
 
 def _step_named(steps: list[dict], name: str) -> dict:

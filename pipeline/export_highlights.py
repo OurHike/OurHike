@@ -61,6 +61,7 @@ from lib.highlights import (
     clubs_without_a_highlight,
     resolve,
 )
+from lib.manifest_paths import to_manifest_path
 from lib.poi_schema import POI_TYPES, poi_output_name
 
 ROOT = Path(__file__).parent
@@ -150,9 +151,10 @@ def main() -> dict:
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
     digest = hashlib.sha256(OUT_PATH.read_bytes()).hexdigest()
-    # ABSOLUTE path, like every sibling manifest - publish.py resolves this
-    # string against its own CWD (#659).
-    manifest = {"path": str(OUT_PATH), "sha256": digest}
+    # Via to_manifest_path() (#1265) - export_club_sections.py's comment has
+    # the incident (#659) that makes this a resolve-against-Path(__file__)
+    # helper rather than a plain relative path.
+    manifest = {"path": to_manifest_path(OUT_PATH), "sha256": digest}
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
     published = output["highlights"]

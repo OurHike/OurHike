@@ -106,6 +106,7 @@ from shapely.ops import substring, transform
 from shapely.strtree import STRtree
 
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
@@ -628,7 +629,7 @@ def write_artifact(graph: dict, stats: dict, sources: dict | None = None) -> dic
     geometry_path.write_text(json.dumps(geometry, separators=(",", ":")), encoding="utf-8")
 
     manifest = {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
         "geometry_path": str(geometry_path),

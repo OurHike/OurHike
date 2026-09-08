@@ -57,6 +57,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.nynjtc_alerts import UNREVIEWED, published_rows
 
 ROOT = Path(__file__).resolve().parent
@@ -138,7 +139,7 @@ def main() -> dict | None:
     manifest = {
         "artifacts": {
             PAYLOAD: {
-                "path": str(OUT_PATH),
+                "path": to_manifest_path(OUT_PATH),
                 "sha256": sha256_file(OUT_PATH),
                 "count": len(rows),
                 "reviewed_count": 0,

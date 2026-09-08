@@ -126,6 +126,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from lib.manifest_paths import to_manifest_path
+
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
 # `stewards.json`, NOT `sources.json`, and the difference is worth the extra
@@ -448,9 +450,10 @@ def _write(path: Path, manifest_path: Path, payload: dict) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    # ABSOLUTE, like every sibling manifest - publish.py resolves this against
-    # its own CWD (export_club_sections.py's comment has the incident).
-    manifest = {"path": str(path), "sha256": digest}
+    # Via to_manifest_path() (#1265) - export_club_sections.py's comment has
+    # the incident that makes this a resolve-against-Path(__file__) helper
+    # rather than a plain relative path.
+    manifest = {"path": to_manifest_path(path), "sha256": digest}
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
 
@@ -464,9 +467,10 @@ def main() -> dict:
     _write(REGISTRY_OUT_PATH, REGISTRY_MANIFEST_PATH, registry_out)
 
     digest = hashlib.sha256(OUT_PATH.read_bytes()).hexdigest()
-    # ABSOLUTE, like every sibling manifest - publish.py resolves this against
-    # its own CWD (export_club_sections.py's comment has the incident).
-    manifest = {"path": str(OUT_PATH), "sha256": digest}
+    # Via to_manifest_path() (#1265) - export_club_sections.py's comment has
+    # the incident that makes this a resolve-against-Path(__file__) helper
+    # rather than a plain relative path.
+    manifest = {"path": to_manifest_path(OUT_PATH), "sha256": digest}
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
     print(f"{len(output['stewards'])} stewards -> {OUT_PATH}")

@@ -36,13 +36,14 @@ on it, and a fetcher that died mid-write would take the other five's records
 with it. Separate files make the independence real: a fetcher can only ever
 damage its own receipt.
 
-PATHS ARE RECORDED RELATIVE to the pipeline root, unlike the export
-manifests, which record absolute paths (export_trails.py:387). That is not a
-style preference. publish-vector-data.yml keeps building and publishing in
-one job specifically because those absolute paths "only agree on one
-filesystem", and calls splitting them "a trap rather than a design". Receipts
-are meant to survive between runs on different runners, so they cannot carry
-the same trap.
+PATHS ARE RECORDED RELATIVE to the pipeline root - resolved against
+Path(__file__)'s own directory rather than the process's CWD, so a receipt
+means the same file to whichever job or runner reads it back. That is not a
+style preference: receipts are meant to survive between runs on different
+runners. #1265 gave the export manifests the same idiom
+(lib/manifest_paths.py) for the same reason, after publish-vector-data.yml
+spent a long time as the one place build and publish had to share a job
+because its absolute paths "only agree on one filesystem".
 """
 
 from __future__ import annotations

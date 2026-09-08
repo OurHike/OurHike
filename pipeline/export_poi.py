@@ -246,6 +246,7 @@ from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.photo_screen import gate_photos
 from lib.photo_screen import load_decisions as load_screen_decisions
 from lib.photo_store import photo_key
@@ -1422,8 +1423,8 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     con.execute(f"COPY poi_geom TO '{fgb_path.as_posix()}' WITH (FORMAT GDAL, DRIVER 'FlatGeobuf')")
 
     return {
-        "geojson": {"path": str(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
-        "fgb": {"path": str(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
+        "geojson": {"path": to_manifest_path(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
+        "fgb": {"path": to_manifest_path(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
     }
 
 

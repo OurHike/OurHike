@@ -286,6 +286,7 @@ from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler, index_ele
 from export_network_elevation import _transformers, edge_sample_points
 from lib.elevation_gain import DEFAULT_THRESHOLD_FT, DEFAULT_THRESHOLD_M, METERS_PER_FOOT
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
@@ -480,7 +481,7 @@ def write_artifact(profiles: list, stats: dict, seam: dict, sources: dict | None
     path.write_text(json.dumps(profiles, separators=(",", ":")), encoding="utf-8")
 
     manifest = {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
         "sample_interval_m": SAMPLE_INTERVAL_METERS,

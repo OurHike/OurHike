@@ -104,16 +104,20 @@ never interleave. All are dispatch-only except `publish-conditions.yml`.
 | `build-basemap.yml` | vector basemap → `build`, `publish` |
 | `build-dem.yml` | DEM archive → `build`, `publish` |
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
-| `publish-vector-data.yml` | trails, POIs and the manifest hikers download |
+| `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
 | `publish-conditions.yml` | closures and warnings, on a daily schedule as well as dispatch |
 
-`publish-vector-data.yml` and `migrate.yml`'s production job both run under the
-`production` environment whenever they will actually write, which is what
-makes RELEASING.md §12 — only the maintainer ships — a GitHub setting rather
-than a habit. `publish-vector-data.yml`'s job runs ungated when it cannot
-write at all — a dry run, or a ledger-regeneration run that never publishes
-(#1262) — since gating a run that structurally cannot ship anything is
-friction rather than safety.
+`publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
+both run under the `production` environment whenever they will actually
+write, which is what makes RELEASING.md §12 — only the maintainer ships — a
+GitHub setting rather than a habit. `publish-vector-data.yml`'s `publish`
+job does not run at all when nothing could be written — a dry run, or a
+ledger-regeneration run that never publishes (#1262) — since gating a run
+that structurally cannot ship anything is friction rather than safety.
+`build`/`publish` is its own split for the same reason `build-basemap.yml`
+and `build-dem.yml` already have one: publish.py no longer needs to be the
+runner that built its inputs (#1265), so only the (much shorter) `publish`
+job needs to hold `concurrency: publish-data` or wait on the reviewer.
 
 ### Watches a live system
 

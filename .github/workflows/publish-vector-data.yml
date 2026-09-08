@@ -65,68 +65,34 @@ on:
         type: boolean
         default: false
 
-# One publish at a time. Two concurrent runs would race on latest.json and could
-# interleave uploads, leaving the manifest describing a mixture of two builds.
-# `publish-conditions.yml` shares this group for that reason and not by
-# accident: collect_artifacts() folds its `conditions/*.json` into the SAME
-# artifacts dict, so both paths write the one MANIFEST_KEY.
-#
-# WHAT THAT COSTS A DISPATCHED RUN, WHICH IS NOT OBVIOUS FROM HERE. Concurrency
-# groups coalesce rather than queue - one pending entrant, and a newer pending
-# run cancels the older (publish-conditions.yml's own header spells the
-# mechanism out, for its two legs). A run that will actually write parks in
-# `pending` under the `production` environment until a human approves it (see
-# the job's `environment:` below) - and `publish-conditions.yml` is on an
-# hourly cron into this same group. So a real publish left un-approved is
-# cancelled by the next bake.
-#
-# Measured 2026-08-19, before #1262: run 32294671249 queued 19:44:16Z with
-# `publish: false`, sat pending awaiting approval, and was cancelled
-# 19:56:39Z - one second after the hourly bake queued at 19:56:38Z. Nothing
-# reported a cause. That run was a dry run - it uploaded nothing whether it
-# lived or died - which is exactly the case #1262 fixed: a dispatch that
-# cannot write no longer asks for approval at all, so it no longer has an
-# hour to lose. A DISPATCH THAT WILL WRITE STILL CAN LOSE ITS HOUR - the trap
-# is unchanged for a real publish, and remains open as #838 finding 1.
-#
-# PRACTICAL CONSEQUENCE, for a run that will write: approve it within the
-# hour or re-dispatch it. Once a job actually starts it is safe -
-# `cancel-in-progress: false` means the bake queues behind it rather than
-# killing it.
+# One build at a time, so two dispatches do not just burn compute in
+# parallel for no reason - mirroring build-basemap.yml/build-dem.yml/
+# build-raster.yml, which each guard their own (much longer) build the same
+# way. This is NOT the group that guards latest.json - see the `publish` job
+# below for that - because nothing in the build job touches the bucket or
+# any shared state a second build could race. Two concurrent builds are
+# wasteful, never wrong.
 concurrency:
-  group: publish-data
+  group: build-vector-data
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
-    # Building and publishing share a job on purpose. The export scripts record
-    # absolute paths in their manifests (export_trails.py:387) and publish.py
-    # reads those paths back, so the two only agree on one filesystem. Splitting
-    # them across jobs would work only as long as the runner's checkout path
-    # never changed - a trap rather than a design.
+    # No environment: this job never writes - see the `publish` job below,
+    # which is the only place R2_WRITE_ENABLED is ever set. #1265 made that
+    # split possible: the export scripts used to record absolute paths in
+    # their manifests (a build here and a publish there "only agree on one
+    # filesystem", in this job's own words before #1265), so publish.py had
+    # to run on the exact runner that built its inputs. lib/manifest_paths.py
+    # resolves a manifest path against Path(__file__)'s own directory instead
+    # of the process's CWD, the same idiom lib/fetch_receipts.py already
+    # carried for receipts - so a manifest this job writes means the same
+    # file to the publish job that reads it, on a different runner entirely.
     #
-    # GATED ONLY WHEN THE RUN CAN ACTUALLY WRITE (#1262 - a dry run that
-    # uploads nothing still needed a production approval). This is deliberately
-    # the SAME predicate as "Publish to R2"'s own `if:` below, spelled the same
-    # way, rather than a second one that happens to agree today -
-    # test_the_environment_gate_mirrors_the_write_condition in
-    # test_publish_dry_run_gate.py fails if the two ever diverge.
-    #
-    # `no-write` names no configured environment and does not need to become
-    # one: referencing an environment that does not exist auto-creates it with
-    # no protection rules, and a job naming an environment with none runs
-    # immediately rather than waiting on a reviewer -
-    # test_repository_protections.py's test_the_production_environment_asks_a_human
-    # already depends on that exact behaviour for its own failure mode. Every
-    # run that reaches "Publish to R2" still names `production` and still
-    # waits - `data_environment: ua` included, since ua/production there is
-    # the publish TARGET (features/DATA_ENVIRONMENTS.md), not this GitHub
-    # environment, and only the write predicate below decides who is gated.
-    environment: ${{ (inputs.publish && !inputs.regenerate_identity_ledger) && 'production' || 'no-write' }}
     # Raised from 60 when photos were added, because the old ceiling no longer
     # fit and the failure mode is bad: a timeout kills a release mid-run, and
     # the first thing publish.py uploads is photos, so a half-finished publish
@@ -933,25 +899,114 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      # `!regenerate_identity_ledger` is the second half of the condition and is
-      # not belt-and-braces: a run that has just rewritten the ledger has
-      # rewritten it to something NOBODY HAS REVIEWED, which is the exact state
-      # the identity gate exists to keep out of the bucket. Publishing from such
-      # a run would publish POIs under ids whose diff no human has read - the
-      # failure #671 built the ledger to make impossible - so the two inputs are
-      # mutually exclusive here rather than merely discouraged in the form.
+      # The handoff to the `publish` job below (#1265). Everything
+      # publish.py can read: collect_artifacts() walks data/processed/
+      # manifests wholesale, collect_sidecars() and collect_photos() read
+      # the specific data/raw/ files SIDECARS and PHOTOS_DIRNAME name
+      # (publish.py). Not the rest of data/raw/ - the ArcGIS/opentrail/
+      # elevation fetch cache publish.py never opens, which FETCH_OUTPUTS
+      # above already carries between runs for a different reason and would
+      # be pure waste to carry sideways too.
       #
-      # THIS EXACT CONDITION IS ALSO THE JOB'S `environment:` PREDICATE, above
-      # (#1262). Whoever changes this line on purpose has to change that one
-      # too - test_publish_dry_run_gate.py checks the two stay textually
-      # identical rather than merely equivalent today.
+      # Uploaded even on a dry run or a ledger-regeneration run, when the
+      # `publish` job's own `if:` skips it and this artifact goes unread -
+      # the alternative is a second copy of that job's predicate here, which
+      # is exactly the drift #1262's tests exist to catch elsewhere in this
+      # file. Short retention because nothing outside this same run ever
+      # reads it.
+      - name: Upload data for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-data-build-output
+          path: |
+            pipeline/data/processed/
+            pipeline/data/raw/poi_images_atc.json
+            pipeline/data/raw/poi_images.json
+            pipeline/data/raw/osm_water.geojson
+            pipeline/data/raw/osm_water_reach.json
+            pipeline/data/raw/trail_water.json
+            pipeline/data/raw/poi_photos/
+          retention-days: 1
+          if-no-files-found: warn
+
+      # The two cases that never reach the `publish` job below, because its
+      # own `if:` excludes both - see that job for the other three. Split out
+      # of one "Say what happened" step by #1265, when publishing moved to a
+      # separate job that cannot report on a run it never saw.
+      - name: Say what happened
+        if: always()
+        run: |
+          if [ "${{ inputs.regenerate_identity_ledger }}" = "true" ]; then
+            echo "Ledger regeneration run - nothing was uploaded to R2, whatever 'publish' said."
+            echo "Download the 'poi-identity-ledger' artifact, review the diff against"
+            echo "pipeline/reference/poi_identity.json, and commit it. Then re-run without"
+            echo "'regenerate_identity_ledger' to publish against the reviewed ledger."
+          elif [ "${{ inputs.publish }}" != "true" ]; then
+            echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
+          fi
+
+  # A separate job from build (#1265, #838 direction 2). publish.py resolves
+  # every manifest path it reads through lib/manifest_paths.py rather than
+  # trusting the string verbatim, so it no longer needs to be the runner
+  # that built its inputs - the same reason build-basemap.yml and
+  # build-dem.yml already split this way, in build-basemap.yml's own words:
+  # "nothing depends on this being the runner that produced them".
+  #
+  # WHAT THIS BUYS THE HOURLY CONDITIONS BAKE. This job, not the 120-minute
+  # build above, is what now holds `concurrency: publish-data` - so
+  # `publish-conditions.yml`'s hourly firing waits behind (or risks losing
+  # its coalescing race against, per #838 finding 1) however long THIS job
+  # takes, not however long the whole build does. Minutes, not two hours -
+  # the actual latency the investigation behind #1265 was answering.
+  publish:
+    needs: build
+    # Unconditional on inputs.publish alone would run this job - and wait on
+    # the reviewer below - for a dry run or a ledger-regeneration run that
+    # structurally cannot write (#1262's finding, now enforced by not
+    # instantiating the job at all, rather than by a same-job `environment:`
+    # expression mirroring a step's `if:` in two independently-written
+    # places). See "Say what happened" above for the two cases this excludes.
+    if: inputs.publish && !inputs.regenerate_identity_ledger
+    runs-on: ubuntu-latest
+    environment: production
+    # Every writer of latest.json shares this group (publish-conditions.yml,
+    # build-basemap.yml, build-dem.yml, build-raster.yml): publish() does a
+    # read-modify-write of the manifest, and two concurrent publishes could
+    # interleave and clobber each other's entries (#645).
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vector-data-build-output
+          path: pipeline/
+
+      # `!regenerate_identity_ledger` no longer needs spelling out here - the
+      # job's own `if:` above already excludes it, and RELEASING.md §12's
+      # `production` gate now applies to this whole job rather than to one
+      # step inside a bigger one.
       - name: Publish to R2
         id: publish
-        if: ${{ inputs.publish && !inputs.regenerate_identity_ledger }}
         env:
           # The gate publish.py checks. Set only on this step, so every other
-          # step in this workflow is structurally incapable of writing to the
-          # bucket - see publish.py's writes_enabled().
+          # step in this job is structurally incapable of writing to the
+          # bucket beyond what publish.py itself does - see writes_enabled().
           R2_WRITE_ENABLED: "true"
           # The second gate, and the one that decides *where*. publish.py scopes
           # every key it writes by this, so a UA run cannot reach production's
@@ -964,44 +1019,24 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python publish.py
 
-      # REPORTS THE OUTCOME, NOT THE INTENT (#948). Every branch here used to
-      # read `inputs` alone, so a run that asked to publish and never got there
-      # still signed off "Published to production". Measured on run
-      # 32672955042: it died at the identity gate, sixteen steps in, skipped
-      # `Publish to R2` with everything else after it, uploaded nothing - and
-      # printed that line as its last word.
+      # REPORTS THE OUTCOME, NOT THE INTENT (#948). The three cases that can
+      # only be decided here, now that this job only ever runs with intent to
+      # write - build's own "Say what happened" covers the two that do not
+      # (#1265).
       #
-      # The first two branches below are safe to leave reading inputs, and do:
-      # a ledger-regeneration run and a dry run upload nothing whether they
-      # succeed or fail, so both sentences stay true on a failed run. Only the
-      # three "Published to ..." branches could ever lie, so only they are
-      # gated - on the step's own `outcome`, which separates `skipped` (the run
-      # never reached it) from `failure` (the upload itself broke) from
-      # `success`.
-      #
-      # Naming which of the two it was matters more than it looks: they send a
-      # reader to completely different places. `skipped` means the failure is
-      # upstream and the log above holds it; `failure` means publish.py itself
-      # is the thing to read. "Nothing was uploaded" alone would leave both
-      # searches open.
-      #
-      # The job's own conclusion already goes red in these cases, so this is
-      # not a silent-failure fix - it is the sentence a person actually reads
-      # for "did this publish?", which is the question #940 and #729 both
-      # record somebody getting the wrong answer to.
+      # Gated on the step's own `outcome`, which separates `skipped` (an
+      # earlier step in THIS job failed - checkout, setup, or the download
+      # above) from `failure` (the upload itself broke) from `success`.
+      # Naming which of the two it was matters more than it looks: they send
+      # a reader to completely different places. `skipped` means the failure
+      # is upstream in this job and the log above holds it; `failure` means
+      # publish.py itself is the thing to read.
       - name: Say what happened
         if: always()
         run: |
-          if [ "${{ inputs.regenerate_identity_ledger }}" = "true" ]; then
-            echo "Ledger regeneration run - nothing was uploaded to R2, whatever 'publish' said."
-            echo "Download the 'poi-identity-ledger' artifact, review the diff against"
-            echo "pipeline/reference/poi_identity.json, and commit it. Then re-run without"
-            echo "'regenerate_identity_ledger' to publish against the reviewed ledger."
-          elif [ "${{ inputs.publish }}" != "true" ]; then
-            echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
-          elif [ "${{ steps.publish.outcome }}" = "skipped" ]; then
-            echo "NOTHING WAS UPLOADED - this run never reached the publish step."
-            echo "'publish' was ticked and an earlier step failed, so no key in"
+          if [ "${{ steps.publish.outcome }}" = "skipped" ]; then
+            echo "NOTHING WAS UPLOADED - this job never reached the publish step."
+            echo "An earlier step in this job failed, so no key in"
             echo "${{ inputs.data_environment }} was written. The failure is above this line."
           elif [ "${{ steps.publish.outcome }}" != "success" ]; then
             echo "NOTHING WAS UPLOADED, or only part of it was - publish.py did not succeed"

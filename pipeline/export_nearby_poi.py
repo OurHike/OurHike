@@ -106,6 +106,7 @@ import duckdb
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, NETWORK_BUFFER_FEET, PROJECTED_CRS, count_features
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 from lib.source_registry import load_registry
 
@@ -653,7 +654,7 @@ def write_artifact(records: list[dict], per_source: dict, ring: dict | None = No
         by_type[record["poi_type"]] = by_type.get(record["poi_type"], 0) + 1
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "feature_count": len(records),
         "by_type": {poi_type: by_type.get(poi_type, 0) for poi_type in POI_TYPES if by_type.get(poi_type)},

@@ -79,6 +79,7 @@ from pmtiles.writer import write
 
 from export_elevation import sha256_file
 from lib.corridor_grid import CELL_DEGREES, graticule_cells
+from lib.manifest_paths import to_manifest_path
 from lib.tiling import tile_bounds_merc
 
 PROCESSED_DIR = Path(__file__).parent / "data" / "processed"
@@ -374,7 +375,7 @@ def cut_cells(
     manifest = {
         "artifacts": {
             name: {
-                "path": str(out_dir / name),
+                "path": to_manifest_path(out_dir / name),
                 "sha256": sha256_file(out_dir / name),
                 "size_bytes": (out_dir / name).stat().st_size,
             }

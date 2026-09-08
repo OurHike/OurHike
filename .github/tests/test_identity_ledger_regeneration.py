@@ -82,7 +82,7 @@ def workflow() -> dict:
 
 @pytest.fixture(scope="module")
 def steps(workflow) -> list[dict]:
-    return workflow["jobs"]["build-and-publish"]["steps"]
+    return workflow["jobs"]["build"]["steps"]
 
 
 def _named(steps: list[dict], fragment: str) -> dict:
@@ -122,17 +122,21 @@ def test_the_check_and_the_write_never_run_in_the_same_job(steps):
     )
 
 
-def test_a_regeneration_run_cannot_publish(steps):
+def test_a_regeneration_run_cannot_publish(workflow):
     """The property this file exists for.
 
     A rewritten ledger is an unreviewed ledger. Publishing from that run ships
     POIs under ids whose diff no human has read - the silent orphaning #671
     exists to prevent, arriving through the door built to prevent it.
+
+    #1265 moved "Publish to R2" into its own `publish` job, so the exclusion
+    lives on that job's `if:` now rather than on the step directly - checked
+    here instead of in test_publish_dry_run_gate.py because this file is
+    where the ledger's own mutual-exclusion property is asserted end to end.
     """
-    step = _named(steps, "Publish to R2")
-    condition = step.get("if") or ""
+    condition = workflow["jobs"]["publish"].get("if") or ""
     assert REGENERATE_INPUT in condition and "!" in condition, (
-        f"'Publish to R2' is guarded by {condition!r}, which does not exclude a regeneration run. "
+        f"the 'publish' job is gated by {condition!r}, which does not exclude a regeneration run. "
         "A run that has just rewritten the ledger has rewritten it to something nobody has "
         "reviewed; publishing from it defeats the identity gate entirely. See #811."
     )

@@ -189,6 +189,7 @@ from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.source_registry import external_arcgis_sources, load_registry
 
 ROOT = Path(__file__).parent
@@ -878,7 +879,7 @@ def write_overview(records: list[dict]) -> dict:
     path.write_text(json.dumps(body, separators=(",", ":")))
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "feature_count": len(body["features"]),
         "coordinate_count": sum(len(line) for lines in groups.values() for line in lines),
@@ -938,7 +939,7 @@ def write_tiles(geojson_path: Path) -> dict:
         )
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "layer": TILES_LAYER,
         "min_zoom": TILES_MIN_ZOOM,
@@ -954,7 +955,7 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "feature_count": len(records),
         "bbox": exported_bbox(records),

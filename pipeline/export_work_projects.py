@@ -44,6 +44,7 @@ from pathlib import Path
 
 from lib.data_env import ENVIRONMENT_VAR
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.work_projects import file_problems, is_reviewed, published_rows
 
 ROOT = Path(__file__).resolve().parent
@@ -115,7 +116,7 @@ def main() -> int:
             {
                 "artifacts": {
                     PAYLOAD: {
-                        "path": str(OUT_PATH),
+                        "path": to_manifest_path(OUT_PATH),
                         "sha256": sha256_file(OUT_PATH),
                         "count": len(rows),
                         "generated_at": _stamp_utc(now),

@@ -60,7 +60,7 @@
 export const caption =
   'The opening map — trail lines only below the seam (#1292): the A.T. from its corridor-view sketch until the real line lands (#1291), no waypoints and no marks of any kind, and the other organizations’ trails dotted around its New York miles once network_overview.geojson is in the bucket this preview reads'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single dark line from Georgia to Maine over white paper, with no pins, dots or marks anywhere on it, and — once the artifact publishes — the other organizations’ trails dotted faintly around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single dark line from Georgia to Maine over the basemap, with no pins, dots or marks anywhere on it, and — once the artifact publishes — the other organizations’ trails dotted faintly around its New York miles'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Map' }).click()

@@ -5,12 +5,14 @@
 // gained a drive the same day: the map stopped being where the app opens,
 // and this file is the shot of what replaced it.
 //
-// What the preview can and cannot show, same measurement as map-credits.mjs:
-// the preview build has no data source (#1024), so there is no GPS fix, no
-// mile readout and no journal entries - the shot is the chrome being honest
-// about all of that ("Location is off", the mode switch, the volunteer card
-// saying the workday list needs signal, the no-signal footer). The day #1024
-// is fixed, the dated journal appears here without re-aiming the camera.
+// What the preview can and cannot show. Nothing grants the camera a
+// location, so there is no GPS fix and no mile readout, and the shot is the
+// chrome being honest about that ("Location is off", the mode switch, the
+// volunteer card saying the workday list needs signal, the no-signal footer).
+// This used to add "the preview build has no data source (#1024)" as a
+// second absence; that was the camera's own origin, fixed in #1096, and the
+// release arrives now - what stays absent here is only what a fix would
+// bring, and the dated journal appears the day a recipe can supply one.
 export const caption = 'Today — the journal the app now opens on (#1054)'
 export const alt =
   'The Today screen: a pine header with the date, a mode switch reading Day hike, Long hike and Volunteer, and a paper column below with the volunteer card and the no-signal footer'

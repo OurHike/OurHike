@@ -18,6 +18,7 @@ from reconcile_poi_identity import (
     mass_retirement_refusal,
     reconcile,
     render,
+    stream_passport,
     summarize,
 )
 
@@ -803,3 +804,138 @@ def test_the_mass_retirement_refusal_exits_two_and_writes_nothing(ledger_at):
 
     assert main(["--release", LATER]) == 2
     assert path.read_text() == before
+
+
+# --- derived points: the stream a crossing is made of (#1028) ---------------
+#
+# A crossing's key is the coordinate where a trail line meets a stream line,
+# so re-measuring the trail re-keys every crossing - and one with no name and
+# no inventory could reach 1.5 against ACCEPT_THRESHOLD's 2.5, retired and
+# re-minted whatever the distance. The stream half of the meeting cannot have
+# moved, so it is the passport. The coordinates below are the issue's own
+# instance from the 2026-08-25 ledger: the retired row, the row minted 24.7 m
+# from it, and the second unnamed crossing 31.7 m out on the other side.
+
+RETIRED_AT = (41.408189, -73.8763)
+MINTED_AT = (41.40803, -73.876094)
+OTHER_SIDE = (41.408389, -73.876571)
+
+
+def _crossing(sfid, lat, lon, stream="usgs-90662307", name=None):
+    record = _record(source="nhd_crossing", sfid=sfid, name=name, lat=lat, lon=lon, poi_type="crossing")
+    if stream is not None:
+        record["stream_id"] = stream
+    return record
+
+
+def _same_mile(points):
+    return [1407.2 for _ in points]
+
+
+def test_without_its_stream_a_nameless_crossing_cannot_be_carried_at_any_distance():
+    """The defect, pinned: distance and the along-trail mile together reach
+    1.5, so even 24.7 m at the same mile retires-and-creates."""
+    prior = _seeded(_crossing("41.40819,-73.87630", *RETIRED_AT, stream=None))
+    moved = _crossing("41.40803,-73.87609", *MINTED_AT, stream=None)
+
+    outcome = reconcile(prior, [moved], LATER, mile_of=_same_mile)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["nhd_crossing:41.40819,-73.87630"]
+    assert outcome.minted == ["nhd_crossing:41.40803,-73.87609"]
+
+
+def test_a_nameless_crossing_carries_on_its_stream_when_the_trail_is_re_measured():
+    """Same pair, both records saying which stream made them: the id survives
+    the re-measure and the evidence names the passport. No mile signal here
+    on purpose - a crossing on another organization's trail has none, and
+    near + stream (3.0) carries it regardless."""
+    prior = _seeded(_crossing("41.40819,-73.87630", *RETIRED_AT))
+    moved = _crossing("41.40803,-73.87609", *MINTED_AT)
+
+    outcome = reconcile(prior, [moved], LATER)
+
+    assert len(outcome.matched) == 1
+    assert "stream intact" in outcome.matched[0]
+    assert outcome.retired == [] and outcome.minted == []
+    row = outcome.pois["nhd_crossing:41.40819,-73.87630"]
+    assert row["source_feature_id"] == "41.40803,-73.87609"
+    assert row["lat"] == MINTED_AT[0], "position is upstream's to move"
+    assert row["history"][-1]["event"] == "matched"
+    assert row["history"][-1]["source_feature_id_was"] == "41.40819,-73.87630"
+
+
+def test_one_stream_crossing_the_trail_twice_within_reach_retires_rather_than_guesses():
+    """The Laurel Ridge lesson for streams, on the issue's own geometry: the
+    second unnamed crossing 31.7 m out on the other side. If it is the SAME
+    stream, both candidates score alike and the margin refuses the guess -
+    two honest tombstones beat one wrong carry."""
+    prior = _seeded(_crossing("41.40819,-73.87630", *RETIRED_AT))
+    twins = [
+        _crossing("41.40803,-73.87609", *MINTED_AT),
+        _crossing("41.40839,-73.87657", *OTHER_SIDE),
+    ]
+
+    outcome = reconcile(prior, twins, LATER)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["nhd_crossing:41.40819,-73.87630"]
+    assert sorted(outcome.minted) == ["nhd_crossing:41.40803,-73.87609", "nhd_crossing:41.40839,-73.87657"]
+
+
+def test_a_different_stream_beside_the_old_one_is_evidence_of_nothing():
+    """Neutral, not negative. Nameless and 24.7 m away on a different stream
+    scores the 1.0 it always did and retires-and-creates; a NAMED crossing
+    the same distance away carries on its name regardless, and the sentence
+    says the streams differ so the reviewer sees it. The fingerprint's -3.0
+    would have blocked that carry - see SCORE_STREAM_INTACT for why a stream
+    id can change without the water having moved."""
+    prior = _seeded(_crossing("41.40819,-73.87630", *RETIRED_AT, stream="usgs-1"))
+    outcome = reconcile(prior, [_crossing("41.40803,-73.87609", *MINTED_AT, stream="osm-7")], LATER)
+    assert outcome.matched == [] and outcome.retired == ["nhd_crossing:41.40819,-73.87630"]
+
+    named = _seeded(_crossing("41.40819,-73.87630", *RETIRED_AT, stream="usgs-1", name="Test Brook"))
+    successor = _crossing("41.40803,-73.87609", *MINTED_AT, stream="osm-7", name="Test Brook")
+    outcome = reconcile(named, [successor], LATER)
+    assert len(outcome.matched) == 1
+    assert "name intact" in outcome.matched[0] and "stream differs" in outcome.matched[0]
+
+
+def test_the_ceiling_still_binds_a_stream_match():
+    """One reach can cross the trail twice a valley apart - the reason a
+    reach id was never the KEY. Past the ceiling the same stream is not a
+    candidate at all, however it would have scored."""
+    prior = _seeded(_crossing("41.40819,-73.87630", *RETIRED_AT))
+    far = _crossing("41.42819,-73.87630", 41.428189, -73.8763)  # ~2.2 km north, same stream
+
+    outcome = reconcile(prior, [far], LATER)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["nhd_crossing:41.40819,-73.87630"]
+    assert outcome.minted == ["nhd_crossing:41.42819,-73.87630"]
+
+
+def test_the_stream_rides_the_row_and_follows_the_record():
+    """Minted with it, refreshed by a tier-1 carry (dedupe_crossings may keep
+    the other hydrography's record next run), dropped when the record stops
+    saying - and it round-trips the ledger's serialization."""
+    outcome = reconcile({}, [_crossing("k", *RETIRED_AT, stream="usgs-1")], RELEASE)
+    assert outcome.pois["nhd_crossing:k"]["stream_id"] == "usgs-1"
+    assert json.loads(render(outcome.pois))["pois"]["nhd_crossing:k"]["stream_id"] == "usgs-1"
+
+    carried = reconcile(outcome.pois, [_crossing("k", *RETIRED_AT, stream="osm-7")], LATER)
+    assert carried.carried == ["nhd_crossing:k"]
+    assert carried.pois["nhd_crossing:k"]["stream_id"] == "osm-7"
+    assert carried.pois["nhd_crossing:k"]["history"] == [], "a tier-1 carry is still silent"
+
+    dropped = reconcile(carried.pois, [_crossing("k", *RETIRED_AT, stream=None)], "2028-09-12")
+    assert "stream_id" not in dropped.pois["nhd_crossing:k"]
+
+
+def test_the_passport_is_read_off_the_raw_properties_as_a_string():
+    """published_records composes it the way it composes the fingerprint:
+    from what export_poi.load_trail_water kept on RAW_PROPERTIES_KEY."""
+    assert stream_passport({"crossing": True, "stream_id": "90662307"}) == "90662307"
+    assert stream_passport({"crossing": True, "stream_id": 90662307}) == "90662307"
+    assert stream_passport({"Year_Built": 1938}) is None
+    assert stream_passport({"stream_id": ""}) is None

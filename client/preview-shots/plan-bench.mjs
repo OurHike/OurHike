@@ -35,8 +35,8 @@
 // frame this recipe is really for. A SESSION IN THE SANDBOX CANNOT VERIFY
 // THAT ONE: Chromium there reaches no external host, so the only build it can
 // photograph is the dataless one. If the CI frame still shows the refusal
-// line, that is a finding about the preview's data source (#1024, #1093) and
-// not about this screen.
+// line, that is a finding about the camera's data path - #1024's cause was
+// the camera's own origin, fixed in #1096 - and not about this screen.
 //
 // The drag itself is a pointer gesture and does not photograph. It is
 // exercised in screens/Plan.test.tsx and chrome/ElevationChart.test.tsx

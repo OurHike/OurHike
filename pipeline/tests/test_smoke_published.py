@@ -650,7 +650,11 @@ def _reach_bucket(mock, water_lat_offset):
             [
                 {
                     "type": "Feature",
-                    "properties": {"id": "osm_water:1", "poi_type": "water", "source": "osm_water"},
+                    # A mile, because the published file carries one on every
+                    # A.T.-anchored point (export_poi.py's POI_COLUMNS) and its
+                    # absence is the exporter's mark for a point on somebody
+                    # else's trail - see _at_anchored_water.
+                    "properties": {"id": "osm_water:1", "poi_type": "water", "source": "osm_water", "mile": 12.3},
                     "geometry": {"type": "Point", "coordinates": [lon + 0.05, lat + water_lat_offset]},
                 }
             ]
@@ -674,6 +678,149 @@ def _reach_bucket(mock, water_lat_offset):
 
 def _reach_report(reports):
     return next(r for r in reports if r["check"] == "reach")
+
+
+# A second trail well north of the A.T. fixture - another organization's line,
+# with a spring on it that is nowhere near the centerline.
+REACH_NETWORK_LINE = [(-74.0, 41.5), (-73.9, 41.5)]
+
+
+def _network_reach_bucket(mock, *, network, max_hash_bytes, at_water=True):
+    """Serve REACH_KEYS plus, per `network`, the fifth layer: "read" (under the
+    budget, so it lands in keep_dir), "skipped" (published but over it), or
+    "unpublished" (not in the manifest at all). The water carries an A.T.
+    point (with a mile) and a network point (mile: null, the exporter's mark
+    for a point whose only walk is on somebody else's trail)."""
+    lon, lat = REACH_CENTERLINE[0]
+    nlon, nlat = REACH_NETWORK_LINE[0]
+    water = []
+    if at_water:
+        water.append(
+            {
+                "type": "Feature",
+                "properties": {"id": "osm_water:1", "poi_type": "water", "source": "osm_water", "mile": 12.3},
+                "geometry": {"type": "Point", "coordinates": [lon + 0.05, lat]},
+            }
+        )
+    water.append(
+        {
+            "type": "Feature",
+            "properties": {"id": "osm_water:2", "poi_type": "water", "source": "osm_water", "mile": None},
+            "geometry": {"type": "Point", "coordinates": [nlon + 0.05, nlat]},
+        }
+    )
+    payloads = {
+        "poi_water.geojson": _fc(water),
+        "trails.geojson": _fc(
+            [
+                {
+                    "type": "Feature",
+                    "properties": {"source": "centerline"},
+                    "geometry": {"type": "LineString", "coordinates": [list(c) for c in REACH_CENTERLINE]},
+                }
+            ]
+        ),
+        "poi_shelter.geojson": _fc([]),
+        "poi_campsite.geojson": _fc([]),
+    }
+    if network != "unpublished":
+        # Padding is what puts the "skipped" case over the budget: a line
+        # feature is a few hundred bytes, and the budget in these tests is
+        # what the caller says it is.
+        padding = "x" * (max_hash_bytes + 1) if network == "skipped" else ""
+        payloads["nearby_trails.geojson"] = _fc(
+            [
+                {
+                    "type": "Feature",
+                    "properties": {"source": "oprhp_trails", "note": padding},
+                    "geometry": {"type": "LineString", "coordinates": [list(c) for c in REACH_NETWORK_LINE]},
+                }
+            ]
+        )
+    for key, payload in payloads.items():
+        _serve_bytes(mock, key, payload)
+    return {"artifacts": {key: {"sha256": hashlib.sha256(payload).hexdigest()} for key, payload in payloads.items()}}
+
+
+def test_network_water_is_measured_against_the_network_lines_when_they_were_read(mock):
+    manifest = _network_reach_bucket(mock, network="read", max_hash_bytes=1_000_000)
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=1_000_000))
+
+    assert report["state"] == OK
+    assert "2 osm_water point(s)" in report["detail"]
+    assert "not measured" not in report["detail"]
+
+
+def test_network_water_is_left_out_when_the_network_lines_were_over_the_budget(mock):
+    """The 2026-09-07 false alarm (#1256): nearby_trails.geojson crossed the
+    hash budget, never reached keep_dir, and every network-anchored spring was
+    measured against the A.T. alone and called unreachable. The A.T.'s own
+    water is still measured; the rest is named, not condemned."""
+    manifest = _network_reach_bucket(mock, network="skipped", max_hash_bytes=4_000)
+
+    reports = check_all(BASE, manifest, max_hash_bytes=4_000)
+    report = _reach_report(reports)
+
+    network_hash = next(r for r in reports if r["check"] == "hash" and r["key"] == "nearby_trails.geojson")
+    assert network_hash["state"] == SKIPPED
+    assert report["state"] == OK
+    assert "1 osm_water point(s), every one inside" in report["detail"]
+    assert "1 point(s) the pipeline anchored to another organization's trail were not measured" in report["detail"]
+    assert "did not read" in report["detail"]
+    assert "osm_water:2" not in report["detail"]
+
+
+def test_network_water_is_left_out_when_this_release_publishes_no_network_lines(mock):
+    manifest = _network_reach_bucket(mock, network="unpublished", max_hash_bytes=1_000_000)
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=1_000_000))
+
+    assert report["state"] == OK
+    assert "not measured" in report["detail"]
+    assert "does not publish" in report["detail"]
+
+
+def test_a_release_whose_water_is_all_on_the_network_is_skipped_without_the_network_lines(mock):
+    """Nothing to measure is not a pass. The check that could have run has
+    been reported by the hash check that declined the file."""
+    manifest = _network_reach_bucket(mock, network="skipped", max_hash_bytes=4_000, at_water=False)
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=4_000))
+
+    assert report["state"] == SKIPPED
+    assert "nothing to measure against the A.T." in report["detail"]
+    assert "1 point(s)" in report["detail"]
+
+
+def test_an_at_spring_off_the_trail_still_fails_without_the_network_lines(mock):
+    """Leaving the network points out must not dull the check on the A.T.'s
+    own water, which is what it existed for before #1016."""
+    manifest = _network_reach_bucket(mock, network="skipped", max_hash_bytes=4_000)
+    lon, lat = REACH_CENTERLINE[0]
+    far = _fc(
+        [
+            {
+                "type": "Feature",
+                "properties": {"id": "osm_water:1", "poi_type": "water", "source": "osm_water", "mile": 12.3},
+                "geometry": {"type": "Point", "coordinates": [lon + 0.05, lat + REACH_FAR_DEG]},
+            },
+            {
+                "type": "Feature",
+                "properties": {"id": "osm_water:2", "poi_type": "water", "source": "osm_water", "mile": None},
+                "geometry": {"type": "Point", "coordinates": [REACH_NETWORK_LINE[0][0], REACH_NETWORK_LINE[0][1]]},
+            },
+        ]
+    )
+    _serve_bytes(mock, "poi_water.geojson", far)
+    manifest["artifacts"]["poi_water.geojson"]["sha256"] = hashlib.sha256(far).hexdigest()
+
+    report = _reach_report(check_all(BASE, manifest, max_hash_bytes=4_000))
+
+    assert report["state"] == FAILED
+    assert "osm_water:1" in report["detail"]
+    assert "osm_water:2" not in report["detail"]
+    assert "1 point(s) the pipeline anchored" in report["detail"]
 
 
 def test_water_the_hiker_can_walk_to_passes(mock):

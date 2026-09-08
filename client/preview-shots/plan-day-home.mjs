@@ -18,15 +18,25 @@
 // CHANGES, so a contrast fix with no recipe touched ships with no picture of
 // the thing it fixed.
 
-// 2026-08-26: re-photographed again, for #1049. This home's refusal is the
-// screen that changed - the preview build carries no data source (#1024), so
-// the day-hike action is withheld and the sentence under it is what a
-// reviewer sees. It used to read "This phone hasn't got the trail network
-// yet ... It arrives with the next data sync" for every way of having no
-// graph, four of which never resolve by waiting. In THIS build the true one
-// is "This build has no data source"; on production it is "This release does
-// not include the trail network" (#1048). Same code, different sentence,
-// which is the whole change.
+// 2026-08-26: re-photographed again, for #1049. This home's refusal was the
+// screen that changed - the preview then reached no data, so the day-hike
+// action was withheld and the sentence under it was what a reviewer saw. It
+// used to read "This phone hasn't got the trail network yet ... It arrives
+// with the next data sync" for every way of having no graph, four of which
+// never resolve by waiting; #1049 made each way say its own sentence
+// (lib/trailNetworkText.ts, pinned by screens/PlanHome.test.tsx). Same
+// code, different sentence, which was the whole change.
+//
+// The preview reached no data because of the camera's own origin, not the
+// build - "the preview build carries no data source (#1024)" was the wrong
+// cause, and #1096 fixed the camera on 2026-08-27. So which sentence this
+// frame carries is now a fact about the BUCKET rather than the camera.
+// Measured 2026-09-08 on #1268's preview: "The trail network in this release
+// is too big for the app to load safely, so it is not being used" - #1255's
+// launch budget declining a trail_graph.json of 78,595,556 bytes (#1254),
+// which is exactly the case that sentence was written for. The day a
+// release's graph fits, this home offers the day-hike action instead and
+// the frame is the band over a home that can start one.
 
 export const caption = 'The day-hikes home, with its mode band'
 export const alt = 'The Plan tab in day-hike mode: forest band, switch chip, saved hikes'

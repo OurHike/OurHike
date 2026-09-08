@@ -4,10 +4,13 @@
 // The window gained two lists in #1103 this recipe exists to photograph: each
 // sheet's card breaks into its named archives, and the vector trail data —
 // the line, the waypoints, the elevation, the nearby network — gets a
-// stated row each, measured off the store. In the preview no archives exist
-// (#1024), so every row honestly reads its absent state — "not here yet —
-// arrives with signal", "not downloaded" — which is itself the behaviour
-// worth a photograph: absence stated, never a blank.
+// stated row each, measured off the store. In the preview no archive exists
+// - nothing downloads the corridor package - so those rows honestly read
+// their absent state, "not here yet — arrives with signal", "not downloaded",
+// which is itself the behaviour worth a photograph: absence stated, never a
+// blank. The vector rows read whatever the release fetch has landed by the
+// time the sheet opens. (This used to cite #1024's "no data source"; that
+// was the camera's origin, fixed in #1096, and the release does arrive now.)
 //
 // Under the hiking sheet's card now sits the second decision this window
 // carries (#558): just the stretch under the hiker's planned hike, priced

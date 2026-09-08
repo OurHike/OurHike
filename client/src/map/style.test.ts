@@ -82,9 +82,11 @@ import {
   nearbyTrailOpacityExpression,
 } from './nearbyTrails'
 import {
+  TRAIL_BADGE_ANCHORS,
   TRAIL_BADGE_LAYER_ID,
   TRAIL_BADGE_PLATE_DAY,
   TRAIL_BADGE_PLATE_NIGHT,
+  TRAIL_BADGE_RADIAL_OFFSET,
   TRAIL_BADGE_SOURCE_ID,
   badgePlateImageId,
   badgeTextColor,
@@ -1624,6 +1626,19 @@ describe('the through-route badge (#1283)', () => {
     // with no plate is the along-line label this layer must differ from.
     expect(layout['icon-optional']).toBe(false)
     expect(layout['text-optional']).toBe(false)
+  })
+
+  it('may slide round its vertex when a pin is in the way, mark-first', () => {
+    // The first preview frame's lesson: pins are placed first, a symbol
+    // with one position that collides is dropped whole, and Harriman's
+    // one badge vanished beside a water pin. Reproduced and fixed in a
+    // stand-alone render (trailBadges.ts's TRAIL_BADGE_ANCHORS).
+    const layout = layer(TRAIL_BADGE_LAYER_ID).layout as Record<string, unknown>
+    expect(layout['text-variable-anchor']).toEqual(TRAIL_BADGE_ANCHORS)
+    expect(TRAIL_BADGE_ANCHORS[0]).toBe('left')
+    expect(TRAIL_BADGE_ANCHORS.length).toBeGreaterThanOrEqual(4)
+    expect(layout['text-radial-offset']).toBe(TRAIL_BADGE_RADIAL_OFFSET)
+    expect(layout['text-anchor']).toBeUndefined()
   })
 
   it('ranks on the label ladder’s route-trail rung and dims with its line', () => {

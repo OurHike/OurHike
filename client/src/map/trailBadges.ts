@@ -135,6 +135,42 @@ export const TRAIL_BADGE_TEXT_FIT_PADDING: readonly [number, number, number, num
 export const TRAIL_BADGE_TEXT_SIZE = 12
 
 /**
+ * Where the plate may sit around its vertex, in the order the placer tries
+ * them (#1283).
+ *
+ * ONE POSITION WAS NOT ENOUGH, and the first preview frame is the evidence:
+ * over Harriman at z12 the A.T.'s badge anchored beside a water pin, pins
+ * are placed first (they are later layers), and a symbol whose only
+ * position collides is dropped whole - the map's one badge, gone, on
+ * exactly the screen it was designed for. Reproduced in a stand-alone
+ * MapLibre render with a synthetic pin at the anchor (2026-09-08), and
+ * fixed there by exactly this list: the placer tries each anchor in turn
+ * and keeps the first that neither collides nor leaves the screen.
+ *
+ * `left` first - the plate to the right of the vertex with the mark
+ * nearest the line, the prototype's own layout - then the mirror, then
+ * above and below, then the diagonals. Eight positions is what the
+ * prototype's three (0.5, 0.3, 0.7 along the line) become when the anchor
+ * is a point rather than a fraction of a path.
+ */
+export const TRAIL_BADGE_ANCHORS: readonly string[] = [
+  'left',
+  'right',
+  'top',
+  'bottom',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+]
+
+/** How far the text block sits from its vertex, in ems of the text size:
+ *  a few pixels, so the plate reads as attached to the line rather than
+ *  centred on it, and the mark is never drawn over the very vertex it
+ *  claims. Measured on the stand-alone render above at 0.5 and eased in. */
+export const TRAIL_BADGE_RADIAL_OFFSET = 0.3
+
+/**
  * A White-blazed trail's chip takes `--stone-700` as its ground, or the
  * white blaze bar disappears into it. The one place a blaze is not painted
  * in its own hex, and it is the chip's ground rather than the bar - the bar
@@ -501,10 +537,12 @@ export function buildTrailBadgeSource(): {
  *
  * One symbol per point: the plate is the icon, fitted to the text; the mark
  * is the first section of the text, the name the second, both centred on
- * the line. `text-anchor: left` with the offset below puts the MARK's centre
- * on the trail rather than the middle of the pill - the prototype's rule,
- * because a long name would otherwise carry its own mark seventy pixels off
- * the line it claims.
+ * the line. The plate hangs off its vertex at one of TRAIL_BADGE_ANCHORS,
+ * `left` preferred - so the MARK, not the middle of the pill, is what sits
+ * by the trail: the prototype's rule, because a long name would otherwise
+ * carry its own mark seventy pixels off the line it claims - and the placer
+ * moves it round the vertex when a pin is in the way, which is what keeps
+ * a park's one badge on the screen.
  *
  * Required, both halves: a plate with no name is a pill that says nothing,
  * and a name with no plate is the along-line label this layer exists to be
@@ -539,10 +577,11 @@ export function buildTrailBadgeLayer(appearance: SheetAppearance): LayerSpecific
       ] as never,
       'text-font': ['Noto Sans Regular'],
       'text-size': TRAIL_BADGE_TEXT_SIZE,
-      'text-anchor': 'left',
-      // Ems of text-size: the mark's half-width, so its centre lands on the
-      // anchor vertex.
-      'text-offset': [-(TRAIL_BADGE_MARK_SIZE / 2) / TRAIL_BADGE_TEXT_SIZE, 0],
+      'text-variable-anchor': [...TRAIL_BADGE_ANCHORS] as never,
+      'text-radial-offset': TRAIL_BADGE_RADIAL_OFFSET,
+      // Justified toward whichever anchor won, so the mark stays the end
+      // nearest the line on either side of it.
+      'text-justify': 'auto',
       // No wrapping for any name the data holds: the longest published
       // through-route name is 33 characters (trailLabels.ts's measurement),
       // and a badge that wrapped would be two lines of pill.

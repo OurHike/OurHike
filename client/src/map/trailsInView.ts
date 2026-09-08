@@ -30,6 +30,20 @@
 // Recomputed as the camera settles, so the badge slides along its line as
 // the hiker pans and never sits off screen while the trail is on it.
 //
+// AND NOT WHERE A PIN ALREADY IS, which the third preview frame taught. The
+// plate is a 26 px pill some 230 px long, and both halves of the symbol are
+// required, so MapLibre drops it whole when every position round its vertex
+// overlaps a pin - and pins are placed first. Harriman's A.T. is lined with
+// shelters, campsites and springs a thumb's width apart, so the vertex at the
+// middle of the run had a pin on every side and the map's one badge was
+// dropped on exactly the screen it was designed for. So the anchor is chosen
+// with the pins in view: the candidate vertices are walked outward from the
+// run's middle, and the first with a free pill position - the same eight
+// positions map/trailBadges.ts hands the placer, tested against the pins'
+// boxes here - wins. MapLibre still places the badge; this only asks it to
+// place one where there is room. Where no vertex has room the middle is
+// handed over anyway, and the placer decides.
+//
 // "THE SCREEN" IS THE PART OF THE CANVAS A HIKER CAN SEE, and the second
 // preview frame is why that sentence is here. Over Harriman the A.T.'s
 // longest visible stretch ran along the top of the canvas, its middle sat
@@ -51,7 +65,9 @@
 // following hiker's own dot is.
 
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import { ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import { CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
+import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
 import {
@@ -60,10 +76,140 @@ import {
   BADGE_NAME_PROPERTY,
   BADGE_SOURCE_PROPERTY,
   BADGE_SOURCES,
+  TRAIL_BADGE_ANCHORS,
+  TRAIL_BADGE_MARK_GAP,
+  TRAIL_BADGE_MARK_SIZE,
+  TRAIL_BADGE_PLATE_HEIGHT,
+  TRAIL_BADGE_RADIAL_OFFSET,
   TRAIL_BADGE_SOURCE_ID,
+  TRAIL_BADGE_TEXT_SIZE,
   blazeChipImageId,
   trailMarkImageId,
 } from './trailBadges'
+import { WARNING_LAYER_ID } from './warningLayers'
+import { WORKDAY_LAYER_ID } from './workdayLayers'
+
+/**
+ * The symbol layers placed before the badge, whose pins it must not sit on:
+ * every pin layer after it in the stack (style.ts). The along-line names and
+ * the sheet's own labels are NOT here - they are placed after the badge and
+ * yield to it.
+ */
+export const BADGE_OBSTACLE_LAYER_IDS: readonly string[] = [
+  POI_LAYER_ID,
+  WARNING_LAYER_ID,
+  WORKDAY_LAYER_ID,
+  ATC_UPDATE_POINT_LAYER_ID,
+]
+
+/** Half the largest pin on the map - the 44 px serious-warning pin
+ *  (map/warningPin.ts) - plus MapLibre's default 2 px symbol padding, as one
+ *  clearance for every obstacle. A waypoint's 38 px pin gets three px more
+ *  room than it needs, which is the safe side to be wrong on. */
+const OBSTACLE_HALF_PX = 44 / 2 + 2
+
+/**
+ * How wide the plate comes out for a name, in CSS px. Measured on the
+ * stand-alone render of 2026-09-08: "Appalachian National Scenic Trail"
+ * (33 characters) set 185 px wide at 12 px Noto Sans, 5.6 px a character,
+ * so 0.5 em a character is a slight over-estimate - the right direction for
+ * a box that decides whether there is room.
+ */
+export function badgePlateWidth(name: string): number {
+  const text = name.length * TRAIL_BADGE_TEXT_SIZE * 0.5
+  return 4 + TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text + 10
+}
+
+interface Box {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+function overlaps(a: Box, b: Box): boolean {
+  return a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1
+}
+
+/**
+ * The plate's box for one anchor at one screen point - the same geometry
+ * MapLibre's variable placement produces from `text-variable-anchor` and
+ * `text-radial-offset`, so what is tested here is what will be placed.
+ */
+function plateBox(anchor: string, at: { x: number; y: number }, width: number): Box {
+  const height = TRAIL_BADGE_PLATE_HEIGHT
+  const offset = TRAIL_BADGE_RADIAL_OFFSET * TRAIL_BADGE_TEXT_SIZE
+  // Where the anchor point sits on the box: 0 = the box's start, 1 = its end.
+  const horizontal = anchor.includes('left') ? 0 : anchor.includes('right') ? 1 : 0.5
+  const vertical = anchor.includes('top') ? 0 : anchor.includes('bottom') ? 1 : 0.5
+  const dx = horizontal === 0 ? offset : horizontal === 1 ? -offset : 0
+  const dy = vertical === 0 ? offset : vertical === 1 ? -offset : 0
+  const x1 = at.x + dx - width * horizontal
+  const y1 = at.y + dy - height * vertical
+  return { x1, y1, x2: x1 + width, y2: y1 + height }
+}
+
+/** The pins on screen, as the boxes a plate must clear. */
+function obstacleBoxes(map: TrailsInViewMap): Box[] {
+  const layers = BADGE_OBSTACLE_LAYER_IDS.filter((id) => map.getLayer(id) !== undefined)
+  if (layers.length === 0) return []
+  const boxes: Box[] = []
+  for (const feature of map.queryRenderedFeatures(undefined, { layers })) {
+    const geometry = feature.geometry as
+      { type?: string; coordinates?: unknown } | undefined
+    if (geometry?.type !== 'Point' || !Array.isArray(geometry.coordinates)) continue
+    const [lng, lat] = geometry.coordinates as number[]
+    const at = map.project([lng, lat])
+    boxes.push({
+      x1: at.x - OBSTACLE_HALF_PX,
+      y1: at.y - OBSTACLE_HALF_PX,
+      x2: at.x + OBSTACLE_HALF_PX,
+      y2: at.y + OBSTACLE_HALF_PX,
+    })
+  }
+  return boxes
+}
+
+/**
+ * The vertex of `run` the badge should anchor to: the first, walking
+ * outward from the middle, at which one of the plate's positions overlaps
+ * no pin and stays inside `clear`. The middle itself where none does.
+ */
+function anchorWithRoom(
+  run: Run,
+  map: TrailsInViewMap,
+  obstacles: readonly Box[],
+  clear: Box | null,
+  name: string,
+): Position {
+  const middle = midpointIndex(run)
+  if (obstacles.length === 0 && clear === null) return run.points[middle]
+  const width = badgePlateWidth(name)
+  for (let step = 0; step < run.points.length; step += 1) {
+    for (const index of step === 0 ? [middle] : [middle - step, middle + step]) {
+      if (index < 0 || index >= run.points.length) continue
+      const point = run.points[index]
+      const at = map.project([point[0], point[1]])
+      for (const anchor of TRAIL_BADGE_ANCHORS) {
+        const box = plateBox(anchor, at, width)
+        if (
+          clear !== null &&
+          !(
+            box.x1 >= clear.x1 &&
+            box.x2 <= clear.x2 &&
+            box.y1 >= clear.y1 &&
+            box.y2 <= clear.y2
+          )
+        ) {
+          continue
+        }
+        if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
+        return point
+      }
+    }
+  }
+  return run.points[middle]
+}
 
 /** The real MapLibre map - see map/drawnPois.ts for why not a structural
  *  stand-in. */
@@ -175,9 +321,9 @@ function visibleRuns(part: Position[], bounds: Bounds): Run[] {
   return runs
 }
 
-/** The vertex at half the run's length along it. */
-function midpoint(run: Run): Position {
-  if (run.points.length === 1) return run.points[0]
+/** The index of the vertex at half the run's length along it. */
+function midpointIndex(run: Run): number {
+  if (run.points.length === 1) return 0
   const half = run.length / 2
   let walked = 0
   for (let i = 1; i < run.points.length; i += 1) {
@@ -185,11 +331,11 @@ function midpoint(run: Run): Position {
     if (walked + step >= half) {
       // The nearer of the segment's two ends: a vertex ON the line, which
       // is the whole promise, rather than a point interpolated between two.
-      return half - walked < step / 2 ? run.points[i - 1] : run.points[i]
+      return half - walked < step / 2 ? i - 1 : i
     }
     walked += step
   }
-  return run.points[run.points.length - 1]
+  return run.points.length - 1
 }
 
 function stringProp(properties: Record<string, unknown>, key: string): string | null {
@@ -256,6 +402,27 @@ export function trailsInView(
     north: bounds.getNorth(),
   }
   const clear = clearViewOf(map, insets, view)
+  // Resolved once per pass rather than per trail: the pins do not move
+  // between one trail's anchor and the next's, and neither does the clear.
+  let obstacles: readonly Box[] | undefined
+  let clearBox: Box | null | undefined
+  const placement = () => {
+    obstacles ??= obstacleBoxes(map)
+    if (clearBox === undefined) {
+      if (clear === view) {
+        clearBox = null
+      } else {
+        const container = map.getContainer()
+        clearBox = {
+          x1: insets.left,
+          y1: insets.top,
+          x2: container.clientWidth - insets.right,
+          y2: container.clientHeight - insets.bottom,
+        }
+      }
+    }
+    return { obstacles, clearBox }
+  }
 
   const features = map.queryRenderedFeatures(undefined, { layers })
   const byName = new Map<
@@ -323,9 +490,22 @@ export function trailsInView(
     .map(({ best, bestClear, ...trail }) => {
       // In the clear if any of the trail is; under the chrome only when all
       // of it is, which still beats no badge - a plate at 94% shows a badge
-      // through it, faintly, and the placer may yet move it out.
+      // through it, faintly, and the placer may yet move it out. Only a
+      // through-route needs an anchor at all; the rest are listed, not
+      // badged, and are spared the search.
       const run = bestClear ?? best
-      return { ...trail, anchor: run === null ? null : midpoint(run) }
+      if (run === null || !trail.throughRoute) return { ...trail, anchor: null }
+      const { obstacles: pins, clearBox: within } = placement()
+      return {
+        ...trail,
+        anchor: anchorWithRoom(
+          run,
+          map,
+          pins,
+          bestClear === null ? null : within,
+          trail.name,
+        ),
+      }
     })
     .sort((a, b) => {
       if (a.throughRoute !== b.throughRoute) return a.throughRoute ? -1 : 1

@@ -29,6 +29,7 @@
 
 import { blazeLabel } from './blaze'
 import { describeSpur, type SpurRecord } from './spurDestination'
+import { trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
 import { formatDistance } from './units'
@@ -118,6 +119,20 @@ export interface LineDetail {
    *  refusal, said rather than implied. Null on the chosen trail's own lines,
    *  where there is nothing to refuse. */
   switchNote: string | null
+  /**
+   * The trail's own mark, from the TRAILS registry (lib/trails.ts), where
+   * the line is one of the trails that registry knows by name - the A.T.'s
+   * through-route, the Long Path (#1288). Null for every other line, and
+   * null is rendered as NOTHING: a trail with no known mark gets no mark,
+   * not a placeholder pretending to be one, the same rule the header keeps
+   * for its own trail logo (chrome/Header.tsx).
+   *
+   * Resolved here rather than in the component for the reason every other
+   * field is: the sheet lays out what this file decided, and "which trail is
+   * this line" is decided once, by name, the only handle a nearby line
+   * carries.
+   */
+  trailMark: string | null
 }
 
 /**
@@ -368,6 +383,11 @@ export function buildLineDetail(
     return day === null ? who : `${who} · layer edited ${day}`
   })()
 
+  // The trail the line belongs to, by the name the sheet will show for it -
+  // the chosen trail's name for the through-route, the steward's own name
+  // for anything else. A spur's record name is a spur's, never a trail's.
+  const trail = trailForName(throughRoute ? trailName : line.name)
+
   return {
     heading: `${blazeLabel(line.blazeColor)} · ${kind}`,
     // The through-route's name is already the heading; repeating ATC's
@@ -392,5 +412,6 @@ export function buildLineDetail(
     switchNote: nearbyTrail
       ? 'Not the trail you chose. Switching happens in the picker.'
       : null,
+    trailMark: trail === undefined ? null : trail.logo,
   }
 }

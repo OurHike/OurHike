@@ -19,6 +19,7 @@ const FULL: LineDetail = {
   extentLine: null,
   closureLine: null,
   switchNote: null,
+  trailMark: null,
 }
 
 /** A nearby trail: somebody else's network, with the three lines an A.T. spur
@@ -34,6 +35,7 @@ const NEARBY: LineDetail = {
   extentLine: '24.0 mi · Harriman State Park',
   closureLine: null,
   switchNote: 'Not the trail you chose. Switching happens in the picker.',
+  trailMark: null,
 }
 
 afterEach(cleanup)
@@ -65,6 +67,7 @@ describe('the line-detail sheet', () => {
           extentLine: null,
           closureLine: null,
           switchNote: null,
+          trailMark: null,
         }}
         onClose={vi.fn()}
       />,
@@ -173,5 +176,29 @@ describe('adding a point to a day hike (#979)', () => {
 
     expect(screen.getByText('Closed by NYS OPRHP')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('the trail mark', () => {
+  it('draws the mark beside the name where the detail carries one, decoratively', () => {
+    const { container } = render(
+      <LineSheet
+        detail={{ ...NEARBY, name: 'Long Path', trailMark: 'blob:lp-logo' }}
+        onClose={() => {}}
+      />,
+    )
+    const mark = container.querySelector('img.line-sheet__trail-mark')
+    expect(mark).not.toBeNull()
+    expect(mark?.getAttribute('src')).toBe('blob:lp-logo')
+    // The name is the words; the mark is the same fact drawn, so a screen
+    // reader hears it once.
+    expect(mark?.getAttribute('alt')).toBe('')
+    expect(mark?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByText('Long Path')).toBeInTheDocument()
+  })
+
+  it('draws no mark at all - not a placeholder - where the detail has none', () => {
+    const { container } = render(<LineSheet detail={NEARBY} onClose={() => {}} />)
+    expect(container.querySelector('img')).toBeNull()
   })
 })

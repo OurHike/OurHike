@@ -8,6 +8,7 @@ import {
 } from './lineDetail'
 import { PRIMARY_TRAIL_SOURCES } from '../map/style'
 import { CHOSEN_SYSTEM_SOURCES as MAP_CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
+import { TRAILS } from './trails'
 import type { SpurRecord } from './spurDestination'
 import type { StoredPoi } from './trailData'
 
@@ -408,5 +409,40 @@ describe('a temporarily closed area on a trail (#1142)', () => {
     expect(detail.closureLine).toBe(
       'Closed by New York State Office of Parks, Recreation and Historic Preservation · layer edited 4 Aug 2026',
     )
+  })
+})
+
+// The trail's own mark (#1288): resolved by name from lib/trails.ts, and null
+// for every line that registry does not know - null rendered as nothing, never
+// a placeholder, the rule the header already keeps for its own trail logo.
+describe('the trail mark', () => {
+  it('is the Long Path’s on a nearby line NYNJTC names Long Path', () => {
+    const detail = buildLineDetail(
+      {
+        id: 'nynjtc_long_path:12',
+        source: 'nynjtc_long_path',
+        name: 'Long Path',
+        blazeColor: 'Aqua',
+      },
+      {},
+      [],
+    )
+    expect(detail.trailMark).toBe(TRAILS.LP.logo)
+    expect(detail.name).toBe('Long Path')
+  })
+
+  it('is the A.T.’s on the through-route, whose heading is the trail', () => {
+    const detail = buildLineDetail(
+      { id: 'centerline:chain:0', source: 'centerline', name: null, blazeColor: 'White' },
+      {},
+      [],
+    )
+    expect(detail.trailMark).toBe(TRAILS.AT.logo)
+    expect(detail.name).toBeNull()
+  })
+
+  it('is null for a trail the registry does not know, and for a spur', () => {
+    expect(buildLineDetail(NEARBY_LINE, {}, []).trailMark).toBeNull()
+    expect(buildLineDetail(SPUR_LINE, spur(), [ROCKY_RUN]).trailMark).toBeNull()
   })
 })

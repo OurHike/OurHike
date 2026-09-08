@@ -393,6 +393,23 @@
       "licence_basis": "maintainer_authorisation"
     },
     {
+      "key": "nynjtc_long_path_guide",
+      "title": "NYNJTC Long Path End-to-End Section Guide (40 section pages)",
+      "provider": "NYNJTC",
+      "kind": "guide_pages",
+      "url": "https://www.nynjtc.org/long-path-end-to-end-section-guide/",
+      "trust": "authoritative",
+      "steward": "New York-New Jersey Trail Conference",
+      "steward_contact": "https://secure.nynjtc.org/contact-us",
+      "licence": "See nynjtc_guide_licence below. NYNJTC has stated no reuse terms; their site terms claim copyright over its text and maps (Terms & Conditions section 3, read 2026-09-08). This ships on the maintainer's authorisation of 2026-09-08 - 'make reach_hikers:true - I'm assuming my relationship with nynjtc is enough' - the same footing nynjtc_notices_licence records for their alerts, and it covers this guide's FACTS only: a type, a position, a section and mile, an off-trail distance, a short name and the page URL, never the guide's sentence. The maintainer's NYNJTC conversation (https://github.com/OurHike/OurHike/issues/768) remains where NYNJTC's own answer belongs.",
+      "attribution": "New York-New Jersey Trail Conference",
+      "discovered_via": "The maintainer's ask, 2026-09-08 (https://github.com/OurHike/OurHike/issues/1288): 'augment the Longpath data from NYNJTC ... extract the POI's from the section guide'. The same forty pages the registered nynjtc_long_path layer links to from its own GuideURL field, so the join between a page and the line it describes is NYNJTC's rather than ours. Registered by hand: discover_sources.py walks ATC's Experience Builder app and this is a WordPress site, not a layer.",
+      "discovered_date": "2026-09-08",
+      "notes": "Fetched by fetch_nynjtc_long_path_guide.py to data/raw/nynjtc_long_path_guide/ (never by fetch_all.py, which fetches ArcGIS layers only): the index page plus forty section pages, lp-section-1 through lp-section-40, as WordPress serves them, and sections.json beside them - lib/nynjtc_long_path_guide.py's parse of each page into its Distance header and its Parking, Camping and Detailed Trail Description blocks. MEASURED 2026-09-08 on all forty pages: 1,256 mile-marked entries, 153 of them carrying NYNJTC's own coordinates to five decimals (almost all in the Parking blocks), and every page in one skeleton (section 22 adds a Winter Access block). WHAT THE PARSE PLACES, the same day, against the live nynjtc_long_path layer: 271 waypoints after merging the 61 places the guide says more than once - 120 parking, 92 viewpoints, 21 water sources, 17 shelters, 17 campsites, 4 privies. 153 entries sit where NYNJTC's coordinates put them (CONFIDENCE_HIGH); 164 are placed by walking the guide's mile along the section's line (CONFIDENCE_LOW), an estimate whose along-trail error was measured against the entries that carry both a mile and coordinates - median 86 m, p90 476 m - and is carried on each such record as position_error_m 500. 14 entries NYNJTC marks '(unlocated)' are not placed. THE PAGES SERVE NO VALIDATOR: no ETag and no Last-Modified (read 2026-09-08, cache-control public max-age=300), and the body hash is no change signal either - two fetches an hour apart differ in every WordPress gallery's random galleryId - so the fetcher compares the PARSE of each page against its own manifest (content_sha256) and reports which sections' facts moved. There is no freshness block here because check_freshness.py has no marker to watch. Forty-one requests per run, throttled to two a second, naming the project in the User-Agent. The interactive map at nynjtc.org/long-path-interactive-map/ was read the same day and adds nothing point-shaped: its web map (item 5d9da6d5ec74469a96393364f4384609) holds the registered Long Path layer plus the Shawangunk Ridge Trail and West Point seasonal-route line layers ALERTS_NOTICES_SURVEY.md already catalogues. WHAT A RECORD CARRIES, now that it ships (reaches_hikers flipped 2026-09-08 on the maintainer's authorisation, recorded in nynjtc_guide_licence): the type, the position, the section and the guide's mile within it, an off-trail distance where the guide states one, a short name where the entry has one, and the URL of the page - never the guide's sentence, which is NYNJTC's writing (the same split nynjtc_notices_licence draws for their alerts).",
+      "reaches_hikers": true,
+      "licence_basis": "maintainer_authorisation"
+    },
+    {
       "key": "mohonk_trails",
       "title": "Mohonk Preserve Trails and Carriage Roads",
       "provider": "Mohonk Preserve",
@@ -783,6 +800,16 @@
     "recorded_date": "2026-08-27",
     "open_question": "https://github.com/OurHike/OurHike/issues/768 - NYNJTC's own stated terms should replace this authorisation, the way atc_licence's, nynjtc_licence's, mohonk_licence's and dec_licence's open questions all read. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line."
   },
+  "nynjtc_guide_licence": {
+    "_comment": "The basis on which NYNJTC's Long Path section guide may be fetched AND its facts republished to hikers - a separate block from nynjtc_licence (their two trail extracts) and nynjtc_notices_licence (their alerts), because each of those says it must not be read as precedent for anything else NYNJTC publishes, and honouring that sentence means the guide needed its own answer. IT HAS ONE, AND IT IS THE MAINTAINER'S. Registered on 2026-09-08 as unresolved, because this is the first NYNJTC surface with STATED terms: nynjtc.org/terms-conditions/ (page dated 'Updated: March 10, 2025', read 2026-09-08) says in section 3, 'All content on the website, including maps, text, and photographs, is owned by NYNJTC or its contributors', in section 1 that the site must not be used 'for unauthorized commercial purposes', and in section 5 that 'Trail maps and information are provided as is without guarantees of accuracy'. That is a copyright claim and a disclaimer, not a grant and not a refusal; the AGOL items behind the two extracts carried nothing at all. The same day the maintainer read that and answered: 'make reach_hikers:true - I'm assuming my relationship with nynjtc is enough'. Recorded here in those words, because the basis is the relationship the maintainer names and not anything NYNJTC has written down - the maintainer deciding, as the person who carries the consequence, that republishing the FACTS of NYNJTC's guide is acceptable. IT IS NOT A GRANT FROM NYNJTC and must never be rendered as one. WHAT SHIPS UNDER IT, stated tightly because the authorisation is a sentence and the artifact deliberately is not: the type of place, its position (NYNJTC's coordinates where they give them, otherwise a mile walked along their own line), the section and mile, an off-trail distance where the guide states one, a short name where the entry has one, and the page URL - and never the guide's sentence, which is their writing. That is the split nynjtc_notices_licence already draws and export_nynjtc_alerts.py already applies; lib/nynjtc_long_path_guide.py composes every description from those facts and tests/test_nynjtc_long_path_guide.py checks that no record carries the prose. THE SAFETY HOLDBACKS IT DOES NOT TOUCH, because a licence answer is not a safety answer: every mile-placed record ships CONFIDENCE_LOW with position_error_m 500 (the measured p90), every water source ships with the guide's own reliability word carried in the cautious direction, and a place the guide says is off the trail ships pinned at its turn-off with the description saying so. Those come from the measurement in the module, not from this block, and this block cannot loosen them.",
+    "author": "New York-New Jersey Trail Conference",
+    "license": "Maintainer authorisation, 2026-09-08 - NYNJTC has stated no reuse terms of their own; their site terms claim copyright over the site's text and maps",
+    "terms_source": "https://www.nynjtc.org/terms-conditions/ sections 1, 3 and 5, page dated 2025-03-10, read 2026-09-08",
+    "attribution_required": "Not stated as a condition. 'New York-New Jersey Trail Conference' is recorded as attribution per this project's practice of naming every registered steward, and every record carries a link back to the section page it came from.",
+    "basis": "Maintainer authorisation, 2026-09-08: 'make reach_hikers:true - I'm assuming my relationship with nynjtc is enough'. Given in the session that opened #1288, on reading this block in its unresolved form and the pull request body that set out exactly what would ship. It is the maintainer deciding, as the person who carries the consequence, that republishing the facts of NYNJTC's section guide with a link back is acceptable on the strength of their own relationship with NYNJTC. It is NOT a grant from NYNJTC, and it is not a licence to sublicense their work onward. A club that inherits this project needs to re-confirm it in its own name rather than relying on this line.",
+    "recorded_date": "2026-09-08",
+    "open_question": "https://github.com/OurHike/OurHike/issues/768 - NYNJTC's own stated terms should replace this authorisation, the way atc_licence's, nynjtc_licence's, nynjtc_notices_licence's, mohonk_licence's and dec_licence's open questions all read. The section guide is a third thing to name in that conversation, after the two extracts and the alerts."
+  },
   "mohonk_licence": {
     "_comment": "The basis on which mohonk_trails above may be fetched AND republished to hikers. Mohonk Preserve's terms are genuinely UNSTATED beyond a no-warranty disclaimer, read whole (not through the 200-character truncation that misread oprhp_licence once already - see that block's _comment) on 2026-08-25 from AGOL item 88014aef85ef42c397c738154cf7f1dc. Public and queryable is not a reuse grant (SOURCE_SURVEY.md's rule, 'licensed beats good') - but the maintainer authorised shipping this public extract on 2026-08-25, the same call already made for NYNJTC's two extracts in nynjtc_licence. THIS DOES NOT MAKE THE TERMS ANY LESS UNSTATED: it is the maintainer deciding, as the person who carries the consequence, that publishing Mohonk Preserve's public extract is acceptable - it is NOT a grant from Mohonk Preserve, who have stated nothing beyond the disclaimer quoted below.",
     "author": "Mohonk Preserve",
@@ -886,7 +913,14 @@
       },
       "NYNJTC": {
         "state": "not_asked",
-        "note": "Not asked. The ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933; nothing has been sent."
+        "note": "NOT ASKED for an ORG mark - no NYNJTC logo or wordmark is in the tree, and the ask rides along with the licence outreach already in flight under https://github.com/OurHike/OurHike/issues/768 and #933. But a TRAIL mark of theirs is, since 2026-09-08 (#1288): client/src/design-system/assets/trails/lp-logo.png is the Long Path's own logo, NYNJTC's, fetched from the URL the maintainer supplied with the ask to add it (https://www.nynjtc.org/wp-content/uploads/2024/12/Long_Path_logo-1.png, 150x151 PNG, 8,359 bytes, unmodified). It is committed to a public AGPL-3.0 repository and ships inside the bundle, beside the trail's name on the tapped-line sheet. Its permission is the maintainer's own decision - the same footing the A.T. marker above stands on, and the same relationship with NYNJTC the maintainer named for the trail's data the same day ('I'm assuming my relationship with nynjtc is enough') - recorded in trail_mark_in_tree below so it does not live only in lib/trails.ts's header comment. It is NOT a grant from NYNJTC as an organization and must not be read as one, and it does not extend to an NYNJTC org mark on a steward card.",
+        "trail_mark_in_tree": {
+          "asset": "client/src/design-system/assets/trails/lp-logo.png",
+          "basis": "Maintainer authorisation, 2026-09-08 (#1288): the maintainer asked for the logo to be added and supplied its URL on NYNJTC's own site, on the strength of their relationship with NYNJTC - the footing nynjtc_guide_licence records for the trail's waypoints the same day, and the footing the A.T. marker's own record above uses. Recorded here per #933's item 3 so the permission has a home outside a source comment.",
+          "source_url": "https://www.nynjtc.org/wp-content/uploads/2024/12/Long_Path_logo-1.png",
+          "recorded_date": "2026-09-08",
+          "scope": "This trail marker, in this application, beside the Long Path's name on the surfaces that name the trail a hiker tapped (chrome/LineSheet.tsx via lib/trails.ts). Not an org mark, not a licence to sublicense onward, not recoloured or redrawn, and not precedent for any other organization's mark."
+        }
       },
       "NYS DEC": {
         "state": "not_asked",
@@ -979,7 +1013,7 @@
     }
   },
   "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it.",
-  "licence_basis_comment": "WHAT A SOURCE'S LICENCE ACTUALLY RESTS ON, as a field rather than as prose (#929). Three values and they are not interchangeable: `stated_by_org` - the organization published terms of its own and they permit this (OPRHP's licenseInfo, ODbL, a federal public-domain work); `maintainer_authorisation` - the organization has stated nothing that reaches this use, and the maintainer authorised it as the person who carries the consequence. IT IS NOT A GRANT FROM THE ORGANIZATION and must never be rendered as one; `unresolved` - nobody has answered, and nothing ships. WHY IT IS A FIELD. Every one of these facts was already written down, in the per-source `licence` prose and the `<x>_licence` blocks - and only there. A screen or a report that wanted to say 'eleven of the thirty-three ship on your own authorisation rather than the org's terms' had to decide it by reading those sentences, which is exactly the failure `reaches_hikers_comment` records for the flag above: 'a screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded'. The same argument, one field over. IT IS NOT A JUDGEMENT ABOUT QUALITY and it does not replace the prose: the prose is where the reasoning, the dates, the read terms and the open questions live. This is one word saying which of the three shapes that reasoning has, so it can be counted. Measured 2026-08-27 against this file: 6 stated_by_org, 26 maintainer_authorisation, 1 unresolved.",
+  "licence_basis_comment": "WHAT A SOURCE'S LICENCE ACTUALLY RESTS ON, as a field rather than as prose (#929). Three values and they are not interchangeable: `stated_by_org` - the organization published terms of its own and they permit this (OPRHP's licenseInfo, ODbL, a federal public-domain work); `maintainer_authorisation` - the organization has stated nothing that reaches this use, and the maintainer authorised it as the person who carries the consequence. IT IS NOT A GRANT FROM THE ORGANIZATION and must never be rendered as one; `unresolved` - nobody has answered, and nothing ships. WHY IT IS A FIELD. Every one of these facts was already written down, in the per-source `licence` prose and the `<x>_licence` blocks - and only there. A screen or a report that wanted to say 'eleven of the thirty-three ship on your own authorisation rather than the org's terms' had to decide it by reading those sentences, which is exactly the failure `reaches_hikers_comment` records for the flag above: 'a screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded'. The same argument, one field over. IT IS NOT A JUDGEMENT ABOUT QUALITY and it does not replace the prose: the prose is where the reasoning, the dates, the read terms and the open questions live. This is one word saying which of the three shapes that reasoning has, so it can be counted. Measured 2026-08-27 against this file: 6 stated_by_org, 26 maintainer_authorisation, 1 unresolved. Re-measured 2026-09-08 (#1288): 8, 28 and 1 - nynjtc_long_path_guide was registered `unresolved` that morning and moved to `maintainer_authorisation` the same day on the maintainer's word (nynjtc_guide_licence); tests/test_organizations.py pins all three.",
   "poi_coverage": {
     "_comment": "What each organization publishes for each of lib/poi_schema.POI_TYPES, and whether OurHike ships it (#1092). The maintainer's ask, 2026-08-27: \"We don't have POI for the org's outside of ATC. Search those sources for the POI types we have... Maybe we need to track each of the POI types for the org, and whether or not it is provided.\" This block is the second half of that - the answer in a form a test can read, so \"does DEC give us campsites\" stops being a question the next session re-probes from scratch. pipeline/POI_COVERAGE_SURVEY.md is the evidence and the argument; spike_org_poi_coverage.py is the script every count here came from, re-runnable in one command. THE COUNTS ARE OF WHAT THE ORG PUBLISHES, NOT OF WHAT A HIKER WOULD SEE: nothing here is clipped to a corridor, deduped against ATC's POIs, or filtered to walkable ground, because this block is a survey of supply and those are ingest decisions belonging to per-org issues. `org_flags_public` is the subset the org's OWN publication flag marks as visitor-facing - DEC's PUBLICUSE, OPRHP's ParksApp - and it is the more honest of the two numbers wherever the two disagree. Twelve of these cells became `shipping` on 2026-08-27 (#1097, export_nearby_poi.py -> nearby_poi.geojson): six DEC types and six OPRHP ones, 8,480 features. Neither org's water is among them. tests/test_poi_coverage.py enforces that every provider in `sources` has a verdict for every POI type, from the vocabulary below: no blanks, the same discipline NYC_SOURCE_SURVEY.md \u00a79 applies to licensing.",
     "status_vocabulary": {
@@ -1382,45 +1416,70 @@
         }
       },
       "NYNJTC": {
-        "probed_date": "2026-08-27",
-        "note": "The org that maintains more of this ground than anyone and publishes the least of it, which NYC_SOURCE_SURVEY.md \u00a74 already established for trails and this survey confirms for POIs. All 25 services on their public AGOL org were listed: the only two point layers are `Points`, which has 0 features and is an abandoned KML-import shell (FolderPath/SymbolID/Snippet/PopupInfo, last edited 2024-04-15), and the 26 trailheads below. Their full network - and whatever POIs sit in it - remains an agreement rather than a scrape, per SOURCE_SURVEY.md \u00a710.",
+        "probed_date": "2026-09-08",
+        "note": "The org that maintains more of this ground than anyone and publishes the least of it as DATA, which NYC_SOURCE_SURVEY.md \u00a74 established for trails and the 2026-08-27 probe confirmed for POIs: all 25 services on their public AGOL org were listed, and the only two point layers are `Points` (0 features, an abandoned KML-import shell) and the 26 featured-hike trailheads below. RE-PROBED 2026-09-08 (#1288) WITH A DIFFERENT ANSWER: their waypoints exist and are published as PROSE. The Long Path End-to-End Section Guide - forty web pages the registered nynjtc_long_path layer links to from its own GuideURL field - carries 1,256 mile-marked entries, 153 with NYNJTC's own coordinates, and lib/nynjtc_long_path_guide.py reads them into 271 waypoints across six types (counts per cell below, measured that day against the live layer). Registered as `nynjtc_long_path_guide` and SHIPPING since the same day, on the maintainer's authorisation recorded in `nynjtc_guide_licence` ('make reach_hikers:true - I'm assuming my relationship with nynjtc is enough'): export_nearby_poi.py carries its records in nearby_poi.geojson beside DEC's, OPRHP's and USFS's, facts and a link only, never the guide's prose. The counts are for the Long Path only - the guide covers one trail, not NYNJTC's network, which remains an agreement rather than a scrape per SOURCE_SURVEY.md \u00a710.",
         "types": {
           "shelter": {
-            "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "status": "shipping",
+            "source_key": "nynjtc_long_path_guide",
+            "measured": {
+              "features": 17,
+              "date": "2026-09-08"
+            },
+            "note": "17 lean-tos and shelters the section guide names, from its Camping blocks and its mile-by-mile description ('5.13 Mink Hollow Lean-to', 'A trail leads left to the Bouton Memorial Lean-to'), after merging a shelter the guide mentions at several miles into one. Every one is placed by walking the guide's mile along the registered line (CONFIDENCE_LOW, position_error_m 500 - the measured p90); none carries coordinates of its own. Two are stated to be off the trail (Terrace Mountain 1.05 mi, Batavia Kill 0.25 mi) and are pinned at the turn-off with a sentence saying so. Ships since 2026-09-08 on the maintainer's authorisation (nynjtc_guide_licence)."
           },
           "campsite": {
-            "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "status": "shipping",
+            "source_key": "nynjtc_long_path_guide",
+            "measured": {
+              "features": 17,
+              "date": "2026-09-08"
+            },
+            "note": "17 campsites and campgrounds from the Camping blocks and the description, after merging repeats: named campgrounds (Black Bear, North Lake State, Woodstock Lake, a KOA) and unnamed 'campsite' mentions at a mile. Camping described as an AREA ('Camping is allowed in the state reforestation areas 150 feet from the trail') is kept as a note on the section and never a pin. All placed by mile (CONFIDENCE_LOW). Ships since 2026-09-08 on the maintainer's authorisation (nynjtc_guide_licence)."
           },
           "water": {
-            "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "status": "shipping",
+            "source_key": "nynjtc_long_path_guide",
+            "measured": {
+              "features": 21,
+              "date": "2026-09-08"
+            },
+            "note": "21 water sources, on the narrowest rule in lib/nynjtc_long_path_guide.py: a spring named in the water sense, or water said outright ('a dependable source of water', 'last sure water before Big Hill Shelter', a park or snack bar listing water among its amenities). A season ('in the spring'), a spring house, a road named Springs and 'was the water source for the Kaatz mansion' are refused by pattern, and 'crosses a stream' - said 178 times on the forty pages - is never read as water on its own. Every one of the 21 was read in full on 2026-09-08 (the spike prints the list). What the guide says about reliability rides on the record in the cautious direction: 'seasonal ... reliable in all but the driest times' is unreliable. All placed by mile (CONFIDENCE_LOW); none carries coordinates. THIS IS THE SAFETY PATH, and it ships because somebody decided to: the maintainer's authorisation of 2026-09-08 (nynjtc_guide_licence) was given with the pull request body's statement that every one of these is CONFIDENCE_LOW, mile-placed and carries the guide's reliability word in front of them. The map draws a low-confidence pin with a broken rim, the card says the position is estimated, and the legend's 'Verified?' filter removes them - the schema's existing mechanism for 'real, but nobody has surveyed it'."
           },
           "resupply": {
             "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "note": "No layer carries one, and the section guide names food only in passing ('a gas station (water, vending machines, food, phone)', a snack bar 'open all year') - prose that nothing here reads as resupply, on #806's precedent that a plausible read of an uncounted column ships wrong data quietly. Re-probed 2026-09-08."
           },
           "crossing": {
             "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "note": "No layer carries one. The section guide says 'cross a stream on a wooden bridge' and the like throughout, and nothing here reads a bridge out of prose: the crossings that ship are USGS NHD's stream crossings and the agencies' bridge assets, both of them geometry rather than sentences. Re-probed 2026-09-08."
           },
           "viewpoint": {
-            "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "status": "shipping",
+            "source_key": "nynjtc_long_path_guide",
+            "measured": {
+              "features": 92,
+              "date": "2026-09-08"
+            },
+            "note": "92 viewpoints the guide names as one (Rockefeller Lookout, Alpine Lookout, a 'vista') or praises outright ('a spectacular view', 'tremendous views'). Deliberately not 'views of ...' on its own, which the ridge entries say constantly: the looser rule gave 167 the same day, and POI_VISIBILITY.md's screen budget is the reason the tighter one won. All placed by mile (CONFIDENCE_LOW). Ships since 2026-09-08 on the maintainer's authorisation (nynjtc_guide_licence)."
           },
           "parking": {
-            "status": "unsuitable",
-            "layer": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Trailheads_HighlandsProject_Apr2026/FeatureServer/0",
+            "status": "shipping",
+            "source_key": "nynjtc_long_path_guide",
             "measured": {
-              "features": 26,
-              "date": "2026-08-27"
+              "features": 120,
+              "date": "2026-09-08"
             },
-            "note": "Trailheads_HighlandsProject_Apr2026 - 26 real points (dataLastEditDate 2026-04-09), fields Park/Coord/Town/Hike/Difficulty/Length/ParkingLot. It is a featured-hikes table whose rows happen to be trailheads, not an inventory of parking areas: `ParkingLot` is the lot's NAME as prose and one row is one suggested hike. Calling 26 curated hike starts 'NYNJTC's parking' would misdescribe both the layer and the org. Recorded because it is the only NYNJTC POI-shaped data that exists publicly, and because it is evidence for the trailhead gap the survey raises - three orgs publish trailheads and POI_TYPES has no category for one."
+            "note": "120 parking areas from the guide's Parking blocks - the structured prize, because NYNJTC gives most lots their own coordinates in the text to five decimals: 153 entries across the forty pages carry them, and a lot with coordinates is placed where NYNJTC put it (CONFIDENCE_HIGH). 14 entries NYNJTC marks '(unlocated)' are not placed. Two lots listed on both sides of a section boundary are merged. The 26-row Trailheads_HighlandsProject_Apr2026 featured-hikes table (https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Trailheads_HighlandsProject_Apr2026/FeatureServer/0) that this cell read `unsuitable` against until 2026-09-08 is still unsuitable for the reason it was - one row is one suggested hike - and is no longer the only parking-shaped thing NYNJTC publishes. Ships since 2026-09-08 on the maintainer's authorisation (nynjtc_guide_licence)."
           },
           "privy": {
-            "status": "absent",
-            "note": "No point layer of any kind carries one; `Points` is empty."
+            "status": "shipping",
+            "source_key": "nynjtc_long_path_guide",
+            "measured": {
+              "features": 4,
+              "date": "2026-09-08"
+            },
+            "note": "4 restrooms the description mentions - a park's when open, a snack bar's, a park administration building's, a shop's at a section start. Read from the word 'restroom'; the guide never says 'privy' or 'outhouse'. All placed by mile (CONFIDENCE_LOW). Ships since 2026-09-08 on the maintainer's authorisation (nynjtc_guide_licence)."
           },
           "trailhead": {
             "status": "unsuitable",
@@ -1429,7 +1488,7 @@
               "features": 26,
               "date": "2026-08-27"
             },
-            "note": "Trailheads_HighlandsProject_Apr2026 - 26 real points, and unsuitable here for exactly the reason they are already unsuitable as `parking`: it is a featured-hikes table whose rows happen to be trailheads (Park/Coord/Town/Hike/Difficulty/Length/ParkingLot), one row per suggested hike, with the lot's name as prose. A ninth category does not turn a curated hike list into an inventory. Recorded rather than dropped because it is the only POI-shaped data NYNJTC publishes."
+            "note": "Trailheads_HighlandsProject_Apr2026 - 26 real points, and unsuitable here for exactly the reason they are already unsuitable as `parking`: it is a featured-hikes table whose rows happen to be trailheads (Park/Coord/Town/Hike/Difficulty/Length/ParkingLot), one row per suggested hike, with the lot's name as prose. A ninth category does not turn a curated hike list into an inventory. Recorded rather than dropped because it is the only POI-shaped data NYNJTC publishes. Re-read 2026-09-08: the section guide's Parking blocks open most sections with a lot at mile 0.00, which is a trailhead in everything but the word; those ship as `parking` from nynjtc_long_path_guide rather than being re-typed here, because the guide calls them parking and this pipeline does not decide that a lot is where the walking starts (#1197's own argument)."
           }
         }
       },

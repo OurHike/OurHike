@@ -28,6 +28,16 @@ Six of the eight POI types, from both orgs. The counts each org publishes, and
 what this module actually emits, are in POI_COVERAGE_SURVEY.md §0; the
 per-source totals are printed by every run and written into the manifest.
 
+A THIRD INPUT SINCE 2026-09-08 (#1288), AND THE FIRST THAT IS NOT A LAYER:
+NYNJTC's Long Path section guide, forty web pages fetch_nynjtc_long_path_guide.py
+caches and lib/nynjtc_long_path_guide.py reads into waypoints - 271 on the day
+it landed: parking lots at NYNJTC's own coordinates, and lean-tos, springs,
+campsites, lookouts and restrooms placed by walking the guide's mile along the
+registered Long Path line at low confidence with a measured error. guide_records
+below is the whole of it; the gate is the entry's own reaches_hikers, and what
+that gate holding back must NOT do to everybody else's waypoints is that
+function's docstring.
+
 THE TWO ORG FLAGS, AND WHY THEY ARE READ DIFFERENTLY
 
 This is the one decision in this module that a reviewer should push on, because
@@ -107,8 +117,12 @@ from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, NETWORK_BUFFER_FEET, PROJECTED_CRS, count_features
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
+from lib.nynjtc_long_path_guide import LINE_SOURCE_KEY as GUIDE_LINE_KEY
+from lib.nynjtc_long_path_guide import SOURCE_KEY as GUIDE_KEY
+from lib.nynjtc_long_path_guide import Section
+from lib.nynjtc_long_path_guide import build_records as build_guide_records
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
-from lib.source_registry import load_registry
+from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw" / "external"
@@ -117,6 +131,13 @@ OUT_DIR = ROOT / "data" / "processed"
 ARTIFACT_NAME = "nearby_poi.geojson"
 MANIFEST_NAME = "nearby_poi_manifest.json"
 NETWORK_ARTIFACT_NAME = "nearby_trails.geojson"
+
+#: Where fetch_nynjtc_long_path_guide.py leaves its parse, and where a
+#: held-back guide's records are written FOR REVIEW - a file publish.py never
+#: collects, so a reviewer can put the pins on a map before anybody decides
+#: whether hikers may see them.
+GUIDE_RAW_DIR = ROOT / "data" / "raw" / "nynjtc_long_path_guide"
+GUIDE_REVIEW_NAME = "long_path_guide_poi.review.geojson"
 
 METERS_PER_FOOT = 0.3048
 
@@ -621,6 +642,60 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
     return kept, stats
 
 
+def guide_records(registry: dict, raw_dir: Path = GUIDE_RAW_DIR, lines_dir: Path = RAW_DIR) -> tuple[list[dict], dict | None]:
+    """NYNJTC's Long Path section guide, read as waypoints - and whether they may ship.
+
+    The third input to this artifact and the first that is not an ArcGIS
+    layer: forty web pages, parsed by lib/nynjtc_long_path_guide.py into
+    parking lots with NYNJTC's own coordinates and lean-tos, springs,
+    campsites and lookouts placed by walking the guide's mile along the
+    registered `nynjtc_long_path` line. That module's docstring carries what
+    is placed, what is not, and the measured error on the estimate.
+
+    Returns (records, stats), where stats is None when the source is not
+    registered at all. THE GATE IS THE ENTRY'S OWN `reaches_hikers`, read
+    here the way every layer's is, but with one difference in how `main`
+    treats the answer: a held-back guide is kept OUT of the manifest's
+    `sources`. publish.py's gate on this artifact is all-or-nothing over that
+    dict - one steward held back holds back every steward's points - and it
+    is right to be, for lines and points a steward may still refuse. It
+    would be wrong here: DEC's, OPRHP's and USFS's waypoints must not vanish
+    from every phone because a fourth source is waiting on a licence
+    answer. So a held-back guide's stats go under the manifest's
+    `held_back_sources` instead, its records go to the review file, and the
+    artifact is what it was before this source existed.
+
+    A published guide (reaches_hikers true) with no cache on disk raises, as
+    a missing layer does: the alternative is an artifact silently short of a
+    source it is meant to carry. A held-back one with no cache is a line in
+    the log - there was nothing to review and nothing to publish.
+    """
+    source = find_source(registry, GUIDE_KEY)
+    if source is None:
+        return [], None
+    publishable = bool(source.get("reaches_hikers"))
+    sections_path = raw_dir / "sections.json"
+    lines_path = lines_dir / f"{GUIDE_LINE_KEY}.geojson"
+    missing = [path for path in (sections_path, lines_path) if not path.exists()]
+    base = {
+        "steward": source.get("steward"),
+        "attribution": source.get("attribution"),
+        "reaches_hikers": publishable,
+    }
+    if missing:
+        names = ", ".join(path.name for path in missing)
+        if publishable:
+            raise FileNotFoundError(
+                f"{names} missing - {GUIDE_KEY} carries reaches_hikers: true, so this artifact must carry it. "
+                "Run fetch_nynjtc_long_path_guide.py (the guide) and fetch_external_layers.py (the line it is placed along) first."
+            )
+        return [], {**base, "kept": 0, "reason": f"{names} not on disk; nothing to review"}
+    sections = [Section.from_dict(data) for data in json.loads(sections_path.read_text(encoding="utf-8"))]
+    features = json.loads(lines_path.read_text(encoding="utf-8")).get("features", [])
+    records, stats = build_guide_records(sections, features)
+    return records, {**base, **stats}
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """One FeatureCollection, mixed poi_types.
 
@@ -644,7 +719,7 @@ def records_to_geojson(records: list[dict]) -> dict:
     }
 
 
-def write_artifact(records: list[dict], per_source: dict, ring: dict | None = None) -> dict:
+def write_artifact(records: list[dict], per_source: dict, ring: dict | None = None, held_back: dict | None = None) -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
@@ -664,6 +739,10 @@ def write_artifact(records: list[dict], per_source: dict, ring: dict | None = No
         # (see main), so without this block the manifest's per-source figures
         # and its feature_count would disagree with no way to see why.
         **({"network_ring": ring} if ring is not None else {}),
+        # Sources read and NOT carried, with why - outside `sources` so that
+        # publish.py's all-or-nothing gate over that dict sees only what the
+        # artifact actually holds (see guide_records).
+        **({"held_back_sources": held_back} if held_back else {}),
     }
 
 
@@ -703,6 +782,39 @@ def main() -> dict:
         }
         all_records.extend(records)
 
+    # NYNJTC's Long Path section guide - the one input here that is not a
+    # layer. See guide_records for why a held-back guide stays out of
+    # `per_source` and goes to a review file instead.
+    held_back_sources: dict[str, dict] = {}
+    guide, guide_stats = guide_records(registry)
+    if guide_stats is not None:
+        if "reason" in guide_stats:
+            print(f"  {GUIDE_KEY}: {guide_stats['reason']}")
+        else:
+            print(
+                f"  {GUIDE_KEY}: {guide_stats['kept']:,} waypoints from {guide_stats['sections']} section pages  {guide_stats['by_type']}"
+            )
+            print(
+                f"      {guide_stats['entries_placed']['stated']:,} at NYNJTC's own coordinates, "
+                f"{guide_stats['entries_placed']['interpolated']:,} placed by mile along the line (low confidence), "
+                f"{guide_stats['duplicates_merged']:,} repeats merged"
+            )
+            for reason, count in guide_stats["skipped"].items():
+                print(f"      skipped {count:>6,}  {reason}")
+        if guide_stats["reaches_hikers"]:
+            counts[GUIDE_KEY] = guide_stats["kept"]
+            per_source[GUIDE_KEY] = guide_stats
+            all_records.extend(guide)
+        else:
+            held_back_sources[GUIDE_KEY] = guide_stats
+            if guide:
+                OUT_DIR.mkdir(parents=True, exist_ok=True)
+                review_path = OUT_DIR / GUIDE_REVIEW_NAME
+                review_path.write_text(json.dumps(records_to_geojson(guide), separators=(",", ":")))
+                print(
+                    f"      HELD BACK: reaches_hikers is false, so none of these enter {ARTIFACT_NAME}; written for review to {review_path}"
+                )
+
     # export_nearby_trails.py's gate, for the same reason it has one: a source
     # that silently returns zero - an ArcGIS schema change, a renamed asset
     # value - must fail the run rather than quietly shrink the map.
@@ -727,7 +839,7 @@ def main() -> dict:
     else:
         print(f"\n  ring: not applied - {ring.get('reason', 'no network artifact')}")
 
-    manifest = write_artifact(all_records, per_source, ring)
+    manifest = write_artifact(all_records, per_source, ring, held_back_sources)
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
     print(f"  by type: {manifest['by_type']}")

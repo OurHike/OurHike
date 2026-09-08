@@ -67,7 +67,7 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping | absent |
 | **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 1,222** | **ships 629** | **ships 1,202** | **ships 574** | **ships 287** |
 | **NYS DEC** | **ships 331** | **ships 2,315** | **unsuitable** 23 / **0** | absent | **ships 1,182** | **ships 248** | **ships 2,256** | **ships 393** | *available* 10,520 |
-| **NYNJTC** | absent | absent | absent | absent | absent | absent | *unsuitable* 26 | absent | *unsuitable* 26 |
+| **NYNJTC** | **ships 17** | **ships 17** | **ships 21** | absent | absent | **ships 92** | **ships 120** | **ships 4** | *unsuitable* 26 |
 | **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 | **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent | absent |
 | **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
@@ -431,6 +431,68 @@ are point layers:
 The org that maintains more of this ground than anyone publishes the least of it, which
 NYC_SOURCE_SURVEY.md §4 established for trails and this confirms for POIs. Their full
 network remains an agreement, not a scrape.
+
+**Re-probed 2026-09-08, with a different answer** ([#1288 — Read NYNJTC's Long Path
+section guide for the waypoints its layer does not carry](https://github.com/OurHike/OurHike/issues/1288)).
+The sentence above is true of NYNJTC's *data* and wrong about NYNJTC: their waypoints exist,
+and they are published as prose. The **Long Path End-to-End Section Guide** — forty
+WordPress pages at `nynjtc.org/lp-section-N/`, the same pages the registered
+`nynjtc_long_path` layer links to from its own `GuideURL` field — carries, per section, a
+`Distance:` header and four blocks: Access, **Parking** (a mile, a description, and
+NYNJTC's own coordinates to five decimals), **Camping** (a mile and a lean-to or campsite),
+and a mile-by-mile **Detailed Trail Description** naming springs, lean-tos, campsites,
+lookouts and restrooms. Measured across all forty pages on 2026-09-08: **1,256
+mile-marked entries, 153 with explicit coordinates**, every page in one skeleton.
+
+`lib/nynjtc_long_path_guide.py` reads them into waypoints and the NYNJTC row of §0 is
+re-drawn from what it read, against the live layer the same day:
+
+| type | records | how placed |
+|---|---:|---|
+| parking | 120 | 106 at NYNJTC's coordinates (high confidence), 14 by mile |
+| viewpoint | 92 | by mile, low confidence |
+| water | 21 | by mile, low confidence — every one read in full, and the rule is the narrowest in the module |
+| shelter | 17 | by mile; two stated to be off the trail and pinned at the turn-off with a sentence saying so |
+| campsite | 17 | by mile |
+| privy | 4 | by mile |
+
+Those are the counts *after* merging the 61 places the guide says more than once (Big Hill
+Shelter is mentioned at four miles of section 5) and leaving out the 14 entries NYNJTC
+marks "(unlocated)". "By mile" means the guide's mile walked along the section's line in
+the registered layer, scaled to the section's stated distance because the layer's line is
+shorter than the section it draws on 37 of 40 sections (83–105%). That is an estimate, and
+it is measured rather than assumed: over the 151 entries carrying both a mile and
+coordinates, the along-trail distance between where the mile lands and where NYNJTC's
+point projects onto the line is **median 86 m, p90 476 m, max 2,430 m**
+(`spike_long_path_guide_placement.py` re-derives it), so every mile-placed record carries
+`position_error_m: 500` — the p90 rounded up — and `CONFIDENCE_LOW`. Sections 23, 25 and
+37 measured markedly worse (medians 573, 950 and 1,223 m); the layer's line and the guide's
+mileage disagree there, and a republish of either may move them.
+
+**Every cell read `available` for most of that day, and the reason is worth keeping
+because it is the parent surveys' rule made sharp.** This is the first NYNJTC surface with
+*stated* terms: nynjtc.org's Terms & Conditions §3 (page dated 2025-03-10, read
+2026-09-08) say all content including maps and text is owned by NYNJTC — a copyright claim,
+not a grant. `nynjtc_licence` covers the two trail extracts "and nothing else",
+`nynjtc_notices_licence` covers the alerts, and both say they must not be read as
+precedent; so `nynjtc_long_path_guide` was registered `reaches_hikers: false` with its own
+`nynjtc_guide_licence` block recording nothing, and `export_nearby_poi.py` was built to keep
+a held-back source out of the artifact's manifest so the all-or-nothing gate on that
+artifact could never hold back DEC's, OPRHP's and USFS's waypoints on NYNJTC's account.
+
+**The maintainer answered the same day** — *"make reach_hikers:true - I'm assuming my
+relationship with nynjtc is enough"* — and the six cells read **ships** on that
+authorisation, recorded in those words in `nynjtc_guide_licence`. It is the maintainer's
+decision and not a grant from NYNJTC, the footing their alerts already ship on, and
+[#768](https://github.com/OurHike/OurHike/issues/768) remains where NYNJTC's own answer
+belongs. What ships is facts and a link — type, position, section and mile, an off-trail
+distance where the guide states one, a short name, the page URL — never the guide's
+sentence, the split the notices already ship on; and the safety holdbacks are the
+measurement's, not the licence's: every mile-placed record is `CONFIDENCE_LOW` with a stated
+500 m error, water carries the guide's reliability word in the cautious direction, and an
+off-trail place is pinned at its turn-off with the card saying so. The interactive map at
+`nynjtc.org/long-path-interactive-map/` was read the same day and adds nothing
+point-shaped: three line layers, two of them already catalogued by ALERTS_NOTICES_SURVEY.md.
 
 **Mohonk Preserve.** All 23 services listed; three carry real data and none is a POI layer
 — the 304 trail polylines already shipping, a single boundary polygon, and the

@@ -36,6 +36,10 @@ and the same day's stage 2 cut them into cells of this grid as a second family
 (`nearby_trails_cells.json`, `client/src/lib/coverageCells.ts`'s `NETWORK_CELLS`): a
 stretch download carries the network above the seam with the ground under it, priced as one
 decision on the stretch card, and `map/networkTiles.ts` asks a held cell before the bucket.
+Stage 3 (2026-09-08) cut the junction graph into the same cells as a third family
+(`trail_graph_cells.json`, `GRAPH_CELLS`) — not downloaded with a stretch but loaded where a
+hiker plans and kept per cell by `lib/trailGraphStore.ts`; `features/HIKE_PLANNING.md`'s *The
+graph a phone keeps is the cells it planned in* is that half.
 Two things about that family are decided differently from the sheets and are worth knowing
 before reading §6: it publishes **no context** — z9 nationwide measured 9,653,907 bytes, for
 a zoom the sketch already draws below and the cells draw above, so the cut is made one zoom

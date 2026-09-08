@@ -147,12 +147,17 @@ class TestTheContractIsReadNotRestated:
         release missing nine artifacts passed check 2 - measured against
         production's manifest on 2026-08-26. A fixture cannot catch that
         coming back, because the bug was that the file said more than the
-        parser asked it."""
+        parser asked it.
+
+        The floor was seventeen until #1257 stage 3, which removed five
+        whole-file keys the client no longer fetches (the network's lines
+        and the graph's four files, tiles and cells now) and declared one
+        index in their place: fifteen, counted 2026-09-08."""
         contract = expected_client_keys()
         declared = set(re.findall(r"^export const \w+_KEY\s*=\s*'([^']+)'", CONFIG_SOURCE, re.M))
 
         assert declared <= set(contract), sorted(declared - set(contract))
-        assert len(declared) >= 17, f"config.ts declares {len(declared)} keys, expected at least 17"
+        assert len(declared) >= 15, f"config.ts declares {len(declared)} keys, expected at least 15"
 
     def test_a_key_that_declares_nothing_raises(self):
         """The half that makes the declaration mean anything. Without it a new
@@ -281,7 +286,14 @@ class TestTheNineArtifactsProductionWasMissing:
     plain failures, four sit behind a `reaches_hikers` licence gate and are now
     named skips. Before this change none of the nine produced a report at all -
     not a pass, not a skip, no line in the verdict - which is why a maintainer
-    reading a green gate had nothing to notice."""
+    reading a green gate had nothing to notice.
+
+    Since #1257 stage 3 the four gated ones are no longer in the contract at
+    all: no client fetches the network's lines or the graph's files whole (the
+    lines are tiles, the graph is cells), so a release without them is not a
+    release a phone misses anything from, and check 2 has nothing to say. The
+    gated key that stands where they stood is the graph's cell index, behind
+    the same licence gate, and it skips and says so the way they did."""
 
     #: Verbatim from the issue's table, in its order.
     MISSING = [
@@ -295,19 +307,30 @@ class TestTheNineArtifactsProductionWasMissing:
         "stewards.json",
         "retired_poi.geojson",
     ]
+    #: The four of them no client asks for since #1257 stage 3.
+    NO_LONGER_FETCHED_WHOLE = MISSING[:4]
+    #: The gated key that replaced them in the contract.
+    GATED_NOW = "trail_graph_cells.json"
 
     def _reports(self):
         contract = expected_client_keys()
-        held = {key: {"sha256": "x"} for key in contract if key not in self.MISSING}
+        held = {key: {"sha256": "x"} for key in contract if key not in (*self.MISSING, self.GATED_NOW)}
         return {r["key"]: r for r in check_client_keys({"artifacts": held})}
 
-    def test_every_one_of_the_nine_now_gets_a_report(self):
+    def test_every_one_still_asked_for_now_gets_a_report(self):
         reports = self._reports()
-        assert set(self.MISSING) <= set(reports)
+        still_asked = [key for key in self.MISSING if key not in self.NO_LONGER_FETCHED_WHOLE]
+        assert set(still_asked) <= set(reports)
+        assert self.GATED_NOW in reports
+
+    def test_the_four_whole_files_have_left_the_contract(self):
+        contract = expected_client_keys()
+        assert not set(self.NO_LONGER_FETCHED_WHOLE) & set(contract)
+        assert not set(self.NO_LONGER_FETCHED_WHOLE) & set(self._reports())
 
     def test_the_five_ungated_ones_fail(self):
         reports = self._reports()
-        failed = sorted(key for key in self.MISSING if reports[key]["state"] == FAILED)
+        failed = sorted(key for key in self.MISSING if key in reports and reports[key]["state"] == FAILED)
         assert failed == [
             "club_sections.json",
             "highlights.json",
@@ -316,17 +339,10 @@ class TestTheNineArtifactsProductionWasMissing:
             "trails_overview.geojson",
         ]
 
-    def test_the_four_behind_the_licence_gate_skip_and_say_so(self):
+    def test_the_one_behind_the_licence_gate_skips_and_says_so(self):
         reports = self._reports()
-        gated = [key for key in self.MISSING if reports[key]["state"] == SKIPPED]
-        assert sorted(gated) == [
-            "nearby_trails.geojson",
-            "trail_graph.json",
-            "trail_graph_elevation.json",
-            "trail_graph_geometry.json",
-        ]
-        for key in gated:
-            assert "@release optional" in reports[key]["detail"]
+        assert reports[self.GATED_NOW]["state"] == SKIPPED
+        assert "@release optional" in reports[self.GATED_NOW]["detail"]
 
 
 ACKNOWLEDGEMENTS = [
@@ -715,6 +731,9 @@ class TestAnArtifactAPhoneCannotHold:
     def _manifest(**sizes):
         return {"artifacts": {key: {"sha256": "x", "size_bytes": size} for key, size in sizes.items()}}
 
+    # What the client of 2026-09-07 declared: it fetched both files whole.
+    THAT_DAYS_CLIENT = frozenset({"nearby_trails.geojson", "trail_graph.json", "trails.geojson"})
+
     def test_the_two_artifacts_that_took_the_app_down_fail_by_name(self):
         reports = check_launch_budget(
             self._manifest(
@@ -725,6 +744,7 @@ class TestAnArtifactAPhoneCannotHold:
                 }
             ),
             budget=self.BUDGET,
+            client_keys=self.THAT_DAYS_CLIENT,
         )
 
         failed = {r["key"]: r["detail"] for r in reports if r["state"] == FAILED}
@@ -734,6 +754,47 @@ class TestAnArtifactAPhoneCannotHold:
         summary = [r for r in reports if r["key"] == "whole-fetched artifacts"]
         assert [r["state"] for r in summary] == [OK]
         assert "trails.geojson" in summary[0]["detail"]
+
+    def test_an_artifact_the_current_client_never_fetches_whole_is_skipped_by_name(self):
+        """#1257 replaced both whole files with tiles and cells, and the
+        client stopped declaring them. They stay in the bucket - the manifest
+        merge is additive - as the cuts' input and for older clients, and a
+        gate that went on weighing them would be red for a file no phone on
+        this release parses. Skipped with the reason, never passed."""
+        reports = check_launch_budget(
+            self._manifest(
+                **{"nearby_trails.geojson": 228_820_578, "trail_graph.json": 78_595_556, "trails.geojson": 11_540_417}
+            ),
+            budget=self.BUDGET,
+            client_keys=frozenset({"trails.geojson", "nearby_trails.pmtiles", "trail_graph_cells.json"}),
+        )
+
+        skipped = {r["key"]: r["detail"] for r in reports if r["state"] == SKIPPED}
+        assert set(skipped) == {"nearby_trails.geojson", "trail_graph.json"}
+        assert "not fetched whole by the current client" in skipped["trail_graph.json"]
+        assert [r["state"] for r in reports if r["key"] == "whole-fetched artifacts"] == [OK]
+        assert not [r for r in reports if r["state"] == FAILED]
+
+    def test_a_graph_cell_shard_is_weighed_without_being_declared(self):
+        """The client derives the shard keys from trail_graph_cells.json rather
+        than declaring one per cell, and every shard is fetched whole and
+        parsed - so they are weighed, and one over the budget fails by name."""
+        reports = check_launch_budget(
+            self._manifest(
+                **{
+                    "trail_graph_cell_n41w075.json": 1_585_635,
+                    "trail_graph_geometry_cell_n44w073.json": self.BUDGET + 1,
+                    "trail_graph_cells.json": 117_039,
+                }
+            ),
+            budget=self.BUDGET,
+            client_keys=frozenset({"trail_graph_cells.json"}),
+        )
+
+        failed = [r["key"] for r in reports if r["state"] == FAILED]
+        assert failed == ["trail_graph_geometry_cell_n44w073.json"]
+        summary = [r for r in reports if r["key"] == "whole-fetched artifacts"][0]
+        assert "2 within" in summary["detail"]
 
     def test_the_archives_are_read_by_range_and_not_weighed(self):
         reports = check_launch_budget(
@@ -762,14 +823,25 @@ class TestAnArtifactAPhoneCannotHold:
         monkeypatch.setattr(verify_release, "IDENTITY_LEDGER_PATH", ledger)
         requests_mock.head(re.compile(".*"), headers=_headers())
         requests_mock.get(re.compile(".*"), status_code=404)
+        # The whole graph of 2026-09-07's size, published under a cell's name:
+        # a shard is fetched whole and parsed, so it is weighed and fails. The
+        # whole-file network beside it is what no client fetches whole any
+        # more (#1257), and is skipped by name rather than failed.
         requests_mock.get(
             f"{BASE}/latest.json",
-            json={"artifacts": {"nearby_trails.geojson": {"sha256": "x", "size_bytes": 228_820_578}}},
+            json={
+                "artifacts": {
+                    "trail_graph_cell_n44w072.json": {"sha256": "x", "size_bytes": 78_595_556},
+                    "nearby_trails.geojson": {"sha256": "x", "size_bytes": 228_820_578},
+                }
+            },
         )
 
         reports = check_all(BASE, hash_artifacts=False)
 
-        assert [r["state"] for r in reports if r["check"] == 22 and r["key"] == "nearby_trails.geojson"] == [FAILED]
+        by_key = {r["key"]: r["state"] for r in reports if r["check"] == 22}
+        assert by_key["trail_graph_cell_n44w072.json"] == FAILED
+        assert by_key["nearby_trails.geojson"] == SKIPPED
         # Weighed off the manifest alone, ahead of every per-artifact fetch.
         first_22 = next(i for i, r in enumerate(reports) if r["check"] == 22)
         first_fetch = next(i for i, r in enumerate(reports) if r["check"] in (4, 5))

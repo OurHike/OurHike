@@ -1201,6 +1201,46 @@ def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
     assert manifest["artifacts"]["background.pmtiles"]["size_bytes"] == 10
 
 
+def _write_graph_cells_manifest(tmp_path):
+    """cut_trail_graph.py's own manifest for its family - what the workflow's
+    cut step leaves in PROCESSED_DIR beside the graph's."""
+    entries = {}
+    for name in ("trail_graph_cells.json", "trail_graph_cell_n41w075.json", "trail_graph_geometry_cell_n41w075.json"):
+        (tmp_path / name).write_bytes(b"cut " + name.encode())
+        entries[name] = {"path": str(tmp_path / name), "sha256": f"c3ll-{name}", "size_bytes": 4 + len(name)}
+    (tmp_path / "trail_graph_cells_manifest.json").write_text(json.dumps({"artifacts": entries, "stats": {}, "sources": {}}))
+
+
+def test_collect_publishes_the_graph_cells_inside_the_graphs_own_gate(tmp_path, monkeypatch):
+    """The per-cell shards (#1257 stage 3) are the same stewards' topology
+    re-cut, so they ship with the graph - through the gated branch, never
+    the ungated sheet loop."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+    _write_graph_cells_manifest(tmp_path)
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["trail_graph_cells.json"]["sha256"] == "c3ll-trail_graph_cells.json"
+    assert artifacts["trail_graph_geometry_cell_n41w075.json"]["size_bytes"] == len(b"cut trail_graph_geometry_cell_n41w075.json")
+
+
+def test_collect_holds_back_the_graph_cells_with_the_graph(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}})
+    _write_graph_cells_manifest(tmp_path)
+
+    artifacts = publish.collect_artifacts()
+
+    assert not any(name.startswith("trail_graph") for name in artifacts)
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_the_graph_cell_family_is_gated_and_still_a_family():
+    assert publish.TRAIL_GRAPH_CELL_FAMILY not in publish.CELL_FAMILIES
+    assert publish.TRAIL_GRAPH_CELL_FAMILY in publish.ALL_CELL_FAMILIES
+
+
 def _write_graph_manifest(tmp_path, sources):
     artifact = tmp_path / "trail_graph.json"
     artifact.write_text('{"nodes":[],"edges":[]}')

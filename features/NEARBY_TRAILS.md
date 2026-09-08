@@ -382,6 +382,13 @@ section's promise as written, at #552's unit, for the first time. A phone holdin
 hiking sheet is the one still outside it: the stretch card stands down for it, and nothing
 else offers the network cells yet.
 
+**Stage 3 (2026-09-08) cut the junction graph derived from these lines the same way** —
+`cut_trail_graph.py`, `trail_graph_cells.json`, every edge filed whole into every cell within
+the seam margin — but the graph's cells are not a download: the day-hike builder loads the
+cells a hiker is planning in and keeps them per cell (`features/HIKE_PLANNING.md`, *The graph a
+phone keeps is the cells it planned in*). The whole 78.6 MB `trail_graph.json` of 2026-09-07
+stays in the bucket and no current client fetches it.
+
 ## 10. POI density, measured
 
 Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI

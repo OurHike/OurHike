@@ -1306,12 +1306,14 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
     ]
 
 
-# Every family cut_cells.py cuts - publish.py's ALL_CELL_FAMILIES, spelled
+# Every family the cutters cut - publish.py's ALL_CELL_FAMILIES, spelled
 # again here because this gate deliberately imports nothing from the publisher
 # it checks. tests/test_verify_release.py holds the two tuples equal, so a
 # family added to one and not the other fails a test rather than shipping
-# cells this check never looks at. `nearby_trails` is #1257 stage 2's.
-CELL_FAMILIES = ("at_basemap", "dem", "nearby_trails")
+# cells this check never looks at. `nearby_trails` is #1257 stage 2's and
+# `trail_graph` (cut_trail_graph.py, JSON shards rather than archives) is its
+# stage 3's.
+CELL_FAMILIES = ("at_basemap", "dem", "nearby_trails", "trail_graph")
 
 
 def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
@@ -1615,7 +1617,22 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
     return [_report(21, key, OK, f"{len(features)} tombstones, every retired ledger row present and resolving")]
 
 
-def check_launch_budget(manifest: dict, budget: int | None = None) -> list[dict]:
+# The per-cell graph shards (cut_trail_graph.py): fetched whole and parsed,
+# so weighed, but derived on the phone from `trail_graph_cells.json` rather
+# than declared one by one in config.ts. The four halves, any cell name.
+_GRAPH_CELL_SHARD = re.compile(r"^trail_graph(_geometry|_elevation|_profile)?_cell_[ns]\d{2}[ew]\d{3}\.json$")
+
+
+def _fetched_whole_by_the_client(key: str, client_keys: set[str]) -> bool:
+    """Whether some phone running the current client fetches `key` entire -
+    the artifacts check 22 weighs. Declared keys, and the graph shards the
+    client derives from a declared index."""
+    return key in client_keys or _GRAPH_CELL_SHARD.match(key) is not None
+
+
+def check_launch_budget(
+    manifest: dict, budget: int | None = None, client_keys: set[str] | frozenset[str] | None = None
+) -> list[dict]:
     """Check 22: no whole-fetched artifact is bigger than the client will load.
 
     The client fetches every text artifact entire and parses it - the junction
@@ -1635,12 +1652,36 @@ def check_launch_budget(manifest: dict, budget: int | None = None) -> list[dict]
 
     A text artifact with no `size_bytes` is a SKIP, never a pass: it is exactly
     the artifact the client cannot weigh before fetching either.
+
+    WEIGHED: WHAT THE CURRENT CLIENT FETCHES WHOLE, AND ONLY THAT (#1257). The
+    keys client/src/lib/config.ts declares (`expected_client_keys`), plus the
+    per-cell graph shards it derives from the cell index rather than declaring
+    one by one (`_fetched_whole_by_the_client`). An artifact nothing in the
+    current client requests - `trail_graph.json` and `nearby_trails.geojson`
+    since the tiles and the cells replaced them - is a SKIP with the reason
+    named, not a failure: it stays in the bucket as the cut's input and for
+    older clients, and weighing it would keep the gate red on a file no
+    phone this release ships will ever parse. The manifest merge being
+    additive-only, nothing else could ever let this check go green again.
     """
     budget = launch_artifact_budget() if budget is None else budget
+    client_keys = set(expected_client_keys() if client_keys is None else client_keys)
     reports = []
     weighed: list[tuple[int, str]] = []
     for key, entry in sorted(manifest["artifacts"].items()):
         if key.endswith(RANGE_READ_SUFFIXES):
+            continue
+        if not _fetched_whole_by_the_client(key, client_keys):
+            reports.append(
+                _report(
+                    22,
+                    key,
+                    SKIPPED,
+                    "not fetched whole by the current client (client/src/lib/config.ts declares no key for it "
+                    "and it is no cell shard), so its size cannot reach a phone this release ships; left in "
+                    "the bucket as a cut's input and for older clients",
+                )
+            )
             continue
         size = entry.get("size_bytes")
         if not isinstance(size, int) or isinstance(size, bool):

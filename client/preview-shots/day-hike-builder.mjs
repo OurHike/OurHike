@@ -47,6 +47,19 @@
 //
 // Nobody's data is in the frame by construction: no account, no saved hikes
 // seeded, no location fix, and the map is wherever the app opens itself.
+//
+// #1257 STAGE 3 RE-POINTED THIS RECIPE'S WAIT, NOT ITS SUBJECT. The door no
+// longer opens when a 7.5 MB (then 78.6 MB, 2026-09-07) graph has been
+// fetched, hashed and parsed: it opens on `trail_graph_cells.json` - the
+// graph's 1° cell index, 166,721 bytes - being present and non-empty, and
+// the cells themselves are loaded where the hiker plans, after the door.
+// So the door is a button seconds sooner on a bucket that carries the index,
+// and the withheld frame's sentence on one that does not is "does not
+// include the trail network" rather than "needs a connection". The bucket a
+// preview reads carries no index until publish-vector-data.yml runs from
+// this code after the merge (the pull request's Data pipelines section is
+// that handoff), so this pull request's own preview photographs the withheld
+// door - which is the true screen for that bucket, and the caption says so.
 
 // #1194 REPOINTED THIS RECIPE at the panel rather than at draw mode.
 //
@@ -67,9 +80,10 @@ export const caption =
 export const alt =
   'Either the redesigned day-hike builder - a panel across the top of the screen headed "Your route" with Distance, Climb and Walking figures, an expanded body listing the route order and a scrolling row of map-label toggles, the map filling the middle, and the builder bar with Cancel, Undo and Draw instead along the bottom - or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
 
-// The routing artifact is 7.5 MB and is hashed before it is trusted, so the
-// door can take a moment to appear on a cold preview. The drive waits on the
-// door itself rather than on a clock; this is the settle after it.
+// The cell index is hashed before it is trusted and the cell under the camera
+// is fetched, hashed and merged after the door opens, so the builder can take
+// a moment to be routable on a cold preview. The drive waits on the door
+// itself rather than on a clock; this is the settle after it.
 export const wait = 6000
 
 export default async function drive(page) {
@@ -82,7 +96,8 @@ export default async function drive(page) {
   // The door is a BUTTON only while the network is ready; the withheld form
   // is a div with the same name, so this locator is the test for which frame
   // this build can reach. Waited on rather than counted immediately - the
-  // graph is still being fetched and hashed when the sheet opens.
+  // cell index (#1257 stage 3) is still being fetched and hashed when the
+  // sheet opens.
   const door = page.getByRole('button', { name: /A day hike/ })
   await door.waitFor({ timeout: 20000 }).catch(() => {})
   if ((await door.count()) === 0) return

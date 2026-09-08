@@ -48,10 +48,19 @@
 // camera (#1138), which costs the shot the map half of the change. The
 // sentence's evidence is Legend.test.tsx's below-seam cases; the map half
 // is this frame's.
+// Re-pointed a fifth time, 2026-09-08 (#1291, #1292), and this one changes
+// what the frame shows twice over. The A.T.'s line is IN it now: the sketch
+// that stands in for the real line used to be withdrawn the moment the shell
+// held trails.geojson, seconds before the map had parsed it, and this shot -
+// taken 3.5 s after the Map tap - photographed that gap on every pull
+// request while the caption claimed a line. And the corridor's highlight
+// marks and boundary ticks, which the alt text used to name, are gone with
+// every other point mark below the seam: the opening camera is trail lines
+// only, by the maintainer's call.
 export const caption =
-  'The opening map — every mapped trail and no waypoints below the seam (#1135); the network appears once network_overview.geojson is in the bucket this preview reads'
+  'The opening map — trail lines only below the seam (#1292): the A.T. from its corridor-view sketch until the real line lands (#1291), no waypoints and no marks of any kind, and the other organizations’ trails dotted around its New York miles once network_overview.geojson is in the bucket this preview reads'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a cased white line from Georgia to Maine with orange highlight marks along it, no waypoint dots anywhere, and — once the artifact publishes — the other organizations’ trails ghosted around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single dark line from Georgia to Maine over white paper, with no pins, dots or marks anywhere on it, and — once the artifact publishes — the other organizations’ trails dotted faintly around its New York miles'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Map' }).click()

@@ -45,12 +45,14 @@ describe('the layer', () => {
     expect(buildWarningLayer().layout).not.toHaveProperty('icon-ignore-placement')
   })
 
-  it('draws at every zoom, unlike the waypoints', () => {
-    // The waypoints start at z9 because 800 pins on the whole corridor is a
-    // texture. Serious warnings are moderator-escalated and rare, and zoomed
-    // out to plan a week is exactly when someone wants to see where they are.
-    expect(buildWarningLayer()).not.toHaveProperty('minzoom')
-    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(0)
+  it('starts at the seam, like the waypoints (#1292)', () => {
+    // It drew at every zoom until 2026-09-08 - "zoomed out to plan a week is
+    // exactly when someone wants to see where they are" - and the
+    // maintainer's call that the opening camera shows trail lines only
+    // reversed that. Below the seam a 44 px pin covered a hundred trail miles
+    // and said "somewhere here"; the route banner still counts warnings at
+    // every zoom. The module header carries the safety-path note.
+    expect(buildWarningLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
   it('holds its size instead of shrinking toward a minzoom', () => {

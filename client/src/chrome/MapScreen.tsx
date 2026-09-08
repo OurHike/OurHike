@@ -109,11 +109,15 @@ export interface MapScreenProps {
   modeSwitch?: ReactNode
   topoArchiveUrl: string
   trailsUrl: string
-  /** The corridor-view centerline, while there is no real one to draw (#869).
-   *  Passed straight through - which line the map is drawing is decided in
-   *  lib/useTrailData.ts, and a screen that second-guessed it could put both
-   *  on at once. */
+  /** The corridor-view centerline, drawn until the map has the real line on
+   *  screen (#869, #1291). Passed straight through with `haveTrailLines`
+   *  below - which line the map is drawing is the canvas's own call, made
+   *  off its trails source, and a screen that second-guessed it could put
+   *  both on at once or neither. */
   overviewTrailsUrl?: string | null
+  /** Whether `trailsUrl` is the real line rather than the seeded placeholder
+   *  (#1291) - the other half of the sketch's contract, passed through. */
+  haveTrailLines?: boolean
   /** The network's corridor-view sketch, forwarded to the canvas (#1135). */
   networkOverviewUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
@@ -740,6 +744,7 @@ export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
   overviewTrailsUrl = null,
+  haveTrailLines = false,
   networkOverviewUrl = null,
   background = 'hiking_topo_live',
   trailName,
@@ -1367,6 +1372,7 @@ export function MapScreen({
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              haveTrailLines={haveTrailLines}
               networkOverviewUrl={networkOverviewUrl}
               background={background}
               pois={viewportPoints}

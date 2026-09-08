@@ -166,7 +166,7 @@ import {
   USGS_TOPO_CREDIT,
 } from './credits'
 import { whenStyleReady } from './styleReady'
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
 import type { ContourUnits, TerrainUrls } from './terrain'
 
@@ -470,17 +470,6 @@ export function trailCasingColor(appearance: SheetAppearance): string {
 export const RED_LIGHT_BLAZE_COLOR = '#e8804a'
 
 /**
- * What the corridor view marks a highlight in (#858) - the app's blaze orange.
- *
- * NOT a blaze colour, and it never touches a trail line: it paints a mark
- * BESIDE the corridor, which is what keeps the two-colour rule intact while
- * still giving a hiker something to reach for. Fixed across appearances,
- * because a mark that changes hue with the sheet is a mark that has to be
- * relearned; it carries on paper and on ink alike.
- */
-export const CORRIDOR_SELECTION_COLOR = '#c1611a'
-
-/**
  * Blazes with no edge of their own on white paper. Today: White (#1283).
  *
  * lib/blaze.ts measures White against the field sheet's paper at 1.02:1 and
@@ -694,32 +683,90 @@ export function attachTrailData(map: MapLibreMap, trailsUrl: string): () => void
 }
 
 /**
- * The corridor-view centerline, or nothing (#869).
+ * The corridor-view centerline, or nothing (#869) - drawn until THIS map has
+ * the real line on screen (#1291).
  *
- * Pushed and cleared through the same source, because "the sketch is gone" is
- * a state this has to be able to reach: it is drawn only until the real line
- * lands, and `null` here is what lands it. An empty collection rather than a
+ * Pushed and cleared through the same source, because "the sketch is gone"
+ * is a state this has to be able to reach: an empty collection rather than a
  * removed source, so there is one shape of style whatever a launch is doing.
  *
- * See lib/config.ts's TRAILS_OVERVIEW_KEY for what this line is worth - 100 m
- * of tolerance, which is a sketch at the corridor view and a lie at z14. The
- * layer's `maxzoom` is the other half of keeping that true.
+ * WHO DECIDES IT IS GONE. The shell used to: lib/useTrailData.ts withdrew the
+ * URL the moment it held the real lines. But the shell holding an object URL
+ * for trails.geojson is not the map having drawn it - the worker still has
+ * to fetch, parse and tile 11.5 MB - and a map mounted after that moment was
+ * handed nothing and drew nothing for seconds (the measurement is on the
+ * hook). So the shell hands the sketch over for as long as it has one, says
+ * separately whether it holds real lines (`trailLinesHeld`), and this
+ * empties the sketch when the map's own trails source reports loaded:
+ * checked on attach, on every `sourcedata` for that source, and on `idle`,
+ * which is the render after the last tile. Per map instance, which is the
+ * point - a rebuilt map gets the sketch again for exactly the seconds it
+ * needs it.
+ *
+ * `trailLinesHeld` false means the trails source still holds the empty
+ * placeholder the style is seeded with, which loads instantly and must not
+ * count: without the flag the sketch would be emptied on the first idle of
+ * every cold launch, before the real line had even been requested.
+ *
+ * See lib/config.ts's TRAILS_OVERVIEW_KEY for what this line is worth -
+ * 100 m of tolerance, which is a sketch at the corridor view and a lie at
+ * z14. The layer's `maxzoom` is the other half of keeping that true.
  */
 export function attachTrailOverview(
   map: MapLibreMap,
   overviewUrl: string | null,
+  trailLinesHeld: boolean,
 ): () => void {
-  return whenStyleReady(
+  let stopWatching: (() => void) | null = null
+  const detach = whenStyleReady(
     map,
     () => map.getSource(TRAIL_OVERVIEW_SOURCE_ID) !== undefined,
     () => {
       const source = map.getSource<GeoJSONSource>(TRAIL_OVERVIEW_SOURCE_ID)
       if (source === undefined || typeof source.setData !== 'function') return
 
-      source.setData((overviewUrl ?? emptyTrailOverview()) as never)
+      const clear = () => source.setData(emptyTrailOverview() as never)
+      if (overviewUrl === null || (trailLinesHeld && trailLinesDrawn(map))) {
+        clear()
+        return
+      }
+      source.setData(overviewUrl as never)
+      if (!trailLinesHeld) return
+
+      function stop() {
+        map.off('sourcedata', onSourceData)
+        map.off('idle', check)
+        stopWatching = null
+      }
+      function check() {
+        if (!trailLinesDrawn(map)) return
+        clear()
+        stop()
+      }
+      function onSourceData(event: MapSourceDataEvent) {
+        if (event.sourceId === TRAILS_SOURCE_ID) check()
+      }
+      stopWatching = stop
+      map.on('sourcedata', onSourceData)
+      map.on('idle', check)
     },
     'Corridor-view centerline',
   )
+  return () => {
+    detach()
+    stopWatching?.()
+  }
+}
+
+/** Whether this map's own trails source has loaded what it was handed and
+ *  has every tile the camera needs - MapLibre's `isSourceLoaded`, guarded
+ *  because asking about a source the style does not hold logs an error.
+ *  MapLibre counts a source that FAILED to load as loaded, so a real line
+ *  that never arrives drops the sketch too - which is the frame the old
+ *  design showed in every case, and is at least an honest empty map. */
+function trailLinesDrawn(map: MapLibreMap): boolean {
+  if (map.getSource(TRAILS_SOURCE_ID) === undefined) return false
+  return map.isSourceLoaded(TRAILS_SOURCE_ID)
 }
 
 /**
@@ -1739,7 +1786,6 @@ export function buildMapStyle({
       // the seam - see corridorLayers.ts's CORRIDOR_MAX_ZOOM.
       ...buildCorridorLayers({
         casingColor: trailCasingColor(appearance),
-        selectionColor: CORRIDOR_SELECTION_COLOR,
         blazeWidth: BLAZE_LINE_WIDTH,
         casingWidth: CASING_LINE_WIDTH,
       }),

@@ -489,18 +489,84 @@ describe('the corridor-view sketch (#869)', () => {
     expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
   })
 
-  it('clears it the moment there is a real line, rather than leaving it under one', async () => {
+  it('keeps it while the shell holds real lines this map has not drawn yet (#1291)', () => {
+    // The shell holding an object URL for trails.geojson is not the map
+    // having drawn it: the worker still has to parse and tile 11.5 MB, and
+    // the sketch is for exactly those seconds. Every preview frame of #1285
+    // photographed the gap this used to leave.
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
+    map.emit('styledata')
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    map.emit('idle')
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
+  })
+
+  it('clears it once this map reports its own trails source loaded, rather than leaving it under the line', () => {
     // The sketch is 100 m of tolerance, drawn only below the pin seam
     // (map/style.ts). Leaving it on the map once the surveyed line is there
     // would mean two trails, one of them approximate, and nothing on screen
     // saying which is which.
-    const { rerender } = render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" />)
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />)
     const [map] = MockMap.live
-    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID]
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
     map.emit('styledata')
 
-    rerender(<MapView {...PROPS} overviewTrailsUrl={null} />)
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
 
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    })
+  })
+
+  it('clears it on attach when this map already has the real line drawn', () => {
+    // The sketch arriving at a map whose own line is already on screen - the
+    // Map tab tapped late on a phone that held the release, the sketch's
+    // fetch landing after the parse. The style seeds both sources, so the
+    // map is attached to at render; the sketch is handed over afterwards.
+    const { rerender } = render(<MapView {...PROPS} haveTrailLines />)
+    const [map] = MockMap.live
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+
+    rerender(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />)
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    })
+  })
+
+  it('does not mistake the placeholder the style is seeded with for the real line', () => {
+    // Before the shell holds lines the trails source is an empty collection,
+    // which loads instantly; counting it would clear the sketch on the first
+    // idle of every cold launch, before the real line was even requested.
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('styledata')
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    map.emit('idle')
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
+  })
+
+  it('stops watching the trails source once the sketch is taken away', () => {
+    const { rerender } = render(
+      <MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />,
+    )
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
+    map.emit('styledata')
+    const watching = map.listenerCount('sourcedata')
+
+    rerender(<MapView {...PROPS} overviewTrailsUrl={null} haveTrailLines />)
+
+    expect(map.listenerCount('sourcedata')).toBe(watching - 1)
     expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
       type: 'FeatureCollection',
       features: [],

@@ -13,8 +13,6 @@ import {
 } from './style'
 import { OSM_CREDIT } from './credits'
 import {
-  CORRIDOR_BOUNDARY_LAYER_ID,
-  CORRIDOR_HIGHLIGHT_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_LAYER_ID,
 } from './corridorLayers'
@@ -703,13 +701,10 @@ describe('the offline-only background', () => {
       // there is nothing about drawing it that needs signal, and the person
       // most likely to be reading the whole trail at once is the person
       // planning rather than walking.
+      // The runs only: the boundary ticks and the highlight marks came off
+      // the canvas with every other point mark below the seam (#1292).
       CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
       CORRIDOR_UNATTRIBUTED_LAYER_ID,
-      CORRIDOR_BOUNDARY_LAYER_ID,
-      // The highlight marks, over the runs and the ticks they sit on (#858).
-      // corridorLayers.test.ts holds that ordering as a property; this case
-      // only has to agree with it.
-      CORRIDOR_HIGHLIGHT_LAYER_ID,
       // The route being built survives the subtraction too (#755): planning
       // an evening's next stretch at a shelter with no signal is a normal
       // use of it, not an edge case.

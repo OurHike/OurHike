@@ -5,6 +5,7 @@ import {
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
+  ATC_UPDATE_POINT_MIN_ZOOM,
   ATC_UPDATE_POINT_ZOOM_STOPS,
 } from '../lib/atcUpdateStyle'
 import {
@@ -127,6 +128,13 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
       const pin = POI_PIN_SIZE * scaleAt(pinStops, zoom)
       expect(dot, `ATC dot must outsize a waypoint pin at z${zoom}`).toBeGreaterThan(pin)
     }
+  })
+
+  it('starts at the same seam as the pins, since neither draws below it (#1292)', () => {
+    // Repeated in lib/ rather than imported, because lib/ does not depend on
+    // map/; this file is the one place both sides are in scope.
+    expect(ATC_UPDATE_POINT_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
+    expect(ATC_UPDATE_POINT_ZOOM_STOPS[0][0]).toBe(ATC_UPDATE_POINT_MIN_ZOOM)
   })
 
   it('does NOT outgrow the serious-warning pin as a disc', () => {

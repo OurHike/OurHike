@@ -6562,6 +6562,7 @@ function App() {
               topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              haveTrailLines={haveTrailLines}
               networkOverviewUrl={networkOverviewUrl}
               background={effectiveBackground(
                 preferences.background_source,

@@ -106,15 +106,26 @@ export interface MapViewProps {
    */
   trailsUrl: string
   /**
-   * The corridor-view centerline, while there is no real one (#869).
+   * The corridor-view centerline, drawn until this map has the real line on
+   * screen (#869, #1291).
    *
-   * Null once the shell has the real line - or has decided there is no sketch
-   * to draw - and clearing it is the point rather than an edge case: this is
-   * a line that is only true at the zooms it is drawn at, and it stops being
-   * drawn the moment something better arrives. lib/config.ts's
+   * Handed over for as long as the shell has one; null only where there is
+   * none. Clearing it is this component's own call, made per map instance
+   * off the trails source's loaded state (map/style.ts's attachTrailOverview),
+   * because the shell holding the real line is not the map having drawn it.
+   * It is a line that is only true at the zooms it is drawn at, and it stops
+   * being drawn the moment something better is on screen - lib/config.ts's
    * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
    */
   overviewTrailsUrl?: string | null
+  /**
+   * Whether `trailsUrl` is the real line rather than the empty placeholder
+   * the style is seeded with (#1291). The sketch above waits on the trails
+   * source loading only when this is true: the placeholder loads instantly,
+   * and counting it would clear the sketch before the real line was even
+   * requested.
+   */
+  haveTrailLines?: boolean
   /**
    * The corridor-view sketch of that whole network, as an object URL (#1135,
    * lib/config.ts's NETWORK_OVERVIEW_KEY).
@@ -471,6 +482,7 @@ export function MapView({
   trailsUrl,
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
+  haveTrailLines = false,
   networkOverviewUrl = null,
   pois = NO_POIS,
   pinCondition,
@@ -820,11 +832,14 @@ export function MapView({
   // same seam as the lines above: a GeoJSON source takes a URL in place, and
   // takes an empty collection to say it is done. Its own effect because it
   // moves on a different clock from the real line - it is set once early and
-  // cleared once, where the real one is set once and stays.
+  // cleared once THIS map has drawn the real one (#1291), where the real one
+  // is set once and stays. Declared after the trail-lines effect above on
+  // purpose: when the shell's lines land, the source is re-pointed first and
+  // is mid-load by the time this asks whether it is drawn.
   useEffect(() => {
     if (map === null) return
-    return attachTrailOverview(map, overviewTrailsUrl)
-  }, [map, overviewTrailsUrl])
+    return attachTrailOverview(map, overviewTrailsUrl, haveTrailLines)
+  }, [map, overviewTrailsUrl, haveTrailLines])
 
   // The network's own sketch (#1135), on the nearby lines' clock rather than
   // the A.T. sketch's: it arrives once and stays, because nothing better

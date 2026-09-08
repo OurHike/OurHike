@@ -224,11 +224,12 @@ export function isSettledAbsence(because: TrailNetworkAbsence): boolean {
 async function published(
   key: string,
   signal?: AbortSignal,
-): Promise<{ hash: string | null; decodedBytes: number | null }> {
+): Promise<{ hash: string | null; decodedBytes: number | null; version: string | null }> {
   const snapshot = await publishedSnapshot({ signal })
   return {
     hash: snapshot.hashes[key] ?? null,
     decodedBytes: snapshot.decodedSizes[key] ?? null,
+    version: snapshot.version,
   }
 }
 
@@ -274,7 +275,7 @@ export async function loadGraphShard(
     // already in memory. Asking first is what lets a shard the phone cannot
     // hold be declined for the price of a ~KB manifest read, with no bytes
     // moved at all.
-    const { hash: expected, decodedBytes } = await published(key, signal)
+    const { hash: expected, decodedBytes, version } = await published(key, signal)
     if (oversized(decodedBytes)) {
       warnOversized(key, decodedBytes, 'manifest')
       return { kind: 'absent', because: 'too-large' }
@@ -308,7 +309,7 @@ export async function loadGraphShard(
     // Kept for the next launch, verified. A refusal here costs nothing: the
     // bytes in hand still route this session, exactly as they did before the
     // store existed.
-    void keepVerified(storeKey, bytes, expected, response, signal)
+    void keepVerified(storeKey, bytes, expected, version, response)
 
     return { kind: 'shard', shard: parsed }
   } catch {
@@ -518,7 +519,7 @@ async function fetchCompanionCell<E>(
     // Weighed at the manifest before the fetch and at the response after it,
     // exactly as the shard is (#1254); null is what this half already means
     // by "not on this phone".
-    const { hash: expected, decodedBytes } = await published(key, signal)
+    const { hash: expected, decodedBytes, version } = await published(key, signal)
     if (oversized(decodedBytes)) {
       warnOversized(key, decodedBytes, 'manifest')
       return null
@@ -539,7 +540,7 @@ async function fetchCompanionCell<E>(
     if (!isShape(parsed)) return null
     if (parsed.length !== cell.edgeIds.length) return null
 
-    void keepVerified(storeKey, bytes, expected, response, signal)
+    void keepVerified(storeKey, bytes, expected, version, response)
     return parsed
   } catch {
     // A refused origin, a dropped connection, a signal that turned out not to
@@ -632,25 +633,31 @@ export async function fetchTrailGraphProfileCells(
  * Keep a verified artifact for the next launch, and never let that failing
  * cost the session the bytes it already holds.
  *
- * The manifest version is read from the same snapshot the hash came from where
- * one is available. It is recorded rather than acted on - see
- * lib/trailGraphStore.ts's header for what it is for.
+ * The manifest version comes from the same read the hash did - recorded
+ * rather than acted on, see lib/trailGraphStore.ts's header - and NOT from a
+ * second read on the caller's signal, which is what this used to do. The
+ * write is fire-and-forget by design, so it outlives the caller: the shell's
+ * companion effect re-runs the moment the attached index lands and aborts its
+ * signal, and a second manifest read on that signal was aborted with it. A
+ * browser check on 2026-09-08 found the geometry cell never stored for
+ * exactly that reason, on a phone that had just drawn it - the routing half,
+ * whose signal lives longer, was there. No request happens here now, so
+ * there is nothing for an abort to cut short.
  */
 async function keepVerified(
   storeKey: string,
   bytes: Uint8Array,
   hash: string,
+  version: string | null,
   response: Response,
-  signal?: AbortSignal,
 ): Promise<void> {
   try {
-    const snapshot = await publishedSnapshot({ signal })
     await writeStoredGraph(storeKey, {
       bytes: new Blob([bytes as unknown as BlobPart], {
         type: response.headers.get('content-type') ?? 'application/json',
       }),
       hash,
-      version: snapshot.version,
+      version,
     })
   } catch {
     // Storing is an improvement on the NEXT launch, never a condition of this

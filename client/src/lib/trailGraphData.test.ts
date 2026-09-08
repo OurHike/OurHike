@@ -914,6 +914,63 @@ describe('keeping a verified copy (#1050)', () => {
     )
   })
 
+  it('keeps the half it verified even when the caller aborts as the bytes land', async () => {
+    // The shell's companion effect re-runs the moment the attached index
+    // lands, and its cleanup aborts the signal the fetch ran on. The write is
+    // fire-and-forget and must outlive that: a browser check on 2026-09-08
+    // found the geometry cell never stored on a phone that had just drawn
+    // it, because the version was being read from the manifest a second
+    // time on the same signal. Served here with a manifest that answers on
+    // the next tick and honours an abort, which is what a real one does.
+    const files = { [WEST_KEYS.geometry]: WEST_GEOMETRY }
+    const manifest = await hashed(files, { version: 'release-9' })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (url: string, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            const signal = init?.signal ?? null
+            const abort = () => reject(new DOMException('aborted', 'AbortError'))
+            if (signal?.aborted) return abort()
+            const timer = setTimeout(() => {
+              if (String(url).includes('latest.json')) {
+                resolve({
+                  ok: true,
+                  status: 200,
+                  json: () => Promise.resolve(manifest),
+                } as unknown as Response)
+              } else {
+                resolve({
+                  ok: true,
+                  status: 200,
+                  headers: new Headers({ 'content-type': 'application/json' }),
+                  arrayBuffer: () =>
+                    Promise.resolve(new TextEncoder().encode(WEST_GEOMETRY).buffer),
+                } as unknown as Response)
+              }
+            }, 0)
+            signal?.addEventListener('abort', () => {
+              clearTimeout(timer)
+              abort()
+            })
+          }),
+      ),
+    )
+    const west = mergeGraphShard(emptyMergedGraph(), WEST.name, JSON.parse(WEST_SHARD))
+    const controller = new AbortController()
+
+    const geometry = await fetchTrailGraphGeometryCells(west, controller.signal)
+    expect(geometry).not.toBeNull()
+    controller.abort()
+
+    await vi.waitFor(() =>
+      expect(vi.mocked(writeStoredGraph)).toHaveBeenCalledWith(
+        graphCellStoreKey(WEST.name, 'geometry'),
+        expect.objectContaining({ version: 'release-9' }),
+      ),
+    )
+  })
+
   it('routes this session even when the store refuses the write', async () => {
     // Storing is an improvement on the NEXT launch, never a condition of this
     // one.

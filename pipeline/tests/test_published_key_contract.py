@@ -181,16 +181,13 @@ def client_keys() -> dict[str, str]:
         # card to draw them with. Listed here so a rename on either end is a
         # failing test rather than a 404 on a mountain.
         _string_const(config, "RETIRED_POI_KEY"): "config.ts RETIRED_POI_KEY",
-        # The trails other organizations maintain (#950). Listed here even
-        # though publish.py holds this artifact back TODAY - see the fixture
-        # below for why that is not an exemption. The contract is about the
-        # name, and the day the licence gate opens is a bad day to discover
-        # the two ends spelled it differently.
-        _string_const(config, "NEARBY_TRAILS_KEY"): "config.ts NEARBY_TRAILS_KEY",
-        # The corridor-view sketch of those same lines (#1135) - what the
-        # opening camera draws so the whole network shows without fetching the
-        # 7.3 MB artifact above. Published under the same licence gate, so the
-        # same day-the-gate-opens argument applies to its spelling.
+        # The corridor-view sketch of the other organizations' lines (#1135) -
+        # what the opening camera draws so the whole network shows without
+        # fetching the whole-file artifact, which no client declares a key
+        # for since #1257 (the lines are tiles now, below). Published under
+        # the licence gate, so the day-the-gate-opens argument applies to its
+        # spelling: the contract is about the name, and the day the gate
+        # opens is a bad day to discover the two ends spelled it differently.
         _string_const(config, "NETWORK_OVERVIEW_KEY"): "config.ts NETWORK_OVERVIEW_KEY",
         # The same lines as vector tiles (#1257), read by byte range through
         # map/networkTiles.ts rather than fetched whole. A respelling here is
@@ -207,20 +204,25 @@ def client_keys() -> dict[str, str]:
         # drift here is a 404 on a mountain now rather than on the day a
         # licence answer lands.
         _string_const(config, "NEARBY_POI_KEY"): "config.ts NEARBY_POI_KEY",
-        _string_const(config, "TRAIL_GRAPH_KEY"): "config.ts TRAIL_GRAPH_KEY",
-        _string_const(config, "TRAIL_GRAPH_GEOMETRY_KEY"): "config.ts TRAIL_GRAPH_GEOMETRY_KEY",
-        # The two elevation artifacts, which were both missing from this list
-        # until #1045 added the second one and noticed. Neither is fetched at
-        # launch - the climb arrives with the builder, the profile only when a
-        # chart opens - which is exactly why a rename would have gone
-        # unnoticed here until somebody opened a day hike.
-        _string_const(config, "TRAIL_GRAPH_ELEVATION_KEY"): "config.ts TRAIL_GRAPH_ELEVATION_KEY",
-        _string_const(config, "TRAIL_GRAPH_PROFILE_KEY"): "config.ts TRAIL_GRAPH_PROFILE_KEY",
+        # The junction graph's cell index (#1257 stage 3), fetched by
+        # lib/coverageCells.ts under its GRAPH_CELLS family - and the only
+        # graph key the client declares as a constant. The cells themselves
+        # are named per cell per half by `trailGraphCellKey`, read below by
+        # client_graph_cell_keys; the whole-file graph and its three
+        # companions are still published and no client asks for them.
+        _string_const(config, "TRAIL_GRAPH_CELLS_KEY"): "config.ts TRAIL_GRAPH_CELLS_KEY",
     }
 
     # Every `conditions/` key the client declares, found rather than listed
     # (#1145). See client_conditions_keys.
     keys.update(client_conditions_keys())
+
+    # The four halves of one graph cell, built the way the client builds
+    # them. None is fetched at launch - the routing half arrives where the
+    # hiker plans, the lines with the builder, the climb beside them, the
+    # profile only when a chart opens - which is exactly why a rename would
+    # go unnoticed here until somebody opened a day hike.
+    keys.update(client_graph_cell_keys())
 
     for poi_type in client_poi_types():
         keys[poi_format.format(type=poi_type)] = f"config.ts poiKey('{poi_type}')"
@@ -240,6 +242,29 @@ def client_keys() -> dict[str, str]:
     for artifact in re.findall(r"[Aa]rtifact: '([^']+)'", _read(PACKAGES)):
         keys[artifact] = "packages.ts"
 
+    return keys
+
+
+GRAPH_CELL_HALVES = ("graph", "geometry", "elevation", "profile")
+
+
+def client_graph_cell_keys(cell: str = "n41w075") -> dict[str, str]:
+    """The four keys `trailGraphCellKey` builds for one cell, read from its two
+    template literals rather than restated - a third copy of the spelling is
+    the thing this file guards against. tests/test_cut_trail_graph.py holds
+    the other end, that cut_trail_graph.cell_key spells them the same way."""
+    source = _read(CONFIG)
+    match = re.search(r"export function trailGraphCellKey\([^)]*\)[^{]*\{(.*?)\n\}", source, re.DOTALL)
+    assert match, "config.ts no longer defines trailGraphCellKey where this test can read it"
+    templates = re.findall(r"`([^`]+)`", match.group(1))
+    assert len(templates) == 2, f"expected the graph template and the companions' template, found {templates}"
+    graph_template, companion_template = templates
+    keys = {}
+    for half in GRAPH_CELL_HALVES:
+        template = graph_template if half == "graph" else companion_template
+        key = template.replace("${half}", half).replace("${name}", cell)
+        assert "${" not in key, f"trailGraphCellKey's template has a placeholder this test does not fill: {template}"
+        keys[key] = f"config.ts trailGraphCellKey('{cell}', '{half}')"
     return keys
 
 
@@ -348,6 +373,23 @@ def published(tmp_path, monkeypatch) -> set[str]:
         entry = manifest_entry(f"{name}.json")
         entry["sources"] = {"oprhp_trails": {"reaches_hikers": True}}
         (tmp_path / f"{name}_manifest.json").write_text(json.dumps(entry))
+
+    # The graph cut per cell (#1257 stage 3): cut_trail_graph.py's own manifest,
+    # collected inside the graph's gate above. One cell in all four halves,
+    # because the question is the names - the index's and the halves'.
+    (tmp_path / "trail_graph_cells_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "trail_graph_cells.json": manifest_entry("trail_graph_cells.json"),
+                    "trail_graph_cell_n41w075.json": manifest_entry("trail_graph_cell_n41w075.json"),
+                    "trail_graph_geometry_cell_n41w075.json": manifest_entry("trail_graph_geometry_cell_n41w075.json"),
+                    "trail_graph_elevation_cell_n41w075.json": manifest_entry("trail_graph_elevation_cell_n41w075.json"),
+                    "trail_graph_profile_cell_n41w075.json": manifest_entry("trail_graph_profile_cell_n41w075.json"),
+                }
+            }
+        )
+    )
 
     conditions_dir = tmp_path / "conditions"
     conditions_dir.mkdir()

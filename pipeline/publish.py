@@ -179,9 +179,15 @@ CELL_FAMILIES = ("at_basemap", "dem")
 # to the loop instead would route licensed geometry around its own gate.
 NEARBY_TRAILS_CELL_FAMILY = "nearby_trails"
 
-# Every family cut_cells.py can be asked for, gated or not - what
+# The junction graph's cells (#1257 stage 3, cut_trail_graph.py): JSON shards
+# rather than archives - a graph is parsed, not read by range - cut into the
+# same squares and gated the same way, inside the graph's own reaches_hikers
+# branch below. Not a sheet either, so not in CELL_FAMILIES.
+TRAIL_GRAPH_CELL_FAMILY = "trail_graph"
+
+# Every family a cutter can be asked for, gated or not - what
 # tests/test_r2_keys.py enumerates and verify_release.py's check 20 walks.
-ALL_CELL_FAMILIES = (*CELL_FAMILIES, NEARBY_TRAILS_CELL_FAMILY)
+ALL_CELL_FAMILIES = (*CELL_FAMILIES, NEARBY_TRAILS_CELL_FAMILY, TRAIL_GRAPH_CELL_FAMILY)
 
 
 # Build metadata that travels with a release but is not part of it.
@@ -697,6 +703,13 @@ def collect_artifacts() -> dict[str, dict]:
                 "path": manifest["geometry_path"],
                 "sha256": manifest["geometry_sha256"],
             }
+            # The same graph cut into 1-degree cells (#1257 stage 3,
+            # cut_trail_graph.py) - what the client actually loads since the
+            # whole grew past a phone - inside this branch for the reason the
+            # geometry is: the same stewards' topology, one decision. The
+            # whole files above stay published as the cut's input and for
+            # older clients; the current client asks for none of them.
+            _collect_cells(TRAIL_GRAPH_CELL_FAMILY, artifacts)
 
     # The climb along those same edges (#1011, export_network_elevation.py).
     # Its own manifest, because a publish can legitimately run without it -

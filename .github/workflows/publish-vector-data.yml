@@ -752,6 +752,20 @@ jobs:
         if: inputs.include_elevation
         run: python export_network_profile.py
 
+      # The graph and whatever companions this run wrote, cut into 1-degree
+      # cells (#1257 stage 3, cut_trail_graph.py) - what a phone actually
+      # loads since the whole graph grew past what it can parse (78.6 MB on
+      # 2026-09-07). After BOTH companion steps, so a run that sampled
+      # elevation cuts the climb and the profile per cell too, and after the
+      # graph, which is its input. Not gated on include_elevation: a run
+      # without elevation cuts the graph and its geometry alone, and the
+      # client reads a cell with no climb companion as "no figures for this
+      # hike", exactly as it reads the whole artifact's absence today.
+      # publish.py collects the result inside the graph's own reaches_hikers
+      # gate, never through the ungated sheet loop.
+      - name: Cut the junction graph into coverage cells
+        run: python cut_trail_graph.py
+
       # Saved even when an earlier step failed, which is the whole reason the
       # cache is split into restore/save rather than left as `actions/cache`:
       # the bundled post-step only runs on success, so both failed runs of

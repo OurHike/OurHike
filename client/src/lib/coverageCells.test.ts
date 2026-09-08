@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
 import { get, set } from 'idb-keyval'
 import {
   BASEMAP_CELLS,
@@ -10,6 +11,8 @@ import {
   cellsForTile,
   CONTEXT_PACKAGE_KEY,
   fetchCellIndex,
+  fetchCellIndexOutcome,
+  GRAPH_CELLS,
   NETWORK_CELLS,
   parseCellIndex,
   priceStretch,
@@ -17,13 +20,18 @@ import {
   readStoredCellIndex,
   seamEdges,
   tileBounds,
+  useCellIndexState,
   widen,
   type CellIndex,
   type CoverageCell,
 } from './coverageCells'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
-import { BASEMAP_CELLS_KEY, NEARBY_TRAILS_CELLS_KEY } from './config'
+import {
+  BASEMAP_CELLS_KEY,
+  NEARBY_TRAILS_CELLS_KEY,
+  TRAIL_GRAPH_CELLS_KEY,
+} from './config'
 
 // The hiking sheet in pieces (#557/#558). What is under test is the client's
 // half of the contract with pipeline/cut_cells.py: that a tile the cutter put
@@ -618,5 +626,133 @@ describe('a second family of cells (#1257 stage 2)', () => {
         priceStretch([N34W085, N34W084], INDEX.context, () => false, SIZES),
       )
     })
+  })
+})
+
+describe('a third family - the junction graph’s cells (#1257 stage 3)', () => {
+  // The graph as JSON shards a phone parses, cut on the same graticule
+  // (pipeline/cut_trail_graph.py): the same index shape, with per-cell facts
+  // the other families do not carry and no context at all.
+  const GRAPH_PUBLISHED = {
+    cell_degrees: 1.0,
+    seam_margin_km: 3.0,
+    context_zoom: 0,
+    context: null,
+    cells: [
+      {
+        name: 'n41w075',
+        key: 'trail_graph_cell_n41w075.json',
+        bounds: [-75, 41, -74, 42],
+        edges: 9754,
+        companions: {
+          geometry: 'trail_graph_geometry_cell_n41w075.json',
+          elevation: null,
+          profile: null,
+        },
+      },
+    ],
+  }
+  const body = JSON.stringify(GRAPH_PUBLISHED)
+  const response = (status: number) =>
+    ({
+      ok: status >= 200 && status < 300,
+      status,
+      arrayBuffer: () => Promise.resolve(new TextEncoder().encode(body).buffer),
+    }) as unknown as Response
+
+  it('is its own family under its own keys', () => {
+    expect(GRAPH_CELLS.indexKey).toBe(TRAIL_GRAPH_CELLS_KEY)
+    for (const other of [BASEMAP_CELLS, NETWORK_CELLS]) {
+      expect(GRAPH_CELLS.indexStoreKey).not.toBe(other.indexStoreKey)
+      expect(GRAPH_CELLS.packagePrefix).not.toBe(other.packagePrefix)
+      expect(GRAPH_CELLS.contextPackageKey).not.toBe(other.contextPackageKey)
+    }
+  })
+
+  it('reads the cutter’s index, extra per-cell facts and all', () => {
+    const index = parseCellIndex(GRAPH_PUBLISHED)
+    expect(names(index?.cells ?? [])).toEqual(['n41w075'])
+    expect(index?.context).toBeNull()
+    expect(index?.contextZoom).toBe(0)
+    expect(index?.seamMarginKm).toBe(3)
+  })
+
+  it('says whether a missing index is the bucket’s word or no signal', async () => {
+    // The door's question (lib/useTrailGraph.ts): "needs a connection" over
+    // a release that has no cells is #1048's bug one surface over.
+    vi.mocked(publishedHash).mockResolvedValue(null)
+    fetchMock.mockResolvedValue(response(404))
+    expect(await fetchCellIndexOutcome({ family: GRAPH_CELLS })).toEqual({
+      index: null,
+      unreachable: false,
+    })
+
+    vi.mocked(publishedHash).mockResolvedValue('feed')
+    vi.mocked(sha256Of).mockResolvedValue('dead')
+    fetchMock.mockResolvedValue(response(200))
+    expect(await fetchCellIndexOutcome({ family: GRAPH_CELLS })).toEqual({
+      index: null,
+      unreachable: false,
+    })
+
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    expect(await fetchCellIndexOutcome({ family: GRAPH_CELLS })).toEqual({
+      index: null,
+      unreachable: true,
+    })
+  })
+
+  it('settles once the store and the bucket have both answered, and re-asks on the retry', async () => {
+    vi.mocked(get).mockResolvedValue(undefined)
+    vi.mocked(publishedHash).mockResolvedValue(null)
+    fetchMock.mockResolvedValue(response(404))
+
+    const { result, rerender } = renderHook(
+      ({ attempt }: { attempt: number }) => useCellIndexState(GRAPH_CELLS, attempt),
+      { initialProps: { attempt: 0 } },
+    )
+
+    // Before either has answered, a null index is "not asked yet".
+    expect(result.current).toEqual({ index: null, settled: false, unreachable: false })
+    await waitFor(() => expect(result.current.settled).toBe(true))
+    expect(result.current).toEqual({ index: null, settled: true, unreachable: false })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    rerender({ attempt: 1 })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `https://data.test/${TRAIL_GRAPH_CELLS_KEY}`,
+      expect.anything(),
+    )
+  })
+
+  it('answers from the stored index when the bucket cannot be reached, and says so', async () => {
+    vi.mocked(get).mockImplementation((key) =>
+      Promise.resolve(
+        key === GRAPH_CELLS.indexStoreKey
+          ? { index: GRAPH_PUBLISHED, hash: null }
+          : undefined,
+      ),
+    )
+    vi.mocked(publishedHash).mockResolvedValue(null)
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    const { result } = renderHook(() => useCellIndexState(GRAPH_CELLS))
+
+    await waitFor(() => expect(result.current.settled).toBe(true))
+    expect(names(result.current.index?.cells ?? [])).toEqual(['n41w075'])
+    // Unreachable is about the reason there is NO index; there is one.
+    expect(result.current.unreachable).toBe(false)
+  })
+
+  it('calls the absence unreachable when nothing is stored and the bucket cannot be reached', async () => {
+    vi.mocked(get).mockResolvedValue(undefined)
+    vi.mocked(publishedHash).mockResolvedValue(null)
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    const { result } = renderHook(() => useCellIndexState(GRAPH_CELLS))
+
+    await waitFor(() => expect(result.current.settled).toBe(true))
+    expect(result.current).toEqual({ index: null, settled: true, unreachable: true })
   })
 })

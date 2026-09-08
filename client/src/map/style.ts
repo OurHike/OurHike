@@ -157,8 +157,8 @@ export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
  * layers. They are separated because they are separately LICENSED: NYS OPRHP
  * states terms and NYNJTC, Mohonk Preserve and NYS DEC state none, so the
  * pipeline publishes them as their own artifact and publish.py holds that
- * artifact back entirely while ANY steward in it is outstanding (lib/config.ts's
- * NEARBY_TRAILS_KEY).
+ * artifact back entirely while ANY steward in it is outstanding (the
+ * `reaches_hikers` gate lib/config.ts's NEARBY_TRAILS_TILES_KEY describes).
  *
  * A VECTOR SOURCE SINCE #1257, where the A.T.'s is GeoJSON. The artifact grew
  * to 228,820,578 bytes on 2026-09-07 (nationwide USFS, #1231) and a GeoJSON

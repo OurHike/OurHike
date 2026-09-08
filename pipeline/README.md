@@ -635,6 +635,7 @@ Both build workflows cut after their package/archive step, and since
 python cut_cells.py data/processed/at_basemap_package.pmtiles --family at_basemap
 python cut_cells.py data/processed/dem.pmtiles --family dem
 python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
+python cut_trail_graph.py
 ```
 
 **The network family differs from the sheets in two measured ways** (`cut_cells.py`'s
@@ -651,6 +652,33 @@ family the cutter can be asked for; `verify_release.py`'s check 20 walks the sam
 The client half — reading several units, the seam banner, the picker — is #557 and #558;
 the network cells ride the same stretch download (`client/src/lib/coverageCells.ts`'s
 `NETWORK_CELLS`) and `map/networkTiles.ts` asks a held cell before the bucket.
+
+### The junction graph, cut per cell (#1257 stage 3)
+
+`cut_trail_graph.py` is the fourth family and the one that is not an archive: the graph
+`build_trail_graph.py` writes is JSON a phone parses, and on 2026-09-07 it was published at
+78,595,556 bytes decoded — parsing it on the main thread was the frozen first page of
+[#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254). The cutter files every edge **whole** into every cell its bbox, widened by the
+seam margin, touches — an edge is never split, so a tap in a cell is answered by that cell
+alone and a route across a seam needs only the cells either side — and writes each cell's
+shard as its own graph plus `node_ids`/`edge_ids` saying where each row sits in the whole,
+which is what lets the client merge cells append-only. The geometry, climb and profile
+companions are cut beside it, aligned to each shard's edge order, and **only when they align
+with the graph**: production's elevation and profile carry 42,103 entries against 466,966
+edges (written for an earlier graph), so the cutter refuses them with a warning and the cells
+carry no climb until `include_elevation` reruns. Measured on the production graph, 2026-09-08:
+466,966 edges → 530,190 placements across 502 cells (13.5% seam duplication at 3 km), 29.9 s;
+index 166,721 bytes; densest cell `n44w072` 12,663,031 bytes of graph, median 28,406.
+
+The index is `trail_graph_cells.json` — the other families' shape with `context: null`,
+`context_zoom: 0` and, per cell, its edge count and companion keys — and `publish.py`
+collects `trail_graph_cells_manifest.json` inside the graph's own `reaches_hikers` branch
+(`TRAIL_GRAPH_CELL_FAMILY`), the same gate the network cells sit behind. The whole graph and
+its companions are still published (the manifest merge is additive; older clients ask for
+them) but no current client fetches them whole, so `verify_release.py`'s check 22 weighs only
+the keys `client/src/lib/config.ts` declares plus every cell shard by its shape, and skips the
+whole files by name with the reason. The client half is `client/src/lib/useTrailGraph.ts`
+(`features/HIKE_PLANNING.md`, *The graph a phone keeps is the cells it planned in*).
 
 ## The dbt transform layer (#100, Phase A)
 

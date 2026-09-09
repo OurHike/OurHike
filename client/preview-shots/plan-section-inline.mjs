@@ -21,7 +21,7 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 
 export const caption = 'Planning a section, on the page you were already on (#1344)'
 export const alt =
-  'The Plan tab headed "you’re planning / Springer → Katahdin" with a blaze-bordered panel in the column reading "A section on this hike", a From row and a To row each offering "Choose a place", and a "Draw it on the map instead" door below them'
+  'The Plan tab headed "you’re planning / Springer → Katahdin" with a quietly outlined panel in the column reading "A section on this hike", a From row and a To row each offering "Choose a place", and a pill button reading "Draw it on the map instead" below them'
 
 export default async function drive(page) {
   await seedLongHike(page)

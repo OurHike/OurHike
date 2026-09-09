@@ -28,7 +28,7 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 
 export const caption = 'Plan, in the long-hike state — the room the hike is about (#1329)'
 export const alt =
-  'The Plan tab headed "you’re planning / Springer → Katahdin" with a "Switch hike" button, a blaze-bordered card to carry on with, a "This hike, end to end" card printing miles walked and miles to go over a two-colour bar, and a list of the sections on the hike'
+  'The Plan tab headed "you’re planning / Springer → Katahdin" with a "Switch hike" button, a "Rename" link beside "Carry on with", a blaze-bordered card to carry on with, a "This hike, end to end" card printing miles walked and miles to go over a two-colour bar, a list of the sections on the hike, and a primary button reading "Plan a section"'
 
 export default async function drive(page) {
   await seedLongHike(page)

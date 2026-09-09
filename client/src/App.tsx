@@ -249,6 +249,7 @@ import {
 } from './lib/plan'
 import {
   EMPTY_STORE,
+  activeHikeOf,
   addGroup,
   addHike,
   assignTrip,
@@ -1162,10 +1163,15 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
-  /** The taken trail, or null for nothing taken - first launch's all-dotted
-   *  map (#1306). Decides the lines and the legend's `taken`, nothing else:
-   *  the trail the rest of this shell is about is TRAIL_NAME's. */
-  const chosenTrailId = preferences.chosen_trail_id
+  /** The active long hike's trail, or null for nothing taken - first
+   *  launch's all-dotted map (#1306), same as a hiker who has set up no
+   *  hike yet. Derived from the active Hike rather than its own preference
+   *  since #1352: taking a trail from the map is now the same act as
+   *  picking one in Plan, not a second, weaker path answering the same
+   *  question differently. Decides the lines and the legend's `taken`,
+   *  nothing else: the trail the rest of this shell is about is
+   *  TRAIL_NAME's. */
+  const chosenTrailId = activeHikeOf(tripStore)?.trailId ?? null
   const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
 
   /**
@@ -3463,10 +3469,7 @@ function App() {
   }, [])
 
   /** The long hike the app is in, or null. */
-  const activeHike = useMemo(
-    () => tripStore.hikes.find((hike) => hike.id === tripStore.activeHikeId) ?? null,
-    [tripStore.hikes, tripStore.activeHikeId],
-  )
+  const activeHike = useMemo(() => activeHikeOf(tripStore), [tripStore])
 
   /** Whether the day screen is open over the hike (#1317). */
   const [hikeDayOpen, setHikeDayOpen] = useState(false)
@@ -5996,19 +5999,29 @@ function App() {
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
   /**
-   * Taking a trail (#1306): the one write `chosen_trail_id` gets, from a
-   * badge tap or a legend row. False where there is nothing to do - a source
-   * the registry has no trail for, or the trail already taken - so the
-   * caller can fall through to what the tap would otherwise have meant.
+   * Taking a trail (#1306), from a badge tap or a legend row. False where
+   * there is nothing to do - a source the registry has no trail for, or the
+   * trail already taken - so the caller can fall through to what the tap
+   * would otherwise have meant.
+   *
+   * Opens the same "Which long hike?" sheet Long hike's mode switch opens
+   * on nothing active, rather than writing a preference directly, since
+   * #1352: the map's chosen trail is read off the active Hike
+   * (`chosenTrailId` above), so taking one from the map has to go through
+   * the door that sets one, not a second write next to it. True the moment
+   * the sheet opens, not once a hike is actually picked - `handleSelectLine`
+   * below reads this to decide whether the tap ALSO meant to open the
+   * line's own sheet, and it did not: the sheet this opens is the answer to
+   * the tap.
    */
   const takeTrail = useCallback(
     (source: string | null): boolean => {
       const id = trailIdForSource(source)
       if (id === null || id === chosenTrailId) return false
-      updatePreferences({ chosen_trail_id: id })
+      setHikeSheet('pick')
       return true
     },
-    [chosenTrailId, updatePreferences],
+    [chosenTrailId],
   )
   const handleTakeTrail = useCallback(
     (trail: TrailInView) => {

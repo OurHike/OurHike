@@ -27,6 +27,7 @@ import { PLAN_KEY, buildPlan, type HikePlan } from './plan'
 import {
   EMPTY_STORE,
   TRIPS_KEY,
+  activeHikeOf,
   addHike,
   addTrip,
   clearTrips,
@@ -330,6 +331,14 @@ describe('the active hike', () => {
     const short = addHike(EMPTY_STORE, { ...hike, id: 'h2', points: [{ mile: 0 }] })
     expect(setActiveHike(short, 'h2').activeHikeId).toBeNull()
     expect(short.hikes).toHaveLength(1)
+  })
+
+  it('resolves the active hike object, or null (#1352)', () => {
+    // The map's chosen trail reads this off `activeHikeOf(...)?.trailId` -
+    // App.tsx no longer keeps its own pointer alongside this one.
+    expect(activeHikeOf(EMPTY_STORE)).toBeNull()
+    expect(activeHikeOf(withHike)).toBeNull()
+    expect(activeHikeOf(setActiveHike(withHike, 'h1'))).toEqual(hike)
   })
 
   it('drops a pointer at a hike that did not survive the read', () => {

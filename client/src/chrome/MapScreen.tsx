@@ -414,7 +414,8 @@ export interface MapScreenProps {
   trailsInView?: readonly TrailInView[]
   onTrailsInView?: (trails: readonly TrailInView[]) => void
   /** The taken trail (#1306), for the canvas's line splits and the legend's
-   *  rows - lib/userPreferences.ts's `chosen_trail_id`, passed through. */
+   *  rows - the active long hike's trail (lib/trips.ts), passed through
+   *  since #1352. */
   chosenTrailId?: string | null
   /** Takes a trail from its legend row (#1306). The rows are plain without
    *  it, per the legend's rule that a control is drawn only where it goes

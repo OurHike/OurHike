@@ -11,13 +11,17 @@
 // that trail's name, on the position and elevation paths CLAUDE.md lists among
 // the four ways this app can hurt somebody.
 //
-// WHY THIS FILE HAS TO SEED THE STORE RATHER THAN DRIVE THE UI. No hiker can
-// reach this state today: `trailHasMileAxis` is `trailId === DEFAULT_TRAIL_ID`
-// and `setupRefusal` blocks creating any other, so the shell has no door to
-// walk through to an unmeasurable hike. The gate is written before that door
-// opens - before a second axis is published (#768) or the predicate is
-// relaxed - and seeding the trip store is the only thing that can reach it.
-// That is the point of the gate, not a shortcut around testing it.
+// WHY THIS FILE SEEDS THE STORE RATHER THAN DRIVING THE UI, and the
+// correction that came with asking. `setupRefusal` blocks CREATING a hike on
+// any other trail, so the set-up screen has no door to walk through - which
+// read at first like "no hiker can reach this state", and that was wrong.
+// `lib/tripsSync.ts`'s `mergeServerHikes` folds in hikes changed on the
+// hiker's other devices, each read by `validateHike`, which accepts any
+// non-empty `trailId` and never consults `trailHasMileAxis`. So sync
+// delivers exactly this state whenever anything upstream writes one, and
+// seeding the store is a faithful stand-in for that arrival rather than a
+// shortcut around a wall. What nobody can say from here is whether such a
+// row exists on a server today; the path being open is the claim.
 //
 // The A.T. case in each pair is not decoration: it is what proves the gate is
 // a gate and not a wall.

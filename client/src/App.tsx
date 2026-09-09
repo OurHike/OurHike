@@ -1190,13 +1190,23 @@ function App() {
    * no long hike is on the A.T. shell this app is named for, which is
    * today's behaviour and stays it.
    *
-   * NOTHING CAN REACH THIS TODAY, deliberately. `trailHasMileAxis` is
-   * `trailId === DEFAULT_TRAIL_ID` and `setupRefusal` blocks creating any
-   * other, so no hiker can hold such a hike and this is a no-op at runtime.
-   * It is written now because the gate has to exist BEFORE a second axis is
-   * published (#768) or that predicate is relaxed - not after, when the
-   * wrong figures would already be on a phone. The suites reach the state
-   * by seeding the trip store, which is the only thing that can.
+   * SET-UP CANNOT REACH THIS STATE; SYNC CAN. `setupRefusal` blocks
+   * *creating* a hike on any other trail, which is what made this look like
+   * a purely future gate - and that reading was wrong. `lib/tripsSync.ts`'s
+   * `mergeServerHikes` folds in hikes changed on the hiker's OTHER devices
+   * ("unknown row is added, known row is replaced"), each read by
+   * `validateHike`, which accepts any non-empty `trailId` and does not
+   * consult `trailHasMileAxis` at all (lib/hikes.ts, the `trailId` branch).
+   * So a hike on an unmeasurable trail arrives fully formed on this phone
+   * the moment anything upstream writes one, with `activeHikeId` free to
+   * point at it.
+   *
+   * Whether such a row exists on any server TODAY is a different question
+   * and not one this file can answer: the backend's `Hike.trail_id`
+   * defaults to "AT" and nothing known writes another value. The honest
+   * claim is about the path, which is open, rather than about the traffic
+   * on it. That is enough to make this a gate on a live route rather than
+   * one armed for #768.
    */
   const unmeasuredTrail = useMemo(() => {
     if (chosenTrailId === null || trailHasMileAxis(chosenTrailId)) return null

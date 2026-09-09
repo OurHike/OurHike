@@ -1,5 +1,5 @@
-// The Plan tab's front door (#805) - now two front doors, one per mode
-// (#1008).
+// The Plan tab's front door (#805) - two front doors, and since #1317 the
+// APP's mode picks which, not a switch of Plan's own.
 //
 // THE FORK EXISTED AND THEN NOTHING DOWNSTREAM LOOKED DIFFERENT. "What are
 // you planning?" (#977) asks the question once, and until #1008 every
@@ -7,10 +7,36 @@
 // "Your hikes" and "Recent trips", and a hiker mid-flow had nothing on
 // screen saying which of two kinds of plan they were inside. So the mode is
 // the chrome now: **Day hikes** is the forest band and speaks in legs and
-// walks; **Trips** is the deep band and keeps the trail vocabulary - days,
+// walks; **Sections** is the deep band and keeps the trail vocabulary - days,
 // zeros, resupply, carries. features/SEGMENTS.md calls `Hike.type` "a label,
 // not a constraint"; this makes the label load-bearing on screen without
 // enforcing anything in the model.
+//
+// AND THEN THE FORK WAS ASKED TWICE (#1317). #1008 gave Plan a switch of its
+// own - `PlanMode`, local state, a `⇄` chip - while the app already had a
+// three-way mode control the hiker had already answered with
+// (`chrome/ModeSwitch.tsx`). Two switches for one question, and they could
+// disagree: a hiker on Long hike could be standing in the day-hike room with
+// a chip offering to take them somewhere they had already asked to be.
+//
+// So `PlanMode` is gone and this reads `hikerMode`. The chip goes with it,
+// and the mode switch is the door now - which is what keeps decision #1's
+// promise that the mode "never hides or gates a feature": that control is
+// rendered on Today, in Settings and in the desktop sidebar, always, all
+// three segments (ModeSwitch's own rule), so the other room is never more
+// than a tap away and never behind an 11-px link (#805's own failure).
+//
+// VOLUNTEER GETS THE DAY ROOM, and there is no third room. "Today I'm
+// volunteering" is a statement about the day's work, not about a kind of
+// planning, and inventing a Plan room for it would make the word a place
+// rather than a description - the thing chrome/tabs.ts took Volunteer out of
+// the tab bar to avoid.
+//
+// LONG WITH NO HIKE PICKED gets the sections room rather than an empty
+// hike's. That state is meant to be transient - tapping Long hike with no
+// active hike opens the pick sheet, and cancelling it puts the mode back -
+// but it is reachable, and the honest answer there is everything the hiker
+// has kept rather than a room about a hike they have not named.
 //
 // EACH HOME KEEPS THE RULE THE OLD ONE WAS BUILT AROUND: one primary action
 // per screen, and it is the thing that goes down a level. What changed is
@@ -30,6 +56,7 @@
 // floating over this same screen.
 
 import type { DayHike } from '../lib/dayHikes'
+import type { HikerMode } from '../lib/hikerMode'
 import { splitDayHikes } from '../lib/dayHikeShelf'
 import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews } from '../lib/plan'
@@ -42,12 +69,19 @@ import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
 
-/** Which of the two kinds of planning the tab is showing. */
-export type PlanMode = 'day' | 'trips'
+/**
+ * Which room the tab is showing, derived from the app's mode and whether a
+ * long hike is picked - never stored, and never a second answer to a
+ * question `hikerMode` already answers. See the header.
+ */
+export type PlanRoom = 'day' | 'sections'
+
+export function planRoomFor(mode: HikerMode): PlanRoom {
+  return mode === 'long' ? 'sections' : 'day'
+}
 
 export interface PlanHomeProps {
-  mode: PlanMode
-  onSwitchMode: (mode: PlanMode) => void
+  room: PlanRoom
   trips: readonly Trip[]
   hikes: readonly Hike[]
   /** The saved day hikes (#980) - listed from their cached figures, which is
@@ -92,8 +126,7 @@ const RECENT_TRIPS = 3
 const RECENT_DAY_HIKES = 3
 
 export function PlanHome({
-  mode,
-  onSwitchMode,
+  room,
   trips,
   hikes,
   dayHikes,
@@ -114,12 +147,13 @@ export function PlanHome({
   network,
   onRetryNetwork,
 }: PlanHomeProps) {
-  return mode === 'day' ? (
+  return room === 'day' ? (
     <DayHikesHome
       dayHikes={dayHikes}
+      sectionCount={trips.length}
+      onAllTrips={onAllTrips}
       units={units}
       draftKind={draftKind}
-      onSwitchMode={onSwitchMode}
       onOpenDayHike={onOpenDayHike}
       onAllDayHikes={onAllDayHikes}
       onNewDayHike={onNewDayHike}
@@ -136,7 +170,6 @@ export function PlanHome({
       units={units}
       openTrip={openTrip}
       draftKind={draftKind}
-      onSwitchMode={onSwitchMode}
       onOpenTrip={onOpenTrip}
       onOpenHike={onOpenHike}
       onOpenGroup={onOpenGroup}
@@ -147,41 +180,41 @@ export function PlanHome({
   )
 }
 
-/** The band both homes wear: the eyebrow, the mode word, and the way to the
- *  other room. The switch chip names its destination, not this screen -
- *  that is what makes it a door rather than a title. */
-function ModeBand({
-  mode,
-  onSwitchMode,
-}: {
-  mode: PlanMode
-  onSwitchMode: (mode: PlanMode) => void
-}) {
-  const other: PlanMode = mode === 'day' ? 'trips' : 'day'
+/**
+ * The band both homes wear: the eyebrow and the room's own word.
+ *
+ * NO SWITCH CHIP since #1317. It used to name the other room and was the
+ * only way there; the app's mode control is that door now, and a chip beside
+ * it would be a second answer to a question the hiker has already given -
+ * see the header. The `plan-band--trips` class is kept as the deep band's
+ * name because the shipped CSS is keyed on it; only the word a hiker reads
+ * changed.
+ */
+function ModeBand({ room }: { room: PlanRoom }) {
   return (
-    <header className={`plan-band plan-band--${mode}`}>
+    <header
+      className={
+        room === 'day' ? 'plan-band plan-band--day' : 'plan-band plan-band--trips'
+      }
+    >
       <div className="plan-band__words">
         <span className="plan-band__eyebrow">you&rsquo;re planning</span>
-        <h1 className="plan-band__word">{mode === 'day' ? 'Day hikes' : 'Trips'}</h1>
+        <h1 className="plan-band__word">{room === 'day' ? 'Day hikes' : 'Sections'}</h1>
       </div>
-      <button
-        type="button"
-        className="plan-band__switch"
-        onClick={() => onSwitchMode(other)}
-      >
-        {other === 'day' ? 'Day hikes' : 'Trips'} <span aria-hidden="true">⇄</span>
-      </button>
     </header>
   )
 }
 
 interface DayHikesHomeProps {
   dayHikes: readonly DayHike[]
+  /** How many multi-day sections the hiker has kept, for the door below.
+   *  The count only - this room does not list them. */
+  sectionCount: number
   units: UnitSystem
   draftKind: 'day' | 'trip' | null
-  onSwitchMode: (mode: PlanMode) => void
   onOpenDayHike: (id: string) => void
   onAllDayHikes: () => void
+  onAllTrips: () => void
   onNewDayHike: (() => void) | null
   onResumeDraft: () => void
   /** Why there is no junction graph, when there is none - so the refusal
@@ -194,11 +227,12 @@ interface DayHikesHomeProps {
 
 function DayHikesHome({
   dayHikes,
+  sectionCount,
   units,
   draftKind,
-  onSwitchMode,
   onOpenDayHike,
   onAllDayHikes,
+  onAllTrips,
   onNewDayHike,
   onResumeDraft,
   network,
@@ -209,7 +243,33 @@ function DayHikesHome({
 
   return (
     <div className="plan-home plan-home--day">
-      <ModeBand mode="day" onSwitchMode={onSwitchMode} />
+      <ModeBand room="day" />
+
+      {/*
+        THE ONE DOOR OUT OF THIS ROOM, and it is a list rather than a mode.
+
+        #1317 bound the room to `hikerMode` and deleted Plan's own `⇄` chip,
+        which was the only way a hiker in the day room reached their
+        multi-day sections - `screens/TripList.tsx` is rendered by the other
+        room and nothing else opens it. Binding the room without this row
+        would make the mode GATE a feature, which decision #1 of that
+        handoff forbids in the same breath as it asks for the binding.
+
+        So: a plain door to the list, shown only when there is something
+        behind it, and deliberately NOT a second mode switch. Tapping it
+        opens the sections a hiker has kept; it does not claim they are on a
+        long hike, which is the claim the old chip made by moving the room.
+      */}
+      {sectionCount > 0 && (
+        <section className="plan-home__section">
+          <div className="plan-home__section-head">
+            <span className="plan-home__title">Sections you&rsquo;ve kept</span>
+            <button type="button" className="plan-home__all" onClick={onAllTrips}>
+              All {sectionCount} ›
+            </button>
+          </div>
+        </section>
+      )}
 
       {dayHikes.length > 0 && (
         <section className="plan-home__section">
@@ -311,7 +371,6 @@ interface TripsHomeProps {
   units: UnitSystem
   openTrip: Trip | null
   draftKind: 'day' | 'trip' | null
-  onSwitchMode: (mode: PlanMode) => void
   onOpenTrip: (id: string) => void
   onOpenHike: () => void
   onOpenGroup: (id: string) => void
@@ -328,7 +387,6 @@ function TripsHome({
   units,
   openTrip,
   draftKind,
-  onSwitchMode,
   onOpenTrip,
   onOpenHike,
   onOpenGroup,
@@ -350,7 +408,7 @@ function TripsHome({
 
   return (
     <div className="plan-home plan-home--trips">
-      <ModeBand mode="trips" onSwitchMode={onSwitchMode} />
+      <ModeBand room="sections" />
 
       {openTrip !== null && (
         <section className="plan-home__section">
@@ -416,7 +474,7 @@ function TripsHome({
       {trips.length > 0 && (
         <section className="plan-home__section">
           <div className="plan-home__section-head">
-            <span className="plan-home__title">Recent trips</span>
+            <span className="plan-home__title">Recent sections</span>
             {trips.length > RECENT_TRIPS && (
               <button type="button" className="plan-home__all" onClick={onAllTrips}>
                 All {trips.length} ›
@@ -465,7 +523,7 @@ function TripsHome({
         // send somebody back to.
         onClick={draftKind === 'trip' ? onResumeDraft : onNewTrip}
       >
-        {draftKind === 'trip' ? 'Back to your route' : 'Plan a new trip'}
+        {draftKind === 'trip' ? 'Back to your route' : 'Plan a new section'}
       </button>
     </div>
   )

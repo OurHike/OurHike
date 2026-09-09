@@ -290,7 +290,7 @@ import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
-import type { PlanMode } from './screens/PlanHome'
+import { planRoomFor } from './screens/PlanHome'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -726,14 +726,10 @@ function App() {
    * junction instead. Keyed to the turn, it closes itself on both.
    */
   const [turnOpenAt, setTurnOpenAt] = useState<number | null>(null)
-  /**
-   * Which home the Plan tab shows (#1008): the day-hike room or the trips
-   * room. Null until the hiker (or the trailhead door) picks one, so the
-   * default can be derived from stores that load after mount - a useState
-   * initialiser here would run against empty stores and freeze the wrong
-   * answer.
-   */
-  const [planMode, setPlanMode] = useState<PlanMode | null>(null)
+  // Which home the Plan tab shows was `planMode` until #1317, a switch of
+  // Plan's own that could disagree with the mode the hiker had already
+  // chosen. It is derived from `hikerMode` now - see `planRoomFor` and
+  // screens/PlanHome.tsx's header.
   /**
    * Whether the Plan tab shows the full day-hike list (frame D7).
    *
@@ -774,8 +770,25 @@ function App() {
    * store, which is what keeps this callback stable and lets the doors below
    * list it as a dependency.
    */
+  /**
+   * Write the app's mode (#1317).
+   *
+   * Separate from the SWITCH's handler on purpose: tapping the Long hike
+   * segment with no active hike opens the pick sheet, and that belongs to
+   * the tap rather than to every internal mode change. Opening the route
+   * builder puts the app in the long-hike state without asking which hike,
+   * because the hiker did not ask to be asked - they asked to build a route.
+   *
+   * Declared here rather than beside `handleChangeMode` below because
+   * `enterTripsRoom` lists it as a dependency, and a dependency array is
+   * evaluated where it is written.
+   */
+  const applyHikerMode = useCallback((mode: HikerMode) => {
+    setHikerMode(mode)
+    void saveHikerMode(mode)
+  }, [])
   const enterTripsRoom = useCallback(() => {
-    setPlanMode('trips')
+    applyHikerMode('long')
     setDayListOpen(false)
     void loadDayHikes().then((store) => {
       if (store.openId === null) return
@@ -783,7 +796,7 @@ function App() {
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
-  }, [])
+  }, [applyHikerMode])
   /**
    * The trailhead door (frame D8), put away - by the hikes it was offering
    * rather than outright.
@@ -1183,13 +1196,30 @@ function App() {
     )
   }, [])
 
-  // The mode is saved as it changes - there is no form to submit, and a mode
-  // that survived the session but not the relaunch would make the switch a
-  // label rather than a setting.
-  const handleChangeMode = useCallback((mode: HikerMode) => {
-    setHikerMode(mode)
-    void saveHikerMode(mode)
-  }, [])
+  // The mode is saved as it changes (see `applyHikerMode` above) - there is
+  // no form to submit, and a mode that survived the session but not the
+  // relaunch would make the switch a label rather than a setting.
+  /**
+   * What a tap on the mode switch does (#1317).
+   *
+   * Entering the long-hike state is an ARRIVAL in the sections room, not
+   * just a change of word, so it lands the same way every other door into
+   * that room does - `enterTripsRoom` closes the day-hike card and the day
+   * list. Without that, a day-hike surface floats over the sections room,
+   * which is precisely the mode confusion #1008 split the two rooms to end.
+   * The other two modes need none of it: the day room's list and card are
+   * that room's own furniture.
+   */
+  const handleChangeMode = useCallback(
+    (mode: HikerMode) => {
+      if (mode === 'long') {
+        enterTripsRoom()
+        return
+      }
+      applyHikerMode(mode)
+    },
+    [applyHikerMode, enterTripsRoom],
+  )
 
   // Nothing waits on this. A hike changes what the banners can say and
   // nothing about whether the app renders, so unlike preferences it gets no
@@ -2809,8 +2839,8 @@ function App() {
     // build a route after a visit to the day room and the Plan tab still
     // opens on Day hikes, where the one primary button is "Plan a day hike"
     // - and that button reaches this same sweep, discarding the route.
-    setPlanMode('trips')
-  }, [])
+    applyHikerMode('long')
+  }, [applyHikerMode])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -3006,8 +3036,8 @@ function App() {
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
     // The mirror of `sweepForBuilder`'s last line, and for the same reason:
     // the draft a hiker is building is what the Plan tab is about.
-    setPlanMode('day')
-  }, [routeBuilder])
+    applyHikerMode('day')
+  }, [routeBuilder, applyHikerMode])
 
   /**
    * Whether the map is taking a DRAWN line rather than taps (#983, frame 1k).
@@ -3784,36 +3814,14 @@ function App() {
   const savedDayHikeCardNode = dayHikeReview === null ? dayHikeCardNode : null
 
   /**
-   * Which Plan home to show (#1008): the hiker's own last pick wins; until
-   * they make one, the day side when a day-hike card is open or day hikes
-   * are all they have, the trips side otherwise.
+   * Which Plan home to show (#1008), from the app's mode since #1317.
+   *
+   * The stores-based default this used to compute is gone with it, and that
+   * is the point: guessing which room a hiker wants from what they happen to
+   * have kept was only ever standing in for asking, and the mode control
+   * asks.
    */
-  const effectivePlanMode: PlanMode =
-    planMode ??
-    (cardDayHike !== null
-      ? 'day'
-      : tripStore.trips.length > 0 || tripStore.hikes.length > 0
-        ? 'trips'
-        : dayHikeStore.hikes.length > 0
-          ? 'day'
-          : 'trips')
-
-  /**
-   * The switch chip. Crossing into the trips room is the same arrival as any
-   * other door's, so it lands the same way - see `enterTripsRoom`. Switching
-   * back to the day room needs none of that: the list and the card it would
-   * close are that room's own furniture.
-   */
-  const handleSwitchPlanMode = useCallback(
-    (mode: PlanMode) => {
-      if (mode === 'trips') {
-        enterTripsRoom()
-        return
-      }
-      setPlanMode(mode)
-    },
-    [enterTripsRoom],
-  )
+  const effectivePlanRoom = planRoomFor(hikerMode)
 
   /** The trailhead door's candidates (frame D8): saved starts near the fix,
    *  less the ones this session has already been told no about. */
@@ -3857,12 +3865,12 @@ function App() {
         today={localDay(now)}
         onOpen={(id) => {
           handleOpenDayHike(id)
-          setPlanMode('day')
+          applyHikerMode('day')
           setDayListOpen(false)
           setActiveTab('plan')
         }}
         onAll={() => {
-          setPlanMode('day')
+          applyHikerMode('day')
           setDayListOpen(true)
           setActiveTab('plan')
         }}
@@ -6392,8 +6400,7 @@ function App() {
                 network={trailNetwork}
                 onRetryNetwork={retryTrailNetwork}
                 gpsAt={gps.status === 'located' ? gps.at : null}
-                mode={effectivePlanMode}
-                onSwitchMode={handleSwitchPlanMode}
+                room={effectivePlanRoom}
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
                   applyPlanEdit((current) => insertZeroAfter(current, index))

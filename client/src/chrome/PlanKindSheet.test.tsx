@@ -55,7 +55,9 @@ describe('the three doors', () => {
     renderSheet()
 
     expect(screen.getByRole('button', { name: /A day hike/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /A multi-day section/ }),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /A walk I.{0,3}ve already done/ }),
     ).toBeInTheDocument()
@@ -78,7 +80,7 @@ describe('the three doors', () => {
     fireEvent.click(screen.getByRole('button', { name: /A day hike/ }))
     expect(props.onPickDayHike).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole('button', { name: /A multi-day trip/ }))
+    fireEvent.click(screen.getByRole('button', { name: /A multi-day section/ }))
     expect(props.onPickTrip).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /A walk I.{0,3}ve already done/ }))
@@ -106,7 +108,9 @@ describe('when the phone has no trail network', () => {
   it('still offers the two doors that need no network', () => {
     renderSheet({ network: absent('not-in-release') })
 
-    expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /A multi-day section/ }),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /A walk I.{0,3}ve already done/ }),
     ).toBeInTheDocument()

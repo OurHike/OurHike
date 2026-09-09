@@ -365,7 +365,7 @@ def load_state(source: str | Path) -> dict:
     `StateUnavailable` rather than returning a partial dict, because a state
     missing half its sources compares as FRESH on the half that is left.
     """
-    text = _read_source(source)
+    text = read_published(source)
 
     try:
         state = json.loads(text)
@@ -382,7 +382,21 @@ def load_state(source: str | Path) -> dict:
     return state
 
 
-def _read_source(source: str | Path) -> str:
+def read_published(source: str | Path) -> str:
+    """The raw text of a published object, by filesystem path or https URL.
+
+    Public because `load_state` is not the only thing that reads the bucket
+    over its public URL any more: `plan_release.py` fetches
+    `releases/index.json` the same way, from a job holding no credentials
+    (#1314). What both need is the host allowlist above, and a second copy of
+    that guard is the one thing this module must not grow - it is the wall
+    #173 put up, and a fetcher that skipped it would turn the runner into a
+    GET proxy for whatever a dispatch input named.
+
+    So: this returns TEXT and validates nothing about its shape. `load_state`
+    layers the state-document rules on top; a caller reading something else
+    layers its own.
+    """
     text = str(source)
     if urlparse(text).scheme in {"http", "https"}:
         problem = _state_url_problem(text)

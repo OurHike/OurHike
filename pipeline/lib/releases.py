@@ -48,6 +48,22 @@ RELEASE_INDEX_KEY = "releases/index.json"
 # fetch of the pointer that used to describe it.
 RELEASE_MANIFEST_NAME = "manifest.json"
 
+# The three states a release folder passes through, in order (DATA_RELEASES.md
+# section 2). Spelled here rather than at call sites because the verification
+# battery and the staging flow are different scripts and a typo in either
+# would read as "no release has that status" rather than as an error.
+#
+#   candidate  the bytes are staged and complete, and nothing has checked them
+#   verified   the battery in section 3 passed against the staged folder
+#   released   a merged pull request pointed `latest.json` at it
+#
+# Only the first two are reachable from `build-data-release.yml` (#1314).
+# `released` is the maintainer's, because pointing latest.json at a folder is
+# the one act in this design that changes what a hiker downloads.
+STATUS_CANDIDATE = "candidate"
+STATUS_VERIFIED = "verified"
+STATUS_RELEASED = "released"
+
 # The prefix whose artifacts never enter a release folder. See the module
 # docstring - this is a rule about mutability, not about size or importance.
 CONDITIONS_PREFIX = "conditions/"
@@ -113,14 +129,35 @@ def index_ids(index: dict | None) -> list[str]:
     return [entry["id"] for entry in releases if isinstance(entry, dict) and isinstance(entry.get("id"), str)]
 
 
-def append_release(index: dict | None, *, release_id: str, version: str, created_at: str) -> dict:
+def append_release(
+    index: dict | None,
+    *,
+    release_id: str,
+    version: str,
+    created_at: str,
+    status: str | None = None,
+) -> dict:
     """The index with one more release on the end.
 
     An object with a `releases` list rather than a bare list, so the file can
-    gain a field later without every reader of it changing shape. DATA_RELEASES.md
-    section 2's staging flow will want `status` here - `candidate` until the
-    verification battery passes, then `verified` - and that arrives with the
-    flow that can honestly set it.
+    gain a field later without every reader of it changing shape. That field
+    is now `status`, and this is the flow that can honestly set it (#1314):
+    `build-data-release.yml` appends `candidate`, and `set_release_status`
+    flips it to `verified` once the battery has actually passed.
+
+    `status=None` OMITS THE KEY rather than writing a default, and the caller
+    that wants that is `publish.py`. A publish writes a release folder whose
+    bytes are already live at the flat keys - it never staged and never had a
+    battery run against it, so neither `candidate` nor `verified` is true of
+    it, and inventing one would put a word in the index that no reader could
+    trust. An entry with no status is one nobody has graded.
+
+    SIBLING KEYS SURVIVE. This used to return a bare `{"releases": [...]}`,
+    which silently dropped anything else the index carried. Nothing writes
+    such a key today, but `releases/pinned.json` is already reserved
+    (lib/r2_keys.py) and the retention rule below reads it, so an index that
+    grows one is foreseeable - and a function that eats it would be found out
+    by a prune job deleting somebody's pinned release.
 
     `created_at` is what the retention rule reads, and the rule is
     DATA_RELEASES.md's "Retention" section rather than restated here: **90
@@ -151,16 +188,52 @@ def append_release(index: dict | None, *, release_id: str, version: str, created
     """
     existing = index.get("releases") if isinstance(index, dict) else None
     releases = list(existing) if isinstance(existing, list) else []
-    releases.append(
-        {
-            "id": release_id,
-            "created_at": created_at,
-            # Which `latest.json` version these bytes were published as, so a
-            # release folder and the pointer that described it can be matched
-            # up after the fact. The two ids answer different questions - one
-            # names a folder, the other names a manifest - and neither can be
-            # derived from the other.
-            "version": version,
-        }
-    )
-    return {"releases": releases}
+    entry = {
+        "id": release_id,
+        "created_at": created_at,
+        # Which `latest.json` version these bytes were published as, so a
+        # release folder and the pointer that described it can be matched
+        # up after the fact. The two ids answer different questions - one
+        # names a folder, the other names a manifest - and neither can be
+        # derived from the other.
+        "version": version,
+    }
+    if status is not None:
+        entry["status"] = status
+    releases.append(entry)
+    siblings = {key: value for key, value in index.items() if key != "releases"} if isinstance(index, dict) else {}
+    return {**siblings, "releases": releases}
+
+
+def set_release_status(index: dict | None, *, release_id: str, status: str) -> dict:
+    """The index with one release's `status` changed, everything else as it was.
+
+    The other half of `append_release`'s status field, and the only function
+    here that edits an entry rather than adding one. `build-data-release.yml`
+    stages a folder as `candidate` and flips it to `verified` only once the
+    battery in DATA_RELEASES.md section 3 has passed against the staged bytes
+    over their public URL - so the two writes are necessarily separate jobs,
+    and the second one needs this.
+
+    RAISES ON AN ID THAT IS NOT THERE, rather than returning the index
+    unchanged. A silent no-op would leave a folder sitting at `candidate` with
+    a green verify job beside it, which reads as "the battery has not run yet"
+    when what happened is that it ran and nobody recorded the answer. The
+    failure this protects is a release that never becomes releasable and gives
+    no reason why.
+
+    Does NOT validate `status` against the three constants above. A caller
+    passing something else is a bug, but this module cannot tell an
+    unrecognised status from one a later phase added - and refusing the new
+    word would be the more expensive mistake.
+    """
+    existing = index.get("releases") if isinstance(index, dict) else None
+    releases = [dict(entry) for entry in existing] if isinstance(existing, list) else []
+    for entry in releases:
+        if entry.get("id") == release_id:
+            entry["status"] = status
+            break
+    else:
+        raise KeyError(f"{release_id!r} is not in the release index - nothing to mark {status!r}")
+    siblings = {key: value for key, value in index.items() if key != "releases"} if isinstance(index, dict) else {}
+    return {**siblings, "releases": releases}

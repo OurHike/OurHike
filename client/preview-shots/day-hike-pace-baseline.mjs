@@ -5,8 +5,8 @@
 // rather than about either one.
 //
 // Every "Ready to walk" row prints an approximate walking time, and under it
-// the line saying whose estimate that is: the top row reads `≈1h 55m` over
-// `was ≈1h 20m · 1.5x standard`. The
+// the line saying whose estimate that is: the top row reads `≈4h 20m` over
+// `was ≈3h · 1.4x standard`. The
 // figure alone is what shipped, on this screen and on two others - and a
 // hiker who set their pace optimistic in week one had no way to tell that the
 // number they were picking tomorrow's walk on was not Naismith's own. #851's
@@ -81,11 +81,19 @@ const DAY_HIKES = {
  * 1-4 range, and far enough from the standard 3.107 that the ratio rounds to
  * something worth printing.
  *
- * What the five rows come out at, computed through `paceEstimate` rather than
- * guessed: 1h 55m / 2h 30m / 3h 10m / 3h 45m / 4h 20m, over baselines of
- * 1h 20m / 1h 45m / 2h 10m / 2h 35m / 3h, at 1.5x standard on the first four
- * and 1.4x on the last. Written down so a reviewer can check the picture
- * against arithmetic rather than against a claim.
+ * What the rows come out at, computed through `paceEstimate` rather than
+ * guessed - and IN THE ORDER THE SCREEN PUTS THEM, which is the list's own
+ * `recent` sort and not the order they are written below:
+ *
+ *   Ramapo Torne          6.6 mi   ≈4h 20m   was ≈3h     · 1.4x standard
+ *   Claudius Smith Den    4.8 mi   ≈3h 10m   was ≈2h 10m · 1.5x standard
+ *   Pine Meadow loop      3.0 mi   ≈1h 55m   was ≈1h 20m · 1.5x standard
+ *   Seven Hills           3.9 mi   ≈2h 30m   was ≈1h 45m · 1.5x standard
+ *   Island Pond loop      5.7 mi   ≈3h 45m   was ≈2h 35m · 1.5x standard
+ *
+ * Written down so a reviewer can check the picture against arithmetic rather
+ * than against a claim - which is also how the sort was caught: the first
+ * version of this header named the wrong top row.
  */
 const PACE = {
   flatPaceMph: 1.9,

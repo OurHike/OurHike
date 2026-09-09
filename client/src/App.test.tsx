@@ -1108,7 +1108,7 @@ describe('taking a trail (#1306)', () => {
     expect(JSON.stringify(dotted?.filter)).toContain('"literal",[]')
   })
 
-  it('takes the A.T. from a tap on its badge, and remembers it', async () => {
+  it('opens the hike picker from a tap on its badge, rather than taking it silently (#1352)', async () => {
     returningHiker()
     render(<App />)
     await openMapTab()
@@ -1129,14 +1129,14 @@ describe('taking a trail (#1306)', () => {
       map.emit('click', { point: { x: 200, y: 400 }, lngLat: { lng: 200, lat: 400 } })
     })
 
-    await waitFor(() => {
-      const saved = store.get(PREFERENCES_KEY) as
-        { chosen_trail_id: string | null } | undefined
-      expect(saved?.chosen_trail_id).toBe('AT')
-    })
+    // Taking a trail from the map is the same door Plan's own set-up uses
+    // since #1352 - nothing is written directly, the sheet asks instead.
+    expect(
+      await screen.findByRole('dialog', { name: 'Which long hike?' }),
+    ).toBeInTheDocument()
   })
 
-  it('takes the A.T. from its legend row', async () => {
+  it('opens the hike picker from its legend row (#1352)', async () => {
     returningHiker()
     const user = userEvent.setup()
     render(<App />)
@@ -1156,11 +1156,9 @@ describe('taking a trail (#1306)', () => {
       await screen.findByRole('button', { name: /Appalachian National Scenic Trail/ }),
     )
 
-    await waitFor(() => {
-      const saved = store.get(PREFERENCES_KEY) as
-        { chosen_trail_id: string | null } | undefined
-      expect(saved?.chosen_trail_id).toBe('AT')
-    })
+    expect(
+      await screen.findByRole('dialog', { name: 'Which long hike?' }),
+    ).toBeInTheDocument()
   })
 })
 

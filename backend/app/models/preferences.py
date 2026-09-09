@@ -16,8 +16,7 @@ invent.
 Most of the fields (trail_name, theme, unit_system, background_source,
 max_background_zoom, show_roads, waypoint_types_shown, layer_detail_level,
 auto_rotate_enabled, anonymity_window_days, onboarding_completed,
-download_choice_made, location_permission_requested, chosen_trail_id) live
-together in a
+download_choice_made, location_permission_requested) live together in a
 single JSON column rather than one column per field. This is a client-owned
 blob that syncs wholesale, not a table anything here queries relationally
 (no route filters "profiles where theme=dark") - a single JSON column means

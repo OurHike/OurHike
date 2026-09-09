@@ -550,6 +550,15 @@ export function setActiveHike(store: TripStore, hikeId: string | null): TripStor
   return { ...store, activeHikeId: hikeId }
 }
 
+/** The hike `activeHikeId` names, or null - the lookup every reader of "the
+ *  active hike" would otherwise repeat (#1352). Deliberately not filtered by
+ *  `isUsableHike`: `setActiveHike` already refuses to point at an unusable
+ *  hike, so a caller here is answering "what is active", not re-deciding
+ *  whether it should be. */
+export function activeHikeOf(store: TripStore): Hike | null {
+  return store.hikes.find((hike) => hike.id === store.activeHikeId) ?? null
+}
+
 /** Replace a hike's way through. The sections in it are untouched: editing
  *  the route you mean to walk is not a statement about the walking done. */
 export function setHikePoints(

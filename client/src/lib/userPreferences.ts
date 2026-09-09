@@ -202,6 +202,14 @@ export interface UserPreferences {
   // schema and part of three released clients' API contracts, so removing it
   // is a coordinated expand/contract change across supported releases
   // (RELEASING.md section 8c), not a same-PR deletion.
+  //
+  // #1352 DELETED a third key, `chosen_trail_id`, from both sides at once,
+  // and that is not this rule being broken. The rule turns on a released
+  // client still sending the field; that one never reached a release. It was
+  // added 2026-09-09T01:51Z (8e137dcd, #1306) and v1.2.2 - the newest tag -
+  // was cut 2026-09-08T14:30Z, so no shipped build has ever sent it and the
+  // `extra="forbid"` schema had nobody to 422. Check the dates the same way
+  // before dropping a fourth; the answer is usually no.
   wrong_way_alert_enabled: boolean
   anonymity_window_days: number
 
@@ -241,17 +249,6 @@ export interface UserPreferences {
   onboarding_completed: boolean
   download_choice_made: boolean
   location_permission_requested: boolean
-
-  /**
-   * The taken trail (#1306): which trail the map draws solid, by
-   * lib/trails.ts registry id, or null - nothing taken, which is first launch
-   * and the all-dotted opening view the handoff's z4 frame draws. Taken from
-   * a badge or a legend row; never switched by a tap on a line
-   * (features/NEARBY_TRAILS.md §2). What it decides is the LINES and the
-   * legend's `taken`: the app's trail - Today, the miles, the waypoints, the
-   * plate - is the A.T. whether or not it is taken.
-   */
-  chosen_trail_id: string | null
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -295,8 +292,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   onboarding_completed: false,
   download_choice_made: false,
   location_permission_requested: false,
-
-  chosen_trail_id: null,
 }
 
 /** The complete key set, so invariants can be asserted against the schema

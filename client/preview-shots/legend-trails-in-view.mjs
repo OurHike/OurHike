@@ -27,22 +27,45 @@
 // question network-above-the-seam.mjs's frame already asks. The panel
 // blanks the canvas behind it under this camera (#1138), so the map half of
 // the change is that recipe's frame, not this one's.
-// TAKEN IN THE DRIVE (#1306). Nothing is taken on first launch, so the rows
-// open with every swatch dotted and `take` on the A.T.'s; the drive taps that
-// row, which is the legend's half of the handoff's "tap a badge to take that
-// trail", and waits for `taken` to come back off the re-measured frame. So
-// this frame shows the state AFTER the take - the through-route solid and
-// marked - and the tap itself is what the recipe exercises on real ground.
+//
+// NO LONGER TAKEN IN THE DRIVE (#1352), and that is this recipe's own
+// finding. Its drive used to tap the A.T.'s row and wait for `taken` to come
+// back, which was #1306's legend half. Since the state merge that tap opens
+// the "Which long hike?" sheet instead, so the wait would have hung for its
+// full fifteen seconds and failed - the recipe caught the change before CI
+// did. What replaces it is stronger evidence, not weaker: the drive seeds an
+// active A.T. hike (the same fixture today-long-hike.mjs uses) and taps
+// nothing at all, so the row reads `taken` BECAUSE the hiker is on that
+// hike. That is precisely what #1352 changed - one state, read in two places
+// - and a tap could not have shown it.
+import { seedLongHike } from './fixtures/longHike.mjs'
+
+// WHAT THE FRAME ACTUALLY HOLDS, checked against the photographed PNG
+// (2026-09-09): two rows, not a column of them - the A.T. marked `taken`,
+// and "Fingerboard Shelter Side Trail" SOLID in its blue blaze rather than
+// dotted. That is right and is worth the caption saying so rather than
+// glossing it: a side trail of the chosen system draws at full strength on
+// purpose (map/nearbyTrails.ts's CHOSEN_SYSTEM_SOURCES holds `side_trails`
+// beside `centerline`, and that file argues the decision at length). So the
+// frame shows the taken system whole - through-route and spur - which is a
+// better illustration than the dotted column the caption used to promise
+// and this preview's bucket cannot yet draw.
 export const caption =
-  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), after the drive takes the A.T. from its row (#1306): the A.T. solid and marked taken, every other trail on screen a dotted row in its own blaze hue; the A.T. and its side trails alone until nearby_trails.pmtiles is in the bucket this preview reads'
+  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws solid rather than dotted, because a spur of the taken system is part of it (map/nearbyTrails.ts). The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
 export const alt =
-  'The legend sheet over the map screen, opening with a "Trails in view" heading over a column of rows: a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, then dotted swatches in their own hues beside the names of the other trails on screen, above the waypoint category grid'
+  'The legend sheet over the map screen, opening with a "Trails in view" heading over two rows: a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail", above the waypoint category grid'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */
 export const wait = 6000
 
 export default async function drive(page) {
+  // The hike first, because it is what makes the A.T. taken at all now. Its
+  // reload lands on the entry screen; the camera write below survives it in
+  // sessionStorage either way, but seeding in this order keeps each step's
+  // failure legible.
+  await seedLongHike(page)
+
   // lib/cameraMemory.ts's contract, as network-above-the-seam.mjs seeds it:
   // Lake Tiorati, where the A.T., the Ramapo-Dunderberg and the Long Path's
   // feeder trails all sit inside one z12 frame.
@@ -69,9 +92,9 @@ export default async function drive(page) {
   // waiting for the heading is the settle.
   await page.getByRole('heading', { name: 'Trails in view' }).waitFor()
 
-  // Take the A.T. from its row (#1306), and wait for the frame to be
-  // re-measured with it taken: `taken` replaces `take` on the row once the
-  // map has re-pointed its splits and settled.
-  await page.getByRole('button', { name: /Appalachian National Scenic Trail/ }).click()
+  // `taken` with no tap behind it. Left as a wait rather than dropped: on a
+  // build whose bucket has no nearby_trails.pmtiles the rows still hold the
+  // A.T., so this settles the frame in both of the states the paragraph
+  // above describes.
   await page.getByText('taken', { exact: true }).waitFor({ timeout: 15000 })
 }

@@ -141,10 +141,10 @@ export interface MapViewProps {
   networkOverviewUrl?: string | null
   /**
    * The taken trail, by lib/trails.ts registry id, or null for nothing taken
-   * (#1306) - lib/userPreferences.ts's `chosen_trail_id`. Built into the
-   * style and re-pointed in place when it changes (map/style.ts's
-   * attachChosenTrail), never a rebuild. Null is first launch: every line
-   * dotted, nothing ghosted.
+   * (#1306) - the active long hike's `trailId` (lib/trips.ts), App.tsx's
+   * `chosenTrailId`, since #1352. Built into the style and re-pointed in
+   * place when it changes (map/style.ts's attachChosenTrail), never a
+   * rebuild. Null is first launch: every line dotted, nothing ghosted.
    */
   chosenTrailId?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */

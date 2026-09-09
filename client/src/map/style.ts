@@ -1563,6 +1563,10 @@ export function dottedTrailWidthExpression(): unknown {
  * reproduced on the built app at a 1512 px desktop window with
  * `chosen_trail_id` set (2026-09-09). Taking a trail is meant to move a
  * line from a dot rhythm to a solid stroke, not from a fine line to a rope.
+ *
+ * That preference is gone since #1352 and this paragraph is left as the
+ * dated record it is. To reproduce the rope again, put the app on an active
+ * hike whose `trailId` is `AT` - what `chosenTrailId` now reads.
  */
 export const OVERVIEW_WIDTH_SCALE = NETWORK_OVERVIEW_FAR_WIDTH / DEFAULT_TRAIL_LINE_WIDTH
 

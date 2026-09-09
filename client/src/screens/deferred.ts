@@ -1,0 +1,143 @@
+// The screens a launch does not show, loaded when first shown or on idle
+// (#1302, lib/deferredScreen.ts) - one list, so the shell's import block says
+// which screens are eager by what is NOT here, and so the preload below cannot
+// forget one.
+//
+// What stays eager, and why: Today and the tab bar (the first frame),
+// Onboarding (a first run's first frame), the report window (it opens the
+// instant a report is saved, on a ridge, and its constant UNDO_WINDOW_MS is
+// read by the shell), and the map's own overlays that the shell composes
+// itself. Everything a hiker reaches by a tap on another tab or by starting
+// a flow is here.
+
+import { deferredScreen } from '../lib/deferredScreen'
+
+export const MapScreen = deferredScreen(
+  () => import('../chrome/MapScreen').then((m) => m.MapScreen),
+  'MapScreen',
+)
+export const PlanScreen = deferredScreen(
+  () => import('./Plan').then((m) => m.PlanScreen),
+  'Plan',
+)
+export const More = deferredScreen(() => import('./More').then((m) => m.More), 'More')
+export const Moderation = deferredScreen(
+  () => import('./Moderation').then((m) => m.Moderation),
+  'Moderation',
+)
+export const Registry = deferredScreen(
+  () => import('./Registry').then((m) => m.Registry),
+  'Registry',
+)
+export const Downloads = deferredScreen(
+  () => import('./Downloads').then((m) => m.Downloads),
+  'Downloads',
+)
+export const DownloadsDialog = deferredScreen(
+  () => import('./DownloadsDialog').then((m) => m.DownloadsDialog),
+  'DownloadsDialog',
+)
+export const InstallPrompt = deferredScreen(
+  () => import('./InstallPrompt').then((m) => m.InstallPrompt),
+  'InstallPrompt',
+)
+export const ClosureForm = deferredScreen(
+  () => import('./ClosureForm').then((m) => m.ClosureForm),
+  'ClosureForm',
+)
+export const ReportForm = deferredScreen(
+  () => import('./ReportForm').then((m) => m.ReportForm),
+  'ReportForm',
+)
+export const GroupScreen = deferredScreen(
+  () => import('./GroupScreen').then((m) => m.GroupScreen),
+  'GroupScreen',
+)
+export const TripList = deferredScreen(
+  () => import('./TripList').then((m) => m.TripList),
+  'TripList',
+)
+export const WalkedHike = deferredScreen(
+  () => import('./WalkedHike').then((m) => m.WalkedHike),
+  'WalkedHike',
+)
+export const PlanTargetSheet = deferredScreen(
+  () => import('./PlanTargetSheet').then((m) => m.PlanTargetSheet),
+  'PlanTargetSheet',
+)
+export const IdentitySetup = deferredScreen(
+  () => import('./IdentitySetup').then((m) => m.IdentitySetup),
+  'IdentitySetup',
+)
+export const SignInPrompt = deferredScreen(
+  () => import('./SignInPrompt').then((m) => m.SignInPrompt),
+  'SignInPrompt',
+)
+export const EmailSignIn = deferredScreen(
+  () => import('./EmailSignIn').then((m) => m.EmailSignIn),
+  'EmailSignIn',
+)
+export const AppFailureReport = deferredScreen(
+  () => import('./AppFailureReport').then((m) => m.AppFailureReport),
+  'AppFailureReport',
+)
+export const Volunteer = deferredScreen(
+  () => import('./Volunteer').then((m) => m.Volunteer),
+  'Volunteer',
+)
+export const VolunteerHours = deferredScreen(
+  () => import('./VolunteerHours').then((m) => m.VolunteerHours),
+  'VolunteerHours',
+)
+export const VolunteerImpact = deferredScreen(
+  () => import('./VolunteerImpact').then((m) => m.VolunteerImpact),
+  'VolunteerImpact',
+)
+export const FindHike = deferredScreen(
+  () => import('./FindHike').then((m) => m.FindHike),
+  'FindHike',
+)
+export const HikePicker = deferredScreen(
+  () => import('./HikePicker').then((m) => m.HikePicker),
+  'HikePicker',
+)
+
+const ALL = [
+  MapScreen,
+  PlanScreen,
+  More,
+  Moderation,
+  Registry,
+  Downloads,
+  DownloadsDialog,
+  InstallPrompt,
+  ClosureForm,
+  ReportForm,
+  GroupScreen,
+  TripList,
+  WalkedHike,
+  PlanTargetSheet,
+  IdentitySetup,
+  SignInPrompt,
+  EmailSignIn,
+  AppFailureReport,
+  Volunteer,
+  VolunteerHours,
+  VolunteerImpact,
+  FindHike,
+  HikePicker,
+]
+
+/**
+ * Every deferred screen's module, ahead of any tap.
+ *
+ * The shell calls this on idle once the first frame is up, so the second
+ * a hiker taps Plan the code is already parsed; the test harness calls it
+ * before every test, so the suite renders exactly as it did when these were
+ * static imports. A module that fails to load fails here too, which is the
+ * right answer for both: the shell tries again on the tap, and a test finds
+ * out at once.
+ */
+export async function preloadScreens(): Promise<void> {
+  await Promise.all(ALL.map((screen) => screen.preload()))
+}

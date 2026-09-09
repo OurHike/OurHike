@@ -384,13 +384,15 @@ if (serviceWorker !== undefined) {
 // and neither appears in this app's own code (the class name is in CSS, which
 // is not scanned).
 //
-// The byte figure is features/LAUNCH_BUDGET.md §3's row for eager
-// JavaScript, staged: measured 2026-09-09 at 437 KB compressed before #1300
-// and 323 KB after, so this ceiling holds the saving; #1302 (the screens and
-// the Supabase client behind `import()`) is what brings it under the doc's
-// 250 KB and tightens this constant to match. gzip, because that is what the
-// host serves (GitHub Pages; measured off production's own response headers).
-const EAGER_JS_BUDGET_BYTES = 340 * 1024
+// The byte figure is features/LAUNCH_BUDGET.md §3's row for eager JavaScript.
+// Measured 2026-09-09 on a production-configured build: 437 KB compressed
+// before #1300, 323 KB with the map engine out of the closure, 267 KB with the
+// screens behind `import()`, and 215 KB with the Supabase client behind one
+// too. The doc's number is 250 KB and this is it - close enough to the
+// measurement to catch a screen drifting back into the eager chunk, with room
+// for the shell itself to grow. gzip, because that is what the host serves
+// (GitHub Pages; measured off production's own response headers).
+const EAGER_JS_BUDGET_BYTES = 250 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 const indexHtml = files.find((f) => /(^|[\\/])index\.html$/.test(f))

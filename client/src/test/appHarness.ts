@@ -21,11 +21,12 @@
 
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
-import { del, get, set, update } from 'idb-keyval'
+import { del, get, getMany, set, update } from 'idb-keyval'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
 import { PREFERENCES_KEY } from '../lib/preferences'
 import { forgetLaunchMirror, writeLaunchMirror } from '../lib/launchMirror'
+import { preloadScreens } from '../screens/deferred'
 import { DEFAULT_HIKER_MODE } from '../lib/hikerMode'
 import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from '../lib/trailData'
@@ -161,8 +162,19 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     // library, which throws GPUInitializationError in jsdom - the trap
     // recorded on #722.
     await loadMapEngine()
+    // And the screens that arrive through import() (#1302), for the same
+    // reason: a test that taps More and reaches for Settings must not race
+    // the chunk. Loaded once per process - the wrapper memoises - so this is
+    // a resolved promise on every test but the first.
+    await preloadScreens()
 
     vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+    // `getMany` follows whatever `get` is doing right now (#1303's one
+    // transaction in lib/trailData.ts), so a test that re-points `get` mid-file
+    // does not have to re-point both.
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
+    )
     vi.mocked(set).mockImplementation((key, value) => {
       store.set(key as string, value)
       return Promise.resolve()

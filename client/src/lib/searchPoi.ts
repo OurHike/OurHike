@@ -6,6 +6,38 @@
 // is required to say so when nothing matches (`7c`), because "not found" and
 // "outside what you downloaded" are different answers.
 
+/**
+ * The searchable view of what is on the phone, built once per launch (#1303).
+ *
+ * A named function rather than an inline `pois.map(...)` in the shell, because
+ * this is one of the handful of full passes over the waypoint list that a
+ * launch is allowed - 16,949 of them since #1095 - and
+ * App.loadBudget.test.tsx counts the passes rather than timing them
+ * (TESTING.md §21). A pass nothing can count is a pass nothing can hold to a
+ * budget.
+ *
+ * `miles` is index-aligned with `pois` and NaN where a waypoint has none
+ * (lib/trailIndexBuild.ts), which reads out here as `undefined` - the shape
+ * every consumer already treats as "nobody has placed this".
+ */
+export function searchableFrom(
+  pois: readonly { id: string; name: string; type: string }[],
+  miles: ArrayLike<number> | null,
+): SearchablePoi[] {
+  const searchable: SearchablePoi[] = new Array<SearchablePoi>(pois.length)
+  for (let i = 0; i < pois.length; i += 1) {
+    const poi = pois[i]
+    const mile = miles?.[i]
+    searchable[i] = {
+      id: poi.id,
+      name: poi.name,
+      type: poi.type,
+      mile: mile === undefined || Number.isNaN(mile) ? undefined : mile,
+    }
+  }
+  return searchable
+}
+
 export interface SearchablePoi {
   id: string
   name: string

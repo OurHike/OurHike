@@ -258,13 +258,78 @@ export async function publishedSnapshot({
   signal,
 }: { signal?: AbortSignal } = {}): Promise<PublishedSnapshot> {
   if (DATA_BASE_URL === '') return NOTHING_READABLE
+  if (signal?.aborted) throw abortError()
 
+  // ONE READ FOR EVERYONE ASKING AT ONCE (#1302). A launch with signal asked
+  // for this from six places in the same commit - the update check, the
+  // published sizes, the network overview, the three cell families - and
+  // `latest.json` is served `cache-control: no-cache`, so that was six round
+  // trips to the bucket on the connection the first frame was sharing. The
+  // fetch in flight is shared with every caller that arrives before it
+  // settles; a caller arriving after gets a fresh one, so nothing here ever
+  // serves a manifest older than the request it answers.
+  //
+  // THE SHARED FETCH CARRIES NO CALLER'S SIGNAL, because one caller's abort
+  // must not end the read the other five are waiting on. Each caller's own
+  // signal is honoured on its own promise below instead, and still rejects
+  // with AbortError exactly as the un-shared fetch did - what it no longer
+  // does is cancel the request, which is one small JSON file and the price of
+  // not cancelling somebody else's.
+  if (snapshotInFlight === null) {
+    snapshotInFlight = readSnapshot().finally(() => {
+      snapshotInFlight = null
+    })
+  }
+  const shared = snapshotInFlight
+  if (signal === undefined) return shared
+
+  return new Promise<PublishedSnapshot>((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    // Between the entry check above and this line, the shared read has already
+    // been STARTED - and a fetch that aborts the caller's controller
+    // synchronously (which is what an abort during a launch fetch looks like,
+    // and what lib/nearbyTrailData.test.ts drives) fires the event before
+    // there is a listener for it. Without this re-check that caller's promise
+    // settled neither way and simply hung, which is worse than the round trip
+    // the sharing saves.
+    if (signal.aborted) {
+      signal.removeEventListener('abort', onAbort)
+      reject(abortError())
+      return
+    }
+    shared.then(
+      (snapshot) => {
+        signal.removeEventListener('abort', onAbort)
+        if (signal.aborted) reject(abortError())
+        else resolve(snapshot)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+/** The rejection an aborted caller gets, spelled the way `fetch` spells it -
+ *  callers match on the NAME (lib/useTrailData.ts, lib/nearbyTrailData.ts),
+ *  because what a fetch rejects with on abort differs between browsers and
+ *  test environments. */
+function abortError(): DOMException {
+  return new DOMException('Aborted', 'AbortError')
+}
+
+let snapshotInFlight: Promise<PublishedSnapshot> | null = null
+
+/** The read itself. Never rejects: anything unreadable is a snapshot that
+ *  knows nothing, on {@link publishedSnapshot}'s own terms. */
+async function readSnapshot(): Promise<PublishedSnapshot> {
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal })
+    const response = await fetch(dataUrl(MANIFEST_KEY))
     if (!response.ok) return NOTHING_READABLE
     return snapshotInto((await response.json()) as DataManifest)
-  } catch (error) {
-    if ((error as { name?: string } | null)?.name === 'AbortError') throw error
+  } catch {
     return NOTHING_READABLE
   }
 }

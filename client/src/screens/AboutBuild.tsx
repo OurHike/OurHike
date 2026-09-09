@@ -24,8 +24,17 @@
 
 import { useState } from 'react'
 import { BUILD_INFO, buildSummary, builtAtLabel, type BuildInfo } from '../lib/buildInfo'
+import { launchSummary, launchTimeline, type LaunchMoment } from '../lib/launchMarks'
 
 export interface AboutBuildProps {
+  /**
+   * How long this launch took, as lib/launchMarks.ts read it (#1299).
+   *
+   * Injectable for the same reason `build` is: the real values are this
+   * page's own clock, so a test asserting on them would be asserting on how
+   * fast the machine running it happened to be.
+   */
+  launch?: LaunchMoment[]
   /**
    * Which build this is. Defaults to the real one, and is injectable so the
    * rows can be tested against fixed values - the actual constants are a live
@@ -37,8 +46,12 @@ export interface AboutBuildProps {
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
-export function AboutBuild({ build = BUILD_INFO }: AboutBuildProps) {
+export function AboutBuild({ build = BUILD_INFO, launch }: AboutBuildProps) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
+  // Read once per mount rather than per render: these are marks, not a live
+  // clock, and re-reading them on every keystroke elsewhere in Settings would
+  // be a page-wide `getEntriesByName` for a value that cannot have changed.
+  const [timeline] = useState<LaunchMoment[]>(() => launch ?? launchTimeline())
 
   const copy = async () => {
     try {
@@ -46,7 +59,12 @@ export function AboutBuild({ build = BUILD_INFO }: AboutBuildProps) {
       // yield undefined, `await undefined` resolves happily, and the button
       // would report a copy that never happened - on precisely the browsers
       // where it did not.
-      await navigator.clipboard.writeText(buildSummary(build))
+      // One line, still: the paste has to survive an email, a message to a
+      // club and a hiker's cold hands, and a line break is where a paste gets
+      // half-quoted. `launchSummary` is written to be one line for that.
+      await navigator.clipboard.writeText(
+        `${buildSummary(build)} · ${launchSummary(timeline)}`,
+      )
       setCopyState('copied')
     } catch {
       setCopyState('failed')
@@ -70,6 +88,28 @@ export function AboutBuild({ build = BUILD_INFO }: AboutBuildProps) {
       <p className="settings__row">
         <span className="settings__label">Built</span>
         <span className="settings__value">{builtAtLabel(build.builtAt)}</span>
+      </p>
+
+      {/* HOW LONG THIS LAUNCH TOOK (#1299), on the phone it happened on.
+          Milliseconds from the moment the browser began loading the page, so
+          the number includes the parts this app does not run - which is the
+          half that a throttled profile on a laptop cannot see, and the half
+          the report behind features/LAUNCH_BUDGET.md was about.
+
+          A moment the launch never reached says so rather than being left
+          out: an omitted row reads as "instant" to whoever is looking. */}
+      <h3 className="settings__heading settings__heading--minor">This launch</h3>
+      {timeline.map((moment) => (
+        <p className="settings__row" key={moment.name}>
+          <span className="settings__label">{moment.label}</span>
+          <span className="settings__value">
+            {moment.at === null ? 'not reached' : `${moment.at} ms`}
+          </span>
+        </p>
+      ))}
+      <p className="settings__note">
+        Measured from when this page started loading. Times are about the app, not about
+        you or your phone, and nothing sends them anywhere on its own.
       </p>
 
       <button type="button" className="settings__action" onClick={copy}>

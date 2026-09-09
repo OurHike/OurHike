@@ -91,7 +91,7 @@ export class NotSignedInError extends Error {
  * stale exactly during the long offline stretch this app is built around.
  */
 export async function accessToken(): Promise<string | null> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return null
 
   const { data } = await client.auth.getSession()

@@ -101,3 +101,54 @@ describe('AboutBuild', () => {
     expect(screen.getAllByText('unknown').length).toBeGreaterThan(0)
   })
 })
+
+describe('how long this launch took (#1299)', () => {
+  const TIMELINE = [
+    { name: 'ourhike:script', label: 'App code started', at: 210 },
+    { name: 'ourhike:shell', label: 'Tab bar on screen', at: 480 },
+    { name: 'ourhike:today', label: 'Waypoints ready', at: null },
+  ]
+
+  it('shows each moment in milliseconds from when the page began loading', () => {
+    render(<AboutBuild build={RELEASE} launch={TIMELINE} />)
+
+    expect(screen.getByText('Tab bar on screen')).toBeInTheDocument()
+    expect(screen.getByText('480 ms')).toBeInTheDocument()
+  })
+
+  it('says a moment the launch never reached, rather than leaving it out', () => {
+    // An omitted row reads as "instant" to whoever is looking at it, which is
+    // the display outrunning its source.
+    render(<AboutBuild build={RELEASE} launch={TIMELINE} />)
+
+    expect(screen.getByText('Waypoints ready')).toBeInTheDocument()
+    expect(screen.getByText('not reached')).toBeInTheDocument()
+  })
+
+  it('carries the timings into the copied text, beside the build', async () => {
+    // The path this has to survive is somebody pasting into an email, and the
+    // timings are the half of "it takes six seconds" that nobody can retype.
+    // Read back from the clipboard rather than from a spy, like the build's
+    // own copy test above: what matters is what a hiker can paste.
+    const user = userEvent.setup()
+    render(<AboutBuild build={RELEASE} launch={TIMELINE} />)
+
+    await user.click(screen.getByRole('button', { name: /copy build details/i }))
+
+    const copied = await navigator.clipboard.readText()
+    expect(copied).toContain('1.0.0')
+    expect(copied).toContain('Tab bar on screen 480')
+    // Still one line - a line break is where a paste gets half-quoted.
+    expect(copied).not.toContain('\n')
+  })
+
+  it('says plainly that the numbers go nowhere on their own', () => {
+    // There is no telemetry in this client (TECHNICAL_ARCHITECTURE.md), and a
+    // screen full of timings is exactly where somebody would assume otherwise.
+    render(<AboutBuild build={RELEASE} launch={TIMELINE} />)
+
+    expect(
+      screen.getByText(/nothing sends them anywhere on its own/i),
+    ).toBeInTheDocument()
+  })
+})

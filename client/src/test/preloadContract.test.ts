@@ -26,6 +26,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { TRAILS_OVERVIEW_KEY } from '../lib/config'
+import { LAUNCH_MIRROR_KEY } from '../lib/launchMirror'
 
 const config = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8')
 
@@ -63,6 +64,17 @@ describe('the corridor-view centerline preload', () => {
     // from the app's own CORS fetch - so the browser keeps them apart and
     // downloads the file twice.
     expect(config).toMatch(/crossorigin: 'anonymous'/)
+  })
+
+  it('is written only for a launch that will read it, by consulting the launch mirror (#1302)', () => {
+    // A phone past onboarding holds the trail line and never fetches the
+    // sketch; the inline script that writes the tag reads the same
+    // localStorage key App.tsx reads before its first render, and skips the
+    // tag when it says onboarding is done. The key is pinned here so the
+    // script and lib/launchMirror.ts cannot drift apart.
+    expect(config).toContain(`localStorage.getItem('${LAUNCH_MIRROR_KEY}')`)
+    expect(config).toMatch(/"onboardingCompleted":true/)
+    expect(config).toMatch(/tag: 'script'/)
   })
 
   it('emits nothing at all when no bucket is configured', () => {

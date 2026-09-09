@@ -50,18 +50,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 import App from './App'
 import { appHarness, openMapTab } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { buildPoiIcons } from './map/poiIcons'
 import { mileOnTrail } from './lib/trailPosition'
-import { resolveTrailIndex } from './lib/trailIndexBuild'
+import { packPois, resolveTrailIndex } from './lib/trailIndexBuild'
+import { searchableFrom } from './lib/searchPoi'
+import { mapPointsFrom } from './lib/legendContents'
+import { hikePlaces } from './lib/suggestedHikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -84,11 +88,32 @@ vi.mock('./map/poiIcons', async (importOriginal) => {
 // counted so the launch thread can be shown to run it for nothing.
 vi.mock('./lib/trailIndexBuild', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./lib/trailIndexBuild')>()
-  return { ...actual, resolveTrailIndex: vi.fn(actual.resolveTrailIndex) }
+  return {
+    ...actual,
+    resolveTrailIndex: vi.fn(actual.resolveTrailIndex),
+    packPois: vi.fn(actual.packPois),
+  }
 })
 vi.mock('./lib/trailPosition', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./lib/trailPosition')>()
   return { ...actual, mileOnTrail: vi.fn(actual.mileOnTrail) }
+})
+// The full passes over the waypoint list, wrapped rather than replaced, for
+// the reason the two above are: the app runs the real ones and this file gets
+// to ask how often. Since #1095 the list is 16,949 rows and each of these
+// allocates a row per waypoint, so what makes them expensive is that they run
+// at all.
+vi.mock('./lib/searchPoi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/searchPoi')>()
+  return { ...actual, searchableFrom: vi.fn(actual.searchableFrom) }
+})
+vi.mock('./lib/legendContents', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/legendContents')>()
+  return { ...actual, mapPointsFrom: vi.fn(actual.mapPointsFrom) }
+})
+vi.mock('./lib/suggestedHikes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/suggestedHikes')>()
+  return { ...actual, hikePlaces: vi.fn(actual.hikePlaces) }
 })
 
 const app = appHarness()
@@ -115,6 +140,9 @@ beforeEach(() => {
   vi.mocked(buildPoiIcons).mockClear()
   vi.mocked(resolveTrailIndex).mockClear()
   vi.mocked(mileOnTrail).mockClear()
+  vi.mocked(searchableFrom).mockClear()
+  vi.mocked(mapPointsFrom).mockClear()
+  vi.mocked(hikePlaces).mockClear()
 })
 
 /** The index the launch asked for has been handed back - the moment after
@@ -165,6 +193,83 @@ describe('what first run may do before the steps are done', () => {
   })
 })
 
+describe('how often a launch walks the waypoint list (#1303)', () => {
+  // THE FOURTH BUDGET. The placement moved off this thread in #1192, and what
+  // stayed was the walking: `searchablePois`, `viewportPoints`,
+  // `hikePlaceOptions`, `passedPlacesToday`, `mileAnchors` and `packPois` each
+  // allocated a row per waypoint - five or six full passes over 16,949 of them,
+  // in render, before Today had drawn anything. Every pass that feeds something
+  // NOT on screen is now conditional on that thing being on screen, so the
+  // count is what the budget is spelled in.
+
+  beforeEach(() => {
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+  })
+
+  /** The release has been read and its miles placed - after which any further
+   *  pass is one the shell chose to make. */
+  async function releaseRead(): Promise<void> {
+    await waitFor(() => expect(readsOf(POIS_KEY)).toBe(1))
+    await indexLanded()
+  }
+
+  it('builds the map its points only once there is a map, which on Today is never', async () => {
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    await releaseRead()
+
+    expect(mapPointsFrom).not.toHaveBeenCalled()
+  })
+
+  it('does not walk the list for the Find screen nobody has opened', async () => {
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    await releaseRead()
+
+    expect(hikePlaces).not.toHaveBeenCalled()
+  })
+
+  it('walks the list once for what Today reads, and once more when the miles land', async () => {
+    // Twice is the honest floor, not a target met by luck: the waypoints and
+    // their miles arrive in two steps by design (lib/useTrailData.ts's
+    // honest-unknown order), and the searchable view is what Today's journal,
+    // the search rows and the ribbon all read.
+    //
+    // Counted over a NON-EMPTY list, because the call before the waypoints
+    // have landed walks nothing and costs nothing - budgeting it would be
+    // counting a `for` loop that runs zero times.
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    await releaseRead()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const walks = vi.mocked(searchableFrom).mock.calls.filter(([pois]) => pois.length > 0)
+    expect(walks.length).toBeLessThanOrEqual(2)
+    expect(walks.length).toBeGreaterThan(0)
+  })
+
+  it('reads the whole release in one transaction rather than nine round trips', async () => {
+    // Eight `await get(...)` calls in a row, each waiting for the last, on the
+    // thread the launch is drawn on. The trail lines stay their own read
+    // because they decide whether there is a release to read at all.
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    await releaseRead()
+
+    expect(vi.mocked(getMany).mock.calls.length).toBeGreaterThan(0)
+    expect(vi.mocked(getMany).mock.calls[0][0]).toContain(POIS_KEY)
+  })
+
+  it('packs the waypoints for the worker exactly once', async () => {
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    await releaseRead()
+
+    expect(vi.mocked(packPois).mock.calls.length).toBeLessThanOrEqual(1)
+  })
+})
+
 describe('what the shell paints before the phone has answered (#1301)', () => {
   it('puts the tab bar and the Today header on screen before any IndexedDB read has resolved', async () => {
     // THE THIRD BUDGET. The tree used to render nothing - not the tab bar, not
@@ -182,6 +287,12 @@ describe('what the shell paints before the phone has answered (#1301)', () => {
     app.onboard()
     app.putTrailData({ pois: POIS })
     vi.mocked(get).mockImplementation(() => new Promise(() => {}))
+    // `getMany` follows whatever `get` is doing right now, so #1303's one
+    // transaction in lib/trailData.ts reads this file's store like every other
+    // read, and a test that re-points `get` need not re-point both.
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
+    )
 
     render(<App />)
 

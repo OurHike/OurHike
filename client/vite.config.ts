@@ -149,23 +149,40 @@ export default defineConfig({
     // 404 on every launch - a wasted request and a console error, on the one
     // build (a fresh checkout, a preview with no data) that has the least to
     // spare.
+    //
+    // AND ONLY ON A LAUNCH THAT WILL READ IT (#1302). The sketch stands in for
+    // the trail line while there is none on the phone - a first run. Every
+    // other launch has the line and never fetches the sketch, so a plain
+    // <link> in the head cost a returning hiker one request per launch (a
+    // conditional one after the bucket's five-minute max-age, but on the
+    // connection the first frame shares) for bytes nothing read. The tag is
+    // therefore written by a one-line inline script that first checks the
+    // launch mirror (lib/launchMirror.ts, the same localStorage key App.tsx
+    // reads before its first render): a phone past onboarding writes no
+    // preload; one that is not, or that holds no mirror, does. Inline in the
+    // head so it runs as the parser reaches it, ahead of the module script,
+    // which is the whole point of a preload.
     {
       name: 'ourhike-preload-trail-overview',
       transformIndexHtml() {
         const base = (process.env.VITE_DATA_BASE_URL ?? '').replace(/\/+$/, '')
         if (base === '') return []
-        return [
-          {
-            tag: 'link',
-            attrs: {
-              rel: 'preload',
-              as: 'fetch',
-              crossorigin: 'anonymous',
-              href: `${base}/trails_overview.geojson`,
-            },
-            injectTo: 'head' as const,
-          },
-        ]
+        const link = {
+          rel: 'preload',
+          as: 'fetch',
+          crossorigin: 'anonymous',
+          href: `${base}/trails_overview.geojson`,
+        }
+        // test/preloadContract.test.ts pins every attribute above against
+        // the key the app fetches, and the mirror key against
+        // lib/launchMirror.ts - so neither end can move alone.
+        const children =
+          `try{if(!/"onboardingCompleted":true/.test(localStorage.getItem('ourhike:launch')||'')){` +
+          `var l=document.createElement('link');` +
+          `l.rel=${JSON.stringify(link.rel)};l.as=${JSON.stringify(link.as)};` +
+          `l.crossOrigin=${JSON.stringify(link.crossorigin)};l.href=${JSON.stringify(link.href)};` +
+          `document.head.appendChild(l)}}catch(e){}`
+        return [{ tag: 'script', children, injectTo: 'head' as const }]
       },
     },
     // Skipped under Vitest: vite-plugin-pwa's manifest/workbox hooks assume a

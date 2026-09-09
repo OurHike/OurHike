@@ -27,7 +27,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness, openMapTab } from './test/appHarness'
@@ -48,6 +48,7 @@ import { OSM_SOURCE_ID } from './map/liveTopo'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -84,6 +85,12 @@ beforeEach(() => {
           release: () => resolve(store.get(key as string)),
         })
       }),
+  )
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
   )
 })
 

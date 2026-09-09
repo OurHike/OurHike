@@ -863,10 +863,29 @@ export function MapView({
   // network on their own schedules and refuse independently (App.tsx). Folding
   // them together would mean a closures read that came back re-rasterising a
   // 88px pin, and either read failing would hold the other off the map.
+  //
+  // ONCE THERE IS A WARNING TO DRAW, AND NOT BEFORE (#1304). The image is one
+  // pass of map/poiIcons.ts's scanline rasteriser - the same arithmetic the 46
+  // POI pins were moved to a worker for (#857) - and it ran on every map build
+  // whether or not this map would ever show a warning. On first run that is
+  // the map behind the entry card, where nothing is drawn and the thread is
+  // the one the Skip button is waiting for: measured 2026-09-09, 111-140 ms of
+  // main-thread self time in map/poiIcons.ts across the steps, which is this
+  // pin and the workday pin below.
+  //
+  // THE ORDERING IS THE SAFETY ARGUMENT, and it is kept rather than assumed: a
+  // symbol layer whose `icon-image` names an image the map has not been given
+  // draws NOTHING, and a serious warning that does not draw is the failure
+  // this app cannot have. This effect is declared before the data effect, so
+  // in the commit where the first warning arrives React runs it first, and
+  // both take the same `whenStyleReady` queue in that order. The image is
+  // never removed once added, so a warning list that empties and refills
+  // cannot leave the layer without one.
+  const haveWarnings = warnings.length > 0
   useEffect(() => {
-    if (map === null) return
+    if (map === null || !haveWarnings) return
     return attachWarningIcon(map)
-  }, [map])
+  }, [map, haveWarnings])
 
   // The barrier tape, which every closure layer and the ATC's own band point
   // at by name. Registered off `map` alone, like the pin images above and
@@ -950,10 +969,11 @@ export function MapView({
   // The workday pins (#760): the image once, the data whenever the shell's
   // window or staleness verdict changes, and the tap. Same three-effect shape
   // as the warnings above.
+  const haveWorkdays = workdays.length > 0
   useEffect(() => {
-    if (map === null) return
+    if (map === null || !haveWorkdays) return
     return attachWorkdayIcon(map)
-  }, [map])
+  }, [map, haveWorkdays])
 
   useEffect(() => {
     if (map === null) return

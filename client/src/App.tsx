@@ -38,33 +38,57 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { MapScreen } from './chrome/MapScreen'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
-import { Downloads } from './screens/Downloads'
 import {
   hikingDetailOptions,
   noDetailOptions,
   rasterDetailOptions,
 } from './screens/DetailPicker'
-import { DownloadsDialog } from './screens/DownloadsDialog'
-import { More, type MorePage, type StuckReport } from './screens/More'
-import { Moderation } from './screens/Moderation'
-import { Registry } from './screens/Registry'
-import { InstallPrompt } from './screens/InstallPrompt'
+import type { MorePage, StuckReport } from './screens/More'
+// The screens a launch does not show arrive through import() (#1302,
+// screens/deferred.ts): parsed when first tapped, or on idle once the first
+// frame is up - whichever comes first - and never in front of Today.
+import {
+  AppFailureReport,
+  ClosureForm,
+  Downloads,
+  DownloadsDialog,
+  EmailSignIn,
+  FindHike,
+  GroupScreen,
+  HikePicker,
+  IdentitySetup,
+  InstallPrompt,
+  MapScreen,
+  Moderation,
+  More,
+  PlanScreen,
+  PlanTargetSheet,
+  preloadScreens,
+  Registry,
+  ReportForm,
+  SignInPrompt,
+  TripList,
+  Volunteer,
+  VolunteerHours,
+  VolunteerImpact,
+  WalkedHike,
+} from './screens/deferred'
+import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
   ENTRY_CARD_MAX_VIEWPORT_FRACTION,
   Onboarding,
   type OnboardingResult,
 } from './screens/Onboarding'
-import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
+import type { ClosureFormSubmission } from './screens/ClosureForm'
 import { closureDraft } from './lib/closureDraft'
 import { disputeFor } from './lib/disputes'
 import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
-import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
+import type { ReportFormSubmission } from './screens/ReportForm'
 import {
   ReportWindow,
   UNDO_WINDOW_MS,
@@ -222,13 +246,9 @@ import {
   type TripStore,
 } from './lib/trips'
 import { hikeFromTrips, hikeOfTrip, recordedPlan } from './lib/hikes'
-import { GroupScreen } from './screens/GroupScreen'
-import { TripList } from './screens/TripList'
-import { PlanScreen } from './screens/Plan'
 import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
-import { WalkedHike } from './screens/WalkedHike'
 import {
   canCloseLoop,
   canStartStretch,
@@ -292,14 +312,11 @@ import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
 import type { PlanMode } from './screens/PlanHome'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
-import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
 import { useModerator } from './lib/useModerator'
 import { hasStatedReporterType, signReportAs } from './lib/reporterIdentity'
-import { IdentitySetup } from './screens/IdentitySetup'
-import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
-import { EmailSignIn } from './screens/EmailSignIn'
+import type { AuthProvider } from './screens/SignInPrompt'
 import { ENABLED_PROVIDERS } from './lib/supabase'
 import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
@@ -319,7 +336,6 @@ import {
   type AppFailureDraft,
   type FlushResult,
 } from './lib/outbox'
-import { AppFailureReport } from './screens/AppFailureReport'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import { conditionsAgeLabel, worstOf } from './lib/conditionState'
 import { useConditions } from './lib/useConditions'
@@ -337,11 +353,7 @@ import {
   type PassedToday,
 } from './lib/passedToday'
 import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
-import { Volunteer } from './screens/Volunteer'
-import { VolunteerHours } from './screens/VolunteerHours'
-import { VolunteerImpact } from './screens/VolunteerImpact'
 import { Today } from './screens/Today'
-import { FindHike } from './screens/FindHike'
 import {
   DEFAULT_HIKER_MODE,
   loadHikerMode,
@@ -349,6 +361,7 @@ import {
   type HikerMode,
 } from './lib/hikerMode'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
+import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
@@ -380,7 +393,6 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
-import { HikePicker } from './screens/HikePicker'
 import {
   clearPlannedHike,
   hikeSummary,
@@ -397,8 +409,8 @@ import {
   routeBannerText,
   warningsOnRoute,
 } from './lib/seriousWarnings'
-import type { BoundingBox, MapPoint } from './lib/legendContents'
-import type { SearchablePoi } from './lib/searchPoi'
+import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
+import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
 import './App.css'
 // Last, and entirely inside media queries - see the file header. Nothing in it
@@ -526,6 +538,15 @@ function pressAnchor(
     ...(mile === null ? {} : { mile }),
   }
 }
+
+/** The empty answers the conditional waypoint passes hand back (#1303).
+ *  Module constants rather than fresh `[]` literals, so a memo that is not
+ *  running this launch keeps one identity and cannot re-trigger the effects
+ *  and memos downstream of it on every render. */
+const NO_MAP_POINTS: MapPoint[] = []
+const NO_DISPUTED_POINTS: DisputePoint[] = []
+const NO_HIKE_PLACES: ReturnType<typeof hikePlaces> = []
+const NO_PASSED_PLACES: { id: string; name: string; type: string; mile: number }[] = []
 
 function App() {
   // Two pieces of state rather than one nullable, because null only ever meant
@@ -946,6 +967,24 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+  /** A frame after the first commit - the earliest the shell can be on screen
+   *  (#1302, lib/useAfterFirstFrame.ts). What waits on it is everything that
+   *  does not change the first frame: the launch fetches, and the screens a
+   *  tap reaches. */
+  const afterFirstFrame = useAfterFirstFrame()
+  useEffect(() => {
+    if (!afterFirstFrame) return
+    // The other tabs' code, fetched while the thread is idle so a tap on Plan
+    // a second from now is instant. From the service worker's precache on the
+    // web and from the binary in the shells, so this costs no signal; on a
+    // browser without requestIdleCallback (Safari) a second's grace does.
+    const idle =
+      window.requestIdleCallback ??
+      ((callback: () => void) => setTimeout(callback, 1_000))
+    const cancel = window.cancelIdleCallback ?? clearTimeout
+    const handle = idle(() => void preloadScreens().catch(() => {}))
+    return () => cancel(handle as number)
+  }, [afterFirstFrame])
   // Which layout this viewport gets (lib/useDesktop.ts). Read here as well
   // as inside MapScreen because two of the shell's own decisions turn on it
   // since #1054: whether the Today tab is its own screen or the map's
@@ -971,7 +1010,7 @@ function App() {
     workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
-  } = useConditions(online)
+  } = useConditions(online, afterFirstFrame)
 
   /**
    * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
@@ -1131,6 +1170,7 @@ function App() {
         setPreferences(stored)
         setHikerMode(mode)
         setPreferencesLoaded(true)
+        markLaunch(LAUNCH_MARKS.preferences)
         // The record has spoken; the next launch's first frame starts here.
         writeLaunchMirror(stored, mode)
       },
@@ -1143,6 +1183,21 @@ function App() {
       () => setPreferencesLoaded(true),
     )
   }, [])
+
+  // The five moments features/LAUNCH_BUDGET.md §3 budgets, marked where they
+  // actually happen (#1299, lib/launchMarks.ts). In effects rather than in
+  // render, because what each one claims is that a hiker could SEE something -
+  // which is true after the commit, not during it. Settings -> About this
+  // build reads them back, and so does the bug-report prefill.
+  useEffect(() => {
+    if (shellKnown) markLaunch(LAUNCH_MARKS.shell)
+  }, [shellKnown])
+  useEffect(() => {
+    if (pois.length > 0) markLaunch(LAUNCH_MARKS.today)
+  }, [pois])
+  useEffect(() => {
+    if (trailIndex !== null) markLaunch(LAUNCH_MARKS.index)
+  }, [trailIndex])
 
   // The mirror follows the record (#1301): every change to what the first
   // frame depends on is written where the next launch can read it without
@@ -1319,14 +1374,14 @@ function App() {
   // lib/coverageCells.ts): the stored copy at once, the published one with
   // signal. Null on a phone that has never seen one, which is every phone on
   // a release without cells - the sheet stays one tap and nothing changes.
-  const cellIndex = useCellIndex()
+  const cellIndex = useCellIndex(BASEMAP_CELLS, afterFirstFrame)
   // The other organizations' network as cells of the same grid (#1257 stage
   // 2, lib/coverageCells.ts's NETWORK_CELLS): what a stretch download carries
   // above the seam, beside the ground the basemap cells carry under it. Null
   // on a release without them - an export before the cut existed, or a
   // steward's lines held back - and then the stretch is the basemap alone,
   // exactly as before.
-  const networkCellIndex = useCellIndex(NETWORK_CELLS)
+  const networkCellIndex = useCellIndex(NETWORK_CELLS, afterFirstFrame)
   /**
    * The junction graph's cells (#1257 stage 3, lib/coverageCells.ts's
    * GRAPH_CELLS), with the two facts the Plan door reads beside the index:
@@ -1342,7 +1397,7 @@ function App() {
   const retryTrailNetwork = useCallback(() => {
     setGraphAttempt((current) => current + 1)
   }, [])
-  const graphCellState = useCellIndexState(GRAPH_CELLS, graphAttempt)
+  const graphCellState = useCellIndexState(GRAPH_CELLS, graphAttempt, afterFirstFrame)
   const graphCellIndex = graphCellState.index
   const downloadRequests = useMemo(
     () => [
@@ -1512,7 +1567,7 @@ function App() {
   // Routes somebody published (#1284): the kept copy first, the bucket when
   // there is signal, empty until an exporter writes any - see
   // lib/useSuggestedHikes.ts and config.ts's SUGGESTED_HIKES_KEY.
-  const suggestedHikes = useSuggestedHikes(online)
+  const suggestedHikes = useSuggestedHikes(online, afterFirstFrame)
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -2315,22 +2370,27 @@ function App() {
   // thread, and on the pipeline's axis simply each waypoint's published mile.
   // Null while that is still coming, which renders as every mile unknown and
   // fills in: the honest state of a waypoint nobody has placed yet.
+  // ONE PASS PER THING THAT ARRIVES (#1303). This is the pass Today's journal,
+  // the search rows and the ribbon all read, so it is built as soon as the
+  // waypoints land and rebuilt once when their miles do - the honest-unknown
+  // order the shell already keeps (lib/useTrailData.ts's poiMiles). Every
+  // OTHER full pass over the 16,949 waypoints is now conditional on something
+  // being on screen that reads it, which on a launch that lands on Today means
+  // none of them run: see `viewportPoints`, `hikePlaceOptions`,
+  // `disputedPoints` and `passedPlacesToday` below.
   const searchablePois: SearchablePoi[] = useMemo(
-    () =>
-      pois.map((poi, i) => {
-        const mile = poiMiles?.[i]
-        return {
-          id: poi.id,
-          name: poi.name,
-          type: poi.type,
-          mile: mile === undefined || Number.isNaN(mile) ? undefined : mile,
-        }
-      }),
+    () => searchableFrom(pois, poiMiles),
     [pois, poiMiles],
   )
   // The towns and trailheads the Find screen's field can resolve (#1284) -
   // from the same downloaded waypoints, so the search needs no signal.
-  const hikePlaceOptions = useMemo(() => hikePlaces(pois), [pois])
+  // The towns and trailheads the Find-a-hike field resolves against - a full
+  // pass over the waypoints, built only while that screen is up (#1303). It is
+  // the only reader, and a launch that lands on Today never opens it.
+  const hikePlaceOptions = useMemo(
+    () => (todayPage === 'find' ? hikePlaces(pois) : NO_HIKE_PLACES),
+    [todayPage, pois],
+  )
 
   // What the tapped pin's card says - see cardDetail for why it is assembled
   // from both arrays rather than from the POI alone.
@@ -2540,35 +2600,22 @@ function App() {
    * drawing somewhere - the same rule the rest of this file keeps about 0,0.
    */
   const disputedPoints: DisputePoint[] = useMemo(() => {
-    if (disputes === null || disputes.length === 0) return []
+    // Map-only, so not built until there is a map to draw them on (#1303).
+    if (!mapMounted) return NO_DISPUTED_POINTS
+    if (disputes === null || disputes.length === 0) return NO_DISPUTED_POINTS
     const disputed = new Set(disputes.map((dispute) => dispute.poi_id))
     return pois
       .filter((poi) => disputed.has(poi.id))
       .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
   }, [disputes, pois])
 
+  // What the map draws, built only once there is a map (#1303,
+  // lib/legendContents.ts's mapPointsFrom). A phone landing on Today mounts no
+  // map at all (#1081's latch), and this pass allocated a point per waypoint
+  // on every one of those launches for a canvas that did not exist.
   const viewportPoints: MapPoint[] = useMemo(
-    () =>
-      pois.map((poi) => ({
-        id: poi.id,
-        type: poi.type,
-        lat: poi.lat,
-        lon: poi.lon,
-        confidence: poi.confidence,
-        // The name, for map/poiLabels.ts (#1194). Unconditional, unlike the
-        // site keys below: lib/trailData.ts fills a missing one with the
-        // literal 'Unnamed', so a POI always has SOME string here and the
-        // label layer's filter is what refuses to draw that word.
-        name: poi.name,
-        // Carried through so the map can draw one pin per site (#524). Spread
-        // conditionally rather than assigned as possibly-undefined, so a POI
-        // from a pre-#523 download has no site keys at all rather than keys
-        // holding undefined - which `composeSites` reads identically, but which
-        // would show up in a snapshot as a claim about a site.
-        ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
-        ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
-      })),
-    [pois],
+    () => (mapMounted ? mapPointsFrom(pois) : NO_MAP_POINTS),
+    [mapMounted, pois],
   )
 
   // The elevation ribbon and the waypoint lanes (WIREFRAMES.md §1.3, §1.4),
@@ -2721,7 +2768,7 @@ function App() {
     // `sheetOpen` instead of this line.
     atc.sheetOpen ||
     workday.sheetOpen
-  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
+  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost, ready: afterFirstFrame })
 
   /**
    * The trip the Plan tab is showing, and its plan (#787). Everything below
@@ -5467,19 +5514,23 @@ function App() {
    * on a lot from its card but cannot find that lot in the list of places
    * they passed is being told two different things by one feature.
    */
-  const passedPlacesToday = useMemo(
-    () =>
-      passedPlaces(
-        passedToday.ranges,
-        searchablePois.flatMap((poi) =>
-          poi.mile === undefined
-            ? []
-            : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
-        ),
-        NOTE_SCOPED_TYPES,
+  const passedPlacesToday = useMemo(() => {
+    // Nothing walked today, nothing passed - and no pass over the waypoints to
+    // find that out (#1303). `passedPlaces` already answers [] for an empty
+    // range list; what this skips is the flatMap that builds its argument,
+    // which is a full pass over 16,949 rows on every launch before a hiker has
+    // taken a step.
+    if (passedToday.ranges.length === 0) return NO_PASSED_PLACES
+    return passedPlaces(
+      passedToday.ranges,
+      searchablePois.flatMap((poi) =>
+        poi.mile === undefined
+          ? []
+          : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
       ),
-    [passedToday.ranges, searchablePois],
-  )
+      NOTE_SCOPED_TYPES,
+    )
+  }, [passedToday.ranges, searchablePois])
 
   /**
    * A tap on a passed place opens its card, on the map, framed - the exact

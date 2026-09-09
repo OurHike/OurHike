@@ -170,9 +170,11 @@ three cell indexes, each fetched, SHA-256'd, parsed and written back; eight publ
 conditions artifacts, each written back to IndexedDB (`lib/useConditions.ts`); the
 suggested-hikes artifact; the Supabase session; the service worker's own
 `registration.update()`, called at mount rather than when the app is idle; and the
-document head's `<link rel=preload>` of `trails_overview.geojson` — 200 KB that a
-returning hiker's shell never reads, because `fetchTrailOverview` is gated on having
-no trail lines. None of it blocks a frame. All of it competes with the frame for one
+document head's `<link rel=preload>` of `trails_overview.geojson` — a request a
+returning hiker's shell never reads, because `fetchTrailOverview` is gated on having no
+trail lines (the bucket serves it with a five-minute `max-age`, so after that it is a
+conditional request rather than the 200 KB, measured 2026-09-09; still a round trip on
+the connection the first frame shares). None of it blocks a frame. All of it competes with the frame for one
 connection and one thread.
 
 ### 2.5 First run's own bill

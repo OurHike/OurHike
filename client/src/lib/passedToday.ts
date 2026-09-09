@@ -29,9 +29,27 @@ export interface PassedToday {
   ranges: readonly MileRange[]
 }
 
-/** The hiker's local date as YYYY-MM-DD. `en-CA` formats exactly that. */
+/**
+ * The hiker's local date as YYYY-MM-DD.
+ *
+ * BUILT RATHER THAN FORMATTED (#1304). This used to be
+ * `now.toLocaleDateString('en-CA')`, which formats exactly this shape and is
+ * an Intl.DateTimeFormat construction each time. It is called from App.tsx's
+ * render with the clock's `now`, so it ran on every tick of lib/useClock.ts
+ * and on every re-render in between: measured 2026-09-09 on the first-run
+ * profile (390x844, 4x CPU throttle), 61-91 ms of main-thread self time while
+ * the three entry steps were up, for a string that changes once a day.
+ *
+ * The three getters below read the same local calendar `en-CA` would have
+ * formatted, so this is the same answer arrived at without the formatter -
+ * lib/passedToday.test.ts holds the two spellings together across a year of
+ * dates and both sides of a DST change rather than leaving that by assertion.
+ */
 export function localDay(now: Date): string {
-  return now.toLocaleDateString('en-CA')
+  const year = String(now.getFullYear()).padStart(4, '0')
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 export function emptyDay(now: Date): PassedToday {

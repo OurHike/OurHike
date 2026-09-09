@@ -160,7 +160,15 @@ export interface Conditions {
   markSynced(): void
 }
 
-export function useConditions(online: boolean): Conditions {
+/**
+ * @param ready Whether the launch is past its first frame (#1302,
+ *   lib/useAfterFirstFrame.ts). The eight published reads and the four live
+ *   ones below wait for it; nothing they feed changes what the first frame
+ *   is, and every line they fill renders "unknown" until they land anyway.
+ *   Defaults to true so a screen or a test that mounts this hook alone
+ *   behaves as before.
+ */
+export function useConditions(online: boolean, ready = true): Conditions {
   // One state each rather than a list plus a separate "where did this come
   // from", because the two reads race and updating two states from a race is
   // how you get fresh closures labelled stale. lib/conditionState.ts owns the
@@ -278,6 +286,7 @@ export function useConditions(online: boolean): Conditions {
   // backend, and a build with no backend configured at all is exactly the one
   // that most needs a baseline.
   useEffect(() => {
+    if (!ready) return
     let cancelled = false
     // Named once rather than repeated six times: every read below wants the
     // same routing, and a read that quietly disagreed would be the one that
@@ -370,7 +379,7 @@ export function useConditions(online: boolean): Conditions {
     return () => {
       cancelled = true
     }
-  }, [online, refreshCount])
+  }, [online, refreshCount, ready])
 
   // The map's own reads (#232), deliberately not gated on an account: browsing
   // has never needed one, and the reads send a token only if there is one
@@ -380,7 +389,7 @@ export function useConditions(online: boolean): Conditions {
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
   useEffect(() => {
-    if (!online || !API_CONFIGURED) return
+    if (!ready || !online || !API_CONFIGURED) return
 
     let cancelled = false
     // A read reaching the server IS a sync, and the status strip's age is the
@@ -435,7 +444,7 @@ export function useConditions(online: boolean): Conditions {
     // reachable one current, and a hiker with signal all afternoon should get
     // the closure a moderator verified at lunchtime rather than whatever the
     // backend said when the app opened.
-  }, [online, refreshCount])
+  }, [online, refreshCount, ready])
 
   return {
     closures: itemsOf(closureState),

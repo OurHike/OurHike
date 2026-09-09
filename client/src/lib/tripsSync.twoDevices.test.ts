@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { get, set, del } from 'idb-keyval'
+import { del, get, getMany, set } from 'idb-keyval'
 import { syncTrips, type TripSyncRequest, type TripSyncResponse } from './api'
 import { syncTripsWithAccount } from './tripsSync'
 import { addTrip, loadTrips, renameTrip, removeTrip, saveTrips } from './trips'
@@ -23,6 +23,7 @@ import { buildPlan, type HikePlan } from './plan'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -119,6 +120,12 @@ beforeEach(() => {
   account = new FakeAccount()
   vi.mocked(get).mockImplementation((key) =>
     Promise.resolve(current.storage.get(key as string)),
+  )
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
   )
   vi.mocked(set).mockImplementation((key, value) => {
     current.storage.set(key as string, value)

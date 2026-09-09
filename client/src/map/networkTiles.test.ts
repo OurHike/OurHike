@@ -83,8 +83,8 @@ afterEach(() => {
 
 describe('registration', () => {
   it('registers the network scheme once, however many maps are built', () => {
-    registerNetworkProtocol()
-    registerNetworkProtocol()
+    registerNetworkProtocol(addProtocol)
+    registerNetworkProtocol(addProtocol)
 
     const calls = (addProtocol as unknown as Mock).mock.calls.filter(
       ([scheme]) => scheme === NETWORK_SCHEME,
@@ -94,7 +94,7 @@ describe('registration', () => {
 
   it('hands MapLibre a handler that answers through loadNetworkTile', async () => {
     getZxy.mockResolvedValue({ data: new Uint8Array([7, 7]).buffer })
-    registerNetworkProtocol()
+    registerNetworkProtocol(addProtocol)
     const [, handler] = (addProtocol as unknown as Mock).mock.calls.find(
       ([scheme]) => scheme === NETWORK_SCHEME,
     )!

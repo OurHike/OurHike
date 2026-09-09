@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { get, set, del } from 'idb-keyval'
+import { del, get, getMany, set } from 'idb-keyval'
 import { useArchiveDownloads } from './useArchiveDownload'
 import { progressKeyFor, sourceKeyFor } from './archiveDownload'
 import { readArchive, segmentKeyFor } from './archiveStore'
@@ -17,6 +17,7 @@ import { readArchive, segmentKeyFor } from './archiveStore'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -37,6 +38,12 @@ const BOTH = [SHEET, TERRAIN]
 function withStore(initial: Record<string, unknown> = {}) {
   const store: Record<string, unknown> = { ...initial }
   vi.mocked(get).mockImplementation(async (key) => store[key as string])
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(set).mockImplementation(async (key, value) => {
     store[key as string] = value
   })
@@ -284,6 +291,74 @@ describe('holding several packages at once', () => {
     await act(async () => {})
 
     expect(vi.mocked(get).mock.calls.length).toBe(afterMount)
+  })
+})
+
+describe('when the package set grows after mount (#1301)', () => {
+  it('reads the packages it already knows once, and only the new one again', async () => {
+    // App.tsx registers every coverage cell the moment a cell index arrives,
+    // so the set grows from the offered sheets to several dozen packages,
+    // twice, on a launch with signal. Re-reading the sheets each time was
+    // three IndexedDB round trips per known package on the thread the first
+    // frame was waiting for.
+    withStore()
+    mockFetch({})
+
+    const { result, rerender } = renderHook(
+      ({ requests }: { requests: typeof BOTH }) => useArchiveDownloads(requests),
+      { initialProps: { requests: [SHEET] } },
+    )
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+    const sheetReadsAfterMount = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
+    expect(sheetReadsAfterMount).toBeGreaterThan(0)
+
+    rerender({ requests: BOTH })
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+
+    const sheetReadsAfterGrowth = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
+    const terrainReads = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(TERRAIN.packageKey)).length
+    expect(sheetReadsAfterGrowth).toBe(sheetReadsAfterMount)
+    expect(terrainReads).toBeGreaterThan(0)
+    expect(result.current.statusFor(TERRAIN.packageKey).state).toBe('not-downloaded')
+  })
+})
+
+describe('a store that refuses a read (#1301)', () => {
+  it('asks again on a later run rather than caching the refusal for the session', async () => {
+    // A database that refused this read is not the same as one that answered.
+    // Marking it answered would make a transient refusal permanent: a
+    // downloaded archive reading as absent, and the map rebuilt around the
+    // live sheet, until the app is relaunched.
+    withStore()
+    mockFetch({})
+    vi.mocked(get).mockRejectedValue(new Error('no IndexedDB here'))
+
+    const { result, rerender } = renderHook(
+      ({ requests }: { requests: typeof BOTH }) => useArchiveDownloads(requests),
+      { initialProps: { requests: [SHEET] } },
+    )
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+    const refusedReads = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
+    expect(refusedReads).toBeGreaterThan(0)
+
+    // The set grows, which re-runs the mount effect. A package that never
+    // answered is asked again.
+    rerender({ requests: BOTH })
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(get)
+          .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length,
+      ).toBeGreaterThan(refusedReads),
+    )
   })
 })
 

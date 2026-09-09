@@ -43,6 +43,53 @@ export interface BoundingBox {
   north: number
 }
 
+/**
+ * The map's view of what is on the phone - one point per waypoint (#1303).
+ *
+ * A named function rather than an inline `pois.map(...)` in the shell, for
+ * App.loadBudget.test.tsx's reason: this is a full pass over 16,949 waypoints
+ * with an allocation per row, and the budget is spelled in calls. The shell
+ * calls it only once a map is mounted, which on a phone landing on Today is
+ * never (#1081's latch) - so a launch that shows no map builds no points.
+ */
+export function mapPointsFrom(
+  pois: readonly {
+    id: string
+    type: string
+    lat: number
+    lon: number
+    confidence: 'high' | 'low'
+    name: string
+    siteId?: string
+    siteRole?: string
+  }[],
+): MapPoint[] {
+  const points: MapPoint[] = new Array<MapPoint>(pois.length)
+  for (let i = 0; i < pois.length; i += 1) {
+    const poi = pois[i]
+    points[i] = {
+      id: poi.id,
+      type: poi.type,
+      lat: poi.lat,
+      lon: poi.lon,
+      confidence: poi.confidence,
+      // The name, for map/poiLabels.ts (#1194). Unconditional, unlike the
+      // site keys below: lib/trailData.ts fills a missing one with the
+      // literal 'Unnamed', so a POI always has SOME string here and the
+      // label layer's filter is what refuses to draw that word.
+      name: poi.name,
+      // Carried through so the map can draw one pin per site (#524). Assigned
+      // conditionally rather than as possibly-undefined, so a POI from a
+      // pre-#523 download has no site keys at all rather than keys holding
+      // undefined - which `composeSites` reads identically, but which would
+      // show up in a snapshot as a claim about a site.
+      ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
+      ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
+    }
+  }
+  return points
+}
+
 export interface MapPoint {
   id: string
   type: string

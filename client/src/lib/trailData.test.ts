@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { get, set, setMany, del } from 'idb-keyval'
+import { get, set, setMany, del, getMany } from 'idb-keyval'
 import {
   downloadTrailData,
   haveTrailData,
@@ -42,6 +42,7 @@ import { sha256Hex } from './sha256'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   // The commit is ONE transaction since #657, so the double has to offer the
   // call that makes it one - a mock missing it fails every test in this file
@@ -101,6 +102,12 @@ beforeEach(() => {
   // exactly as they did before #197.
   publishing(() => null)
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+  // `getMany` follows whatever `get` is doing right now (#1303's one
+  // transaction in lib/trailData.ts), so a test that re-points `get`
+  // mid-file does not have to re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
     return Promise.resolve()

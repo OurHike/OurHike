@@ -28,13 +28,19 @@ export function useAccount(): Account | null {
       if (live) setAccount(next)
     })
 
-    void currentAccount().then((restored) => {
-      // The subscription's answer always wins once it has given one, and
-      // that includes when it said "nobody". Treating only a non-null
-      // subscription result as newer would let a slow read of stored session
-      // put a hiker back to looking signed in straight after signing out.
-      if (live && !reported) setAccount(restored)
-    })
+    void currentAccount()
+      .then((restored) => {
+        // The subscription's answer always wins once it has given one, and
+        // that includes when it said "nobody". Treating only a non-null
+        // subscription result as newer would let a slow read of stored session
+        // put a hiker back to looking signed in straight after signing out.
+        if (live && !reported) setAccount(restored)
+      })
+      .catch(() => {
+        // The auth chunk did not arrive (#1302 put it behind `import()`).
+        // Null is already the state, and it is a state the whole app works
+        // in; the catch is here so the rejection does not go unhandled.
+      })
 
     return () => {
       live = false

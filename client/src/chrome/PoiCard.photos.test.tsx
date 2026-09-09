@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react'
-import { get, update, del, keys } from 'idb-keyval'
+import { del, get, getMany, keys, update } from 'idb-keyval'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import { addOwnPhoto, POI_PHOTOS_PREFIX } from '../lib/poiPhotos'
 import { preparePhoto, PhotoUnusable } from '../lib/reportPhoto'
@@ -25,6 +25,7 @@ import { OUTBOX_KEY, type OutboxItem } from '../lib/outbox'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   update: vi.fn(),
   del: vi.fn(),
   keys: vi.fn(),
@@ -73,6 +74,12 @@ const mockedScreenPhoto = vi.mocked(screenPhoto)
 function withStore() {
   const stored = new Map<string, unknown>()
   mockedGet.mockImplementation(async (key) => stored.get(key as string))
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   mockedUpdate.mockImplementation(async (key, updater) => {
     stored.set(key as string, updater(stored.get(key as string)))
   })

@@ -21,7 +21,7 @@
 // go through `crypto.subtle.digest` rather than the vendored streaming fold the
 // archive needs - see sha256Of below, and #717 for the 10x that was costing.
 
-import { get, set, setMany, del } from 'idb-keyval'
+import { get, getMany, set, setMany, del } from 'idb-keyval'
 import {
   DATA_BASE_URL,
   dataUrl,
@@ -1254,30 +1254,57 @@ export async function loadTrailData(): Promise<TrailData | null> {
   const trails = await loadTrailLines()
   if (trails === null) return null
 
+  // ONE TRANSACTION FOR THE WHOLE RELEASE (#1303). These were eight more
+  // `await get(...)` calls in a row - eight IndexedDB round trips, each
+  // waiting for the last, on the thread a launch is drawn on. `getMany` is
+  // one transaction over the same keys, and idb-keyval hands the values back
+  // in the order they were asked for.
+  //
+  // The trail lines stay a separate read above, because they decide whether
+  // there is a release to read at all: a phone holding nothing returns before
+  // this line rather than opening a transaction for eight keys that cannot be
+  // there.
+  const [
+    storedMiles,
+    storedPois,
+    storedSpurs,
+    storedElevation,
+    storedClubs,
+    storedStewardsValue,
+    storedHighlightsValue,
+    storedRetired,
+  ] = await getMany([
+    TRAIL_MILES_STORE_KEY,
+    POIS_KEY,
+    SPURS_STORE_KEY,
+    ELEVATION_STORE_KEY,
+    CLUB_SECTIONS_STORE_KEY,
+    STEWARDS_STORE_KEY,
+    HIGHLIGHTS_STORE_KEY,
+    RETIRED_POI_STORE_KEY,
+  ])
+
   // A Blob or nothing. Anything else in the slot - a release stored by a
   // build that wrote something different there - is "no miles", never a
   // parse attempt on a value nobody stands behind.
-  const storedMiles = await get(TRAIL_MILES_STORE_KEY)
   const trailMiles = storedMiles instanceof Blob ? storedMiles : null
-  const pois = ((await get(POIS_KEY)) as StoredPoi[] | undefined) ?? []
-  const spurs =
-    ((await get(SPURS_STORE_KEY)) as Record<string, SpurRecord> | undefined) ?? {}
+  const pois = (storedPois as StoredPoi[] | undefined) ?? []
+  const spurs = (storedSpurs as Record<string, SpurRecord> | undefined) ?? {}
   // Undefined and null both mean "no ribbon". They arrive from different
   // places - nothing stored at all, versus a release that published no profile
   // - and neither is a state the map screen has to tell apart.
-  const elevation =
-    ((await get(ELEVATION_STORE_KEY)) as ElevationProfile | undefined) ?? null
+  const elevation = (storedElevation as ElevationProfile | undefined) ?? null
   // Through storedClubSections rather than a bare cast: what is in the store
   // was written by whatever version of this app was installed then, and the
   // corridor view reads it on every camera move.
-  const clubSections = storedClubSections(await get(CLUB_SECTIONS_STORE_KEY))
-  const stewards = storedStewards(await get(STEWARDS_STORE_KEY))
-  const highlights = storedHighlights(await get(HIGHLIGHTS_STORE_KEY))
+  const clubSections = storedClubSections(storedClubs)
+  const stewards = storedStewards(storedStewardsValue)
+  const highlights = storedHighlights(storedHighlightsValue)
   // Re-parsed shape rather than a bare cast, for the reason club sections
   // are: what is in the store was written by whatever version of this app was
   // installed then, and `storedTombstones` is the one place that decides what
   // a usable tombstone is.
-  const retiredPois = storedTombstones(await get(RETIRED_POI_STORE_KEY))
+  const retiredPois = storedTombstones(storedRetired)
   return {
     trails,
     trailMiles,

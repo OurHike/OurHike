@@ -27,7 +27,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness, openMapTab } from './test/appHarness'
@@ -48,6 +48,7 @@ import { OSM_SOURCE_ID } from './map/liveTopo'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -84,6 +85,12 @@ beforeEach(() => {
           release: () => resolve(store.get(key as string)),
         })
       }),
+  )
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
   )
 })
 
@@ -205,14 +212,21 @@ describe('what a cold start costs', () => {
     expect(MockMap.live).toHaveLength(1)
   })
 
-  it('waits for the archive store before drawing anything at all', async () => {
+  it('paints the tab bar at once, and waits for the archive store before drawing a map', async () => {
     // The half of the fix that is not about counting. `statusFor` answers
     // "not downloaded" for a package it has not READ yet, which is the same
     // answer it gives for one that is genuinely absent - so the shell used to
     // conclude "no download, draw the live sheet" before the question had been
     // asked, and reverse itself a beat later.
+    //
+    // Since #1301 the wait is the MAP's alone: the tab bar is on screen before
+    // the store has answered anything (the launch mirror says this phone is
+    // past onboarding), and the map is still not built until it has.
     aPhoneThatHasBeenUsed()
     render(<App />)
+
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+    expect(MockMap.instances).toHaveLength(0)
 
     await land(isPreferences)
     expect(MockMap.instances).toHaveLength(0)
@@ -220,6 +234,30 @@ describe('what a cold start costs', () => {
 
     await land(isArchive)
     await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.instances).toHaveLength(1)
+  })
+
+  it('keeps the tab bar when the map tab is tapped before the store has answered', async () => {
+    // Since #1301 the shell paints before the archive markers are read, so a
+    // hiker can reach the tab bar and tap Map inside that window. The map
+    // subtree carries the map tab's own tab bar, and with no map to mount it
+    // rendered nothing at all - a blank screen with no way back, which is the
+    // failure TECHNICAL_ARCHITECTURE.md's boundary section exists to prevent
+    // and worse than the one it was written for, because nothing had thrown.
+    aPhoneThatHasBeenUsed()
+    render(<App />)
+
+    await land(isPreferences)
+    await openMapTab()
+
+    // No map yet - the store has not said which background it should be built
+    // around - and still a way off this screen.
+    expect(MockMap.instances).toHaveLength(0)
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
+
+    await land(isArchive)
     await screen.findByRole('region', { name: /trail map/i })
     expect(MockMap.instances).toHaveLength(1)
   })

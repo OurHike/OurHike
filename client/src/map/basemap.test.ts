@@ -59,7 +59,7 @@ const fetchMock = vi.fn()
 
 /** Registers (idempotently) and returns the handler MapLibre would hold. */
 function tileHandler() {
-  registerBasemapProtocol()
+  registerBasemapProtocol(addProtocol)
   const call = (addProtocol as unknown as Mock).mock.calls.find(
     ([scheme]) => scheme === BASEMAP_SCHEME,
   )
@@ -89,9 +89,9 @@ afterEach(() => {
 
 describe('registerBasemapProtocol', () => {
   it('registers the scheme once, however many components ask', () => {
-    registerBasemapProtocol()
-    registerBasemapProtocol()
-    registerBasemapProtocol()
+    registerBasemapProtocol(addProtocol)
+    registerBasemapProtocol(addProtocol)
+    registerBasemapProtocol(addProtocol)
 
     const calls = (addProtocol as unknown as Mock).mock.calls.filter(
       ([scheme]) => scheme === BASEMAP_SCHEME,

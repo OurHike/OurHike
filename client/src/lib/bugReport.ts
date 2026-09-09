@@ -14,6 +14,15 @@
 // the same job screens/AboutBuild.tsx's copy button does for the path where
 // somebody writes an email instead.
 //
+// AND SINCE #1299, HOW LONG THE LAUNCH TOOK. "The app takes about six seconds
+// to open" is a report nobody can act on without knowing WHICH six seconds,
+// and the phone is the only place that number exists - the throttled profile
+// in client/scripts/measure-first-run.mjs cannot see a browser process
+// starting or a phone's storage. The marks are lib/launchMarks.ts's, they are
+// facts about our own software's timing rather than about the device, and
+// they travel exactly as far as the build already does: into a URL the hiker
+// is looking at, only if they open the form.
+//
 // WHAT IS DELIBERATELY NOT PREFILLED: `navigator.userAgent`. It would answer
 // the form's "phone and browser" question better than a hiker can, and it is
 // still not ours to attach to a public issue on their behalf. The build is a
@@ -22,6 +31,7 @@
 // (IDENTITY_AND_PRIVACY.md). The form asks in words instead, which is answerable.
 
 import { BUILD_INFO, buildSummary, type BuildInfo } from './buildInfo'
+import { launchSummary } from './launchMarks'
 
 /** The repository, which every link here is built from. */
 export const REPOSITORY_URL = 'https://github.com/OurHike/OurHike'
@@ -116,6 +126,9 @@ export const BUG_REPORT_OPTIONS: BugReportOption[] = [
 export function bugReportUrl(
   option: BugReportOption,
   build: BuildInfo = BUILD_INFO,
+  /** How long this launch took, as lib/launchMarks.ts read it. Injectable for
+   *  the same reason `build` is: the real one is a live clock. */
+  timings: string = launchSummary(),
 ): string {
   const params = new URLSearchParams({ template: option.template })
 
@@ -124,7 +137,9 @@ export function bugReportUrl(
   // Only onto the form that has the field. GitHub ignores a parameter naming
   // no field, so sending it anyway would work and would still be a lie about
   // what the data form asks for.
-  if (option.template === SOFTWARE_FORM) params.set('conditions', buildSummary(build))
+  if (option.template === SOFTWARE_FORM) {
+    params.set('conditions', `${buildSummary(build)}\n${timings}`)
+  }
 
   return `${REPOSITORY_URL}/issues/new?${params.toString()}`
 }

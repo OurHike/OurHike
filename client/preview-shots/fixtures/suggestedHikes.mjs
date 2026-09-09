@@ -102,8 +102,9 @@ export const SUGGESTED_HIKES_DOCUMENT = {
     },
     {
       // The unmeasured-climb case the handoff says not to skip: no time,
-      // and it says so. Since #1290 it is also the ONE fixture carrying a
-      // `detail`, so the hike-detail recipes have a screen to reach - and
+      // and it says so. Since #1290 it is also the ONE fixture carrying the
+      // detail screen's own fields, so the hike-detail recipes have
+      // something to reach - and
       // the only one whose publisher is invented outright ('Vernon Trails'),
       // which is why the invented prose below hangs on this route and not
       // on one attributed to a club that really exists. Made-up sentences
@@ -115,6 +116,15 @@ export const SUGGESTED_HIKES_DOCUMENT = {
       // renders. No existing recipe's copy moves with it: the shelf shows
       // the first three published, and the results recipe filters by
       // transit, which this route has none of.
+      //
+      // THE DETAIL FIELDS ARE FLAT, beside `miles` and `segments`, because
+      // that is what `pipeline/export_suggested_hikes.py` writes and what
+      // `lib/suggestedHikesData.ts` reads - it gathers them into a `detail`
+      // block on the way in. The first version of this fixture nested them
+      // under `detail:` and every one was silently dropped: the shot showed
+      // a detail screen with no publisher's length, no start, no prose and
+      // no link back. A fixture that does not match the wire is a shot that
+      // is evidence about a document nobody publishes.
       id: 'fixture-wapiti',
       name: 'Wapiti to Docs Knob',
       miles: 7.9,
@@ -122,37 +132,35 @@ export const SUGGESTED_HIKES_DOCUMENT = {
       difficulty: 'moderate-strenuous',
       author: { kind: 'ourhike', name: 'Vernon Trails' },
       segments: ends(VA, 2),
-      detail: {
-        url: 'https://example.org/routes/wapiti-to-docs-knob',
-        // Deliberately NOT 7.9. The two figures disagreeing is the whole
-        // point of the screen, and a fixture where they agree photographs
-        // nothing.
-        publishedMiles: 8.5,
-        overview: [
-          'A long ridge walk to a knob with one wide view north, and a second one south if you carry on past the cairn.',
-          'The tread is rocky for the middle two miles. Nothing here is exposed, but it is slow.',
-        ],
-        description: [
-          'Park at the pull-off and cross the road to the kiosk.',
-          'Follow the blue blazes uphill for a mile and a quarter to the first bench.',
-          'At the fork, keep left. The right fork drops to the creek and does not come back.',
-          'The knob is a half mile past the second bench. Return the way you came.',
-        ],
-        publication: {
-          submittedBy: 'R. Okonjo',
-          submittedOn: '2019-05-02',
-          verifiedOn: '2024-10-11',
-        },
-        // Read off a place card's map centre rather than a placed pin, so
-        // the screen prints the caveat that says which. That sentence is
-        // one of the things worth photographing.
-        start: { lat: 37.31, lon: -80.66, basis: 'map_centre' },
-        routeType: 'Out and back',
-        park: 'Vernon State Forest',
-        trails: ['Wapiti Trail', 'Docs Knob Connector'],
-        hikerNote:
-          'The turnaround sits where their description puts it rather than at a junction, so this line runs shorter than the length on their page.',
+      url: 'https://example.org/routes/wapiti-to-docs-knob',
+      // Deliberately NOT 7.9. The two figures disagreeing is the whole
+      // point of the screen, and a fixture where they agree photographs
+      // nothing.
+      publishedMiles: 8.5,
+      overview: [
+        'A long ridge walk to a knob with one wide view north, and a second one south if you carry on past the cairn.',
+        'The tread is rocky for the middle two miles. Nothing here is exposed, but it is slow.',
+      ],
+      description: [
+        'Park at the pull-off and cross the road to the kiosk.',
+        'Follow the blue blazes uphill for a mile and a quarter to the first bench.',
+        'At the fork, keep left. The right fork drops to the creek and does not come back.',
+        'The knob is a half mile past the second bench. Return the way you came.',
+      ],
+      publication: {
+        submittedBy: 'R. Okonjo',
+        submittedOn: '2019-05-02',
+        verifiedOn: '2024-10-11',
       },
+      // Read off a place card's map centre rather than a placed pin, so
+      // the screen prints the caveat that says which. That sentence is
+      // one of the things worth photographing.
+      start: { lat: 37.31, lon: -80.66, basis: 'map_centre' },
+      routeType: 'Out and back',
+      park: 'Vernon State Forest',
+      trails: ['Wapiti Trail', 'Docs Knob Connector'],
+      hikerNote:
+        'The turnaround sits where their description puts it rather than at a junction, so this line runs shorter than the length on their page.',
     },
     {
       id: 'fixture-pinwheel',

@@ -204,6 +204,11 @@ export function validateSuggestedHike(candidate: unknown): SuggestedHike | null 
   // than nested, because they are all facts about one route. They are read
   // into one optional block here so a screen can ask "is there a detail to
   // show" once instead of ten times.
+  // So THE WHOLE RECORD is what goes in, not a `detail` key - there isn't
+  // one on the wire. A fixture that invented one produced a detail screen
+  // with no publisher's length, no start, no prose and no link back, and the
+  // preview shot was the only thing that caught it; the tests below now pin
+  // the flat shape against exactly that mistake.
   const detail = validDetail(candidate)
 
   return {

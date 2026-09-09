@@ -23,10 +23,9 @@ best-effort inference looks like when it turns out to be wrong.
 import json
 from pathlib import Path
 
-import requests
-
 from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
+from lib.http_retry import request_with_retry
 
 API_URL = "https://opentrail.org/api/getData"
 OUT_PATH = Path(__file__).parent / "data" / "raw" / "opentrail_at.geojson"
@@ -72,7 +71,21 @@ def fetch_at_data(etag: str | None):
     support, so this uses real HTTP conditional requests rather than
     reimplementing change detection client-side."""
     headers = {"If-None-Match": etag} if etag else {}
-    resp = requests.get(API_URL, params={"trail": "AT"}, headers=headers, timeout=60)
+    # The default posture, and patient on purpose: this is one request, and
+    # everything else this script does depends on it, so there is nothing to
+    # lose by waiting out a flake and a whole run to lose by not (#536, and
+    # #1295 for why this was still a bare requests.get afterwards).
+    #
+    # 304 passes through rather than raising - it is not a retryable status
+    # and `raise_for_status` treats 3xx as an answer - which is what makes
+    # the conditional request survive the move onto the shared helper.
+    resp = request_with_retry(
+        API_URL,
+        params={"trail": "AT"},
+        headers=headers,
+        timeout=60,
+        label="opentrail",
+    )
     if resp.status_code == 304:
         return None, etag
     resp.raise_for_status()

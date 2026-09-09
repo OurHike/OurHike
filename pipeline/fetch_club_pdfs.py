@@ -46,10 +46,9 @@ import json
 import sys
 from pathlib import Path
 
-import requests
-
 from lib.club_pdfs import PARSERS
 from lib.fetch_receipts import record
+from lib.http_retry import request_with_retry
 from lib.source_registry import club_pdf_sources, load_registry
 from lib.user_agent import USER_AGENT
 
@@ -115,10 +114,15 @@ def fetch_entry(entry: dict, state: dict) -> tuple[dict, bool]:
     key = entry["key"]
     pdf_path = OUT_DIR / f"{key}.pdf"
 
-    response = requests.get(
+    # One club's host flaking must not look like one club's PDF changing, so
+    # this retries rather than raising on the first 5xx - and the caller's
+    # "one club's broken document does not stop another's fetch" still holds
+    # once the budget is spent (#1295).
+    response = request_with_retry(
         entry["url"],
         headers={"User-Agent": USER_AGENT, **conditional_headers(state, pdf_path)},
         timeout=TIMEOUT,
+        label=f"club_pdf/{key}",
     )
     if response.status_code == 304:
         print(f"  {key}: up to date (304 Not Modified).")

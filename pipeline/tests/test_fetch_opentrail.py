@@ -5,6 +5,7 @@ import pytest
 
 import fetch_opentrail
 from fetch_opentrail import regression_problems, strip_comments
+from lib import http_retry
 
 SAMPLE_FC = {
     "type": "FeatureCollection",
@@ -248,3 +249,42 @@ def test_moderate_feature_drop_within_threshold_is_still_persisted(tmp_path, mon
 
     assert json.loads(state_path.read_text())["etag"] == "new-etag-good"
     assert len(json.loads(out_path.read_text())["features"]) == 6
+
+
+def test_a_transient_failure_is_absorbed_rather_than_ending_the_fetch(monkeypatch, requests_mock):
+    """One request, and everything this script does hangs off it.
+
+    Until #1295 it was a bare `requests.get` - the same shape #536 and #1063
+    each found in a different fetcher, both times after it had thrown away a
+    whole run. Patient posture on purpose: there is nothing to lose by
+    waiting out a flake here.
+    """
+    monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+    requests_mock.get(
+        fetch_opentrail.API_URL,
+        [
+            {"status_code": 502},
+            {"json": {"type": "FeatureCollection", "features": []}, "headers": {"ETag": '"v2"'}},
+        ],
+    )
+
+    data, etag = fetch_opentrail.fetch_at_data(None)
+
+    assert data == {"type": "FeatureCollection", "features": []}
+    assert etag == '"v2"'
+    assert requests_mock.call_count == 2
+
+
+def test_a_304_still_short_circuits_without_being_retried(requests_mock):
+    """The conditional request is the whole point of this fetcher, and the
+    move onto the shared helper had to leave it intact: 304 is absent from
+    DEFAULT_RETRYABLE_STATUSES and `raise_for_status` treats 3xx as an
+    answer, so it comes back rather than being retried or raised."""
+    requests_mock.get(fetch_opentrail.API_URL, status_code=304)
+
+    data, etag = fetch_opentrail.fetch_at_data('"v1"')
+
+    assert data is None
+    assert etag == '"v1"'
+    assert requests_mock.call_count == 1
+    assert requests_mock.request_history[0].headers["If-None-Match"] == '"v1"'

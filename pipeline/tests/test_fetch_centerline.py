@@ -26,9 +26,7 @@ QUERY_URL = LAYER_URL + "/query"
 def registered(tmp_path, monkeypatch):
     """A one-entry registry and a temp output path, so nothing touches data/."""
     sources = tmp_path / "sources.json"
-    sources.write_text(
-        json.dumps({"sources": [{"key": "centerline", "title": "A.T. Centerline", "url": LAYER_URL}]})
-    )
+    sources.write_text(json.dumps({"sources": [{"key": "centerline", "title": "A.T. Centerline", "url": LAYER_URL}]}))
     out = tmp_path / "raw" / "centerline.geojson"
     monkeypatch.setattr(fetch_centerline, "SOURCES_PATH", sources)
     monkeypatch.setattr(fetch_centerline, "OUT_PATH", out)

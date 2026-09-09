@@ -34,11 +34,7 @@ ALLOWED = {"lib/user_agent.py", "tests/test_user_agent.py"}
 
 
 def python_sources() -> list[Path]:
-    return sorted(
-        path
-        for path in PIPELINE_ROOT.rglob("*.py")
-        if "/data/" not in str(path) and ".venv" not in str(path)
-    )
+    return sorted(path for path in PIPELINE_ROOT.rglob("*.py") if "/data/" not in str(path) and ".venv" not in str(path))
 
 
 def test_the_string_is_spelled_in_exactly_one_module():

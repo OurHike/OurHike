@@ -3463,3 +3463,300 @@
   display: flex;
   gap: var(--space-2, 8px);
 }
+
+/* ---------------------------------------------------------------------------
+   The finish (#1317) - the one celebratory screen, on pine.
+
+   Everything here is chrome ink over `--bg-chrome`, which is dark in both
+   themes, so the screen reads the same at 6am in a shelter and at noon in a
+   car park. The gradient over the hero is the only place this file paints a
+   literal colour, and it is a scrim rather than a hue: a photo needs a
+   guaranteed contrast floor under the words, and a token cannot know how
+   bright the picture behind it is.
+*/
+
+.finish {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.finish__hero {
+  position: relative;
+  height: 300px;
+  overflow: hidden;
+}
+
+.finish__hero-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.finish__hero-words {
+  position: absolute;
+  inset: auto 18px 18px;
+  background: linear-gradient(
+    to top,
+    var(--bg-chrome) 8%,
+    rgb(18 32 22 / 35%) 55%,
+    rgb(18 32 22 / 15%) 100%
+  );
+}
+
+.finish__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--accent-chrome);
+}
+
+.finish__name {
+  margin: 4px 0 0;
+  font-family: var(--font-display, serif);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--fg-chrome-1);
+}
+
+.finish__sentence {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+}
+
+.finish__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+  padding: var(--space-5, 20px) var(--space-4, 16px);
+}
+
+.finish__figures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3, 12px);
+}
+
+.finish__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.finish__figure-value {
+  font-family: var(--font-display, serif);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-chrome-1);
+}
+
+.finish__figure-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.finish__rule,
+.finish__crews-line {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.finish__crews-line {
+  letter-spacing: normal;
+  text-transform: none;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+}
+
+.finish__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: var(--space-2, 8px);
+}
+
+.finish__tile {
+  height: 78px;
+  margin: 0;
+  border-radius: var(--radius-m, 8px);
+  overflow: hidden;
+}
+
+.finish__tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Dashed and empty: what says on screen that a hiker's own photos stay on
+   their phone unless they share them. */
+.finish__tile--slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 1px dashed var(--border-chrome);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  text-align: center;
+  color: var(--fg-chrome-3);
+}
+
+.finish__caption {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-chrome-3);
+}
+
+.finish__crews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  border-radius: var(--radius-l, 14px);
+  background: var(--surface-chrome-raised);
+}
+
+.finish__crews-button,
+.finish__outline {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 1px solid var(--border-chrome);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-chrome);
+  cursor: pointer;
+}
+
+.finish__outline {
+  color: var(--fg-chrome-1);
+}
+
+.finish__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.finish__closing {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-chrome-3);
+}
+
+/* Sharing a hike (#1317). The preview is `LeaveWithSomeone`'s `<pre>` at the
+   same size on the same sunken ground - it is the same kind of object, a
+   card of plain text somebody is about to hand over, and two of them styled
+   differently would read as two different things. */
+.share-hike {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+}
+
+.share-hike__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.share-hike__note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.share-hike__person {
+  cursor: default;
+}
+
+.share-hike__preview {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: var(--radius-m, 8px);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+}
+
+.share-hike__status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* The finished hike as it lives in Plan (#1317). Paper rather than pine
+   below the band: it is a record to read, not a moment to mark - the finish
+   screen is where the moment lives, and this is what it leaves behind. */
+.finished-hike {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+  padding: var(--space-4, 16px);
+}
+
+.finished-hike__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-top: var(--space-4, 16px);
+}
+
+.finished-hike__header {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.finished-hike__photo {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-l, 14px);
+}
+
+.finished-hike__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.finished-hike__closing {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}

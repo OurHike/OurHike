@@ -113,7 +113,29 @@ export function pointMeta(mile: number, date: string | undefined): string {
   return `${miles} · ${date === undefined ? 'no date' : shortDate(date)}`
 }
 
-/** `14 Mar` from an ISO calendar day, or the input when it is not one. */
+/**
+ * `14 Mar 2024` - a date with its YEAR, for anything spanning more than a
+ * season.
+ *
+ * Separate from `shortDate` below, and the split matters: a point inside a
+ * planned trip reads better without a year, because everything around it is
+ * the same year and the number is noise. A long hike's two ends are not -
+ * "14 Mar – 12 Aug" for a walk that took from 2024 to 2026 hides the two
+ * years it took, which is the single most striking fact about it.
+ */
+export function longDate(iso: string): string {
+  const at = Date.parse(`${iso}T00:00:00Z`)
+  if (Number.isNaN(at)) return iso
+  return new Date(at).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/** `14 Mar` from an ISO calendar day, or the input when it is not one.
+ *  Year-less on purpose - see `longDate`. */
 export function shortDate(iso: string): string {
   const at = Date.parse(`${iso}T00:00:00Z`)
   if (Number.isNaN(at)) return iso

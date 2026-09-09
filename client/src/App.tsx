@@ -196,6 +196,7 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
 import { mileMarker, stopLabel } from './lib/planDisplay'
+import { longDate } from './lib/hikeText'
 import { formatDistance, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
@@ -231,12 +232,16 @@ import {
   renameTrip,
   saveTrips,
   updateTrip,
+  type Trip,
   type TripStore,
 } from './lib/trips'
 import {
   DEFAULT_TRAIL_ID,
   hikeBounds,
   hikeEnds,
+  hikeFigures,
+  hikeLegs,
+  MIN_GAP_MI,
   hikeFromTrips,
   hikeOfTrip,
   recordedPlan,
@@ -319,6 +324,10 @@ import { StepAwaySheet } from './chrome/StepAwaySheet'
 import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
 import { HikeSetup, setupRefusal } from './screens/HikeSetup'
 import { HikeDay } from './screens/HikeDay'
+import { HikeFinish } from './screens/HikeFinish'
+import { FinishedHike } from './screens/FinishedHike'
+import { ShareHike } from './screens/ShareHike'
+import { hikeShareText } from './lib/hikeShareText'
 import type { LongHikeToday } from './screens/Today'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -2817,8 +2826,13 @@ function App() {
     (hikeId: string) => {
       applyTripStore((store) => setActiveHike(store, hikeId))
       setHikeSheet(null)
+      // A finished hike opens its RECORD rather than its day: there is no
+      // next day on it, and landing a hiker on a Today screen with nothing
+      // planned would be the app pretending the walk is still going.
+      const picked = tripStore.hikes.find((hike) => hike.id === hikeId)
+      if (picked?.status === 'finished') setFinishScreen('record')
     },
-    [applyTripStore],
+    [applyTripStore, tripStore.hikes],
   )
 
   /** Start a new one. The draft is two unnamed points rather than none, so
@@ -3031,6 +3045,49 @@ function App() {
     [activeHike, applyTripStore],
   )
 
+  /**
+   * Which of the finish screens is open (#1317).
+   *
+   * `'finish'` is the celebratory one, offered rather than declared - a
+   * hiker at the terminus with no fix must still be able to say so
+   * themselves, so nothing here opens it without a tap. `'record'` is the
+   * hike as it lives in Plan afterwards, and `'share'` is over either.
+   */
+  const [finishScreen, setFinishScreen] = useState<'finish' | 'record' | 'share' | null>(
+    null,
+  )
+
+  /**
+   * The facts the finish screen, the record and the share card all read.
+   *
+   * ONE derivation for three surfaces, deliberately: they print the same
+   * hike, and three separate readings of the store is how the card a hiker
+   * sends somebody comes to disagree with the screen they sent it from.
+   */
+  const finishedFacts = useMemo(() => {
+    if (activeHike === null) return null
+    const figures = hikeFigures(activeHike, tripStore.trips, pois)
+    const mine = activeHike.tripIds
+      .map((id) => tripStore.trips.find((trip) => trip.id === id))
+      .filter((trip) => trip !== undefined)
+    const dates = mine
+      .flatMap((trip) => trip.plan.days.map((day) => day.date))
+      .filter((date) => date !== undefined)
+      .sort()
+
+    return {
+      hike: activeHike,
+      figures,
+      sections: mine,
+      startedOn: dates[0] ?? null,
+      // The hike's own finish date where it has one; otherwise the last day
+      // anything in it was dated. Never today's date as a fallback - that
+      // would put a date on a finish nobody recorded.
+      finishedOn: activeHike.finishedOn ?? dates[dates.length - 1] ?? null,
+      directions: hikeLegs(activeHike, pois).map((leg) => leg.direction),
+    }
+  }, [activeHike, tripStore.trips, pois])
+
   /** The step-away sheet, and whether its one destructive door is armed. */
   const [stepAwayOpen, setStepAwayOpen] = useState(false)
   const [confirmingForget, setConfirmingForget] = useState(false)
@@ -3080,6 +3137,9 @@ function App() {
     if (activeHike === null) return
     applyTripStore((store) => finishHike(store, activeHike.id, localDay(now)))
     closeStepAway()
+    // Offered, never declared - and this IS the hiker saying so, so the
+    // screen follows the tap rather than appearing on its own.
+    setFinishScreen('finish')
   }, [activeHike, applyTripStore, now, closeStepAway])
 
   /** First press arms, second press forgets. Never a swipe - see
@@ -6286,7 +6346,81 @@ function App() {
   // typing or deciding - and while one is up the downloads window is not
   // rendered, which is the behaviour the early returns gave it.
   let flowScreen: ReactNode = null
-  if (hikeDayOpen && hikeDayView !== null) {
+  if (finishScreen !== null && finishedFacts !== null) {
+    // Sharing renders OVER whichever of the other two opened it, so closing
+    // the share sheet returns to the screen it was opened from rather than
+    // dropping the hiker back into Plan.
+    const under =
+      finishScreen === 'record' ? (
+        <FinishedHike
+          hikeName={finishedFacts.hike.name}
+          header={finishedHeader(finishedFacts, units)}
+          photo={null}
+          sections={finishedSections(finishedFacts, units)}
+          totalSections={finishedFacts.sections.length}
+          someUnpriced={false}
+          units={units}
+          onOpenSection={handleOpenTrip}
+          onAllSections={() => setTripsOpen(true)}
+          onShare={() => setFinishScreen('share')}
+          // Export is FEATURES.md's existing commitment and its own piece of
+          // work. Until it lands the door must not look like it did
+          // something - so it says what it will do and does nothing yet,
+          // which is the honest version of "not built".
+          onExport={() => undefined}
+          onStartAnother={handleNewHike}
+          onBack={() => setFinishScreen(null)}
+        />
+      ) : (
+        <HikeFinish
+          hikeName={finishedFacts.hike.name}
+          sentence={finishedSentence(finishedFacts, units)}
+          finishedOn={finishedFacts.finishedOn ?? localDay(now)}
+          walkedMi={finishedFacts.figures.walkedMi}
+          daysWalking={finishedFacts.figures.daysWalked}
+          climbedFt={null}
+          sections={finishedFacts.figures.tripCount}
+          seasons={null}
+          photos={[]}
+          crews={null}
+          units={units}
+          onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
+          onShare={() => setFinishScreen('share')}
+          onKeepTheRecord={() => setFinishScreen('record')}
+        />
+      )
+
+    flowScreen =
+      finishScreen === 'share' ? (
+        <ShareHike
+          hikeName={finishedFacts.hike.name}
+          cardText={hikeShareText(
+            {
+              name: finishedFacts.hike.name,
+              trailName: TRAILS[finishedFacts.hike.trailId]?.name ?? 'One trail',
+              walkedMi: finishedFacts.figures.walkedMi,
+              toGoMi: finishedFacts.figures.leftMi,
+              startedOn: finishedFacts.startedOn,
+              finishedOn: finishedFacts.finishedOn,
+              daysWalking: finishedFacts.figures.daysWalked,
+              sections: finishedFacts.figures.tripCount,
+              directions: finishedFacts.directions,
+            },
+            units,
+          )}
+          // Mutual connections are AUTHENTICATION.md's and
+          // COMMUNITY_BUILDING.md's own feature and nothing builds them yet.
+          // Empty means the section shows only its invite row and its
+          // no-public-link note, which is true rather than a placeholder.
+          recipients={[]}
+          units={units}
+          onInvite={() => undefined}
+          onClose={() => setFinishScreen('record')}
+        />
+      ) : (
+        under
+      )
+  } else if (hikeDayOpen && hikeDayView !== null) {
     flowScreen = (
       <HikeDay
         {...hikeDayView}
@@ -7772,4 +7906,73 @@ function dayLabelFor(at: HikeDayAt, now: Date): string {
           timeZone: 'UTC',
         })
   return label
+}
+
+/** The facts every finish surface reads, from one derivation. */
+type FinishedFacts = {
+  hike: Hike
+  figures: ReturnType<typeof hikeFigures>
+  sections: readonly Trip[]
+  startedOn: string | null
+  finishedOn: string | null
+  directions: readonly ('NOBO' | 'SOBO' | null)[]
+}
+
+/** `14 Mar 2024 – 12 Aug 2026 · 2,198.4 mi · 0 mi to go`.
+ *
+ *  Zero rather than "unknown" for what is left, which is decision #7: miles
+ *  not yet walked read 0, and a finished hike has none. */
+function finishedHeader(facts: FinishedFacts, units: UnitSystem): string {
+  const dates = [facts.startedOn, facts.finishedOn]
+    .filter((date) => date !== null)
+    .map((date) => longDate(date))
+  return [
+    dates.length === 0 ? null : dates.join(' – '),
+    formatDistance(facts.figures.walkedMi, units),
+    `${formatDistance(facts.figures.leftMi, units)} to go`,
+  ]
+    .filter((part) => part !== null)
+    .join(' · ')
+}
+
+/** "You walked the whole Appalachian Trail, 14 Mar 2024 to 12 Aug 2026."
+ *
+ *  "the whole" only where nothing is left, because it is a claim: a hiker
+ *  who finished a section did not walk the whole trail and must not be told
+ *  they did. */
+function finishedSentence(facts: FinishedFacts, units: UnitSystem): string {
+  const trail = TRAILS[facts.hike.trailId]?.name ?? 'the trail'
+  const whole = facts.figures.leftMi < MIN_GAP_MI
+  const what = whole ? `You walked the whole ${trail}` : `You walked ${trail}`
+  const when =
+    facts.startedOn === null || facts.finishedOn === null
+      ? null
+      : `${longDate(facts.startedOn)} to ${longDate(facts.finishedOn)}`
+  return when === null
+    ? `${what}, ${formatDistance(facts.figures.walkedMi, units)}.`
+    : `${what}, ${when}.`
+}
+
+/** The sections list, newest first - the order a hiker looks for the one
+ *  they just walked. */
+function finishedSections(facts: FinishedFacts, units: UnitSystem) {
+  return [...facts.sections].reverse().map((trip) => {
+    const miles = trip.plan.stops.map((stop) => stop.mile)
+    const spanMi = miles.length < 2 ? 0 : Math.max(...miles) - Math.min(...miles)
+    const year = trip.plan.days.find((day) => day.date !== undefined)?.date?.slice(0, 4)
+    return {
+      id: trip.id,
+      name: trip.name,
+      figures: formatDistance(spanMi, units),
+      provenance: [
+        'walked',
+        year,
+        // A stretch recalled from memory is not a claim that anybody walked
+        // 300 miles in a day, and nothing may print it as one (Trip.recorded).
+        trip.recorded === true ? 'recorded from memory' : null,
+      ]
+        .filter((part) => part !== undefined && part !== null)
+        .join(' · '),
+    }
+  })
 }

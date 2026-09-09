@@ -58,6 +58,30 @@ export interface PositionLineInputs {
    */
   trailReady: boolean
   /**
+   * The short name of the trail whose hike this build cannot measure, or
+   * null when it can (#1357).
+   *
+   * A THIRD REASON THE MILE IS MISSING, and it is neither of the two below
+   * it. `trailReady` is the app missing data and "Off the trail" is a claim
+   * about where the hiker is standing; this is the app holding the data,
+   * the hiker standing squarely on their trail, and the download carrying
+   * no mile axis for it. Saying either of the other two here would be
+   * false - the first about the phone, the second about the hiker.
+   *
+   * It is the same refusal `lib/hikeText.ts`'s `setupRefusal` already makes
+   * at hike creation ("a figure on any other trail would be an A.T. mileage
+   * wearing somebody else's name"), carried past creation to the figures -
+   * and the same one the `follow` branch below already makes for a day
+   * hike, whose note about printing "a Springer mile at somebody who is not
+   * walking to Springer" describes this case exactly.
+   *
+   * The NAME rather than a boolean, because the line has room for it and
+   * "No miles on the L.P." tells a hiker which of their two answers is
+   * missing where "No miles here" does not. lib/trails.ts's `shortName`
+   * (#1307) is where it comes from.
+   */
+  unmeasuredTrail?: string | null
+  /**
    * The day hike being followed, when there is one (lib/dayHikeFollow.ts).
    *
    * It outranks the mile because on that ground the mile is not an answer:
@@ -97,6 +121,7 @@ export function positionLine({
   mile,
   direction,
   trailReady,
+  unmeasuredTrail = null,
   follow = null,
   units = 'imperial',
 }: PositionLineInputs): string {
@@ -134,6 +159,11 @@ export function positionLine({
   // A fix, and nowhere to put it. Two different reasons, and they are not
   // interchangeable: one is the app missing data, the other is a claim about
   // where the hiker is standing.
+  // Above both of the next two, because it is true of the app AND of the
+  // hiker at once: the data is here and the hiker is somewhere real, and
+  // neither "No trail data" nor "Off the trail" would be a true sentence.
+  if (unmeasuredTrail !== null) return `No miles on the ${unmeasuredTrail}`
+
   if (!trailReady) return 'No trail data'
   if (mile === undefined) return 'Off the trail'
 

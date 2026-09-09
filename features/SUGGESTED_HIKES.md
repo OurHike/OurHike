@@ -70,11 +70,38 @@ No published routes on the phone: *Nothing published reaches this phone yet — 
   "segments": [[ { "coord": [-74.6, 41.2], "poiId": null }, { "coord": [-74.58, 41.2], "poiId": null } ]] } ] }
 ```
 
+## One route's detail, and what it refuses to say
+
+`screens/HikeDetail.tsx` (#1290, wireframe `1g`) is what a card opens — on the Today shelf, in the finder's results, anywhere `SuggestedHikeCard` is a button. It is pushed over Today rather than made a fifth tab, so Today stays the selected room.
+
+**The two figures are the point of the screen, and they are allowed to disagree.** `hike.miles` is what this build measured on the trail lines the phone holds; the publisher's own stated length sits beside it, and a quiet line under both names which is which. On the nine routes shipping today they differ by as much as a fifth — `pipeline/reference/nynjtc_hike_routes.json` records each difference and why, and the reviewed sentence from that file prints under the figures. Printing one dressed as the other would be a display outrunning its source.
+
+Four more things it declines to do:
+
+- **No time from an unmeasured climb.** Every route shipping today has `climb: null`, so the figures line reads `no time — climb unmeasured` rather than pricing the walk as flat ground. Why they all do is the last section of this file.
+- **No map plate.** Drawing the route truthfully means resolving it against the graph the phone holds and rendering that geometry, which is what *Open on map* does on the real map. A decorative sketch is a picture of a walk that may not be the walk.
+- **No pace judgement, no score, no count of anything but the walks themselves** (#982, value #1).
+- **No Avenza link**, on the maintainer's instruction, though the publisher's own pages carry one.
+
+The start is the publisher's coordinate, and the screen says where it came from: a pin they placed, or the centre of the map on their page — the second reading is weaker and the card prints the caveat that says so before offering directions.
+
+## Saving one: one record, many dates
+
+A hiker who walks the same loop three times has walked one route three times, not three routes. That is the maintainer's decision on #1290 — *"we need 1 record, with the ability to log multiple dates"* — and it is why `DayHike` gained `walks?: DayHikeWalk[]` rather than the save button minting a fresh uuid each press.
+
+The record is found by `sourceId` (`<source key>:<slug>`, the published route's own id) and never by name or geometry: a hiker may rename their copy, and two outings over mostly the same ground are genuinely different walks that a geometry comparison would merge wrongly. `savedFromSource`, `logWalk` and `walkedDates` in `lib/dayHikes.ts` are the whole of it; `MAX_WALKS` caps the list because the record syncs.
+
+The button therefore has three states and says three different things — **Save to my hikes**, then **Log a walk**, then **Log another walk**. The middle one matters: saving a plan is not walking it, so a freshly saved route has logged nothing and the word "another" would be a lie about the hiker.
+
+`sourceAuthor` rides along, captured at save time: the publisher's credit line as it read when the route was saved, printed on the day-hike list beside the hiker's own hikes. A published route landing in somebody's list with no publisher on it would be the app quietly presenting another organisation's work as theirs — and looking the credit up on display instead would lose it the day the route leaves the published document.
+
+*Open on map* appears only once the route is saved, because what the map draws is a record in the hiker's own hikes (`openId`, re-resolved from its coordinates). Before the save there is nothing to draw, and a control that cannot do its job is not offered.
+
 ## Not built yet, and why
 
-The handoff's low-fi round sketches four more screens it says are **not designed hi-fi** and to ask about before building: the hike detail (`1g`), the map view of the results (`1h`), the nothing-downloaded / nothing-matched screens (`1i`), and a suggestion saved into the day-hike list with its author kept (`1j`). Until they exist:
+The handoff's low-fi round sketched four screens it said were **not designed hi-fi**. Two are now built — the hike detail (`1g`) and a suggestion saved with its author kept (`1j`), both #1290. The other two are not:
 
-- A card is an `<article>`, not a button — a control that looks pressable and goes nowhere is the failure `chrome/LineSheet.tsx`'s rule exists to prevent. `SuggestedHikeCard` takes an `onOpen` the shell does not yet pass.
-- *See these on the map* is not drawn.
-- A photo's credit line is the detail screen's to print; a 172px card has no honest room for it.
-- Saving a suggestion re-uses the day-hike store as the handoff specifies — a `DayHike` built from the segments, `recorded: 'planned'`, through `saveDayHikes` so the sync ledger records it as the hiker's own edit — but it waits for the detail screen that offers it, and for a decision about carrying the author on a synced record (`backend/app/schemas/synced_day_hike.py`).
+- **`1h`, the map view of a whole result set.** *See these on the map* is still not drawn, and the reason is now concrete rather than "undesigned": the map draws one route at a time, from a record the hiker has saved. Showing nine unsaved routes at once needs either a second drawing path or nine silent saves, and neither is a thing to add without a design. One route at a time is reachable today — the detail's *Open on map*.
+- **`1i`, the nothing-downloaded and nothing-matched screens.** The finder prints an honest sentence for each case rather than a designed screen; the sentence says where the boundary is ("Only routes inside what you have downloaded can be searched with no signal") rather than claiming there are no hikes there.
+
+One gap the detail screen inherits rather than creates: **no route shipping today carries a climb**, so no route on any of these surfaces can be given a walking time. That is **#1313 — The published per-edge climb sidecar no longer fits the junction graph, and the phone pairs them by index anyway**: 42,103 sidecar rows against the graph's 466,966 edges, paired positionally with no length check — and it is a safety-path gap, not a cosmetic one: a hiker deciding whether they beat the dark gets an honest "unmeasured" from every one of these screens until it is fixed.

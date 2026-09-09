@@ -139,6 +139,74 @@ describe('validating one published route', () => {
   })
 })
 
+describe('the detail block a route carries', () => {
+  // THE WIRE IS FLAT AND MEMORY IS NESTED, and the seam between those two
+  // shapes had no test at all. `export_suggested_hikes.py` writes `url`,
+  // `publishedMiles`, `overview`, `start` and the rest straight onto the
+  // hike beside `miles` and `segments`; the validator gathers them into one
+  // `detail` block so a screen can ask "is there a detail" once. Nothing
+  // pinned that, so a preview fixture that guessed the nested shape produced
+  // a detail screen with no publisher's length, no start, no prose and no
+  // link back - and the shot was the only thing that noticed.
+  const FLAT = {
+    url: 'https://example.test/sunrise',
+    publishedMiles: 6.8,
+    overview: ['A ridge with two views.'],
+    description: ['Park at the lot.', 'Follow the blazes.'],
+    publication: {
+      submittedBy: 'D. Chazin',
+      submittedOn: '2016-08-24',
+      verifiedOn: null,
+    },
+    start: { lat: 41.23, lon: -74.61, basis: 'marker' },
+    routeType: 'Loop',
+    park: 'Stokes State Forest',
+    trails: ['Appalachian Trail'],
+    hikerNote: 'The turnaround is where their description puts it.',
+  }
+
+  it('gathers the exporter’s flat fields into one block', () => {
+    const read = validateSuggestedHike({ ...SOUND, ...FLAT })
+
+    expect(read?.detail).toEqual(FLAT)
+  })
+
+  it('keeps the publisher’s own length, which is the point of the block', () => {
+    // The two figures disagreeing is what the detail screen exists to show.
+    // Losing this one silently leaves the screen printing OUR measurement
+    // with nobody's name on it.
+    const read = validateSuggestedHike({ ...SOUND, publishedMiles: 6.8 })
+
+    expect(read?.detail?.publishedMiles).toBe(6.8)
+  })
+
+  it('reads nothing out of a nested `detail`, which is not the wire shape', () => {
+    // The exact mistake the fixture made. Asserted rather than left implicit
+    // so that anyone who moves the wire format has to move this test too.
+    const read = validateSuggestedHike({ ...SOUND, detail: FLAT })
+
+    expect(read?.detail).toBeUndefined()
+  })
+
+  it('does not invent a block from a route that carries none', () => {
+    expect(validateSuggestedHike(SOUND)?.detail).toBeUndefined()
+  })
+
+  it('costs the field and never the route', () => {
+    const read = validateSuggestedHike({
+      ...SOUND,
+      url: '',
+      publishedMiles: -2,
+      start: { lat: 41.2 },
+      park: 'Harriman',
+    })
+
+    expect(read).not.toBeNull()
+    // Half a coordinate points at the Atlantic; a negative length is not one.
+    expect(read?.detail).toEqual({ park: 'Harriman' })
+  })
+})
+
 describe('validating a published document', () => {
   it('keeps every readable route and drops the rest, once each', () => {
     const hikes = validateSuggestedHikes({

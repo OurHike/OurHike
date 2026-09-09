@@ -31,9 +31,13 @@ import {
   adoptDayHikes,
   clearDayHikes,
   loadDayHikes,
+  logWalk,
   MAX_NOTE_CHARS,
+  MAX_WALKS,
   saveDayHikes,
+  savedFromSource,
   validateDayHikeStore,
+  walkedDates,
   type DayHike,
   type DayHikeStore,
 } from './dayHikes'
@@ -561,5 +565,124 @@ describe('clearDayHikes', () => {
     expect(store.get(DAY_HIKES_KEY)).toBeUndefined()
     expect(await loadDayHikes()).toEqual(EMPTY_DAY_HIKES)
     expect((await dayHikeSyncState()).deleted).toEqual(['a', 'b'])
+  })
+})
+
+describe('one record, many walked dates (#1290)', () => {
+  const walked = (walks: unknown): DayHike =>
+    validateDayHikeStore({ hikes: [{ ...hike('w'), walks }], openId: null })!.hikes[0]
+
+  it('keeps every readable walk, newest first', () => {
+    const saved = walked([
+      { date: '2026-03-14', note: 'mud to the knees' },
+      { date: '2026-08-02', note: '' },
+      { date: '2026-05-20', note: '' },
+    ])
+
+    expect(walkedDates(saved)).toEqual(['2026-08-02', '2026-05-20', '2026-03-14'])
+    expect(saved.walks![2].note).toBe('mud to the knees')
+  })
+
+  it('drops an unreadable walk and keeps the rest, because eleven outings must not become none', () => {
+    const saved = walked([
+      { date: '2026-03-14' },
+      { date: 'last Tuesday' },
+      { note: 'no date at all' },
+      null,
+      { date: '2026-05-20' },
+    ])
+
+    expect(walkedDates(saved)).toEqual(['2026-05-20', '2026-03-14'])
+  })
+
+  it('reads no walks as the field being absent, never as an empty list', () => {
+    expect(walked([])).not.toHaveProperty('walks')
+    expect(walked('every Sunday')).not.toHaveProperty('walks')
+  })
+
+  it('keeps one walk per date, because two logs of one day is a double tap', () => {
+    const saved = walked([
+      { date: '2026-03-14', note: 'first' },
+      { date: '2026-03-14', note: 'second' },
+    ])
+
+    expect(saved.walks).toHaveLength(1)
+    expect(saved.walks![0].note).toBe('first')
+  })
+
+  it('caps the list from the old end, so the recent walks are the ones kept', () => {
+    const many = Array.from({ length: MAX_WALKS + 20 }, (_, i) => ({
+      date: `${2000 + Math.floor(i / 300)}-01-${String((i % 28) + 1).padStart(2, '0')}`,
+      note: '',
+    }))
+    const saved = walked(many)
+
+    expect(saved.walks!.length).toBeLessThanOrEqual(MAX_WALKS)
+    expect(saved.walks![0].date > saved.walks!.at(-1)!.date).toBe(true)
+  })
+
+  it('caps a walk note the same way the record own note is capped', () => {
+    const saved = walked([{ date: '2026-03-14', note: 'x'.repeat(MAX_NOTE_CHARS + 50) }])
+
+    expect(saved.walks![0].note).toHaveLength(MAX_NOTE_CHARS)
+  })
+
+  it('logs a walk onto a hike, and a second tap on the same date changes nothing', () => {
+    const once = logWalk(hike('l'), '2026-03-14', 'good day')
+    const twice = logWalk(once, '2026-03-14', 'again')
+
+    expect(walkedDates(once)).toEqual(['2026-03-14'])
+    expect(twice.walks).toEqual(once.walks)
+  })
+
+  it('refuses to log a date it cannot read, rather than inventing one', () => {
+    const bare = hike('r')
+
+    expect(logWalk(bare, 'yesterday')).toBe(bare)
+  })
+
+  it('leaves recorded alone, because a plan walked twice is still a plan', () => {
+    const saved = logWalk(hike('p', { recorded: 'planned' }), '2026-03-14')
+
+    expect(saved.recorded).toBe('planned')
+    expect(walkedDates(saved)).toEqual(['2026-03-14'])
+  })
+
+  it('round-trips a record that predates the field, byte for byte', () => {
+    const before = hike('old')
+    const after = validateDayHikeStore({ hikes: [before], openId: null })!.hikes[0]
+
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before))
+  })
+})
+
+describe('finding the hike a published route was already saved as (#1290)', () => {
+  const saved = (sourceId: unknown): DayHike =>
+    validateDayHikeStore({ hikes: [{ ...hike('s'), sourceId }], openId: null })!.hikes[0]
+
+  it('keeps a source id and finds the record by it', () => {
+    const one = saved('nynjtc_favorite_hikes:hike-vista-loop-trail')
+
+    expect(one.sourceId).toBe('nynjtc_favorite_hikes:hike-vista-loop-trail')
+    expect(savedFromSource([one], 'nynjtc_favorite_hikes:hike-vista-loop-trail')).toBe(
+      one,
+    )
+  })
+
+  it('finds nothing for a route never saved, so the caller saves a new one', () => {
+    expect(
+      savedFromSource([saved('nynjtc_favorite_hikes:a')], 'nynjtc_favorite_hikes:b'),
+    ).toBeUndefined()
+  })
+
+  it('leaves the field absent on a hike the hiker built themselves', () => {
+    expect(saved(undefined)).not.toHaveProperty('sourceId')
+    expect(saved('')).not.toHaveProperty('sourceId')
+  })
+
+  it('matches on the source id alone, never on a name the hiker may have changed', () => {
+    const renamed = { ...saved('nynjtc_favorite_hikes:x'), name: 'My Saturday loop' }
+
+    expect(savedFromSource([renamed], 'nynjtc_favorite_hikes:x')).toBe(renamed)
   })
 })

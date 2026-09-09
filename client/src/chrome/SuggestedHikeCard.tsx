@@ -31,11 +31,11 @@
 // credit can be read at; a 172px card has no honest room for it, and that
 // gap is recorded on #1284 rather than papered over.
 //
-// NOT ALWAYS A BUTTON. The detail a tap would open (wireframe `1g`) is not
-// designed yet, so a caller with nowhere to send the tap passes no `onOpen`
-// and the card renders as an <article>: a thing to read, not a control that
-// looks pressable and is not (chrome/LineSheet.tsx's rule, PlanKindSheet's
-// unavailable door).
+// NOT ALWAYS A BUTTON. The detail a tap opens (wireframe `1g`) exists since
+// #1290 and the shell passes `onOpen`, but the prop stays optional: a caller
+// with nowhere to send the tap renders the card as an <article> - a thing to
+// read, not a control that looks pressable and is not (chrome/LineSheet.tsx's
+// rule, PlanKindSheet's unavailable door).
 
 import type { ReactNode } from 'react'
 import { Badge } from '../design-system/components'

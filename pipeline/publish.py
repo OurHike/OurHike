@@ -925,7 +925,7 @@ def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
         artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
 
 
-def _verify_hashes(entries: dict[str, dict]) -> None:
+def verify_hashes(entries: dict[str, dict]) -> None:
     """Every collected sha256 must describe the bytes on disk NOW, not the
     bytes the exporter had when it wrote its manifest (#659). Most entries
     carry a hash copied from an exporter's manifest file, and nothing
@@ -946,7 +946,16 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
         )
 
 
-def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+    """A JSON object already in the bucket, or None if the key is not there.
+
+    Public since #1314: `stage_release.py` reads `releases/index.json` and the
+    previous release's `manifest.json` through exactly this, and the "not
+    found is None, anything else raises" distinction below is the part worth
+    having one copy of. A stager that read a transport error as "no previous
+    release" would stage a full folder every week and never copy anything
+    forward - which looks like it is working.
+    """
     try:
         body = s3_client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read()
     except s3_client.exceptions.NoSuchKey:
@@ -1094,11 +1103,11 @@ def publish(
         bucket = os.environ["R2_BUCKET"]
 
     # Re-hash every artifact and sidecar against its collected hash before
-    # anything is uploaded - see _verify_hashes for why the gap between an
+    # anything is uploaded - see verify_hashes for why the gap between an
     # exporter's manifest and this upload cannot be trusted.
-    _verify_hashes({**artifacts, **sidecars})
+    verify_hashes({**artifacts, **sidecars})
 
-    remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
+    remote_manifest = load_remote_json(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
 
     # Photos first, before any artifact that names them and well before the
@@ -1234,7 +1243,7 @@ def publish(
         # `releases/` is written, because the answer decides where it is
         # written.
         index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
-        release_index = _load_remote_manifest(s3_client, bucket, index_key)
+        release_index = load_remote_json(s3_client, bucket, index_key)
         release_id = releases.next_release_id(releases.index_ids(release_index))
 
         # The same manifest as the pointer's, minus what may not be frozen.

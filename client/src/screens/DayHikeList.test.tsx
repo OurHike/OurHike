@@ -46,6 +46,53 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('whose route it is', () => {
+  it('keeps the publisher on a route the hiker saved from somebody else', () => {
+    render(
+      <DayHikeList
+        {...PROPS}
+        dayHikes={[
+          dayHike('Wapiti to Docs Knob', {
+            sourceId: 'nynjtc_favorite_hikes:wapiti',
+            sourceAuthor: 'New York-New Jersey Trail Conference',
+          }),
+          dayHike('Breakneck Ridge', { recorded: 'walked', date: '2026-08-02' }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('New York-New Jersey Trail Conference')).toBeInTheDocument()
+  })
+
+  it('says nothing about a publisher on a hike the hiker built', () => {
+    render(<DayHikeList {...PROPS} dayHikes={[dayHike('Pine Meadow loop')]} />)
+
+    // Absent means the hiker's own, and an empty byline would be a claim
+    // about authorship that nobody made.
+    const row = screen.getByRole('button', { name: /Pine Meadow loop/ })
+    expect(row.textContent).not.toContain('·  ·')
+  })
+
+  it('keeps it on a route they have since walked', () => {
+    render(
+      <DayHikeList
+        {...PROPS}
+        dayHikes={[
+          dayHike('Wapiti to Docs Knob', {
+            recorded: 'walked',
+            date: '2026-08-02',
+            sourceId: 'nynjtc_favorite_hikes:wapiti',
+            sourceAuthor: 'Guidebook route · L. Adkins',
+          }),
+        ]}
+      />,
+    )
+
+    const walked = screen.getByText('Walked').closest('section') as HTMLElement
+    expect(within(walked).getByText('Guidebook route · L. Adkins')).toBeInTheDocument()
+  })
+})
+
 describe('the shelves', () => {
   it('splits still-to-walk from walked, and a row opens its hike', async () => {
     const user = userEvent.setup()

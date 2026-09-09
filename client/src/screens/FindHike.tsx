@@ -31,10 +31,11 @@
 //  - No downloaded routes is a boundary, not "no hikes here". The sentence
 //    says where the boundary is.
 //
-// The detail a card would open (wireframe `1g`) and the map view (`1h`) are
-// not designed yet: the cards are articles until they are (SuggestedHikeCard
-// says why), and "See these on the map" is not drawn because it would go
-// nowhere.
+// The detail a card opens (wireframe `1g`) landed with #1290, so the cards
+// here are buttons. The map view of a whole result set (`1h`) is still not
+// drawn: the map draws one route at a time, from a record in the hiker's own
+// hikes, so "See these on the map" would go nowhere. One route at a time is
+// reachable - the detail's "Open on map", once it is saved.
 
 import { useCallback, useMemo, useState } from 'react'
 import { FacetSheet, type FacetSheetOption } from '../chrome/FacetSheet'
@@ -88,8 +89,9 @@ export interface FindHikeProps {
   units: UnitSystem
   pace: PaceProfile
   onBack: () => void
-  /** Opens a route's detail. Omitted until wireframe `1g` is designed; the
-   *  cards are then things to read rather than buttons that go nowhere. */
+  /** Opens a route's detail (wireframe `1g`). Optional so a caller with
+   *  nowhere to send the tap gets cards that read rather than press -
+   *  SuggestedHikeCard's rule, and the shell has passed it since #1290. */
   onOpenHike?: (id: string) => void
 }
 

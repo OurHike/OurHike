@@ -33,7 +33,10 @@ import {
   type AuthorKind,
   type Difficulty,
   type SuggestedHike,
+  type SuggestedHikeDetail,
   type SuggestedHikePhoto,
+  type SuggestedHikePublication,
+  type SuggestedHikeStart,
   type SuggestedHikeTransit,
 } from './suggestedHikes'
 
@@ -97,6 +100,81 @@ function validPhoto(candidate: unknown): SuggestedHikePhoto | undefined {
   return { url: /^[a-z]+:\/\//i.test(url) ? url : dataUrl(url), credit, licence }
 }
 
+function stringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const kept = value.filter(
+    (item): item is string => typeof item === 'string' && item.trim() !== '',
+  )
+  return kept.length > 0 ? kept : undefined
+}
+
+/** The publication line, or undefined. `submittedBy` is the whole point of
+ *  it - a line that names nobody says nothing - so its absence drops the
+ *  block, while the two dates degrade to null on their own. */
+function validPublication(candidate: unknown): SuggestedHikePublication | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+  const line = candidate as Partial<SuggestedHikePublication>
+  const submittedBy = nonEmptyString(line.submittedBy)
+  if (submittedBy === null) return undefined
+  return {
+    submittedBy,
+    submittedOn: nonEmptyString(line.submittedOn),
+    verifiedOn: nonEmptyString(line.verifiedOn),
+  }
+}
+
+/** The start, or undefined. Both numbers or neither: half a coordinate
+ *  points at the Atlantic, and a screen offering directions to it would be
+ *  worse than one offering none. */
+function validStart(candidate: unknown): SuggestedHikeStart | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+  const start = candidate as Partial<SuggestedHikeStart>
+  const { lat, lon } = start
+  if (typeof lat !== 'number' || !Number.isFinite(lat) || Math.abs(lat) > 90)
+    return undefined
+  if (typeof lon !== 'number' || !Number.isFinite(lon) || Math.abs(lon) > 180)
+    return undefined
+  return { lat, lon, basis: nonEmptyString(start.basis) }
+}
+
+/**
+ * The detail block, or undefined when the document carries nothing for it.
+ *
+ * EVERY FIELD DEGRADES ALONE. A junk `url` costs the link and not the
+ * prose; an unreadable publication line costs that line and not the
+ * paragraphs. This is `validateSuggestedHike`'s own asymmetry one level
+ * down: what a surface cannot print, it does not print, and nothing here is
+ * load-bearing enough to cost the route.
+ */
+function validDetail(candidate: unknown): SuggestedHikeDetail | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+  const raw = candidate as Record<string, unknown>
+  const publishedMiles = finiteNonNegative(raw.publishedMiles)
+  const detail: SuggestedHikeDetail = {
+    ...(nonEmptyString(raw.url) !== null ? { url: nonEmptyString(raw.url)! } : {}),
+    ...(publishedMiles !== null && publishedMiles > 0 ? { publishedMiles } : {}),
+    ...(stringList(raw.overview) !== undefined
+      ? { overview: stringList(raw.overview) }
+      : {}),
+    ...(stringList(raw.description) !== undefined
+      ? { description: stringList(raw.description) }
+      : {}),
+    ...(validPublication(raw.publication) !== undefined
+      ? { publication: validPublication(raw.publication) }
+      : {}),
+    ...(validStart(raw.start) !== undefined ? { start: validStart(raw.start) } : {}),
+    ...(nonEmptyString(raw.routeType) !== null
+      ? { routeType: nonEmptyString(raw.routeType)! }
+      : {}),
+    ...(nonEmptyString(raw.park) !== null ? { park: nonEmptyString(raw.park)! } : {}),
+    ...(stringList(raw.trails) !== undefined ? { trails: stringList(raw.trails) } : {}),
+    ...(nonEmptyString(raw.hikerNote) !== null
+      ? { hikerNote: nonEmptyString(raw.hikerNote)! }
+      : {}),
+  }
+  return Object.keys(detail).length > 0 ? detail : undefined
+}
+
 /** One published route, or null when what is junk is the route itself. */
 export function validateSuggestedHike(candidate: unknown): SuggestedHike | null {
   if (typeof candidate !== 'object' || candidate === null) return null
@@ -122,6 +200,11 @@ export function validateSuggestedHike(candidate: unknown): SuggestedHike | null 
   const climb = validClimb(hike.climb)
   const transit = validTransit(hike.transit)
   const photo = validPhoto(hike.photo)
+  // The exporter writes the detail fields FLAT beside the shelf's, rather
+  // than nested, because they are all facts about one route. They are read
+  // into one optional block here so a screen can ask "is there a detail to
+  // show" once instead of ten times.
+  const detail = validDetail(candidate)
 
   return {
     id,
@@ -134,6 +217,7 @@ export function validateSuggestedHike(candidate: unknown): SuggestedHike | null 
     author: { kind, name: authorName },
     ...(transit === undefined ? {} : { transit }),
     ...(photo === undefined ? {} : { photo }),
+    ...(detail === undefined ? {} : { detail }),
     segments,
   }
 }

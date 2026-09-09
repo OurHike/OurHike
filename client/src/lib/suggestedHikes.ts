@@ -35,7 +35,36 @@ import { paceEstimate, type PaceEstimate, type PaceProfile } from './pace'
 import { isTown } from './searchPoi'
 import type { LonLat, RouteClimb } from './trailGraph'
 
-export const DIFFICULTIES = ['easy', 'moderate', 'strenuous'] as const
+/**
+ * The publisher's own difficulty scale, in order (#1290).
+ *
+ * FIVE LEVELS, AND THEY ARE NYNJTC'S. This shipped with three - easy,
+ * moderate, strenuous - which was a guess at a common denominator made
+ * before any publisher's data was in hand. The first one that arrived uses
+ * five, tagged on every one of its twenty public hikes (easy 7,
+ * easy-moderate 3, moderate 2, moderate-strenuous 4, strenuous 4, measured
+ * 2026-09-09), and the maintainer's call was to adopt theirs as the app's
+ * rather than flatten it: "we should probably keep their 5 and make 5 the
+ * standard".
+ *
+ * FLATTENING WOULD HAVE BEEN A CLAIM, not a simplification. There is no
+ * honest way to fold "Easy to Moderate" into either neighbour - it is a
+ * publisher saying the answer is between the two - and rounding it either
+ * way would put a word in their mouth on the field a hiker uses to decide
+ * whether a walk is within them.
+ *
+ * The slugs are NYNJTC's own, so a badge quotes the publisher rather than a
+ * mapping of them. A sixth word from some future publisher is not silently
+ * admitted: lib/suggestedHikesData.ts drops a rating outside this list, and
+ * absent means unrated rather than a badge nobody designed.
+ */
+export const DIFFICULTIES = [
+  'easy',
+  'easy-moderate',
+  'moderate',
+  'moderate-strenuous',
+  'strenuous',
+] as const
 /** The publisher's own rating. Quoted, never computed - see the header. */
 export type Difficulty = (typeof DIFFICULTIES)[number]
 
@@ -68,6 +97,59 @@ export interface SuggestedHikePhoto {
   licence: string
 }
 
+/** The publication line a page carries: who wrote the route up, and when
+ *  they last stood behind it. `verifiedOn` absent means never re-verified,
+ *  which is a fact about the write-up rather than about the trail. */
+export interface SuggestedHikePublication {
+  submittedBy: string
+  submittedOn: string | null
+  verifiedOn: string | null
+}
+
+/** Where the walk starts, as the publisher gives it. `basis` says how
+ *  firmly: a placed marker, or the centre of a map they embedded, which is
+ *  the weaker reading and is labelled as one. */
+export interface SuggestedHikeStart {
+  lat: number
+  lon: number
+  basis: string | null
+}
+
+/** Everything the hike detail screen prints beyond the card's own figures.
+ *  All optional: absent is what the publisher did not say. */
+export interface SuggestedHikeDetail {
+  /** The publisher's page for this route - where "read it in their words"
+   *  goes, and the provenance a card claims nothing without. */
+  url?: string
+  /** The publisher's OWN stated length, printed beside the miles this phone
+   *  measures. The two disagree, sometimes by a fifth, and both ship so the
+   *  disagreement is in front of the hiker rather than settled behind them. */
+  publishedMiles?: number
+  /** Their overview, paragraph by paragraph. */
+  overview?: string[]
+  /** Their turn-by-turn, paragraph by paragraph - folded behind a button on
+   *  the screen, because it is a page of prose and not a figure. */
+  description?: string[]
+  publication?: SuggestedHikePublication
+  start?: SuggestedHikeStart
+  /** "Loop", "Out and Back" - the publisher's own word. */
+  routeType?: string
+  /** The park or preserve the walk is in, their own name for it. */
+  park?: string
+  /** The trails it uses, their own names, in no promised order. */
+  trails?: string[]
+  /**
+   * One sentence to the HIKER about how this route differs from the
+   * publisher's page - what is not drawn and why, where it starts if not at
+   * their pin, a measured length well off theirs.
+   *
+   * Reviewed by a person before it ships (pipeline's
+   * reference/nynjtc_hike_routes.json), which is what separates it from
+   * anything the app could generate: it says what somebody checked.
+   */
+  hikerNote?: string
+}
+
 export interface SuggestedHike {
   id: string
   name: string
@@ -88,6 +170,16 @@ export interface SuggestedHike {
   author: SuggestedHikeAuthor
   transit?: SuggestedHikeTransit
   photo?: SuggestedHikePhoto
+  /**
+   * What the DETAIL screen prints and the shelf ignores (#1290).
+   *
+   * Every field here is optional and absent means the publisher did not
+   * say - never a default, never a zero. The shelf and the finder were
+   * built before any of them existed and read none of them, so a document
+   * carrying only the shelf fields is a complete document rather than a
+   * degraded one.
+   */
+  detail?: SuggestedHikeDetail
   /** The ends, never the route - lib/dayHikes.ts's CRITICAL rule: a
    *  coordinate re-resolves against whatever graph the phone holds, an
    *  edgeIndex silently lands on a different trail after a republish. */
@@ -255,7 +347,11 @@ export function sortedByEstimate(
   return sortedByKey(hikes, (hike) => hikeEstimate(hike, pace)?.minutes ?? null)
 }
 
-const DIFFICULTY_RANK: Record<Difficulty, number> = { easy: 0, moderate: 1, strenuous: 2 }
+/** Derived from DIFFICULTIES' own order rather than restated, so a level
+ *  added there cannot be left out of the sort by being forgotten here. */
+const DIFFICULTY_RANK: Record<Difficulty, number> = Object.fromEntries(
+  DIFFICULTIES.map((level, at) => [level, at]),
+) as Record<Difficulty, number>
 
 /** Easiest first BY THE PUBLISHER'S OWN RATING - unrated last, never
  *  guessed from the climb. */
@@ -565,8 +661,16 @@ export function searchPlaces(
 
 // ---------- Words ----------
 
+/** NYNJTC's own words for their own levels, spelled as their pages spell
+ *  them - "Easy to Moderate", not "Easy-moderate". */
 export function difficultyLabel(level: Difficulty): string {
-  return { easy: 'Easy', moderate: 'Moderate', strenuous: 'Strenuous' }[level]
+  return {
+    easy: 'Easy',
+    'easy-moderate': 'Easy to Moderate',
+    moderate: 'Moderate',
+    'moderate-strenuous': 'Moderate to Strenuous',
+    strenuous: 'Strenuous',
+  }[level]
 }
 
 export function timeBucketLabel(bucket: TimeBucket): string {

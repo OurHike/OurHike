@@ -12,8 +12,9 @@
 //
 // Not a recipe: the runner treats every top-level `preview-shots/*.mjs` as
 // one (photograph-preview.mjs's isRecipePath), so shared fixtures live one
-// directory down, where that pattern does not reach. The three recipes
-// import this.
+// directory down, where that pattern does not reach. Five recipes import
+// this: the shelf, the finder and its results, and the two hike-detail
+// shots #1290 added.
 
 const NJ = { lon: -74.6, lat: 41.2 }
 const VA = { lon: -80.7, lat: 37.3 }
@@ -101,14 +102,57 @@ export const SUGGESTED_HIKES_DOCUMENT = {
     },
     {
       // The unmeasured-climb case the handoff says not to skip: no time,
-      // and it says so.
+      // and it says so. Since #1290 it is also the ONE fixture carrying a
+      // `detail`, so the hike-detail recipes have a screen to reach - and
+      // the only one whose publisher is invented outright ('Vernon Trails'),
+      // which is why the invented prose below hangs on this route and not
+      // on one attributed to a club that really exists. Made-up sentences
+      // under a real publisher's byline would be a fixture telling a lie
+      // about somebody, on every future pull request.
+      //
+      // Its difficulty is one of the two COMPOUND levels #1290 added, so a
+      // shot of this screen is also the evidence that the five-rung ladder
+      // renders. No existing recipe's copy moves with it: the shelf shows
+      // the first three published, and the results recipe filters by
+      // transit, which this route has none of.
       id: 'fixture-wapiti',
       name: 'Wapiti to Docs Knob',
       miles: 7.9,
       climb: null,
-      difficulty: 'moderate',
+      difficulty: 'moderate-strenuous',
       author: { kind: 'ourhike', name: 'Vernon Trails' },
       segments: ends(VA, 2),
+      detail: {
+        url: 'https://example.org/routes/wapiti-to-docs-knob',
+        // Deliberately NOT 7.9. The two figures disagreeing is the whole
+        // point of the screen, and a fixture where they agree photographs
+        // nothing.
+        publishedMiles: 8.5,
+        overview: [
+          'A long ridge walk to a knob with one wide view north, and a second one south if you carry on past the cairn.',
+          'The tread is rocky for the middle two miles. Nothing here is exposed, but it is slow.',
+        ],
+        description: [
+          'Park at the pull-off and cross the road to the kiosk.',
+          'Follow the blue blazes uphill for a mile and a quarter to the first bench.',
+          'At the fork, keep left. The right fork drops to the creek and does not come back.',
+          'The knob is a half mile past the second bench. Return the way you came.',
+        ],
+        publication: {
+          submittedBy: 'R. Okonjo',
+          submittedOn: '2019-05-02',
+          verifiedOn: '2024-10-11',
+        },
+        // Read off a place card's map centre rather than a placed pin, so
+        // the screen prints the caveat that says which. That sentence is
+        // one of the things worth photographing.
+        start: { lat: 37.31, lon: -80.66, basis: 'map_centre' },
+        routeType: 'Out and back',
+        park: 'Vernon State Forest',
+        trails: ['Wapiti Trail', 'Docs Knob Connector'],
+        hikerNote:
+          'The turnaround sits where their description puts it rather than at a junction, so this line runs shorter than the length on their page.',
+      },
     },
     {
       id: 'fixture-pinwheel',

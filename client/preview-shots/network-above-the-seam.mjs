@@ -63,9 +63,9 @@
 // frame. What the caption claims about "the one solid line" is a claim about
 // the taken state, and this is how the recipe reaches it.
 export const caption =
-  'Harriman at zoom 12, the A.T. taken from its legend row in the drive (#1306) — the A.T. is the one solid line, inked dark with no casing and wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
+  'Harriman at zoom 12, the A.T. taken from its legend row in the drive (#1306) — the A.T. is the one solid line, a white blaze with its dark casing (#1306) and wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid dark line with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
+  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid white line inside a thin dark casing, with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

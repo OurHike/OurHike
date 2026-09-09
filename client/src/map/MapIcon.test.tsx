@@ -316,17 +316,27 @@ describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
     ).toBe(1)
   })
 
-  it('inks a White blaze in the casing colour with no casing on a day sheet, and keeps both on a dark one', () => {
-    const day = swatch({ blazeColor: 'White', throughRoute: true, chosen: true })
+  it('inks a DOTTED White blaze in the casing colour with no casing on a day sheet, and keeps both on a dark one', () => {
+    // `chosen: false` since #1306: the dark ink is the dotted line's rule,
+    // and the swatch follows the map's own DARK_INKED_BLAZE_LAYER_IDS.
+    const day = swatch({ blazeColor: 'White', throughRoute: true, chosen: false })
     expect(day.querySelector('.map-icon__trail-casing')).toBeNull()
     expect(part(day, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
       trailCasingColor({ theme: 'light' }),
     )
 
+    // Taken, on the same day sheet, it is the white blaze with its casing -
+    // the swatch saying what the canvas beside it is drawing.
+    const taken = swatch({ blazeColor: 'White', throughRoute: true, chosen: true })
+    expect(taken.querySelector('.map-icon__trail-casing')).not.toBeNull()
+    expect(part(taken, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('White'),
+    )
+
     const night = swatch({
       blazeColor: 'White',
       throughRoute: true,
-      chosen: true,
+      chosen: false,
       appearance: { theme: 'dark' },
     })
     expect(night.querySelector('.map-icon__trail-casing')).not.toBeNull()

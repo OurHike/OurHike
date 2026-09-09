@@ -36,7 +36,7 @@
 export const caption =
   'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), after the drive takes the A.T. from its row (#1306): the A.T. solid and marked taken, every other trail on screen a dotted row in its own blaze hue; the A.T. and its side trails alone until nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The legend sheet over the map screen, opening with a "Trails in view" heading over a column of rows: a solid dark line swatch beside "Appalachian National Scenic Trail" with "taken" on the right, then dotted swatches in their own hues beside the names of the other trails on screen, above the waypoint category grid'
+  'The legend sheet over the map screen, opening with a "Trails in view" heading over a column of rows: a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, then dotted swatches in their own hues beside the names of the other trails on screen, above the waypoint category grid'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

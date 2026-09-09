@@ -312,7 +312,12 @@ export function TrailLineSwatch({
 }: TrailLineSwatchProps) {
   const width = throughRoute ? PRIMARY_TRAIL_WIDTH : SIDE_TRAIL_WIDTH
   const nearWhite = blazeColor !== null && NEAR_WHITE_BLAZES.includes(blazeColor)
-  const inkedAsCasing = nearWhite && inksNearWhiteAsCasing(appearance)
+  // `!chosen` since #1306, exactly as the map's own layers do it
+  // (DARK_INKED_BLAZE_LAYER_IDS): the dark ink is the DOTTED line's rule,
+  // and a taken near-white trail keeps its white blaze and its casing. A
+  // swatch that kept inking it dark would be the legend contradicting the
+  // canvas beside it, which is the failure this component exists to prevent.
+  const inkedAsCasing = nearWhite && !chosen && inksNearWhiteAsCasing(appearance)
   const casing = trailCasingColor(appearance)
   const ink = redLightActive(appearance)
     ? RED_LIGHT_BLAZE_COLOR

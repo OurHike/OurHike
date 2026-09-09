@@ -1470,19 +1470,21 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     t0 = time.perf_counter()
     print("Building the corridor from the centerline...")
     widened = build_corridor(con, RAW_DIR / "centerline.geojson", NETWORK_LINES_PATH)
-    # Vertex count, not just elapsed time: a synthetic benchmark (this
-    # change's PR) measured clip_to_corridor's ST_Intersects cost scaling
-    # roughly LINEARLY with this number once the corridor is widened around
-    # #1016's network lines - 0.08s at ~1,200 vertices against 80s at
-    # ~223,000, for the same point count - while DuckDB's spatial engine
-    # already short-circuits cheaply on the corridor's bounding box for a
-    # point nowhere near it (measured: 0.01s for 20k points outside it).
-    # This number is the one to watch if clip_to_corridor's own line below
-    # turns out to be what a real run's time goes to.
-    vertex_count = con.execute("SELECT ST_NPoints(geom) FROM corridor").fetchone()[0]
+    # Network line COUNT, not corridor vertex count (#1311 superseded that
+    # metric): a synthetic benchmark run from here (this comment's own PR)
+    # measured clip_to_corridor's old ST_Intersects cost scaling with the
+    # CORRIDOR POLYGON's vertex count once it was widened by unioning every
+    # network line's buffer into it - up to 708s of a real run's 851s prefix,
+    # against a real corridor of 13,454,046 vertices. #1311 removed that
+    # scaling at its root rather than approximating around it: the polygon
+    # is the A.T.'s alone again, and the network lives beside it as an
+    # R-tree-indexed line table `keep_within_corridor` joins against - see
+    # lib/corridor.py's module docstring for that measurement. This print
+    # now watches the number that actually varies with the network's size.
+    network_lines = con.execute("SELECT count(*) FROM network_lines").fetchone()[0]
     print(
-        f"  {'widened around the published network lines (#1016).' if widened else '30 miles around the A.T. alone.'}"
-        f" {vertex_count:,} vertices. ({time.perf_counter() - t0:.1f}s)"
+        f"  {'joined against the published network lines (#1016, #1311).' if widened else '30 miles around the A.T. alone.'}"
+        f" {network_lines:,} network line(s). ({time.perf_counter() - t0:.1f}s)"
     )
 
     t0 = time.perf_counter()

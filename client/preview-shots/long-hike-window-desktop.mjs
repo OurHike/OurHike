@@ -28,6 +28,27 @@ export const desktop = true
 export default async function drive(page) {
   await seedLongHike(page)
   await page.getByRole('tab', { name: 'Plan' }).click()
+
+  // WAIT FOR THE ROOM BEFORE REACHING FOR ITS SWITCH, and the wait is not
+  // decoration. This is the only recipe that CLICKS at desktop width, and a
+  // desktop builds the map from launch (App.tsx's `mapNeededNow` is true on
+  // `isDesktop` alone) - so on a CI runner's software renderer the main
+  // thread can still be inside that build when the tab opens.
+  //
+  // `click()` cannot spend that time usefully: past finding the element it
+  // waits for STABILITY, the same bounding box across two animation frames,
+  // which a starved frame loop never delivers - so the whole 30s budget goes
+  // on an actionability check the page cannot answer, and the log says
+  // "locator.click: Timeout" without saying which locator. That is how this
+  // recipe failed on its second CI run having passed on its first and 3/3
+  // locally.
+  //
+  // `waitFor()` asks only for visibility, so the settle happens where it can
+  // actually be spent, and a failure afterwards names the room rather than
+  // the button. CLAUDE.md's ordering rule with a camera instead of a test:
+  // wait on something observable that proves the sequence completed.
+  await page.getByRole('heading', { level: 1, name: 'Springer → Katahdin' }).waitFor()
+
   // The switch, which is the other half of #1329: `activeHikeId` could be
   // set exactly once before it, so a hiker with two hikes was stuck on
   // whichever they picked first.

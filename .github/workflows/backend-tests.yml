@@ -156,7 +156,20 @@ jobs:
         # max_prepared_statements are the parts under test, and two copies of
         # them is one copy that goes stale.
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq pgbouncer
+          # NOT `update && install` (#1361). `apt-get update` exits non-zero
+          # if ANY configured repository fails, including ones preinstalled
+          # on the runner image that this project never uses - and the `&&`
+          # then skipped the install, so `local-pooler.sh` found no pgbouncer
+          # and exited 1 with NO TEST HAVING RUN. Measured on PR #1360,
+          # 2026-09-09 17:34 and again at 17:41: Google's Chrome apt repo
+          # served an index whose SHA256 did not match its Release file.
+          # apt itself ignores the bad index and keeps the rest ("old ones
+          # used instead"), so the install below succeeds on exactly the runs
+          # the `&&` used to fail. A genuinely broken update now surfaces as
+          # the install failing, which names the package that could not be
+          # installed rather than the repository that could not be indexed.
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq pgbouncer
           # The package starts its own service on 6432 with a config that
           # routes no databases. Ours needs the port, and the script refuses
           # to assume an occupied one is usable.

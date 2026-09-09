@@ -238,6 +238,30 @@ describe('what a cold start costs', () => {
     expect(MockMap.instances).toHaveLength(1)
   })
 
+  it('keeps the tab bar when the map tab is tapped before the store has answered', async () => {
+    // Since #1301 the shell paints before the archive markers are read, so a
+    // hiker can reach the tab bar and tap Map inside that window. The map
+    // subtree carries the map tab's own tab bar, and with no map to mount it
+    // rendered nothing at all - a blank screen with no way back, which is the
+    // failure TECHNICAL_ARCHITECTURE.md's boundary section exists to prevent
+    // and worse than the one it was written for, because nothing had thrown.
+    aPhoneThatHasBeenUsed()
+    render(<App />)
+
+    await land(isPreferences)
+    await openMapTab()
+
+    // No map yet - the store has not said which background it should be built
+    // around - and still a way off this screen.
+    expect(MockMap.instances).toHaveLength(0)
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
+
+    await land(isArchive)
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.instances).toHaveLength(1)
+  })
+
   it('never asks the network for a background this phone had already downloaded', async () => {
     // What the reversal above actually spent. The live sheet's vector and DEM
     // tiles are roughly 2 MB for a fresh view (lib/dataSaver.ts measured it),

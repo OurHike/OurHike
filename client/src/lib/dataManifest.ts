@@ -261,8 +261,9 @@ export async function publishedSnapshot({
   if (signal?.aborted) throw abortError()
 
   // ONE READ FOR EVERYONE ASKING AT ONCE (#1302). A launch with signal asked
-  // for this from six places in the same commit - the update check, the
-  // published sizes, the network overview, the three cell families - and
+  // for this from six places - lib/useTrailData.ts's update check,
+  // lib/usePublishedSizes.ts, lib/nearbyTrailData.ts's network sketch,
+  // lib/trailData.ts, lib/trailGraphData.ts and map/networkTiles.ts - and
   // `latest.json` is served `cache-control: no-cache`, so that was six round
   // trips to the bucket on the connection the first frame was sharing. The
   // fetch in flight is shared with every caller that arrives before it
@@ -322,15 +323,40 @@ function abortError(): DOMException {
 
 let snapshotInFlight: Promise<PublishedSnapshot> | null = null
 
+/**
+ * How long the shared read may take before it is given up on.
+ *
+ * A shared read has one property an unshared one does not: while it is in
+ * flight, everyone else waits on it. A `fetch` with no deadline does not fail
+ * on a captive portal at a trailhead - it HANGS, for as long as the browser
+ * is willing to - so without this, one such read would hold the slot for the
+ * whole page and every later caller would join the wait rather than making
+ * its own attempt. That is the one way sharing can be worse than not sharing,
+ * and this is the bound that removes it.
+ *
+ * @unvalidated - picked, not measured. Twenty seconds is far longer than the
+ * manifest takes on any connection this app has been measured on (~50 KB,
+ * 0.45 s against production on 2026-09-09) and short enough that a hiker who
+ * walks back into signal is not still waiting on a request from the dead
+ * spot. What would settle it is what a real trailhead connection does to this
+ * request, which nothing has recorded.
+ */
+export const MANIFEST_READ_TIMEOUT_MS = 20_000
+
 /** The read itself. Never rejects: anything unreadable is a snapshot that
- *  knows nothing, on {@link publishedSnapshot}'s own terms. */
+ *  knows nothing, on {@link publishedSnapshot}'s own terms - and a read that
+ *  never answers becomes unreadable rather than eternal. */
 async function readSnapshot(): Promise<PublishedSnapshot> {
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(), MANIFEST_READ_TIMEOUT_MS)
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY))
+    const response = await fetch(dataUrl(MANIFEST_KEY), { signal: controller.signal })
     if (!response.ok) return NOTHING_READABLE
     return snapshotInto((await response.json()) as DataManifest)
   } catch {
     return NOTHING_READABLE
+  } finally {
+    clearTimeout(deadline)
   }
 }
 

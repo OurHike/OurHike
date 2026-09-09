@@ -329,6 +329,39 @@ describe('when the package set grows after mount (#1301)', () => {
   })
 })
 
+describe('a store that refuses a read (#1301)', () => {
+  it('asks again on a later run rather than caching the refusal for the session', async () => {
+    // A database that refused this read is not the same as one that answered.
+    // Marking it answered would make a transient refusal permanent: a
+    // downloaded archive reading as absent, and the map rebuilt around the
+    // live sheet, until the app is relaunched.
+    withStore()
+    mockFetch({})
+    vi.mocked(get).mockRejectedValue(new Error('no IndexedDB here'))
+
+    const { result, rerender } = renderHook(
+      ({ requests }: { requests: typeof BOTH }) => useArchiveDownloads(requests),
+      { initialProps: { requests: [SHEET] } },
+    )
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+    const refusedReads = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
+    expect(refusedReads).toBeGreaterThan(0)
+
+    // The set grows, which re-runs the mount effect. A package that never
+    // answered is asked again.
+    rerender({ requests: BOTH })
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(get)
+          .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length,
+      ).toBeGreaterThan(refusedReads),
+    )
+  })
+})
+
 describe('whether the phone has been read yet', () => {
   it('says no until every package has answered, then yes', async () => {
     // `statusFor` answers 'not-downloaded' for a package it has not read yet,

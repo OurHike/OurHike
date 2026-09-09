@@ -107,23 +107,35 @@ let client: Promise<SupabaseClient | null> | undefined
 export function getAuthClient(): Promise<SupabaseClient | null> {
   if (client === undefined) {
     client = AUTH_CONFIGURED
-      ? import('@supabase/supabase-js').then(({ createClient }) =>
-          createClient(PROJECT_URL, ANON_KEY, {
-            auth: {
-              // Both default to true; named here because this app depends on
-              // them in a way a reader should not have to infer.
-              //
-              // persistSession keeps a signed-in hiker signed in across the
-              // app being killed and relaunched, which on a phone in a pocket
-              // is routine rather than exceptional.
-              persistSession: true,
-              autoRefreshToken: true,
-              // The OAuth redirect comes back to the app's own origin
-              // carrying the code. There is no router (App.tsx), so nothing
-              // else is watching the URL for it.
-              detectSessionInUrl: true,
-            },
-          }),
+      ? import('@supabase/supabase-js').then(
+          ({ createClient }) =>
+            createClient(PROJECT_URL, ANON_KEY, {
+              auth: {
+                // Both default to true; named here because this app depends on
+                // them in a way a reader should not have to infer.
+                //
+                // persistSession keeps a signed-in hiker signed in across the
+                // app being killed and relaunched, which on a phone in a pocket
+                // is routine rather than exceptional.
+                persistSession: true,
+                autoRefreshToken: true,
+                // The OAuth redirect comes back to the app's own origin
+                // carrying the code. There is no router (App.tsx), so nothing
+                // else is watching the URL for it.
+                detectSessionInUrl: true,
+              },
+            }),
+          (error: unknown) => {
+            // A CHUNK THAT DID NOT ARRIVE IS NOT AN ANSWER. Memoising the
+            // rejection would make one dropped request - a deploy swapping
+            // the assets mid-session, a tunnel at a trailhead - the state of
+            // this app until it is relaunched: no sign-in, no outbox flush,
+            // no live conditions, for the rest of the walk. Forgotten here,
+            // so the next ask starts a fresh import; the caller still sees
+            // this attempt fail.
+            client = undefined
+            throw error
+          },
         )
       : Promise.resolve(null)
   }

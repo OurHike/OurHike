@@ -195,8 +195,16 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
           // Deliberately not surfaced as an error: this runs before the hiker
           // has asked for anything. A failure they DID ask for still reports
           // itself - see the catch in `run`.
+          //
+          // AND NOT RECORDED AS ANSWERED (#1301, and a defect an adversarial
+          // review of it found): a database that refused this read is not the
+          // same as one that answered, and marking it answered would make a
+          // transient refusal permanent for the session - a downloaded
+          // archive reading as absent, and the map rebuilt around the live
+          // sheet, until the app is relaunched. Left unmarked, the next run
+          // of this effect asks again. The status is still set either way, so
+          // nothing waits on a package that cannot answer.
           if (cancelled) return
-          answered.current.add(packageKey)
           setStatus(packageKey, absentStatus(packageKey))
         }
       })()

@@ -169,15 +169,23 @@ export function subscribeToAccount(
   // attach, called after it detaches.
   let live = true
   let detach: (() => void) | null = null
-  void Promise.resolve(getAuthClient()).then((client) => {
-    if (!live || client === null || client === undefined) return
-    const {
-      data: { subscription },
-    } = client.auth.onAuthStateChange((_event, session) => {
-      listener(accountFromSession(session))
+  void Promise.resolve(getAuthClient())
+    .then((client) => {
+      if (!live || client === null || client === undefined) return
+      const {
+        data: { subscription },
+      } = client.auth.onAuthStateChange((_event, session) => {
+        listener(accountFromSession(session))
+      })
+      detach = () => subscription.unsubscribe()
     })
-    detach = () => subscription.unsubscribe()
-  })
+    .catch(() => {
+      // The auth chunk did not arrive (lib/supabase.ts, which forgets the
+      // failure so a later ask retries). Signed out is the state this whole
+      // app is built to work in, so there is nothing to report and nobody to
+      // report it to - but the rejection has to be taken, or it surfaces as
+      // an unhandled rejection on every launch that hits it.
+    })
   return () => {
     live = false
     detach?.()

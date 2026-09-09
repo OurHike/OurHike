@@ -327,8 +327,13 @@ release's effect on the launch is a row in an issue rather than a feeling.
 - **Whether 500 ms is reachable on a phone once the process start is counted.** It
   is reachable on the profile — a build of `main` already paints content at 612 ms
   with the engine still in the eager chunk — and unknown on a device.
-- **Why production costs several times what `main` does.** Three pull requests or a
-  different host; the runs rule out noise. The readout on the deployed build settles it.
+- **Why production costs several times what a local build does.** Partly the release on
+  the phone, which the local runs do not have (§1's caveat) — and that alone may be the
+  whole of it. The daily job in §4.1 times production itself, which is what settles it.
+- **What this branch does to a launch with a real release on it.** Nothing measured here
+  can say: the sandbox's browser cannot put one on the phone. #1303's saving is counted
+  in passes rather than in milliseconds for that reason, and the first production number
+  after this ships is the one to read.
 - **One production run in three did not launch as a returning hiker at all.** Content
   painted at 1,368 ms, but no tab bar appeared for the eight minutes the run waited, and
   the main thread spent them in MapLibre's tile handling — 38 long tasks, the longest

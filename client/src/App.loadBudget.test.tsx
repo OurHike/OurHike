@@ -55,6 +55,9 @@ import App from './App'
 import { appHarness, openMapTab } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
+import { PREFERENCES_KEY } from './lib/preferences'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { buildPoiIcons } from './map/poiIcons'
 import { mileOnTrail } from './lib/trailPosition'
 import { packPois, resolveTrailIndex } from './lib/trailIndexBuild'
@@ -190,6 +193,76 @@ describe('what first run may do before the steps are done', () => {
     await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
     expect(resolveTrailIndex).not.toHaveBeenCalled()
     expect(mileOnTrail).not.toHaveBeenCalled()
+  })
+})
+
+describe('what the launch mirror is allowed to say (#1301)', () => {
+  it('does not write the defaults into the mirror when the record could not be read', async () => {
+    // The read rejecting still opens the gate - a private-browsing failure
+    // must not leave the app blank - and the state then holds the defaults.
+    // Writing THOSE to the mirror would tell the next launch that a returning
+    // hiker has not onboarded, and the first-run steps would be flashed at
+    // somebody who finished them months ago, persistently, because the bad
+    // mirror is what the next launch reads first.
+    app.onboard({}, { mirror: false })
+    // Only the two keys the bootstrap reads: a store that refuses everything
+    // would be a different test, and would leave every other reader's
+    // rejection unhandled in this one.
+    const store = vi.mocked(get).getMockImplementation()!
+    vi.mocked(get).mockImplementation((key) =>
+      key === PREFERENCES_KEY || key === HIKER_MODE_KEY
+        ? Promise.reject(new Error('no IndexedDB here'))
+        : store(key),
+    )
+
+    render(<App />)
+    // A phone whose record cannot be read looks like a first run, which is
+    // the honest fallback and unchanged by #1301. What must NOT happen is
+    // that reading it back becomes the next launch's answer.
+    await screen.findByText('What OurHike is')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(readLaunchMirror()).toBeNull()
+  })
+
+  it('keeps a mode the hiker chose before the record came back', async () => {
+    // The Today header's mode switch is ON the first frame now, so a tap can
+    // land in the window before the record's read returns. Applying the
+    // stored answer over it would undo a choice the hiker watched themselves
+    // make - and the switch is the one control on this screen that changes
+    // what the whole journal is ordered by.
+    app.onboard()
+    writeLaunchMirror({ onboarding_completed: true, theme: 'auto' }, 'day')
+    app.store.set(HIKER_MODE_KEY, 'long')
+    const store = vi.mocked(get).getMockImplementation()!
+    let releaseMode: (() => void) | null = null
+    vi.mocked(get).mockImplementation((key) =>
+      key === HIKER_MODE_KEY
+        ? new Promise((resolve) => {
+            releaseMode = () => resolve(store(key))
+          })
+        : store(key),
+    )
+    const user = userEvent.setup()
+
+    render(<App />)
+    await user.click(await screen.findByRole('radio', { name: /volunteer/i }))
+    await waitFor(() => expect(releaseMode).not.toBeNull())
+    releaseMode!()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(screen.getByRole('radio', { name: /volunteer/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  it('writes the mirror once the record has actually answered', async () => {
+    app.onboard({}, { mirror: false })
+
+    render(<App />)
+
+    await waitFor(() => expect(readLaunchMirror()?.onboardingCompleted).toBe(true))
   })
 })
 

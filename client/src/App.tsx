@@ -587,6 +587,15 @@ function App() {
   /** Enough to paint the shell: the record, or the mirror of it. False only on
    *  a launch with neither, which renders nothing until the record lands. */
   const shellKnown = preferencesLoaded || launchMirror !== null
+  /** Whether the RECORD answered, as against the read settling either way.
+   *  What the mirror is allowed to follow - see the effect that writes it. */
+  const recordRead = useRef(false)
+  /** Whether the hiker has already changed one of the three mirrored values on
+   *  this launch. Since #1301 the shell paints before the record lands and the
+   *  Today header's mode switch is on that first frame, so a tap can land
+   *  BEFORE the read returns - and applying the stored answer over it would
+   *  undo a choice the hiker watched themselves make. */
+  const mirroredTouched = useRef(false)
   // The "today I'm…" mode (#1054, lib/hikerMode.ts) - mirrored like the two
   // preferences above, loaded with them, saved on every change. It re-ranks
   // the Today screen and never gates anything.
@@ -1167,8 +1176,13 @@ function App() {
     // mirror exists to prevent - so the mirror carries the mode too.
     void Promise.all([loadPreferences(), loadHikerMode()]).then(
       ([stored, mode]) => {
-        setPreferences(stored)
-        setHikerMode(mode)
+        // A choice made in the window before this landed outranks the record:
+        // the hiker is looking at what they picked.
+        if (!mirroredTouched.current) {
+          setPreferences(stored)
+          setHikerMode(mode)
+        }
+        recordRead.current = true
         setPreferencesLoaded(true)
         markLaunch(LAUNCH_MARKS.preferences)
         // The record has spoken; the next launch's first frame starts here.
@@ -1203,8 +1217,17 @@ function App() {
   // frame depends on is written where the next launch can read it without
   // waiting. Keyed on the three fields rather than on the whole blob, so a
   // change to a unit or a map style does not touch localStorage.
+  //
+  // ONLY ONCE THE RECORD HAS ACTUALLY BEEN READ, and that is not the same as
+  // `preferencesLoaded` - a read that REJECTS sets that flag too, deliberately
+  // (the effect above: a private-browsing failure must not leave the app
+  // blank). The state then still holds the defaults, and writing those to the
+  // mirror would tell the next launch that a returning hiker has not
+  // onboarded - the first-run steps, flashed at somebody who finished them
+  // months ago, and persistently, because the bad mirror is what the next
+  // launch reads first. So the mirror follows the RECORD, never the fallback.
   useEffect(() => {
-    if (!preferencesLoaded) return
+    if (!recordRead.current) return
     writeLaunchMirror(preferences, hikerMode)
   }, [preferencesLoaded, preferences.onboarding_completed, preferences.theme, hikerMode])
 
@@ -1212,6 +1235,7 @@ function App() {
   // that survived the session but not the relaunch would make the switch a
   // label rather than a setting.
   const handleChangeMode = useCallback((mode: HikerMode) => {
+    mirroredTouched.current = true
     setHikerMode(mode)
     void saveHikerMode(mode)
   }, [])
@@ -6655,8 +6679,45 @@ function App() {
   // deliberately-visible map ends up counted as hidden.
   const screenOver = flowScreen ?? overlayScreen
 
+  // REACHING THIS RETURN BEFORE THERE IS A MAP (#1301, and a defect an
+  // adversarial review of it found). The map subtree carries the tab bar for
+  // every screen that has no screen of its own here - the map tab on a phone,
+  // and every tab on a desktop, whose layout docks the journal beside the map.
+  // Since the shell now paints before the archive store has answered, a hiker
+  // can reach the tab bar and tap Map inside the few hundred milliseconds that
+  // read takes, and a desktop lands here on its first frame. With `mapMounted`
+  // false and nothing in `screenOver`, this return rendered nothing at all - a
+  // blank screen with no tab bar and no way back, which is precisely the
+  // failure TECHNICAL_ARCHITECTURE.md's error-boundary section exists to
+  // prevent, and worse than what it was written for, because nothing threw.
+  //
+  // The wait itself stays: the map has to know which background it is built
+  // around or it draws the live sheet and throws itself away (the note at the
+  // render gate). What does not wait is the way off this screen.
+  //
+  // ONLY where nothing else is rendering. A phone on Today gets its screen
+  // through `screenOver`, which carries its own tab bar - and an early return
+  // here would have taken Today away for the length of that read, which is a
+  // worse bug than the one being fixed. NOT during first run either: the entry
+  // steps ARE the map subtree (#721 draws them over its canvas), there is no
+  // tab bar behind them by design, and a bare one flashing up before the first
+  // step would offer to leave a flow that has not started.
+  // `?? null` rather than a bare `=== null`, because `ReactNode` admits
+  // undefined and a branch that ever assigns one would silently turn this
+  // guard off - which is the shape of the bug it exists to prevent.
+  const nothingWouldRender = !mapMounted && (screenOver ?? null) === null && !entering
+
   return (
     <>
+      {nothingWouldRender && (
+        <div className="app__screen">
+          <TabBar
+            active={activeTab}
+            onSelect={selectTab}
+            modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
+          />
+        </div>
+      )}
       {mapMounted && (
         <div
           className={screenOver !== null ? 'app__map-held' : undefined}

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { parseProviders, ENABLED_PROVIDERS, AUTH_CONFIGURED } from './supabase'
+import {
+  parseProviders,
+  ENABLED_PROVIDERS,
+  AUTH_CONFIGURED,
+  getAuthClient,
+} from './supabase'
 
 // Which providers a build offers is configuration, and configuration arrives
 // from a host's build settings where nobody is checking spelling. The rule
@@ -73,5 +78,27 @@ describe('AUTH_CONFIGURED', () => {
     // it sets anything up. The UI reads this to avoid offering a sign-in that
     // cannot complete - the same job DATA_CONFIGURED does for downloads.
     expect(AUTH_CONFIGURED).toBe(false)
+  })
+})
+
+describe('the client, behind an import (#1302)', () => {
+  it('forgets an import that failed, so the next ask tries again', async () => {
+    // A chunk that did not arrive - a deploy swapping the assets mid-session,
+    // a tunnel at a trailhead - is not an answer. Memoising the rejection
+    // would make one dropped request the state of the app for the rest of the
+    // walk: no sign-in, no outbox flush, no live conditions.
+    //
+    // Asserted through the module's own behaviour rather than by stubbing the
+    // dynamic import, which Vitest cannot intercept for a bare specifier: with
+    // no project configured (AUTH_CONFIGURED is false in this environment) the
+    // client resolves to null without importing anything, so what this pins is
+    // the contract every caller now depends on - a promise, and one that is
+    // safe to ask for twice.
+    const first = getAuthClient()
+    const second = getAuthClient()
+
+    expect(first).toBeInstanceOf(Promise)
+    await expect(first).resolves.toBeNull()
+    await expect(second).resolves.toBeNull()
   })
 })

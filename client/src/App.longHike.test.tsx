@@ -15,7 +15,7 @@
 // the map is inert underneath it and reachable while a point is being
 // placed, and that a tap lands as a point on the hike.
 
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
@@ -48,6 +48,27 @@ vi.mock('./lib/api', () => ({
 }))
 
 const app = appHarness({ navigator: { onLine: false }, objectUrls: true })
+
+/**
+ * PUT `matchMedia` BACK, and this is not housekeeping.
+ *
+ * `onADesktop()` below uses `vi.stubGlobal`, which persists past the test
+ * that called it - this project does not set `unstubGlobals`, so the stub
+ * outlives the file and reaches whatever the worker runs next. It did:
+ * App.loadBudget.test.tsx's "reads the waypoints once when the steps release
+ * them" passed alone and failed in the full run, because a leaked desktop
+ * makes `mapNeededNow` true from launch (`isDesktop` alone satisfies it) and
+ * the launch reads waypoints it would not otherwise read.
+ *
+ * App.test.tsx has had this line since it started stubbing the viewport. It
+ * was missed here, which is how the leak got out - the whole failure mode
+ * CLAUDE.md's "run ordering-dependent tests several times before pushing"
+ * exists to catch, caught by `scripts/test.sh` rather than by CI, which is
+ * where it is cheapest.
+ */
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 /** Shelters on the synthetic centerline, with the pipeline's own mile 0.2
  *  above the client index's - App.plan.test.tsx's fixture and its reason:
@@ -215,6 +236,78 @@ describe('choosing a hike point on the map (#1329)', () => {
     expect(screen.getByText(/mi 10\.2/)).toBeInTheDocument()
     // ...and the map goes back behind the modal it came out from.
     expect(document.querySelector('.map-screen')?.closest('[inert]')).not.toBeNull()
+  })
+})
+
+describe('renaming the hike, through the real shell (#1344)', () => {
+  it('names the hike while making it, which is where a hiker looks first', async () => {
+    // THE REPORT THIS SECOND PASS CAME FROM: "I can't edit the name of the
+    // hike." The first pass put a rename on the Plan room and nowhere else -
+    // an 11px link on a screen you have to already be in - while set-up,
+    // where a hiker is literally making the thing, printed
+    // "A new long hike" as a heading and offered no field at all.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    render(<App />)
+
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
+    await user.click(await screen.findByRole('button', { name: /A new long hike/ }))
+
+    const field = await screen.findByLabelText('Its name')
+    expect(field).toHaveValue('A new long hike')
+    await user.clear(field)
+    await user.type(field, 'Georgia, a bit at a time')
+
+    // The band above the field is showing it, which is the whole reason the
+    // field is here rather than behind a "rename".
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Georgia, a bit at a time' }),
+    ).toBeInTheDocument()
+
+    // And it survives a trip into the stop picker and back, like the points.
+    await user.click(screen.getByRole('button', { name: /Add a point on the way/ }))
+    const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
+    await user.type(within(picker).getByLabelText('Search for a stop'), 'front')
+    await user.click(
+      await within(
+        await screen.findByRole('dialog', { name: 'Choose a stop' }),
+      ).findByRole('button', { name: /Front Shelter/ }),
+    )
+
+    expect(await screen.findByLabelText('Its name')).toHaveValue(
+      'Georgia, a bit at a time',
+    )
+  })
+
+  it('types a new name and keeps it', async () => {
+    // THE TEST THAT WAS MISSING. PlanHome.test.tsx renames against a mocked
+    // `onRenameHike`, which proves the button calls something and nothing
+    // about whether the store ever hears it.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, hikeStore())
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: /Rename/ }))
+
+    const field = await screen.findByLabelText('New name for Springer → Katahdin')
+    await user.clear(field)
+    await user.type(field, 'Georgia to Maine')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    // On screen...
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Georgia to Maine' }),
+    ).toBeInTheDocument()
+    // ...and in the store, which is the half a mocked handler cannot show.
+    await waitFor(() => {
+      const store = app.store.get(TRIPS_KEY) as TripStore
+      expect(store.hikes[0]?.name).toBe('Georgia to Maine')
+    })
   })
 })
 

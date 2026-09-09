@@ -13,6 +13,17 @@
 // needs the stop picker over real trail data and a drive through it, which
 // is a second recipe's job; this is the empty state, where the refusal line
 // and the disabled primary are the things worth photographing.
+// SINCE #1344'S SECOND PASS IT LEADS WITH THE NAME. This screen printed
+// `hike.name` as its heading and offered no field, so every hike went into
+// the store as the literal "A new long hike" that handleNewHike invents -
+// and the one rename in the app was an 11px link on a Plan room you had to
+// already be in. The report was flat: "I can't edit the name of the hike."
+//
+// WHAT TO LOOK FOR: "Its name" first in the body, prefilled, with the pine
+// band above it showing the same value - typing here renames the heading,
+// which is why this is a field rather than a "rename" to go looking for.
+// Clearing it is allowed; `hikeNameFromEnds` turns a blank into the hike's
+// own two ends on the way into the store, which is renameTrip's rule.
 export const caption = 'Setting up a long hike — the points are the whole form (#1317)'
 export const alt =
   'A full screen with a pine SETTING UP band reading "A new long hike" and a Cancel button, a lede saying two ends is the whole requirement, an empty points list with "Add a point on the way", a note about what a third point means, an "Already walked some of it?" door, and a disabled "Start this long hike" button under the reason it is refused'

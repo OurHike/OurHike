@@ -46,6 +46,17 @@ export interface HikeSetupProps {
    *  nothing is refused for being too far along: an unknown bound is not a
    *  bound. */
   totalMiles: number | null
+  /**
+   * Name it (#1344, second pass).
+   *
+   * This screen printed `hike.name` as its heading and offered no way to
+   * change it, so every hike went into the store as the literal
+   * "A new long hike" that `handleNewHike` invents - and the ONE rename in
+   * the app was an 11px link on a Plan room you had to already be in. The
+   * moment a hiker most wants to name a hike is the moment they are making
+   * one, which is this screen.
+   */
+  onRename: (name: string) => void
   onEditPoint: (index: number) => void
   onAddPoint: () => void
   onUndo: (() => void) | null
@@ -61,6 +72,7 @@ export function HikeSetup({
   pois,
   units,
   totalMiles,
+  onRename,
   onEditPoint,
   onAddPoint,
   onUndo,
@@ -90,6 +102,24 @@ export function HikeSetup({
           Two ends is the whole requirement. Direction comes from the miles; everything
           below is optional and editable later.
         </p>
+
+        {/* FIRST, BECAUSE IT IS WHAT THE HEADING IS ALREADY SHOWING. The band
+            above prints this value, so a hiker typing here watches their own
+            hike get its name - which is why this is a plain field rather than
+            a "rename" the screen makes them go looking for.
+
+            Uncontrolled-looking but controlled: the draft lives in the shell
+            (`hikeDraft`) so a trip into the stop picker and back does not lose
+            it, exactly as the points do. */}
+        <label className="hike-setup__name">
+          <span className="route-stops__count">Its name</span>
+          <input
+            type="text"
+            className="route-stops__field hike-setup__name-field"
+            value={hike.name}
+            onChange={(event) => onRename(event.target.value)}
+          />
+        </label>
 
         <div className="hike-setup__points">
           <div className="route-stops__head">

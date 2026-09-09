@@ -3882,6 +3882,33 @@
   color: var(--fg-3);
 }
 
+/* Naming the hike while it is being made (#1344). The `.route-stops__field`
+   anatomy this screen already uses for its points, as an input rather than a
+   button - one field shape on one screen. */
+.hike-setup__name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.hike-setup__name-field {
+  width: 100%;
+  /* This project sets no global `box-sizing`, and `.route-stops__field`
+     carries 12px of horizontal padding and a 1.5px border - so a bare
+     `width: 100%` put the right-hand edge of this input off the screen.
+     Every other user of that class is a flex CONTAINER sized by its content;
+     this is the first one that is an input sized by a percentage. */
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  /* `.route-stops__field` is a button everywhere else and says so. A caret
+     belongs in a text field. */
+  cursor: text;
+}
+
 /* ---------- Planning a section in place (#1344) ---------- */
 
 /* Sits in the hike room's own column, where the primary was. Not a sheet and

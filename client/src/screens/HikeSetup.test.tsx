@@ -33,6 +33,7 @@ function hike(over: Partial<Hike> = {}): Hike {
 }
 
 const PROPS = {
+  onRename: vi.fn(),
   hike: hike(),
   recorded: [] as readonly Trip[],
   pois: [] as readonly StoredPoi[],

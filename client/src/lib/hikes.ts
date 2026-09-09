@@ -456,6 +456,39 @@ export function resolvedHikePoints(
  * extent, so the first point is not necessarily the southern one. Null on
  * a hike with no readable points.
  */
+/**
+ * A name for a hike that has none, from its own two ends.
+ *
+ * `renameTrip`'s rule at the hike's grain, and #1344's second pass is why it
+ * exists: set-up now carries a name FIELD, and a field can be cleared. An
+ * empty name is not stored as an empty name - it falls back to what the hike
+ * already says about itself, so a cleared box cannot leave a blank heading
+ * on Today, in the Plan band, in the sidebar and on the pick sheet at once.
+ *
+ * Falls back again where the ends cannot be resolved at all, because a hike
+ * whose points this download cannot place still needs something to be called.
+ */
+export function hikeNameFromEnds(
+  hike: Hike,
+  pois: readonly StoredPoi[],
+  fallback = 'A long hike',
+): string {
+  const { low, high } = hikeEnds(hike, pois)
+  if (low === null || high === null) return fallback
+  return `${placeLabel(low)} \u2192 ${placeLabel(high)}`
+}
+
+/** A resolved point's own word for itself - its name, or its mile as a
+ *  MARKER (#986), never as a distance. `stopLabel`'s rule, kept here so
+ *  lib/ does not reach into planDisplay for one string. */
+function placeLabel(place: ResolvedPlace): string {
+  if (place.name !== undefined && place.name !== '') return place.name
+  return `mi ${place.mile.toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}`
+}
+
 export function hikeEnds(
   hike: Hike,
   pois: readonly StoredPoi[],

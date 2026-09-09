@@ -281,6 +281,7 @@ import {
   hikeLegs,
   MIN_GAP_MI,
   hikeFromTrips,
+  hikeNameFromEnds,
   hikeOfTrip,
   recordedPlan,
   type Hike,
@@ -3176,6 +3177,13 @@ function App() {
    */
   const [hikePointAt, setHikePointAt] = useState<number | null>(null)
 
+  /** Name the hike being set up (#1344). The DRAFT's name, not the store's:
+   *  nothing is kept until "Start this long hike", so this is one field of
+   *  the same held draft the points live in. */
+  const handleRenameDraft = useCallback((name: string) => {
+    setHikeDraft((draft) => (draft === null ? draft : { ...draft, name }))
+  }, [])
+
   const handleEditHikePoint = useCallback((index: number) => {
     setHikePointAt(index)
   }, [])
@@ -3700,11 +3708,22 @@ function App() {
   const handleStartHike = useCallback(() => {
     if (hikeDraft === null) return
     if (setupRefusal(hikeDraft, trailIndex?.totalMiles ?? null) !== null) return
-    const started: Hike = { ...hikeDraft, status: 'walking' }
+    // A CLEARED NAME FALLS BACK RATHER THAN BEING STORED (#1344, second
+    // pass). Set-up carries a name field now, and a field can be emptied;
+    // `renameTrip` has refused to store a blank since it was written, for
+    // the reason that applies here four times over - a hike with no name
+    // leaves a blank heading on Today, in the Plan band, in the sidebar and
+    // on the pick sheet at once. Its own two ends are what it already says
+    // about itself.
+    const named =
+      hikeDraft.name.trim() === ''
+        ? { ...hikeDraft, name: hikeNameFromEnds(hikeDraft, pois) }
+        : { ...hikeDraft, name: hikeDraft.name.trim() }
+    const started: Hike = { ...named, status: 'walking' }
     applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
     setHikeDraft(null)
     setHikeSheet(null)
-  }, [hikeDraft, applyTripStore, trailIndex])
+  }, [hikeDraft, applyTripStore, trailIndex, pois])
 
   /**
    * Keep a drafted stretch as ground already walked (#789).
@@ -7034,6 +7053,7 @@ function App() {
         pois={pois}
         units={units}
         totalMiles={trailIndex?.totalMiles ?? null}
+        onRename={handleRenameDraft}
         onEditPoint={handleEditHikePoint}
         onAddPoint={handleAddHikePoint}
         onUndo={hikeDraft.points.length > 0 ? handleUndoHikePoint : null}

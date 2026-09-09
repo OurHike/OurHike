@@ -3,8 +3,9 @@
 How long the app may take to put a usable screen in front of a hiker who opens it,
 what a launch is allowed to do before that screen is there, and what stops the
 number from creeping back up once it has come down. This is the intended state;
-the work that gets there is tracked on **PARENT_ISSUE** and its sub-issues, and the
-instrument is `client/scripts/measure-first-run.mjs` (TESTING.md §21).
+the work that gets there is tracked on **#1298 — The launch budget: half a second to a
+usable screen, Skip that answers on first run, and a build that cannot regress either**
+and its six sub-issues, and the instrument is `client/scripts/measure-first-run.mjs` (TESTING.md §21).
 
 The ask this answers, from the maintainer on 2026-09-09: "the screen is still taking
 way too long to load on initial opening — like 6 seconds. Get that down and keep it
@@ -16,21 +17,23 @@ Measured 2026-09-09 with the stopwatch's own profile — Chromium at 390×844, 4
 throttle, 12 Mbps / 80 ms, tiles stubbed — against two builds: production
 (`https://ourhike.org/app/`, v1.2.2, deployed 2026-09-08) and a local build of `main`
 at `52fdf08` given production's public build values (the data bucket, the Supabase
-project). The run came from an agent sandbox whose Chromium had to be pinned to
-TLS 1.2 to pass the sandbox's egress proxy; that changes the handshake and nothing on
-the main thread, and it is why the figures below are compared to each other and not
-to a laptop's.
+project). Each cell below is the range over the clean runs — three against production for the
+returning launch (one of which is discussed separately in §6), two for first run, two
+of each for the local build. The runs came from an agent sandbox whose Chromium had to
+be pinned to TLS 1.2 to pass the sandbox's egress proxy; that changes the handshake and
+nothing on the main thread, and it is why the figures are compared to each other and
+not to a laptop's.
 
 **The returning hiker** — onboarding done, the release on the phone, landing on Today.
 This is the launch every day after the first.
 
 | | production v1.2.2 | `main` @ 52fdf08 |
 |---|---:|---:|
-| first paint (a blank page in the page colour) | 120 ms | 108 ms |
-| first contentful paint | **1,152 ms** | 612 ms |
-| a tap on Plan made at 0.8 s was accepted after | **933 ms** | 254 ms |
-| long tasks · longest · total blocking time | 10 · 275 ms · **534 ms** | 3 · 78 ms · 54 ms |
-| taps from 2 s on, accepted after | 85–257 ms | 57–95 ms |
+| first paint (a blank page in the page colour) | 120–320 ms | 108 ms |
+| first contentful paint | **1,152–1,572 ms** | 612–820 ms |
+| a tap on Plan made at 0.8 s was accepted after | **933–1,441 ms** | 254–328 ms |
+| long tasks · longest · total blocking time | 10–12 · 275–332 ms · **534–764 ms** | 3 · 78–97 ms · 54–88 ms |
+| taps from 2 s on, accepted after | 80–257 ms | 57–104 ms |
 
 **The first run** — nothing on the phone, the three entry steps up, the release
 downloading behind them. **#857 — Skip on the first-run steps feels like a broken button, because the map behind
@@ -41,9 +44,9 @@ taps answered in 11, 4 and 220 ms.
 
 | | production v1.2.2 | `main` @ 52fdf08 | after #857's fix, 2026-08-20 |
 |---|---:|---:|---:|
-| first entry step reachable | 2,137 ms | 1,648 ms | — |
-| Skip 1 · 2 · 3 accepted after | **3,211 · 5,331 · 2,997 ms** | 4,290 · 80 · 305 ms | 11 · 4 · 220 ms |
-| long tasks · longest · total blocking time | 25 · 1,600 ms · **10,409 ms** | 18 · 617 ms · 4,507 ms | — · 434 ms · 3,673 ms |
+| first entry step reachable | 2,137–2,267 ms | 1,648–1,763 ms | — |
+| Skip 1 · 2 · 3 accepted after | **3,211–7,286 · 4,785–5,331 · 330–2,997 ms** | 3,182–4,290 · 80–97 · 305–383 ms | 11 · 4 · 220 ms |
+| long tasks · longest · total blocking time | 25–28 · 1,600–1,986 ms · **9,556–10,409 ms** | 18 · 617–706 ms · 4,507–4,584 ms | — · 434 ms · 3,673 ms |
 
 Two things to hold onto from those tables:
 
@@ -57,14 +60,14 @@ Two things to hold onto from those tables:
   cells, because #556 built the unit the decision replaced** and **#1257 — Deliver the
   network lines and the junction graph in pieces a phone can read by range** added the
   coverage cells the launch now registers; the network overview arrived).
-- **Production spends about twice the blocking time of a build of `main`**, one run
-  each, on the same profile and the same data. The two builds differ by three
-  merged pull requests and by the host that serves them. Whether the gap is the
-  code, the host or run-to-run noise is an open question below — and it is the
+- **Production spends several times the blocking time of a build of `main`** — 534–764
+  against 54–88 ms — on the same profile and the same data, and the gap held across
+  every run. The two builds differ by three merged pull requests and by the host that
+  serves them. Which of those it is remains an open question below, and it is the
   reason the plan's first job is an instrument rather than a fix.
 
 **What the stopwatch cannot see.** The maintainer's phone reports about six seconds
-and the throttled profile reports 1.2 s to first content. The profile is a desktop
+and the throttled profile reports 1.2–1.6 s to first content. The profile is a desktop
 core at a quarter speed; a real launch adds the browser or WebView process starting,
 a phone's storage, and its thermal state, and none of that has an instrument today.
 Until it does, "six seconds" is the only measurement of the thing being complained
@@ -212,7 +215,8 @@ nobody's phone. What gates is the deterministic half (§5).
 
 ## 4. The shape of a launch that fits
 
-Six changes of shape. None of them is a task list; **PARENT_ISSUE** carries those.
+Six changes of shape, one sub-issue each under #1298. None of them is a task list; the
+issues carry those.
 
 ### 4.1 Instrumented before optimised
 
@@ -321,8 +325,17 @@ release's effect on the launch is a row in an issue rather than a feeling.
 - **Whether 500 ms is reachable on a phone once the process start is counted.** It
   is reachable on the profile — a build of `main` already paints content at 612 ms
   with the engine still in the eager chunk — and unknown on a device.
-- **Why production costs twice what `main` does.** Three pull requests, a different
-  host, or noise; one run each. The variance runs and the instrument settle it.
+- **Why production costs several times what `main` does.** Three pull requests or a
+  different host; the runs rule out noise. The readout on the deployed build settles it.
+- **One production run in three did not launch as a returning hiker at all.** Content
+  painted at 1,368 ms, but no tab bar appeared for the eight minutes the run waited, and
+  the main thread spent them in MapLibre's tile handling — 38 long tasks, the longest
+  1,780 ms. That is the shape of the entry steps coming back up over a full map, which
+  is the launch #857 fixed and only happens when the stored preferences do not say
+  onboarding is done. The other two runs, and both local runs, launched normally from
+  the same warm-up. Whether a phone can hit it — a preferences read that rejects falls
+  back to defaults, and defaults mean first run (`App.tsx:1165–1188`) — is not known,
+  and it is the kind of thing §4.1's readout would catch on a real device.
 - **The Capacitor shells.** Both serve the same bundle from the binary with no
   service worker (`client/capacitor.config.ts`); the parse and the gate cost the same
   and the network costs differ. The stopwatch has no mode for them.

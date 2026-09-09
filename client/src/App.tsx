@@ -179,7 +179,8 @@ import {
 } from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
-import { ribbonWindow } from './lib/elevationProfile'
+import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
+import { ascentBetween } from './lib/todayJournal'
 import { ribbonLanes, ribbonView, type TodaysWalk } from './lib/ribbonView'
 import { walkProfile } from './lib/walkProfile'
 import { viewportMiles } from './lib/viewportMiles'
@@ -193,6 +194,7 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
 import { stopLabel } from './lib/planDisplay'
+import { formatDistance, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   currentDayIndex,
@@ -225,11 +227,14 @@ import {
 } from './lib/trips'
 import {
   DEFAULT_TRAIL_ID,
+  hikeEnds,
   hikeFromTrips,
   hikeOfTrip,
   recordedPlan,
   type Hike,
 } from './lib/hikes'
+import { hikeFiguresLine } from './lib/hikeText'
+import { dayNumber, endsTheHike, hikeDayToday, type HikeDayAt } from './lib/hikeToday'
 import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
@@ -301,6 +306,8 @@ import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './screens/PlanHome'
 import { HikePickSheet } from './chrome/HikePickSheet'
 import { HikeSetup, setupRefusal } from './screens/HikeSetup'
+import { HikeDay } from './screens/HikeDay'
+import type { LongHikeToday } from './screens/Today'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -2923,6 +2930,116 @@ function App() {
     },
     [hikePointAt],
   )
+
+  /** The long hike the app is in, or null. */
+  const activeHike = useMemo(
+    () => tripStore.hikes.find((hike) => hike.id === tripStore.activeHikeId) ?? null,
+    [tripStore.hikes, tripStore.activeHikeId],
+  )
+
+  /** Whether the day screen is open over the hike (#1317). */
+  const [hikeDayOpen, setHikeDayOpen] = useState(false)
+
+  /**
+   * What Today says about the hike leading it.
+   *
+   * Built here, once, so the Today card and the day screen cannot come to
+   * describe the same day differently - the alert sentences' own rule, at a
+   * different grain.
+   */
+  const longHikeToday = useMemo((): LongHikeToday | null => {
+    if (activeHike === null || hikerMode !== 'long') return null
+    const today = localDay(now)
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, today)
+    const ends = hikeEnds(activeHike, pois)
+
+    return {
+      name: activeHike.name,
+      figures: hikeFiguresLine(activeHike, tripStore.trips, pois, units),
+      dayNumber: dayNumber(tripStore.trips, activeHike.tripIds, today),
+      day:
+        at === null
+          ? null
+          : {
+              title: `${stopLabel(at.trip.plan.stops[at.index])} → ${stopLabel(
+                at.trip.plan.stops[at.index + 1],
+              )}`,
+              planned: `${formatDistance(
+                Math.abs(
+                  at.trip.plan.stops[at.index + 1].mile -
+                    at.trip.plan.stops[at.index].mile,
+                ),
+                units,
+              )} planned`,
+              // The next resupply is a stop's own flag (`PlanStop.resupply`),
+              // so this is a lookup rather than a guess. Null when none is
+              // marked, and then the card simply does not say - "no
+              // resupply" would be a claim about the trail rather than about
+              // the plan.
+              resupply: nextResupplyLine(at, units),
+              last:
+                ends.high !== null && endsTheHike(at.trip.plan, at.index, ends.high.mile),
+              onOpen: () => setHikeDayOpen(true),
+              onTakeZero: () => setHikeDayOpen(true),
+              onSeeOnMap: () => setActiveTab('map'),
+            },
+    }
+  }, [activeHike, hikerMode, now, tripStore.trips, pois, units])
+
+  /**
+   * Everything the day screen draws, or null when there is no day to draw.
+   *
+   * The profile is sliced from the SAME published samples the map's ribbon
+   * reads (`ribbonSamples`), and the ascent from `ascentBetween`, which
+   * returns null rather than a number when the window runs past what the
+   * download measured. Both matter: a day screen that computed its own climb
+   * would be a second opinion about the same ground, and one that summed a
+   * partial window would print an optimistic figure for a day a hiker is
+   * deciding whether they can finish before dark.
+   */
+  const hikeDayView = useMemo(() => {
+    if (activeHike === null) return null
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, localDay(now))
+    if (at === null) return null
+
+    const from = at.trip.plan.stops[at.index]
+    const to = at.trip.plan.stops[at.index + 1]
+    const domain = {
+      startMile: Math.min(from.mile, to.mile),
+      endMile: Math.max(from.mile, to.mile),
+    }
+    const samples = elevation === null ? [] : ribbonSamples(elevation, domain)
+
+    return {
+      hikeName: activeHike.name,
+      title: `${dayLabelFor(at, now)}`,
+      subtitle: `${stopLabel(from)} → ${stopLabel(to)} · ${formatDistance(
+        Math.abs(to.mile - from.mile),
+        units,
+      )}`,
+      samples,
+      domain,
+      ascentFt: ascentBetween(samples, domain.startMile, domain.endMile),
+      currentMile: fixMile ?? null,
+      // The day's own stretch, from the same POI store the map draws - never
+      // a second list, and never redrawn glyphs (map/poiIcons.ts).
+      waypoints: pois
+        .filter(
+          (poi) =>
+            poi.mile !== undefined &&
+            poi.mile >= domain.startMile &&
+            poi.mile <= domain.endMile &&
+            poi.name !== '',
+        )
+        .map((poi) => ({
+          id: poi.id,
+          type: poi.type,
+          name: poi.name,
+          mile: poi.mile as number,
+        }))
+        .sort((a, b) => a.mile - b.mile),
+    }
+  }, [activeHike, tripStore.trips, now, elevation, pois, units, fixMile])
 
   /** Keep the draft and walk it. Refused where the screen refuses, so the
    *  button and the store cannot disagree about whether this is a hike. */
@@ -5967,7 +6084,24 @@ function App() {
   // typing or deciding - and while one is up the downloads window is not
   // rendered, which is the behaviour the early returns gave it.
   let flowScreen: ReactNode = null
-  if (hikeSheet === 'setup' && hikeDraft !== null) {
+  if (hikeDayOpen && hikeDayView !== null) {
+    flowScreen = (
+      <HikeDay
+        {...hikeDayView}
+        units={units}
+        onBack={() => setHikeDayOpen(false)}
+        onOpenWaypoint={handleOpenPassedPlace}
+        // The three edits and the explicit end-of-day are #1317's next
+        // slice; until they land the screen must not offer a control that
+        // silently does nothing, so each closes back to the hike - the
+        // honest version of "not yet", and the same rule LineSheet keeps.
+        onStopShort={() => setHikeDayOpen(false)}
+        onPushOn={() => setHikeDayOpen(false)}
+        onTakeZero={() => setHikeDayOpen(false)}
+        onCallItADay={() => setHikeDayOpen(false)}
+      />
+    )
+  } else if (hikeSheet === 'setup' && hikeDraft !== null) {
     // A flow rather than a sheet: it is a whole screen with its own Cancel,
     // and the map underneath stays mounted exactly as every other flow's
     // does. First in the chain because nothing else may outrank a hiker
@@ -6316,6 +6450,7 @@ function App() {
       trailLinesMissing={!haveTrailLines && dataError !== null}
       mode={hikerMode}
       onChangeMode={handleChangeMode}
+      longHike={longHikeToday}
       pois={searchablePois}
       currentMile={fix?.mile}
       direction={direction?.direction}
@@ -7361,3 +7496,45 @@ function App() {
 }
 
 export default App
+
+/**
+ * The next resupply on this day's stretch, as a line - or null.
+ *
+ * A stop's own `resupply` flag, looked up rather than guessed. Null when
+ * none is marked, and then the card says nothing: "no resupply" would be a
+ * claim about the trail where the flag is a claim about the plan.
+ */
+function nextResupplyLine(at: HikeDayAt, units: UnitSystem): string | null {
+  const from = at.trip.plan.stops[at.index].mile
+  const next = at.trip.plan.stops.find(
+    (stop, index) => index > at.index && stop.resupply && stop.name !== undefined,
+  )
+  if (next === undefined) return null
+  return `Resupply: ${next.name}, ${formatDistance(Math.abs(next.mile - from), units)} on`
+}
+
+/**
+ * `Day 6 · Tue 8 Sep`, or `Tue 8 Sep` when the hike has no dated day to
+ * count from.
+ *
+ * The day number is the hike's, not the section's: a hiker four sections
+ * into the Appalachian Trail is on day 96 of their hike and day 3 of this
+ * trip, and the first is what they call it.
+ */
+function dayLabelFor(at: HikeDayAt, now: Date): string {
+  const date = at.trip.plan.days[at.index]?.date
+  const label =
+    date === undefined
+      ? now.toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        })
+      : new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'UTC',
+        })
+  return label
+}

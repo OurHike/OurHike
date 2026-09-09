@@ -568,3 +568,162 @@
   font-size: 13px;
   color: var(--fg-3);
 }
+
+/* ---------------------------------------------------------------------------
+   The long hike leading Today (#1317).
+
+   Two lines under the mile readout and above the mode switch: the hike's
+   name, and its two figures. Both on pine, so both take the chrome ink.
+*/
+
+.today__hike-name {
+  margin: 8px 0 0;
+  font-family: var(--font-display, serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-chrome-1);
+}
+
+.today__hike-figures {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}
+
+/* The card that leads the paper column. The 2px blaze border is
+   `.plan-home__open`'s precedent - "somewhere obvious to go back to" - and
+   it is the only card on this screen wearing one, which is what makes it
+   mean anything. */
+.today__card--hike {
+  border: 2px solid var(--accent-blaze-orange);
+}
+
+.today__hike-title {
+  margin: 4px 0 0;
+  font-family: var(--font-display, serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+/* The last of it: bigger, and that is the whole of the celebration here.
+   No countdown, no bar, no confetti. */
+.today__hike-title--last {
+  font-size: 18px;
+}
+
+.today__hike-line {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* A DOOR, not a picture - see Today.tsx's note on why this is not the map's
+   own canvas. Sized like the thumbnail it stands in for so the card does not
+   change shape when it becomes one. */
+.today__hike-map {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  height: 104px;
+  margin-top: var(--space-3, 12px);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.today__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+}
+
+/* ---------------------------------------------------------------------------
+   A day inside a long hike (#1317).
+
+   The header is pine like the Plan band and reuses `.plan-band__word` for
+   its title, so the two screens a hiker moves between wear one typeface at
+   one size rather than two that nearly match.
+*/
+
+.hike-day {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+}
+
+.hike-day__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4, 16px);
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.hike-day__sub {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}
+
+.hike-day__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+}
+
+/* The waypoint lane, in the ribbon's own 0-100 space and inset by the 36px
+   gutter the ribbon keeps for its min/max labels - so a pin sits under the
+   ground it belongs to rather than a gutter's width to the left of it. */
+.hike-day__lane {
+  position: relative;
+  height: 22px;
+  margin-left: 36px;
+}
+
+.hike-day__pin {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-s, 4px);
+}
+
+.hike-day__no-profile {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.hike-day__stops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.hike-day__note {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}

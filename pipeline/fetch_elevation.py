@@ -245,12 +245,19 @@ def build_tile_index(bbox: tuple[float, float, float, float], corridor_hit) -> l
 
 #: How many HEADs are in flight at once.
 #:
-#: Measured on run #92 of publish-vector-data.yml (2026-09-08): 473 cells,
-#: sequentially, took **4 minutes 37 seconds** - 0.59 s of round trip each,
-#: essentially all of it waiting. The cell list stopped being ~110 corridor
-#: tiles when #1019 removed the network clip, and a per-cell cost that was
-#: fine at 110 is four and a half minutes at 473 and grows with every trail
-#: system registered.
+#: What is measured is the STEP, not the loop: run #92 of
+#: publish-vector-data.yml spent **4m38s** in "Fetch elevation tiles"
+#: (18:42:01-18:46:39 on 2026-09-08, read off the job API 2026-09-09) and that
+#: step is 473 sequential HEADs *plus* main()'s corridor build and its
+#: per-candidate-cell intersection against the network table. Nothing
+#: separates the two halves, because Python was still block-buffering the
+#: runner's log on that run - the thing this branch's PYTHONUNBUFFERED commit
+#: fixes, and the reason the next run can say which half it was. So "473 round
+#: trips are worth overlapping" is the claim here; "they were 0.59 s each" is
+#: an inference from a step total that has something else in it, and is not
+#: made. The cell list stopped being ~110 corridor tiles when #1019 removed
+#: the network clip, and a per-cell round trip that was fine at 110 grows with
+#: every trail system registered.
 #:
 #: 8 is picked rather than derived - `@unvalidated`, like the sampler's
 #: DEFAULT_TILE_WORKERS next door, and what would settle it is the same thing:
@@ -290,8 +297,18 @@ def stamp_last_modified(index: list[dict], *, head=None, workers: int = HEAD_WOR
 
     Non-fatal on purpose. A tile whose HEAD fails records `None`, which
     freshness_state already keeps rather than filters - "we did not find out"
-    is a state it models. The index itself is unaffected, so a network
-    problem costs freshness detail and never the elevation profile.
+    is a state it models. The index itself is unaffected, so a network problem
+    costs freshness detail and never the elevation profile.
+
+    IT DOES COST ONE MORE THING THAN IT USED TO, and this promise is the one
+    place a reader would look for it. export_elevation.py's per-point sample
+    cache is keyed on the marker these timestamps build, so a cell that
+    answered nothing has no edition to pin and that cell's samples are held
+    out of the cache file entirely (`_sources_with_no_pinned_edition` there,
+    and the stale ground it reproduces). The profile is still unaffected -
+    those points are read from the tile rather than guessed - so what a flake
+    costs is that cell's points being re-read next run. Slower, and the
+    cautious direction; still never a wrong elevation.
 
     ASKED IN PARALLEL, WRITTEN IN ORDER (see HEAD_WORKERS for the measurement
     that made that worth doing). `pool.map` yields in submission order, and
@@ -319,9 +336,19 @@ def stamp_last_modified(index: list[dict], *, head=None, workers: int = HEAD_WOR
 #: back None. It was ~110 cells when the index was the A.T. corridor alone;
 #: run #92 measured 473 (2026-09-08) now that the index covers the network
 #: extent too, which makes the budget argument below stronger rather than
-#: weaker - and is why the HEADs go out on a pool (HEAD_WORKERS). The default (5, 30) ladder against a USGS
-#: outage would be up to 64 minutes of sleeping to learn nothing, so the
-#: budget is small enough to absorb a single flake and no more (#1295).
+#: weaker - and is why the HEADs go out on a pool (HEAD_WORKERS). The default
+#: (5, 30) ladder against a USGS outage would be up to 64 minutes of sleeping
+#: to learn nothing, so the budget is small enough to absorb a single flake
+#: and no more (#1295).
+#:
+#: WHAT A None COSTS IS NO LONGER ONLY FRESHNESS DETAIL, and
+#: `stamp_last_modified`'s docstring above carries it where it makes the
+#: promise: export_elevation.py's sample cache is keyed on the marker these
+#: timestamps build, so a cell that answers nothing has no edition to pin and
+#: its samples are held out of that file (see
+#: `_sources_with_no_pinned_edition` there). The elevation profile is still
+#: unaffected; what a flake now costs is that cell's points being re-read next
+#: run, which is the cautious direction.
 HEAD_BACKOFF_SECONDS = (2,)
 
 

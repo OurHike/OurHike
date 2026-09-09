@@ -55,11 +55,20 @@ def _write_ramp_tile(path, *, bounds=(WEST, SOUTH, EAST, NORTH), size=400, base=
 
 def _index_for(tmp_path, *tiles):
     """The {url, bounds} index index_elevation_tiles() reads, pointed at local
-    fixture tiles (see test_export_elevation.py's equivalent)."""
+    fixture tiles (see test_export_elevation.py's equivalent).
+
+    STAMPED WITH A `last_modified`, which fetch_elevation.stamp_last_modified()
+    puts on every cell whose HEAD answers. It is not decoration: a cell with no
+    stamped edition has nothing for the sample cache's marker to pin, so
+    export_elevation.py holds its points out of the file entirely rather than
+    risk serving ground that was re-flown while the marker stood still. An
+    unstamped fixture would therefore make every cache test here silently
+    assert nothing.
+    """
     entries = []
     for tile in tiles:
         with rasterio.open(tile) as src:
-            entries.append({"url": tile.as_posix(), "bounds": list(src.bounds)})
+            entries.append({"url": tile.as_posix(), "bounds": list(src.bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"})
     out = tmp_path / "tile_index.json"
     out.write_text(json.dumps(entries))
     return out

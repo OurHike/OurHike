@@ -109,7 +109,7 @@ from lib.elevation_gain import (
     cumulative_gain_over_gaps,
     raw_cumulative_gain,
 )
-from lib.freshness_state import elevation_marker
+from lib.freshness_state import edition_key, elevation_marker
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 
@@ -643,10 +643,31 @@ SAMPLE_CACHE_NAME = "samples.json"
 SAMPLE_CACHE_PATH = ELEVATION_INDEX_PATH.parent / SAMPLE_CACHE_NAME
 
 # Decimal places a cached point's lon/lat is keyed at. Six is ~0.11 m of
-# longitude at the equator and less further north - two orders finer than the
-# ~10 m posting of the DEM being sampled, so two points that share a key
-# cannot land in different pixels. It exists to make a key that survives a
-# float's round trip through JSON, not to snap anything to a grid.
+# longitude at the equator and less further north, against the ~10 m posting
+# of the DEM being sampled. It exists to make a key that survives a float's
+# round trip through JSON, not to snap anything to a grid.
+#
+# WHAT THAT ACTUALLY BOUNDS, said no stronger than it is. Two points sharing a
+# key are within ~0.11 m of each other, which is NOT the same as landing in
+# the same pixel - a pixel boundary can run between them, and then one is
+# answered with the other's pixel. What is bounded is the error that costs:
+# the ground's own rise across 0.11 m, which on a 45-degree slope is 0.11 m
+# and on anything a trail is graded for is less. That is two orders under
+# lib/elevation_gain.py's 3.0 m dead band, and the reasoning is the arithmetic
+# above rather than a measurement of the corridor.
+#
+# WHOSE PIXEL IT IS, since the sentence above opens the question and stopping
+# there would leave it. Whoever asked first: this file is shared by all three
+# exporters and outlives the run, so a key the A.T. profile writes can later be
+# answered to the junction graph and the other way round. publish-vector-data.
+# yml runs export_elevation.py before both network steps, so on a cold cache
+# the published profile is always its own points; on a warm one a colliding
+# graph point from the previous run can answer it. The consequence is that
+# elevation_profile.json's own hash can move without the DEM moving - by at
+# most that 0.11 m of ground, which is under the dead band the gain sum uses
+# and above the 0.1 ft the record is rounded to. Nobody has seen a collision;
+# at 25 m spacing they need a graph point and a trail sample to agree to six
+# decimal places.
 CACHE_KEY_DECIMALS = 6
 
 
@@ -659,25 +680,85 @@ def _cache_key(lon: float, lat: float) -> str:
     return f"{lon:.{CACHE_KEY_DECIMALS}f},{lat:.{CACHE_KEY_DECIMALS}f}"
 
 
+def _is_a_stored_sample(value) -> bool:
+    """Whether a value read back out of the cache file can be an elevation at
+    all: a null, or a finite real number. Nothing else.
+
+    THE FINITENESS IS THE WHOLE POINT, and it is the raster read's own guard
+    standing at the second door. `json.loads` reads the bare tokens `NaN` and
+    `Infinity` back as floats without complaining, so a file carrying one
+    would hand `sample_many` a value `_read_tile` refuses at the tile - and
+    `build_profile` would divide it by METERS_PER_FOOT, round it, and put it
+    in elevation_profile.json, where `json.dumps` writes it back out as the
+    same bare token and `JSON.parse` on the phone rejects the entire profile
+    (#659 - a literal NaN in the profile artifact takes the client down).
+    Checked in this sandbox 2026-09-09 against a hand-written cache file: both
+    tokens were served as elevations and both reached the published record.
+    This cache is the one path a value takes into that artifact without
+    passing through the tile read, so it carries the tile read's guard.
+
+    NOTHING HAS WRITTEN SUCH A FILE, and this is not a sighting. The writer
+    here cannot produce one, because every value it stores came through that
+    guard. It is the same reasoning that widened the guard in `_read_tile`
+    from NaN to every non-finite float: a JSON round trip that can produce one
+    can produce the other, and unlike that one this round trip outlives the
+    run that made it - the file sits in data/raw/elevation/ across runs, and
+    across whatever code wrote it last.
+
+    A bool is refused deliberately. `True` is an instance of `int` in Python
+    and would otherwise be served as an elevation of one metre.
+    """
+    if value is None:
+        return True
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def _load_sample_cache(path: Path, marker: str | None) -> dict[str, float | None]:
     """The stored samples, or {} when they cannot be trusted for this index.
 
     THE WHOLE CACHE IS DISCARDED RATHER THAN MERGED when the marker moves. The
-    marker is lib/freshness_state.py's `elevation_marker` - the sorted set of
-    per-cell editions the index pins - so a difference means at least one cell
-    was re-flown or re-published. Merging would keep serving that cell's old
-    elevations from the entries that happen to be in the file, which is the
-    one failure this cache could cause that a hiker would feel: a profile that
-    is confidently wrong about ground that has been re-surveyed. Re-reading
-    everything costs a run; keeping a stale sample costs trust in the number.
+    marker is lib/freshness_state.py's `elevation_marker` - the sorted, joined
+    set of per-cell editions the index pins - so a difference means the index
+    is not the one this file was sampled against. Merging would keep serving a
+    moved cell's old elevations from the entries that happen to be in the
+    file, which is the one failure this cache could cause that a hiker would
+    feel: a profile that is confidently wrong about ground that has been
+    re-surveyed. Re-reading everything costs a run; keeping a stale sample
+    costs trust in the number.
+
+    WHAT MOVES THE MARKER IS THE SET AND NOT ONLY THE EDITIONS, which is worth
+    saying plainly because "the cache survives everything except a re-fly" is
+    the reading the sentence above invites and is wrong. `elevation_marker`
+    joins one key per indexed cell, so adding or dropping a cell moves it too
+    (checked directly, 2026-09-09: adding a second entry changed the marker
+    with neither cell's `last_modified` touched). fetch_elevation.py rebuilds
+    the index from the corridor and the network extent on every run, so the
+    first run after a trail system is registered - the #1311 event itself,
+    where the index went from ~110 cells to 473 - discards the whole file and
+    re-reads every point. That is the cautious direction and it is deliberate:
+    a per-cell cache that survived the set changing would have to know which
+    cell each point was answered from, which is exactly the bookkeeping
+    `_sources_with_no_pinned_edition` shows costs a pass over the candidates.
+    What it is not is free, and a run that reads everything after an index
+    grew is that, not a bug.
 
     A `None` marker is refused for the same reason. It means the index is not
     there to be keyed against, and a cache nothing can invalidate must not
     serve a safety path.
 
+    WHAT THIS GUARD CANNOT SEE is a marker that is present and edition-blind:
+    a cell whose HEAD failed contributes a constant to it, so the marker holds
+    still while that cell's ground moves. That is handled where the entries
+    are still visible, in _sources_with_no_pinned_edition, and not here - a
+    marker string cannot tell you which of its parts pinned anything.
+
     An unreadable or unexpected file is treated as no cache at all rather than
     raising: this is an optimisation, and a corrupt optimisation should cost
-    a slow run, never the export.
+    a slow run, never the export. "Unexpected" includes a single value that
+    could not be an elevation (see _is_a_stored_sample) - and the whole file
+    goes, not that entry, for the same reason a moved marker takes the whole
+    file: one impossible value means nothing here wrote it, and there is no
+    argument for trusting the rest of what that producer left.
     """
     if marker is None or not path.exists():
         return {}
@@ -688,7 +769,9 @@ def _load_sample_cache(path: Path, marker: str | None) -> dict[str, float | None
     if not isinstance(stored, dict) or stored.get("marker") != marker:
         return {}
     samples = stored.get("samples")
-    return samples if isinstance(samples, dict) else {}
+    if not isinstance(samples, dict) or not all(_is_a_stored_sample(value) for value in samples.values()):
+        return {}
+    return samples
 
 
 def _write_sample_cache(path: Path, marker: str | None, samples: dict[str, float | None]) -> None:
@@ -701,6 +784,42 @@ def _write_sample_cache(path: Path, marker: str | None, samples: dict[str, float
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"marker": marker, "samples": samples}))
     tmp.replace(path)
+
+
+def _sources_with_no_pinned_edition(index_path: Path) -> frozenset[str | Path]:
+    """The indexed tiles whose edition the marker CANNOT pin, as the sampler
+    names them (`_gdal_source`), so their samples can be kept out of the file.
+
+    THIS IS THE ONE HOLE IN "A CHANGED MARKER DISCARDS THE CACHE", and it is
+    a hole a documented, tolerated failure opens. `elevation_marker` is built
+    from `edition_key`, which answers `n35w084:<Last-Modified>` for a stamped
+    cell and, for a `current/` filename with no `last_modified`, falls back to
+    `USGS_13_n35w084.tif:` - a constant that says nothing about which edition
+    is behind that URL. fetch_elevation.stamp_last_modified() leaves exactly
+    that when a HEAD fails, and promises there that "a network problem costs
+    freshness detail and never the elevation profile". Cache those cells'
+    samples and the promise stops being true: two runs whose HEAD for one cell
+    failed both times share a marker, and USGS re-flying that cell between
+    them is served from the file. Reproduced in this sandbox 2026-09-09 - the
+    tile's pixels changed from 515 m to 901 m and the second run published
+    515 m - which is why this exists rather than a paragraph saying it is
+    unlikely.
+
+    Scoped to the cells rather than the whole file on purpose. Refusing the
+    entire cache because one of 473 HEADs flaked would put the two per-edge
+    steps back on the full re-read that #1287 - "Export the climb along each
+    graph edge" hangs indefinitely, reproducibly, on the UA publish - was
+    killed by, to protect points that cell never touched.
+    """
+    entries = json.loads(Path(index_path).read_text())
+    return frozenset(
+        _gdal_source(entry["url"])
+        for entry in entries
+        # Truthy after the colon means the key carries an edition: a
+        # Last-Modified, or the dated filename form 3DEP used before #550.
+        # Empty means edition_key had nothing to pin it with.
+        if not edition_key(entry["url"], entry.get("last_modified")).rsplit(":", 1)[-1]
+    )
 
 
 class ElevationSampler:
@@ -717,16 +836,29 @@ class ElevationSampler:
     ribbon and the cost is invisible. For a nationwide junction graph it is
     the tile.
 
-    Measured 2026-09-08 against the real USGS tile n35w084 (10812x10812
-    float32, EPSG:4269, LZW, internally tiled in 512x512 blocks with overviews
-    [2,4,8,16,32]): 400 points spread on a diagonal across the tile made the
-    WarpedVRT-plus-bbox-window approach read a 9720x9720 window - 94.5
-    megapixels - in **65.1 seconds**. Reading only the 39 512x512 source
-    blocks those same points land in took **under 0.1 s**. That ratio is why
-    "Export the climb along each graph edge" was killed at the 120-minute job
-    timeout having printed nothing (runs #91/#92, 2026-09-08): it was not
-    hung, it was reading tiles whole, across a graph that had gone from 37,134
-    edges to 468,743.
+    Measured from a sandbox against two real USGS tiles, 2026-09-08/09. Both
+    are 10812x10812 float32, EPSG:4269, LZW, internally tiled in 512x512
+    blocks with overviews [2,4,8,16,32]; what differs is the SHAPE of the 400
+    points asked of each, and the shape is the whole finding:
+
+                                       warped bbox        touched blocks
+      n46w069, spread across the tile   38.6 s  94.5 Mpx   0.01 s  39 blocks
+      n35w084, a thin line in a corner   0.4 s   1.2 Mpx   0.00 s   5 blocks
+
+    The first row is the junction graph's shape, the second the A.T.'s. That
+    asymmetry is why the A.T. profile still finished in 5:00 on the run whose
+    per-edge climb step was killed at the job timeout having printed nothing
+    (runs #91/#92, 2026-09-08; the 5:00 is that run's own "Export elevation
+    profile" step): the step was not hung, it was reading tiles whole, across
+    a graph that had gone from 37,134 edges to 468,743.
+
+    An EARLIER probe of the same kind, the one issue #1311 - "The vector build
+    went from 20 to 108 minutes in twelve days" - was written from, put 400
+    diagonal points across n35w084 and timed the warped bbox read at 65.1 s
+    against under 0.1 s for the 39 blocks they land in. Both probes are kept
+    because they disagree by 1.7x on the same question, which is the size of
+    the noise a single sandbox timing carries; what neither of them is is a
+    measurement of the runner.
 
     So the points are moved into the tile's grid rather than the tile into
     theirs: each tile's points are transformed from EPSG:4326 into that tile's
@@ -739,10 +871,12 @@ class ElevationSampler:
     in a reprojected grid. Two measurements, and neither is a proof of
     equivalence:
 
-    - On those same 400 points of n35w084, the two readings disagree by at
-      most **2.34 m** (measured 2026-09-08). lib/elevation_gain.py's dead band
-      is 3.0 m, so that particular disagreement sits inside the band the gain
-      sum already discards.
+    - Across the three real-tile probes above, the two readings disagree by at
+      most **2.34 m** (the earlier n35w084 diagonal; the later pair measured
+      1.30 m on n35w084 and 0.00 m on n46w069, 2026-09-08/09).
+      lib/elevation_gain.py's dead band is 3.0 m, so those particular
+      disagreements sit inside the band the gain sum already discards - which
+      is a fact about three probes on two tiles, not about the corridor.
     - On a synthetic 1200x1200 EPSG:32617 fixture whose surface is a pair of
       sines - about 1.62 m of relief per 24x28 m pixel, so a one-pixel shift
       shows up instead of hiding in a plane - 400 points along a diagonal
@@ -789,6 +923,7 @@ class ElevationSampler:
         *,
         cache_path: Path | None = None,
         cache_marker: str | None = None,
+        unpinned_sources: frozenset[str | Path] | None = None,
         max_workers: int = DEFAULT_TILE_WORKERS,
     ):
         self._tile_index = tile_index
@@ -798,6 +933,11 @@ class ElevationSampler:
         self._cache: dict[str, float | None] = (
             _load_sample_cache(self._cache_path, cache_marker) if self._cache_path is not None else {}
         )
+        # Tiles the marker cannot pin an edition for, and the keys that touched
+        # one. Both are usually empty; see _sources_with_no_pinned_edition for
+        # what fills them and why those keys never reach the file.
+        self._unpinned_sources = frozenset(unpinned_sources or ())
+        self._volatile_keys: set[str] = set()
         self._cache_dirty = False
         self._cache_hits = 0
         self._points_read = 0
@@ -842,6 +982,7 @@ class ElevationSampler:
             index_elevation_tiles(index_path),
             cache_path=index_path.parent / SAMPLE_CACHE_NAME if cache else None,
             cache_marker=elevation_marker(index_path) if cache else None,
+            unpinned_sources=_sources_with_no_pinned_edition(index_path) if cache else None,
             **kwargs,
         )
 
@@ -966,22 +1107,40 @@ class ElevationSampler:
                 data = src.read(1, window=window)
                 for j in members:
                     value = float(data[int(rows[j]) - row_off, int(cols[j]) - col_off])
-                    # NaN is checked unconditionally, not just when it is the
-                    # declared nodata: `value == nodata` is always False for
-                    # NaN, so a NaN-nodata tile used to pass its NaNs through
-                    # as "real" elevations - and json.dumps then emits a
-                    # literal NaN that JSON.parse rejects, taking the whole
+                    # Non-finite is checked unconditionally, not just when it
+                    # is the declared nodata: `value == nodata` is always False
+                    # for NaN, so a NaN-nodata tile used to pass its NaNs
+                    # through as "real" elevations - and json.dumps then emits
+                    # a literal NaN that JSON.parse rejects, taking the whole
                     # profile down client-side on one upstream re-encode
                     # (#659). A NaN sample is never a real elevation, whatever
                     # the tile's metadata says.
-                    if math.isnan(value) or (nodata is not None and value == nodata):
+                    #
+                    # `isfinite` rather than #659's `isnan`, which is a widening
+                    # this review made: json.dumps writes a float32 +/-inf as
+                    # the bare token `Infinity`, which JSON.parse rejects in
+                    # exactly the same way and for exactly the same reason, and
+                    # a re-encode that can produce one can produce the other.
+                    # No tile here has held one - the guard is the #659 lesson
+                    # applied to the other two non-finite floats, not a second
+                    # sighting.
+                    if not math.isfinite(value) or (nodata is not None and value == nodata):
                         continue
                     values[j] = value
             return values
 
-    def _read_points(self, points: list[tuple[float, float]]) -> list[float | None]:
+    def _read_points(self, points: list[tuple[float, float]]) -> tuple[list[float | None], set[int]]:
         """Read every one of these points from the tiles, with no cache in
         front of it.
+
+        Answers the values, and the indices of the points that must not be
+        written to the file - the ones at least one of whose covering tiles has
+        no pinned edition (see _sources_with_no_pinned_edition). It is decided
+        here because this is where the covering tiles are already in hand, and
+        it is "any covering tile" rather than "the tile that answered" because
+        a hole an unpinned tile has today it may not have after a re-fly: the
+        answer that fell THROUGH such a tile is as edition-dependent as one
+        that came from it.
 
         Points are grouped by their first covering tile and the groups are
         read in parallel; a point whose tile has no data there is re-queued
@@ -1005,8 +1164,14 @@ class ElevationSampler:
         results: list[float | None] = [None] * len(points)
         by_tile: dict[str | Path, list[int]] = {}
         remaining_candidates: dict[int, list[str | Path]] = {}
+        volatile: set[int] = set()
         for i, (lon, lat) in enumerate(points):
             candidates = list(self._covering_tiles(lon, lat))
+            # Guarded on the set being non-empty, which is the ordinary case:
+            # every cell stamped, nothing to check, no cost added to a loop
+            # this docstring already calls out as the linear one.
+            if self._unpinned_sources and any(candidate in self._unpinned_sources for candidate in candidates):
+                volatile.add(i)
             if not candidates:
                 continue  # real DEM coverage gap - stays None
             remaining_candidates[i] = candidates[1:]
@@ -1030,7 +1195,7 @@ class ElevationSampler:
                                 remaining_candidates[i] = next_candidates[1:]
                             continue
                         results[i] = value
-        return results
+        return results, volatile
 
     def sample(self, lon: float, lat: float) -> float | None:
         """Single-point convenience wrapper around sample_many() - same
@@ -1054,6 +1219,12 @@ class ElevationSampler:
         incident edge. And a re-run after a failure - which is how #1287 was
         met, repeatedly - re-read a whole nationwide graph to find out what it
         already knew.
+
+        NOT EVERY ANSWER REACHES THE FILE. A point whose covering tiles
+        include one the index cannot pin an edition for is answered from
+        memory for the rest of this run and then dropped rather than written -
+        see _sources_with_no_pinned_edition for the stale ground that would
+        otherwise be served, and close() for where the dropping happens.
 
         A NULL IS CACHED AS AN ANSWER, NOT AS A MISS. "No tile covers this
         point" and "the tile that covers it has a hole there" are both real
@@ -1080,8 +1251,11 @@ class ElevationSampler:
                 unseen[key] = point
 
         if unseen:
-            for key, value in zip(unseen, self._read_points(list(unseen.values()))):
+            values, volatile = self._read_points(list(unseen.values()))
+            for position, (key, value) in enumerate(zip(unseen, values)):
                 self._cache[key] = value
+                if position in volatile:
+                    self._volatile_keys.add(key)
             self._points_read += len(unseen)
             self._cache_dirty = True
 
@@ -1106,7 +1280,16 @@ class ElevationSampler:
         )
         if self._cache_path is not None:
             state = "written," if cache_written else "unchanged,"
-            print(f"    Sample cache {state} {len(self._cache):,} point(s): {self._cache_path}")
+            print(f"    Sample cache {state} {len(self._cache) - len(self._volatile_keys):,} point(s): {self._cache_path}")
+        # Printed rather than left to be inferred from a slow run: this is a
+        # cell whose HEAD did not answer, and the next run re-reading its
+        # points is the consequence. Silent, it would read as the cache not
+        # working.
+        if self._volatile_keys:
+            print(
+                f"    {len(self._volatile_keys):,} point(s) held out of the cache: their tile's edition is "
+                f"unknown, so a cached sample could outlive the ground."
+            )
 
     def close(self) -> None:
         """Close every dataset still open, and persist the sample cache.
@@ -1130,7 +1313,16 @@ class ElevationSampler:
 
         writing = self._cache_path is not None and self._cache_dirty
         if writing:
-            _write_sample_cache(self._cache_path, self._cache_marker, self._cache)
+            # The volatile keys are dropped HERE rather than never being put in
+            # self._cache, so that the run they were read on still gets them
+            # for free - within one process the tile underneath cannot move.
+            # It is only the next run that must not trust them.
+            persistable = (
+                {key: value for key, value in self._cache.items() if key not in self._volatile_keys}
+                if self._volatile_keys
+                else self._cache
+            )
+            _write_sample_cache(self._cache_path, self._cache_marker, persistable)
             self._cache_dirty = False
         self.report(cache_written=writing)
 

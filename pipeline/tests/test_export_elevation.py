@@ -8,6 +8,7 @@ centerline.geojson - see TESTING.md.
 """
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -17,6 +18,7 @@ from rasterio.warp import transform_bounds
 from shapely.geometry import LineString, MultiLineString
 
 import export_elevation
+from lib.freshness_state import elevation_marker
 
 
 def _index_for_dir(dem_dir, tmp_path):
@@ -969,6 +971,127 @@ def test_an_unreadable_cache_costs_a_slow_run_and_not_the_export(tmp_path):
         sampler.close()
 
 
+def test_a_non_finite_value_in_the_cache_file_is_never_served_as_an_elevation(tmp_path):
+    """#659 through the other door.
+
+    `_read_tile` refuses a non-finite sample at the tile, because `json.dumps`
+    writes one out as the bare token `NaN` or `Infinity` and `JSON.parse` on
+    the phone rejects the whole profile rather than the one point. The cache
+    is the only path a value takes into that artifact WITHOUT passing that
+    guard, and `json.loads` reads both tokens back as floats without
+    complaining - so before this was checked on load, a file carrying one was
+    served straight through to elevation_profile.json.
+
+    Written with the file hand-built rather than produced, because this code
+    cannot produce one: every value it stores came through the tile guard.
+    That is the point - the file outlives the run, and whatever wrote it last
+    is not necessarily this.
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=515.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": list(bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}],
+    )
+    marker = elevation_marker(index)
+
+    for token in ("Infinity", "-Infinity", "NaN"):
+        # Written as text rather than through json.dumps, because these are
+        # tokens json.dumps only emits for a float this code cannot hold.
+        _cache_file(index).write_text('{"marker": %s, "samples": {"-84.150000,34.650000": %s}}' % (json.dumps(marker), token))
+        sampler = export_elevation.ElevationSampler.for_index(index)
+        try:
+            value = sampler.sample(-84.15, 34.65)
+        finally:
+            sampler.close()
+        assert value == pytest.approx(515.0), f"a cached {token} was served as an elevation"
+        assert math.isfinite(value)
+
+
+def test_a_cache_value_that_is_not_a_number_is_refused_along_with_the_file(tmp_path):
+    """The other half of the same check, and the reason the whole file goes
+    rather than the one entry: a value that could not be an elevation means
+    nothing here wrote this file, and there is no argument for trusting the
+    rest of what that producer left. So the good-looking neighbour is dropped
+    too, and both points are re-read."""
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=515.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": list(bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}],
+    )
+    _cache_file(index).write_text(
+        json.dumps(
+            {
+                "marker": elevation_marker(index),
+                # A string where a number belongs, and a bool - which is an
+                # `int` in Python and would otherwise read as one metre.
+                "samples": {"-84.150000,34.650000": "515.0", "-84.160000,34.650000": True},
+            }
+        )
+    )
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert sampler.sample_many([(-84.15, 34.65), (-84.16, 34.65)]) == [
+            pytest.approx(515.0),
+            pytest.approx(515.0),
+        ]
+    finally:
+        sampler.close()
+
+
+def test_a_cell_added_to_the_index_discards_the_cache_as_a_re_flown_one_does(tmp_path):
+    """The marker is over the SET of cells, not only over their editions.
+
+    Worth pinning because "the cache survives everything except a re-fly" is
+    the reading `_load_sample_cache`'s first paragraph invites, and it is
+    wrong: `elevation_marker` joins one key per indexed entry, so an index
+    that merely GREW has a different marker and the whole file goes. That is
+    not a corner - fetch_elevation.py rebuilds the index from the network
+    extent every run, and #1311 is the run where it went from ~110 cells to
+    473.
+
+    Observed through the value rather than through the file, so the assertion
+    is about what a hiker would read. The first cell's ground is changed under
+    an unchanged `last_modified` purely as a fixture device - it is what makes
+    a stale answer visible instead of merely suspected, the same device
+    test_a_cell_with_no_pinned_edition_is_never_answered_from_the_file uses.
+    """
+    first_bounds = (-84.3, 34.5, -84.0, 34.8)
+    second_bounds = (-83.9, 34.5, -83.6, 34.8)
+    first = tmp_path / "first" / "tile.tif"
+    second = tmp_path / "second" / "tile.tif"
+    _write_dem_tile(first, first_bounds, elevation=515.0)
+    stamped = {"last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}
+    index = _index_json(tmp_path / "tile_index.json", [{"url": first.as_posix(), "bounds": list(first_bounds), **stamped}])
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert sampler.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        sampler.close()
+    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.150000,34.650000": 515.0}
+
+    _write_dem_tile(second, second_bounds, elevation=222.0)
+    _write_dem_tile(first, first_bounds, elevation=901.0)
+    _index_json(
+        tmp_path / "tile_index.json",
+        [
+            {"url": first.as_posix(), "bounds": list(first_bounds), **stamped},
+            {"url": second.as_posix(), "bounds": list(second_bounds), **stamped},
+        ],
+    )
+
+    grown = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert grown.sample(-84.15, 34.65) == pytest.approx(901.0), "the grown index was served the old index's samples"
+    finally:
+        grown.close()
+
+
 def test_the_cache_lands_beside_the_tile_index_it_was_sampled_against(tmp_path):
     """Where the file lives is the reason a test suite cannot write samples
     into the real data tree, so it is worth asserting rather than assuming -
@@ -1014,6 +1137,218 @@ def test_a_point_the_transformer_cannot_place_is_a_gap_and_not_a_pixel(tmp_path,
 
     sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
     monkeypatch.setattr(sampler, "_transformer_to", lambda crs: _NanTransformer())
+    try:
+        assert sampler.sample(-84.15, 34.65) is None
+    finally:
+        sampler.close()
+
+
+# --- The cells the marker cannot pin ---------------------------------------
+#
+# The cache's whole safety argument is the marker: it is the sorted set of
+# per-cell editions, so a re-flown cell moves it and the file is thrown away.
+# The argument has one hole, and a documented, tolerated failure opens it. A
+# cell whose HEAD did not answer carries no `last_modified`, `edition_key`
+# falls back to a constant for it, and the marker then holds still while that
+# cell's ground moves - so two runs that both failed that HEAD share a marker
+# and the second is served the first's elevations. These pin the fix:
+# those cells' points never reach the file, and only those cells' do.
+
+
+def test_a_cell_with_no_pinned_edition_is_never_answered_from_the_file(tmp_path):
+    """The stale-ground case, run end to end: the pixels change under a cell
+    whose HEAD never answered, and the second run must read the new ground.
+
+    Written as "the tile's values changed and the index did not" because that
+    is exactly the shape a re-fly takes when the HEAD is failing - the URL is
+    `current/`, so nothing about the index says anything happened.
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "unstamped" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=515.0)
+    # No `last_modified`: this is what stamp_last_modified() leaves when the
+    # HEAD fails, and what it promises costs freshness detail and nothing else.
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": list(bounds)}])
+
+    first = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert first.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        first.close()
+
+    assert json.loads(_cache_file(index).read_text())["samples"] == {}, (
+        "a sample from a cell with no pinned edition must not be written at all"
+    )
+
+    _write_dem_tile(tile, bounds, elevation=901.0)  # re-flown; the index cannot tell
+    second = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert second.sample(-84.15, 34.65) == pytest.approx(901.0), "the second run served ground that had moved"
+    finally:
+        second.close()
+
+
+def test_one_unstamped_cell_does_not_cost_the_stamped_ones_their_cache(tmp_path):
+    """Scoped to the cells, not to the file.
+
+    Refusing the whole cache because one of 473 HEADs flaked would put both
+    per-edge steps back on the full re-read #1287 - "Export the climb along
+    each graph edge" hangs indefinitely, reproducibly, on the UA publish - was
+    killed by, to protect points that cell never touched. So the stamped
+    cell's point is in the file and the unstamped cell's is not.
+    """
+    stamped_bounds = (-84.3, 34.5, -84.0, 34.8)
+    unstamped_bounds = (-84.0, 34.5, -83.7, 34.8)
+    stamped = tmp_path / "stamped" / "tile.tif"
+    unstamped = tmp_path / "unstamped" / "tile.tif"
+    _write_dem_tile(stamped, stamped_bounds, elevation=515.0)
+    _write_dem_tile(unstamped, unstamped_bounds, elevation=222.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [
+            {"url": stamped.as_posix(), "bounds": list(stamped_bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"},
+            {"url": unstamped.as_posix(), "bounds": list(unstamped_bounds)},
+        ],
+    )
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert sampler.sample_many([(-84.15, 34.65), (-83.85, 34.65)]) == [pytest.approx(515.0), pytest.approx(222.0)]
+    finally:
+        sampler.close()
+
+    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.150000,34.650000": 515.0}
+
+
+def test_falling_THROUGH_an_unpinned_cell_holds_the_point_out_too(tmp_path):
+    """The condition is "any covering tile", not "the tile that answered", and
+    that distinction is the whole of this test.
+
+    A point covered first by a cell whose HEAD never answered and then by a
+    stamped one is ANSWERED by the stamped cell - so a rule that asked only
+    which tile produced the number would call it cacheable. It is not. The
+    unpinned cell has a hole there today; a re-fly can fill that hole, and the
+    marker cannot see it happen, so the point would then be answered by the
+    unpinned cell and the file would go on serving the stamped one's ground
+    forever. The answer that fell THROUGH an unpinned tile is exactly as
+    edition-dependent as one that came from it.
+
+    Run end to end - the hole fills between the two runs - because the
+    bookkeeping is not what matters here; what matters is which elevation the
+    second run publishes.
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    unstamped = tmp_path / "unstamped" / "tile.tif"
+    stamped = tmp_path / "stamped" / "tile.tif"
+    _write_dem_tile(unstamped, bounds, elevation=-9999.0, nodata=-9999.0)  # a hole, for now
+    _write_dem_tile(stamped, bounds, elevation=515.0, nodata=-9999.0)
+    # The unstamped cell FIRST in index order, so it is the one tried first
+    # and fallen through - the mosaic rule decides order, and this is the case
+    # where the two rules meet.
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [
+            {"url": unstamped.as_posix(), "bounds": list(bounds)},
+            {"url": stamped.as_posix(), "bounds": list(bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"},
+        ],
+    )
+
+    first = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert first.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        first.close()
+
+    assert json.loads(_cache_file(index).read_text())["samples"] == {}, (
+        "a point that fell through a cell with no pinned edition must not be written either"
+    )
+
+    # The re-fly the marker cannot see: the unpinned cell now has real ground
+    # where it had a hole, and it is first in index order, so it owns the
+    # point. Nothing about the index says anything changed.
+    _write_dem_tile(unstamped, bounds, elevation=901.0, nodata=-9999.0)
+    second = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert second.sample(-84.15, 34.65) == pytest.approx(901.0), (
+            "the second run served the elevation the point fell through to, from a cell that has since filled its hole"
+        )
+    finally:
+        second.close()
+
+
+def test_a_dated_filename_pins_an_edition_without_a_head_answering(tmp_path):
+    """The other shape `edition_key` reads. 3DEP editions used to arrive as a
+    new dated filename (#550), which pins the edition on its own - so an entry
+    in that form is cacheable with no `last_modified` at all, and treating
+    "no timestamp" as "no edition" would have thrown away a real one."""
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "dated" / "USGS_13_n35w084_20230215.tif"
+    _write_dem_tile(tile, bounds, elevation=515.0)
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": list(bounds)}])
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert sampler.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        sampler.close()
+
+    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.150000,34.650000": 515.0}
+
+
+def test_a_failed_block_read_is_raised_and_not_published_as_a_dem_gap(tmp_path, monkeypatch):
+    """The worst confusion available on this path, so it is pinned.
+
+    Tiles are read on worker threads now. A read that raises inside a worker
+    and comes back as None would be indistinguishable from a hole in the DEM -
+    the profile would publish a gap where the truth is "the bucket answered
+    503", and nothing would say so. `pool.map` re-raises on iteration, which
+    is what makes this hold; nothing at the call site says it, so it is
+    asserted rather than assumed.
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=515.0)
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": list(bounds)}])
+
+    real_open = rasterio.open
+
+    class _RefusingDataset:
+        def __init__(self, dataset):
+            self._dataset = dataset
+
+        def read(self, *args, **kwargs):
+            raise OSError("HTTP 503 from the bucket partway through a range read")
+
+        def close(self):
+            self._dataset.close()
+
+        def __getattr__(self, name):
+            return getattr(self._dataset, name)
+
+    monkeypatch.setattr(rasterio, "open", lambda *a, **k: _RefusingDataset(real_open(*a, **k)))
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+    try:
+        with pytest.raises(OSError, match="503"):
+            sampler.sample_many([(-84.15, 34.65)])
+    finally:
+        sampler.close()
+
+
+def test_an_infinite_sample_is_a_gap_exactly_as_a_nan_one_is(tmp_path):
+    """#659 was NaN, and the fix it asked for was "a non-finite float is never
+    an elevation". `json.dumps` writes an infinity as the bare token
+    `Infinity`, which JSON.parse rejects the same way it rejects `NaN` - so
+    the same re-encode that could produce one could produce the other, and
+    both take the profile down client-side rather than leaving a hole in it.
+
+    No tile here has ever held one; this pins the choice, not a sighting."""
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "inf" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=float("inf"))
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": list(bounds)}])
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
     try:
         assert sampler.sample(-84.15, 34.65) is None
     finally:

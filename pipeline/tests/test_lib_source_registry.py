@@ -18,6 +18,7 @@ from lib.source_registry import (
     EXTERNAL_ARCGIS_LAYER,
     KNOWN_KINDS,
     POI_SOURCE_KEYS,
+    PUBLISHED_HIKES,
     PUBLISHED_NOTICES,
     UNREGISTERED_POI_SOURCES,
     arcgis_sources,
@@ -323,3 +324,23 @@ def test_an_unregistered_poi_source_resolves_to_nobody_rather_than_to_a_guess():
 
     assert poi_source_steward(registry, "nhd_crossing") is None
     assert poi_source_entry(registry, "nhd_crossing") is None
+
+
+def test_the_real_registry_registers_nynjtc_favorite_hikes_as_published_hikes_and_shipping():
+    """#1290's registration, checked as data: the twenty public write-ups,
+    their own kind (fetch_all.py must skip it; export_suggested_hikes.py is
+    what reads it), a steward whose name joins the licence block
+    (nynjtc_hikes_licence, matched by author - export_sources.py's rule),
+    and reaches_hikers True on the maintainer's relay of NYNJTC's
+    permission. No `freshness` block, deliberately: the REST route serves no
+    validator and the fetcher compares modified_gmt itself."""
+    registry = load_registry(REAL_REGISTRY)
+    entry = find_source(registry, "nynjtc_favorite_hikes")
+
+    assert entry is not None, "sources.json no longer registers nynjtc_favorite_hikes (#1290)"
+    assert entry["kind"] == PUBLISHED_HIKES
+    assert entry["steward"] == registry["nynjtc_hikes_licence"]["author"]
+    assert entry["reaches_hikers"] is True
+    assert entry["licence_basis"] == "maintainer_authorisation"
+    assert "freshness" not in entry
+    assert registry["nynjtc_hikes_licence"]["attribution_required"] is True

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import 'fake-indexeddb/auto'
 import { set } from 'idb-keyval'
 import { conditionsCacheKey } from './conditionsCache'
-import { SUGGESTED_HIKES_KEY } from './config'
+import { SUGGESTED_HIKES_KEY, dataUrl } from './config'
 import {
   recallSuggestedHikes,
   validateSuggestedHike,
@@ -101,6 +101,20 @@ describe('validating one published route', () => {
       validateSuggestedHike({ ...SOUND, transit: { line: 'NJT 197', walkMiles: 0 } })
         ?.transit,
     ).toEqual({ line: 'NJT 197', toStop: '', walkMiles: 0, source: '' })
+  })
+
+  it('resolves a published photo key against the bucket, and leaves a URL alone', () => {
+    const key = 'photos/' + 'a'.repeat(64) + '.jpg'
+    const fromKey = validateSuggestedHike({
+      ...SOUND,
+      photo: { url: key, credit: 'Photo by Daniel Chazin', licence: 'By permission' },
+    })
+    expect(fromKey?.photo?.url).toBe(dataUrl(key))
+    const fromUrl = validateSuggestedHike({
+      ...SOUND,
+      photo: { url: 'https://example.test/x.jpg', credit: 'c', licence: 'l' },
+    })
+    expect(fromUrl?.photo?.url).toBe('https://example.test/x.jpg')
   })
 
   it('shows no photo that arrives without its credit or licence', () => {

@@ -512,6 +512,213 @@ def _nh_granit_trails_layer():
     )
 
 
+def _njdep_park_trails_layer():
+    """njdep_park_trails' measured field list and value shapes, 2026-09-09.
+
+    THE POINT OF THIS FIXTURE IS THE THREE COLOUR FIELDS, because the layer
+    publishes TRL_COLOR, ALT_TRL_COLOR and PBN_COLOR and only one of them is
+    the blaze. sources.json records the judgement and reference/
+    blaze_mapping.json's njdep_park_trails table records why: on the live
+    3,305 rows PBN_COLOR reads 'Unmarked' on 340 against TRL_COLOR's 228 and
+    otherwise tracks it, and ALT_TRL_COLOR is the literal string 'NA' on
+    2,611 (79%) - a second colour where two trails share tread. So the rows
+    here carry all three, disagreeing the way the live layer disagrees, and a
+    staging model that reached for the wrong one would be visibly wrong here.
+
+    TRL_COLOR's values are the live vocabulary's four shapes: a palette
+    colour, the compound 'Black/White' (37 rows upstream, deferred in the
+    mapping table because the client draws one paint per line), a paint the
+    closed palette has no member for ('Gray', 236 rows), and 'Unmarked' (228)
+    - which maps to None/'Unblazed' rather than Unknown, because BLAZE_TYPE
+    says 'Unmarked' on 856 rows and NJDEP therefore records unmarked tread
+    deliberately.
+
+    HIKING_TRL and MOTO_TRL are the clean Yes/No pair that makes this layer
+    easier than nh_granit_trails' PED: 'Yes' 3,226, 'No' 75, null 4 - so the
+    fixture carries a No row and a null-free majority. The 35 MOTO_TRL 'Yes'
+    rows are the motorized corridor a filter should drop, and one is here."""
+    common = {"PARK_NAME": "Fixture State Park", "SITE_NAME": "Fixture Site", "OWNERSHIP": "NJDEP"}
+    return _features(
+        [
+            {
+                **common,
+                "TRAIL_NAME": "Fixture Ridge Trail",
+                "TRL_COLOR": "Blue",
+                "ALT_TRL_COLOR": "NA",
+                "PBN_COLOR": "Blue",
+                "BLAZE_TYPE": "Painted Blaze",
+                "BLAZE_DESC": "Blue rectangle",
+                "TRL_TYPE_S": "Official",
+                "TRL_DIFF": "Moderate",
+                "HIKING_TRL": "Yes",
+                "MOTO_TRL": "No",
+                "TRL_LENGTH": 2.4,
+            },
+            # Two trails on one tread: TRL_COLOR compound, ALT_TRL_COLOR the
+            # second paint, PBN_COLOR collapsed to one - the shape that makes
+            # picking a colour field a decision rather than a lookup.
+            {
+                **common,
+                "TRAIL_NAME": "Fixture Shared Tread Trail",
+                "TRL_COLOR": "Black/White",
+                "ALT_TRL_COLOR": "White",
+                "PBN_COLOR": "Black",
+                "BLAZE_TYPE": "Painted Blaze",
+                "TRL_TYPE_S": "Official",
+                "TRL_DIFF": "Easy to Moderate",
+                "HIKING_TRL": "Yes",
+                "MOTO_TRL": "No",
+                "TRL_LENGTH": 1.1,
+            },
+            # A real paint the closed palette has no member for; renders neutral.
+            {
+                **common,
+                "TRAIL_NAME": "Fixture Gray Trail",
+                "TRL_COLOR": "Gray",
+                "ALT_TRL_COLOR": "NA",
+                "PBN_COLOR": "Gray",
+                "BLAZE_TYPE": "Carsonite Post",
+                "TRL_TYPE_S": "Connector",
+                "TRL_DIFF": "Easy",
+                "HIKING_TRL": "Yes",
+                "MOTO_TRL": "No",
+                "TRL_LENGTH": 0.6,
+            },
+            # Unmarked tread, recorded as such by NJDEP in both fields.
+            {
+                **common,
+                "TRAIL_NAME": "Fixture Woods Road",
+                "TRL_COLOR": "Unmarked",
+                "ALT_TRL_COLOR": "NA",
+                "PBN_COLOR": "Unmarked",
+                "BLAZE_TYPE": "Unmarked",
+                "TRL_TYPE_S": "Official",
+                "TRL_DIFF": "Unknown",
+                "HIKING_TRL": "Yes",
+                "MOTO_TRL": "No",
+                "TRL_LENGTH": 3.0,
+            },
+            # The two rows a hiking filter should drop, one each way.
+            {
+                **common,
+                "TRAIL_NAME": "Fixture ORV Route",
+                "TRL_COLOR": "Orange",
+                "ALT_TRL_COLOR": "NA",
+                "PBN_COLOR": "Orange",
+                "BLAZE_TYPE": "Metal Blaze",
+                "TRL_TYPE_S": "Official",
+                "TRL_DIFF": "Difficult",
+                "HIKING_TRL": "No",
+                "MOTO_TRL": "Yes",
+                "TRL_LENGTH": 5.2,
+            },
+        ],
+        _line,
+    )
+
+
+def _nj_statewide_trails_layer():
+    """nj_statewide_trails' measured field list and value shapes, 2026-09-09.
+
+    THE POINT OF THIS FIXTURE IS THAT MOST OF THE LAYER KNOWS NOTHING, which
+    its own description predicts ("a first iteration and in no way complete",
+    compiled as-is from 166 managing agencies). On the live 13,296 rows
+    BLAZE_COLOR is 'Unknown' on 7,953 and 'None' on 1,443 - 71% between them
+    - and TRAIL_DIFFICULTY is 'Unknown' on 12,483. So the majority of rows
+    here carry those values rather than colours, and the two are kept APART
+    deliberately: 'Unknown' maps to Unknown ('Blaze not recorded') and 'None'
+    to None ('Unblazed'), which is the distinction client/src/lib/blaze.ts
+    exists to draw and the reason this layer is worth having as a fixture.
+
+    HIKING's 'U' is the trap and is here: 4,825 live rows read it, so a
+    `HIKING == 'Y'` filter would delete a third of the layer - the same
+    mistake nh_granit_trails' PED records one state over. What the entry's
+    foot_comment specifies as the filter is TRAIL_TYPE, and this fixture
+    carries the four shapes that matter: off-road (11,735 live), on-road
+    (1,085), sidewalk (50) and water (19, which are paddling trails and not
+    walkable at all).
+
+    MANAGING_AGENCY is the field that makes this layer the answer to the
+    New Jersey county question - 166 distinct values live, led by Morris
+    County Park Commission at 2,489 - so the rows here are attributed to
+    three different agencies including the literal 'Unknown' (2,334)."""
+    return _features(
+        [
+            {
+                "TRAIL_NAME_SEGMENT": "Fixture County Loop",
+                "TRAIL_NAME_LONG": "Fixture Long Distance Trail",
+                "BLAZE_COLOR": "Red",
+                "BLAZE_DESCRIPTION": "Red disc",
+                "TRAIL_TYPE": "off-road",
+                "TRAIL_DIFFICULTY": "Easy",
+                "HIKING": "Y",
+                "MOTORIZED_USE_ALLOWED": "N",
+                "PARK_NAME": "Fixture County Reservation",
+                "MANAGING_AGENCY": "Fixture County Park Commission",
+                "COUNTY": "Fixture",
+                "SOURCE_METHOD": "GPS",
+                "GIS_SEGMENT_LENGTH_MI": 1.8,
+            },
+            # The majority shape: the compiling agency recorded no blaze and
+            # no difficulty. 'Unknown' is not 'None' and must not become it.
+            {
+                "TRAIL_NAME_SEGMENT": "Fixture Township Path",
+                "BLAZE_COLOR": "Unknown",
+                "TRAIL_TYPE": "off-road",
+                "TRAIL_DIFFICULTY": "Unknown",
+                "HIKING": "U",
+                "MOTORIZED_USE_ALLOWED": "U",
+                "PARK_NAME": "Fixture Township Open Space",
+                "MANAGING_AGENCY": "Unknown",
+                "COUNTY": "Fixture",
+                "SOURCE_METHOD": "Unknown",
+                "GIS_SEGMENT_LENGTH_MI": 0.4,
+            },
+            # A trail the agency confirms is unblazed - the other half of the
+            # distinction above.
+            {
+                "TRAIL_NAME_SEGMENT": "Fixture Unblazed Connector",
+                "BLAZE_COLOR": "None",
+                "TRAIL_TYPE": "connector",
+                "TRAIL_DIFFICULTY": "Unknown",
+                "HIKING": "Y",
+                "MOTORIZED_USE_ALLOWED": "N",
+                "MANAGING_AGENCY": "State of New Jersey",
+                "COUNTY": "Fixture",
+                "SOURCE_METHOD": "Digitized from aerials",
+                "GIS_SEGMENT_LENGTH_MI": 0.2,
+            },
+            # Not a trail a hiker walks: on-road, and the sidewalk and water
+            # rows below. TRAIL_TYPE is the filter, not HIKING.
+            {
+                "TRAIL_NAME_SEGMENT": "Fixture Road Route",
+                "BLAZE_COLOR": "Unknown",
+                "TRAIL_TYPE": "on-road",
+                "TRAIL_DIFFICULTY": "Unknown",
+                "HIKING": "U",
+                "MOTORIZED_USE_ALLOWED": "Y",
+                "MANAGING_AGENCY": "Municipal",
+                "COUNTY": "Fixture",
+                "SOURCE_METHOD": "Unknown",
+                "GIS_SEGMENT_LENGTH_MI": 0.9,
+            },
+            {
+                "TRAIL_NAME_SEGMENT": "Fixture River Water Trail",
+                "BLAZE_COLOR": "None",
+                "TRAIL_TYPE": "water",
+                "TRAIL_DIFFICULTY": "Unknown",
+                "HIKING": "N",
+                "MOTORIZED_USE_ALLOWED": "U",
+                "MANAGING_AGENCY": "National Park Service",
+                "COUNTY": "Fixture",
+                "SOURCE_METHOD": "Digitized from aerials",
+                "GIS_SEGMENT_LENGTH_MI": 6.5,
+            },
+        ],
+        _line,
+    )
+
+
 def _dec_hiking_trails_layer():
     """dec_hiking_trails' measured field list, 2026-08-25.
 
@@ -711,6 +918,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/usfs_trails.geojson": _usfs_trails_layer(),
         "external/usfs_rec_sites.geojson": _usfs_rec_sites_layer(),
         "external/nh_granit_trails.geojson": _nh_granit_trails_layer(),
+        "external/njdep_park_trails.geojson": _njdep_park_trails_layer(),
+        "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
         "external/dec_hiking_trails.geojson": _dec_hiking_trails_layer(),
         "external/dec_lean_tos.geojson": _dec_lean_tos_layer(),
         "external/dec_primitive_campsites.geojson": _dec_asset_layer(

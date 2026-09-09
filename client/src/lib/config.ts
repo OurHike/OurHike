@@ -518,13 +518,17 @@ export const RETIRED_POI_KEY = 'retired_poi.geojson'
 // edgeIndex) and keeps the last copy that arrived in IndexedDB, so the shelf
 // works with no signal like everything else here.
 //
-// THE CLIENT HALF LANDED FIRST. No exporter writes this yet - where published
-// routes come from (a club's own GPX, a guidebook's tables, a hiker's saved
-// day hike shared out) is a decision nobody has made, and the pipeline half
-// waits on it. A release without it is a phone with an empty shelf and no
-// section, never a failed download.
+// THE CLIENT HALF LANDED FIRST (#1284), and the pipeline half followed with
+// NYNJTC's Favorite Hikes (#1290): pipeline/export_suggested_hikes.py writes
+// this from the routes a person has signed off in
+// pipeline/reference/nynjtc_hike_routes.json, measured on the junction graph
+// by the twin of this app's own router. It is absent from a release for
+// three reasons the client reads alike - the source's reaches_hikers, no row
+// signed off yet, or a run that did not reach the exporter - and every one
+// is a phone with an empty shelf and no section, never a failed download.
 //
-// @release optional - no exporter writes it; see the paragraph above.
+// @release optional - gated in publish.py on a manifest the exporter writes
+// only when a reviewed row exists; see the paragraph above.
 export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
 
 // 'crossing' was listed here while it was still an empty FeatureCollection, so

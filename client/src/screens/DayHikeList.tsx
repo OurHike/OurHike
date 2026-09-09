@@ -177,6 +177,13 @@ export function DayHikeList({
                       {estimate.relativeLine}
                     </span>
                   )}
+                  {/* Somebody else's route keeps their name on it (#1290).
+                    Stored on the record at save time rather than looked up
+                    here, so a route withdrawn from the published document does
+                    not lose its credit on a hike the hiker already holds. */}
+                  {hike.sourceAuthor !== undefined && (
+                    <span className="plan-home__meta">{hike.sourceAuthor}</span>
+                  )}
                 </button>
               )
             })}
@@ -197,6 +204,9 @@ export function DayHikeList({
                 <span className="plan-home__meta">
                   {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date'}
                 </span>
+                {hike.sourceAuthor !== undefined && (
+                  <span className="plan-home__meta">{hike.sourceAuthor}</span>
+                )}
               </button>
             ))}
           </section>

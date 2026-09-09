@@ -1,0 +1,314 @@
+/* The hike detail (#1290, wireframe `1g`).
+ *
+ * Semantic tokens throughout - no raw hex, no base-palette member reached
+ * for directly. themeTokens.test.ts enforces it, and the reason is the dark
+ * side: a literal that looks right on paper is invisible on ink.
+ *
+ * There is no exception here, and an earlier draft of this file was one: it
+ * restated the difficulty badge's five-colour ramp in five classes reaching
+ * straight for --sage-100, --forest-600 and the rest. themeTokens.test.ts
+ * caught it. The screen draws the design system's own <Badge> instead, which
+ * is where a fixed ramp belongs and where the same card component already
+ * got it. */
+
+.hike-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+}
+
+/* ---------- The photo, and the credit that may not leave it ---------- */
+
+.hike-detail__hero {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: 240px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.hike-detail__hero-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hike-detail__hero-blank {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-sunken);
+}
+
+.hike-detail__back {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+
+.hike-detail__credit {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
+/* ---------- The deciding block ---------- */
+
+.hike-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+}
+
+.hike-detail__name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-title);
+  line-height: 1.2;
+  color: var(--fg-1);
+  text-wrap: pretty;
+}
+
+.hike-detail__author {
+  margin: 0;
+  font-size: var(--text-body);
+  color: var(--fg-2);
+}
+
+.hike-detail__verified {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+}
+
+.hike-detail__figures {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  color: var(--fg-1);
+}
+
+/* The line that says whose number is whose. Deliberately quiet and
+ * deliberately always present: the figures above it are two claims from two
+ * parties, and unlabelled they would read as one. */
+.hike-detail__measurement {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--fg-3);
+  text-wrap: pretty;
+}
+
+.hike-detail__facets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.hike-detail__facet-line {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+}
+
+/* A reviewed sentence about how this route differs from the publisher's
+ * page. Sunken rather than bordered: it is context for the figures above,
+ * not a warning and not a separate object. */
+.hike-detail__hiker-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  font-size: var(--text-body-sm);
+  line-height: 1.45;
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+
+.hike-detail__walked {
+  margin: 8px 0 0;
+  font-size: var(--text-body-sm);
+  color: var(--fg-2);
+}
+
+/* ---------- Actions ---------- */
+
+.hike-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.hike-detail__save,
+.hike-detail__map {
+  flex: 1 1 auto;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+
+.hike-detail__save {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  border: 1px solid var(--brand-primary);
+}
+
+.hike-detail__map {
+  background: transparent;
+  color: var(--fg-1);
+  border: 1px solid var(--border-2);
+}
+
+/* ---------- Sections ---------- */
+
+.hike-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.hike-detail__rule {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.hike-detail__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+}
+
+.hike-detail__coords {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  color: var(--fg-1);
+}
+
+.hike-detail__start-basis {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+
+.hike-detail__directions,
+.hike-detail__source {
+  align-self: flex-start;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--brand-primary);
+  font-size: var(--text-body);
+  text-decoration: none;
+}
+
+.hike-detail__directions:hover,
+.hike-detail__source:hover {
+  text-decoration: underline;
+}
+
+.hike-detail__aside {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--fg-3);
+  text-wrap: pretty;
+}
+
+.hike-detail__prose {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: 1.5;
+  color: var(--fg-1);
+  text-wrap: pretty;
+}
+
+.hike-detail__publication {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+  text-wrap: pretty;
+}
+
+.hike-detail__more {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+
+/* ---------- Whose route this is ---------- */
+
+.hike-detail__provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-1);
+}
+
+.hike-detail__provenance p {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  line-height: 1.45;
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+
+.hike-detail__provenance .hike-detail__aside {
+  color: var(--fg-3);
+}

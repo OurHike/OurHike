@@ -265,7 +265,12 @@ describe('one facet sheet at a time', () => {
     await user.click(screen.getByRole('button', { name: /show 2 hikes/i }))
     await user.click(screen.getByRole('button', { name: '+ filter' }))
     await user.click(screen.getByRole('button', { name: 'Difficulty ▾' }))
-    await user.click(screen.getByRole('button', { name: /Easy/ }))
+    // ANCHORED, and the shape is not arbitrary: an option's accessible name
+    // is its label run together with its count ("Easy1"), because the label
+    // and the count are adjacent inline spans with no whitespace between
+    // them. Since #1290 took the scale to five levels, a bare /Easy/ also
+    // matches "Easy to Moderate" and the query becomes ambiguous.
+    await user.click(screen.getByRole('button', { name: /^Easy\s*\d*$/ }))
     await user.click(screen.getByRole('button', { name: /show 1 hike$/i }))
     expect(listed()).toEqual(['Pochuck boardwalk'])
 
@@ -289,7 +294,7 @@ describe('one facet sheet at a time', () => {
     render(<FindHike {...props()} />)
 
     await user.click(screen.getByRole('button', { name: 'Difficulty ▾' }))
-    await user.click(screen.getByRole('button', { name: /Easy/ }))
+    await user.click(screen.getByRole('button', { name: /^Easy\s*\d*$/ }))
     await user.click(screen.getByTestId('facet-scrim'))
 
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -367,7 +372,7 @@ describe('the results', () => {
     render(<FindHike {...props({ hikes: [ANGELS, WAPITI] })} />)
 
     await user.click(screen.getByRole('button', { name: 'Difficulty ▾' }))
-    await user.click(screen.getByRole('button', { name: /Easy/ }))
+    await user.click(screen.getByRole('button', { name: /^Easy\s*\d*$/ }))
     await user.click(screen.getByRole('button', { name: /show 0 hikes/i }))
 
     expect(screen.getByText(/nothing on this phone matches/i)).toBeInTheDocument()

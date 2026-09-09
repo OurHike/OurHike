@@ -58,6 +58,7 @@ import {
   DownloadsDialog,
   EmailSignIn,
   FindHike,
+  HikeDetail,
   FinishedHike,
   GroupScreen,
   HikeDay,
@@ -145,7 +146,7 @@ import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
-import { hikePlaces } from './lib/suggestedHikes'
+import { authorLine, hikePlaces, type SuggestedHike } from './lib/suggestedHikes'
 import { useArchiveFootprint, useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom, coverageAt, type Footprint } from './lib/archiveCoverage'
 import {
@@ -333,7 +334,10 @@ import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewa
 import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
+  logWalk,
   saveDayHikes,
+  savedFromSource,
+  walkedDates,
   type DayHike,
   type DayHikeStore,
 } from './lib/dayHikes'
@@ -1027,7 +1031,16 @@ function App() {
    * journal (`selectTab`), so a hiker who leaves mid-search comes back to
    * the room the tab is named for.
    */
-  const [todayPage, setTodayPage] = useState<'home' | 'find'>('home')
+  // Three pages in Today's slot (#1284, #1290): the column itself, the
+  // finder pushed from its shelf, and one route's detail pushed from a card
+  // on either. Held as a page plus an id rather than as a route object, so a
+  // republished document cannot leave a stale copy of a hike on screen.
+  const [todayPage, setTodayPage] = useState<'home' | 'find' | 'detail'>('home')
+  const [openHikeId, setOpenHikeId] = useState<string | null>(null)
+  // Which page the detail was pushed from, so Back returns there rather than
+  // always to the column. A boolean rather than a stack: there are two doors
+  // and no third is coming.
+  const [cameFromFinder, setCameFromFinder] = useState(false)
   const selectTab = useCallback((id: TabId) => {
     setTodayPage('home')
     setActiveTab(id)
@@ -4303,6 +4316,97 @@ function App() {
     })
   }, [])
 
+  // ---- Opening and saving a published route (#1290) ----
+
+  const openSuggestedHike = useCallback(
+    (id: string) => {
+      setCameFromFinder(todayPage === 'find')
+      setOpenHikeId(id)
+      setTodayPage('detail')
+    },
+    [todayPage],
+  )
+
+  /**
+   * Draw a published route on the real map, by opening the hiker's own saved
+   * copy of it - `openId` is what the map reads, and a saved hike
+   * re-resolves from its coordinates against the graph this phone holds.
+   *
+   * ONLY OFFERED ONCE IT IS SAVED, and that is the honest shape rather than
+   * a limitation worked around. Nothing draws a route the store does not
+   * hold, so the alternatives were a button that quietly saves on the
+   * hiker's behalf or one that does nothing - and a control that cannot do
+   * its job is not offered (chrome/LineSheet.tsx's rule). Save is the button
+   * beside it, so the path is two taps and both of them say what they do.
+   */
+  const showSavedHikeOnMap = useCallback(
+    (id: string) => {
+      handleOpenDayHike(id)
+      setActiveTab('map')
+    },
+    [handleOpenDayHike],
+  )
+
+  /**
+   * Save a published route into the hiker's own day hikes - or, when it is
+   * already there, log today as another walk of it.
+   *
+   * ONE RECORD, MANY DATES, which is the maintainer's own framing of the
+   * problem: "we need 1 record, with the ability to log multiple dates".
+   * Pressing this on a route already saved used to mint a second uuid and
+   * leave two identically named rows with nothing to tell them apart. It
+   * finds the existing record by `sourceId` instead - the publisher's route
+   * id, which is stable in a way the name (renameable) and the ends
+   * (re-resolved against whatever graph the phone holds) are not.
+   *
+   * The store is re-read rather than trusted from React state, so a save
+   * landing from the sync between renders is never overwritten -
+   * handleDayHikeSave's rule, and the same reason.
+   */
+  const saveSuggestedHike = useCallback((hike: SuggestedHike) => {
+    void loadDayHikes().then((store) => {
+      const already = savedFromSource(store.hikes, hike.id)
+      const today = new Date().toISOString().slice(0, 10)
+      const hikes =
+        already === undefined
+          ? [
+              ...store.hikes,
+              {
+                id: crypto.randomUUID(),
+                name: hike.name,
+                date: null,
+                segments: hike.segments,
+                // The publisher's miles as this phone measured them, and
+                // their climb where there is one. `legs` stays empty: a leg
+                // list is a fact about a resolved route, and this record is
+                // re-resolved when it opens.
+                figures: {
+                  miles: hike.miles,
+                  legs: [],
+                  ...(hike.climb === undefined ? {} : { climb: hike.climb }),
+                },
+                looped: false,
+                // A plan, even though somebody else wrote it - the hiker has
+                // not walked it yet, and the door they came through was
+                // "save", not "I did this".
+                recorded: 'planned' as const,
+                note: '',
+                sourceId: hike.id,
+                // The publisher's credit, captured now. A route that later
+                // leaves the published document must not take its
+                // attribution off a record the hiker already holds.
+                sourceAuthor: authorLine(hike.author),
+              },
+            ]
+          : store.hikes.map((saved) =>
+              saved.id === already.id ? logWalk(saved, today) : saved,
+            )
+      const next = { hikes, openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
   const handleDayHikeCardClose = useCallback(() => {
     if (dayHikeReview !== null) {
       // The review's close is "Back to the map": the draft is still there.
@@ -7154,11 +7258,11 @@ function App() {
       hasDownload={anySheetDownloaded}
       onOpenDownloads={openDownloads}
       // The shelf (#1284): routes somebody published, and the way to the rest
-      // of them. No `onOpenSuggestedHike` yet - the detail a card would open
-      // (wireframe 1g) is not designed, so the cards read rather than press.
+      // of them. The cards press since #1290 built the detail they open.
       suggestedHikes={suggestedHikes}
       fixAt={fixAt}
       onFindHike={() => setTodayPage('find')}
+      onOpenSuggestedHike={openSuggestedHike}
     />
   )
 
@@ -7174,9 +7278,46 @@ function App() {
       units={units}
       pace={pace}
       onBack={() => setTodayPage('home')}
+      onOpenHike={openSuggestedHike}
     />
   )
-  const todayPane = todayPage === 'find' ? findHikeScreen : todayScreen
+
+  // One route's detail (#1290, wireframe 1g). Resolved from the id against
+  // the routes on screen right now: if the published document is refetched
+  // while this is open and the route is gone from it, the screen falls back
+  // to where the hiker came from rather than holding a copy nothing stands
+  // behind any more.
+  const openHike =
+    openHikeId === null
+      ? null
+      : (suggestedHikes.find((hike) => hike.id === openHikeId) ?? null)
+  /** The hiker's own copy of the route on screen, or undefined when they
+   *  have not saved it. Saved-but-never-logged and not-saved-at-all are
+   *  different answers, and the buttons say different things for each. */
+  const savedCopy =
+    openHike === null ? undefined : savedFromSource(dayHikeStore.hikes, openHike.id)
+  const hikeDetailScreen =
+    openHike === null ? null : (
+      <HikeDetail
+        hike={openHike}
+        pace={pace}
+        units={units}
+        onBack={() => setTodayPage(cameFromFinder ? 'find' : 'home')}
+        onSave={saveSuggestedHike}
+        {...(savedCopy === undefined
+          ? {}
+          : {
+              savedWalks: walkedDates(savedCopy),
+              onShowOnMap: () => showSavedHikeOnMap(savedCopy.id),
+            })}
+      />
+    )
+  const todayPane =
+    todayPage === 'detail' && hikeDetailScreen !== null
+      ? hikeDetailScreen
+      : todayPage === 'find'
+        ? findHikeScreen
+        : todayScreen
 
   // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
   // for it, and only the desktop needs it there - the phone carries the same

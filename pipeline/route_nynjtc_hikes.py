@@ -68,6 +68,16 @@ GRAPH_NAME = "trail_graph.json"
 GEOMETRY_NAME = "trail_graph_geometry.json"
 ELEVATION_NAME = "trail_graph_elevation.json"
 
+#: A row key is NYNJTC's slug, optionally followed by "#" and a variant
+#: name. The variant exists because one of their pages is three walks:
+#: "Platte Clove to Overlook Mountain via Codfish Point and Echo Lake"
+#: offers 4.5, 8.8 and 13 miles under one title, and the maintainer's call
+#: on 2026-09-09 was to ship all three. Everything before the "#" is the
+#: cache key and the page a hiker is sent to; the variants share both, and
+#: each carries its own `name` because NYNJTC's title names only the
+#: longest.
+VARIANT_SEPARATOR = "#"
+
 STATUS_PROPOSED = "proposed"
 STATUS_REVIEWED = "reviewed"
 STATUS_HELD = "held"
@@ -89,6 +99,21 @@ KEEP_RADIUS_M = 12_000
 CONTEXT_MARGIN_M = 600
 
 
+def base_slug(key: str) -> str:
+    """The NYNJTC slug a row key points at, variant suffix removed."""
+    return key.split(VARIANT_SEPARATOR, 1)[0]
+
+
+def row_name(key: str, row: dict, hike: dict | None) -> str:
+    """What this route is called: the row's own name where it has one - a
+    variant must, because NYNJTC's title describes only one of the walks
+    sharing it - otherwise the name off their page."""
+    named = row.get("name")
+    if isinstance(named, str) and named.strip():
+        return named.strip()
+    return hike["name"] if hike else key
+
+
 def load_routes(path: Path | None = None) -> dict:
     """The reference rows, validated: an unknown status is a typo that would
     otherwise read as 'not reviewed' and silently hold a signed-off hike."""
@@ -102,6 +127,15 @@ def load_routes(path: Path | None = None) -> dict:
             raise SystemExit(f"{path.name}: {slug} has status {row.get('status')!r}, expected one of {STATUSES}")
         if row["status"] != STATUS_HELD and not (isinstance(row.get("ends"), list) and len(row["ends"]) >= 2):
             raise SystemExit(f"{path.name}: {slug} is {row['status']} but carries fewer than two ends")
+        # A variant shares its page - and therefore NYNJTC's title - with its
+        # siblings, and that title names only one of them. Without a name of
+        # its own, three cards would read identically and a hiker choosing
+        # between 4.5 and 13 miles could not tell which was which.
+        if VARIANT_SEPARATOR in slug and not (row.get("name") or "").strip():
+            raise SystemExit(
+                f"{path.name}: {slug} is a variant row and carries no `name` - "
+                "NYNJTC's own title describes only one of the walks that share this page"
+            )
     return routes
 
 
@@ -342,8 +376,8 @@ a{{color:#355c3a}}
 def build_results(graph: router.Graph, routes: dict, cache: dict) -> list[dict]:
     results = []
     for slug, row in routes.items():
-        hike = cache.get(slug)
-        name = hike["name"] if hike else slug
+        hike = cache.get(base_slug(slug))
+        name = row_name(slug, row, hike)
         if row["status"] == STATUS_HELD:
             results.append(
                 {

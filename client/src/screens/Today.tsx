@@ -210,6 +210,17 @@ function dotClass(treatment: StalenessTreatment): string | null {
  */
 export interface LongHikeToday {
   name: string
+  /**
+   * Change which hike this is, or undefined where there is nothing to change
+   * to (#1344).
+   *
+   * The name is the control, rather than a control BESIDE the name. A hiker
+   * reading "Springer → Katahdin" on their morning screen and wanting a
+   * different hike is asking about that exact word, and a second element
+   * next to it would be a second thing to find. Undefined renders the name
+   * as text - never as a button that does nothing, which is LineSheet's rule.
+   */
+  onSwitch?: (() => void) | undefined
   /** `412 mi walked · 1,786 mi to go`. Never anything else. */
   figures: string
   /** Which day of the hike today is, or null when the hike has no dated
@@ -778,7 +789,25 @@ export function Today({
         )}
         {longHike != null && (
           <>
-            <p className="today__hike-name">{longHike.name}</p>
+            {longHike.onSwitch === undefined ? (
+              <p className="today__hike-name">{longHike.name}</p>
+            ) : (
+              <button
+                type="button"
+                className="today__hike-name today__hike-name--switch"
+                onClick={longHike.onSwitch}
+              >
+                {longHike.name}
+                {/* The affordance, not the name. Read aloud it would be
+                    "Springer → Katahdin ▾", which is a mark rather than a
+                    word, so the button says what it does instead. */}
+                <span aria-hidden="true"> ▾</span>
+                <span className="visually-hidden">
+                  {' '}
+                  — change which hike you&rsquo;re on
+                </span>
+              </button>
+            )}
             {/* `miles walked · miles to go`, and nothing else - no
                 percentage, no "on track", no comparison with anybody. The
                 Plan tab's standing guard covers this surface too. */}

@@ -193,6 +193,36 @@
     padding: 0 14px;
   }
 
+  /* THE HIKE, UNDER THE MODE, ON EVERY SCREEN (#1344). `Switch hike ›` lived
+     on the Plan band and nowhere else, so a hiker on Today, the map or
+     Settings had no way to change which hike they were on. The sidebar is
+     already on all four screens and already holds the mode - this is the
+     same question one level down, so it goes in the same block.
+
+     Its own line rather than a chip beside the mode: the name is a hike's
+     name and can be long ("Neels Gap → Dicks Creek Gap"), and a 13rem column
+     has no room to put it next to anything. `text-align: left` because a
+     button centres its label and this column does not. */
+  .tab-bar__hike {
+    display: block;
+    width: 100%;
+    padding: var(--space-2, 8px) 14px;
+    border: 1px solid var(--border-chrome);
+    border-radius: var(--radius-m, 8px);
+    background: none;
+    color: var(--fg-chrome-1);
+    font: inherit;
+    font-family: var(--font-display, serif);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tab-bar__hike:hover {
+    background: color-mix(in srgb, var(--accent-chrome) 10%, transparent);
+  }
+
   .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],
   .map-screen > .tab-bar .tab-bar__tab[aria-selected='true'] {
     border-top-color: transparent;

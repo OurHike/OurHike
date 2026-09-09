@@ -152,6 +152,12 @@ export interface PlanScreenProps {
   activeHike: Hike | null
   /** Open the pick sheet as a switch. The shell's, like every sheet here. */
   onSwitchHike?: () => void
+  /** Give the active hike a different name (#1344). The store's, like every
+   *  other write on this screen. */
+  onRenameHike?: (name: string) => void
+  /** The inline section planner (#1344), rendered where the primary is.
+   *  The shell's, like every other surface this screen only positions. */
+  sectionPlanner?: ReactNode
   /** Whether the full day-hike list is open, for the same reason: the map's
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
@@ -246,6 +252,8 @@ export function PlanScreen({
   onAddDayHikeToHike,
   activeHike,
   onSwitchHike,
+  onRenameHike,
+  sectionPlanner,
   dayListOpen,
   onDayListOpen,
   draftKind,
@@ -429,6 +437,8 @@ export function PlanScreen({
           room={room}
           activeHike={activeHike}
           onSwitchHike={onSwitchHike}
+          onRenameHike={onRenameHike}
+          sectionPlanner={sectionPlanner}
           onAddDayHikeToHike={onAddDayHikeToHike}
           trips={trips}
           hikes={hikes}

@@ -230,6 +230,7 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
+import { SectionPlanner } from './chrome/SectionPlanner'
 import { nearestStop } from './lib/cascade'
 import { mileMarker, stopLabel } from './lib/planDisplay'
 import { longDate } from './lib/hikeText'
@@ -250,6 +251,7 @@ import {
   addGroup,
   addHike,
   assignTrip,
+  renameHike,
   finishHike,
   removeHike,
   pauseHike,
@@ -282,6 +284,7 @@ import {
   hikeOfTrip,
   recordedPlan,
   type Hike,
+  type PlaceRef,
 } from './lib/hikes'
 import { hikeFiguresLine, setupRefusal } from './lib/hikeText'
 import { dayNumber, endsTheHike, hikeDayToday, type HikeDayAt } from './lib/hikeToday'
@@ -3022,6 +3025,104 @@ function App() {
     setHikeSheet('pick')
   }, [])
 
+  /**
+   * PLANNING A SECTION WITHOUT LEAVING THE HIKE ROOM (#1344).
+   *
+   * The room's primary used to be `routeBuilder.openRouteBuilder`, whose
+   * first act is `setActiveTab('map')`. The ask was "that content should
+   * live on the same page", and the answer is not a second route builder:
+   * `chrome/SectionPlanner.tsx`'s header has the argument, but in short, the
+   * two ends come from the route builder's OWN stop picker and the days from
+   * `PlanTargetSheet`, which is a form rather than a map surface. Both
+   * already exist and both already run anywhere.
+   *
+   * `null` is closed; an object with two nullable ends is open. The ends are
+   * `PlaceRef`s for the same reason a hike's points are (#788's rule): a
+   * name and a mile travel together so the row can print a place rather than
+   * a number.
+   */
+  const [sectionDraft, setSectionDraft] = useState<{
+    from: PlaceRef | null
+    to: PlaceRef | null
+  } | null>(null)
+  /** Which end the picker is naming, or null. */
+  const [sectionPointAt, setSectionPointAt] = useState<'from' | 'to' | null>(null)
+
+  const handlePlanSection = useCallback(() => {
+    setSectionDraft({ from: null, to: null })
+    setSectionPointAt(null)
+  }, [])
+
+  const handleCancelSection = useCallback(() => {
+    setSectionDraft(null)
+    setSectionPointAt(null)
+  }, [])
+
+  const handleSectionPointChosen = useCallback(
+    (point: { mile: number; poiId?: string; name?: string }) => {
+      const next: PlaceRef = {
+        mile: point.mile,
+        ...(point.poiId === undefined ? {} : { poiId: point.poiId }),
+        ...(point.name === undefined ? {} : { name: point.name }),
+      }
+      setSectionDraft((draft) =>
+        draft === null || sectionPointAt === null
+          ? draft
+          : { ...draft, [sectionPointAt]: next },
+      )
+      setSectionPointAt(null)
+    },
+    [sectionPointAt],
+  )
+
+  /**
+   * The laid-out section, kept AND put on the hike.
+   *
+   * The second half is the gap #1329's body named and left open: nothing in
+   * the app put a planned section into a hike, so one laid out from the hike
+   * room's own primary landed nowhere near the hike, and the room had to
+   * show it on a separate shelf to avoid hiding it. Planned from inside the
+   * hike, it belongs to the hike - `assignTrip` has said so since #788 and
+   * had exactly one caller before this.
+   *
+   * Not a one-way door, which was the reason for not doing it automatically
+   * out of the route builder: this one is the hiker naming two ends inside
+   * their hike's own room, which is as explicit as an intent gets.
+   */
+  const handleLayOutSection = useCallback(
+    (plan: HikePlan) => {
+      applyTripStore((store) => {
+        const added = addTrip(store, plan)
+        const id = added.openId
+        return id === null || store.activeHikeId === null
+          ? added
+          : assignTrip(added, store.activeHikeId, id)
+      })
+      setSectionDraft(null)
+      setSectionPointAt(null)
+    },
+    [applyTripStore],
+  )
+
+  /**
+   * Give the hike a different name (#1344).
+   *
+   * `renameHike` has been in the store since #788 and nothing has ever
+   * called it, so every hike has kept the "A new long hike" that
+   * `handleNewHike` invents at creation - on the pick sheet, in Today's
+   * chrome, in the Plan band and in the sidebar, all four saying the same
+   * nothing. An empty name is not refused here because the store does not
+   * store one: `renameHike` keeps the old name rather than writing a blank.
+   */
+  const handleRenameHike = useCallback(
+    (name: string) => {
+      if (tripStore.activeHikeId === null) return
+      const id = tripStore.activeHikeId
+      applyTripStore((store) => renameHike(store, id, name))
+    },
+    [applyTripStore, tripStore.activeHikeId],
+  )
+
   const handlePickHike = useCallback(
     (hikeId: string) => {
       applyTripStore((store) => setActiveHike(store, hikeId))
@@ -3459,6 +3560,10 @@ function App() {
 
     return {
       name: activeHike.name,
+      // The name IS the door (#1344), and only where the door leads
+      // somewhere: with one hike kept, a sheet offering that same hike back
+      // is a control that does nothing.
+      ...(tripStore.hikes.length > 0 ? { onSwitch: handleSwitchHike } : {}),
       figures: hikeFiguresLine(activeHike, tripStore.trips, pois, units),
       dayNumber: dayNumber(tripStore.trips, activeHike.tripIds, today),
       awayLine:
@@ -3531,6 +3636,8 @@ function App() {
     resumeDismissed,
     handleResumeHike,
     handleLeaveHikePlan,
+    handleSwitchHike,
+    tripStore.hikes.length,
   ])
 
   /**
@@ -3727,6 +3834,17 @@ function App() {
     openFromMiles,
     closeRouteBuilder,
   } = routeBuilder
+
+  /** The one part of planning a section that genuinely needs a canvas (#1344),
+   *  handed to the builder that already owns it rather than reimplemented in
+   *  the panel. Declared here rather than beside its siblings above because
+   *  `routeBuilder` is built on the line before it, and a dependency array is
+   *  evaluated where it is written. */
+  const handleSectionOnMap = useCallback(() => {
+    setSectionDraft(null)
+    setSectionPointAt(null)
+    routeBuilder.openRouteBuilder()
+  }, [routeBuilder])
   /**
    * Toggle a shelter or campsite as a stop, and say whether the tap was
    * consumed.
@@ -7334,6 +7452,23 @@ function App() {
   const sidebarModeSwitch = isDesktop ? (
     <ModeSwitch mode={hikerMode} onChange={handleChangeMode} />
   ) : undefined
+  /**
+   * The hike a hiker is on, in the sidebar, on every screen (#1344).
+   *
+   * Rendered only where there IS one and where there is somewhere to go: a
+   * button reading the hike's name that opened a sheet offering that same
+   * hike back would be a control that does nothing, which is LineSheet's
+   * rule and the reason `onSwitchHike` is undefined on the Plan band under
+   * the same condition.
+   */
+  const sidebarHikeSwitch =
+    isDesktop && activeHike !== null && tripStore.hikes.length > 0 ? (
+      <button type="button" className="tab-bar__hike" onClick={handleSwitchHike}>
+        {activeHike.name}
+        <span aria-hidden="true"> ▾</span>
+        <span className="visually-hidden"> — change which hike you&rsquo;re on</span>
+      </button>
+    ) : undefined
 
   // Every tab branch below is skipped during first run: `entering` needs the
   // map screen rendered as the steps' backdrop (#721), whatever tab the
@@ -7370,7 +7505,12 @@ function App() {
             {savedDayHikeCardNode}
           </ErrorBoundary>
         </div>
-        <TabBar active={activeTab} onSelect={selectTab} modeSwitch={sidebarModeSwitch} />
+        <TabBar
+          active={activeTab}
+          onSelect={selectTab}
+          modeSwitch={sidebarModeSwitch}
+          hikeSwitch={sidebarHikeSwitch}
+        />
       </div>
     )
   } else if (!entering && activeTab === 'more') {
@@ -7458,6 +7598,7 @@ function App() {
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   longHikeName={activeHike?.name ?? null}
                   onStepAwayFromHike={() => setStepAwayOpen(true)}
+                  onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
                   onEditHike={() => setPickingHike(true)}
                   onStartReport={() => setReporting({ step: 'window' })}
                   onReportFailure={() => setReportingFailure(true)}
@@ -7507,6 +7648,7 @@ function App() {
             active={activeTab}
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
+            hikeSwitch={sidebarHikeSwitch}
           />
         </div>
       </>
@@ -7529,6 +7671,35 @@ function App() {
                 // like every other sheet Plan opens.
                 activeHike={activeHike}
                 onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
+                onRenameHike={handleRenameHike}
+                // Open, it takes the primary's place in the column; closed,
+                // undefined leaves the primary alone. Two shapes in one slot:
+                // the ends first, then `PlanTargetSheet` on the same ground
+                // once both are named - which is the whole of "that content
+                // should live on the same page".
+                sectionPlanner={
+                  sectionDraft === null ? undefined : sectionDraft.from !== null &&
+                    sectionDraft.to !== null ? (
+                    <PlanTargetSheet
+                      route={[sectionDraft.from, sectionDraft.to]}
+                      pois={pois}
+                      elevation={elevation}
+                      units={units}
+                      pace={pace}
+                      onCancel={handleCancelSection}
+                      onLayOut={handleLayOutSection}
+                    />
+                  ) : (
+                    <SectionPlanner
+                      from={sectionDraft.from}
+                      to={sectionDraft.to}
+                      onPickFrom={() => setSectionPointAt('from')}
+                      onPickTo={() => setSectionPointAt('to')}
+                      onChooseOnMap={handleSectionOnMap}
+                      onCancel={handleCancelSection}
+                    />
+                  )
+                }
                 kindSheet={
                   planKindOpen ? (
                     <PlanKindSheet
@@ -7581,7 +7752,12 @@ function App() {
                   : { dayHikeCard: savedDayHikeCardNode })}
                 onStartOnMap={openPlanKind}
                 onNewDayHike={openDayHike}
-                onNewTrip={routeBuilder.openRouteBuilder}
+                // The hike room's primary is the inline planner now (#1344);
+                // the day room and the no-hike sections room keep the builder,
+                // which is the surface that suits them.
+                onNewTrip={
+                  activeHike === null ? routeBuilder.openRouteBuilder : handlePlanSection
+                }
                 // The state rather than the boolean (#1049): the Plan tab
                 // prints the refusal, and a refusal needs to know which
                 // absence it is refusing for.
@@ -7688,6 +7864,7 @@ function App() {
             active={activeTab}
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
+            hikeSwitch={sidebarHikeSwitch}
           />
         </div>
       </>
@@ -7777,6 +7954,7 @@ function App() {
             active={activeTab}
             onSelect={selectTab}
             modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
+            hikeSwitch={sidebarHikeSwitch}
           />
         </div>
       )}
@@ -7832,6 +8010,7 @@ function App() {
                 ) : undefined
               }
               modeSwitch={sidebarModeSwitch}
+              hikeSwitch={sidebarHikeSwitch}
               // The ask before this phone's map is replaced (#919). Undefined
               // while there is nothing newer published, which is every launch but
               // the ones after a release - see lib/dataRefresh.ts.
@@ -8277,6 +8456,45 @@ function App() {
           paints over whichever tab screen is up, and before the entry steps
           so first run still outranks everything. */}
       {hikeWindow}
+      {/* Naming one end of a section (#1344) - the SAME picker the hike's own
+          points use, on the same layer, for the reason its sibling gives:
+          two pickers would drift into naming a place two different ways.
+          Outside `hikeWindow` because a section is planned from the Plan tab
+          with no hike window open at all. */}
+      {sectionPointAt !== null && sectionDraft !== null && (
+        <div className="hike-window hike-window--screen hike-window--picker">
+          <RouteStopPicker
+            choices={routeStopChoices}
+            pois={pois}
+            // The far end measures from the near one, so "a distance from…"
+            // has somewhere to start. The near end has nothing before it and
+            // the door says so itself.
+            previous={
+              sectionPointAt === 'to' && sectionDraft.from !== null
+                ? {
+                    mile: sectionDraft.from.mile,
+                    label: stopLabel(sectionDraft.from),
+                  }
+                : null
+            }
+            // Which way a distance counts. Unknowable before both ends
+            // exist, and false is the honest floor rather than a guess:
+            // the picker offers distances north, and a hiker walking south
+            // names the place instead.
+            south={false}
+            removable={false}
+            units={units}
+            onPick={handleSectionPointChosen}
+            // No map door here. The panel behind carries one already, and it
+            // hands the whole job to the route builder rather than placing a
+            // single end - two map doors on one flow would be two answers to
+            // "where does the tap go".
+            onMapPick={handleSectionOnMap}
+            onRemove={() => setSectionPointAt(null)}
+            onClose={() => setSectionPointAt(null)}
+          />
+        </div>
+      )}
       {/* The entry steps, over the map screen rather than instead of it
           (#721). A sibling of the boundary, not a child: they are the way out
           of first run, so a map that throws mid-onboarding must not take them

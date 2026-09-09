@@ -273,9 +273,14 @@ describe('the planning flow', () => {
     await user.click(screen.getByRole('tab', { name: 'Today' }))
     await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
-    // The hike's own room since #1329, so its primary names the next section
-    // rather than a new one.
-    await user.click(await screen.findByRole('button', { name: 'Plan the next section' }))
+    // The hike's own room since #1329, and since #1344 its primary opens the
+    // planner IN PLACE rather than throwing the hiker at the map. The map is
+    // what this test wants, so it takes the door that leads there - which is
+    // the hand-off itself, exercised end to end.
+    await user.click(await screen.findByRole('button', { name: 'Plan a section' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Draw it on the map instead' }),
+    )
     await user.click(await screen.findByRole('button', { name: /Shelter, town, or/ }))
     await user.type(await screen.findByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))

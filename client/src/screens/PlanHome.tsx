@@ -55,6 +55,7 @@
 // worked on", and a carry-on row built from it would duplicate the card
 // floating over this same screen.
 
+import { useState, type ReactNode } from 'react'
 import type { DayHike } from '../lib/dayHikes'
 import type { HikerMode } from '../lib/hikerMode'
 import { splitDayHikes } from '../lib/dayHikeShelf'
@@ -88,6 +89,18 @@ export interface PlanHomeProps {
   /** Open "Which hike are you on?" - the pick sheet, as a switch. Undefined
    *  where there is nothing to switch between. */
   onSwitchHike?: () => void
+  /** Give the active hike a different name (#1344). */
+  onRenameHike?: (name: string) => void
+  /**
+   * Planning a section, in place (#1344).
+   *
+   * A slot rather than this screen owning the planner, for `kindSheet`'s
+   * reason one level up: the two ends are chosen with the route builder's
+   * own stop picker and the days are laid out by `PlanTargetSheet`, both of
+   * which are the shell's to render. What this screen owns is WHERE it
+   * appears - in the column, where the primary was.
+   */
+  sectionPlanner?: ReactNode
   /** Open the "add a day hike to this hike" sheet (#1317). Undefined when
    *  the app is not in a long hike. */
   onAddDayHikeToHike?: () => void
@@ -138,6 +151,8 @@ export function PlanHome({
   room,
   activeHike,
   onSwitchHike,
+  onRenameHike,
+  sectionPlanner,
   onAddDayHikeToHike,
   trips,
   hikes,
@@ -176,6 +191,8 @@ export function PlanHome({
         units={units}
         draftKind={draftKind}
         onSwitchHike={onSwitchHike}
+        onRenameHike={onRenameHike}
+        sectionPlanner={sectionPlanner}
         onOpenHike={onOpenHike}
         onOpenTrip={onOpenTrip}
         onOpenDayHike={onOpenDayHike}
@@ -254,6 +271,11 @@ interface HikeRoomProps {
   units: UnitSystem
   draftKind: 'day' | 'trip' | null
   onSwitchHike?: () => void
+  sectionPlanner?: ReactNode
+  /** Give the hike a different name (#1344). `renameHike` has been in the
+   *  store since #788 with nothing calling it, so every hike kept the
+   *  "A new long hike" that `handleNewHike` invents at creation. */
+  onRenameHike?: (name: string) => void
   onOpenHike: () => void
   onOpenTrip: (id: string) => void
   onOpenDayHike: (id: string) => void
@@ -296,6 +318,8 @@ function HikeRoom({
   units,
   draftKind,
   onSwitchHike,
+  onRenameHike,
+  sectionPlanner,
   onOpenHike,
   onOpenTrip,
   onOpenDayHike,
@@ -304,6 +328,8 @@ function HikeRoom({
   onNewTrip,
   onResumeDraft,
 }: HikeRoomProps) {
+  const [renaming, setRenaming] = useState(false)
+  const [draftName, setDraftName] = useState('')
   const figures = hikeFigures(hike, trips, pois)
   const sections = trips.filter((trip) => hike.tripIds.includes(trip.id))
   /**
@@ -358,11 +384,60 @@ function HikeRoom({
       </header>
 
       <section className="plan-home__section">
-        <span className="plan-home__title">Carry on with</span>
-        <button type="button" className="plan-home__open" onClick={onOpenHike}>
-          <span className="plan-home__open-name">{hike.name}</span>
-          <span className="plan-home__meta">{hikeStateLine(hike, sections.length)}</span>
-        </button>
+        <div className="plan-home__section-head">
+          <span className="plan-home__title">Carry on with</span>
+          {/* HERE RATHER THAN IN THE BAND, which already carries the switch:
+              two controls either side of an `h1` is a header a thumb cannot
+              hit reliably, and renaming is a rarer act than switching. This
+              is `TripList`'s rename idiom at the hike's grain - the same
+              swap-the-row-for-a-field shape, so the two do not read as two
+              different features. */}
+          {onRenameHike !== undefined && (
+            <button
+              type="button"
+              className="plan-home__all"
+              onClick={() => {
+                setDraftName(hike.name)
+                setRenaming(true)
+              }}
+            >
+              Rename ›
+            </button>
+          )}
+        </div>
+        {renaming && onRenameHike !== undefined ? (
+          <div className="trip-list__rename">
+            <input
+              type="text"
+              className="trip-list__rename-input"
+              autoFocus
+              value={draftName}
+              aria-label={`New name for ${hike.name}`}
+              onChange={(event) => setDraftName(event.target.value)}
+            />
+            <button
+              type="button"
+              className="trip-list__action"
+              onClick={() => {
+                // An empty name is not refused here, exactly as `renameTrip`'s
+                // field does not refuse one: `renameHike` keeps the old name
+                // rather than storing a blank, so a cleared field cannot
+                // leave a hike nobody can identify.
+                onRenameHike(draftName)
+                setRenaming(false)
+              }}
+            >
+              Save
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="plan-home__open" onClick={onOpenHike}>
+            <span className="plan-home__open-name">{hike.name}</span>
+            <span className="plan-home__meta">
+              {hikeStateLine(hike, sections.length)}
+            </span>
+          </button>
+        )}
       </section>
 
       <section className="plan-home__section">
@@ -501,18 +576,32 @@ function HikeRoom({
         </button>
       )}
 
-      {draftKind === 'day' && (
-        <p className="plan-home__refused" role="note">
-          There&rsquo;s an unfinished day hike on the map. Starting a section drops it.
-        </p>
+      {/* THE PLANNER TAKES THE PRIMARY'S PLACE rather than opening over it.
+          One thing at a time in one column: a button that opened a panel and
+          then sat under it would be a second way to do what the panel is
+          already doing. */}
+      {sectionPlanner !== undefined ? (
+        sectionPlanner
+      ) : (
+        <>
+          {draftKind === 'day' && (
+            <p className="plan-home__refused" role="note">
+              There&rsquo;s an unfinished day hike on the map. Starting a section drops
+              it.
+            </p>
+          )}
+          <button
+            type="button"
+            className="plan__primary"
+            onClick={draftKind === 'trip' ? onResumeDraft : onNewTrip}
+          >
+            {/* "A section" rather than "the next section": a hiker can plan
+                one anywhere on the hike, and #1344's ask was the plainer
+                word. */}
+            {draftKind === 'trip' ? 'Back to your route' : 'Plan a section'}
+          </button>
+        </>
       )}
-      <button
-        type="button"
-        className="plan__primary"
-        onClick={draftKind === 'trip' ? onResumeDraft : onNewTrip}
-      >
-        {draftKind === 'trip' ? 'Back to your route' : 'Plan the next section'}
-      </button>
     </div>
   )
 }

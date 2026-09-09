@@ -120,6 +120,9 @@ export interface MoreProps extends SettingsProps {
    * without a hike.
    */
   hikeSummary?: string | null
+  /** Change which long hike the app is on (#1344), or undefined where there
+   *  is nothing to change to. */
+  onSwitchHike?: () => void
   onEditHike?: () => void
   /**
    * The long hike the app is in (#1317), or null.
@@ -308,6 +311,7 @@ export function More({
   onOpenModeration,
   onOpenRegistry,
   hikeSummary = null,
+  onSwitchHike,
   onEditHike,
   longHikeName = null,
   onStepAwayFromHike,
@@ -446,6 +450,18 @@ export function More({
                 A zero, a night in town, a pause until next year, turning around, or
                 finishing it. Every section you walked stays in Plan whatever you choose.
               </p>
+              {/* THE PHONE'S THIRD DOOR to a different hike (#1344). A desktop
+                  carries it in the sidebar on every screen; a phone's tab bar
+                  is three thumb targets with no room, so the same question is
+                  asked where the phone already talks about the hike - here,
+                  and on Today's header, and on the Plan band. Separate from
+                  the row above, which steps AWAY from this hike rather than
+                  on to another. */}
+              {onSwitchHike !== undefined && (
+                <button type="button" className="settings__action" onClick={onSwitchHike}>
+                  Switch to a different hike
+                </button>
+              )}
             </section>
           )}
           {onEditHike !== undefined && (

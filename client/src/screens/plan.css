@@ -3882,6 +3882,78 @@
   color: var(--fg-3);
 }
 
+/* ---------- Planning a section in place (#1344) ---------- */
+
+/* Sits in the hike room's own column, where the primary was. Not a sheet and
+   not a window: the whole point of the ask was that this content is on the
+   page a hiker is already on. */
+.section-planner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  /* NOT the blaze border, deliberately. today.css says of its own that it is
+     "the only card on this screen wearing one, which is what makes it mean
+     anything", and `.plan-home__open` carries it here for the same reason -
+     somewhere obvious to go back to. A second blaze card in the same column
+     spends that meaning; this panel is where the hiker already is, not
+     somewhere to return to. */
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.section-planner__ends {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* `.route-stops__field` is a div in the route panel and a button here, so the
+   two things a button brings and a div does not are undone: a centred label
+   and a text colour of its own. */
+.section-planner__ends .route-stops__field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+  color: var(--fg-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.section-planner__end-label {
+  flex: none;
+  width: 3rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.section-planner__end-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A door out of the inline flow, drawn as one. It borrowed
+   `.stop-picker__door` first, which is borderless because in the picker it
+   sits in a bordered stack - out of that stack it read as bare bold text
+   with nothing to say it was pressable. */
+.section-planner__map {
+  align-self: flex-start;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* The stop picker, given the window as its frame.
 
    `.stop-picker` is `position: absolute; inset: 0` because in the route

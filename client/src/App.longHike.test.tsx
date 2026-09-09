@@ -97,6 +97,29 @@ function hikeStore(over: Partial<TripStore> = {}): TripStore {
 
 const windows = () => document.querySelectorAll('.hike-window')
 
+/**
+ * A viewport wide enough for the desktop layout (lib/useDesktop.ts).
+ *
+ * App.test.tsx's helper, and its reason: matched on the query rather than
+ * answering `true` to everything, because this shell asks `matchMedia`
+ * several other questions - standalone, fine pointer - and a stub that says
+ * yes to all of them is testing a browser that does not exist.
+ *
+ * WITHOUT THIS A TEST IS A PHONE, which is the default every other case in
+ * this file deliberately runs as.
+ */
+function onADesktop() {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query.includes('min-width: 900px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  )
+}
+
 describe('every long-hike surface goes through one window', () => {
   it('opens the pick sheet in the window chrome, not welded to the screen', async () => {
     const user = userEvent.setup()
@@ -192,6 +215,133 @@ describe('choosing a hike point on the map (#1329)', () => {
     expect(screen.getByText(/mi 10\.2/)).toBeInTheDocument()
     // ...and the map goes back behind the modal it came out from.
     expect(document.querySelector('.map-screen')?.closest('[inert]')).not.toBeNull()
+  })
+})
+
+describe('the switch is on every screen (#1344)', () => {
+  it('carries the hike in the sidebar, whichever tab is up', async () => {
+    // `Switch hike ›` lived on the Plan band and nowhere else, so a hiker on
+    // Today, the map or Settings had no way to change hike. The sidebar is
+    // already on all four and already holds the mode, so it is where the
+    // same question one level down belongs.
+    //
+    // THE SIDEBAR IS A DESKTOP THING, so this case says so. jsdom leaves
+    // `matchMedia` answering false, which is a phone - the default the rest
+    // of this file runs as, and the layout with no sidebar to put this in.
+    const user = userEvent.setup()
+    onADesktop()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, hikeStore())
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    for (const tab of ['Today', 'Map', 'Plan', 'More'] as const) {
+      await user.click(await screen.findByRole('tab', { name: tab }))
+      const chip = await waitFor(() => {
+        const found = document.querySelector('.tab-bar__hike')
+        expect(found, `no hike switch on ${tab}`).not.toBeNull()
+        return found as HTMLElement
+      })
+      expect(chip).toHaveTextContent('Springer → Katahdin')
+    }
+
+    await user.click(document.querySelector('.tab-bar__hike') as HTMLElement)
+    expect(
+      await screen.findByRole('dialog', { name: 'Which hike are you on?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows no hike chip when the app is not on a hike', async () => {
+    const user = userEvent.setup()
+    onADesktop()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    expect(document.querySelector('.tab-bar__hike')).toBeNull()
+  })
+})
+
+describe('planning a section without leaving the room (#1344)', () => {
+  it('names two ends in place, lays out the days there, and puts it on the hike', async () => {
+    // "Plan the next section should be 'Plan a section', and that content
+    // should live on the same page." The route builder used to take the Map
+    // tab outright (`sweepForBuilder` opens with `setActiveTab('map')`).
+    //
+    // This also closes the gap #1329's body named and left open: nothing put
+    // a PLANNED section into a hike, so one laid out from this very room
+    // landed nowhere near it.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, hikeStore())
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Plan a section' }))
+
+    // Still on Plan - the whole point. The panel is in the column, and the
+    // Plan tab is still the selected one.
+    expect(await screen.findByRole('button', { name: /From/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Plan' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+
+    for (const [end, place] of [
+      ['From', 'Front Shelter'],
+      ['To', 'Beyond Shelter'],
+    ] as const) {
+      await user.click(screen.getByRole('button', { name: new RegExp(end) }))
+      const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
+      await user.type(within(picker).getByLabelText('Search for a stop'), place)
+      await user.click(
+        await within(
+          await screen.findByRole('dialog', { name: 'Choose a stop' }),
+        ).findByRole('button', { name: new RegExp(place) }),
+      )
+    }
+
+    // Both ends named, so the SAME slot becomes the target sheet - the form
+    // that already turns two ends into a plan (planDaysVia + buildPlan).
+    await user.click(await screen.findByRole('button', { name: /^Lay out \d+ days?$/ }))
+
+    // Kept AND on the hike.
+    await waitFor(() => {
+      const store = app.store.get(TRIPS_KEY) as TripStore
+      expect(store.trips).toHaveLength(1)
+      expect(store.hikes[0]?.tripIds).toEqual([store.trips[0].id])
+    })
+    expect(await screen.findByText('Sections in this hike')).toBeInTheDocument()
+  })
+
+  it('hands the map job to the route builder rather than doing it here', async () => {
+    // Tapping the trail is the one part that genuinely needs a canvas, so
+    // the door is explicit and goes to the builder that owns it - never a
+    // second route builder on the Plan page.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, hikeStore())
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Plan a section' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Draw it on the map instead' }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Plan a route' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   })
 })
 

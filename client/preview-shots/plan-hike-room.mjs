@@ -9,6 +9,12 @@
 // a contrast bug on the desktop journal, which has no recipe of its own —
 // see the PR body's before-and-after).
 //
+// SINCE #1344 IT ALSO CARRIES THE TWO CONTROLS THE ROOM WAS MISSING: a
+// "Rename ›" beside "Carry on with" - `renameHike` had been in the store
+// since #788 with nothing calling it, so every hike kept the "A new long
+// hike" it was created with - and a primary that reads "Plan a section" and
+// opens the planner in place (plan-section-inline.mjs is that frame).
+//
 // WHAT TO LOOK FOR: the hike's NAME as the band's h1, "Switch hike ›" beside
 // it, the blaze-bordered "Carry on with" card, and "This hike, end to end"
 // carrying `mi walked · mi to go` over a two-band bar.

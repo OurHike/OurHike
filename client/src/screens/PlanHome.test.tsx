@@ -410,6 +410,40 @@ describe("the hike's own room (#1329, handoff §4)", () => {
     expect(screen.getAllByText('Springer → Katahdin')).toHaveLength(2)
   })
 
+  it('renames the hike in place, which nothing could do before', async () => {
+    // `renameHike` has been in the store since #788 with no caller, so every
+    // hike kept the "A new long hike" that `handleNewHike` invents (#1344).
+    const user = userEvent.setup()
+    const onRenameHike = vi.fn()
+    inRoom({ onRenameHike })
+
+    await user.click(screen.getByRole('button', { name: /Rename/ }))
+    const field = screen.getByLabelText('New name for Springer → Katahdin')
+    await user.clear(field)
+    await user.type(field, 'Georgia to Maine')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onRenameHike).toHaveBeenCalledWith('Georgia to Maine')
+  })
+
+  it('offers no rename where the shell passes no way to do one', () => {
+    inRoom()
+    expect(screen.queryByRole('button', { name: /Rename/ })).toBeNull()
+  })
+
+  it('names its primary "Plan a section", and gives the place up to the planner', () => {
+    // #1344: "that content should live on the same page". The planner takes
+    // the primary's place rather than opening over it - one thing at a time
+    // in one column.
+    inRoom()
+    expect(screen.getByRole('button', { name: 'Plan a section' })).toBeInTheDocument()
+
+    cleanup()
+    inRoom({ sectionPlanner: <p>the planner</p> })
+    expect(screen.getByText('the planner')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Plan a section' })).toBeNull()
+  })
+
   it('falls back to the kept-sections list when the mode is long and no hike is picked', () => {
     // Transient by design - the pick sheet opens on the way in - and
     // reachable anyway. The honest answer there is everything the hiker has

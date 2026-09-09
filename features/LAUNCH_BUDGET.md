@@ -77,7 +77,7 @@ Two things to hold onto from those tables:
   serves them. Which of those it is remains an open question below, and it is the
   reason the plan's first job is an instrument rather than a fix.
 
-### 1.1 After #1300 to #1304, measured the same way
+### 1.1 After #1300 to #1304 and #1324, measured the same way
 
 Same profile, same flags, a build of the branch carrying production's public build
 values, served locally — so this is the `main` column's successor and carries its
@@ -91,18 +91,31 @@ and why the waypoint work #1303 is about does not appear here at all.
 | a tap on Plan at 0.8 s accepted after | 254–328 ms | **185–300 ms** |
 | long tasks · longest · total blocking | 3 · 78–97 ms · 54–88 ms | **1 · 55–63 ms · 5–13 ms** |
 
-| first run | `main` @ 52fdf08 | after |
-|---|---:|---:|
-| first entry step reachable | 1,648 ms | 1,229–1,431 ms |
-| long tasks · longest · total blocking | 18 · 617–706 ms · 4,507–4,584 ms | 18–20 · 632–1,202 ms · 4,219–7,081 ms |
+| first run | `main` @ 52fdf08 | after #1300–#1304 | after #1328 |
+|---|---:|---:|---:|
+| first entry step reachable | 1,648 ms | 1,229–1,431 ms | 1,135–1,297 ms |
+| Skip 1 · 2 · 3 accepted after | 3,182–4,290 · 80–97 · 305–383 ms | 3,721–3,848 · 46–55 · 235–262 ms | **120–147 · 52–71 · 242–254 ms** |
+| long tasks · longest · total blocking | 18 · 617–706 ms · 4,507–4,584 ms | 18–20 · 632–1,202 ms · 4,219–7,081 ms | **10–12 · 238–259 ms · 785–861 ms** |
 
-**First run is where this stops.** The returning launch is inside every §3 row on this
-profile; first run is not, and the second Skip tap still waits seconds. #1304 removed
-the two named main-thread costs — the pin rasteriser and the date formatter — and what
-remains is MapLibre building the map behind the entry card and the release landing
-mid-flow, which §4.6 describes and none of this work does. The run-to-run spread on the
-first-run rows is wide enough that no claim smaller than "unchanged, and still over" is
-honest.
+**The paragraph that stood here said first run was where this stopped, and it was
+overtaken within the hour.** It is worth reading rather than replacing, because being
+wrong is the interesting part: it named "MapLibre building the map behind the entry
+card and the release landing mid-flow" as what remained, and treated the first as work
+somebody would one day have to do. #1328 — *Stop building the map behind first run* —
+found instead that the work should not be done at all: an opaque photograph has stood
+over that map since #1054, so the ~900 ms was buying a backdrop that contributes no
+pixel to the frame. The fix was to stop paying, not to pay more efficiently.
+
+**Where first run stands now.** The longest-task row is inside its §3 budget (≤ 500 ms)
+and the Skip rows are not: 120–147 ms against ≤ 100 ms on the first tap, 242–254 ms on
+the third. Both are now `presentation`-dominated rather than script-dominated — Skip 1
+breaks down as `input delay 8–10 · processing 0–2 · presentation 54–69`, and Skip 3
+carries 205–219 ms of presentation, which is the entry card handing over to Today and
+is unchanged by any of this work. That is a different problem from the one these five
+issues were about, and nothing here has scoped it.
+
+**The release still never lands in any of these runs** (§1's caveat), so the second
+cost that paragraph named is measured by none of these columns, before or after.
 
 Deterministic, and therefore subject to none of the above: eager JavaScript is **437 KB
 compressed before this work and 215 KB after**, MapLibre is out of the eagerly loaded
@@ -433,6 +446,27 @@ release's effect on the launch is a row in an issue rather than a feeling.
   the same warm-up. Whether a phone can hit it — a preferences read that rejects falls
   back to defaults, and defaults mean first run (`App.tsx:1165–1188`) — is not known,
   and it is the kind of thing §4.1's readout would catch on a real device.
+- **Whether a hiker ever notices the map arriving cold.** #1324 stopped building the
+  map behind the entry steps and warms it on an idle callback once they are done, so a
+  hiker who reaches the Map tab before that callback runs pays the build then. On the
+  profile the warm lands at 3.8–5.1 s with nothing waiting on it, which says only that
+  the callback fires — not that it beats a real thumb. `@unvalidated`: what would settle
+  it is §4.1's marks read off a device, which is #1299's instrument and has not been
+  pointed at this.
+- **What the residual 84 ms in `lib/todayText.ts` is.** Hoisting its two `Intl` builds
+  moved the sampled self time 100 → 84 ms and no further, and the count that would
+  explain the rest does not: `Today` renders 14 times on a returning launch and 0 during
+  first run (measured 2026-09-09 with a counter on the component), which is nowhere near
+  enough `format` calls to be 84 ms. A sampled profile attributing neighbouring
+  functions in the same module to that line is the likeliest explanation and is a
+  hypothesis, not a finding. #1334 has the history, including the inference this
+  document previously carried as fact.
+- **Why first run's Skip taps are `presentation`-bound.** After #1324 the first tap is
+  120–147 ms against a ≤ 100 ms budget with only 8–10 ms of input delay and 0–2 ms of
+  processing; the third carries 205–219 ms of presentation. The remaining cost is paint
+  rather than script, and nothing here has established what is being painted — the entry
+  card runs its own keyed entry animation on every step, which is a candidate and has
+  not been measured.
 - **The Capacitor shells.** Both serve the same bundle from the binary with no
   service worker (`client/capacitor.config.ts`); the parse and the gate cost the same
   and the network costs differ. The stopwatch has no mode for them.

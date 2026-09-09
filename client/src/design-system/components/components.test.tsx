@@ -23,11 +23,21 @@ describe('Badge', () => {
     expect(screen.getByText('Moderate')).toBeInTheDocument()
   })
 
-  it('gives every tone its own look - five tones, five backgrounds', () => {
+  it('gives every tone its own look - seven tones, seven backgrounds', () => {
     // The it.each this replaces asserted only toBeInTheDocument per tone,
     // which would pass if every tone rendered identically (#175). Distinct
     // backgrounds is the property the tone prop exists for.
-    const tones = ['easy', 'moderate', 'strenuous', 'info', 'neutral'] as const
+    // The five difficulty levels (#1290 widened this from three: NYNJTC
+    // rates in five and the app adopted theirs) plus info and neutral.
+    const tones = [
+      'easy',
+      'easy-moderate',
+      'moderate',
+      'moderate-strenuous',
+      'strenuous',
+      'info',
+      'neutral',
+    ] as const
     render(
       <>
         {tones.map((tone) => (

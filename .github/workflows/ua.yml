@@ -218,6 +218,35 @@ jobs:
             exit 1
           fi
 
+      # The same guard pages.yml carries, against UA's own base (#1333). This
+      # is the half that makes one committed DATA_RELEASE safe across two data
+      # environments: UA publishes independently, so its `releases/` tree
+      # holds different ids - measured 2026-09-09, 31 against production's 14,
+      # with 10 in common. Checking each base separately turns "the pin must
+      # exist in both" into a red deploy rather than something to remember.
+      - name: Confirm the pinned data release exists
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          release=$(sed -n "s/^export const DATA_RELEASE = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$release" ]; then
+            echo "::error::Could not read DATA_RELEASE out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          manifest="${DATA_URL%/}/releases/${release}/manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+            echo "Pinned release ${release} resolves at ${DATA_URL%/}."
+          else
+            echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. UA would deploy unable to fetch anything."
+            exit 1
+          fi
+
       - name: Publish UA
         id: deploy
         if: steps.can.outputs.deploy == 'true'

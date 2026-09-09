@@ -161,7 +161,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
@@ -1100,7 +1100,16 @@ jobs:
     # places). See "Say what happened" above for the two cases this excludes.
     if: inputs.publish && !inputs.regenerate_identity_ledger
     runs-on: ubuntu-latest
-    environment: production
+    # Gated only for a real production dispatch (#1330) - a `ua` publish is
+    # the routine, disposable case (RELEASING.md §3b) and runs straight
+    # through once the `if:` above has already decided a write is happening
+    # at all. This IS a same-job `environment:` expression; the comment
+    # above is not a blanket rule against that shape, only against one
+    # mirroring a *second, independently-written* copy of the same
+    # predicate, which was #1262's actual bug. This expression answers a
+    # different question (which environment) that exists nowhere else in
+    # this job, so there is no second copy of it to drift from.
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
     # Every writer of latest.json shares this group (publish-conditions.yml,
     # build-basemap.yml, build-dem.yml, build-raster.yml): publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could
@@ -1115,7 +1124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
@@ -1124,10 +1133,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # `pipeline/data/`, NOT `pipeline/` - and the difference is the whole
+      # of #1347. upload-artifact@v4 roots the archive at the LEAST COMMON
+      # ANCESTOR of its search paths, and the upload above names both
+      # `pipeline/data/processed/` and six `pipeline/data/raw/` entries, so
+      # that ancestor is `pipeline/data`. The archive therefore contains
+      # `processed/` and `raw/`, and extracting it to `pipeline/` put the
+      # exports at `pipeline/processed/` where nothing looks for them.
+      #
+      # What that cost: publish.py found no artifacts, returned normally, and
+      # this job reported "Published to <env>" having uploaded nothing - runs
+      # #93, #94 (production) and #98, every run that reached this job between
+      # the split in #1267 and the fix. publish.py now refuses that case
+      # outright, so this pairing failing again is loud rather than silent,
+      # and .github/tests/test_artifact_handoff_paths.py holds the two ends
+      # together so a later edit to either path list cannot drift them apart.
       - uses: actions/download-artifact@v4
         with:
           name: vector-data-build-output
-          path: pipeline/
+          path: pipeline/data/
 
       # `!regenerate_identity_ledger` no longer needs spelling out here - the
       # job's own `if:` above already excludes it, and RELEASING.md §12's

@@ -21,6 +21,19 @@
 --blaze-orange-dark:#994e15;
 --blaze-orange-light:#e0813c;
 --blaze-yellow:#d69a2d;
+/* The two levels between the three the app started with (#1290). NYNJTC
+   rates in five, and "Easy to Moderate" is a publisher saying the answer is
+   between two - so it needs a hue between them rather than a rounding to
+   either. Olive sits between sage and ochre, terracotta between ochre and
+   blaze orange, and both are new members of the ramp rather than tints of an
+   existing one. Contrast measured 2026-09-09 against their own badge fills:
+   olive ink 5.52:1, terracotta ink 5.55:1, both past 4.5:1. */
+--olive-500:#5a6420;
+--olive-300:#bfc57a;
+--olive-100:#eef0d9;
+--terracotta-600:#8f4a12;
+--terracotta-400:#cf7a24;
+--terracotta-100:#f9e8d3;
 --blaze-blue:#1c6ea4;
 --blaze-blue-light:#4ea3d8;
 --blaze-white:#fdfaf2;

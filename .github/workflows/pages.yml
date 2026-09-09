@@ -340,6 +340,42 @@ jobs:
             exit 1
           fi
 
+      # The pinned release must actually be there, checked against THIS
+      # build's own base (#1333). dataRelease.ts names one folder and nothing
+      # else selects a dataset, so a pin naming a folder the bucket does not
+      # have is a build that deploys and then 404s every artifact - no map,
+      # not a stale one, and the client has no fallback path for it
+      # (trailData.ts throws; App.tsx stops before the archive).
+      #
+      # AGAINST THIS BUILD'S BASE is the load-bearing half, and it is the
+      # reason one committed constant is safe across two data environments.
+      # UA is a prefix in the same bucket with its own `releases/` tree
+      # written by its own publishes, so the two id sets drift - measured
+      # 2026-09-09, production held 14 releases and UA 31, with 10 in common.
+      # Each build checking its own base turns "the pin must exist in both"
+      # from something a person has to remember into a red deploy.
+      - name: Confirm the pinned data release exists
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          release=$(sed -n "s/^export const DATA_RELEASE = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$release" ]; then
+            echo "::error::Could not read DATA_RELEASE out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          manifest="${DATA_URL%/}/releases/${release}/manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+            echo "Pinned release ${release} resolves at ${DATA_URL%/}."
+          else
+            echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. A build deployed against this base would 404 every artifact."
+            exit 1
+          fi
+
       # Same proof for the same reason, one step later. Setting a variable and
       # having it reach the bundle are different claims, and the gap between
       # them is invisible from outside: the app builds, the map works, and the
@@ -469,7 +505,7 @@ jobs:
           name: app-dist
           path: app-dist
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
 

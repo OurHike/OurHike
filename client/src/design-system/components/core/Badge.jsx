@@ -1,7 +1,9 @@
 import React from 'react';
 const tones = {
 easy: { bg: 'var(--sage-100)', fg: 'var(--forest-600)', border: 'var(--moss-300)' },
+'easy-moderate': { bg: 'var(--olive-100)', fg: 'var(--olive-500)', border: 'var(--olive-300)' },
 moderate: { bg: '#fbeed9', fg: '#8a5a1a', border: 'var(--blaze-yellow)' },
+'moderate-strenuous': { bg: 'var(--terracotta-100)', fg: 'var(--terracotta-600)', border: 'var(--terracotta-400)' },
 strenuous: { bg: '#f6e3cf', fg: 'var(--blaze-orange-dark)', border: 'var(--blaze-orange)' },
 info: { bg: '#dbe7ef', fg: 'var(--blaze-blue)', border: 'var(--blaze-blue)' },
 neutral: { bg: 'var(--stone-150)', fg: 'var(--stone-700)', border: 'var(--stone-300)' },

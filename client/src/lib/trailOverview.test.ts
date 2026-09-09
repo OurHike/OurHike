@@ -12,13 +12,22 @@
 //    report.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
 
-vi.mock('./config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./config')>()),
-  DATA_BASE_URL: 'https://data.example',
-  DATA_CONFIGURED: true,
-  dataUrl: (key: string) => `https://data.example/${key}`,
-}))
+vi.mock('./config', async (importOriginal) => {
+  // The release layout is the real one, not a flattened stand-in: a mock
+  // that put artifacts at the root while the module under test read the
+  // manifest from releases/<pin>/ would agree with neither the bucket nor
+  // itself. Only the base is substituted.
+  const { releasePath, RELEASE_MANIFEST_PATH } = await import('./dataRelease')
+  return {
+    ...(await importOriginal<typeof import('./config')>()),
+    DATA_BASE_URL: 'https://data.example',
+    DATA_CONFIGURED: true,
+    dataUrl: (key: string) => `https://data.example/${releasePath(key)}`,
+    releaseManifestUrl: () => `https://data.example/${RELEASE_MANIFEST_PATH}`,
+  }
+})
 
 const { fetchTrailOverview } = await import('./trailOverview')
 const { TRAILS_OVERVIEW_KEY } = await import('./config')
@@ -45,7 +54,7 @@ function serve({
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
-      if (String(url).includes('latest.json')) {
+      if (String(url).includes(RELEASE_MANIFEST_PATH)) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -136,7 +145,7 @@ describe('the corridor-view centerline', () => {
     await fetchTrailOverview()
 
     expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toContain(
-      `https://data.example/${TRAILS_OVERVIEW_KEY}`,
+      `https://data.example/${releasePath(TRAILS_OVERVIEW_KEY)}`,
     )
   })
 })

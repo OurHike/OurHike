@@ -12,6 +12,7 @@ import {
   BLAZE_LAYER_ID,
   NEARBY_BLAZE_DOTTED_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
+  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
   TAPPABLE_BLAZE_LAYER_IDS,
 } from './style'
 import {
@@ -86,6 +87,37 @@ describe('trailsInView', () => {
       'Long Path',
       'Ramapo-Dunderberg Trail',
     ])
+  })
+
+  it('reads a named through-route off the overview sketch below the seam (#1307)', () => {
+    // No blaze layers rendering at all - the corridor camera, below the pin
+    // seam, where only the two network-overview layers draw. The Long
+    // Path's own qualifying feature carries `name` and `through_route`
+    // (export_nearby_trails.py's write_overview); the generic haze it was
+    // merged with before #1307 carries neither and stays out of the list,
+    // the same `if (name === null) continue` that already kept every
+    // unnamed nearby line out above the seam.
+    const map = mapWith({
+      [NETWORK_OVERVIEW_DOTTED_LAYER_ID]: [
+        line(
+          'Long Path',
+          'nynjtc_long_path',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'Aqua',
+          { through_route: true },
+        ),
+        line(null, 'oprhp_trails', [[-74.06, 41.21]], 'Red'),
+      ],
+    })
+
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails.map((t) => t.name)).toEqual(['Long Path'])
+    expect(trails[0].throughRoute).toBe(true)
+    expect(trails[0].chosen).toBe(false)
+    expect(trails[0].anchor).not.toBeNull()
   })
 
   it('puts through-routes first, then the chosen system, then the rest by name', () => {
@@ -233,6 +265,7 @@ describe('badgeFeatures', () => {
           source: 'centerline',
           blazeColor: 'White',
           throughRoute: true,
+          takeable: true,
           chosen: true,
           anchor: null,
           badgeFit: 'full',

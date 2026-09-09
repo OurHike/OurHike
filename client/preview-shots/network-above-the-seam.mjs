@@ -42,9 +42,16 @@
 // every other trail in the park is a dot rhythm in its own blaze hue,
 // ghosted as before, with its name set along it. Somewhere on the A.T.'s
 // longest visible stretch sits its badge, a paper pill carrying the ATC mark
-// and the full name; no other line wears one. What the caption has to name
-// is which line is solid and which carries the plate, because the old frame
-// had neither distinction to point at.
+// and the full name. Amended (#1307): the Long Path can wear one too now,
+// wherever its own longest visible stretch has room - it joined
+// PRIMARY_TRAIL_SOURCES/BADGE_SOURCES the same way the A.T. holds them,
+// still dotted and ghosted rather than solid, since neither list is the
+// takeable one. Whether the Long Path's line is prominent enough in THIS
+// frame to earn one is unverified from a sandbox with no rendered tiles, so
+// the caption claims only what can wear a badge now, not what does in this
+// crop. What the caption has to name is which line is solid and which
+// carries a plate, because the old frame had neither distinction to point
+// at.
 //
 // TWO THINGS THIS FRAME CANNOT PROMISE ABOUT THE BADGE. The mark decodes
 // from at-logo.png on a canvas; where that fails the badge falls through to

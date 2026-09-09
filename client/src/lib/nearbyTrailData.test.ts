@@ -29,13 +29,22 @@
 // lets unverified fresh bytes into the store or onto the map.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
 
-vi.mock('./config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./config')>()),
-  DATA_BASE_URL: 'https://data.example',
-  DATA_CONFIGURED: true,
-  dataUrl: (key: string) => `https://data.example/${key}`,
-}))
+vi.mock('./config', async (importOriginal) => {
+  // The release layout is the real one, not a flattened stand-in: a mock
+  // that put artifacts at the root while the module under test read the
+  // manifest from releases/<pin>/ would agree with neither the bucket nor
+  // itself. Only the base is substituted.
+  const { releasePath, RELEASE_MANIFEST_PATH } = await import('./dataRelease')
+  return {
+    ...(await importOriginal<typeof import('./config')>()),
+    DATA_BASE_URL: 'https://data.example',
+    DATA_CONFIGURED: true,
+    dataUrl: (key: string) => `https://data.example/${releasePath(key)}`,
+    releaseManifestUrl: () => `https://data.example/${RELEASE_MANIFEST_PATH}`,
+  }
+})
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
@@ -93,7 +102,7 @@ function serve({
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
-      if (String(url).includes('latest.json')) {
+      if (String(url).includes(RELEASE_MANIFEST_PATH)) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -222,7 +231,9 @@ describe('the network sketch, online with nothing stored', () => {
 
     await loadNetworkOverview(true)
 
-    expect(fetchedUrls()).toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
+    expect(fetchedUrls()).toContain(
+      `https://data.example/${releasePath(NETWORK_OVERVIEW_KEY)}`,
+    )
   })
 })
 
@@ -283,7 +294,9 @@ describe('the network sketch, from the store (#1082)', () => {
       hash: await networkHash(),
       revalidated: true,
     })
-    expect(fetchedUrls()).toContain(`https://data.example/${NETWORK_OVERVIEW_KEY}`)
+    expect(fetchedUrls()).toContain(
+      `https://data.example/${releasePath(NETWORK_OVERVIEW_KEY)}`,
+    )
     expect(vi.mocked(set)).toHaveBeenCalledWith(
       NETWORK_OVERVIEW_STORE_KEY,
       expect.objectContaining({ hash: await networkHash() }),
@@ -451,7 +464,7 @@ describe('an artifact the phone cannot hold (#1254)', () => {
 
     await expect(loadNetworkOverview(true)).resolves.toBeNull()
 
-    expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
+    expect(fetchedUrls()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
     expect(set).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0][0])).toContain(NETWORK_OVERVIEW_KEY)
@@ -473,7 +486,7 @@ describe('an artifact the phone cannot hold (#1254)', () => {
       hash: 'the-hash-of-a-copy-that-fit',
       revalidated: false,
     })
-    expect(fetchedUrls()).toEqual(['https://data.example/latest.json'])
+    expect(fetchedUrls()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
   })
 
   it('weighs the bytes themselves where the manifest named no size', async () => {

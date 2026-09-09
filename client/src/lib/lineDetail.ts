@@ -141,7 +141,7 @@ export interface LineDetail {
  * TappedLineFacts is: this module must not pull the map style in. The two
  * lists are pinned to each other by lineDetail.test.ts.
  */
-export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
+export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path']
 
 /**
  * The sources making up the trail system a hiker chose - map/nearbyTrails.ts's
@@ -284,11 +284,26 @@ export function buildLineDetail(
   const nearbyTrail = line.source !== null && !CHOSEN_SYSTEM_SOURCES.includes(line.source)
   const spur = line.id !== null ? spurs[line.id] : undefined
 
-  // The kind, for the heading: the through-route is named as the trail it
-  // is; a side trail with a spur record is what SPUR_TRAILS.md calls a
-  // spur; the rest are side trails - Access approaches, alternate routes -
-  // that ATC classifies as something else.
-  const kind = throughRoute ? trailName : spur !== undefined ? 'spur' : 'side trail'
+  // A through-route the hiker has taken names itself as the app's own trail
+  // (trailName); every OTHER through-route - the Long Path, since #1307 -
+  // is still a through-route and still names itself, just from the data
+  // rather than the app's identity. Before #1307 these were the same
+  // source and this distinction did not exist: throughRoute alone was
+  // always the chosen one, because it was the only one there was.
+  const chosenThroughRoute = throughRoute && !nearbyTrail
+
+  // The kind, for the heading: a chosen through-route is named as the app's
+  // own trail; any other through-route is named as itself; a side trail
+  // with a spur record is what SPUR_TRAILS.md calls a spur; the rest are
+  // side trails - Access approaches, alternate routes - that ATC classifies
+  // as something else.
+  const kind = chosenThroughRoute
+    ? trailName
+    : throughRoute
+      ? (line.name ?? trailName)
+      : spur !== undefined
+        ? 'spur'
+        : 'side trail'
 
   const detail = describeSpur(spur, units, undefined, pace)
   const destination =
@@ -384,16 +399,20 @@ export function buildLineDetail(
   })()
 
   // The trail the line belongs to, by the name the sheet will show for it -
-  // the chosen trail's name for the through-route, the steward's own name
-  // for anything else. A spur's record name is a spur's, never a trail's.
-  const trail = trailForName(throughRoute ? trailName : line.name)
+  // the app's own name for the through-route it chose, the steward's own
+  // name for anything else, including a through-route it did not choose. A
+  // spur's record name is a spur's, never a trail's.
+  const trail = trailForName(chosenThroughRoute ? trailName : line.name)
 
   return {
     heading: `${blazeLabel(line.blazeColor)} · ${kind}`,
-    // The through-route's name is already the heading; repeating ATC's
-    // formal name under it ("Appalachian National Scenic Trail") would be
-    // the same fact twice in adjacent lines.
-    name: throughRoute ? null : (spur?.name ?? line.name),
+    // A CHOSEN through-route's name is already the heading (kind IS
+    // trailName); repeating ATC's formal name under it ("Appalachian
+    // National Scenic Trail") would be the same fact twice in adjacent
+    // lines. Any other through-route - the Long Path, since #1307 - keeps
+    // its name here: its heading is the data's own name, not a synonym for
+    // it, and #1288 is where a hiker was first shown one at all.
+    name: chosenThroughRoute ? null : (spur?.name ?? line.name),
     destinationLine,
     roundTripLine: detail.roundTripLabel,
     junctionLine,

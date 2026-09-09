@@ -584,6 +584,22 @@
   color: var(--fg-chrome-1);
 }
 
+/* The name as a control (#1344). Button chrome reset to nothing so it reads
+   as the same line it was before - what marks it is the ▾ and the pointer,
+   not a box. `text-align: left` because a button centres its label and this
+   one sits in a left-aligned column. */
+.today__hike-name--switch {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-family: var(--font-display, serif);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
 .today__hike-figures {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);

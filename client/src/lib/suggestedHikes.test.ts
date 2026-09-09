@@ -220,7 +220,15 @@ describe('the counts the sheets print', () => {
     // Of the three with transit: Pochuck and Dismal are under two hours,
     // Sunrise is an afternoon.
     expect(counts.time).toEqual({ under2: 2, '2to4': 1, '4to6': 0, allDay: 0 })
-    expect(counts.difficulty).toEqual({ easy: 1, moderate: 1, strenuous: 0 })
+    // Five levels since #1290 - the counts object carries one entry per
+    // level in DIFFICULTIES, including the two nothing in this fixture uses.
+    expect(counts.difficulty).toEqual({
+      easy: 1,
+      'easy-moderate': 0,
+      moderate: 1,
+      'moderate-strenuous': 0,
+      strenuous: 0,
+    })
     expect(counts.authors).toEqual({ club: 2, guidebook: 0, hiker: 1, ourhike: 0 })
   })
 

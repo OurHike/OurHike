@@ -9,6 +9,13 @@
 // pipeline/sources.json's org_marks. Nothing photographed a nearby trail's
 // sheet before this recipe existed.
 //
+// AMENDED (#1307) - THE HEADING ITSELF CHANGED. The Long Path joined
+// PRIMARY_TRAIL_SOURCES/THROUGH_ROUTE_SOURCES, so this exact tap now reads
+// "Aqua blaze · Long Path" rather than "Aqua blaze · side trail" -
+// lib/lineDetail.ts's chosenThroughRoute distinguishes a through-route the
+// hiker has taken from one that is merely a through-route, and the Long
+// Path is the first line to be the second kind rather than neither.
+//
 // A TAP AT THE CAMERA'S OWN CENTRE, because a drive cannot aim a canvas
 // click at a line unless it knows what is under the pixel - and it does,
 // exactly once: the camera's centre is a lon/lat this recipe chose, and the
@@ -26,8 +33,10 @@
 // ships, and the caption names both because photograph-preview.mjs reads it
 // off the module before the drive runs (#1058). Where the bucket this
 // preview reads carries nearby_trails.pmtiles, the line is on the canvas at
-// z15, the tap lands, and the frame is the sheet: "Aqua blaze · side trail",
-// the mark, "Long Path", the length and the park, NYNJTC's provenance line.
+// z15, the tap lands, and the frame is the sheet: "Aqua blaze · Long Path"
+// since #1307 (was "Aqua blaze · side trail"), the mark beside the name a
+// second time (#1288's line, which only a CHOSEN through-route suppresses),
+// the length and the park, NYNJTC's provenance line.
 // Where it does not - a fork's pull request gets no secrets, and the
 // archive is in the bucket only once publish-vector-data.yml has run since
 // the merge - there is no line under the pixel, the tap opens nothing, and
@@ -37,9 +46,9 @@
 // pipelines section exists to track.
 
 export const caption =
-  'The Long Path’s line sheet — the trail’s own mark beside its name (#1288); the bare map over the Palisades until nearby_trails.pmtiles is in the bucket this preview reads'
+  'The Long Path’s line sheet, now heading “Long Path” rather than “side trail” since it joined the through-route tier (#1307) — the trail’s own mark beside its name too (#1288); the bare map over the Palisades until nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'Either the tapped-line sheet over the map at the Palisades, reading “Aqua blaze · side trail”, then the Long Path’s round logo beside the words “Long Path”, its length and park, and a line saying the data is from the New York-New Jersey Trail Conference; or, where this build has no network archive, the map over the Palisades crest with no trail line to tap.'
+  'Either the tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, then the Long Path’s round logo beside the words “Long Path” again, its length and park, and a line saying the data is from the New York-New Jersey Trail Conference; or, where this build has no network archive, the map over the Palisades crest with no trail line to tap.'
 
 /** Vector tiles from the bucket plus contours over a cliff take longer than
  *  chrome; the sheet is waited on by the drive, this is the settle after. */

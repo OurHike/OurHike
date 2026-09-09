@@ -285,7 +285,7 @@ jobs:
       # It also pulls the opposite way to the three caches below: this is one
       # small entry that 48 jobs a day RESTORE, and an entry read every half
       # hour is the last thing a least-recently-used policy evicts.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip

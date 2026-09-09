@@ -142,14 +142,29 @@ describe('the expression and the function agree', () => {
 })
 
 describe('the two source lists that must agree', () => {
-  it('holds every through-route the style paints at the primary width', () => {
-    // The pin CHOSEN_SYSTEM_SOURCES's docstring promises. A through-route
-    // that is not in the chosen system would be drawn widest AND ghosted -
-    // the map's two channels contradicting each other about which trail it is
-    // about, which is worse than either channel being absent.
-    for (const source of PRIMARY_TRAIL_SOURCES) {
-      expect(CHOSEN_SYSTEM_SOURCES).toContain(source)
-    }
+  it('keeps the A.T.’s own line at the primary width while it is chosen', () => {
+    // The direction that still has to hold, now that a second through-route
+    // exists: whatever is actually TAKEN must never draw thinner than a
+    // through-route that is not. The reverse - every primary-width source is
+    // in the chosen system - held only while `centerline` was the one
+    // through-route there was, and #1307 ended that on purpose: the Long
+    // Path draws at primary width and stays out of CHOSEN_SYSTEM_SOURCES,
+    // because width says "through-route or spur" and the dot rhythm - not
+    // width - is what says which through-route is walked. WIREFRAMES.md §3
+    // names the cost and accepts it: "with two through-routes drawn, width
+    // answers 'through-route or spur' and stops answering 'which trail is
+    // this' - still a hue-independent channel, but a coarser one."
+    expect(CHOSEN_SYSTEM_SOURCES).toContain('centerline')
+    expect(PRIMARY_TRAIL_SOURCES).toContain('centerline')
+  })
+
+  it('lets a through-route join the primary tier without being chosen', () => {
+    // The Long Path (#1307): a real member of PRIMARY_TRAIL_SOURCES that
+    // CHOSEN_SYSTEM_SOURCES has never heard of, and is not expected to
+    // until a hike can actually be tracked on it (lib/hikes.ts's
+    // trailHasMileAxis, #1317).
+    expect(PRIMARY_TRAIL_SOURCES).toContain('nynjtc_long_path')
+    expect(CHOSEN_SYSTEM_SOURCES).not.toContain('nynjtc_long_path')
   })
 })
 

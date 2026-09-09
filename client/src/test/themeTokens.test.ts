@@ -48,7 +48,7 @@ function appStylesheets(dir = ROOT): string[] {
  *  reads one of these cannot follow a theme, because the token means the same
  *  colour in both. */
 const BASE_PALETTE =
-  /var\(--(?:pine|forest|moss|sage|stone|paper|blaze|ink|bone|amber|alert|white|black)[a-z0-9-]*\)/
+  /var\(--(?:pine|forest|moss|sage|stone|paper|blaze|ink|bone|amber|alert|olive|terracotta|white|black)[a-z0-9-]*\)/
 
 describe('the theme token contract', () => {
   it('re-points the semantic aliases under the dark theme', () => {
@@ -86,7 +86,7 @@ describe('the theme token contract', () => {
 
     for (const token of dark) {
       expect(token, `${token} looks like a base palette entry`).not.toMatch(
-        /^(pine|forest|moss|sage|stone|paper|blaze|ink|bone|amber|alert|white|black)-?\d*$/,
+        /^(pine|forest|moss|sage|stone|paper|blaze|ink|bone|amber|alert|olive|terracotta|white|black)-?\d*$/,
       )
     }
   })

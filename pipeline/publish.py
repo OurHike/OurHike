@@ -1609,6 +1609,29 @@ def main() -> dict:
 
     artifacts = collect_artifacts()
     if not artifacts:
+        # AN EMPTY COLLECTION IS AN ANSWER LOCALLY AND A FAULT WHEN WRITING
+        # (#1347). Run by hand, or as a dry run, "there is nothing exported
+        # yet" is true and returning it is right. But this function is only
+        # reached with writes enabled because a workflow was dispatched with
+        # `publish: true`, and in that case an empty data/processed/ does not
+        # mean there is nothing to publish - it means the exports did not
+        # arrive. Something upstream is broken and this is where it shows.
+        #
+        # It went unnoticed for exactly this reason. publish-vector-data.yml
+        # extracted the build's artifact one directory too high, so every run
+        # that reached the publish job collected nothing, exited 0, and let
+        # the workflow report "Published to <env>" - runs #93, #94 against
+        # production, and #98. Failing safe here is what turns the next such
+        # break into a red run instead of a false receipt.
+        if writes_enabled():
+            raise SystemExit(
+                f"No exported artifacts found under {PROCESSED_DIR}/, but publishing is enabled.\n"
+                "Nothing was uploaded. This is a broken handoff, not an empty build: the\n"
+                "export steps ran in another job and their artifact should have been\n"
+                "extracted here. Check that the download-artifact `path:` matches the least\n"
+                "common ancestor of the upload's paths - see .github/tests/"
+                "test_artifact_handoff_paths.py."
+            )
         print("No exported artifacts found under data/processed/ - run the export scripts first.")
         return {
             "environment": environment,

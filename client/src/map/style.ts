@@ -331,14 +331,23 @@ export const TRAIL_LINE_LAYER_IDS: readonly string[] = [
 ]
 
 /** The blaze layers a hiker can tap or read a trail off - the full lines,
- *  both halves of both splits. The sketches are excluded: they carry no
- *  `name` (export_trails.py's and export_nearby_trails.py's write_overview
- *  publish source, blaze and status only), so nothing can be named off them. */
+ *  both halves of both splits, plus the network overview's own split since
+ *  #1307. THE A.T.'s SKETCH (TRAIL_OVERVIEW_LAYER_ID) STAYS OUT: it carries
+ *  no `name` (export_trails.py's write_overview still publishes source,
+ *  blaze and status only) and needs none - the header plate already names
+ *  the app's own trail, which is what map/trailBadges.ts's own header means
+ *  by "the header already does". The network overview's two layers DO carry
+ *  `name` now, on the features export_nearby_trails.py's write_overview
+ *  named for clearing NAMED_TRAIL_THRESHOLD_MILES; map/trailsInView.ts's
+ *  `if (name === null) continue` is what keeps the unnamed haze out even
+ *  though its layer is included here. */
 export const TAPPABLE_BLAZE_LAYER_IDS: readonly string[] = [
   BLAZE_LAYER_ID,
   BLAZE_DOTTED_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
   NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_LAYER_ID,
+  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
 ]
 
 /**
@@ -1210,24 +1219,34 @@ function onSourceLayer(
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
 export const CENTERLINE_SOURCE = 'centerline'
 
+/** The pipeline's own key for NYNJTC's Long Path feed (pipeline/sources.json),
+ *  the trail that source `owns_route_names` - the first import to join
+ *  CENTERLINE_SOURCE in PRIMARY_TRAIL_SOURCES below (#1307). */
+export const LONG_PATH_SOURCE = 'nynjtc_long_path'
+
 /**
  * Trail sources drawn at the primary width: the through-route of a trail
  * system, as against the side trails and spurs hanging off it.
  *
- * This is a ROLE, and deliberately a list rather than a single source. Its one
- * member today is ATC's `centerline`, whose key reads like a proper noun
- * because that feed is the AT - but nothing here is promised only one
- * through-route. The NYNJTC alone maintains several trail systems, so a Long
- * Path or Highlands Trail import joins this tier beside the AT rather than
- * displacing it, and a `centerline` feed that itself grows past the AT needs
- * no change here at all.
+ * This is a ROLE, and deliberately a list rather than a single source. It
+ * held only ATC's `centerline` until #1307, when the Long Path became the
+ * first import to join it - the NYNJTC alone maintains several trail
+ * systems, so a Highlands Trail import joins this tier the same way, and a
+ * `centerline` feed that itself grows past the AT needs no change here at
+ * all. Joining this tier is a claim about which trail a LINE is, and a
+ * narrower one than being takeable (map/trailBadges.ts's TAKEABLE_SOURCES) -
+ * the Long Path draws at through-route width and wears a badge with nothing
+ * here saying a hiker can stand on it as their trail yet.
  *
- * What that costs is named where the claim is made (WIREFRAMES.md §3): with
- * one through-route on the map, the widest line IS the AT. With two, width
- * answers "through-route or spur" and stops answering "which trail is this" -
- * still a hue-independent channel, but a coarser one.
+ * What the first join costs is named where the claim is made (WIREFRAMES.md
+ * §3): with one through-route on the map, the widest line IS the AT. With
+ * two, width answers "through-route or spur" and stops answering "which
+ * trail is this" - still a hue-independent channel, but a coarser one.
  */
-export const PRIMARY_TRAIL_SOURCES: readonly string[] = [CENTERLINE_SOURCE]
+export const PRIMARY_TRAIL_SOURCES: readonly string[] = [
+  CENTERLINE_SOURCE,
+  LONG_PATH_SOURCE,
+]
 
 /** The two width tiers, in CSS pixels. */
 export const PRIMARY_TRAIL_WIDTH = 4.5
@@ -1452,8 +1471,40 @@ function overviewTaper(far: unknown, atSeam: unknown): unknown[] {
   ]
 }
 
-export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = overviewTaper(
+/**
+ * The far end for a network overview line published with a `through_route`
+ * flag - export_nearby_trails.py's write_overview, on a trail that cleared
+ * NAMED_TRAIL_THRESHOLD_MILES (#1307). "#1307 is where the long-distance
+ * trails get their own weight and the clusters stop mattering" (this file's
+ * own line, above) - this is that weight.
+ *
+ * Twice NETWORK_OVERVIEW_FAR_WIDTH, picked the same way that constant's own
+ * far end was: legible over the generic dot rhythm without approaching a
+ * chosen system's own solid weight, should one of these trails ever be
+ * takeable (map/trailBadges.ts's TAKEABLE_SOURCES says none but the AT is,
+ * yet). `@unvalidated` the same way NETWORK_OVERVIEW_FAR_WIDTH's own history
+ * records: nobody has watched this weight against the generic haze on a
+ * phone, only reasoned it from the two constants either side of it.
+ */
+export const NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH = NETWORK_OVERVIEW_FAR_WIDTH * 2
+
+/**
+ * NETWORK_OVERVIEW_FAR_WIDTH, made data-driven on `through_route` - nested
+ * INSIDE overviewTaper's `far` stop rather than wrapped around the whole
+ * taper, because a zoom expression inside a `case` is a style error
+ * (overviewTaper's own header: "the whole taper must stay TOP LEVEL").
+ * Absent or false reads as the generic weight: `get` on a missing property
+ * is null, and `null === true` is false, never a thrown expression.
+ */
+export const NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION = [
+  'case',
+  ['==', ['get', 'through_route'], true],
+  NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
   NETWORK_OVERVIEW_FAR_WIDTH,
+]
+
+export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = overviewTaper(
+  NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
   DEFAULT_TRAIL_LINE_WIDTH,
 )
 

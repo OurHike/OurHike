@@ -1161,6 +1161,91 @@ def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkey
     assert overview["tolerance_m"] == 100.0
 
 
+# --- Naming a long-distance trail below the seam (#1307) --------------------
+
+
+def test_a_trail_that_clears_the_threshold_keeps_its_own_named_feature(tmp_path, monkeypatch):
+    # A straight run of latitude, not a real trail's geometry - about 55
+    # miles at ~69.0 miles per degree of latitude, the same "far enough from
+    # any real data" convention HARRIMAN's own comment states above.
+    # Comfortably over NAMED_TRAIL_THRESHOLD_MILES; the other two features
+    # are comfortably under it, one by a real name and one by none at all.
+    long_enough = [(-74.1, 40.5), (-74.1, 41.3)]
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(long_enough, _oprhp_properties(Name="Long Path"), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Local Loop"), feature_id=2),
+                _feature(PAST_THE_OLD_EAST_EDGE, _oprhp_properties(Name=""), feature_id=3),
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    features = _overview(tmp_path)["features"]
+    by_name = {f["properties"].get("name"): f["properties"] for f in features}
+
+    assert by_name["Long Path"] == {
+        "source": "oprhp_trails",
+        "name": "Long Path",
+        "blaze_color": "Red",
+        "trail_status": "open",
+        "through_route": True,
+    }
+    # The sub-threshold "Local Loop" and the blank-name segment both fall
+    # back into the unnamed haze, merged into one feature exactly as they
+    # would have been before this trail existed - name and through_route
+    # both absent, this export's omit-rather-than-guess convention.
+    assert by_name[None] == {"source": "oprhp_trails", "blaze_color": "Red", "trail_status": "open"}
+    assert len(features) == 2
+    assert manifest["overview"]["feature_count"] == 2
+
+
+def test_the_threshold_sums_every_segment_of_the_same_name(tmp_path, monkeypatch):
+    # Three short pieces of one named trail, each under the threshold alone
+    # and ~55 miles summed - NYNJTC's own Long Path ships as 43 section
+    # records, not one (this module's docstring), so a real trail clearing
+    # NAMED_TRAIL_THRESHOLD_MILES has to do it a segment at a time.
+    pieces = [
+        [(-74.10, 40.50), (-74.10, 40.80)],  # ~20.7 mi
+        [(-74.10, 40.80), (-74.10, 41.10)],  # ~20.7 mi
+        [(-74.10, 41.10), (-74.10, 41.30)],  # ~13.8 mi
+    ]
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(piece, _oprhp_properties(Name="Long Path"), feature_id=index)
+                for index, piece in enumerate(pieces, start=1)
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = _overview(tmp_path)["features"]
+    assert feature["properties"]["name"] == "Long Path"
+    assert feature["properties"]["through_route"] is True
+    assert len(feature["geometry"]["coordinates"]) == 3
+    assert manifest["overview"]["feature_count"] == 1
+
+
+def test_the_overview_manifest_records_the_naming_threshold(tmp_path, monkeypatch):
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    assert manifest["overview"]["named_trail_threshold_miles"] == ex.NAMED_TRAIL_THRESHOLD_MILES
+
+
 # --- The White Mountains sources (#1207) ------------------------------------
 
 

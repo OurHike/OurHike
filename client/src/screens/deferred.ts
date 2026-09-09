@@ -97,6 +97,10 @@ export const FindHike = deferredScreen(
   () => import('./FindHike').then((m) => m.FindHike),
   'FindHike',
 )
+export const HikeDetail = deferredScreen(
+  () => import('./HikeDetail').then((m) => m.HikeDetail),
+  'HikeDetail',
+)
 export const HikePicker = deferredScreen(
   () => import('./HikePicker').then((m) => m.HikePicker),
   'HikePicker',
@@ -152,6 +156,7 @@ const ALL = [
   VolunteerHours,
   VolunteerImpact,
   FindHike,
+  HikeDetail,
   HikePicker,
   HikeSetup,
   HikeDay,

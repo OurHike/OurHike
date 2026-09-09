@@ -1950,3 +1950,45 @@ def test_the_client_publish_builds_can_hold_every_request_it_opens(monkeypatch, 
     publish.publish(local_artifacts, sidecars={}, photos={}, bucket=BUCKET)
 
     assert seen["config"].max_pool_connections == publish.PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
+
+
+def test_publishing_with_nothing_collected_fails_loudly(monkeypatch):
+    """An empty data/processed/ during a real publish is a broken handoff.
+
+    THE RUN THAT PROMPTED THIS (#1347). publish-vector-data.yml extracted the
+    build job's artifact to `pipeline/`, but upload-artifact roots an archive
+    at the least common ancestor of its search paths - `pipeline/data` here -
+    so the exports landed at `pipeline/processed/`. collect_artifacts() found
+    nothing under `pipeline/data/processed/`, main() returned normally, and
+    the workflow reported "Published to <env>" having uploaded nothing. Runs
+    #93, #94 - that one against production - and #98 all did this.
+
+    The branch had no test at all, which is how three runs got away with it.
+    """
+    monkeypatch.setattr(publish, "collect_artifacts", dict)
+
+    with pytest.raises(SystemExit) as raised:
+        publish.main()
+
+    # The message has to name the fix, because whoever reads it is looking at
+    # a green-until-now workflow and has no reason to suspect the extract path.
+    assert "publishing is enabled" in str(raised.value)
+    assert "handoff" in str(raised.value)
+
+
+def test_nothing_collected_without_writes_is_still_an_ordinary_empty_run(monkeypatch, capsys):
+    """The other half, and the reason the refusal above is conditional.
+
+    Run by hand or as a dry run, "nothing has been exported yet" is a true
+    answer and the right one - `writes_enabled()` is what separates the two,
+    so a contributor who has not run the exporters gets the message rather
+    than a traceback.
+    """
+    monkeypatch.delenv(publish.WRITE_ENABLED_ENV_VAR, raising=False)
+    monkeypatch.setattr(publish, "collect_artifacts", dict)
+
+    result = publish.main()
+
+    assert result["version_written"] is False
+    assert result["uploaded"] == []
+    assert "No exported artifacts found" in capsys.readouterr().out

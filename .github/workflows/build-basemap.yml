@@ -83,7 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
@@ -243,7 +243,12 @@ jobs:
     needs: build
     if: inputs.publish
     runs-on: ubuntu-latest
-    environment: production
+    # Gated only for a real production dispatch (#1330) - a `ua` publish is
+    # the routine, disposable case (RELEASING.md §3b) and runs straight
+    # through. Nothing else in this job branches on data_environment, so
+    # there is no second, independently-written copy of this predicate for
+    # it to drift out of sync with (the #1262/#1265 failure mode).
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
     # Every writer of latest.json shares this group: publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could
     # interleave and clobber each other's entries.
@@ -268,7 +273,7 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip

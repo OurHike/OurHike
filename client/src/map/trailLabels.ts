@@ -94,7 +94,7 @@ export const TRAIL_LABEL_SORT_KEY_EXPRESSION = trailLabelSortKeyExpression()
  * own list: `style.ts` imports THIS module, so importing it back would be a
  * cycle. trailLabels.test.ts imports both and fails if they drift.
  */
-export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
+export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path']
 
 /**
  * Which lines get a name, and the one that deliberately does not.

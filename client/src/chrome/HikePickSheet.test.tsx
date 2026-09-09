@@ -121,6 +121,68 @@ describe('the pick sheet', () => {
     expect(door).toHaveTextContent('Needs two ends')
   })
 
+  it('becomes a switch where a hike is already active, and says so', () => {
+    // #1329: one sheet for both moments, because they are one question -
+    // which of these hikes am I on. What varies is the title, the last
+    // sentence of the lede and a mark on the one you are on.
+    render(
+      <HikePickSheet
+        {...PROPS}
+        hikes={[hike(), hike({ id: 'h2', name: 'Virginia, over a few years' })]}
+        activeHikeId="h2"
+      />,
+    )
+
+    expect(
+      screen.getByRole('heading', { name: 'Which hike are you on?' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Virginia, over a few years/ }),
+    ).toHaveTextContent('you\u2019re on this one')
+    expect(
+      screen.getByRole('button', { name: /Springer → Katahdin/ }),
+    ).not.toHaveTextContent('you\u2019re on this one')
+  })
+
+  it('does not promise a revert to Day hike when there is a hike to stay on', () => {
+    // THE LOAD-BEARING PAIR. `handleCancelHikePick` reverts the mode only
+    // where `activeHikeId` is null, so a sheet opened as a switch and closed
+    // leaves the hiker exactly where they were. Saying "you're back on Day
+    // hike" there would be false, and a mode that behaves differently from
+    // what the screen said is the thing this sentence exists to prevent.
+    const { container, rerender } = render(<HikePickSheet {...PROPS} hikes={[hike()]} />)
+    expect(container.textContent).toMatch(/back on Day hike/)
+
+    rerender(<HikePickSheet {...PROPS} hikes={[hike()]} activeHikeId="h1" />)
+    expect(container.textContent).not.toMatch(/back on Day hike/)
+    expect(container.textContent).toMatch(/the one you leave stays exactly as it is/i)
+  })
+
+  it('leaves the list in one order, whichever hike you are on', () => {
+    // A switch whose list re-orders itself under the finger is a switch that
+    // picks the wrong hike. The one you are on is MARKED, never moved.
+    const order = () =>
+      screen
+        .getAllByRole('button')
+        .map((node) => node.textContent ?? '')
+        .map((text) =>
+          text.startsWith('Springer')
+            ? 'springer'
+            : text.startsWith('Virginia')
+              ? 'virginia'
+              : null,
+        )
+        .filter((name) => name !== null)
+
+    const hikes = [hike(), hike({ id: 'h2', name: 'Virginia, over a few years' })]
+    render(<HikePickSheet {...PROPS} hikes={hikes} />)
+    expect(order()).toEqual(['springer', 'virginia'])
+    cleanup()
+
+    render(<HikePickSheet {...PROPS} hikes={hikes} activeHikeId="h2" />)
+    expect(order()).toEqual(['springer', 'virginia'])
+  })
+
   it('prints no percentage, nothing behind and nothing on track', () => {
     // The standing guard, on a new surface. OurHikeValues.md #1.
     const { container } = render(

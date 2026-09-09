@@ -531,6 +531,26 @@ describe('the long hike leading Today', () => {
     expect(screen.getByText('412.0 mi walked · 1,785.4 mi to go')).toBeInTheDocument()
   })
 
+  it('makes the name the door to a different hike, when there is one', async () => {
+    // #1344: the hiker reading their hike's name on the morning screen is the
+    // one most likely to want a different hike, and the only door was the
+    // Plan tab's band.
+    const user = userEvent.setup()
+    const onSwitch = vi.fn()
+    render(<Today {...props({ mode: 'long', longHike: { ...LONG_HIKE, onSwitch } })} />)
+
+    await user.click(screen.getByRole('button', { name: /Springer → Katahdin/ }))
+    expect(onSwitch).toHaveBeenCalled()
+  })
+
+  it('leaves the name as text where there is nowhere to switch to', () => {
+    // LineSheet's rule: never a control that looks pressable and is not.
+    render(<Today {...props({ mode: 'long', longHike: LONG_HIKE })} />)
+
+    expect(screen.getByText('Springer → Katahdin')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Springer → Katahdin/ })).toBeNull()
+  })
+
   it('adds the day of the hike to the date eyebrow', () => {
     render(<Today {...props({ mode: 'long', longHike: LONG_HIKE })} />)
     expect(document.querySelector('.today__eyebrow')?.textContent).toMatch(/· DAY 6$/)
